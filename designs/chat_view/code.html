@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>Just Maple - Chat View</title>
+        <link href="https://fonts.googleapis.com" rel="preconnect" />
+        <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Lora:ital,wght@0,400;0,500;0,600;1,400&amp;display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+            rel="stylesheet"
+        />
+        <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+        <script>
+            tailwind.config = {
+                darkMode: 'class',
+                theme: {
+                    extend: {
+                        colors: {
+                            bg: 'var(--color-bg)',
+                            surface: 'var(--color-surface)',
+                            'surface-alt': 'var(--color-surface-alt)',
+                            primary: 'var(--color-primary)',
+                            'primary-hover': 'var(--color-primary-hover)',
+                            'primary-light': 'var(--color-primary-light)',
+                            'text-main': 'var(--color-text-main)',
+                            'text-muted': 'var(--color-text-muted)',
+                            border: 'var(--color-border)',
+                        },
+                        fontFamily: {
+                            sans: ['Inter', 'sans-serif'],
+                            serif: ['Lora', 'serif'],
+                            display: ['Inter', 'sans-serif'],
+                        },
+                        borderRadius: {
+                            DEFAULT: '0.5rem',
+                            xl: '1rem',
+                            '2xl': '1.5rem',
+                        },
+                        boxShadow: {
+                            soft: '0 2px 8px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.02)',
+                            lifted: '0 10px 30px -5px rgba(0, 0, 0, 0.08)',
+                        },
+                    },
+                },
+            };
+        </script>
+        <style type="text/tailwindcss">
+            @layer base {
+                :root {
+                    --color-bg: #faf9f8;
+                    --color-surface: #ffffff;
+                    --color-surface-alt: #f5f5f4;
+                    --color-text-main: #292524;
+                    --color-text-muted: #78716c;
+                    --color-border: #e7e5e4;
+                    --color-primary: #d97757;
+                    --color-primary-hover: #c06446;
+                    --color-primary-light: #fbeae5;
+                }
+                .dark {
+                    --color-bg: #1c1917;
+                    --color-surface: #262524;
+                    --color-surface-alt: #2e2c2a;
+                    --color-text-main: #e7e5e4;
+                    --color-text-muted: #a8a29e;
+                    --color-border: #44403c;
+                    --color-primary: #d97757;
+                    --color-primary-hover: #e88b6e;
+                    --color-primary-light: #422016;
+                }
+            }
+            ::-webkit-scrollbar {
+                width: 6px;
+            }
+            ::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            ::-webkit-scrollbar-thumb {
+                background-color: var(--color-border);
+                border-radius: 20px;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+                background-color: var(--color-text-muted);
+            }
+            .message-group:hover .timestamp {
+                opacity: 1;
+            }
+            .material-symbols-outlined {
+                font-variation-settings:
+                    'FILL' 0,
+                    'wght' 400,
+                    'GRAD' 0,
+                    'opsz' 24;
+            }
+        </style>
+    </head>
+    <body
+        class="bg-bg text-text-main font-sans h-screen flex overflow-hidden transition-colors duration-200 selection:bg-primary-light selection:text-primary"
+    >
+        <aside
+            class="w-64 flex-shrink-0 border-r border-border bg-surface flex flex-col hidden md:flex z-20"
+        >
+            <div class="flex flex-col p-4 pb-2 gap-4">
+                <div class="flex items-center gap-2 px-1">
+                    <span class="material-symbols-outlined text-primary text-2xl">eco</span>
+                    <div class="flex flex-col">
+                        <span
+                            class="font-serif font-bold text-base tracking-tight leading-none text-text-main"
+                            >Just Maple</span
+                        >
+                        <span
+                            class="text-[11px] font-medium text-text-muted uppercase tracking-wider mt-0.5"
+                            >My Workspace</span
+                        >
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="relative flex-1 group">
+                        <span
+                            class="material-symbols-outlined absolute left-2.5 top-1.5 text-text-muted group-focus-within:text-primary text-[18px] transition-colors"
+                            >search</span
+                        >
+                        <input
+                            class="w-full bg-surface-alt/80 hover:bg-surface-alt focus:bg-surface text-sm border border-transparent focus:border-primary/20 rounded-lg py-1.5 pl-8 pr-2 placeholder-text-muted focus:ring-2 focus:ring-primary/10 transition-all shadow-sm"
+                            placeholder="Search..."
+                            type="text"
+                        />
+                    </div>
+                    <button
+                        aria-label="New Message"
+                        class="p-1.5 rounded-lg text-text-muted hover:bg-surface-alt hover:text-primary border border-transparent hover:border-border transition-all"
+                    >
+                        <span class="material-symbols-outlined text-[20px]">edit_square</span>
+                    </button>
+                </div>
+            </div>
+            <div class="h-px bg-border mx-4 my-2 opacity-50"></div>
+            <nav class="flex-1 overflow-y-auto px-2 space-y-0.5">
+                <a
+                    class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg bg-primary-light/50 text-primary border border-primary/10"
+                    href="#"
+                >
+                    <span class="material-symbols-outlined text-[18px]">chat_bubble</span>
+                    Project Phoenix
+                </a>
+                <a
+                    class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-text-muted hover:bg-surface-alt hover:text-text-main transition-colors"
+                    href="#"
+                >
+                    <span class="material-symbols-outlined text-[18px]">folder</span>
+                    Design Assets
+                </a>
+                <a
+                    class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-text-muted hover:bg-surface-alt hover:text-text-main transition-colors"
+                    href="#"
+                >
+                    <span class="material-symbols-outlined text-[18px]">tag</span>
+                    #marketing
+                </a>
+                <a
+                    class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-text-muted hover:bg-surface-alt hover:text-text-main transition-colors"
+                    href="#"
+                >
+                    <span class="material-symbols-outlined text-[18px]">tag</span>
+                    #strategy
+                </a>
+            </nav>
+            <div class="p-3 m-2 rounded-xl bg-surface-alt/50 border border-border/50">
+                <div class="flex items-center gap-3">
+                    <img
+                        alt="User Profile"
+                        class="w-8 h-8 rounded-full border border-border shadow-sm"
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuBr5KeuHRPNsWRX66LNHX5hDvcczAOFYBluqAZvrqMPLiOb8VGKdjA8kkIRux6SkHa8mwR8SfHS9_jg074fSI5dgC-vHTG-11Ycgz9WTd63hp8pxUcXZGoXYWEiAuq5r1KgUAt_s_4Ay_bx6qUTECja-AC7hxFLRiB6GgI3dzC4KRpBZz_0dLYR5B4DCiDbCLyvJ_P8rh4CGpLAgHx8sm-Nda12t7lPPNbPw5Q0oBvDhbSqVcIcRcCgg4oSwOoX4M7w7rSp64gHeKcZ"
+                    />
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-medium text-text-main truncate">Isabella R.</div>
+                        <div class="text-xs text-text-muted truncate">Online</div>
+                    </div>
+                    <button class="text-text-muted hover:text-primary transition-colors">
+                        <span class="material-symbols-outlined text-[18px]">settings</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+        <main class="flex-1 flex flex-col relative h-full bg-bg">
+            <header
+                class="h-14 flex items-center justify-between px-4 md:px-6 border-b border-border bg-bg/95 backdrop-blur-sm sticky top-0 z-10 transition-colors"
+            >
+                <div class="flex items-center gap-2 overflow-hidden">
+                    <button class="md:hidden text-text-muted mr-1">
+                        <span class="material-symbols-outlined">menu</span>
+                    </button>
+                    <nav class="flex items-center text-sm text-text-muted whitespace-nowrap">
+                        <div
+                            class="flex items-center hover:text-text-main transition-colors cursor-pointer rounded px-1 -ml-1"
+                        >
+                            <span class="material-symbols-outlined text-[20px] mr-1"
+                                >folder_open</span
+                            >
+                            <span class="hidden sm:inline">Projects</span>
+                        </div>
+                        <span class="material-symbols-outlined text-base mx-1 opacity-40"
+                            >chevron_right</span
+                        >
+                        <div
+                            class="flex items-center font-medium text-text-main bg-surface-alt/50 border border-border/50 px-2 py-0.5 rounded-md"
+                        >
+                            <span class="material-symbols-outlined text-primary text-[18px] mr-1.5"
+                                >tag</span
+                            >
+                            Project Phoenix
+                        </div>
+                    </nav>
+                </div>
+                <div class="flex items-center gap-2 sm:gap-4 pl-4">
+                    <div class="flex items-center -space-x-2">
+                        <img
+                            alt="Member"
+                            class="w-6 h-6 rounded-full border-2 border-bg"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuDXdQGjElRIUKYK6LazWprFQqmWOkZz4fHa8WWw8plUIQzu8JBn1tLLXqkqrC7pHZnXnZboOEaQ1Tslb63XtncEHRMxHLglm6ZO5kzmBxh4rP8zy-Utfj9rg7DZ2q_zb1NjTFVXtaFWPdyOPmMjiCcVDkEqR0LjzJqyXbmSs3g7jrxVM8Ty0JYOcGA7knIJr4TbpnuOzTTWlSQ7X7qGAcmkoXU330g6Vp1W2lpOsQ9nxy0FEvZb_xF1WIx8eS22qRYHC5qfZXXpNzzF"
+                        />
+                        <img
+                            alt="Member"
+                            class="w-6 h-6 rounded-full border-2 border-bg"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuDkyMFDcFArbfx5QJMI2QALcMUQmUrflYCIG_gKJEQ7x9bPlwZzMVaYr1NCCPAg3vNs1gnqKyVSTxbULWswCKcdm3LmKXm4n7RZTLHHZgNTmqAI99ElmfaltykSAez-CpV3mgTis9_3owieSFyF0oB7fXAf1DhoNwlLJLYVgo_B54wpMPkLezWrGyZ8wlw6bBO63ktI43dqm4a5BUppYEqjXHzGByySC86X2lnSEVGrqK3H0s26xldSBVifk-DIy6QVIeFKRLatC-bu"
+                        />
+                        <div
+                            class="w-6 h-6 rounded-full border-2 border-bg bg-surface-alt flex items-center justify-center text-[9px] font-bold text-text-muted"
+                        >
+                            +2
+                        </div>
+                    </div>
+                    <div class="h-4 w-px bg-border hidden sm:block"></div>
+                    <div class="flex items-center gap-1">
+                        <button
+                            class="p-1.5 rounded-md text-text-muted hover:bg-surface-alt hover:text-text-main transition-colors"
+                        >
+                            <span class="material-symbols-outlined text-[20px]">search</span>
+                        </button>
+                        <button
+                            class="p-1.5 rounded-md text-text-muted hover:bg-surface-alt hover:text-text-main transition-colors"
+                        >
+                            <span class="material-symbols-outlined text-[20px]">more_horiz</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+            <div class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+                <div class="flex justify-center">
+                    <span
+                        class="text-[11px] font-medium text-text-muted bg-surface-alt/60 px-3 py-1 rounded-full border border-border/60"
+                    >
+                        Today
+                    </span>
+                </div>
+                <div class="flex items-end gap-3 message-group group">
+                    <img
+                        alt="Sarah"
+                        class="w-8 h-8 rounded-full mb-1 shadow-sm border border-border bg-surface"
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuDXdQGjElRIUKYK6LazWprFQqmWOkZz4fHa8WWw8plUIQzu8JBn1tLLXqkqrC7pHZnXnZboOEaQ1Tslb63XtncEHRMxHLglm6ZO5kzmBxh4rP8zy-Utfj9rg7DZ2q_zb1NjTFVXtaFWPdyOPmMjiCcVDkEqR0LjzJqyXbmSs3g7jrxVM8Ty0JYOcGA7knIJr4TbpnuOzTTWlSQ7X7qGAcmkoXU330g6Vp1W2lpOsQ9nxy0FEvZb_xF1WIx8eS22qRYHC5qfZXXpNzzF"
+                    />
+                    <div class="flex flex-col gap-1 max-w-[85%] md:max-w-[60%]">
+                        <div class="flex items-baseline gap-2 ml-1">
+                            <span class="text-xs font-medium text-text-main">Sarah Miller</span>
+                            <span
+                                class="text-[10px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity timestamp"
+                                >10:32 AM</span
+                            >
+                        </div>
+                        <div
+                            class="bg-surface border border-border px-4 py-3 rounded-2xl rounded-bl-sm shadow-soft text-sm leading-relaxed text-text-main"
+                        >
+                            <p>
+                                Hey team! I just uploaded the revised wireframes for the dashboard.
+                            </p>
+                        </div>
+                        <div
+                            class="bg-surface border border-border px-4 py-3 rounded-2xl shadow-soft text-sm leading-relaxed text-text-main"
+                        >
+                            <p>
+                                Let me know what you think about the navigation layout. I tried to
+                                keep it cleaner this time.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex flex-row-reverse items-end gap-3 message-group group">
+                    <img
+                        alt="Me"
+                        class="w-8 h-8 rounded-full mb-1 shadow-sm border border-border bg-surface"
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuCO65DtO4kJrCK3DyZFkrCbg_2gx9LH5MVuUKVU_pnScH533NgQiWq0c0mCoGfaNlju8ks1OEY1aVzwJXDVeZNcVsE0ug_ei7ZH3FM8TpUtTwFA7iBg6hSGyc35b8hZ-pnaK2l57A9ePEFbwqI_Hb5pruwpYOdQN6x4hE8m1QbDKcm9SZBIKwlgCD1_r4M9q11Yfz3up2ueIApV-DbrstXDgSuusGeJx1FfidWnSdsbFQlWVqdchkasZyHXpV5S4byU63l3hcuqYrHB"
+                    />
+                    <div class="flex flex-col gap-1 items-end max-w-[85%] md:max-w-[60%]">
+                        <div class="flex flex-row-reverse items-baseline gap-2 mr-1">
+                            <span
+                                class="text-[10px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity timestamp"
+                                >10:35 AM</span
+                            >
+                        </div>
+                        <div
+                            class="bg-primary-light border border-primary/10 px-4 py-3 rounded-2xl rounded-br-sm text-sm leading-relaxed text-text-main shadow-sm"
+                        >
+                            <p>
+                                Thanks Sarah! Taking a look now. The minimalism definitely feels
+                                more aligned with the brand guidelines.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-end gap-3 message-group group">
+                    <img
+                        alt="David"
+                        class="w-8 h-8 rounded-full mb-1 shadow-sm border border-border bg-surface"
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuDkyMFDcFArbfx5QJMI2QALcMUQmUrflYCIG_gKJEQ7x9bPlwZzMVaYr1NCCPAg3vNs1gnqKyVSTxbULWswCKcdm3LmKXm4n7RZTLHHZgNTmqAI99ElmfaltykSAez-CpV3mgTis9_3owieSFyF0oB7fXAf1DhoNwlLJLYVgo_B54wpMPkLezWrGyZ8wlw6bBO63ktI43dqm4a5BUppYEqjXHzGByySC86X2lnSEVGrqK3H0s26xldSBVifk-DIy6QVIeFKRLatC-bu"
+                    />
+                    <div class="flex flex-col gap-1 max-w-[85%] md:max-w-[60%]">
+                        <div class="flex items-baseline gap-2 ml-1">
+                            <span class="text-xs font-medium text-text-main">David Chen</span>
+                            <span
+                                class="text-[10px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity timestamp"
+                                >10:42 AM</span
+                            >
+                        </div>
+                        <div
+                            class="bg-surface border border-border px-4 py-3 rounded-2xl rounded-bl-sm shadow-soft text-sm leading-relaxed text-text-main"
+                        >
+                            <p>I agree, the whitespace helps a lot.</p>
+                            <p class="mt-2">Are we still aiming for the Friday release?</p>
+                        </div>
+                        <div
+                            class="bg-surface border border-border p-2 rounded-2xl shadow-soft flex items-center gap-3 w-64 hover:bg-surface-alt transition-colors cursor-pointer group/file"
+                        >
+                            <div
+                                class="w-10 h-10 rounded-lg bg-surface-alt flex items-center justify-center text-primary"
+                            >
+                                <span class="material-symbols-outlined">description</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-xs font-medium truncate text-text-main">
+                                    Release_Schedule_v2.pdf
+                                </div>
+                                <div class="text-[10px] text-text-muted">2.4 MB</div>
+                            </div>
+                            <button class="p-1 rounded-full text-text-muted hover:text-primary">
+                                <span class="material-symbols-outlined text-lg">download</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex flex-row-reverse items-end gap-3 message-group group">
+                    <img
+                        alt="Me"
+                        class="w-8 h-8 rounded-full mb-1 shadow-sm border border-border bg-surface"
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuAX0oIBd5C_Syv4JhjhkpLi4QaXSWMOCYJmZ8Qs4BNrn7LDcZoUEslN9rTzZxn0RD5l6rxBPXuKxUDMsnIQu-hJE4l44jQSTWdmOcYcoRABKyRVAewbSc6oGXRNMYEo68diBR8wroO8LKKB9xgZtInpZSWFC7-B-av-0BlyhxIdJ7kHHCABBORM6eICWMJdaw7jXa-5pKboiWqyk2xXxrdsM09IwNIqK5ZsICmjkAE5fi-PPAbGgQooK49hOqq18G1hmpz-SJ0jLAXz"
+                    />
+                    <div class="flex flex-col gap-1 items-end max-w-[85%] md:max-w-[60%]">
+                        <div
+                            class="bg-primary-light border border-primary/10 px-4 py-3 rounded-2xl rounded-br-sm text-sm leading-relaxed text-text-main shadow-sm"
+                        >
+                            <p>Yes, Friday is still the target. I'll finalize the copy by EOD.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="h-4"></div>
+            </div>
+            <div class="p-4 md:px-8 pb-6 bg-bg z-20">
+                <div
+                    class="relative bg-surface border border-border rounded-xl shadow-sm focus-within:ring-2 focus-within:ring-primary/10 focus-within:border-primary/50 transition-all duration-200"
+                >
+                    <textarea
+                        class="w-full bg-transparent border-0 focus:ring-0 text-sm text-text-main placeholder-text-muted py-3 px-4 min-h-[50px] max-h-48 resize-none scrollbar-hide"
+                        oninput="
+                            this.style.height = '';
+                            this.style.height = this.scrollHeight + 'px';
+                        "
+                        placeholder="Type a message..."
+                        rows="1"
+                    ></textarea>
+                    <div class="flex items-center justify-between px-2 pb-2">
+                        <div class="flex items-center gap-1">
+                            <button
+                                class="p-2 rounded-lg text-text-muted hover:bg-surface-alt hover:text-primary transition-colors"
+                            >
+                                <span class="material-symbols-outlined text-[20px]"
+                                    >add_circle</span
+                                >
+                            </button>
+                            <button
+                                class="p-2 rounded-lg text-text-muted hover:bg-surface-alt hover:text-primary transition-colors hidden sm:block"
+                            >
+                                <span class="material-symbols-outlined text-[20px]"
+                                    >format_bold</span
+                                >
+                            </button>
+                            <button
+                                class="p-2 rounded-lg text-text-muted hover:bg-surface-alt hover:text-primary transition-colors hidden sm:block"
+                            >
+                                <span class="material-symbols-outlined text-[20px]"
+                                    >format_italic</span
+                                >
+                            </button>
+                            <button
+                                class="p-2 rounded-lg text-text-muted hover:bg-surface-alt hover:text-primary transition-colors"
+                            >
+                                <span class="material-symbols-outlined text-[20px]"
+                                    >sentiment_satisfied</span
+                                >
+                            </button>
+                        </div>
+                        <button
+                            class="bg-primary hover:bg-primary-hover text-white rounded-lg p-1.5 px-3 flex items-center gap-2 text-sm font-medium transition-colors shadow-sm shadow-primary/20"
+                        >
+                            <span>Send</span>
+                            <span class="material-symbols-outlined text-sm">arrow_upward</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="text-center mt-2">
+                    <span class="text-[10px] text-text-muted"
+                        >Press
+                        <kbd
+                            class="font-sans border border-border px-1 rounded bg-surface-alt text-text-main"
+                            >Enter</kbd
+                        >
+                        to send</span
+                    >
+                </div>
+            </div>
+        </main>
+        <div class="fixed bottom-4 left-4 z-50">
+            <button
+                class="bg-surface border border-border p-2 rounded-full shadow-lifted text-text-muted hover:text-primary transition-colors"
+                onclick="document.documentElement.classList.toggle('dark')"
+            >
+                <span class="material-symbols-outlined dark:hidden">dark_mode</span>
+                <span class="material-symbols-outlined hidden dark:block">light_mode</span>
+            </button>
+        </div>
+    </body>
+</html>

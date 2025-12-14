@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>Just Maple - Login</title>
+        <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Playfair+Display:wght@700&amp;display=swap"
+            rel="stylesheet"
+        />
+        <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+        <script>
+            tailwind.config = {
+                darkMode: 'class',
+                theme: {
+                    extend: {
+                        colors: {
+                            primary: '#C84C32', // Maple Leaf Red/Orange
+                            secondary: '#E89B48', // Golden Yellow
+                            'background-light': '#FAF9F7', // Paper (Warm off-white)
+                            'background-dark': '#1F1A18', // Dark brown/charcoal
+                            'surface-light': '#FFFFFF',
+                            'surface-dark': '#2D2624',
+                            'text-light': '#3E2723', // Dark brown
+                            'text-dark': '#EFEBE9', // Light cream
+                            'border-light': '#E0E0E0',
+                            'border-dark': '#4A403D',
+                        },
+                        fontFamily: {
+                            sans: ['Inter', 'sans-serif'],
+                            serif: ['Playfair Display', 'serif'],
+                        },
+                        borderRadius: {
+                            DEFAULT: '0.5rem',
+                            lg: '0.75rem',
+                            xl: '1rem',
+                            '2xl': '1.5rem',
+                        },
+                        boxShadow: {
+                            soft: '0 4px 20px -2px rgba(200, 76, 50, 0.1)',
+                        },
+                    },
+                },
+            };
+        </script>
+    </head>
+    <body
+        class="bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark min-h-screen flex items-center justify-center relative transition-colors duration-300"
+    >
+        <main class="w-full max-w-md p-6 relative z-10">
+            <div
+                class="bg-surface-light dark:bg-surface-dark rounded-2xl shadow-xl p-8 md:p-10 border border-border-light dark:border-border-dark"
+            >
+                <div class="text-center mb-8">
+                    <h1
+                        class="text-3xl md:text-4xl font-bold font-sans text-gray-900 dark:text-white mb-2 tracking-tight"
+                    >
+                        Just Maple
+                    </h1>
+                    <p class="text-gray-500 dark:text-gray-400 text-sm font-medium">
+                        Enter your email to sign in
+                    </p>
+                </div>
+                <form action="#" class="space-y-6" method="POST">
+                    <div class="space-y-2">
+                        <label
+                            class="block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                            for="email"
+                        >
+                            Email
+                        </label>
+                        <div class="relative">
+                            <input
+                                class="block w-full px-4 py-3 rounded-lg border-gray-300 dark:border-border-dark bg-gray-50 dark:bg-black/20 text-gray-900 dark:text-white shadow-sm focus:border-primary focus:ring-primary sm:text-sm transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
+                                id="email"
+                                name="email"
+                                placeholder="you@example.com"
+                                required=""
+                                type="email"
+                            />
+                        </div>
+                    </div>
+                    <button
+                        class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary hover:bg-[#A63C26] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:-translate-y-0.5 active:translate-y-0"
+                        type="submit"
+                    >
+                        Send Magic Link
+                    </button>
+                </form>
+                <div class="relative my-8">
+                    <div aria-hidden="true" class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-gray-200 dark:border-gray-700"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span
+                            class="px-4 bg-surface-light dark:bg-surface-dark text-gray-400 dark:text-gray-500"
+                            >or</span
+                        >
+                    </div>
+                </div>
+                <button
+                    class="w-full flex justify-center items-center py-3 px-4 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-surface-dark hover:bg-gray-50 dark:hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 dark:focus:ring-gray-700 transition-colors duration-200"
+                    type="button"
+                >
+                    <span class="material-icons text-lg mr-2">fingerprint</span>
+                    Sign in with Passkey
+                </button>
+                <div class="mt-8 text-center">
+                    <p class="text-xs text-gray-400 dark:text-gray-500">
+                        By signing in, you agree to our
+                        <a
+                            class="text-primary hover:text-secondary underline decoration-1 underline-offset-2 transition-colors"
+                            href="#"
+                            >Terms of Service</a
+                        >
+                        and
+                        <a
+                            class="text-primary hover:text-secondary underline decoration-1 underline-offset-2 transition-colors"
+                            href="#"
+                            >Privacy Policy</a
+                        >.
+                    </p>
+                </div>
+            </div>
+        </main>
+        <div class="fixed bottom-6 right-6 z-50">
+            <button
+                class="p-3 rounded-full bg-white dark:bg-surface-dark shadow-lg hover:shadow-xl transition-all duration-300 text-gray-800 dark:text-yellow-400 border border-gray-100 dark:border-gray-700"
+                onclick="document.documentElement.classList.toggle('dark')"
+            >
+                <span class="material-icons block dark:hidden">dark_mode</span>
+                <span class="material-icons hidden dark:block">light_mode</span>
+            </button>
+        </div>
+    </body>
+</html>

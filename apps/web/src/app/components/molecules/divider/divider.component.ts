@@ -1,0 +1,27 @@
+import { Component, input } from '@angular/core';
+import { CommonModule } from '@angular/common';
+
+@Component({
+  selector: 'ui-divider',
+  standalone: true,
+  imports: [CommonModule],
+  template: `
+    @if (text()) {
+      <div class="relative my-8">
+        <div class="absolute inset-0 flex items-center" aria-hidden="true">
+          <div class="w-full border-t border-[var(--color-pearl)]"></div>
+        </div>
+        <div class="relative flex justify-center text-sm">
+          <span class="px-4 bg-[var(--color-snow)] text-[var(--color-mist)]">
+            {{ text() }}
+          </span>
+        </div>
+      </div>
+    } @else {
+      <hr class="my-6 border-t border-[var(--color-pearl)]" />
+    }
+  `,
+})
+export class DividerComponent {
+  readonly text = input<string>('');
+}

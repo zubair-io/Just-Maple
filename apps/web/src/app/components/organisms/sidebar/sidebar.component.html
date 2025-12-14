@@ -1,0 +1,165 @@
+<aside
+  class="w-72 flex-shrink-0 bg-[var(--color-sidebar)] border-r border-[var(--color-border)] flex flex-col h-full"
+>
+  <!-- Header -->
+  <div class="flex flex-col border-b border-[var(--color-border)]">
+    <!-- Logo -->
+    <div class="px-4 pt-5 pb-1 flex items-center gap-2.5">
+      <img src="maple-leaf.svg" alt="Maple" class="w-8 h-8" />
+      <span class="font-serif font-bold text-lg tracking-tight text-[var(--color-text-main)]"
+        >Just Maple</span
+      >
+    </div>
+
+    <!-- Workspace Selector -->
+    <!-- <div class="px-2 pt-2 pb-3">
+      <button
+        class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-stone-200/50 transition-colors group cursor-pointer"
+      >
+        <div class="flex items-center gap-2">
+          <span
+            class="text-sm font-semibold text-[var(--color-text-main)] group-hover:text-[var(--color-primary)] transition-colors"
+            >My Workspace</span
+          >
+          <span
+            class="px-1.5 py-0.5 text-[10px] font-medium bg-stone-200 text-stone-600 rounded-full"
+            >Free</span
+          >
+        </div>
+        <span class="material-icons-round text-[var(--color-text-muted)] text-lg">expand_more</span>
+      </button>
+    </div> -->
+
+    <!-- Search & New Note -->
+    <div class="px-4 pb-4 flex gap-2">
+      <div class="relative flex-1">
+        <span
+          class="material-icons-round absolute left-2.5 top-1.5 text-[var(--color-text-muted)] text-lg"
+          >search</span
+        >
+        <input
+          type="text"
+          [(ngModel)]="searchQuery"
+          placeholder="Search..."
+          class="w-full pl-9 pr-3 py-1.5 text-sm bg-white border border-[var(--color-border)] focus:border-[var(--color-primary)]/50 focus:ring-1 focus:ring-[var(--color-primary)]/20 rounded-md transition-all shadow-sm placeholder-[var(--color-text-muted)]"
+        />
+      </div>
+      <button
+        (click)="onNewNote()"
+        class="w-8 h-8 flex items-center justify-center bg-[var(--color-primary)] text-white rounded-md shadow-sm hover:bg-[var(--color-primary-hover)] hover:shadow transition-all"
+        title="New Note"
+      >
+        <span class="material-icons-round text-lg">edit</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="flex-1 overflow-y-auto px-3 py-4">
+  
+
+    <!-- Tags Section -->
+    <div class="mb-2 px-2 flex items-center justify-between group">
+      <span class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
+        >Notes</span
+      >
+      <button
+        (click)="onCreateTag()"
+        class="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+      >
+        <span class="material-icons-round text-base">add</span>
+      </button>
+    </div>
+
+    <ul class="space-y-0.5">
+      @for (tag of tagService.tags(); track tag._id) {
+        <li>
+          <!-- Tag Header -->
+          <div
+            (click)="toggleTag(tag._id)"
+            class="group flex items-center justify-between px-2 py-1.5 text-sm rounded-md cursor-pointer transition-colors"
+            [class.bg-white]="expandedTags().has(tag._id)"
+            [class.shadow-sm]="expandedTags().has(tag._id)"
+            [class.ring-1]="expandedTags().has(tag._id)"
+            [class.ring-stone-200]="expandedTags().has(tag._id)"
+            [class.hover:bg-stone-200/50]="!expandedTags().has(tag._id)"
+          >
+            <div class="flex items-center gap-2">
+              <span
+                class="material-icons-round text-sm transition-colors"
+                [class.text-[var(--color-primary)]]="
+                  expandedTags().has(tag._id) || selectedTagId() === tag._id
+                "
+                [class.text-[var(--color-text-muted)]]="
+                  !expandedTags().has(tag._id) && selectedTagId() !== tag._id
+                "
+                >folder</span
+              >
+              <span
+                [class.font-medium]="expandedTags().has(tag._id)"
+                [class.text-[var(--color-text-main)]]="expandedTags().has(tag._id)"
+                [class.text-[var(--color-text-muted)]]="!expandedTags().has(tag._id)"
+                >{{ tag.label }}</span
+              >
+            </div>
+            @if (getNotesForTag(tag._id).length > 0) {
+              <span class="material-icons-round text-base text-[var(--color-text-muted)]">
+                {{ expandedTags().has(tag._id) ? 'expand_less' : 'expand_more' }}
+              </span>
+            }
+          </div>
+
+          <!-- Notes under tag -->
+          @if (expandedTags().has(tag._id)) {
+            <ul class="ml-4 pl-3 border-l border-[var(--color-border)] mt-1 space-y-0.5">
+              @for (note of getNotesForTag(tag._id); track note._id) {
+                <li>
+                  <a
+                    (click)="onSelectNote(note._id, tag._id)"
+                    class="block px-2 py-1.5 text-sm rounded-md cursor-pointer transition-colors"
+                    [class.bg-stone-100]="selectedNoteId() === note._id"
+                    [class.text-[var(--color-text-main)]]="selectedNoteId() === note._id"
+                    [class.font-medium]="selectedNoteId() === note._id"
+                    [class.border-l-2]="selectedNoteId() === note._id"
+                    [class.border-[var(--color-primary)]]="selectedNoteId() === note._id"
+                    [class.-ml-[13px]]="selectedNoteId() === note._id"
+                    [class.pl-3]="selectedNoteId() === note._id"
+                    [class.text-[var(--color-text-muted)]]="selectedNoteId() !== note._id"
+                    [class.hover:text-[var(--color-text-main)]]="selectedNoteId() !== note._id"
+                  >
+                    {{ note.title }}
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        </li>
+      }
+    </ul>
+  </div>
+
+  <!-- User Footer -->
+  <div class="p-3 border-t border-[var(--color-border)] flex items-center justify-between">
+    <div
+      class="flex items-center gap-2 cursor-pointer hover:bg-stone-200/50 p-1.5 rounded-md transition-colors"
+    >
+      <div
+        class="w-7 h-7 rounded-full bg-gradient-to-br from-orange-200 to-red-300 flex items-center justify-center text-xs font-bold text-orange-900 border border-white shadow-sm"
+      >
+        {{ userInitials() }}
+      </div>
+      <div class="flex flex-col">
+        <span class="text-xs font-semibold text-[var(--color-text-main)]">{{ userName() }}</span>
+        <span class="text-[10px] text-[var(--color-text-muted)] flex items-center gap-1">
+          <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span> Online
+        </span>
+      </div>
+    </div>
+    <button
+      (click)="onSettings()"
+      class="text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-colors p-1.5"
+    >
+      <span class="material-icons-round text-xl">settings</span>
+    </button>
+  </div>
+</aside>

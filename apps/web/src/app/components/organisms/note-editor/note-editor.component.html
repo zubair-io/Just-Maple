@@ -1,0 +1,45 @@
+@if (note(); as currentNote) {
+  <div class="flex-1 w-full max-w-4xl mx-auto px-8 sm:px-12 py-8 pb-32">
+    <!-- Title -->
+    <input
+      type="text"
+      [ngModel]="title()"
+      (ngModelChange)="onTitleChange($event)"
+      placeholder="Untitled"
+      class="w-full text-4xl md:text-5xl font-bold font-serif text-[var(--color-text-main)] mb-6 leading-tight outline-none tracking-tight bg-transparent border-none focus:ring-0 placeholder-[var(--color-text-muted)]"
+    />
+
+    <!-- Tags -->
+    @if (tag()) {
+      <div class="flex flex-wrap gap-2 mb-10">
+        <span
+          class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100"
+        >
+          <span class="material-icons-round text-[14px] mr-1">tag</span>
+          {{ tag()!.label }}
+        </span>
+      </div>
+    }
+
+    <!-- Content (simplified for now - will integrate TipTap later) -->
+    <div class="prose prose-lg prose-stone max-w-none font-serif">
+      <textarea
+        [ngModel]="contentText()"
+        (ngModelChange)="onContentChange($event)"
+        placeholder="Start writing..."
+        class="w-full min-h-[400px] text-lg text-[var(--color-text-main)] leading-relaxed bg-transparent border-none focus:ring-0 resize-none outline-none placeholder-[var(--color-text-muted)]"
+      ></textarea>
+    </div>
+  </div>
+} @else {
+  <!-- Empty state -->
+  <div class="flex-1 flex items-center justify-center">
+    <div class="text-center">
+      <span class="material-icons-round text-6xl text-[var(--color-text-muted)] mb-4">article</span>
+      <h2 class="text-xl font-semibold text-[var(--color-text-main)] mb-2">No note selected</h2>
+      <p class="text-[var(--color-text-muted)]">
+        Select a note from the sidebar or create a new one
+      </p>
+    </div>
+  </div>
+}

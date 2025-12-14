@@ -1,0 +1,134 @@
+<main class="min-h-screen flex items-center justify-center p-6 bg-[var(--color-cream)]">
+  <div class="w-full max-w-md">
+    <!-- Card -->
+    <div
+      class="bg-[var(--color-snow)] rounded-2xl shadow-xl p-8 md:p-10 border border-[var(--color-pearl)]"
+    >
+      <!-- Header -->
+      <div class="text-center mb-8">
+        <h1
+          class="text-3xl md:text-4xl font-bold font-sans text-[var(--color-charcoal)] mb-2 tracking-tight"
+        >
+          Just Maple
+        </h1>
+        <p class="text-[var(--color-mist)] text-sm font-medium">Enter your email to sign in</p>
+      </div>
+
+      @if (!emailSent()) {
+        <!-- Login Form -->
+        <form (ngSubmit)="onSubmit()" class="space-y-6">
+          <!-- Email Field -->
+          <ui-form-field label="Email" for="email">
+            <ui-input
+              type="email"
+              id="email"
+              name="email"
+              placeholder="you@example.com"
+              [required]="true"
+              autocomplete="email"
+              [(ngModel)]="email"
+              [disabled]="authService.isLoading()"
+            />
+          </ui-form-field>
+
+          <!-- Error Message -->
+          @if (authService.error()) {
+            <div
+              class="p-3 rounded-lg bg-[var(--color-error-bg)] border border-[var(--color-error)]/20"
+            >
+              <p class="text-sm text-[var(--color-error)]">{{ authService.error() }}</p>
+            </div>
+          }
+
+          <!-- Submit Button -->
+          <ui-button
+            type="submit"
+            variant="primary"
+            [fullWidth]="true"
+            [loading]="authService.isLoading()"
+            [disabled]="!email()"
+          >
+            @if (authService.isLoading()) {
+              Sending...
+            } @else {
+              Send Magic Link
+            }
+          </ui-button>
+
+          <!-- Passkey Section -->
+          @if (authService.supportsPasskeys()) {
+            <ui-divider text="or" />
+
+            <ui-button
+              type="button"
+              variant="secondary"
+              [fullWidth]="true"
+              [loading]="authService.isLoading()"
+              (clicked)="loginWithPasskey()"
+            >
+              <ui-icon name="fingerprint" size="md" class="mr-2" />
+              Sign in with Passkey
+            </ui-button>
+          } @else {
+            <p class="text-center text-[var(--color-mist)] text-xs mt-4">
+              Passkeys require HTTPS or localhost access.
+            </p>
+          }
+        </form>
+
+        <!-- Terms -->
+        <div class="mt-8 text-center">
+          <p class="text-xs text-[var(--color-mist)]">
+            By signing in, you agree to our
+            <a
+              href="#"
+              class="text-[var(--color-maple)] hover:text-[var(--color-maple-light)] underline decoration-1 underline-offset-2 transition-colors"
+              >Terms of Service</a
+            >
+            and
+            <a
+              href="#"
+              class="text-[var(--color-maple)] hover:text-[var(--color-maple-light)] underline decoration-1 underline-offset-2 transition-colors"
+              >Privacy Policy</a
+            >.
+          </p>
+        </div>
+      } @else {
+        <!-- Success State -->
+        <div class="text-center space-y-4">
+          <div
+            class="w-16 h-16 bg-[var(--color-success-bg)] rounded-full flex items-center justify-center mx-auto"
+          >
+            <ui-icon name="check_circle" size="xl" color="text-[var(--color-success)]" />
+          </div>
+
+          <h2 class="text-xl font-semibold text-[var(--color-charcoal)]">Check your email!</h2>
+
+          <p class="text-[var(--color-warm-gray)]">
+            We sent a magic link to<br />
+            <strong class="text-[var(--color-charcoal)]">{{ email() }}</strong>
+          </p>
+
+          @if (devToken()) {
+            <div
+              class="mt-6 p-4 bg-[var(--color-info-bg)] rounded-lg border border-dashed border-[var(--color-info)]"
+            >
+              <p class="text-sm font-semibold text-[var(--color-info)] mb-2">Dev Mode</p>
+              <a
+                [href]="'/verify?token=' + devToken()"
+                class="text-[var(--color-info)] hover:underline text-sm break-all"
+              >
+                Click here to verify
+              </a>
+              <p class="text-xs text-[var(--color-mist)] mt-2 break-all">Token: {{ devToken() }}</p>
+            </div>
+          }
+
+          <ui-button type="button" variant="outline" [fullWidth]="true" (clicked)="reset()">
+            Try another email
+          </ui-button>
+        </div>
+      }
+    </div>
+  </div>
+</main>

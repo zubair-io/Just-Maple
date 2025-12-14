@@ -1,0 +1,33 @@
+name: Build Helix and Upload to Azure Blob Storage
+on:
+    push:
+        branches:
+            - development
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: '20.x'
+            - run: npm i
+            - run: npm run build:helix
+            - uses: actions/upload-artifact@master
+              with:
+                  name: dist
+                  path: dist
+            - run: ls dist/web/browser
+            - uses: azure/login@v1
+              with:
+                  creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+            - name: Upload to blob storage
+              uses: azure/CLI@v1
+              with:
+                  inlineScript: |
+                      az storage blob upload-batch --overwrite true --account-name hornbeam --auth-mode key -d 'justmaple' -s dist/web/browser
+            - name: logout
+              run: |
+                  az logout
+              if: always()

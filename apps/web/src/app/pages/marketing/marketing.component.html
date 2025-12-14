@@ -1,0 +1,84 @@
+<div class="min-h-screen bg-[var(--color-bg)]">
+  <!-- Header -->
+  <header class="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto">
+    <div class="flex items-center gap-2.5">
+      <img src="maple-leaf.svg" alt="Maple" class="w-8 h-8" />
+      <span class="font-serif font-bold text-xl tracking-tight text-[var(--color-text-main)]"
+        >Just Maple</span
+      >
+    </div>
+    <a
+      routerLink="/login"
+      class="px-4 py-2 text-sm font-medium text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] transition-colors"
+    >
+      Sign In
+    </a>
+  </header>
+
+  <!-- Hero Section -->
+  <main class="max-w-6xl mx-auto px-6 py-20">
+    <div class="text-center max-w-3xl mx-auto">
+      <h1 class="text-5xl md:text-6xl font-serif font-bold text-[var(--color-text-main)] mb-6">
+        Your thoughts,<br />beautifully organized
+      </h1>
+      <p class="text-xl text-[var(--color-text-muted)] mb-10 max-w-2xl mx-auto">
+        A simple, elegant note-taking app that helps you capture ideas, organize thoughts, and stay
+        focused on what matters.
+      </p>
+      <a
+        routerLink="/login"
+        class="inline-flex items-center gap-2 px-8 py-4 bg-[var(--color-primary)] text-white font-medium rounded-xl shadow-lg hover:bg-[var(--color-primary-hover)] hover:shadow-xl transition-all"
+      >
+        Get Started
+        <span class="material-icons-round text-xl">arrow_forward</span>
+      </a>
+    </div>
+
+    <!-- Features -->
+    <div class="mt-32 grid md:grid-cols-3 gap-8">
+      <div class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <div
+          class="w-12 h-12 rounded-xl bg-[var(--color-primary-light)] flex items-center justify-center mb-4"
+        >
+          <span class="material-icons-round text-[var(--color-primary)]">edit_note</span>
+        </div>
+        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">Simple Writing</h3>
+        <p class="text-[var(--color-text-muted)]">
+          Focus on your ideas without distractions. Clean, minimal interface that stays out of your
+          way.
+        </p>
+      </div>
+
+      <div class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <div
+          class="w-12 h-12 rounded-xl bg-[var(--color-primary-light)] flex items-center justify-center mb-4"
+        >
+          <span class="material-icons-round text-[var(--color-primary)]">folder</span>
+        </div>
+        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">Smart Organization</h3>
+        <p class="text-[var(--color-text-muted)]">
+          Tag and organize your notes effortlessly. Find anything instantly with powerful search.
+        </p>
+      </div>
+
+      <div class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <div
+          class="w-12 h-12 rounded-xl bg-[var(--color-primary-light)] flex items-center justify-center mb-4"
+        >
+          <span class="material-icons-round text-[var(--color-primary)]">devices</span>
+        </div>
+        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">Access Anywhere</h3>
+        <p class="text-[var(--color-text-muted)]">
+          Your notes sync across all your devices. Start on your phone, continue on your laptop.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="px-6 py-8 border-t border-[var(--color-border)] mt-20">
+    <div class="max-w-6xl mx-auto text-center text-sm text-[var(--color-text-muted)]">
+      &copy; {{ currentYear }} Just Maple. Made with care.
+    </div>
+  </footer>
+</div>

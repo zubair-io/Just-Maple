@@ -1,0 +1,80 @@
+import { Component, input, output, forwardRef } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR, FormsModule } from '@angular/forms';
+
+export type InputType = 'text' | 'email' | 'password' | 'number' | 'tel' | 'url';
+
+@Component({
+  selector: 'ui-input',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  providers: [
+    {
+      provide: NG_VALUE_ACCESSOR,
+      useExisting: forwardRef(() => InputComponent),
+      multi: true,
+    },
+  ],
+  template: `
+    <input
+      [type]="type()"
+      [id]="id()"
+      [name]="name()"
+      [placeholder]="placeholder()"
+      [disabled]="disabled()"
+      [required]="required()"
+      [autocomplete]="autocomplete()"
+      [class]="inputClasses"
+      [ngModel]="value"
+      (ngModelChange)="onValueChange($event)"
+      (blur)="onTouched()"
+    />
+  `,
+})
+export class InputComponent implements ControlValueAccessor {
+  readonly type = input<InputType>('text');
+  readonly id = input<string>('');
+  readonly name = input<string>('');
+  readonly placeholder = input<string>('');
+  readonly disabled = input(false);
+  readonly required = input(false);
+  readonly autocomplete = input<string>('off');
+  readonly error = input(false);
+
+  value = '';
+  onChange: (value: string) => void = () => {};
+  onTouched: () => void = () => {};
+
+  get inputClasses(): string {
+    const base =
+      'block w-full px-4 py-3 rounded-lg text-sm transition-all duration-200 placeholder-[var(--color-mist)]';
+    const normal =
+      'border border-[var(--color-pearl)] bg-gray-50 text-[var(--color-charcoal)] focus:border-[var(--color-maple)] focus:ring-2 focus:ring-[var(--color-maple)]/20 focus:bg-white';
+    const errorStyle =
+      'border-[var(--color-error)] focus:border-[var(--color-error)] focus:ring-[var(--color-error)]/20';
+    const disabledStyle = 'disabled:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60';
+
+    return `${base} ${this.error() ? errorStyle : normal} ${disabledStyle}`;
+  }
+
+  writeValue(value: string): void {
+    this.value = value || '';
+  }
+
+  registerOnChange(fn: (value: string) => void): void {
+    this.onChange = fn;
+  }
+
+  registerOnTouched(fn: () => void): void {
+    this.onTouched = fn;
+  }
+
+  setDisabledState(isDisabled: boolean): void {
+    // Handled via input
+  }
+
+  onValueChange(value: string): void {
+    this.value = value;
+    this.onChange(value);
+  }
+}
