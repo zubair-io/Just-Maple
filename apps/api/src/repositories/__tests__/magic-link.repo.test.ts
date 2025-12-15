@@ -6,9 +6,9 @@ import {
     generateToken,
 } from '../magic-link.repo';
 import { createUserFixture, createMagicLinkFixture } from '../../__tests__/helpers/fixtures';
-import { testDb } from '../../__tests__/setup';
+import { testDb, mongoAvailable } from '../../__tests__/setup';
 
-describe('MagicLinkRepo', () => {
+describe.runIf(mongoAvailable)('MagicLinkRepo', () => {
     describe('generateToken', () => {
         it('should generate a 64 character hex string', () => {
             const token = generateToken();

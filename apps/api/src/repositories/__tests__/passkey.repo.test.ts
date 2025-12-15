@@ -8,10 +8,10 @@ import {
     getAllCredentialIdsForUser,
 } from '../passkey.repo';
 import { createUserFixture, createPasskeyFixture } from '../../__tests__/helpers/fixtures';
-import { testDb } from '../../__tests__/setup';
+import { testDb, mongoAvailable } from '../../__tests__/setup';
 import { randomBytes } from 'crypto';
 
-describe('PasskeyRepo', () => {
+describe.runIf(mongoAvailable)('PasskeyRepo', () => {
     describe('createPasskey', () => {
         it('should create a new passkey', async () => {
             const user = await createUserFixture();

@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createTestApp } from '../../__tests__/helpers/app';
 import { createUserFixture, createMagicLinkFixture } from '../../__tests__/helpers/fixtures';
+import { mongoAvailable } from '../../__tests__/setup';
 
 // Mock email service
 vi.mock('../../services/email', () => ({
     sendMagicLinkEmail: vi.fn().mockResolvedValue(undefined),
 }));
 
-describe('Auth Routes', () => {
+describe.runIf(mongoAvailable)('Auth Routes', () => {
     let app: ReturnType<typeof createTestApp>;
 
     beforeEach(() => {

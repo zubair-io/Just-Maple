@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { findUserByEmail, findUserById, createUser, findOrCreateUser } from '../user.repo';
 import { createUserFixture } from '../../__tests__/helpers/fixtures';
+import { mongoAvailable } from '../../__tests__/setup';
 
-describe('UserRepo', () => {
+describe.runIf(mongoAvailable)('UserRepo', () => {
     describe('findUserByEmail', () => {
         it('should return user when email exists', async () => {
             const fixture = await createUserFixture();

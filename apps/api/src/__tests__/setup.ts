@@ -1,8 +1,9 @@
 import { MongoClient, Db } from 'mongodb';
 import { beforeAll, afterAll, afterEach, vi } from 'vitest';
 
-let client: MongoClient;
-let testDb: Db;
+let client: MongoClient | null = null;
+let testDb: Db | null = null;
+let mongoAvailable = false;
 
 // Use the test database on the development MongoDB
 const MONGODB_TEST_URI =
@@ -16,19 +17,31 @@ vi.mock('../db/client', () => ({
 }));
 
 beforeAll(async () => {
-    client = new MongoClient(MONGODB_TEST_URI);
-    await client.connect();
-    testDb = client.db();
+    try {
+        client = new MongoClient(MONGODB_TEST_URI, {
+            serverSelectionTimeoutMS: 5000, // Fail fast if MongoDB not available
+            connectTimeoutMS: 5000,
+        });
+        await client.connect();
+        testDb = client.db();
+        mongoAvailable = true;
 
-    // Create indexes like the real DB
-    await testDb.collection('users').createIndex({ email: 1 }, { unique: true });
-    await testDb.collection('magic_links').createIndex({ token: 1 }, { unique: true });
-    await testDb.collection('magic_links').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-    await testDb.collection('magic_links').createIndex({ email: 1 });
-    await testDb.collection('passkeys').createIndex({ credentialId: 1 }, { unique: true });
-    await testDb.collection('passkeys').createIndex({ userId: 1 });
+        // Create indexes like the real DB
+        await testDb.collection('users').createIndex({ email: 1 }, { unique: true });
+        await testDb.collection('magic_links').createIndex({ token: 1 }, { unique: true });
+        await testDb
+            .collection('magic_links')
+            .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+        await testDb.collection('magic_links').createIndex({ email: 1 });
+        await testDb.collection('passkeys').createIndex({ credentialId: 1 }, { unique: true });
+        await testDb.collection('passkeys').createIndex({ userId: 1 });
 
-    console.log('Connected to test database:', MONGODB_TEST_URI);
+        console.log('Connected to test database:', MONGODB_TEST_URI);
+    } catch (error) {
+        console.warn('MongoDB not available - API integration tests will be skipped');
+        console.warn('To run API tests, ensure MongoDB is running at:', MONGODB_TEST_URI);
+        mongoAvailable = false;
+    }
 });
 
 afterAll(async () => {
@@ -38,6 +51,7 @@ afterAll(async () => {
 });
 
 afterEach(async () => {
+    if (!testDb) return;
     // Clear all collections after each test
     const collections = await testDb.listCollections().toArray();
     for (const col of collections) {
@@ -45,4 +59,4 @@ afterEach(async () => {
     }
 });
 
-export { testDb };
+export { testDb, mongoAvailable };
