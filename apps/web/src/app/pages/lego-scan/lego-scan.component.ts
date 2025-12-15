@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ScrollingModule } from '@angular/cdk/scrolling';
 import { Router, ActivatedRoute } from '@angular/router';
 import { BrowserCodeReader, BrowserMultiFormatReader, BarcodeFormat } from '@zxing/browser';
 import { DecodeHintType } from '@zxing/library';
@@ -22,7 +23,7 @@ import type { Paper, CollectibleRegistry } from '@maple/shared';
 @Component({
     selector: 'app-lego-scan',
     standalone: true,
-    imports: [CommonModule, FormsModule],
+    imports: [CommonModule, FormsModule, ScrollingModule],
     templateUrl: './lego-scan.component.html',
     styleUrl: './lego-scan.component.scss',
 })
@@ -226,6 +227,10 @@ export class LegoScanComponent implements OnInit, OnDestroy {
 
     isInCollection(registryId: string): boolean {
         return this.papersMap().has(registryId);
+    }
+
+    trackByRegistryId(_index: number, registry: CollectibleRegistry): string {
+        return registry._id;
     }
 
     toggleCollection(event: Event, registry: CollectibleRegistry): void {

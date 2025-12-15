@@ -86,93 +86,90 @@
   }
 
   <!-- Registry List -->
-  <div class="flex-1 overflow-y-auto">
-    @if (filteredRegistries().length === 0) {
-      <div class="flex flex-col items-center justify-center h-64 text-[var(--color-text-muted)]">
-        <span class="material-icons-round text-4xl mb-2">inventory_2</span>
-        @if (searchQuery()) {
-          <p>No items match "{{ searchQuery() }}"</p>
-        } @else {
-          <p>Loading items...</p>
-        }
-      </div>
-    } @else {
-      <div class="divide-y divide-[var(--color-border)]">
-        @for (registry of filteredRegistries(); track registry._id) {
-          <div
-            (click)="onSelectRegistry(registry)"
-            class="flex items-center p-3 cursor-pointer transition-colors"
-            [class.bg-green-50]="isInCollection(registry._id)"
-            [class.hover:bg-stone-50]="!isInCollection(registry._id)"
-            [class.hover:bg-green-100]="isInCollection(registry._id)"
-          >
-            <!-- Image -->
-            <div class="flex-shrink-0 mr-3">
-              @if (registry.images && registry.images.length > 0) {
-                <img
-                  [src]="registry.images[0]"
-                  [alt]="registry.title"
-                  class="w-14 h-14 rounded-lg object-cover bg-stone-100"
-                  loading="lazy"
-                  (error)="$any($event.target).style.display = 'none'"
-                />
-              } @else {
-                <div
-                  class="w-14 h-14 rounded-lg bg-stone-100 flex items-center justify-center text-[var(--color-text-muted)]"
-                >
-                  <span class="material-icons-round">image</span>
-                </div>
-              }
-            </div>
-
-            <!-- Content -->
-            <div class="flex-1 min-w-0 overflow-hidden">
-              <h4 class="text-sm font-medium text-[var(--color-text-main)] truncate">
-                {{ registry.title }}
-              </h4>
-              <div class="text-xs text-[var(--color-text-muted)] mt-0.5">
-                <span class="uppercase">{{ registry.provider }}</span>
-                <span class="mx-1">•</span>
-                <span>{{ registry.providerId }}</span>
-              </div>
-              @if (registry.tags && registry.tags.length > 0) {
-                <div class="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
-                  @for (tag of registry.tags.slice(0, 3); track tag.value; let last = $last) {
-                    <span>{{ tag.value }}</span>
-                    @if (!last) {
-                      <span class="mx-1">•</span>
-                    }
-                  }
-                </div>
-              }
-            </div>
-
-            <!-- Check Button -->
-            <button
-              (click)="toggleCollection($event, registry)"
-              [disabled]="isSaving() === registry._id"
-              class="ml-2 w-10 h-10 flex items-center justify-center rounded-full transition-colors"
-              [class.bg-green-500]="isInCollection(registry._id)"
-              [class.text-white]="isInCollection(registry._id)"
-              [class.hover:bg-green-600]="isInCollection(registry._id)"
-              [class.bg-stone-100]="!isInCollection(registry._id)"
-              [class.text-[var(--color-text-muted)]]="!isInCollection(registry._id)"
-              [class.hover:bg-stone-200]="!isInCollection(registry._id)"
-              [class.hover:text-[var(--color-text-main)]]="!isInCollection(registry._id)"
+  @if (filteredRegistries().length === 0) {
+    <div class="flex-1 flex flex-col items-center justify-center text-[var(--color-text-muted)]">
+      <span class="material-icons-round text-4xl mb-2">inventory_2</span>
+      @if (searchQuery()) {
+        <p>No items match "{{ searchQuery() }}"</p>
+      } @else {
+        <p>Loading items...</p>
+      }
+    </div>
+  } @else {
+    <cdk-virtual-scroll-viewport itemSize="80" class="flex-1">
+      <div
+        *cdkVirtualFor="let registry of filteredRegistries(); trackBy: trackByRegistryId"
+        (click)="onSelectRegistry(registry)"
+        class="flex items-center p-3 cursor-pointer transition-colors border-b border-[var(--color-border)]"
+        [class.bg-green-50]="isInCollection(registry._id)"
+        [class.hover:bg-stone-50]="!isInCollection(registry._id)"
+        [class.hover:bg-green-100]="isInCollection(registry._id)"
+      >
+        <!-- Image -->
+        <div class="flex-shrink-0 mr-3">
+          @if (registry.images && registry.images.length > 0) {
+            <img
+              [src]="registry.images[0]"
+              [alt]="registry.title"
+              class="w-14 h-14 rounded-lg object-cover bg-stone-100"
+              loading="lazy"
+              (error)="$any($event.target).style.display = 'none'"
+            />
+          } @else {
+            <div
+              class="w-14 h-14 rounded-lg bg-stone-100 flex items-center justify-center text-[var(--color-text-muted)]"
             >
-              @if (isSaving() === registry._id) {
-                <div
-                  class="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
-                ></div>
-              } @else if (isInCollection(registry._id)) {
-                <span class="material-icons-round">check</span>
-              } @else {
-                <span class="material-icons-round">add</span>
-              }
-            </button>
+              <span class="material-icons-round">image</span>
+            </div>
+          }
+        </div>
+
+        <!-- Content -->
+        <div class="flex-1 min-w-0 overflow-hidden">
+          <h4 class="text-sm font-medium text-[var(--color-text-main)] truncate">
+            {{ registry.title }}
+          </h4>
+          <div class="text-xs text-[var(--color-text-muted)] mt-0.5">
+            <span class="uppercase">{{ registry.provider }}</span>
+            <span class="mx-1">•</span>
+            <span>{{ registry.providerId }}</span>
           </div>
-        }
+          @if (registry.tags && registry.tags.length > 0) {
+            <div class="text-xs text-[var(--color-text-muted)] mt-0.5 truncate">
+              @for (tag of registry.tags.slice(0, 3); track tag.value; let last = $last) {
+                <span>{{ tag.value }}</span>
+                @if (!last) {
+                  <span class="mx-1">•</span>
+                }
+              }
+            </div>
+          }
+        </div>
+
+        <!-- Check Button -->
+        <button
+          (click)="toggleCollection($event, registry)"
+          [disabled]="isSaving() === registry._id"
+          class="ml-2 w-10 h-10 flex items-center justify-center rounded-full transition-colors"
+          [class.bg-green-500]="isInCollection(registry._id)"
+          [class.text-white]="isInCollection(registry._id)"
+          [class.hover:bg-green-600]="isInCollection(registry._id)"
+          [class.bg-stone-100]="!isInCollection(registry._id)"
+          [class.text-[var(--color-text-muted)]]="!isInCollection(registry._id)"
+          [class.hover:bg-stone-200]="!isInCollection(registry._id)"
+          [class.hover:text-[var(--color-text-main)]]="!isInCollection(registry._id)"
+        >
+          @if (isSaving() === registry._id) {
+            <div
+              class="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
+            ></div>
+          } @else if (isInCollection(registry._id)) {
+            <span class="material-icons-round">check</span>
+          } @else {
+            <span class="material-icons-round">add</span>
+          }
+        </button>
       </div>
-    }
-  </div>
+    </cdk-virtual-scroll-viewport>
+  }
 </div>
