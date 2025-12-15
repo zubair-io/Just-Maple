@@ -1,45 +1,40 @@
 <div
-    class="flex p-4 bg-white rounded-xl border-2 my-1 mx-2 cursor-pointer transition-colors"
-    [class.border-[var(--color-primary)]]="selected()"
-    [class.bg-orange-50]="selected()"
-    [class.border-transparent]="!selected()"
-    [class.hover:border-gray-200]="!selected()"
+  class="flex p-4 bg-white rounded-xl border-2 my-1 mx-2 cursor-pointer transition-colors"
+  [class.border-[var(--color-primary)]]="selected()"
+  [class.bg-orange-50]="selected()"
+  [class.border-transparent]="!selected()"
+  [class.hover:border-gray-200]="!selected()"
 >
-    <div class="mr-4 flex-1 min-w-0">
-        <h4 class="text-lg font-medium text-gray-900 truncate">
-            {{ title() }}
-        </h4>
-        <div class="mt-1 text-sm text-gray-400 truncate">
-            @for (tag of tags(); track $index; let last = $last) {
-                <span>{{ tag.value }}</span>
-                @if (!last) {
-                    <span> &bull; </span>
-                }
-            }
-        </div>
-        <div class="mt-2 flex items-center gap-2">
-            <span
-                class="px-2 py-0.5 text-xs font-medium rounded-full"
-                [ngClass]="statusClass()"
-            >
-                {{ statusLabel() }}
-            </span>
-            @if (paper().data.quantity > 1) {
-                <span class="text-xs text-gray-500">
-                    x{{ paper().data.quantity }}
-                </span>
-            }
-        </div>
+  <div class="mr-4 flex-1 min-w-0">
+    <h4 class="text-lg font-medium text-gray-900 truncate">
+      {{ title() }}
+    </h4>
+    <div class="mt-1 text-sm text-gray-400 truncate">
+      @for (tag of tags(); track $index; let last = $last) {
+        <span>{{ tag.value }}</span>
+        @if (!last) {
+          <span> &bull; </span>
+        }
+      }
     </div>
-    @if (image()) {
-        <div class="flex-shrink-0">
-            <img
-                [src]="image()"
-                loading="lazy"
-                class="h-20 w-20 rounded-lg object-cover"
-                alt=""
-                (error)="$any($event.target).style.display='none'"
-            />
-        </div>
-    }
+    <div class="mt-2 flex items-center gap-2">
+      <span class="px-2 py-0.5 text-xs font-medium rounded-full" [ngClass]="statusClass()">
+        {{ statusLabel() }}
+      </span>
+      @if (paper().data.quantity > 1) {
+        <span class="text-xs text-gray-500"> x{{ paper().data.quantity }} </span>
+      }
+    </div>
+  </div>
+  @if (image()) {
+    <div class="flex-shrink-0">
+      <img
+        [src]="image()"
+        loading="lazy"
+        class="h-20 w-20 rounded-lg object-cover"
+        alt=""
+        (error)="$any($event.target).style.display = 'none'"
+      />
+    </div>
+  }
 </div>

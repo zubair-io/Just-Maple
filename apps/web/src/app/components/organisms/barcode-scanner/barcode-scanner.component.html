@@ -1,56 +1,56 @@
 <div class="rounded-lg shadow-md p-4 bg-gray-100 flex justify-center flex-col items-center">
-    <div class="flex gap-2 mb-2 w-full">
-        <input
-            type="text"
-            class="border border-gray-300 rounded-md p-2 flex-1 focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]/20"
-            placeholder="Enter or scan barcode"
-            (keyup.enter)="handleInput($event)"
-            (blur)="blur()"
-            #barcodeInput
-            autofocus
-        />
-        @if (!cameraScanning()) {
-            <button
-                (click)="startScan()"
-                title="Start Camera Scan"
-                class="p-2 rounded-md hover:bg-gray-200 transition-colors"
-            >
-                <span class="material-icons-round text-2xl text-gray-700">photo_camera</span>
-            </button>
-        } @else {
-            <button
-                (click)="stop()"
-                title="Stop Camera"
-                class="p-2 rounded-md hover:bg-gray-200 transition-colors"
-            >
-                <span class="material-icons-round text-2xl text-red-600">stop</span>
-            </button>
-        }
-        <button
-            type="button"
-            class="p-2 rounded-md hover:bg-gray-200 transition-colors"
-            (click)="closeScanner()"
-            title="Close Scanner"
-        >
-            <span class="material-icons-round text-2xl text-gray-700">close</span>
-        </button>
+  <div class="flex gap-2 mb-2 w-full">
+    <input
+      type="text"
+      class="border border-gray-300 rounded-md p-2 flex-1 focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]/20"
+      placeholder="Enter or scan barcode"
+      (keyup.enter)="handleInput($event)"
+      (blur)="blur()"
+      #barcodeInput
+      autofocus
+    />
+    @if (!cameraScanning()) {
+      <button
+        (click)="startScan()"
+        title="Start Camera Scan"
+        class="p-2 rounded-md hover:bg-gray-200 transition-colors"
+      >
+        <span class="material-icons-round text-2xl text-gray-700">photo_camera</span>
+      </button>
+    } @else {
+      <button
+        (click)="stop()"
+        title="Stop Camera"
+        class="p-2 rounded-md hover:bg-gray-200 transition-colors"
+      >
+        <span class="material-icons-round text-2xl text-red-600">stop</span>
+      </button>
+    }
+    <button
+      type="button"
+      class="p-2 rounded-md hover:bg-gray-200 transition-colors"
+      (click)="closeScanner()"
+      title="Close Scanner"
+    >
+      <span class="material-icons-round text-2xl text-gray-700">close</span>
+    </button>
+  </div>
+
+  <video
+    #videoElement
+    class="border border-gray-300 rounded-md p-2 mb-2 w-full"
+    [hidden]="!cameraScanning()"
+  ></video>
+
+  @if (loading()) {
+    <div class="flex items-center justify-center py-8">
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-primary)]"></div>
     </div>
+  }
 
-    <video
-        #videoElement
-        class="border border-gray-300 rounded-md p-2 mb-2 w-full"
-        [hidden]="!cameraScanning()"
-    ></video>
-
-    @if (loading()) {
-        <div class="flex items-center justify-center py-8">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-primary)]"></div>
-        </div>
-    }
-
-    @if (error()) {
-        <div class="text-red-600 text-sm mt-2">
-            {{ error() }}
-        </div>
-    }
+  @if (error()) {
+    <div class="text-red-600 text-sm mt-2">
+      {{ error() }}
+    </div>
+  }
 </div>

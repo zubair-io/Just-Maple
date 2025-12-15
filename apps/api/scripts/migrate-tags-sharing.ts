@@ -18,10 +18,12 @@ async function migrate() {
         const tagsCollection = db.collection('tags');
 
         // Find all tags with userId but no sharing field
-        const legacyTags = await tagsCollection.find({
-            userId: { $exists: true },
-            sharing: { $exists: false }
-        }).toArray();
+        const legacyTags = await tagsCollection
+            .find({
+                userId: { $exists: true },
+                sharing: { $exists: false },
+            })
+            .toArray();
 
         console.log(`Found ${legacyTags.length} tags to migrate`);
 
@@ -35,9 +37,7 @@ async function migrate() {
 
         for (const tag of legacyTags) {
             try {
-                const userId = tag.userId instanceof ObjectId
-                    ? tag.userId.toString()
-                    : tag.userId;
+                const userId = tag.userId instanceof ObjectId ? tag.userId.toString() : tag.userId;
 
                 // Update tag with sharing model
                 await tagsCollection.updateOne(
@@ -45,16 +45,18 @@ async function migrate() {
                     {
                         $set: {
                             sharing: {
-                                sharedWith: [{
-                                    userId: userId,
-                                    accessLevel: 'owner'
-                                }],
-                                isPublic: false
+                                sharedWith: [
+                                    {
+                                        userId: userId,
+                                        accessLevel: 'owner',
+                                    },
+                                ],
+                                isPublic: false,
                             },
-                            updatedAt: new Date()
+                            updatedAt: new Date(),
                         },
-                        $unset: { userId: '' }
-                    }
+                        $unset: { userId: '' },
+                    },
                 );
 
                 migrated++;
@@ -68,7 +70,6 @@ async function migrate() {
         console.log('\n--- Migration Complete ---');
         console.log(`Migrated: ${migrated}`);
         console.log(`Errors: ${errors}`);
-
     } finally {
         await client.close();
     }

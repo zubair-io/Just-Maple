@@ -1,69 +1,66 @@
 <div class="h-dvh flex overflow-hidden bg-[var(--color-bg)]">
-    <!-- Mobile Overlay -->
-    @if (sidebarOpen()) {
-        <div
-            class="fixed inset-0 bg-black/50 z-40 md:hidden"
-            (click)="closeSidebar()"
-        ></div>
-    }
+  <!-- Mobile Overlay -->
+  @if (sidebarOpen()) {
+    <div class="fixed inset-0 bg-black/50 z-40 md:hidden" (click)="closeSidebar()"></div>
+  }
 
-    <!-- Sidebar -->
-    <div
-        class="fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:h-full"
-        [class.-translate-x-full]="!sidebarOpen()"
-        [class.translate-x-0]="sidebarOpen()"
+  <!-- Sidebar -->
+  <div
+    class="fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:h-full"
+    [class.-translate-x-full]="!sidebarOpen()"
+    [class.translate-x-0]="sidebarOpen()"
+  >
+    <app-sidebar
+      [selectedNoteId]="selectedNoteId()"
+      [selectedTagId]="selectedTagId()"
+      (newNote)="onNewNote()"
+      (selectNote)="onSelectNote($event); closeSidebar()"
+      (selectTag)="onSelectTag($event)"
+      (createTag)="onCreateTag()"
+      (settings)="onSettings()"
+    />
+  </div>
+
+  <!-- Main Content Area -->
+  <main
+    class="flex-1 h-full overflow-y-auto flex flex-col relative bg-[var(--color-bg)] md:pb-0"
+    [class.pb-16]="!chatInputFocused()"
+    [class.pb-0]="chatInputFocused()"
+  >
+    <router-outlet />
+  </main>
+
+  <!-- Mobile Footer Nav (hidden when chat input is focused) -->
+  @if (!chatInputFocused()) {
+    <nav
+      class="fixed bottom-0 left-0 right-0 h-16 bg-[var(--color-surface)] border-t border-[var(--color-border)] flex items-center justify-around px-4 z-30 md:hidden"
     >
-        <app-sidebar
-            [selectedNoteId]="selectedNoteId()"
-            [selectedTagId]="selectedTagId()"
-            (newNote)="onNewNote()"
-            (selectNote)="onSelectNote($event); closeSidebar()"
-            (selectTag)="onSelectTag($event)"
-            (createTag)="onCreateTag()"
-            (settings)="onSettings()"
-        />
-    </div>
+      <!-- Menu Button -->
+      <button
+        (click)="toggleSidebar()"
+        class="flex flex-col items-center justify-center gap-1 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
+      >
+        <span class="material-icons-round text-2xl">menu</span>
+        <span class="text-[10px] font-medium">Menu</span>
+      </button>
 
-    <!-- Main Content Area -->
-    <main
-        class="flex-1 h-full overflow-y-auto flex flex-col relative bg-[var(--color-bg)] md:pb-0"
-        [class.pb-16]="!chatInputFocused()"
-        [class.pb-0]="chatInputFocused()"
-    >
-        <router-outlet />
-    </main>
+      <!-- Recent Note Button -->
+      <button
+        (click)="openLastNote()"
+        class="flex flex-col items-center justify-center gap-1 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
+      >
+        <span class="material-icons-round text-2xl">article</span>
+        <span class="text-[10px] font-medium">Recent</span>
+      </button>
 
-    <!-- Mobile Footer Nav (hidden when chat input is focused) -->
-    @if (!chatInputFocused()) {
-        <nav
-            class="fixed bottom-0 left-0 right-0 h-16 bg-[var(--color-surface)] border-t border-[var(--color-border)] flex items-center justify-around px-4 z-30 md:hidden"
-        >
-        <!-- Menu Button -->
-        <button
-            (click)="toggleSidebar()"
-            class="flex flex-col items-center justify-center gap-1 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
-        >
-            <span class="material-icons-round text-2xl">menu</span>
-            <span class="text-[10px] font-medium">Menu</span>
-        </button>
-
-        <!-- Recent Note Button -->
-        <button
-            (click)="openLastNote()"
-            class="flex flex-col items-center justify-center gap-1 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
-        >
-            <span class="material-icons-round text-2xl">article</span>
-            <span class="text-[10px] font-medium">Recent</span>
-        </button>
-
-        <!-- Settings Button -->
-        <button
-            (click)="onSettings()"
-            class="flex flex-col items-center justify-center gap-1 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
-        >
-            <span class="material-icons-round text-2xl">settings</span>
-            <span class="text-[10px] font-medium">Settings</span>
-        </button>
-        </nav>
-    }
+      <!-- Settings Button -->
+      <button
+        (click)="onSettings()"
+        class="flex flex-col items-center justify-center gap-1 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
+      >
+        <span class="material-icons-round text-2xl">settings</span>
+        <span class="text-[10px] font-medium">Settings</span>
+      </button>
+    </nav>
+  }
 </div>

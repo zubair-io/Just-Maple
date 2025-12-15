@@ -1,160 +1,152 @@
 <div class="flex flex-col h-full bg-white">
-    <!-- Header -->
-    <header
-        class="h-14 flex items-center justify-between px-4 flex-shrink-0 border-b border-[var(--color-border)]"
+  <!-- Header -->
+  <header
+    class="h-14 flex items-center justify-between px-4 flex-shrink-0 border-b border-[var(--color-border)]"
+  >
+    <button
+      (click)="goBack()"
+      class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+      title="Back to list"
     >
-        <button
-            (click)="goBack()"
-            class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
-            title="Back to list"
-        >
-            <span class="material-icons-round text-lg">arrow_back</span>
-        </button>
-        <span class="text-sm font-medium text-[var(--color-text-main)] truncate flex-1 mx-4">
-            {{ title() }}
-        </span>
-        <div class="w-8"></div>
-    </header>
+      <span class="material-icons-round text-lg">arrow_back</span>
+    </button>
+    <span class="text-sm font-medium text-[var(--color-text-main)] truncate flex-1 mx-4">
+      {{ title() }}
+    </span>
+    <div class="w-8"></div>
+  </header>
 
-    @if (loading()) {
-        <div class="flex-1 flex items-center justify-center">
-            <div class="text-[var(--color-text-muted)]">Loading...</div>
+  @if (loading()) {
+    <div class="flex-1 flex items-center justify-center">
+      <div class="text-[var(--color-text-muted)]">Loading...</div>
+    </div>
+  } @else if (registry()) {
+    <!-- Content -->
+    <div class="flex-1 overflow-y-auto p-6">
+      <!-- Main Image -->
+      @if (mainImage()) {
+        <div class="flex justify-center mb-6">
+          <img
+            [src]="mainImage()"
+            [alt]="title()"
+            class="max-h-64 rounded-lg object-contain shadow-md"
+          />
         </div>
-    } @else if (registry()) {
-        <!-- Content -->
-        <div class="flex-1 overflow-y-auto p-6">
-            <!-- Main Image -->
-            @if (mainImage()) {
-                <div class="flex justify-center mb-6">
-                    <img
-                        [src]="mainImage()"
-                        [alt]="title()"
-                        class="max-h-64 rounded-lg object-contain shadow-md"
-                    />
-                </div>
-            }
+      }
 
-            <!-- Title -->
-            <h1 class="text-2xl font-bold text-[var(--color-text-main)] mb-2">
-                {{ title() }}
-            </h1>
+      <!-- Title -->
+      <h1 class="text-2xl font-bold text-[var(--color-text-main)] mb-2">
+        {{ title() }}
+      </h1>
 
-            <!-- Tags -->
-            @if (tags().length > 0) {
-                <div class="flex flex-wrap gap-2 mb-4">
-                    @for (tag of tags(); track $index) {
-                        <span
-                            class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700"
-                        >
-                            {{ tag.value }}
-                        </span>
-                    }
-                </div>
-            }
-
-            <!-- Description -->
-            @if (description()) {
-                <div class="text-[var(--color-text-muted)] mb-6">
-                    <app-content-renderer [content]="description()" />
-                </div>
-            }
-
-            <!-- Status Buttons -->
-            <div class="mb-6">
-                <h3 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">
-                    Collection Status
-                </h3>
-                <div class="flex gap-3">
-                    <button
-                        (click)="setStatus('have')"
-                        class="flex-1 py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                        [class.bg-green-500]="isHave()"
-                        [class.text-white]="isHave()"
-                        [class.shadow-md]="isHave()"
-                        [class.bg-gray-100]="!isHave()"
-                        [class.text-gray-700]="!isHave()"
-                        [class.hover:bg-gray-200]="!isHave()"
-                    >
-                        <span class="material-icons-round text-lg">check_circle</span>
-                        Have
-                    </button>
-                    <button
-                        (click)="setStatus('want')"
-                        class="flex-1 py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-                        [class.bg-yellow-500]="isWant()"
-                        [class.text-white]="isWant()"
-                        [class.shadow-md]="isWant()"
-                        [class.bg-gray-100]="!isWant()"
-                        [class.text-gray-700]="!isWant()"
-                        [class.hover:bg-gray-200]="!isWant()"
-                    >
-                        <span class="material-icons-round text-lg">favorite</span>
-                        Want
-                    </button>
-                </div>
-            </div>
-
-            <!-- Quantity Control (only when status is 'have') -->
-            @if (isHave()) {
-                <div class="mb-6">
-                    <h3 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">Quantity</h3>
-                    <div class="flex items-center gap-4">
-                        <button
-                            (click)="decrementQuantity()"
-                            [disabled]="quantity() <= 1"
-                            class="w-12 h-12 rounded-xl font-bold text-xl transition-all flex items-center justify-center"
-                            [class.bg-gray-100]="quantity() > 1"
-                            [class.text-gray-700]="quantity() > 1"
-                            [class.hover:bg-gray-200]="quantity() > 1"
-                            [class.bg-gray-50]="quantity() <= 1"
-                            [class.text-gray-300]="quantity() <= 1"
-                            [class.cursor-not-allowed]="quantity() <= 1"
-                        >
-                            <span class="material-icons-round">remove</span>
-                        </button>
-                        <span
-                            class="text-3xl font-bold text-[var(--color-text-main)] w-16 text-center"
-                        >
-                            {{ quantity() }}
-                        </span>
-                        <button
-                            (click)="incrementQuantity()"
-                            class="w-12 h-12 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold text-xl transition-all flex items-center justify-center"
-                        >
-                            <span class="material-icons-round">add</span>
-                        </button>
-                    </div>
-                </div>
-            }
-
-            <!-- Additional Images -->
-            @if (images().length > 1) {
-                <div class="mb-6">
-                    <h3 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">
-                        More Images
-                    </h3>
-                    <div class="flex gap-2 overflow-x-auto pb-2">
-                        @for (image of images(); track $index; let first = $first) {
-                            @if (!first) {
-                                <img
-                                    [src]="image"
-                                    [alt]="title()"
-                                    class="h-20 w-20 rounded-lg object-cover flex-shrink-0"
-                                />
-                            }
-                        }
-                    </div>
-                </div>
-            }
-
-            <!-- Item ID -->
-            <div class="text-xs text-gray-400 mt-8">
-                Item ID: {{ registry()?.providerId }} &bull; Provider: {{ registry()?.provider }}
-            </div>
+      <!-- Tags -->
+      @if (tags().length > 0) {
+        <div class="flex flex-wrap gap-2 mb-4">
+          @for (tag of tags(); track $index) {
+            <span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">
+              {{ tag.value }}
+            </span>
+          }
         </div>
-    } @else {
-        <div class="flex-1 flex items-center justify-center">
-            <div class="text-[var(--color-text-muted)]">Registry item not found</div>
+      }
+
+      <!-- Description -->
+      @if (description()) {
+        <div class="text-[var(--color-text-muted)] mb-6">
+          <app-content-renderer [content]="description()" />
         </div>
-    }
+      }
+
+      <!-- Status Buttons -->
+      <div class="mb-6">
+        <h3 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">Collection Status</h3>
+        <div class="flex gap-3">
+          <button
+            (click)="setStatus('have')"
+            class="flex-1 py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+            [class.bg-green-500]="isHave()"
+            [class.text-white]="isHave()"
+            [class.shadow-md]="isHave()"
+            [class.bg-gray-100]="!isHave()"
+            [class.text-gray-700]="!isHave()"
+            [class.hover:bg-gray-200]="!isHave()"
+          >
+            <span class="material-icons-round text-lg">check_circle</span>
+            Have
+          </button>
+          <button
+            (click)="setStatus('want')"
+            class="flex-1 py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+            [class.bg-yellow-500]="isWant()"
+            [class.text-white]="isWant()"
+            [class.shadow-md]="isWant()"
+            [class.bg-gray-100]="!isWant()"
+            [class.text-gray-700]="!isWant()"
+            [class.hover:bg-gray-200]="!isWant()"
+          >
+            <span class="material-icons-round text-lg">favorite</span>
+            Want
+          </button>
+        </div>
+      </div>
+
+      <!-- Quantity Control (only when status is 'have') -->
+      @if (isHave()) {
+        <div class="mb-6">
+          <h3 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">Quantity</h3>
+          <div class="flex items-center gap-4">
+            <button
+              (click)="decrementQuantity()"
+              [disabled]="quantity() <= 1"
+              class="w-12 h-12 rounded-xl font-bold text-xl transition-all flex items-center justify-center"
+              [class.bg-gray-100]="quantity() > 1"
+              [class.text-gray-700]="quantity() > 1"
+              [class.hover:bg-gray-200]="quantity() > 1"
+              [class.bg-gray-50]="quantity() <= 1"
+              [class.text-gray-300]="quantity() <= 1"
+              [class.cursor-not-allowed]="quantity() <= 1"
+            >
+              <span class="material-icons-round">remove</span>
+            </button>
+            <span class="text-3xl font-bold text-[var(--color-text-main)] w-16 text-center">
+              {{ quantity() }}
+            </span>
+            <button
+              (click)="incrementQuantity()"
+              class="w-12 h-12 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold text-xl transition-all flex items-center justify-center"
+            >
+              <span class="material-icons-round">add</span>
+            </button>
+          </div>
+        </div>
+      }
+
+      <!-- Additional Images -->
+      @if (images().length > 1) {
+        <div class="mb-6">
+          <h3 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">More Images</h3>
+          <div class="flex gap-2 overflow-x-auto pb-2">
+            @for (image of images(); track $index; let first = $first) {
+              @if (!first) {
+                <img
+                  [src]="image"
+                  [alt]="title()"
+                  class="h-20 w-20 rounded-lg object-cover flex-shrink-0"
+                />
+              }
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Item ID -->
+      <div class="text-xs text-gray-400 mt-8">
+        Item ID: {{ registry()?.providerId }} &bull; Provider: {{ registry()?.provider }}
+      </div>
+    </div>
+  } @else {
+    <div class="flex-1 flex items-center justify-center">
+      <div class="text-[var(--color-text-muted)]">Registry item not found</div>
+    </div>
+  }
 </div>

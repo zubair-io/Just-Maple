@@ -6,8 +6,7 @@ export const routes: Routes = [
   // Authenticated app routes - matched first if user is authenticated
   {
     path: '',
-    loadComponent: () =>
-      import('./layouts/home/home.component').then((m) => m.HomeComponent),
+    loadComponent: () => import('./layouts/home/home.component').then((m) => m.HomeComponent),
     canMatch: [AuthGuard],
     children: [
       // Root - always note view

@@ -1,6 +1,12 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
-import type { Paper, CreatePaperInput, UpdatePaperInput, PaperData, PaperStatus } from '@maple/shared';
+import type {
+    Paper,
+    CreatePaperInput,
+    UpdatePaperInput,
+    PaperData,
+    PaperStatus,
+} from '@maple/shared';
 import { findTagsByUserId, findTagByIdWithAccess } from './tag.repo';
 
 interface PaperDocument {
@@ -35,9 +41,13 @@ function toPaperResponse(doc: PaperDocument): Paper {
             registryData: doc.data?.registryData?.toString(),
             status: doc.data?.status ?? 'want',
             quantity: doc.data?.quantity ?? 1,
-            created: doc.data?.created?.toISOString() ?? doc.createdAt?.toISOString() ?? new Date().toISOString(),
+            created:
+                doc.data?.created?.toISOString() ??
+                doc.createdAt?.toISOString() ??
+                new Date().toISOString(),
         },
-        createdBy: typeof doc.createdBy === 'string' ? doc.createdBy : doc.createdBy?.toString() ?? '',
+        createdBy:
+            typeof doc.createdBy === 'string' ? doc.createdBy : (doc.createdBy?.toString() ?? ''),
         createdAt: doc.createdAt?.toISOString() ?? new Date().toISOString(),
         updatedAt: doc.updatedAt?.toISOString() ?? new Date().toISOString(),
     };

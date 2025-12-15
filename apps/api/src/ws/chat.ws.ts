@@ -109,7 +109,9 @@ export const chatWebSocket = new Elysia({ prefix: '/ws' })
                         tagSubscriptions.set(tag._id, new Set());
                     }
                     tagSubscriptions.get(tag._id)!.add(userId);
-                    ((ws.data as unknown as { context: WSContext }).context as WSContext).subscribedTags.add(tag._id);
+                    (
+                        (ws.data as unknown as { context: WSContext }).context as WSContext
+                    ).subscribedTags.add(tag._id);
                 }
 
                 // Send connection confirmation

@@ -5,10 +5,10 @@ import { Injectable, signal } from '@angular/core';
  */
 @Injectable({ providedIn: 'root' })
 export class UiStateService {
-    /** Signal indicating if a chat/message input is focused */
-    readonly chatInputFocused = signal(false);
+  /** Signal indicating if a chat/message input is focused */
+  readonly chatInputFocused = signal(false);
 
-    setChatInputFocused(focused: boolean): void {
-        this.chatInputFocused.set(focused);
-    }
+  setChatInputFocused(focused: boolean): void {
+    this.chatInputFocused.set(focused);
+  }
 }

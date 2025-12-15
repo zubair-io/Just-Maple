@@ -5,22 +5,22 @@ import { Observable, tap, map, catchError, throwError, of } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { createStore } from '@ngneat/elf';
 import {
-    withEntities,
-    withActiveId,
-    selectAllEntities,
-    selectActiveEntity,
-    selectEntity,
-    setEntities,
-    addEntities,
-    updateEntities,
-    deleteEntities,
-    upsertEntities,
-    setActiveId,
-    resetActiveId,
-    getEntity,
-    getAllEntities,
-    getEntitiesCount,
-    getActiveEntity,
+  withEntities,
+  withActiveId,
+  selectAllEntities,
+  selectActiveEntity,
+  selectEntity,
+  setEntities,
+  addEntities,
+  updateEntities,
+  deleteEntities,
+  upsertEntities,
+  setActiveId,
+  resetActiveId,
+  getEntity,
+  getAllEntities,
+  getEntitiesCount,
+  getActiveEntity,
 } from '@ngneat/elf-entities';
 import { IndexedDBService } from './indexed-db.service';
 import { DB_STORES } from './db-stores';
@@ -29,313 +29,313 @@ import type { Paper, CreatePaperInput, UpdatePaperInput, PaperStatus } from '@ma
 const STORE_NAME = DB_STORES.PAPER;
 
 export interface PaperFilters {
-    tagId?: string;
-    status?: PaperStatus;
+  tagId?: string;
+  status?: PaperStatus;
 }
 
 @Injectable({ providedIn: 'root' })
 export class PaperService {
-    private readonly http = inject(HttpClient);
-    private readonly indexedDB = inject(IndexedDBService);
-    private readonly platformId = inject(PLATFORM_ID);
+  private readonly http = inject(HttpClient);
+  private readonly indexedDB = inject(IndexedDBService);
+  private readonly platformId = inject(PLATFORM_ID);
 
-    // ELF Store
-    private readonly store = createStore(
-        { name: STORE_NAME },
-        withEntities<Paper, '_id'>({ idKey: '_id' }),
-        withActiveId(),
+  // ELF Store
+  private readonly store = createStore(
+    { name: STORE_NAME },
+    withEntities<Paper, '_id'>({ idKey: '_id' }),
+    withActiveId(),
+  );
+
+  // Observable selectors
+  readonly papers$ = this.store.pipe(selectAllEntities());
+  readonly activePaper$ = this.store.pipe(selectActiveEntity());
+
+  // Signal wrappers for Angular reactivity
+  private readonly _papersSignal = toSignal(this.papers$, { initialValue: [] as Paper[] });
+
+  // UI state signals (not persisted)
+  private readonly _isLoading = signal(false);
+  private readonly _error = signal<string | null>(null);
+
+  readonly isLoading = this._isLoading.asReadonly();
+  readonly error = this._error.asReadonly();
+
+  constructor() {
+    // Hydrate from IndexedDB on construction
+    if (isPlatformBrowser(this.platformId)) {
+      this.hydrateFromIndexedDB();
+    }
+  }
+
+  /**
+   * Load data from IndexedDB into ELF store
+   */
+  private async hydrateFromIndexedDB(): Promise<void> {
+    const cached = await this.indexedDB.getAll<Paper>(STORE_NAME);
+    if (cached.length > 0 && this.store.query(getEntitiesCount()) === 0) {
+      this.store.update(setEntities(cached));
+    }
+  }
+
+  /**
+   * Get all papers as a reactive signal
+   */
+  papers(): Paper[] {
+    return this._papersSignal() ?? [];
+  }
+
+  /**
+   * Get selected paper ID synchronously
+   */
+  selectedPaperId(): string | null {
+    const active = this.store.query(getActiveEntity());
+    return active?._id || null;
+  }
+
+  /**
+   * Get selected paper synchronously
+   */
+  selectedPaper(): Paper | null {
+    return this.store.query(getActiveEntity()) || null;
+  }
+
+  /**
+   * Load papers from API with optional filters
+   */
+  loadPapers(filters?: PaperFilters): Observable<Paper[]> {
+    this._isLoading.set(true);
+    this._error.set(null);
+
+    const params: Record<string, string> = {};
+    if (filters?.tagId) params['tagId'] = filters.tagId;
+    if (filters?.status) params['status'] = filters.status;
+
+    return this.http.get<{ papers: Paper[] }>('/api/papers', { params }).pipe(
+      tap((response) => {
+        // Upsert papers into store
+        this.store.update(upsertEntities(response.papers));
+        this.persistToIndexedDB(response.papers);
+        this._isLoading.set(false);
+      }),
+      map((response) => response.papers),
+      catchError((err) => {
+        const message = err?.error?.error || 'Failed to load papers';
+        this._error.set(message);
+        this._isLoading.set(false);
+        return of([]);
+      }),
+    );
+  }
+
+  /**
+   * Load a single paper by ID
+   */
+  loadPaper(id: string): Observable<Paper | null> {
+    // Check cache first
+    const cached = this.store.query(getEntity(id));
+    if (cached) {
+      return of(cached);
+    }
+
+    this._isLoading.set(true);
+    this._error.set(null);
+
+    return this.http.get<{ paper: Paper }>(`/api/papers/${id}`).pipe(
+      tap((response) => {
+        this.store.update(upsertEntities([response.paper]));
+        this.persistToIndexedDB([response.paper]);
+        this._isLoading.set(false);
+      }),
+      map((response) => response.paper),
+      catchError((err) => {
+        const message = err?.error?.error || 'Failed to load paper';
+        this._error.set(message);
+        this._isLoading.set(false);
+        return of(null);
+      }),
+    );
+  }
+
+  /**
+   * Create a new paper with optimistic update
+   */
+  createPaper(data: CreatePaperInput): Observable<Paper> {
+    this._isLoading.set(true);
+    this._error.set(null);
+
+    // Create temporary paper for optimistic update
+    const tempId = `temp-${Date.now()}`;
+    const now = new Date().toISOString();
+    const tempPaper: Paper = {
+      _id: tempId,
+      tags: data.tags || [],
+      type: 'collectible',
+      data: {
+        itemId: data.data.itemId,
+        provider: data.data.provider,
+        registryData: data.data.registryData,
+        status: data.data.status || 'have',
+        quantity: data.data.quantity ?? 1,
+        created: now,
+      },
+      createdBy: 'temp',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Optimistic add
+    this.store.update(addEntities(tempPaper));
+
+    return this.http.post<{ paper: Paper }>('/api/papers', data).pipe(
+      tap((response) => {
+        // Remove temp and add real paper
+        this.store.update(deleteEntities(tempId));
+        this.store.update(addEntities(response.paper));
+        this.persistToIndexedDB([response.paper]);
+        this._isLoading.set(false);
+      }),
+      map((response) => response.paper),
+      catchError((err) => {
+        // Rollback optimistic update
+        this.store.update(deleteEntities(tempId));
+        const message = err?.error?.error || 'Failed to create paper';
+        this._error.set(message);
+        this._isLoading.set(false);
+        return throwError(() => new Error(message));
+      }),
+    );
+  }
+
+  /**
+   * Update a paper with optimistic update
+   */
+  updatePaper(id: string, data: UpdatePaperInput): Observable<Paper> {
+    this._error.set(null);
+
+    // Store original for rollback
+    const original = this.store.query(getEntity(id));
+    if (!original) {
+      return throwError(() => new Error('Paper not found'));
+    }
+
+    // Optimistic update
+    this.store.update(
+      updateEntities(id, (entity) => ({
+        ...entity,
+        tags: data.tags ?? entity.tags,
+        data: data.data ? { ...entity.data, ...data.data } : entity.data,
+        updatedAt: new Date().toISOString(),
+      })),
     );
 
-    // Observable selectors
-    readonly papers$ = this.store.pipe(selectAllEntities());
-    readonly activePaper$ = this.store.pipe(selectActiveEntity());
+    return this.http.put<{ paper: Paper }>(`/api/papers/${id}`, data).pipe(
+      tap((response) => {
+        // Update with server response
+        this.store.update(updateEntities(id, response.paper));
+        this.persistToIndexedDB([response.paper]);
+      }),
+      map((response) => response.paper),
+      catchError((err) => {
+        // Rollback optimistic update
+        this.store.update(updateEntities(id, () => original));
+        const message = err?.error?.error || 'Failed to update paper';
+        this._error.set(message);
+        return throwError(() => new Error(message));
+      }),
+    );
+  }
 
-    // Signal wrappers for Angular reactivity
-    private readonly _papersSignal = toSignal(this.papers$, { initialValue: [] as Paper[] });
+  /**
+   * Delete a paper with optimistic update
+   */
+  deletePaper(id: string): Observable<void> {
+    this._error.set(null);
 
-    // UI state signals (not persisted)
-    private readonly _isLoading = signal(false);
-    private readonly _error = signal<string | null>(null);
+    // Store original for rollback
+    const original = this.store.query(getEntity(id));
+    if (!original) {
+      return throwError(() => new Error('Paper not found'));
+    }
 
-    readonly isLoading = this._isLoading.asReadonly();
-    readonly error = this._error.asReadonly();
+    // Check if this is the active paper
+    const wasActive = this.selectedPaperId() === id;
 
-    constructor() {
-        // Hydrate from IndexedDB on construction
+    // Optimistic delete
+    this.store.update(deleteEntities(id));
+    if (wasActive) {
+      this.store.update(resetActiveId());
+    }
+
+    return this.http.delete(`/api/papers/${id}`).pipe(
+      tap(() => {
+        // Also delete from IndexedDB
         if (isPlatformBrowser(this.platformId)) {
-            this.hydrateFromIndexedDB();
+          this.indexedDB.delete(id, STORE_NAME);
         }
-    }
-
-    /**
-     * Load data from IndexedDB into ELF store
-     */
-    private async hydrateFromIndexedDB(): Promise<void> {
-        const cached = await this.indexedDB.getAll<Paper>(STORE_NAME);
-        if (cached.length > 0 && this.store.query(getEntitiesCount()) === 0) {
-            this.store.update(setEntities(cached));
-        }
-    }
-
-    /**
-     * Get all papers as a reactive signal
-     */
-    papers(): Paper[] {
-        return this._papersSignal() ?? [];
-    }
-
-    /**
-     * Get selected paper ID synchronously
-     */
-    selectedPaperId(): string | null {
-        const active = this.store.query(getActiveEntity());
-        return active?._id || null;
-    }
-
-    /**
-     * Get selected paper synchronously
-     */
-    selectedPaper(): Paper | null {
-        return this.store.query(getActiveEntity()) || null;
-    }
-
-    /**
-     * Load papers from API with optional filters
-     */
-    loadPapers(filters?: PaperFilters): Observable<Paper[]> {
-        this._isLoading.set(true);
-        this._error.set(null);
-
-        const params: Record<string, string> = {};
-        if (filters?.tagId) params['tagId'] = filters.tagId;
-        if (filters?.status) params['status'] = filters.status;
-
-        return this.http.get<{ papers: Paper[] }>('/api/papers', { params }).pipe(
-            tap((response) => {
-                // Upsert papers into store
-                this.store.update(upsertEntities(response.papers));
-                this.persistToIndexedDB(response.papers);
-                this._isLoading.set(false);
-            }),
-            map((response) => response.papers),
-            catchError((err) => {
-                const message = err?.error?.error || 'Failed to load papers';
-                this._error.set(message);
-                this._isLoading.set(false);
-                return of([]);
-            }),
-        );
-    }
-
-    /**
-     * Load a single paper by ID
-     */
-    loadPaper(id: string): Observable<Paper | null> {
-        // Check cache first
-        const cached = this.store.query(getEntity(id));
-        if (cached) {
-            return of(cached);
-        }
-
-        this._isLoading.set(true);
-        this._error.set(null);
-
-        return this.http.get<{ paper: Paper }>(`/api/papers/${id}`).pipe(
-            tap((response) => {
-                this.store.update(upsertEntities([response.paper]));
-                this.persistToIndexedDB([response.paper]);
-                this._isLoading.set(false);
-            }),
-            map((response) => response.paper),
-            catchError((err) => {
-                const message = err?.error?.error || 'Failed to load paper';
-                this._error.set(message);
-                this._isLoading.set(false);
-                return of(null);
-            }),
-        );
-    }
-
-    /**
-     * Create a new paper with optimistic update
-     */
-    createPaper(data: CreatePaperInput): Observable<Paper> {
-        this._isLoading.set(true);
-        this._error.set(null);
-
-        // Create temporary paper for optimistic update
-        const tempId = `temp-${Date.now()}`;
-        const now = new Date().toISOString();
-        const tempPaper: Paper = {
-            _id: tempId,
-            tags: data.tags || [],
-            type: 'collectible',
-            data: {
-                itemId: data.data.itemId,
-                provider: data.data.provider,
-                registryData: data.data.registryData,
-                status: data.data.status || 'have',
-                quantity: data.data.quantity ?? 1,
-                created: now,
-            },
-            createdBy: 'temp',
-            createdAt: now,
-            updatedAt: now,
-        };
-
-        // Optimistic add
-        this.store.update(addEntities(tempPaper));
-
-        return this.http.post<{ paper: Paper }>('/api/papers', data).pipe(
-            tap((response) => {
-                // Remove temp and add real paper
-                this.store.update(deleteEntities(tempId));
-                this.store.update(addEntities(response.paper));
-                this.persistToIndexedDB([response.paper]);
-                this._isLoading.set(false);
-            }),
-            map((response) => response.paper),
-            catchError((err) => {
-                // Rollback optimistic update
-                this.store.update(deleteEntities(tempId));
-                const message = err?.error?.error || 'Failed to create paper';
-                this._error.set(message);
-                this._isLoading.set(false);
-                return throwError(() => new Error(message));
-            }),
-        );
-    }
-
-    /**
-     * Update a paper with optimistic update
-     */
-    updatePaper(id: string, data: UpdatePaperInput): Observable<Paper> {
-        this._error.set(null);
-
-        // Store original for rollback
-        const original = this.store.query(getEntity(id));
-        if (!original) {
-            return throwError(() => new Error('Paper not found'));
-        }
-
-        // Optimistic update
-        this.store.update(
-            updateEntities(id, (entity) => ({
-                ...entity,
-                tags: data.tags ?? entity.tags,
-                data: data.data ? { ...entity.data, ...data.data } : entity.data,
-                updatedAt: new Date().toISOString(),
-            })),
-        );
-
-        return this.http.put<{ paper: Paper }>(`/api/papers/${id}`, data).pipe(
-            tap((response) => {
-                // Update with server response
-                this.store.update(updateEntities(id, response.paper));
-                this.persistToIndexedDB([response.paper]);
-            }),
-            map((response) => response.paper),
-            catchError((err) => {
-                // Rollback optimistic update
-                this.store.update(updateEntities(id, () => original));
-                const message = err?.error?.error || 'Failed to update paper';
-                this._error.set(message);
-                return throwError(() => new Error(message));
-            }),
-        );
-    }
-
-    /**
-     * Delete a paper with optimistic update
-     */
-    deletePaper(id: string): Observable<void> {
-        this._error.set(null);
-
-        // Store original for rollback
-        const original = this.store.query(getEntity(id));
-        if (!original) {
-            return throwError(() => new Error('Paper not found'));
-        }
-
-        // Check if this is the active paper
-        const wasActive = this.selectedPaperId() === id;
-
-        // Optimistic delete
-        this.store.update(deleteEntities(id));
+      }),
+      map(() => undefined),
+      catchError((err) => {
+        // Rollback optimistic delete
+        this.store.update(addEntities(original));
         if (wasActive) {
-            this.store.update(resetActiveId());
+          this.store.update(setActiveId(id));
         }
+        const message = err?.error?.error || 'Failed to delete paper';
+        this._error.set(message);
+        return throwError(() => new Error(message));
+      }),
+    );
+  }
 
-        return this.http.delete(`/api/papers/${id}`).pipe(
-            tap(() => {
-                // Also delete from IndexedDB
-                if (isPlatformBrowser(this.platformId)) {
-                    this.indexedDB.delete(id, STORE_NAME);
-                }
-            }),
-            map(() => undefined),
-            catchError((err) => {
-                // Rollback optimistic delete
-                this.store.update(addEntities(original));
-                if (wasActive) {
-                    this.store.update(setActiveId(id));
-                }
-                const message = err?.error?.error || 'Failed to delete paper';
-                this._error.set(message);
-                return throwError(() => new Error(message));
-            }),
-        );
+  /**
+   * Select a paper as active
+   */
+  selectPaper(id: string | null): void {
+    if (id) {
+      this.store.update(setActiveId(id));
+    } else {
+      this.store.update(resetActiveId());
     }
+  }
 
-    /**
-     * Select a paper as active
-     */
-    selectPaper(id: string | null): void {
-        if (id) {
-            this.store.update(setActiveId(id));
-        } else {
-            this.store.update(resetActiveId());
-        }
+  /**
+   * Get paper by ID synchronously
+   */
+  getPaperById(id: string): Paper | undefined {
+    return this.store.query(getEntity(id));
+  }
+
+  /**
+   * Get papers for a specific tag
+   */
+  getPapersForTag(tagId: string): Paper[] {
+    return this.store.query(getAllEntities()).filter((p) => p.tags.includes(tagId));
+  }
+
+  /**
+   * Select a single paper as observable
+   */
+  select(id: string): Observable<Paper | undefined> {
+    return this.store.pipe(selectEntity(id));
+  }
+
+  /**
+   * Clear all papers from store and IndexedDB
+   */
+  async clearCache(): Promise<void> {
+    this.store.update(setEntities([]));
+    this.store.update(resetActiveId());
+
+    if (isPlatformBrowser(this.platformId)) {
+      await this.indexedDB.clear(STORE_NAME);
     }
+  }
 
-    /**
-     * Get paper by ID synchronously
-     */
-    getPaperById(id: string): Paper | undefined {
-        return this.store.query(getEntity(id));
-    }
-
-    /**
-     * Get papers for a specific tag
-     */
-    getPapersForTag(tagId: string): Paper[] {
-        return this.store.query(getAllEntities()).filter((p) => p.tags.includes(tagId));
-    }
-
-    /**
-     * Select a single paper as observable
-     */
-    select(id: string): Observable<Paper | undefined> {
-        return this.store.pipe(selectEntity(id));
-    }
-
-    /**
-     * Clear all papers from store and IndexedDB
-     */
-    async clearCache(): Promise<void> {
-        this.store.update(setEntities([]));
-        this.store.update(resetActiveId());
-
-        if (isPlatformBrowser(this.platformId)) {
-            await this.indexedDB.clear(STORE_NAME);
-        }
-    }
-
-    /**
-     * Persist papers to IndexedDB
-     */
-    private async persistToIndexedDB(papers: Paper[]): Promise<void> {
-        if (!isPlatformBrowser(this.platformId) || papers.length === 0) return;
-        await this.indexedDB.putMany(papers, STORE_NAME);
-    }
+  /**
+   * Persist papers to IndexedDB
+   */
+  private async persistToIndexedDB(papers: Paper[]): Promise<void> {
+    if (!isPlatformBrowser(this.platformId) || papers.length === 0) return;
+    await this.indexedDB.putMany(papers, STORE_NAME);
+  }
 }

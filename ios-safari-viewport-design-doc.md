@@ -17,12 +17,12 @@ iOS Safari does not resize the viewport when the virtual keyboard appears. Inste
 
 ### Viewport Units in CSS
 
-| Unit | Behavior |
-|------|----------|
-| `vh` | Based on the "large" viewport (excludes browser chrome, ignores keyboard) |
-| `svh` | Small viewport height (accounts for browser chrome when visible) |
-| `dvh` | Dynamic viewport height (adjusts for keyboard and browser chrome) |
-| `lvh` | Large viewport height (maximum possible viewport) |
+| Unit  | Behavior                                                                  |
+| ----- | ------------------------------------------------------------------------- |
+| `vh`  | Based on the "large" viewport (excludes browser chrome, ignores keyboard) |
+| `svh` | Small viewport height (accounts for browser chrome when visible)          |
+| `dvh` | Dynamic viewport height (adjusts for keyboard and browser chrome)         |
+| `lvh` | Large viewport height (maximum possible viewport)                         |
 
 While `dvh` is the ideal solution, it requires iOS 15.4+ and may not cover all target devices.
 
@@ -74,70 +74,61 @@ The `window.visualViewport` object provides real-time information about the visi
 
 ```javascript
 class ViewportManager {
-  constructor() {
-    this.init();
-  }
-
-  init() {
-    this.updateViewportHeight();
-    this.attachListeners();
-  }
-
-  updateViewportHeight() {
-    // Prefer visualViewport API, fall back to innerHeight
-    const height = window.visualViewport?.height ?? window.innerHeight;
-    
-    document.documentElement.style.setProperty(
-      '--viewport-height',
-      `${height}px`
-    );
-
-    // Also set offset for fixed positioning adjustments
-    const offsetTop = window.visualViewport?.offsetTop ?? 0;
-    document.documentElement.style.setProperty(
-      '--viewport-offset-top',
-      `${offsetTop}px`
-    );
-  }
-
-  attachListeners() {
-    // Throttle updates for performance
-    const throttledUpdate = this.throttle(
-      () => this.updateViewportHeight(),
-      50
-    );
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', throttledUpdate);
-      window.visualViewport.addEventListener('scroll', throttledUpdate);
+    constructor() {
+        this.init();
     }
 
-    // Fallback for browsers without visualViewport
-    window.addEventListener('resize', throttledUpdate);
-    
-    // Handle orientation changes
-    window.addEventListener('orientationchange', () => {
-      setTimeout(() => this.updateViewportHeight(), 100);
-    });
-  }
+    init() {
+        this.updateViewportHeight();
+        this.attachListeners();
+    }
 
-  throttle(func, limit) {
-    let inThrottle;
-    return function (...args) {
-      if (!inThrottle) {
-        func.apply(this, args);
-        inThrottle = true;
-        setTimeout(() => (inThrottle = false), limit);
-      }
-    };
-  }
+    updateViewportHeight() {
+        // Prefer visualViewport API, fall back to innerHeight
+        const height = window.visualViewport?.height ?? window.innerHeight;
 
-  destroy() {
-    // Clean up listeners if needed
-    window.visualViewport?.removeEventListener('resize', this.updateViewportHeight);
-    window.visualViewport?.removeEventListener('scroll', this.updateViewportHeight);
-    window.removeEventListener('resize', this.updateViewportHeight);
-  }
+        document.documentElement.style.setProperty('--viewport-height', `${height}px`);
+
+        // Also set offset for fixed positioning adjustments
+        const offsetTop = window.visualViewport?.offsetTop ?? 0;
+        document.documentElement.style.setProperty('--viewport-offset-top', `${offsetTop}px`);
+    }
+
+    attachListeners() {
+        // Throttle updates for performance
+        const throttledUpdate = this.throttle(() => this.updateViewportHeight(), 50);
+
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', throttledUpdate);
+            window.visualViewport.addEventListener('scroll', throttledUpdate);
+        }
+
+        // Fallback for browsers without visualViewport
+        window.addEventListener('resize', throttledUpdate);
+
+        // Handle orientation changes
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => this.updateViewportHeight(), 100);
+        });
+    }
+
+    throttle(func, limit) {
+        let inThrottle;
+        return function (...args) {
+            if (!inThrottle) {
+                func.apply(this, args);
+                inThrottle = true;
+                setTimeout(() => (inThrottle = false), limit);
+            }
+        };
+    }
+
+    destroy() {
+        // Clean up listeners if needed
+        window.visualViewport?.removeEventListener('resize', this.updateViewportHeight);
+        window.visualViewport?.removeEventListener('scroll', this.updateViewportHeight);
+        window.removeEventListener('resize', this.updateViewportHeight);
+    }
 }
 
 // Initialize
@@ -148,49 +139,50 @@ const viewportManager = new ViewportManager();
 
 ```css
 :root {
-  /* Fallback to dvh, then vh */
-  --viewport-height: 100dvh;
+    /* Fallback to dvh, then vh */
+    --viewport-height: 100dvh;
 }
 
 /* Prevent overscroll/bounce */
-html, body {
-  height: 100%;
-  overflow: hidden;
-  position: fixed;
-  width: 100%;
+html,
+body {
+    height: 100%;
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
 }
 
 .chat-container {
-  height: var(--viewport-height);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+    height: var(--viewport-height);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .chat-header {
-  flex-shrink: 0;
-  /* Header styles */
+    flex-shrink: 0;
+    /* Header styles */
 }
 
 .message-list {
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .input-area {
-  flex-shrink: 0;
-  padding: 12px;
-  padding-bottom: max(12px, env(safe-area-inset-bottom));
-  background: var(--input-background);
+    flex-shrink: 0;
+    padding: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    background: var(--input-background);
 }
 
 .input-area input,
 .input-area textarea {
-  width: 100%;
-  /* Prevent zoom on focus in iOS */
-  font-size: 16px;
+    width: 100%;
+    /* Prevent zoom on focus in iOS */
+    font-size: 16px;
 }
 ```
 
@@ -198,41 +190,41 @@ html, body {
 
 ```javascript
 class ChatInputManager {
-  constructor(inputElement, messageListElement) {
-    this.input = inputElement;
-    this.messageList = messageListElement;
-    this.attachListeners();
-  }
+    constructor(inputElement, messageListElement) {
+        this.input = inputElement;
+        this.messageList = messageListElement;
+        this.attachListeners();
+    }
 
-  attachListeners() {
-    this.input.addEventListener('focus', () => this.handleFocus());
-  }
+    attachListeners() {
+        this.input.addEventListener('focus', () => this.handleFocus());
+    }
 
-  handleFocus() {
-    // Wait for keyboard animation to complete
-    setTimeout(() => {
-      // Scroll message list to bottom
-      this.messageList.scrollTop = this.messageList.scrollHeight;
-      
-      // Ensure input is visible
-      this.input.scrollIntoView({ 
-        block: 'end', 
-        behavior: 'smooth' 
-      });
-    }, 300);
-  }
+    handleFocus() {
+        // Wait for keyboard animation to complete
+        setTimeout(() => {
+            // Scroll message list to bottom
+            this.messageList.scrollTop = this.messageList.scrollHeight;
+
+            // Ensure input is visible
+            this.input.scrollIntoView({
+                block: 'end',
+                behavior: 'smooth',
+            });
+        }, 300);
+    }
 }
 ```
 
 ## Browser Support
 
-| Browser | Visual Viewport API | dvh/svh/lvh |
-|---------|---------------------|-------------|
-| iOS Safari 13+ | ✅ | ❌ |
-| iOS Safari 15.4+ | ✅ | ✅ |
-| Chrome (Android) | ✅ | ✅ |
-| Firefox (Android) | ✅ | ✅ |
-| Desktop Browsers | ✅ | ✅ |
+| Browser           | Visual Viewport API | dvh/svh/lvh |
+| ----------------- | ------------------- | ----------- |
+| iOS Safari 13+    | ✅                  | ❌          |
+| iOS Safari 15.4+  | ✅                  | ✅          |
+| Chrome (Android)  | ✅                  | ✅          |
+| Firefox (Android) | ✅                  | ✅          |
+| Desktop Browsers  | ✅                  | ✅          |
 
 The combined approach ensures compatibility with iOS Safari 13+ while leveraging modern CSS units where available.
 

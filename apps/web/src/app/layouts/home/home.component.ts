@@ -10,116 +10,116 @@ import { UiStateService } from '../../services/ui-state.service';
 import { SidebarComponent } from '../../components';
 
 @Component({
-    selector: 'app-home',
-    standalone: true,
-    imports: [CommonModule, RouterOutlet, SidebarComponent],
-    templateUrl: './home.component.html',
-    styleUrl: './home.component.scss',
+  selector: 'app-home',
+  standalone: true,
+  imports: [CommonModule, RouterOutlet, SidebarComponent],
+  templateUrl: './home.component.html',
+  styleUrl: './home.component.scss',
 })
 export class HomeComponent implements OnInit, OnDestroy {
-    private readonly router = inject(Router);
-    readonly authService = inject(AuthService);
-    readonly tagService = inject(TagService);
-    readonly noteService = inject(NoteService);
-    private readonly realtimeService = inject(RealtimeService);
-    private readonly uiStateService = inject(UiStateService);
+  private readonly router = inject(Router);
+  readonly authService = inject(AuthService);
+  readonly tagService = inject(TagService);
+  readonly noteService = inject(NoteService);
+  private readonly realtimeService = inject(RealtimeService);
+  private readonly uiStateService = inject(UiStateService);
 
-    readonly selectedNoteId = signal<string | null>(null);
-    readonly selectedTagId = signal<string | null>(null);
-    readonly sidebarOpen = signal(false);
-    readonly chatInputFocused = this.uiStateService.chatInputFocused;
+  readonly selectedNoteId = signal<string | null>(null);
+  readonly selectedTagId = signal<string | null>(null);
+  readonly sidebarOpen = signal(false);
+  readonly chatInputFocused = this.uiStateService.chatInputFocused;
 
-    private routerSubscription?: Subscription;
+  private routerSubscription?: Subscription;
 
-    ngOnInit(): void {
-        // Load tags and notes
-        this.tagService.ensureDefaultTag().subscribe();
-        this.noteService.loadNotes().subscribe();
+  ngOnInit(): void {
+    // Load tags and notes
+    this.tagService.ensureDefaultTag().subscribe();
+    this.noteService.loadNotes().subscribe();
 
-        // Connect to realtime service
-        this.realtimeService.connect();
+    // Connect to realtime service
+    this.realtimeService.connect();
 
-        // Sync selected IDs from route
+    // Sync selected IDs from route
+    this.syncFromRoute();
+
+    // Listen for route changes
+    this.routerSubscription = this.router.events
+      .pipe(filter((event) => event instanceof NavigationEnd))
+      .subscribe(() => {
         this.syncFromRoute();
+      });
+  }
 
-        // Listen for route changes
-        this.routerSubscription = this.router.events
-            .pipe(filter((event) => event instanceof NavigationEnd))
-            .subscribe(() => {
-                this.syncFromRoute();
-            });
+  ngOnDestroy(): void {
+    this.routerSubscription?.unsubscribe();
+  }
+
+  private syncFromRoute(): void {
+    const url = this.router.url;
+    const segments = url.split('/').filter(Boolean);
+
+    if (segments.length >= 1) {
+      // First segment is tagId (if not a special route like 'favorites', 'trash')
+      const firstSegment = segments[0];
+      if (!['favorites', 'trash', 'login', 'verify'].includes(firstSegment)) {
+        this.selectedTagId.set(firstSegment);
+      }
     }
 
-    ngOnDestroy(): void {
-        this.routerSubscription?.unsubscribe();
+    if (segments.length >= 2) {
+      // Second segment is noteId
+      this.selectedNoteId.set(segments[1]);
     }
+  }
 
-    private syncFromRoute(): void {
-        const url = this.router.url;
-        const segments = url.split('/').filter(Boolean);
+  toggleSidebar(): void {
+    this.sidebarOpen.update((open) => !open);
+  }
 
-        if (segments.length >= 1) {
-            // First segment is tagId (if not a special route like 'favorites', 'trash')
-            const firstSegment = segments[0];
-            if (!['favorites', 'trash', 'login', 'verify'].includes(firstSegment)) {
-                this.selectedTagId.set(firstSegment);
-            }
-        }
+  closeSidebar(): void {
+    this.sidebarOpen.set(false);
+  }
 
-        if (segments.length >= 2) {
-            // Second segment is noteId
-            this.selectedNoteId.set(segments[1]);
-        }
+  openLastNote(): void {
+    const notes = this.noteService.notes();
+    if (notes.length > 0) {
+      // Get the most recently updated note
+      const sortedNotes = [...notes].sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+      const lastNote = sortedNotes[0];
+      if (lastNote.tagId) {
+        this.router.navigate(['/', lastNote.tagId, lastNote._id]);
+      } else {
+        this.selectedNoteId.set(lastNote._id);
+      }
     }
+  }
 
-    toggleSidebar(): void {
-        this.sidebarOpen.update((open) => !open);
-    }
+  onNewNote(): void {
+    // Will be handled by the note-view component
+  }
 
-    closeSidebar(): void {
-        this.sidebarOpen.set(false);
-    }
+  onSelectNote(noteId: string): void {
+    this.selectedNoteId.set(noteId);
+  }
 
-    openLastNote(): void {
-        const notes = this.noteService.notes();
-        if (notes.length > 0) {
-            // Get the most recently updated note
-            const sortedNotes = [...notes].sort(
-                (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-            );
-            const lastNote = sortedNotes[0];
-            if (lastNote.tagId) {
-                this.router.navigate(['/', lastNote.tagId, lastNote._id]);
-            } else {
-                this.selectedNoteId.set(lastNote._id);
-            }
-        }
-    }
+  onSelectTag(tagId: string): void {
+    this.selectedTagId.set(tagId);
+  }
 
-    onNewNote(): void {
-        // Will be handled by the note-view component
-    }
+  onCreateTag(): void {
+    const name = prompt('Enter tag name:');
+    if (!name) return;
 
-    onSelectNote(noteId: string): void {
-        this.selectedNoteId.set(noteId);
-    }
+    this.tagService.createTag({ label: name }).subscribe({
+      error: (error) => {
+        console.error('Failed to create tag:', error);
+      },
+    });
+  }
 
-    onSelectTag(tagId: string): void {
-        this.selectedTagId.set(tagId);
-    }
-
-    onCreateTag(): void {
-        const name = prompt('Enter tag name:');
-        if (!name) return;
-
-        this.tagService.createTag({ label: name }).subscribe({
-            error: (error) => {
-                console.error('Failed to create tag:', error);
-            },
-        });
-    }
-
-    onSettings(): void {
-        // TODO: Implement settings modal
-    }
+  onSettings(): void {
+    // TODO: Implement settings modal
+  }
 }

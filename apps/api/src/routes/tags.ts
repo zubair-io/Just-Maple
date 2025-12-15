@@ -182,7 +182,10 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
 
             if (!tag) {
                 set.status = 403;
-                return { error: 'Forbidden', message: 'You do not have permission to share this tag' };
+                return {
+                    error: 'Forbidden',
+                    message: 'You do not have permission to share this tag',
+                };
             }
 
             return { tag };
@@ -210,7 +213,10 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
 
             if (!tag) {
                 set.status = 403;
-                return { error: 'Forbidden', message: 'You do not have permission to unshare this tag' };
+                return {
+                    error: 'Forbidden',
+                    message: 'You do not have permission to unshare this tag',
+                };
             }
 
             return { tag };
@@ -235,7 +241,10 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
 
             if (!tag) {
                 set.status = 403;
-                return { error: 'Forbidden', message: 'You do not have permission to change public status' };
+                return {
+                    error: 'Forbidden',
+                    message: 'You do not have permission to change public status',
+                };
             }
 
             return { tag };

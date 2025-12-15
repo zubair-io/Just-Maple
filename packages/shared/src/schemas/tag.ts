@@ -1,7 +1,11 @@
 import { Type, Static } from '@sinclair/typebox';
 
 // Access level for shared users
-export const AccessLevelSchema = Type.Union([Type.Literal('read'), Type.Literal('write'), Type.Literal('owner')]);
+export const AccessLevelSchema = Type.Union([
+    Type.Literal('read'),
+    Type.Literal('write'),
+    Type.Literal('owner'),
+]);
 export type AccessLevel = Static<typeof AccessLevelSchema>;
 
 // Shared user entry

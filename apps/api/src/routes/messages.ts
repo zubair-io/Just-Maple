@@ -1,7 +1,12 @@
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
-import { findTagById, findTagsByUserId, findTagByIdWithAccess, hasAccess } from '../repositories/tag.repo';
+import {
+    findTagById,
+    findTagsByUserId,
+    findTagByIdWithAccess,
+    hasAccess,
+} from '../repositories/tag.repo';
 import type { JWTPayload, ChatEvent } from '@maple/shared';
 import {
     findMessagesByTagId,
@@ -187,7 +192,10 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
 
             if (!message) {
                 set.status = 404;
-                return { error: 'Message not found', message: 'Message does not exist or access denied' };
+                return {
+                    error: 'Message not found',
+                    message: 'Message does not exist or access denied',
+                };
             }
 
             // Broadcast edit via realtime service
@@ -224,14 +232,20 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             const existingMessage = await findMessageById(params.id, auth.user._id);
             if (!existingMessage) {
                 set.status = 404;
-                return { error: 'Message not found', message: 'Message does not exist or access denied' };
+                return {
+                    error: 'Message not found',
+                    message: 'Message does not exist or access denied',
+                };
             }
 
             const deleted = await softDeleteMessage(params.id, auth.user._id);
 
             if (!deleted) {
                 set.status = 404;
-                return { error: 'Message not found', message: 'Message does not exist or access denied' };
+                return {
+                    error: 'Message not found',
+                    message: 'Message does not exist or access denied',
+                };
             }
 
             // Broadcast deletion via realtime service

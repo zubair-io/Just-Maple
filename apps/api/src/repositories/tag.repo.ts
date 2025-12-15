@@ -1,6 +1,13 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
-import type { Tag, CreateTagInput, UpdateTagInput, AccessLevel, TagSharing, ShareTagInput } from '@maple/shared';
+import type {
+    Tag,
+    CreateTagInput,
+    UpdateTagInput,
+    AccessLevel,
+    TagSharing,
+    ShareTagInput,
+} from '@maple/shared';
 
 interface SharedWithEntryDocument {
     userId: string;
@@ -88,7 +95,8 @@ export function hasAccess(tag: Tag, userId: string, requiredLevel?: AccessLevel)
     if (!entry) return false;
     if (!requiredLevel) return true;
     if (requiredLevel === 'read') return true;
-    if (requiredLevel === 'write') return entry.accessLevel === 'write' || entry.accessLevel === 'owner';
+    if (requiredLevel === 'write')
+        return entry.accessLevel === 'write' || entry.accessLevel === 'owner';
     if (requiredLevel === 'owner') return entry.accessLevel === 'owner';
     return false;
 }
@@ -291,7 +299,9 @@ export async function shareTag(
         const result = await getCollection().findOneAndUpdate(
             { _id: new ObjectId(tagId) },
             {
-                $push: { 'sharing.sharedWith': { userId: data.userId, accessLevel: data.accessLevel } },
+                $push: {
+                    'sharing.sharedWith': { userId: data.userId, accessLevel: data.accessLevel },
+                },
                 $set: { updatedAt: new Date() },
             },
             { returnDocument: 'after' },
@@ -303,7 +313,11 @@ export async function shareTag(
 /**
  * Remove a user's access to a tag (requires owner access)
  */
-export async function unshareTag(tagId: string, ownerId: string, targetUserId: string): Promise<Tag | null> {
+export async function unshareTag(
+    tagId: string,
+    ownerId: string,
+    targetUserId: string,
+): Promise<Tag | null> {
     // Check if requesting user is owner
     const tag = await findTagByIdWithAccess(tagId, ownerId, 'owner');
     if (!tag) return null;
@@ -347,7 +361,10 @@ export async function updateTagPublicStatus(
 /**
  * Get all users with access to a tag
  */
-export async function getTagMembers(tagId: string, userId: string): Promise<Tag['sharing']['sharedWith'] | null> {
+export async function getTagMembers(
+    tagId: string,
+    userId: string,
+): Promise<Tag['sharing']['sharedWith'] | null> {
     const tag = await findTagById(tagId, userId);
     if (!tag) return null;
     return tag.sharing.sharedWith;

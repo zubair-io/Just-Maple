@@ -8,282 +8,294 @@ import { Subject } from 'rxjs';
 import type { Message, ChatEvent, NoteContent } from '@maple/shared';
 
 describe('MessageService', () => {
-    let service: MessageService;
-    let httpMock: HttpTestingController;
-    let realtimeEventsSubject: Subject<ChatEvent>;
-    let mockIndexedDB: jasmine.SpyObj<IndexedDBService>;
-    let mockRealtimeService: jasmine.SpyObj<RealtimeService>;
+  let service: MessageService;
+  let httpMock: HttpTestingController;
+  let realtimeEventsSubject: Subject<ChatEvent>;
+  let mockIndexedDB: jasmine.SpyObj<IndexedDBService>;
+  let mockRealtimeService: jasmine.SpyObj<RealtimeService>;
 
-    const mockMessage: Message = {
-        _id: 'msg-1',
+  const mockMessage: Message = {
+    _id: 'msg-1',
+    tagId: 'tag-1',
+    userId: 'user-1',
+    content: {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello' }] }],
+    },
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+  };
+
+  beforeEach(() => {
+    realtimeEventsSubject = new Subject<ChatEvent>();
+
+    mockIndexedDB = jasmine.createSpyObj('IndexedDBService', [
+      'getAll',
+      'put',
+      'putMany',
+      'delete',
+      'clear',
+    ]);
+    mockIndexedDB.getAll.and.returnValue(Promise.resolve([]));
+    mockIndexedDB.putMany.and.returnValue(Promise.resolve());
+    mockIndexedDB.delete.and.returnValue(Promise.resolve());
+
+    mockRealtimeService = jasmine.createSpyObj('RealtimeService', ['sendTyping'], {
+      events$: realtimeEventsSubject.asObservable(),
+      typing$: new Subject().asObservable(),
+    });
+
+    TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
+      providers: [
+        MessageService,
+        { provide: PLATFORM_ID, useValue: 'browser' },
+        { provide: IndexedDBService, useValue: mockIndexedDB },
+        { provide: RealtimeService, useValue: mockRealtimeService },
+      ],
+    });
+
+    service = TestBed.inject(MessageService);
+    httpMock = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    httpMock.verify();
+  });
+
+  describe('loadMessages', () => {
+    it('should load messages for a tag', (done) => {
+      const messages = [mockMessage];
+
+      service.loadMessages('tag-1').subscribe((result) => {
+        expect(result).toEqual(messages);
+        expect(service.messagesForTag()).toEqual(messages);
+        done();
+      });
+
+      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      expect(req.request.method).toBe('GET');
+      req.flush({ messages });
+    });
+
+    it('should set currentTagId when loading messages', (done) => {
+      service.loadMessages('tag-1').subscribe(() => {
+        // Verify the currentTagId is set by checking messagesForTag filter works
+        expect(service.messagesForTag().length).toBe(1);
+        done();
+      });
+
+      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      req.flush({ messages: [mockMessage] });
+    });
+
+    it('should handle errors', (done) => {
+      service.loadMessages('tag-1').subscribe({
+        next: (result) => {
+          expect(result).toEqual([]);
+          expect(service.error()).toBe('Failed to load messages');
+          done();
+        },
+      });
+
+      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      req.flush({ error: 'Failed to load messages' }, { status: 500, statusText: 'Server Error' });
+    });
+  });
+
+  describe('sendMessage', () => {
+    it('should send a message and update store', (done) => {
+      const content: NoteContent = {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test' }] }],
+      };
+
+      // First load messages to set currentTagId
+      service.loadMessages('tag-1').subscribe();
+      const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
+      loadReq.flush({ messages: [] });
+
+      service.sendMessage('tag-1', content).subscribe((result) => {
+        expect(result).toEqual(mockMessage);
+        expect(service.messagesForTag().some((m) => m._id === mockMessage._id)).toBeTrue();
+        done();
+      });
+
+      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({ content });
+      req.flush({ message: mockMessage });
+    });
+
+    it('should perform optimistic update', () => {
+      const content: NoteContent = {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test' }] }],
+      };
+
+      // First load messages to set currentTagId
+      service.loadMessages('tag-1').subscribe();
+      const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
+      loadReq.flush({ messages: [] });
+
+      service.sendMessage('tag-1', content).subscribe();
+
+      // Should have temp message before response
+      const messages = service.messagesForTag();
+      expect(messages.some((m) => m._id.startsWith('temp-'))).toBeTrue();
+
+      // Complete the request
+      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      req.flush({ message: mockMessage });
+    });
+
+    it('should rollback on error', (done) => {
+      const content: NoteContent = {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test' }] }],
+      };
+
+      // First load messages to set currentTagId
+      service.loadMessages('tag-1').subscribe();
+      const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
+      loadReq.flush({ messages: [] });
+
+      service.sendMessage('tag-1', content).subscribe({
+        error: () => {
+          // Temp message should be removed
+          const messages = service.messagesForTag();
+          expect(messages.some((m) => m._id.startsWith('temp-'))).toBeFalse();
+          done();
+        },
+      });
+
+      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      req.flush({ error: 'Failed' }, { status: 500, statusText: 'Server Error' });
+    });
+  });
+
+  describe('realtime events', () => {
+    beforeEach((done) => {
+      // Load messages to set currentTagId
+      service.loadMessages('tag-1').subscribe(() => done());
+      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      req.flush({ messages: [] });
+    });
+
+    it('should add message from realtime event for current tag', () => {
+      const newMessage: Message = {
+        ...mockMessage,
+        _id: 'msg-2',
+      };
+
+      realtimeEventsSubject.next({
+        action: 'message',
+        data: newMessage,
+        tagId: 'tag-1',
+        userId: 'user-2',
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(service.messagesForTag().some((m) => m._id === 'msg-2')).toBeTrue();
+    });
+
+    it('should ignore message from realtime event for different tag', () => {
+      const newMessage: Message = {
+        ...mockMessage,
+        _id: 'msg-2',
+        tagId: 'tag-2', // Different tag
+      };
+
+      realtimeEventsSubject.next({
+        action: 'message',
+        data: newMessage,
+        tagId: 'tag-2',
+        userId: 'user-2',
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(service.messagesForTag().some((m) => m._id === 'msg-2')).toBeFalse();
+    });
+
+    it('should update message from realtime edited event', () => {
+      // First add a message
+      service.loadMessages('tag-1').subscribe();
+      const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
+      loadReq.flush({ messages: [mockMessage] });
+
+      const editedMessage: Message = {
+        ...mockMessage,
+        content: {
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Edited' }] }],
+        },
+        editedAt: new Date().toISOString(),
+      };
+
+      realtimeEventsSubject.next({
+        action: 'edited',
+        data: editedMessage,
         tagId: 'tag-1',
         userId: 'user-1',
-        content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello' }] }] },
-        createdAt: '2024-01-01T00:00:00.000Z',
-        updatedAt: '2024-01-01T00:00:00.000Z',
-    };
+        timestamp: new Date().toISOString(),
+      });
 
-    beforeEach(() => {
-        realtimeEventsSubject = new Subject<ChatEvent>();
-
-        mockIndexedDB = jasmine.createSpyObj('IndexedDBService', ['getAll', 'put', 'putMany', 'delete', 'clear']);
-        mockIndexedDB.getAll.and.returnValue(Promise.resolve([]));
-        mockIndexedDB.putMany.and.returnValue(Promise.resolve());
-        mockIndexedDB.delete.and.returnValue(Promise.resolve());
-
-        mockRealtimeService = jasmine.createSpyObj('RealtimeService', ['sendTyping'], {
-            events$: realtimeEventsSubject.asObservable(),
-            typing$: new Subject().asObservable(),
-        });
-
-        TestBed.configureTestingModule({
-            imports: [HttpClientTestingModule],
-            providers: [
-                MessageService,
-                { provide: PLATFORM_ID, useValue: 'browser' },
-                { provide: IndexedDBService, useValue: mockIndexedDB },
-                { provide: RealtimeService, useValue: mockRealtimeService },
-            ],
-        });
-
-        service = TestBed.inject(MessageService);
-        httpMock = TestBed.inject(HttpTestingController);
+      const message = service.messagesForTag().find((m) => m._id === mockMessage._id);
+      expect(message?.editedAt).toBeDefined();
     });
 
-    afterEach(() => {
-        httpMock.verify();
+    it('should remove message from realtime deleted event', () => {
+      // First add a message
+      service.loadMessages('tag-1').subscribe();
+      const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
+      loadReq.flush({ messages: [mockMessage] });
+
+      realtimeEventsSubject.next({
+        action: 'deleted',
+        data: { _id: mockMessage._id },
+        tagId: 'tag-1',
+        userId: 'user-1',
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(service.messagesForTag().some((m) => m._id === mockMessage._id)).toBeFalse();
+    });
+  });
+
+  describe('unread counts', () => {
+    it('should load unread counts', (done) => {
+      const counts = [
+        { tagId: 'tag-1', count: 5 },
+        { tagId: 'tag-2', count: 3 },
+      ];
+
+      service.loadUnreadCounts().subscribe((result) => {
+        expect(result).toEqual(counts);
+        expect(service.getUnreadCount('tag-1')).toBe(5);
+        expect(service.getUnreadCount('tag-2')).toBe(3);
+        expect(service.getUnreadCount('tag-unknown')).toBe(0);
+        done();
+      });
+
+      const req = httpMock.expectOne('/api/unread');
+      expect(req.request.method).toBe('GET');
+      req.flush({ counts });
     });
 
-    describe('loadMessages', () => {
-        it('should load messages for a tag', (done) => {
-            const messages = [mockMessage];
+    it('should mark tag as read', (done) => {
+      // First load unread counts
+      service.loadUnreadCounts().subscribe();
+      const countsReq = httpMock.expectOne('/api/unread');
+      countsReq.flush({ counts: [{ tagId: 'tag-1', count: 5 }] });
 
-            service.loadMessages('tag-1').subscribe((result) => {
-                expect(result).toEqual(messages);
-                expect(service.messagesForTag()).toEqual(messages);
-                done();
-            });
+      service.markAsRead('tag-1').subscribe(() => {
+        expect(service.getUnreadCount('tag-1')).toBe(0);
+        done();
+      });
 
-            const req = httpMock.expectOne('/api/tags/tag-1/messages');
-            expect(req.request.method).toBe('GET');
-            req.flush({ messages });
-        });
-
-        it('should set currentTagId when loading messages', (done) => {
-            service.loadMessages('tag-1').subscribe(() => {
-                // Verify the currentTagId is set by checking messagesForTag filter works
-                expect(service.messagesForTag().length).toBe(1);
-                done();
-            });
-
-            const req = httpMock.expectOne('/api/tags/tag-1/messages');
-            req.flush({ messages: [mockMessage] });
-        });
-
-        it('should handle errors', (done) => {
-            service.loadMessages('tag-1').subscribe({
-                next: (result) => {
-                    expect(result).toEqual([]);
-                    expect(service.error()).toBe('Failed to load messages');
-                    done();
-                },
-            });
-
-            const req = httpMock.expectOne('/api/tags/tag-1/messages');
-            req.flush({ error: 'Failed to load messages' }, { status: 500, statusText: 'Server Error' });
-        });
+      const req = httpMock.expectOne('/api/tags/tag-1/read');
+      expect(req.request.method).toBe('POST');
+      req.flush({ lastReadAt: new Date().toISOString() });
     });
-
-    describe('sendMessage', () => {
-        it('should send a message and update store', (done) => {
-            const content: NoteContent = {
-                type: 'doc',
-                content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test' }] }],
-            };
-
-            // First load messages to set currentTagId
-            service.loadMessages('tag-1').subscribe();
-            const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
-            loadReq.flush({ messages: [] });
-
-            service.sendMessage('tag-1', content).subscribe((result) => {
-                expect(result).toEqual(mockMessage);
-                expect(service.messagesForTag().some((m) => m._id === mockMessage._id)).toBeTrue();
-                done();
-            });
-
-            const req = httpMock.expectOne('/api/tags/tag-1/messages');
-            expect(req.request.method).toBe('POST');
-            expect(req.request.body).toEqual({ content });
-            req.flush({ message: mockMessage });
-        });
-
-        it('should perform optimistic update', () => {
-            const content: NoteContent = {
-                type: 'doc',
-                content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test' }] }],
-            };
-
-            // First load messages to set currentTagId
-            service.loadMessages('tag-1').subscribe();
-            const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
-            loadReq.flush({ messages: [] });
-
-            service.sendMessage('tag-1', content).subscribe();
-
-            // Should have temp message before response
-            const messages = service.messagesForTag();
-            expect(messages.some((m) => m._id.startsWith('temp-'))).toBeTrue();
-
-            // Complete the request
-            const req = httpMock.expectOne('/api/tags/tag-1/messages');
-            req.flush({ message: mockMessage });
-        });
-
-        it('should rollback on error', (done) => {
-            const content: NoteContent = {
-                type: 'doc',
-                content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test' }] }],
-            };
-
-            // First load messages to set currentTagId
-            service.loadMessages('tag-1').subscribe();
-            const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
-            loadReq.flush({ messages: [] });
-
-            service.sendMessage('tag-1', content).subscribe({
-                error: () => {
-                    // Temp message should be removed
-                    const messages = service.messagesForTag();
-                    expect(messages.some((m) => m._id.startsWith('temp-'))).toBeFalse();
-                    done();
-                },
-            });
-
-            const req = httpMock.expectOne('/api/tags/tag-1/messages');
-            req.flush({ error: 'Failed' }, { status: 500, statusText: 'Server Error' });
-        });
-    });
-
-    describe('realtime events', () => {
-        beforeEach((done) => {
-            // Load messages to set currentTagId
-            service.loadMessages('tag-1').subscribe(() => done());
-            const req = httpMock.expectOne('/api/tags/tag-1/messages');
-            req.flush({ messages: [] });
-        });
-
-        it('should add message from realtime event for current tag', () => {
-            const newMessage: Message = {
-                ...mockMessage,
-                _id: 'msg-2',
-            };
-
-            realtimeEventsSubject.next({
-                action: 'message',
-                data: newMessage,
-                tagId: 'tag-1',
-                userId: 'user-2',
-                timestamp: new Date().toISOString(),
-            });
-
-            expect(service.messagesForTag().some((m) => m._id === 'msg-2')).toBeTrue();
-        });
-
-        it('should ignore message from realtime event for different tag', () => {
-            const newMessage: Message = {
-                ...mockMessage,
-                _id: 'msg-2',
-                tagId: 'tag-2', // Different tag
-            };
-
-            realtimeEventsSubject.next({
-                action: 'message',
-                data: newMessage,
-                tagId: 'tag-2',
-                userId: 'user-2',
-                timestamp: new Date().toISOString(),
-            });
-
-            expect(service.messagesForTag().some((m) => m._id === 'msg-2')).toBeFalse();
-        });
-
-        it('should update message from realtime edited event', () => {
-            // First add a message
-            service.loadMessages('tag-1').subscribe();
-            const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
-            loadReq.flush({ messages: [mockMessage] });
-
-            const editedMessage: Message = {
-                ...mockMessage,
-                content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Edited' }] }] },
-                editedAt: new Date().toISOString(),
-            };
-
-            realtimeEventsSubject.next({
-                action: 'edited',
-                data: editedMessage,
-                tagId: 'tag-1',
-                userId: 'user-1',
-                timestamp: new Date().toISOString(),
-            });
-
-            const message = service.messagesForTag().find((m) => m._id === mockMessage._id);
-            expect(message?.editedAt).toBeDefined();
-        });
-
-        it('should remove message from realtime deleted event', () => {
-            // First add a message
-            service.loadMessages('tag-1').subscribe();
-            const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
-            loadReq.flush({ messages: [mockMessage] });
-
-            realtimeEventsSubject.next({
-                action: 'deleted',
-                data: { _id: mockMessage._id },
-                tagId: 'tag-1',
-                userId: 'user-1',
-                timestamp: new Date().toISOString(),
-            });
-
-            expect(service.messagesForTag().some((m) => m._id === mockMessage._id)).toBeFalse();
-        });
-    });
-
-    describe('unread counts', () => {
-        it('should load unread counts', (done) => {
-            const counts = [
-                { tagId: 'tag-1', count: 5 },
-                { tagId: 'tag-2', count: 3 },
-            ];
-
-            service.loadUnreadCounts().subscribe((result) => {
-                expect(result).toEqual(counts);
-                expect(service.getUnreadCount('tag-1')).toBe(5);
-                expect(service.getUnreadCount('tag-2')).toBe(3);
-                expect(service.getUnreadCount('tag-unknown')).toBe(0);
-                done();
-            });
-
-            const req = httpMock.expectOne('/api/unread');
-            expect(req.request.method).toBe('GET');
-            req.flush({ counts });
-        });
-
-        it('should mark tag as read', (done) => {
-            // First load unread counts
-            service.loadUnreadCounts().subscribe();
-            const countsReq = httpMock.expectOne('/api/unread');
-            countsReq.flush({ counts: [{ tagId: 'tag-1', count: 5 }] });
-
-            service.markAsRead('tag-1').subscribe(() => {
-                expect(service.getUnreadCount('tag-1')).toBe(0);
-                done();
-            });
-
-            const req = httpMock.expectOne('/api/tags/tag-1/read');
-            expect(req.request.method).toBe('POST');
-            req.flush({ lastReadAt: new Date().toISOString() });
-        });
-    });
+  });
 });

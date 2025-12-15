@@ -1,114 +1,109 @@
 @if (note()) {
-    <div class="editor-container" [class.readonly]="!editable()">
-        <!-- Title -->
-        @if (editable()) {
-            <input
-                #titleInput
-                type="text"
-                [value]="title()"
-                (input)="onTitleChange($event)"
-                (keydown)="onTitleKeydown($event)"
-                placeholder="Untitled"
-                class="title-input"
-            />
-        } @else {
-            <h1 class="title-readonly">{{ title() }}</h1>
-        }
+  <div class="editor-container" [class.readonly]="!editable()">
+    <!-- Title -->
+    @if (editable()) {
+      <input
+        #titleInput
+        type="text"
+        [value]="title()"
+        (input)="onTitleChange($event)"
+        (keydown)="onTitleKeydown($event)"
+        placeholder="Untitled"
+        class="title-input"
+      />
+    } @else {
+      <h1 class="title-readonly">{{ title() }}</h1>
+    }
 
-        <!-- Tags -->
-        @if (tag()) {
-            <div class="tags">
-                <span class="tag">
-                    <span class="material-icons-round">tag</span>
-                    {{ tag()!.label }}
-                </span>
-            </div>
-        }
+    <!-- Tags -->
+    @if (tag()) {
+      <div class="tags">
+        <span class="tag">
+          <span class="material-icons-round">tag</span>
+          {{ tag()!.label }}
+        </span>
+      </div>
+    }
 
-        <!-- Toolbar -->
-        @if (editable()) {
-            <div class="toolbar">
-                <button
-                    type="button"
-                    (click)="toggleHeading(1)"
-                    [class.active]="isActive('heading', { level: 1 })"
-                    title="Heading 1"
-                >
-                    <span class="material-icons-round">format_h1</span>
-                </button>
-                <button
-                    type="button"
-                    (click)="toggleBold()"
-                    [class.active]="isActive('bold')"
-                    title="Bold"
-                >
-                    <span class="material-icons-round">format_bold</span>
-                </button>
-                <button
-                    type="button"
-                    (click)="toggleItalic()"
-                    [class.active]="isActive('italic')"
-                    title="Italic"
-                >
-                    <span class="material-icons-round">format_italic</span>
-                </button>
-                <div class="divider"></div>
-                <button
-                    type="button"
-                    (click)="toggleBulletList()"
-                    [class.active]="isActive('bulletList')"
-                    title="Bullet List"
-                >
-                    <span class="material-icons-round">format_list_bulleted</span>
-                </button>
-                <button
-                    type="button"
-                    (click)="toggleOrderedList()"
-                    [class.active]="isActive('orderedList')"
-                    title="Numbered List"
-                >
-                    <span class="material-icons-round">format_list_numbered</span>
-                </button>
-                <button
-                    type="button"
-                    (click)="toggleTaskList()"
-                    [class.active]="isActive('taskList')"
-                    title="Task List"
-                >
-                    <span class="material-icons-round">checklist</span>
-                </button>
-                <div class="divider"></div>
-                <button
-                    type="button"
-                    (click)="toggleBlockquote()"
-                    [class.active]="isActive('blockquote')"
-                    title="Quote"
-                >
-                    <span class="material-icons-round">format_quote</span>
-                </button>
-                <button
-                    type="button"
-                    (click)="toggleCode()"
-                    [class.active]="isActive('code')"
-                    title="Inline Code"
-                >
-                    <span class="material-icons-round">code</span>
-                </button>
-            </div>
-        }
+    <!-- Toolbar -->
+    @if (editable()) {
+      <div class="toolbar">
+        <button
+          type="button"
+          (click)="toggleHeading(1)"
+          [class.active]="isActive('heading', { level: 1 })"
+          title="Heading 1"
+        >
+          <span class="material-icons-round">format_h1</span>
+        </button>
+        <button type="button" (click)="toggleBold()" [class.active]="isActive('bold')" title="Bold">
+          <span class="material-icons-round">format_bold</span>
+        </button>
+        <button
+          type="button"
+          (click)="toggleItalic()"
+          [class.active]="isActive('italic')"
+          title="Italic"
+        >
+          <span class="material-icons-round">format_italic</span>
+        </button>
+        <div class="divider"></div>
+        <button
+          type="button"
+          (click)="toggleBulletList()"
+          [class.active]="isActive('bulletList')"
+          title="Bullet List"
+        >
+          <span class="material-icons-round">format_list_bulleted</span>
+        </button>
+        <button
+          type="button"
+          (click)="toggleOrderedList()"
+          [class.active]="isActive('orderedList')"
+          title="Numbered List"
+        >
+          <span class="material-icons-round">format_list_numbered</span>
+        </button>
+        <button
+          type="button"
+          (click)="toggleTaskList()"
+          [class.active]="isActive('taskList')"
+          title="Task List"
+        >
+          <span class="material-icons-round">checklist</span>
+        </button>
+        <div class="divider"></div>
+        <button
+          type="button"
+          (click)="toggleBlockquote()"
+          [class.active]="isActive('blockquote')"
+          title="Quote"
+        >
+          <span class="material-icons-round">format_quote</span>
+        </button>
+        <button
+          type="button"
+          (click)="toggleCode()"
+          [class.active]="isActive('code')"
+          title="Inline Code"
+        >
+          <span class="material-icons-round">code</span>
+        </button>
+      </div>
+    }
 
-        <!-- TipTap Editor -->
-        <div #editorElement class="editor-content"></div>
-    </div>
+    <!-- TipTap Editor -->
+    <div #editorElement class="editor-content"></div>
+  </div>
 } @else if (tag()) {
-    <!-- Show chat when no note is selected but tag is selected -->
-    <app-chat [tagId]="tag()!._id" />
+  <!-- Show chat when no note is selected but tag is selected -->
+  <app-chat [tagId]="tag()!._id" />
 } @else {
-    <div class="empty-state">
-        <div class="empty-icon">
-            <span class="material-icons-round">edit_note</span>
-        </div>
-        <h2>Select a note</h2>
-        <p>Choose a note from the sidebar or create a new one</p>
+  <div class="empty-state">
+    <div class="empty-icon">
+      <span class="material-icons-round">edit_note</span>
     </div>
+    <h2>Select a note</h2>
+    <p>Choose a note from the sidebar or create a new one</p>
+  </div>
 }

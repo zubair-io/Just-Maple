@@ -8,7 +8,11 @@ import {
 } from '@simplewebauthn/server';
 import type { AuthenticatorTransportFuture } from '@simplewebauthn/server';
 import { findOrCreateUser, findUserById, findUserByEmail } from '../repositories/user.repo';
-import { createMagicLink, validateAndConsumeMagicLink, validateAndConsumeCode } from '../repositories/magic-link.repo';
+import {
+    createMagicLink,
+    validateAndConsumeMagicLink,
+    validateAndConsumeCode,
+} from '../repositories/magic-link.repo';
 import {
     createPasskey,
     findPasskeyByCredentialId,
@@ -78,7 +82,10 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 };
 
                 // Only include devToken/devCode in local development (never in production)
-                const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168.');
+                const isLocalhost =
+                    origin.includes('localhost') ||
+                    origin.includes('127.0.0.1') ||
+                    origin.includes('192.168.');
                 if (config.isDev && isLocalhost) {
                     response.devToken = token;
                     response.devCode = code;
