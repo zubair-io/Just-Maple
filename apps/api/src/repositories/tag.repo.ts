@@ -125,7 +125,7 @@ export async function findTagsByUserId(userId: string): Promise<Tag[]> {
                 { userId: new ObjectId(userId) }, // Legacy format
             ],
         })
-        .sort({ order: 1, label: 1 })
+        .sort({ label: 1 })
         .toArray();
     return docs.map(toTagResponse);
 }
