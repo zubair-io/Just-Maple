@@ -1,7 +1,8 @@
 import { Injectable, signal, inject, PLATFORM_ID, DestroyRef, NgZone } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
-import { Subject, Observable, filter, map } from 'rxjs';
+import { Subject, Observable, filter } from 'rxjs';
 import { AuthService } from './auth.service';
+import { environment } from '../../environments/environment';
 import type { ChatEvent, TypingEvent } from '@maple/shared';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
@@ -163,9 +164,12 @@ export class RealtimeService {
     }
 
     private getWebSocketUrl(token: string): string {
+        // Use environment wsUrl if configured (production), otherwise use same host (dev proxy)
+        if (environment.wsUrl) {
+            return `${environment.wsUrl}/ws/chat?token=${encodeURIComponent(token)}`;
+        }
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
-        // Use same host - Angular proxy handles /ws routing to API server
         return `${protocol}//${host}/ws/chat?token=${encodeURIComponent(token)}`;
     }
 
