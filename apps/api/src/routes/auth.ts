@@ -77,8 +77,9 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                     message: 'Magic link sent to your email',
                 };
 
-                // In dev mode, include the token for easy testing
-                if (config.isDev) {
+                // Only include devToken in local development (never in production)
+                const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168.');
+                if (config.isDev && isLocalhost) {
                     response.devToken = token;
                 }
 
