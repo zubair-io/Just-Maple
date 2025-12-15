@@ -1,0 +1,66 @@
+<header
+    class="h-14 flex items-center justify-between px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
+>
+    <!-- Breadcrumb -->
+    <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+        @if (selectedTag()) {
+            <div
+                class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100"
+            >
+                <span class="material-icons-round text-sm text-[var(--color-primary)]">folder</span>
+                <span>{{ selectedTag()!.label }}</span>
+            </div>
+        }
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-1">
+        <span class="text-xs text-[var(--color-text-muted)] mr-2">
+            {{ papersForTag().length }} items
+        </span>
+        <div class="flex items-center border-l border-[var(--color-border)] pl-2 gap-1">
+            <button
+                (click)="openScanner()"
+                class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+                title="Scan Barcode"
+            >
+                <span class="material-icons-round text-lg">qr_code_scanner</span>
+            </button>
+        </div>
+    </div>
+</header>
+
+<!-- Scanner Modal -->
+@if (showScanner()) {
+    <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg max-w-md w-full">
+            <app-barcode-scanner
+                (scanned)="onBarcodeScanned($event)"
+                (notFound)="onBarcodeNotFound($event)"
+                (close)="closeScanner()"
+            />
+        </div>
+    </div>
+}
+
+<!-- Paper List -->
+<div class="flex-1 overflow-hidden">
+    <app-paper-list
+        [papers]="papersForTag()"
+        [selectedPaperId]="null"
+        (selectPaper)="onSelectPaper($event)"
+    />
+</div>
+
+<!-- FAB for scanning -->
+<div class="absolute bottom-24 right-4 md:bottom-12 md:right-12 z-20">
+    <button
+        (click)="openScanner()"
+        class="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white rounded-2xl w-14 h-14 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-[var(--color-primary)]/30 group"
+    >
+        <span
+            class="material-icons-round text-2xl group-hover:scale-110 transition-transform duration-300"
+            >qr_code_scanner</span
+        >
+    </button>
+</div>

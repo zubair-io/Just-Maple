@@ -1,10 +1,12 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
 import { Subscription, filter } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { TagService } from '../../services/tag.service';
 import { NoteService } from '../../services/note.service';
+import { RealtimeService } from '../../services/realtime.service';
+import { UiStateService } from '../../services/ui-state.service';
 import { SidebarComponent } from '../../components';
 
 @Component({
@@ -19,16 +21,23 @@ export class HomeComponent implements OnInit, OnDestroy {
     readonly authService = inject(AuthService);
     readonly tagService = inject(TagService);
     readonly noteService = inject(NoteService);
+    private readonly realtimeService = inject(RealtimeService);
+    private readonly uiStateService = inject(UiStateService);
 
     readonly selectedNoteId = signal<string | null>(null);
     readonly selectedTagId = signal<string | null>(null);
     readonly sidebarOpen = signal(false);
+    readonly chatInputFocused = this.uiStateService.chatInputFocused;
 
     private routerSubscription?: Subscription;
 
     ngOnInit(): void {
-        this.tagService.ensureDefaultTag();
-        this.noteService.loadNotes();
+        // Load tags and notes
+        this.tagService.ensureDefaultTag().subscribe();
+        this.noteService.loadNotes().subscribe();
+
+        // Connect to realtime service
+        this.realtimeService.connect();
 
         // Sync selected IDs from route
         this.syncFromRoute();
@@ -103,8 +112,10 @@ export class HomeComponent implements OnInit, OnDestroy {
         const name = prompt('Enter tag name:');
         if (!name) return;
 
-        this.tagService.createTag({ label: name }).catch((error) => {
-            console.error('Failed to create tag:', error);
+        this.tagService.createTag({ label: name }).subscribe({
+            error: (error) => {
+                console.error('Failed to create tag:', error);
+            },
         });
     }
 

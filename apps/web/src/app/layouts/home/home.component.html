@@ -1,4 +1,4 @@
-<div class="h-screen flex overflow-hidden bg-[var(--color-bg)]">
+<div class="h-dvh flex overflow-hidden bg-[var(--color-bg)]">
     <!-- Mobile Overlay -->
     @if (sidebarOpen()) {
         <div
@@ -25,14 +25,19 @@
     </div>
 
     <!-- Main Content Area -->
-    <main class="flex-1 h-full overflow-y-auto flex flex-col relative bg-[var(--color-bg)] pb-16 md:pb-0">
+    <main
+        class="flex-1 h-full overflow-y-auto flex flex-col relative bg-[var(--color-bg)] md:pb-0"
+        [class.pb-16]="!chatInputFocused()"
+        [class.pb-0]="chatInputFocused()"
+    >
         <router-outlet />
     </main>
 
-    <!-- Mobile Footer Nav -->
-    <nav
-        class="fixed bottom-0 left-0 right-0 h-16 bg-[var(--color-surface)] border-t border-[var(--color-border)] flex items-center justify-around px-4 z-30 md:hidden"
-    >
+    <!-- Mobile Footer Nav (hidden when chat input is focused) -->
+    @if (!chatInputFocused()) {
+        <nav
+            class="fixed bottom-0 left-0 right-0 h-16 bg-[var(--color-surface)] border-t border-[var(--color-border)] flex items-center justify-around px-4 z-30 md:hidden"
+        >
         <!-- Menu Button -->
         <button
             (click)="toggleSidebar()"
@@ -59,5 +64,6 @@
             <span class="material-icons-round text-2xl">settings</span>
             <span class="text-[10px] font-medium">Settings</span>
         </button>
-    </nav>
+        </nav>
+    }
 </div>

@@ -47,6 +47,15 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('passkeys').createIndex({ credentialId: 1 }, { unique: true });
     await database.collection('passkeys').createIndex({ userId: 1 });
 
+    // Messages collection
+    await database.collection('messages').createIndex({ tagId: 1, _id: -1 }); // For paginated queries
+    await database.collection('messages').createIndex({ tagId: 1, createdAt: -1 }); // For unread counts
+
+    // Unread tracking collection
+    await database
+        .collection('unread_tracking')
+        .createIndex({ userId: 1, tagId: 1 }, { unique: true });
+
     console.log('Database indexes created');
 }
 

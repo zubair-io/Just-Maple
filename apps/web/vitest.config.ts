@@ -9,6 +9,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     include: ['src/**/*.spec.ts'],
+    setupFiles: ['src/test-init.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
@@ -17,7 +18,7 @@ export default defineConfig({
     },
     server: {
       deps: {
-        inline: [/@angular/, /@simplewebauthn/, /@analogjs/],
+        inline: [/@angular/, /@simplewebauthn/, /@analogjs/, /@tiptap/],
       },
     },
   },

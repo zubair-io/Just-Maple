@@ -1,6 +1,6 @@
 export const config = {
     port: parseInt(process.env.PORT || '7071'),
-    mongodbUri: process.env.MONGODB_URI || 'mongodb://192.168.0.244:27017/just-maple',
+    mongodbUri: process.env.MONGODB_URI || 'mongodb://192.168.0.244:27017/justmaple',
     jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
     jwtExpiresIn: '7d',
     magicLinkExpiresIn: 15 * 60 * 1000, // 15 minutes

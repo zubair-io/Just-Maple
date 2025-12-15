@@ -101,6 +101,14 @@
                 [class.text-[var(--color-text-muted)]]="!expandedTags().has(tag._id)"
                 >{{ tag.label }}</span
               >
+              <!-- Unread badge -->
+              @if (getUnreadCount(tag._id) > 0) {
+                <span
+                  class="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-primary)] text-white rounded-full min-w-[18px] text-center"
+                >
+                  {{ getUnreadCount(tag._id) > 99 ? '99+' : getUnreadCount(tag._id) }}
+                </span>
+              }
             </div>
             @if (getNotesForTag(tag._id).length > 0) {
               <span class="material-icons-round text-base text-[var(--color-text-muted)]">

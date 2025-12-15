@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
-import { findUserById } from '../repositories/user.repo';
+import { findUserById, findUserByEmail } from '../repositories/user.repo';
 import type { JWTPayload } from '@maple/shared';
 import {
     findTagsByUserId,
@@ -8,6 +8,11 @@ import {
     createTag,
     updateTag,
     deleteTag,
+    shareTag,
+    unshareTag,
+    updateTagPublicStatus,
+    getTagMembers,
+    getAccessLevel,
 } from '../repositories/tag.repo';
 
 export const tagRoutes = new Elysia({ prefix: '/api/tags' })
@@ -124,6 +129,144 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
             }
 
             return { message: 'Tag deleted successfully' };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+        },
+    )
+
+    // Get tag members (users with access)
+    .get(
+        '/:id/members',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const members = await getTagMembers(params.id, auth.user._id);
+            if (!members) {
+                set.status = 404;
+                return { error: 'Tag not found' };
+            }
+
+            return { members };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+        },
+    )
+
+    // Share tag with user (by email)
+    .post(
+        '/:id/share',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            // Find user by email
+            const targetUser = await findUserByEmail(body.email);
+            if (!targetUser) {
+                set.status = 404;
+                return { error: 'User not found', message: 'No user with that email exists' };
+            }
+
+            const tag = await shareTag(params.id, auth.user._id, {
+                userId: targetUser._id,
+                accessLevel: body.accessLevel,
+            });
+
+            if (!tag) {
+                set.status = 403;
+                return { error: 'Forbidden', message: 'You do not have permission to share this tag' };
+            }
+
+            return { tag };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            body: t.Object({
+                email: t.String({ format: 'email' }),
+                accessLevel: t.Union([t.Literal('read'), t.Literal('write')]),
+            }),
+        },
+    )
+
+    // Remove user's access to tag
+    .delete(
+        '/:id/share/:userId',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const tag = await unshareTag(params.id, auth.user._id, params.userId);
+
+            if (!tag) {
+                set.status = 403;
+                return { error: 'Forbidden', message: 'You do not have permission to unshare this tag' };
+            }
+
+            return { tag };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+                userId: t.String(),
+            }),
+        },
+    )
+
+    // Update tag's public status
+    .put(
+        '/:id/public',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const tag = await updateTagPublicStatus(params.id, auth.user._id, body.isPublic);
+
+            if (!tag) {
+                set.status = 403;
+                return { error: 'Forbidden', message: 'You do not have permission to change public status' };
+            }
+
+            return { tag };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            body: t.Object({
+                isPublic: t.Boolean(),
+            }),
+        },
+    )
+
+    // Get current user's access level for a tag
+    .get(
+        '/:id/access',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const tag = await findTagById(params.id, auth.user._id);
+            if (!tag) {
+                set.status = 404;
+                return { error: 'Tag not found' };
+            }
+
+            const accessLevel = getAccessLevel(tag, auth.user._id);
+
+            return { accessLevel };
         },
         {
             params: t.Object({

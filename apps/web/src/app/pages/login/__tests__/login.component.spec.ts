@@ -1,4 +1,3 @@
-import '../../../../test-init';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { LoginComponent } from '../login.component';
@@ -48,7 +47,7 @@ describe('LoginComponent', () => {
 
     it('should render passkey button when supported', () => {
       const buttons = fixture.nativeElement.querySelectorAll('button[type="button"]');
-      const passkeyBtn = Array.from(buttons).find((btn: Element) =>
+      const passkeyBtn = Array.from(buttons as NodeListOf<Element>).find((btn) =>
         btn.textContent?.includes('Sign in with Passkey'),
       );
       expect(passkeyBtn).not.toBeUndefined();
@@ -59,7 +58,9 @@ describe('LoginComponent', () => {
       fixture.detectChanges();
 
       const paragraphs = fixture.nativeElement.querySelectorAll('p');
-      const note = Array.from(paragraphs).find((p: Element) => p.textContent?.includes('HTTPS'));
+      const note = Array.from(paragraphs as NodeListOf<Element>).find((p) =>
+        p.textContent?.includes('HTTPS'),
+      );
       expect(note).not.toBeUndefined();
     });
   });
@@ -136,7 +137,7 @@ describe('LoginComponent', () => {
       fixture.detectChanges();
 
       const paragraphs = fixture.nativeElement.querySelectorAll('p');
-      const error = Array.from(paragraphs).find((p: Element) =>
+      const error = Array.from(paragraphs as NodeListOf<Element>).find((p) =>
         p.textContent?.includes('Something went wrong'),
       );
       expect(error).not.toBeUndefined();

@@ -1,221 +1,419 @@
-import { Injectable, signal, inject, computed } from '@angular/core';
+import { Injectable, inject, PLATFORM_ID, signal } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
-import type { Note, CreateNoteInput, UpdateNoteInput } from '@maple/shared';
+import { Observable, tap, map, catchError, throwError, of, switchMap } from 'rxjs';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { createStore } from '@ngneat/elf';
+import {
+    withEntities,
+    withActiveId,
+    selectAllEntities,
+    selectActiveEntity,
+    selectEntity,
+    setEntities,
+    addEntities,
+    updateEntities,
+    deleteEntities,
+    upsertEntities,
+    setActiveId,
+    resetActiveId,
+    getEntity,
+    getAllEntities,
+    getEntitiesCount,
+    getActiveEntity,
+} from '@ngneat/elf-entities';
+import { IndexedDBService } from './indexed-db.service';
+import { DB_STORES } from './db-stores';
+import type { Note, CreateNoteInput, UpdateNoteInput, NoteContent, DEFAULT_NOTE_CONTENT } from '@maple/shared';
+
+const STORE_NAME = DB_STORES.NOTE;
 
 export interface NoteFilters {
-  tagId?: string;
-  favorites?: boolean;
-  trash?: boolean;
-  archived?: boolean;
+    tagId?: string;
+    favorites?: boolean;
+    trash?: boolean;
+    archived?: boolean;
 }
 
-@Injectable({
-  providedIn: 'root',
-})
+@Injectable({ providedIn: 'root' })
 export class NoteService {
-  private readonly http = inject(HttpClient);
+    private readonly http = inject(HttpClient);
+    private readonly indexedDB = inject(IndexedDBService);
+    private readonly platformId = inject(PLATFORM_ID);
 
-  private readonly _notes = signal<Note[]>([]);
-  private readonly _selectedNoteId = signal<string | null>(null);
-  private readonly _isLoading = signal(false);
-  private readonly _error = signal<string | null>(null);
+    // ELF Store
+    private readonly store = createStore(
+        { name: STORE_NAME },
+        withEntities<Note, '_id'>({ idKey: '_id' }),
+        withActiveId(),
+    );
 
-  readonly notes = this._notes.asReadonly();
-  readonly selectedNoteId = this._selectedNoteId.asReadonly();
-  readonly isLoading = this._isLoading.asReadonly();
-  readonly error = this._error.asReadonly();
+    // Observable selectors
+    readonly notes$ = this.store.pipe(selectAllEntities());
+    readonly activeNote$ = this.store.pipe(selectActiveEntity());
 
-  readonly selectedNote = computed(() => {
-    const id = this._selectedNoteId();
-    if (!id) return null;
-    return this._notes().find((n) => n._id === id) || null;
-  });
+    // Signal wrappers for Angular reactivity
+    private readonly _notesSignal = toSignal(this.notes$, { initialValue: [] as Note[] });
 
-  async loadNotes(filters?: NoteFilters): Promise<void> {
-    this._isLoading.set(true);
-    this._error.set(null);
+    // UI state signals
+    private readonly _isLoading = signal(false);
+    private readonly _error = signal<string | null>(null);
 
-    try {
-      const params: Record<string, string> = {};
-      if (filters?.tagId) params['tagId'] = filters.tagId;
-      if (filters?.favorites) params['favorites'] = 'true';
-      if (filters?.trash) params['trash'] = 'true';
-      if (filters?.archived) params['archived'] = 'true';
+    readonly isLoading = this._isLoading.asReadonly();
+    readonly error = this._error.asReadonly();
 
-      const response = await firstValueFrom(
-        this.http.get<{ notes: Note[] }>('/api/notes', { params }),
-      );
-      this._notes.set(response.notes);
-    } catch (err: any) {
-      const message = err?.error?.error || 'Failed to load notes';
-      this._error.set(message);
-      this._notes.set([]);
-    } finally {
-      this._isLoading.set(false);
-    }
-  }
-
-  async loadNote(id: string): Promise<Note | null> {
-    this._isLoading.set(true);
-    this._error.set(null);
-
-    try {
-      const response = await firstValueFrom(this.http.get<{ note: Note }>(`/api/notes/${id}`));
-
-      // Update in local state if exists, otherwise add
-      this._notes.update((notes) => {
-        const exists = notes.some((n) => n._id === id);
-        if (exists) {
-          return notes.map((n) => (n._id === id ? response.note : n));
+    constructor() {
+        if (isPlatformBrowser(this.platformId)) {
+            this.hydrateFromIndexedDB();
         }
-        return [...notes, response.note];
-      });
-
-      return response.note;
-    } catch (err: any) {
-      const message = err?.error?.error || 'Failed to load note';
-      this._error.set(message);
-      return null;
-    } finally {
-      this._isLoading.set(false);
     }
-  }
 
-  async createNote(data: CreateNoteInput = {}): Promise<Note> {
-    this._isLoading.set(true);
-    this._error.set(null);
-
-    try {
-      const response = await firstValueFrom(this.http.post<{ note: Note }>('/api/notes', data));
-
-      // Add to local state
-      this._notes.update((notes) => [response.note, ...notes]);
-
-      return response.note;
-    } catch (err: any) {
-      const message = err?.error?.error || 'Failed to create note';
-      this._error.set(message);
-      throw new Error(message);
-    } finally {
-      this._isLoading.set(false);
+    private async hydrateFromIndexedDB(): Promise<void> {
+        const cached = await this.indexedDB.getAll<Note>(STORE_NAME);
+        if (cached.length > 0 && this.store.query(getEntitiesCount()) === 0) {
+            this.store.update(setEntities(cached));
+        }
     }
-  }
 
-  async updateNote(id: string, data: UpdateNoteInput): Promise<Note> {
-    this._error.set(null);
-
-    try {
-      const response = await firstValueFrom(
-        this.http.put<{ note: Note }>(`/api/notes/${id}`, data),
-      );
-
-      // Update local state
-      this._notes.update((notes) => notes.map((n) => (n._id === id ? response.note : n)));
-
-      return response.note;
-    } catch (err: any) {
-      const message = err?.error?.error || 'Failed to update note';
-      this._error.set(message);
-      throw new Error(message);
+    /**
+     * Get all notes as a reactive signal
+     */
+    notes(): Note[] {
+        return this._notesSignal() ?? [];
     }
-  }
 
-  async moveToTrash(id: string): Promise<void> {
-    this._error.set(null);
-
-    try {
-      await firstValueFrom(this.http.post(`/api/notes/${id}/trash`, {}));
-
-      // Remove from local state (since we're showing non-trashed by default)
-      this._notes.update((notes) => notes.filter((n) => n._id !== id));
-
-      // Clear selection if this was selected
-      if (this._selectedNoteId() === id) {
-        this._selectedNoteId.set(null);
-      }
-    } catch (err: any) {
-      const message = err?.error?.error || 'Failed to move note to trash';
-      this._error.set(message);
-      throw new Error(message);
+    /**
+     * Get selected note ID synchronously
+     */
+    selectedNoteId(): string | null {
+        const active = this.store.query(getActiveEntity());
+        return active?._id || null;
     }
-  }
 
-  async restoreFromTrash(id: string): Promise<void> {
-    this._error.set(null);
-
-    try {
-      const response = await firstValueFrom(
-        this.http.post<{ note: Note }>(`/api/notes/${id}/restore`, {}),
-      );
-
-      // Update local state
-      this._notes.update((notes) => notes.map((n) => (n._id === id ? response.note : n)));
-    } catch (err: any) {
-      const message = err?.error?.error || 'Failed to restore note';
-      this._error.set(message);
-      throw new Error(message);
+    /**
+     * Get selected note synchronously
+     */
+    selectedNote(): Note | null {
+        return this.store.query(getActiveEntity()) || null;
     }
-  }
 
-  async deleteNote(id: string): Promise<void> {
-    this._error.set(null);
+    /**
+     * Load notes from API with optional filters
+     */
+    loadNotes(filters?: NoteFilters): Observable<Note[]> {
+        this._isLoading.set(true);
+        this._error.set(null);
 
-    try {
-      await firstValueFrom(this.http.delete(`/api/notes/${id}`));
+        const params: Record<string, string> = {};
+        if (filters?.tagId) params['tagId'] = filters.tagId;
+        if (filters?.favorites) params['favorites'] = 'true';
+        if (filters?.trash) params['trash'] = 'true';
+        if (filters?.archived) params['archived'] = 'true';
 
-      // Remove from local state
-      this._notes.update((notes) => notes.filter((n) => n._id !== id));
-
-      // Clear selection if this was selected
-      if (this._selectedNoteId() === id) {
-        this._selectedNoteId.set(null);
-      }
-    } catch (err: any) {
-      const message = err?.error?.error || 'Failed to delete note';
-      this._error.set(message);
-      throw new Error(message);
+        return this.http.get<{ notes: Note[] }>('/api/notes', { params }).pipe(
+            tap((response) => {
+                this.store.update(setEntities(response.notes));
+                this.persistToIndexedDB(response.notes);
+                this._isLoading.set(false);
+            }),
+            map((response) => response.notes),
+            catchError((err) => {
+                const message = err?.error?.error || 'Failed to load notes';
+                this._error.set(message);
+                this._isLoading.set(false);
+                return of([]);
+            }),
+        );
     }
-  }
 
-  async emptyTrash(): Promise<number> {
-    this._isLoading.set(true);
-    this._error.set(null);
+    /**
+     * Load a single note by ID
+     */
+    loadNote(id: string): Observable<Note | null> {
+        const cached = this.store.query(getEntity(id));
+        if (cached) {
+            return of(cached);
+        }
 
-    try {
-      const response = await firstValueFrom(
-        this.http.delete<{ count: number }>('/api/notes/trash/empty'),
-      );
+        this._isLoading.set(true);
+        this._error.set(null);
 
-      // Clear all trashed notes from local state
-      this._notes.update((notes) => notes.filter((n) => !n.isTrashed));
-
-      return response.count;
-    } catch (err: any) {
-      const message = err?.error?.error || 'Failed to empty trash';
-      this._error.set(message);
-      throw new Error(message);
-    } finally {
-      this._isLoading.set(false);
+        return this.http.get<{ note: Note }>(`/api/notes/${id}`).pipe(
+            tap((response) => {
+                this.store.update(upsertEntities([response.note]));
+                this.persistToIndexedDB([response.note]);
+                this._isLoading.set(false);
+            }),
+            map((response) => response.note),
+            catchError((err) => {
+                const message = err?.error?.error || 'Failed to load note';
+                this._error.set(message);
+                this._isLoading.set(false);
+                return of(null);
+            }),
+        );
     }
-  }
 
-  async toggleFavorite(id: string): Promise<void> {
-    const note = this._notes().find((n) => n._id === id);
-    if (!note) return;
+    /**
+     * Create a new note with optimistic update
+     */
+    createNote(data: CreateNoteInput = {}): Observable<Note> {
+        this._isLoading.set(true);
+        this._error.set(null);
 
-    await this.updateNote(id, { isFavorite: !note.isFavorite });
-  }
+        const tempId = `temp-${Date.now()}`;
+        const now = new Date().toISOString();
+        const defaultContent: NoteContent = {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [] }],
+        };
 
-  selectNote(id: string | null): void {
-    this._selectedNoteId.set(id);
-  }
+        const tempNote: Note = {
+            _id: tempId,
+            userId: 'temp',
+            title: data.title || 'Untitled',
+            content: data.content || defaultContent,
+            version: 1,
+            tagId: data.tagId,
+            isFavorite: false,
+            isArchived: false,
+            isTrashed: false,
+            createdAt: now,
+            updatedAt: now,
+        };
 
-  getNoteById(id: string): Note | undefined {
-    return this._notes().find((n) => n._id === id);
-  }
+        this.store.update(addEntities(tempNote));
 
-  getNotesForTag(tagId: string): Note[] {
-    return this._notes().filter((n) => n.tagId === tagId);
-  }
+        return this.http.post<{ note: Note }>('/api/notes', data).pipe(
+            tap((response) => {
+                this.store.update(deleteEntities(tempId));
+                this.store.update(addEntities(response.note));
+                this.persistToIndexedDB([response.note]);
+                this._isLoading.set(false);
+            }),
+            map((response) => response.note),
+            catchError((err) => {
+                this.store.update(deleteEntities(tempId));
+                const message = err?.error?.error || 'Failed to create note';
+                this._error.set(message);
+                this._isLoading.set(false);
+                return throwError(() => new Error(message));
+            }),
+        );
+    }
+
+    /**
+     * Update a note with optimistic update
+     */
+    updateNote(id: string, data: UpdateNoteInput): Observable<Note> {
+        this._error.set(null);
+
+        const original = this.store.query(getEntity(id));
+        if (!original) {
+            return throwError(() => new Error('Note not found'));
+        }
+
+        // Optimistic update
+        this.store.update(
+            updateEntities(id, (entity) => ({
+                ...entity,
+                ...data,
+                version: (entity.version || 0) + 1,
+                updatedAt: new Date().toISOString(),
+            })),
+        );
+
+        return this.http.put<{ note: Note }>(`/api/notes/${id}`, data).pipe(
+            tap((response) => {
+                this.store.update(updateEntities(id, () => response.note));
+                this.persistToIndexedDB([response.note]);
+            }),
+            map((response) => response.note),
+            catchError((err) => {
+                this.store.update(updateEntities(id, () => original));
+                const message = err?.error?.error || 'Failed to update note';
+                this._error.set(message);
+                return throwError(() => new Error(message));
+            }),
+        );
+    }
+
+    /**
+     * Move note to trash
+     */
+    moveToTrash(id: string): Observable<void> {
+        this._error.set(null);
+
+        const original = this.store.query(getEntity(id));
+        if (!original) {
+            return throwError(() => new Error('Note not found'));
+        }
+
+        const wasActive = this.selectedNoteId() === id;
+
+        // Optimistic update - remove from visible list
+        this.store.update(deleteEntities(id));
+        if (wasActive) {
+            this.store.update(resetActiveId());
+        }
+
+        return this.http.post(`/api/notes/${id}/trash`, {}).pipe(
+            tap(() => {
+                if (isPlatformBrowser(this.platformId)) {
+                    this.indexedDB.delete(id, STORE_NAME);
+                }
+            }),
+            map(() => undefined),
+            catchError((err) => {
+                this.store.update(addEntities(original));
+                if (wasActive) {
+                    this.store.update(setActiveId(id));
+                }
+                const message = err?.error?.error || 'Failed to move note to trash';
+                this._error.set(message);
+                return throwError(() => new Error(message));
+            }),
+        );
+    }
+
+    /**
+     * Restore note from trash
+     */
+    restoreFromTrash(id: string): Observable<Note> {
+        this._error.set(null);
+
+        return this.http.post<{ note: Note }>(`/api/notes/${id}/restore`, {}).pipe(
+            tap((response) => {
+                this.store.update(upsertEntities([response.note]));
+                this.persistToIndexedDB([response.note]);
+            }),
+            map((response) => response.note),
+            catchError((err) => {
+                const message = err?.error?.error || 'Failed to restore note';
+                this._error.set(message);
+                return throwError(() => new Error(message));
+            }),
+        );
+    }
+
+    /**
+     * Permanently delete a note
+     */
+    deleteNote(id: string): Observable<void> {
+        this._error.set(null);
+
+        const original = this.store.query(getEntity(id));
+        const wasActive = this.selectedNoteId() === id;
+
+        this.store.update(deleteEntities(id));
+        if (wasActive) {
+            this.store.update(resetActiveId());
+        }
+
+        return this.http.delete(`/api/notes/${id}`).pipe(
+            tap(() => {
+                if (isPlatformBrowser(this.platformId)) {
+                    this.indexedDB.delete(id, STORE_NAME);
+                }
+            }),
+            map(() => undefined),
+            catchError((err) => {
+                if (original) {
+                    this.store.update(addEntities(original));
+                    if (wasActive) {
+                        this.store.update(setActiveId(id));
+                    }
+                }
+                const message = err?.error?.error || 'Failed to delete note';
+                this._error.set(message);
+                return throwError(() => new Error(message));
+            }),
+        );
+    }
+
+    /**
+     * Empty trash - delete all trashed notes
+     */
+    emptyTrash(): Observable<number> {
+        this._isLoading.set(true);
+        this._error.set(null);
+
+        return this.http.delete<{ count: number }>('/api/notes/trash/empty').pipe(
+            tap((response) => {
+                // Remove all trashed notes from store
+                const allNotes = this.notes();
+                const nonTrashedNotes = allNotes.filter((n) => !n.isTrashed);
+                this.store.update(setEntities(nonTrashedNotes));
+                this._isLoading.set(false);
+            }),
+            map((response) => response.count),
+            catchError((err) => {
+                const message = err?.error?.error || 'Failed to empty trash';
+                this._error.set(message);
+                this._isLoading.set(false);
+                return throwError(() => new Error(message));
+            }),
+        );
+    }
+
+    /**
+     * Toggle favorite status
+     */
+    toggleFavorite(id: string): Observable<Note> {
+        const note = this.store.query(getEntity(id));
+        if (!note) {
+            return throwError(() => new Error('Note not found'));
+        }
+
+        return this.updateNote(id, { isFavorite: !note.isFavorite });
+    }
+
+    /**
+     * Select a note as active
+     */
+    selectNote(id: string | null): void {
+        if (id) {
+            this.store.update(setActiveId(id));
+        } else {
+            this.store.update(resetActiveId());
+        }
+    }
+
+    /**
+     * Get note by ID synchronously
+     */
+    getNoteById(id: string): Note | undefined {
+        return this.store.query(getEntity(id));
+    }
+
+    /**
+     * Get notes for a specific tag
+     */
+    getNotesForTag(tagId: string): Note[] {
+        return this.store.query(getAllEntities()).filter((n) => n.tagId === tagId);
+    }
+
+    /**
+     * Select a single note as observable
+     */
+    select(id: string): Observable<Note | undefined> {
+        return this.store.pipe(selectEntity(id));
+    }
+
+    /**
+     * Clear cache
+     */
+    async clearCache(): Promise<void> {
+        this.store.update(setEntities([]));
+        this.store.update(resetActiveId());
+
+        if (isPlatformBrowser(this.platformId)) {
+            await this.indexedDB.clear(STORE_NAME);
+        }
+    }
+
+    private async persistToIndexedDB(notes: Note[]): Promise<void> {
+        if (!isPlatformBrowser(this.platformId) || notes.length === 0) return;
+        await this.indexedDB.putMany(notes, STORE_NAME);
+    }
 }

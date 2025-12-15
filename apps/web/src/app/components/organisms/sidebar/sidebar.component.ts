@@ -1,10 +1,11 @@
-import { Component, inject, signal, output, input, effect } from '@angular/core';
+import { Component, inject, signal, output, input, effect, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 import { TagService } from '../../../services/tag.service';
 import { NoteService } from '../../../services/note.service';
+import { MessageService } from '../../../services/message.service';
 import type { Note } from '@maple/shared';
 
 @Component({
@@ -14,11 +15,12 @@ import type { Note } from '@maple/shared';
     templateUrl: './sidebar.component.html',
     styleUrl: './sidebar.component.scss',
 })
-export class SidebarComponent {
+export class SidebarComponent implements OnInit {
     private readonly router = inject(Router);
     readonly authService = inject(AuthService);
     readonly tagService = inject(TagService);
     readonly noteService = inject(NoteService);
+    readonly messageService = inject(MessageService);
 
     readonly selectedTagId = input<string | null>(null);
     readonly selectedNoteId = input<string | null>(null);
@@ -44,6 +46,15 @@ export class SidebarComponent {
                 });
             }
         });
+    }
+
+    ngOnInit(): void {
+        // Load unread counts when sidebar initializes
+        this.messageService.loadUnreadCounts().subscribe();
+    }
+
+    getUnreadCount(tagId: string): number {
+        return this.messageService.getUnreadCount(tagId);
     }
 
     get userInitials(): () => string {

@@ -1,45 +1,114 @@
-@if (note(); as currentNote) {
-  <div class="flex-1 w-full max-w-4xl mx-auto px-8 sm:px-12 py-8 pb-32">
-    <!-- Title -->
-    <input
-      type="text"
-      [ngModel]="title()"
-      (ngModelChange)="onTitleChange($event)"
-      placeholder="Untitled"
-      class="w-full text-4xl md:text-5xl font-bold font-serif text-[var(--color-text-main)] mb-6 leading-tight outline-none tracking-tight bg-transparent border-none focus:ring-0 placeholder-[var(--color-text-muted)]"
-    />
+@if (note()) {
+    <div class="editor-container" [class.readonly]="!editable()">
+        <!-- Title -->
+        @if (editable()) {
+            <input
+                #titleInput
+                type="text"
+                [value]="title()"
+                (input)="onTitleChange($event)"
+                (keydown)="onTitleKeydown($event)"
+                placeholder="Untitled"
+                class="title-input"
+            />
+        } @else {
+            <h1 class="title-readonly">{{ title() }}</h1>
+        }
 
-    <!-- Tags -->
-    @if (tag()) {
-      <div class="flex flex-wrap gap-2 mb-10">
-        <span
-          class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100"
-        >
-          <span class="material-icons-round text-[14px] mr-1">tag</span>
-          {{ tag()!.label }}
-        </span>
-      </div>
-    }
+        <!-- Tags -->
+        @if (tag()) {
+            <div class="tags">
+                <span class="tag">
+                    <span class="material-icons-round">tag</span>
+                    {{ tag()!.label }}
+                </span>
+            </div>
+        }
 
-    <!-- Content (simplified for now - will integrate TipTap later) -->
-    <div class="prose prose-lg prose-stone max-w-none font-serif">
-      <textarea
-        [ngModel]="contentText()"
-        (ngModelChange)="onContentChange($event)"
-        placeholder="Start writing..."
-        class="w-full min-h-[400px] text-lg text-[var(--color-text-main)] leading-relaxed bg-transparent border-none focus:ring-0 resize-none outline-none placeholder-[var(--color-text-muted)]"
-      ></textarea>
+        <!-- Toolbar -->
+        @if (editable()) {
+            <div class="toolbar">
+                <button
+                    type="button"
+                    (click)="toggleHeading(1)"
+                    [class.active]="isActive('heading', { level: 1 })"
+                    title="Heading 1"
+                >
+                    <span class="material-icons-round">format_h1</span>
+                </button>
+                <button
+                    type="button"
+                    (click)="toggleBold()"
+                    [class.active]="isActive('bold')"
+                    title="Bold"
+                >
+                    <span class="material-icons-round">format_bold</span>
+                </button>
+                <button
+                    type="button"
+                    (click)="toggleItalic()"
+                    [class.active]="isActive('italic')"
+                    title="Italic"
+                >
+                    <span class="material-icons-round">format_italic</span>
+                </button>
+                <div class="divider"></div>
+                <button
+                    type="button"
+                    (click)="toggleBulletList()"
+                    [class.active]="isActive('bulletList')"
+                    title="Bullet List"
+                >
+                    <span class="material-icons-round">format_list_bulleted</span>
+                </button>
+                <button
+                    type="button"
+                    (click)="toggleOrderedList()"
+                    [class.active]="isActive('orderedList')"
+                    title="Numbered List"
+                >
+                    <span class="material-icons-round">format_list_numbered</span>
+                </button>
+                <button
+                    type="button"
+                    (click)="toggleTaskList()"
+                    [class.active]="isActive('taskList')"
+                    title="Task List"
+                >
+                    <span class="material-icons-round">checklist</span>
+                </button>
+                <div class="divider"></div>
+                <button
+                    type="button"
+                    (click)="toggleBlockquote()"
+                    [class.active]="isActive('blockquote')"
+                    title="Quote"
+                >
+                    <span class="material-icons-round">format_quote</span>
+                </button>
+                <button
+                    type="button"
+                    (click)="toggleCode()"
+                    [class.active]="isActive('code')"
+                    title="Inline Code"
+                >
+                    <span class="material-icons-round">code</span>
+                </button>
+            </div>
+        }
+
+        <!-- TipTap Editor -->
+        <div #editorElement class="editor-content"></div>
     </div>
-  </div>
+} @else if (tag()) {
+    <!-- Show chat when no note is selected but tag is selected -->
+    <app-chat [tagId]="tag()!._id" />
 } @else {
-  <!-- Empty state -->
-  <div class="flex-1 flex items-center justify-center">
-    <div class="text-center">
-      <span class="material-icons-round text-6xl text-[var(--color-text-muted)] mb-4">article</span>
-      <h2 class="text-xl font-semibold text-[var(--color-text-main)] mb-2">No note selected</h2>
-      <p class="text-[var(--color-text-muted)]">
-        Select a note from the sidebar or create a new one
-      </p>
+    <div class="empty-state">
+        <div class="empty-icon">
+            <span class="material-icons-round">edit_note</span>
+        </div>
+        <h2>Select a note</h2>
+        <p>Choose a note from the sidebar or create a new one</p>
     </div>
-  </div>
 }
