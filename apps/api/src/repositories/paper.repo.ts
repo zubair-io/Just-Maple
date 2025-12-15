@@ -21,7 +21,7 @@ interface PaperDocument {
 }
 
 function getCollection(): Collection<PaperDocument> {
-    return getDb().collection<PaperDocument>('papers');
+    return getDb().collection<PaperDocument>('paper');
 }
 
 function toPaperResponse(doc: PaperDocument): Paper {
