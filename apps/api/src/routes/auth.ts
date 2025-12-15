@@ -446,6 +446,8 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                         counter: passkey.counter,
                         transports: passkey.transports,
                     },
+                    // Allow cross-device passkey usage without strict user verification
+                    requireUserVerification: false,
                 });
 
                 if (!verification.verified) {
