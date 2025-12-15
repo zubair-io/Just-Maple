@@ -27,19 +27,19 @@ function getCollection(): Collection<PaperDocument> {
 function toPaperResponse(doc: PaperDocument): Paper {
     return {
         _id: doc._id.toString(),
-        tags: doc.tags.map((t) => t.toString()),
-        type: doc.type,
+        tags: doc.tags?.map((t) => t.toString()) ?? [],
+        type: doc.type ?? 'collectible',
         data: {
-            itemId: doc.data.itemId,
-            provider: doc.data.provider,
-            registryData: doc.data.registryData?.toString(),
-            status: doc.data.status,
-            quantity: doc.data.quantity,
-            created: doc.data.created?.toISOString() ?? doc.createdAt.toISOString(),
+            itemId: doc.data?.itemId ?? '',
+            provider: doc.data?.provider ?? '',
+            registryData: doc.data?.registryData?.toString(),
+            status: doc.data?.status ?? 'want',
+            quantity: doc.data?.quantity ?? 1,
+            created: doc.data?.created?.toISOString() ?? doc.createdAt?.toISOString() ?? new Date().toISOString(),
         },
-        createdBy: typeof doc.createdBy === 'string' ? doc.createdBy : doc.createdBy.toString(),
-        createdAt: doc.createdAt.toISOString(),
-        updatedAt: doc.updatedAt.toISOString(),
+        createdBy: typeof doc.createdBy === 'string' ? doc.createdBy : doc.createdBy?.toString() ?? '',
+        createdAt: doc.createdAt?.toISOString() ?? new Date().toISOString(),
+        updatedAt: doc.updatedAt?.toISOString() ?? new Date().toISOString(),
     };
 }
 
