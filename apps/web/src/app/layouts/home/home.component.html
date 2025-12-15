@@ -44,14 +44,24 @@
         <span class="text-[10px] font-medium">Menu</span>
       </button>
 
-      <!-- Recent Note Button -->
-      <button
-        (click)="openLastNote()"
-        class="flex flex-col items-center justify-center gap-1 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
-      >
-        <span class="material-icons-round text-2xl">article</span>
-        <span class="text-[10px] font-medium">Recent</span>
-      </button>
+      <!-- Context-aware action button: Scanner for Lego, New Note otherwise -->
+      @if (isLegoTag()) {
+        <button
+          (click)="openScanner()"
+          class="flex flex-col items-center justify-center gap-1 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
+        >
+          <span class="material-icons-round text-2xl">qr_code_scanner</span>
+          <span class="text-[10px] font-medium">Scan</span>
+        </button>
+      } @else {
+        <button
+          (click)="createNewNote()"
+          class="flex flex-col items-center justify-center gap-1 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
+        >
+          <span class="material-icons-round text-2xl">edit</span>
+          <span class="text-[10px] font-medium">New Note</span>
+        </button>
+      }
 
       <!-- Settings Button -->
       <button

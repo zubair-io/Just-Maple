@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, OnDestroy, effect } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
 import { Subscription, filter } from 'rxjs';
@@ -28,6 +28,14 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly selectedTagId = signal<string | null>(null);
   readonly sidebarOpen = signal(false);
   readonly chatInputFocused = this.uiStateService.chatInputFocused;
+
+  /** Check if the current tag is a Lego tag */
+  readonly isLegoTag = computed(() => {
+    const tagId = this.selectedTagId();
+    if (!tagId) return false;
+    const tag = this.tagService.tags().find((t) => t._id === tagId);
+    return tag?.label?.toLowerCase() === 'lego';
+  });
 
   private routerSubscription?: Subscription;
 
@@ -121,5 +129,32 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   onSettings(): void {
     this.router.navigate(['/settings']);
+  }
+
+  openScanner(): void {
+    this.uiStateService.openScanner();
+  }
+
+  createNewNote(): void {
+    const tagId = this.selectedTagId();
+    // Create a new note and navigate to it
+    this.noteService
+      .createNote({
+        title: 'Untitled',
+        content: { type: 'doc', content: [] },
+        tagId: tagId || undefined,
+      })
+      .subscribe({
+        next: (note) => {
+          if (tagId) {
+            this.router.navigate(['/', tagId, note._id]);
+          } else {
+            this.router.navigate(['/', note._id]);
+          }
+        },
+        error: (error) => {
+          console.error('Failed to create note:', error);
+        },
+      });
   }
 }

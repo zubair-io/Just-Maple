@@ -4,6 +4,7 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { TagService } from '../../services/tag.service';
 import { PaperService } from '../../services/paper.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
+import { UiStateService } from '../../services/ui-state.service';
 import { PaperListComponent, BarcodeScannerComponent } from '../../components';
 import type { Paper, CollectibleRegistry } from '@maple/shared';
 
@@ -17,12 +18,13 @@ import type { Paper, CollectibleRegistry } from '@maple/shared';
 export class LegoViewComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly uiStateService = inject(UiStateService);
   readonly tagService = inject(TagService);
   readonly paperService = inject(PaperService);
   readonly registryService = inject(CollectibleRegistryService);
 
   readonly selectedTagId = signal<string | null>(null);
-  readonly showScanner = signal(false);
+  readonly showScanner = this.uiStateService.showScanner;
 
   readonly selectedTag = computed(() => {
     const tagId = this.selectedTagId();
@@ -88,15 +90,15 @@ export class LegoViewComponent implements OnInit {
   }
 
   openScanner(): void {
-    this.showScanner.set(true);
+    this.uiStateService.openScanner();
   }
 
   closeScanner(): void {
-    this.showScanner.set(false);
+    this.uiStateService.closeScanner();
   }
 
   onBarcodeScanned(registry: CollectibleRegistry): void {
-    this.showScanner.set(false);
+    this.uiStateService.closeScanner();
     const tagId = this.selectedTagId();
     if (tagId) {
       // Navigate to the registry view
