@@ -1,6 +1,6 @@
 import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
-import { connectToDatabase } from './db/client';
+import { connectToDatabase, getDb } from './db/client';
 import { authRoutes } from './routes/auth';
 import { tagRoutes } from './routes/tags';
 import { noteRoutes } from './routes/notes';
@@ -32,7 +32,25 @@ async function main() {
         .use(paperRoutes)
         .use(collectibleRegistryRoutes)
         .use(chatWebSocket)
-        .get('/api/health', () => ({ status: 'ok', timestamp: new Date().toISOString() }))
+        .get('/api/health', async ({ set }) => {
+            try {
+                // Check database connection
+                const database = getDb();
+                await database.command({ ping: 1 });
+                return {
+                    status: 'healthy',
+                    timestamp: new Date().toISOString(),
+                    database: 'connected',
+                };
+            } catch {
+                set.status = 503;
+                return {
+                    status: 'unhealthy',
+                    timestamp: new Date().toISOString(),
+                    database: 'disconnected',
+                };
+            }
+        })
         .listen(config.port);
 
     console.log(`🍁 PaperbarkMaple API running at http://localhost:${config.port}`);
