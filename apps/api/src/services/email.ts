@@ -17,18 +17,23 @@ async function sendWithAzure(options: SendMagicLinkOptions, verifyUrl: string): 
         content: {
             subject: 'Sign in to Just Maple',
             html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-          <h1 style="color: #667eea;">Just Maple</h1>
-          <p>Click the button below to sign in:</p>
-          <a href="${verifyUrl}"
-             style="display: inline-block; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 4px; margin: 16px 0;">
-            Sign In
-          </a>
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <img src="https://hornbeam.justmaple.app/data/assets/justmaple.svg" alt="Just Maple" style="width: 48px; height: 48px;" />
+            <h1 style="color: #D94E3B; margin: 12px 0 0 0; font-size: 24px;">Just Maple</h1>
+          </div>
+          <p style="color: #333;">Click the button below to sign in:</p>
+          <div style="text-align: center; margin: 24px 0;">
+            <a href="${verifyUrl}"
+               style="display: inline-block; padding: 14px 28px; background: #D94E3B; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">
+              Sign In
+            </a>
+          </div>
           <p style="color: #666; font-size: 14px;">
             Or copy this link: <br>
-            <a href="${verifyUrl}">${verifyUrl}</a>
+            <a href="${verifyUrl}" style="color: #D94E3B;">${verifyUrl}</a>
           </p>
-          <p style="color: #999; font-size: 12px;">
+          <p style="color: #999; font-size: 12px; margin-top: 24px;">
             This link expires in 15 minutes. If you didn't request this, you can ignore this email.
           </p>
         </div>
@@ -67,18 +72,23 @@ async function sendWithLocalMail(options: SendMagicLinkOptions, verifyUrl: strin
     }
 
     const htmlBody = `<html>
-<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-  <h1 style="color: #667eea;">Just Maple</h1>
-  <p>Click the button below to sign in:</p>
-  <a href="${verifyUrl}"
-     style="display: inline-block; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 4px; margin: 16px 0;">
-    Sign In
-  </a>
+<body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="text-align: center; margin-bottom: 24px;">
+    <img src="https://hornbeam.justmaple.app/data/assets/justmaple.svg" alt="Just Maple" style="width: 48px; height: 48px;" />
+    <h1 style="color: #D94E3B; margin: 12px 0 0 0; font-size: 24px;">Just Maple</h1>
+  </div>
+  <p style="color: #333;">Click the button below to sign in:</p>
+  <div style="text-align: center; margin: 24px 0;">
+    <a href="${verifyUrl}"
+       style="display: inline-block; padding: 14px 28px; background: #D94E3B; color: white; text-decoration: none; border-radius: 6px; font-weight: 500;">
+      Sign In
+    </a>
+  </div>
   <p style="color: #666; font-size: 14px;">
     Or copy this link: <br>
-    <a href="${verifyUrl}">${verifyUrl}</a>
+    <a href="${verifyUrl}" style="color: #D94E3B;">${verifyUrl}</a>
   </p>
-  <p style="color: #999; font-size: 12px;">
+  <p style="color: #999; font-size: 12px; margin-top: 24px;">
     This link expires in 15 minutes. If you didn't request this, you can ignore this email.
   </p>
 </body>
