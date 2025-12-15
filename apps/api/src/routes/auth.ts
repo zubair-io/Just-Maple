@@ -315,7 +315,9 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                     verification.registrationInfo;
 
                 // Store the credential
-                const storedCredentialId = Buffer.from(credential.id).toString('base64url');
+                // Use body.id directly - it's already base64url encoded from the browser
+                // Don't re-encode credential.id as that causes double-encoding
+                const storedCredentialId = body.id;
                 console.log('Storing passkey with credentialId:', storedCredentialId);
 
                 const passkey = await createPasskey({
