@@ -1,15 +1,15 @@
 # Build stage
-FROM oven/bun:1.1-alpine AS builder
+FROM oven/bun:latest AS builder
 
 WORKDIR /app
 
-# Copy workspace package files
-COPY package.json bun.lock ./
+# Copy workspace package files and tsconfig
+COPY package.json bun.lock tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
 
 # Install dependencies
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy source code
 COPY packages/shared ./packages/shared
@@ -24,12 +24,12 @@ WORKDIR /app/apps/api
 RUN bun build src/index.ts --outdir dist --target bun --minify
 
 # Production stage
-FROM oven/bun:1.1-alpine
+FROM oven/bun:latest
 
 WORKDIR /app
 
-# Install wget for health checks
-RUN apk add --no-cache wget
+# Install wget for health checks (curl is pre-installed in bun:latest)
+RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf /var/lib/apt/lists/*
 
 # Copy built files and dependencies
 COPY --from=builder /app/apps/api/dist ./dist
