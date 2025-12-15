@@ -1,0 +1,265 @@
+import {
+    Component,
+    inject,
+    signal,
+    computed,
+    effect,
+    OnInit,
+    OnDestroy,
+    ViewChild,
+    ElementRef,
+} from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { Router, ActivatedRoute } from '@angular/router';
+import { BrowserCodeReader, BrowserMultiFormatReader, BarcodeFormat } from '@zxing/browser';
+import { DecodeHintType } from '@zxing/library';
+import { TagService } from '../../services/tag.service';
+import { PaperService } from '../../services/paper.service';
+import { CollectibleRegistryService } from '../../services/collectible-registry.service';
+import type { Paper, CollectibleRegistry } from '@maple/shared';
+
+@Component({
+    selector: 'app-lego-scan',
+    standalone: true,
+    imports: [CommonModule, FormsModule],
+    templateUrl: './lego-scan.component.html',
+    styleUrl: './lego-scan.component.scss',
+})
+export class LegoScanComponent implements OnInit, OnDestroy {
+    @ViewChild('videoElement') videoElement?: ElementRef<HTMLVideoElement>;
+
+    private readonly router = inject(Router);
+    private readonly route = inject(ActivatedRoute);
+    readonly tagService = inject(TagService);
+    readonly paperService = inject(PaperService);
+    readonly registryService = inject(CollectibleRegistryService);
+
+    readonly tagId = signal<string | null>(null);
+    readonly searchQuery = signal('');
+    readonly cameraEnabled = signal(false);
+    readonly isScanning = signal(false);
+    readonly isSaving = signal<string | null>(null); // registryId being saved
+
+    private controls: { stop: () => void } | null = null;
+    private initialized = false;
+
+    readonly selectedTag = computed(() => {
+        const id = this.tagId();
+        if (!id) return null;
+        return this.tagService.tags().find((t) => t._id === id) || null;
+    });
+
+    /** Map of registryId -> Paper for quick lookup */
+    readonly papersMap = computed(() => {
+        const tagId = this.tagId();
+        if (!tagId) return new Map<string, Paper>();
+
+        const papers = this.paperService.papers().filter((p) => p.tags.includes(tagId));
+        const map = new Map<string, Paper>();
+
+        for (const paper of papers) {
+            if (paper.data.registryData) {
+                map.set(paper.data.registryData, paper);
+            }
+        }
+
+        return map;
+    });
+
+    /** Filtered registries based on search query */
+    readonly filteredRegistries = computed(() => {
+        const query = this.searchQuery().toLowerCase().trim();
+        const all = this.registryService.registries();
+
+        let filtered = all;
+
+        if (query) {
+            filtered = all.filter((r) => {
+                const titleMatch = r.title?.toLowerCase().includes(query);
+                const providerIdMatch = r.providerId?.toLowerCase().includes(query);
+                const upcMatch = r.upc?.includes(query);
+                return titleMatch || providerIdMatch || upcMatch;
+            });
+        }
+
+        // Sort alphabetically by title
+        return [...filtered].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    });
+
+    constructor() {
+        effect(() => {
+            const tags = this.tagService.tags();
+            if (tags.length === 0) return;
+            if (this.initialized) return;
+
+            this.initialized = true;
+            this.syncFromRoute();
+        });
+    }
+
+    ngOnInit(): void {
+        this.route.params.subscribe(() => {
+            if (this.initialized) {
+                this.syncFromRoute();
+            }
+        });
+
+        // Initialize registry data
+        this.registryService.initializeRegistry().subscribe();
+    }
+
+    ngOnDestroy(): void {
+        this.stopCamera();
+    }
+
+    private syncFromRoute(): void {
+        const tagId = this.route.snapshot.params['tagId'];
+        if (tagId) {
+            this.tagId.set(tagId);
+            // Load papers for this tag
+            this.paperService.loadPapers({ tagId }).subscribe();
+        }
+    }
+
+    goBack(): void {
+        const tagId = this.tagId();
+        if (tagId) {
+            this.router.navigate(['/', tagId]);
+        } else {
+            this.router.navigate(['/']);
+        }
+    }
+
+    updateSearchQuery(event: Event): void {
+        const input = event.target as HTMLInputElement;
+        this.searchQuery.set(input.value);
+    }
+
+    clearSearch(): void {
+        this.searchQuery.set('');
+    }
+
+    async toggleCamera(): Promise<void> {
+        if (this.cameraEnabled()) {
+            this.stopCamera();
+        } else {
+            await this.startCamera();
+        }
+    }
+
+    private async startCamera(): Promise<void> {
+        this.cameraEnabled.set(true);
+        this.isScanning.set(true);
+
+        try {
+            const hints = new Map();
+            hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13, BarcodeFormat.UPC_A]);
+
+            const codeReader = new BrowserMultiFormatReader(hints);
+            const videoInputDevices = await BrowserCodeReader.listVideoInputDevices();
+
+            if (videoInputDevices.length === 0) {
+                throw new Error('No camera found');
+            }
+
+            const videoElement = this.videoElement?.nativeElement;
+            if (!videoElement) {
+                throw new Error('Video element not found');
+            }
+
+            const selectedDevice = this.getBestBarcodeCamera(videoInputDevices);
+
+            this.controls = await codeReader.decodeFromVideoDevice(
+                selectedDevice.deviceId,
+                videoElement,
+                (result) => {
+                    if (result) {
+                        const barcode = result.getText();
+                        this.onBarcodeDetected(barcode);
+                    }
+                    // Ignore errors (usually just "no barcode found")
+                },
+            );
+        } catch (error) {
+            console.error('Failed to start camera:', error);
+            this.cameraEnabled.set(false);
+            this.isScanning.set(false);
+        }
+    }
+
+    private stopCamera(): void {
+        this.controls?.stop();
+        this.controls = null;
+        this.cameraEnabled.set(false);
+        this.isScanning.set(false);
+    }
+
+    private getBestBarcodeCamera(
+        videoInputDevices: MediaDeviceInfo[],
+    ): MediaDeviceInfo {
+        // Prefer back camera
+        const backCamera = videoInputDevices.find(
+            (d) =>
+                d.label.toLowerCase().includes('back') ||
+                d.label.toLowerCase().includes('rear') ||
+                d.label.toLowerCase().includes('environment'),
+        );
+
+        return backCamera || videoInputDevices[0];
+    }
+
+    private onBarcodeDetected(barcode: string): void {
+        // Set the search query to the barcode
+        this.searchQuery.set(barcode);
+
+        // Optionally close camera after successful scan
+        // this.stopCamera();
+    }
+
+    onSelectRegistry(registry: CollectibleRegistry): void {
+        const tagId = this.tagId();
+        if (tagId) {
+            this.router.navigate(['/', tagId, registry._id]);
+        }
+    }
+
+    isInCollection(registryId: string): boolean {
+        return this.papersMap().has(registryId);
+    }
+
+    toggleCollection(event: Event, registry: CollectibleRegistry): void {
+        event.stopPropagation(); // Prevent row click
+
+        const tagId = this.tagId();
+        if (!tagId) return;
+
+        const existingPaper = this.papersMap().get(registry._id);
+        this.isSaving.set(registry._id);
+
+        if (existingPaper) {
+            // Remove from collection
+            this.paperService.deletePaper(existingPaper._id).subscribe({
+                next: () => this.isSaving.set(null),
+                error: () => this.isSaving.set(null),
+            });
+        } else {
+            // Add to collection with "have" status
+            this.paperService
+                .createPaper({
+                    tags: [tagId],
+                    data: {
+                        itemId: registry.providerId,
+                        provider: registry.provider,
+                        registryData: registry._id,
+                        status: 'have',
+                        quantity: 1,
+                    },
+                })
+                .subscribe({
+                    next: () => this.isSaving.set(null),
+                    error: () => this.isSaving.set(null),
+                });
+        }
+    }
+}

@@ -30,6 +30,12 @@ export const routes: Routes = [
           import('./pages/lego-view/lego-view.component').then((m) => m.LegoViewComponent),
       },
       {
+        path: ':tagId/scan',
+        canMatch: [LegoTagGuard],
+        loadComponent: () =>
+          import('./pages/lego-scan/lego-scan.component').then((m) => m.LegoScanComponent),
+      },
+      {
         path: ':tagId/:registryId',
         canMatch: [LegoTagGuard],
         loadComponent: () =>

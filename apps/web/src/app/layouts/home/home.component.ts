@@ -132,7 +132,10 @@ export class HomeComponent implements OnInit, OnDestroy {
   }
 
   openScanner(): void {
-    this.uiStateService.openScanner();
+    const tagId = this.selectedTagId();
+    if (tagId) {
+      this.router.navigate(['/', tagId, 'scan']);
+    }
   }
 
   createNewNote(): void {

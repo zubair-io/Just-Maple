@@ -5,27 +5,24 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { TagService } from '../../services/tag.service';
 import { PaperService } from '../../services/paper.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
-import { UiStateService } from '../../services/ui-state.service';
-import { PaperListComponent, BarcodeScannerComponent } from '../../components';
+import { PaperListComponent } from '../../components';
 import type { Paper, CollectibleRegistry, RegistryTag } from '@maple/shared';
 
 @Component({
   selector: 'app-lego-view',
   standalone: true,
-  imports: [CommonModule, FormsModule, PaperListComponent, BarcodeScannerComponent],
+  imports: [CommonModule, FormsModule, PaperListComponent],
   templateUrl: './lego-view.component.html',
   styleUrl: './lego-view.component.scss',
 })
 export class LegoViewComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  private readonly uiStateService = inject(UiStateService);
   readonly tagService = inject(TagService);
   readonly paperService = inject(PaperService);
   readonly registryService = inject(CollectibleRegistryService);
 
   readonly selectedTagId = signal<string | null>(null);
-  readonly showScanner = this.uiStateService.showScanner;
   readonly showFilterPanel = signal(false);
   readonly searchQuery = signal('');
   readonly selectedRegistryTags = signal<string[]>([]);
@@ -163,24 +160,10 @@ export class LegoViewComponent implements OnInit {
   }
 
   openScanner(): void {
-    this.uiStateService.openScanner();
-  }
-
-  closeScanner(): void {
-    this.uiStateService.closeScanner();
-  }
-
-  onBarcodeScanned(registry: CollectibleRegistry): void {
-    this.uiStateService.closeScanner();
     const tagId = this.selectedTagId();
     if (tagId) {
-      // Navigate to the registry view
-      this.router.navigate(['/', tagId, registry._id]);
+      this.router.navigate(['/', tagId, 'scan']);
     }
-  }
-
-  onBarcodeNotFound(_barcode: string): void {
-    // TODO: Show notification that barcode was not found
   }
 
   toggleFilterPanel(): void {

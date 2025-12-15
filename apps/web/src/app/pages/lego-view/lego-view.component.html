@@ -112,19 +112,6 @@
   </div>
 }
 
-<!-- Scanner Modal -->
-@if (showScanner()) {
-  <div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg max-w-md w-full">
-      <app-barcode-scanner
-        (scanned)="onBarcodeScanned($event)"
-        (notFound)="onBarcodeNotFound($event)"
-        (close)="closeScanner()"
-      />
-    </div>
-  </div>
-}
-
 <!-- Paper List -->
 <div class="flex-1 overflow-hidden">
   <app-paper-list
