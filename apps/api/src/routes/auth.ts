@@ -315,9 +315,12 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                     verification.registrationInfo;
 
                 // Store the credential
+                const storedCredentialId = Buffer.from(credential.id).toString('base64url');
+                console.log('Storing passkey with credentialId:', storedCredentialId);
+
                 const passkey = await createPasskey({
                     userId: user._id,
-                    credentialId: Buffer.from(credential.id).toString('base64url'),
+                    credentialId: storedCredentialId,
                     publicKey: Buffer.from(credential.publicKey).toString('base64url'),
                     counter: credential.counter,
                     transports: body.response.transports as
@@ -399,10 +402,22 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         async ({ body, jwt, set }) => {
             try {
                 // Find the passkey by credential ID
-                const credentialId = Buffer.from(body.id, 'base64url').toString('base64url');
-                const passkey = await findPasskeyByCredentialId(credentialId);
+                // body.id is already base64url encoded from the client
+                const credentialId = body.id;
+                console.log('Looking up passkey with credentialId:', credentialId);
+
+                let passkey = await findPasskeyByCredentialId(credentialId);
+
+                // If not found, try normalizing the base64url (some browsers add padding)
+                if (!passkey) {
+                    // Try with padding removed
+                    const normalizedId = credentialId.replace(/=/g, '');
+                    console.log('Trying normalized credentialId:', normalizedId);
+                    passkey = await findPasskeyByCredentialId(normalizedId);
+                }
 
                 if (!passkey) {
+                    console.log('Passkey not found for credentialId:', credentialId);
                     set.status = 401;
                     return { error: 'Passkey not found' };
                 }
