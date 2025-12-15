@@ -278,12 +278,13 @@ export class TagService {
 
     /**
      * Ensure default tag exists - loads tags from API and creates a default if none exist
+     * Only creates a default tag if API succeeds and returns no tags
      */
     ensureDefaultTag(): Observable<void> {
         return this.loadTags().pipe(
             map((loadedTags) => {
-                // Only create default tag if server returned no tags
-                if (loadedTags.length === 0) {
+                // Only create default tag if API succeeded (no error) and returned no tags
+                if (loadedTags.length === 0 && !this._error()) {
                     this.createTag({ label: 'General' }).subscribe({
                         error: (err) => console.warn('Could not create default tag:', err),
                     });
