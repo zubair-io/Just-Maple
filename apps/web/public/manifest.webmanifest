@@ -1,16 +1,59 @@
 {
-  "name": "Just Maple",
-  "short_name": "Maple",
-  "theme_color": "#D94E3B",
-  "background_color": "#FAFAFA",
-  "display": "standalone",
-  "scope": "/",
-  "start_url": "/",
-  "icons": [
-    {
-      "src": "favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    }
-  ]
+    "name": "Maple",
+    "short_name": "Maple",
+    "theme_color": "#fafafa",
+    "background_color": "#fafafa",
+    "display": "standalone",
+    "orientation": "any",
+    "scope": "https://justmaple.app/",
+    "start_url": "https://justmaple.app",
+    "icons": [
+        {
+            "src": "https://hornbeam.justmaple.app/data/assets/icons/apple-icon-72x72.png",
+            "sizes": "72x72",
+            "type": "image/png"
+        },
+        {
+            "src": "https://hornbeam.justmaple.app/data/assets/icons/apple-icon-144x144.png",
+            "sizes": "144x144",
+            "type": "image/png"
+        },
+        {
+            "src": "https://hornbeam.justmaple.app/data/assets/icons/apple-icon-152x152.png",
+            "sizes": "152x152",
+            "type": "image/png"
+        },
+        {
+            "src": "https://hornbeam.justmaple.app/data/assets/icons/android-icon-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "https://hornbeam.justmaple.app/data/assets/icons/512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "https://hornbeam.justmaple.app/data/assets/icons/maskable_icon.png",
+            "sizes": "1024x1024",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ],
+    "screenshots": [
+        {
+            "src": "https://hornbeam.justmaple.app/data/assets/desktop.png",
+            "sizes": "1920x1280",
+            "type": "image/png",
+            "form_factor": "wide",
+            "label": "Maple Desktop"
+        },
+        {
+            "src": "https://hornbeam.justmaple.app/data/assets/mobile.png",
+            "sizes": "1280x1920",
+            "type": "image/png",
+            "form_factor": "narrow",
+            "label": "Mobile"
+        }
+    ]
 }
