@@ -17,7 +17,7 @@ export const config = {
 
     // Email config
     azureCommConnectionString: process.env.AZURE_COMMUNICATION_CONNECTION_STRING,
-    emailFrom: process.env.EMAIL_FROM || 'noreply@justmaple.app',
+    emailFrom: process.env.EMAIL_FROM || 'DoNotReply@justmaple.app',
 
     // WebAuthn/Passkey config
     rpName: process.env.RP_NAME || 'Just Maple',

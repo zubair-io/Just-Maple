@@ -184,11 +184,15 @@ export async function sendMagicLinkEmail(options: SendMagicLinkOptions): Promise
     // Try Azure first if configured
     if (config.azureCommConnectionString) {
         try {
+            console.log(`Sending email via Azure to ${email} from ${config.emailFrom}`);
             await sendWithAzure(options, verifyUrl);
             return;
         } catch (error) {
-            console.error('Azure email failed, falling back to sendmail:', error);
+            console.error('Azure email failed:', error);
+            throw error; // Don't silently fall back - surface the error
         }
+    } else {
+        console.warn('AZURE_COMMUNICATION_CONNECTION_STRING not configured');
     }
 
     // Fallback to local mail
