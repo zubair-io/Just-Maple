@@ -69,9 +69,7 @@ export class MessageService {
     }
 
     private setupRealtimeHandlers(): void {
-        console.log('[MessageService] Setting up realtime handlers');
         this.realtimeSubscription = this.realtime.events$.subscribe((event) => {
-            console.log('[MessageService] Received realtime event:', event.action, event);
             switch (event.action) {
                 case 'message':
                     this.handleNewMessage(event.data as Message);
@@ -88,17 +86,11 @@ export class MessageService {
 
     private handleNewMessage(message: Message): void {
         const currentTagId = this._currentTagId();
-        console.log('[MessageService] handleNewMessage:', {
-            messageTagId: message.tagId,
-            currentTagId,
-            matches: message.tagId === currentTagId,
-        });
         // Only add if for current tag
         if (message.tagId === currentTagId) {
             // Use upsert to handle duplicates (e.g., sender's own message)
             this.store.update(upsertEntities(message));
             this.persistToIndexedDB([message]);
-            console.log('[MessageService] Message added to store');
         }
     }
 
@@ -239,7 +231,6 @@ export class MessageService {
             }),
             map((response) => response.message),
             catchError((err) => {
-                console.error('[MessageService] sendMessage error:', err);
                 this.store.update(deleteEntities(tempId));
                 const message = err?.error?.error || err?.error?.message || 'Failed to send message';
                 this._error.set(message);

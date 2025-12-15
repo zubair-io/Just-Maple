@@ -23,27 +23,22 @@ import { SidebarComponent } from '../../organisms';
 })
 export class MainLayoutComponent {
   onNewNote(): void {
-    console.log('Create new note');
     // TODO: Implement note creation
   }
 
-  onSelectNote(noteId: string): void {
-    console.log('Selected note:', noteId);
+  onSelectNote(_noteId: string): void {
     // TODO: Navigate to note
   }
 
-  onSelectTag(tagId: string): void {
-    console.log('Selected tag:', tagId);
+  onSelectTag(_tagId: string): void {
     // TODO: Filter by tag
   }
 
   onCreateTag(): void {
-    console.log('Create new tag');
     // TODO: Show tag creation dialog
   }
 
   onSettings(): void {
-    console.log('Open settings');
     // TODO: Navigate to settings
   }
 }

@@ -104,7 +104,7 @@ export class LegoViewComponent implements OnInit {
         }
     }
 
-    onBarcodeNotFound(barcode: string): void {
-        console.log('Barcode not found:', barcode);
+    onBarcodeNotFound(_barcode: string): void {
+        // TODO: Show notification that barcode was not found
     }
 }

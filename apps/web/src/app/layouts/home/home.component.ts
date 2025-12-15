@@ -120,6 +120,6 @@ export class HomeComponent implements OnInit, OnDestroy {
     }
 
     onSettings(): void {
-        console.log('Open settings');
+        // TODO: Implement settings modal
     }
 }

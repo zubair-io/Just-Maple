@@ -44,20 +44,15 @@ export class RealtimeService {
      * Connect to WebSocket server
      */
     async connect(): Promise<void> {
-        console.log('[Realtime] connect() called');
         if (!isPlatformBrowser(this.platformId)) {
-            console.log('[Realtime] Not in browser, skipping');
             return;
         }
         if (this.ws?.readyState === WebSocket.OPEN) {
-            console.log('[Realtime] Already connected');
             return;
         }
 
         const token = this.authService.accessToken();
-        console.log('[Realtime] Auth token:', token ? 'present' : 'missing');
         if (!token) {
-            console.warn('[Realtime] No auth token available');
             return;
         }
 
@@ -66,14 +61,12 @@ export class RealtimeService {
         try {
             // Build WebSocket URL
             const wsUrl = this.getWebSocketUrl(token);
-            console.log('[Realtime] Connecting to:', wsUrl);
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {
                 this.ngZone.run(() => {
                     this._status.set('connected');
                     this.reconnectAttempts = 0;
-                    console.log('[Realtime] Connected');
                     this.startPingInterval();
                 });
             };
@@ -84,7 +77,7 @@ export class RealtimeService {
                         const data = JSON.parse(event.data);
                         this.handleMessage(data);
                     } catch {
-                        console.error('[Realtime] Failed to parse message:', event.data);
+                        // Ignore malformed messages
                     }
                 });
             };
@@ -100,13 +93,10 @@ export class RealtimeService {
                 });
             };
 
-            this.ws.onerror = (error) => {
-                this.ngZone.run(() => {
-                    console.error('[Realtime] WebSocket error:', error);
-                });
+            this.ws.onerror = () => {
+                // Error handled by onclose
             };
-        } catch (error) {
-            console.error('[Realtime] Connection failed:', error);
+        } catch {
             this._status.set('disconnected');
             this.scheduleReconnect();
         }
@@ -183,13 +173,11 @@ export class RealtimeService {
         if (!data || typeof data !== 'object') return;
 
         const msg = data as Record<string, unknown>;
-        console.log('[Realtime] Received message:', msg);
 
         // Handle connection confirmation
         if (msg['type'] === 'connected') {
             const subscribedTags = (msg['subscribedTags'] as string[]) || [];
             this._subscribedTags.set(subscribedTags);
-            console.log('[Realtime] Connected, subscribed to tags:', subscribedTags);
             return;
         }
 
@@ -201,7 +189,6 @@ export class RealtimeService {
         // Handle chat events
         if (msg['action']) {
             const event = msg as unknown as ChatEvent;
-            console.log('[Realtime] Chat event:', event.action, event);
 
             // Handle typing events separately
             if (event.action === 'typing' && event.data) {
@@ -226,7 +213,6 @@ export class RealtimeService {
         this._status.set('reconnecting');
 
         const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000);
-        console.log(`[Realtime] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
         this.reconnectTimeout = setTimeout(() => {
             this.reconnectTimeout = null;
