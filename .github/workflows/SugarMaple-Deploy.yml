@@ -1,12 +1,17 @@
-name: Build Helix and Upload to Azure Blob Storage
+name: Deploy Web to Azure Blob Storage
 
 on:
     push:
         branches:
-            - development
+            - main
+        paths:
+            - 'apps/web/**'
+            - 'packages/shared/**'
+            - '.github/workflows/SugarMaple-Deploy.yml'
+    workflow_dispatch:
 
 jobs:
-    build:
+    build-and-deploy:
         runs-on: ubuntu-latest
         steps:
             - name: Checkout repository
@@ -21,16 +26,7 @@ jobs:
               run: bun install
 
             - name: Build
-              run: bun run build:helix
-
-            - name: Upload build artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: dist
-                  path: dist
-
-            - name: List build output
-              run: ls dist/web/browser
+              run: bun run build:web
 
             - name: Azure Login
               uses: azure/login@v2
@@ -41,7 +37,12 @@ jobs:
               uses: azure/CLI@v2
               with:
                   inlineScript: |
-                      az storage blob upload-batch --overwrite true --account-name hornbeam --auth-mode key -d 'justmaple' -s dist/web/browser
+                      az storage blob upload-batch \
+                        --overwrite true \
+                        --account-name hornbeam \
+                        --auth-mode key \
+                        -d 'just-maple' \
+                        -s apps/web/dist/web/browser
 
             - name: Azure Logout
               run: az logout
