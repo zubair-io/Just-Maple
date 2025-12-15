@@ -3,6 +3,13 @@ import { AuthGuard, PublicGuard } from './guards/auth.guard';
 import { LegoTagGuard, NotLegoTagGuard } from './guards/lego-tag.guard';
 
 export const routes: Routes = [
+  // Settings route - must come before the home route
+  {
+    path: 'settings',
+    loadComponent: () =>
+      import('./pages/settings/settings.component').then((m) => m.SettingsComponent),
+    canActivate: [AuthGuard],
+  },
   // Authenticated app routes - matched first if user is authenticated
   {
     path: '',

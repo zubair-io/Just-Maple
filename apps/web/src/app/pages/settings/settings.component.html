@@ -1,0 +1,175 @@
+<div class="min-h-screen bg-[var(--color-bg)]">
+  <!-- Header -->
+  <header class="px-6 py-4 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+    <div class="max-w-2xl mx-auto flex items-center gap-4">
+      <button
+        (click)="goBack()"
+        class="p-2 -ml-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 rounded-lg transition-colors"
+      >
+        <span class="material-icons-round">arrow_back</span>
+      </button>
+      <h1 class="text-xl font-semibold text-[var(--color-text-main)]">Settings</h1>
+    </div>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-6 py-8 space-y-8">
+    <!-- Account Section -->
+    <section>
+      <h2
+        class="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-4"
+      >
+        Account
+      </h2>
+      <div class="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+        <div class="flex items-center gap-4">
+          <div
+            class="w-12 h-12 rounded-full bg-gradient-to-br from-orange-200 to-red-300 flex items-center justify-center text-lg font-bold text-orange-900"
+          >
+            {{ (authService.user()?.email ?? '?').slice(0, 2).toUpperCase() }}
+          </div>
+          <div>
+            <p class="font-medium text-[var(--color-text-main)]">
+              {{
+                authService.user()?.displayName ||
+                  (authService.user()?.email ?? '').split('@')[0] ||
+                  'User'
+              }}
+            </p>
+            <p class="text-sm text-[var(--color-text-muted)]">{{ authService.user()?.email }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Passkeys Section -->
+    <section>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+          Passkeys
+        </h2>
+        @if (authService.supportsPasskeys()) {
+          <button
+            (click)="addPasskey()"
+            [disabled]="isAddingPasskey()"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] rounded-lg transition-colors disabled:opacity-50"
+          >
+            @if (isAddingPasskey()) {
+              <span class="material-icons-round text-base animate-spin">sync</span>
+              <span>Adding...</span>
+            } @else {
+              <span class="material-icons-round text-base">add</span>
+              <span>Add Passkey</span>
+            }
+          </button>
+        }
+      </div>
+
+      <!-- Success/Error Messages -->
+      @if (passkeySuccess()) {
+        <div
+          class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700"
+        >
+          <span class="material-icons-round text-lg">check_circle</span>
+          <span class="text-sm">{{ passkeySuccess() }}</span>
+        </div>
+      }
+
+      @if (passkeyError()) {
+        <div
+          class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700"
+        >
+          <span class="material-icons-round text-lg">error</span>
+          <span class="text-sm">{{ passkeyError() }}</span>
+        </div>
+      }
+
+      <div class="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)]">
+        @if (isLoadingPasskeys()) {
+          <div class="p-8 text-center">
+            <span class="material-icons-round text-2xl text-[var(--color-text-muted)] animate-spin"
+              >sync</span
+            >
+          </div>
+        } @else if (passkeys().length === 0) {
+          <div class="p-8 text-center">
+            <div
+              class="w-16 h-16 mx-auto mb-4 rounded-full bg-stone-100 flex items-center justify-center"
+            >
+              <span class="material-icons-round text-3xl text-[var(--color-text-muted)]">key</span>
+            </div>
+            <p class="text-[var(--color-text-main)] font-medium mb-1">No passkeys yet</p>
+            <p class="text-sm text-[var(--color-text-muted)] mb-4">
+              Add a passkey to sign in faster and more securely
+            </p>
+            @if (authService.supportsPasskeys()) {
+              <button
+                (click)="addPasskey()"
+                [disabled]="isAddingPasskey()"
+                class="px-4 py-2 bg-[var(--color-primary)] text-white font-medium rounded-lg hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-50"
+              >
+                Add your first passkey
+              </button>
+            } @else {
+              <p class="text-sm text-amber-600">
+                Passkeys are not supported on this device or browser
+              </p>
+            }
+          </div>
+        } @else {
+          <ul class="divide-y divide-[var(--color-border)]">
+            @for (passkey of passkeys(); track passkey.id) {
+              <li class="p-4 flex items-center gap-4">
+                <div
+                  class="w-10 h-10 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0"
+                >
+                  <span class="material-icons-round text-[var(--color-text-muted)]">key</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium text-[var(--color-text-main)] truncate">
+                    Passkey {{ passkey.visibleId }}
+                  </p>
+                  <div class="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+                    <span>{{ getDeviceTypeLabel(passkey.deviceType) }}</span>
+                    @if (passkey.backedUp) {
+                      <span
+                        class="inline-flex items-center gap-0.5 text-green-600"
+                        title="Backed up to your account"
+                      >
+                        <span class="material-icons-round text-sm">cloud_done</span>
+                      </span>
+                    }
+                  </div>
+                </div>
+                <div class="text-sm text-[var(--color-text-muted)]">
+                  {{ formatDate(passkey.createdAt) }}
+                </div>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+
+      <p class="mt-3 text-sm text-[var(--color-text-muted)]">
+        Passkeys let you sign in securely using Face ID, Touch ID, or your device's screen lock.
+      </p>
+    </section>
+
+    <!-- Danger Zone -->
+    <section>
+      <h2
+        class="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-4"
+      >
+        Session
+      </h2>
+      <div class="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+        <button
+          (click)="logout()"
+          class="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-red-600 font-medium hover:bg-red-50 rounded-lg transition-colors"
+        >
+          <span class="material-icons-round text-xl">logout</span>
+          <span>Sign out</span>
+        </button>
+      </div>
+    </section>
+  </main>
+</div>

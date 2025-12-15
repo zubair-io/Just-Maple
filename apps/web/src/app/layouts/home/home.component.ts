@@ -120,6 +120,6 @@ export class HomeComponent implements OnInit, OnDestroy {
   }
 
   onSettings(): void {
-    // TODO: Implement settings modal
+    this.router.navigate(['/settings']);
   }
 }
