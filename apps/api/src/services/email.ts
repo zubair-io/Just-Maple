@@ -19,7 +19,7 @@ async function sendWithAzure(options: SendMagicLinkOptions, verifyUrl: string): 
             html: `
         <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="text-align: center; margin-bottom: 24px;">
-            <img src="https://hornbeam.justmaple.app/data/assets/justmaple.svg" alt="Just Maple" style="width: 48px; height: 48px;" />
+            <img src="https://hornbeam.justmaple.app/data/assets/icons/apple-touch.png" alt="Just Maple" style="width: 48px; height: 48px;" />
             <h1 style="color: #D94E3B; margin: 12px 0 0 0; font-size: 24px;">Just Maple</h1>
           </div>
           <p style="color: #333;">Click the button below to sign in:</p>
@@ -74,7 +74,7 @@ async function sendWithLocalMail(options: SendMagicLinkOptions, verifyUrl: strin
     const htmlBody = `<html>
 <body style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
   <div style="text-align: center; margin-bottom: 24px;">
-    <img src="https://hornbeam.justmaple.app/data/assets/justmaple.svg" alt="Just Maple" style="width: 48px; height: 48px;" />
+    <img src="https://hornbeam.justmaple.app/data/assets/icons/apple-touch.png" alt="Just Maple" style="width: 48px; height: 48px;" />
     <h1 style="color: #D94E3B; margin: 12px 0 0 0; font-size: 24px;">Just Maple</h1>
   </div>
   <p style="color: #333;">Click the button below to sign in:</p>
