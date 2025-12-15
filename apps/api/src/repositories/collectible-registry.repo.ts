@@ -17,7 +17,7 @@ interface CollectibleRegistryDocument {
 }
 
 function getCollection(): Collection<CollectibleRegistryDocument> {
-    return getDb().collection<CollectibleRegistryDocument>('collectible_registry');
+    return getDb().collection<CollectibleRegistryDocument>('collectibleregistries');
 }
 
 function toRegistryResponse(doc: CollectibleRegistryDocument): CollectibleRegistry {
