@@ -320,6 +320,47 @@ export class PaperService {
   }
 
   /**
+   * Load paper by registry data ID
+   * Always fetches from API to ensure data is fresh (avoids stale cache issues)
+   */
+  loadPaperByRegistry(registryId: string, tagId: string): Observable<Paper | null> {
+    this._isLoading.set(true);
+    this._error.set(null);
+
+    return this.http
+      .get<{ paper: Paper | null }>(`/api/papers/by-registry/${registryId}`, {
+        params: { tagId },
+      })
+      .pipe(
+        tap((response) => {
+          if (response.paper) {
+            this.store.update(upsertEntities([response.paper]));
+            this.persistToIndexedDB([response.paper]);
+          } else {
+            // Remove stale cache entry if API says paper doesn't exist
+            const cached = this.store
+              .query(getAllEntities())
+              .find((p) => p.data.registryData === registryId && p.tags.includes(tagId));
+            if (cached) {
+              this.store.update(deleteEntities(cached._id));
+              if (isPlatformBrowser(this.platformId)) {
+                this.indexedDB.delete(cached._id, STORE_NAME);
+              }
+            }
+          }
+          this._isLoading.set(false);
+        }),
+        map((response) => response.paper),
+        catchError((err) => {
+          const message = err?.error?.error || 'Failed to load paper';
+          this._error.set(message);
+          this._isLoading.set(false);
+          return of(null);
+        }),
+      );
+  }
+
+  /**
    * Clear all papers from store and IndexedDB
    */
   async clearCache(): Promise<void> {

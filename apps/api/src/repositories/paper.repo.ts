@@ -240,6 +240,29 @@ export async function updatePaper(
     }
 }
 
+export async function findPaperByRegistryData(
+    registryId: string,
+    tagId: string,
+    userId: string,
+): Promise<Paper | null> {
+    try {
+        // Verify user has access to the tag
+        const tag = await findTagByIdWithAccess(tagId, userId, 'read');
+        if (!tag) return null;
+
+        const doc = await getCollection().findOne({
+            'data.registryData': new ObjectId(registryId),
+            tags: new ObjectId(tagId),
+        });
+
+        if (!doc) return null;
+
+        return toPaperResponse(doc);
+    } catch {
+        return null;
+    }
+}
+
 export async function deletePaper(id: string, userId: string): Promise<boolean> {
     try {
         // First, find the paper to check access

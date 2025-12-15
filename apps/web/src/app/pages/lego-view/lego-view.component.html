@@ -20,6 +20,23 @@
     </span>
     <div class="flex items-center border-l border-[var(--color-border)] pl-2 gap-1">
       <button
+        (click)="toggleFilterPanel()"
+        class="w-8 h-8 flex items-center justify-center rounded-full transition-colors relative"
+        [class.text-[var(--color-primary)]]="hasActiveFilters()"
+        [class.bg-[var(--color-primary-light)]]="hasActiveFilters()"
+        [class.text-[var(--color-text-muted)]]="!hasActiveFilters()"
+        [class.hover:text-[var(--color-text-main)]]="!hasActiveFilters()"
+        [class.hover:bg-stone-100]="!hasActiveFilters()"
+        title="Filter"
+      >
+        <span class="material-icons-round text-lg">filter_list</span>
+        @if (hasActiveFilters()) {
+          <span
+            class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[var(--color-primary)] rounded-full"
+          ></span>
+        }
+      </button>
+      <button
         (click)="openScanner()"
         class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
         title="Scan Barcode"
@@ -29,6 +46,71 @@
     </div>
   </div>
 </header>
+
+<!-- Filter Panel -->
+@if (showFilterPanel()) {
+  <div class="bg-white border-b border-[var(--color-border)] px-4 py-3 shadow-sm animate-slideDown">
+    <!-- Search Input -->
+    <div class="relative mb-3">
+      <span
+        class="material-icons-round absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] text-lg"
+        >search</span
+      >
+      <input
+        type="text"
+        placeholder="Search by title or set number..."
+        [value]="searchQuery()"
+        (input)="updateSearchQuery($event)"
+        class="w-full pl-10 pr-10 py-2 border border-[var(--color-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)]"
+      />
+      @if (searchQuery()) {
+        <button
+          (click)="searchQuery.set('')"
+          class="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
+        >
+          <span class="material-icons-round text-lg">close</span>
+        </button>
+      }
+    </div>
+
+    <!-- Tags Filter -->
+    @if (availableRegistryTags().length > 0) {
+      <div class="mb-3">
+        <div class="text-xs font-medium text-[var(--color-text-muted)] mb-2">Filter by theme</div>
+        <div class="flex flex-wrap gap-1.5">
+          @for (tag of availableRegistryTags(); track tag.value) {
+            <button
+              (click)="toggleRegistryTag(tag.value)"
+              class="px-2.5 py-1 text-xs rounded-full border transition-colors"
+              [class.bg-[var(--color-primary)]]="selectedRegistryTags().includes(tag.value)"
+              [class.text-white]="selectedRegistryTags().includes(tag.value)"
+              [class.border-[var(--color-primary)]]="selectedRegistryTags().includes(tag.value)"
+              [class.bg-white]="!selectedRegistryTags().includes(tag.value)"
+              [class.text-[var(--color-text-main)]]="!selectedRegistryTags().includes(tag.value)"
+              [class.border-[var(--color-border)]]="!selectedRegistryTags().includes(tag.value)"
+              [class.hover:border-[var(--color-primary)]]="
+                !selectedRegistryTags().includes(tag.value)
+              "
+            >
+              {{ tag.value }}
+            </button>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- Clear Filters -->
+    @if (hasActiveFilters()) {
+      <button
+        (click)="clearFilters()"
+        class="text-xs text-[var(--color-primary)] hover:underline flex items-center gap-1"
+      >
+        <span class="material-icons-round text-sm">clear_all</span>
+        Clear all filters
+      </button>
+    }
+  </div>
+}
 
 <!-- Scanner Modal -->
 @if (showScanner()) {

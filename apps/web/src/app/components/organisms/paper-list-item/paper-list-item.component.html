@@ -1,15 +1,15 @@
 <div
-  class="flex p-4 bg-white rounded-xl border-2 my-1 mx-2 cursor-pointer transition-colors"
+  class="flex p-4 bg-white rounded-xl border-2 my-1 mx-2 cursor-pointer transition-colors overflow-hidden"
   [class.border-[var(--color-primary)]]="selected()"
   [class.bg-orange-50]="selected()"
   [class.border-transparent]="!selected()"
   [class.hover:border-gray-200]="!selected()"
 >
-  <div class="mr-4 flex-1 min-w-0">
+  <div class="mr-4 flex-1 min-w-0 overflow-hidden">
     <h4 class="text-lg font-medium text-gray-900 truncate">
       {{ title() }}
     </h4>
-    <div class="mt-1 text-sm text-gray-400 truncate">
+    <div class="mt-1 text-sm text-gray-400 truncate whitespace-nowrap overflow-hidden">
       @for (tag of tags(); track $index; let last = $last) {
         <span>{{ tag.value }}</span>
         @if (!last) {

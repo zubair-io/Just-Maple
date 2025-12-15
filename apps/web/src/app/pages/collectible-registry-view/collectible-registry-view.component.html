@@ -1,152 +1,216 @@
-<div class="flex flex-col h-full bg-white">
+<div class="h-full flex flex-col bg-[var(--color-bg)]">
   <!-- Header -->
   <header
-    class="h-14 flex items-center justify-between px-4 flex-shrink-0 border-b border-[var(--color-border)]"
+    class="h-14 flex items-center gap-3 px-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
   >
     <button
       (click)="goBack()"
       class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
-      title="Back to list"
     >
-      <span class="material-icons-round text-lg">arrow_back</span>
+      <span class="material-icons-round">arrow_back</span>
     </button>
-    <span class="text-sm font-medium text-[var(--color-text-main)] truncate flex-1 mx-4">
-      {{ title() }}
-    </span>
-    <div class="w-8"></div>
+
+    @if (selectedTag()) {
+      <div
+        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium text-sm p-1 px-2 rounded bg-stone-100"
+      >
+        <span class="material-icons-round text-sm text-[var(--color-primary)]">folder</span>
+        <span>{{ selectedTag()!.label }}</span>
+      </div>
+    }
   </header>
 
-  @if (loading()) {
-    <div class="flex-1 flex items-center justify-center">
-      <div class="text-[var(--color-text-muted)]">Loading...</div>
-    </div>
-  } @else if (registry()) {
-    <!-- Content -->
-    <div class="flex-1 overflow-y-auto p-6">
-      <!-- Main Image -->
-      @if (mainImage()) {
-        <div class="flex justify-center mb-6">
-          <img
-            [src]="mainImage()"
-            [alt]="title()"
-            class="max-h-64 rounded-lg object-contain shadow-md"
-          />
-        </div>
-      }
-
-      <!-- Title -->
-      <h1 class="text-2xl font-bold text-[var(--color-text-main)] mb-2">
-        {{ title() }}
-      </h1>
-
-      <!-- Tags -->
-      @if (tags().length > 0) {
-        <div class="flex flex-wrap gap-2 mb-4">
-          @for (tag of tags(); track $index) {
-            <span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">
-              {{ tag.value }}
-            </span>
-          }
-        </div>
-      }
-
-      <!-- Description -->
-      @if (description()) {
-        <div class="text-[var(--color-text-muted)] mb-6">
-          <app-content-renderer [content]="description()" />
-        </div>
-      }
-
-      <!-- Status Buttons -->
-      <div class="mb-6">
-        <h3 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">Collection Status</h3>
-        <div class="flex gap-3">
-          <button
-            (click)="setStatus('have')"
-            class="flex-1 py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-            [class.bg-green-500]="isHave()"
-            [class.text-white]="isHave()"
-            [class.shadow-md]="isHave()"
-            [class.bg-gray-100]="!isHave()"
-            [class.text-gray-700]="!isHave()"
-            [class.hover:bg-gray-200]="!isHave()"
-          >
-            <span class="material-icons-round text-lg">check_circle</span>
-            Have
-          </button>
-          <button
-            (click)="setStatus('want')"
-            class="flex-1 py-3 px-4 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
-            [class.bg-yellow-500]="isWant()"
-            [class.text-white]="isWant()"
-            [class.shadow-md]="isWant()"
-            [class.bg-gray-100]="!isWant()"
-            [class.text-gray-700]="!isWant()"
-            [class.hover:bg-gray-200]="!isWant()"
-          >
-            <span class="material-icons-round text-lg">favorite</span>
-            Want
-          </button>
-        </div>
+  <!-- Content -->
+  <div class="flex-1 overflow-y-auto">
+    @if (isLoading()) {
+      <div class="flex items-center justify-center h-64">
+        <div
+          class="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-primary)]"
+        ></div>
       </div>
-
-      <!-- Quantity Control (only when status is 'have') -->
-      @if (isHave()) {
-        <div class="mb-6">
-          <h3 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">Quantity</h3>
-          <div class="flex items-center gap-4">
-            <button
-              (click)="decrementQuantity()"
-              [disabled]="quantity() <= 1"
-              class="w-12 h-12 rounded-xl font-bold text-xl transition-all flex items-center justify-center"
-              [class.bg-gray-100]="quantity() > 1"
-              [class.text-gray-700]="quantity() > 1"
-              [class.hover:bg-gray-200]="quantity() > 1"
-              [class.bg-gray-50]="quantity() <= 1"
-              [class.text-gray-300]="quantity() <= 1"
-              [class.cursor-not-allowed]="quantity() <= 1"
-            >
-              <span class="material-icons-round">remove</span>
-            </button>
-            <span class="text-3xl font-bold text-[var(--color-text-main)] w-16 text-center">
-              {{ quantity() }}
-            </span>
-            <button
-              (click)="incrementQuantity()"
-              class="w-12 h-12 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold text-xl transition-all flex items-center justify-center"
-            >
-              <span class="material-icons-round">add</span>
-            </button>
+    } @else if (registry()) {
+      <div class="max-w-2xl mx-auto p-4 pb-32">
+        <!-- Image Gallery -->
+        @if (registry()!.images.length > 0) {
+          <div class="mb-6">
+            <!-- Main Image -->
+            <div class="aspect-square bg-stone-100 rounded-lg overflow-hidden mb-2">
+              <img
+                [src]="registry()!.images[selectedImageIndex()]"
+                [alt]="registry()!.title"
+                class="w-full h-full object-contain"
+              />
+            </div>
+            <!-- Thumbnails -->
+            @if (registry()!.images.length > 1) {
+              <div class="flex gap-2 overflow-x-auto pb-2">
+                @for (image of registry()!.images; track image; let i = $index) {
+                  <button
+                    (click)="selectImage(i)"
+                    class="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border-2 transition-colors"
+                    [class.border-[var(--color-primary)]]="selectedImageIndex() === i"
+                    [class.border-transparent]="selectedImageIndex() !== i"
+                  >
+                    <img
+                      [src]="image"
+                      [alt]="'Image ' + (i + 1)"
+                      class="w-full h-full object-cover"
+                    />
+                  </button>
+                }
+              </div>
+            }
           </div>
-        </div>
-      }
+        }
 
-      <!-- Additional Images -->
-      @if (images().length > 1) {
+        <!-- Title & Info -->
         <div class="mb-6">
-          <h3 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">More Images</h3>
-          <div class="flex gap-2 overflow-x-auto pb-2">
-            @for (image of images(); track $index; let first = $first) {
-              @if (!first) {
-                <img
-                  [src]="image"
-                  [alt]="title()"
-                  class="h-20 w-20 rounded-lg object-cover flex-shrink-0"
-                />
-              }
+          <h1 class="text-xl font-semibold text-[var(--color-text-main)] mb-2">
+            {{ registry()!.title }}
+          </h1>
+          <div class="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+            <span class="uppercase">{{ registry()!.provider }}</span>
+            <span>•</span>
+            <span>{{ registry()!.providerId }}</span>
+            @if (registry()!.upc) {
+              <span>•</span>
+              <span>UPC: {{ registry()!.upc }}</span>
             }
           </div>
         </div>
-      }
 
-      <!-- Item ID -->
-      <div class="text-xs text-gray-400 mt-8">
-        Item ID: {{ registry()?.providerId }} &bull; Provider: {{ registry()?.provider }}
+        <!-- Tags -->
+        @if (registry()!.tags && registry()!.tags.length > 0) {
+          <div class="flex flex-wrap gap-2 mb-6">
+            @for (tag of registry()!.tags; track tag.value) {
+              <span
+                class="px-2 py-1 text-xs rounded-full bg-stone-100 text-[var(--color-text-muted)]"
+              >
+                {{ tag.value }}
+              </span>
+            }
+          </div>
+        }
+
+        <!-- Collection Status -->
+        <div class="bg-stone-50 rounded-lg p-4 mb-6">
+          <h2 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">Collection Status</h2>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              (click)="setStatus('have')"
+              [disabled]="isSaving()"
+              class="flex items-center justify-center gap-2 py-3 px-4 rounded-lg border-2 transition-all"
+              [class.border-green-500]="collectionStatus() === 'have'"
+              [class.bg-green-50]="collectionStatus() === 'have'"
+              [class.text-green-700]="collectionStatus() === 'have'"
+              [class.border-stone-200]="collectionStatus() !== 'have'"
+              [class.hover:border-green-300]="collectionStatus() !== 'have'"
+            >
+              <span class="material-icons-round text-lg">check_circle</span>
+              <span class="font-medium">Have</span>
+            </button>
+
+            <button
+              (click)="setStatus('want')"
+              [disabled]="isSaving()"
+              class="flex items-center justify-center gap-2 py-3 px-4 rounded-lg border-2 transition-all"
+              [class.border-red-500]="collectionStatus() === 'want'"
+              [class.bg-red-50]="collectionStatus() === 'want'"
+              [class.text-red-700]="collectionStatus() === 'want'"
+              [class.border-stone-200]="collectionStatus() !== 'want'"
+              [class.hover:border-red-300]="collectionStatus() !== 'want'"
+            >
+              <span class="material-icons-round text-lg">favorite</span>
+              <span class="font-medium">Want</span>
+            </button>
+
+            <button
+              (click)="setStatus('sold')"
+              [disabled]="isSaving()"
+              class="flex items-center justify-center gap-2 py-3 px-4 rounded-lg border-2 transition-all"
+              [class.border-amber-500]="collectionStatus() === 'sold'"
+              [class.bg-amber-50]="collectionStatus() === 'sold'"
+              [class.text-amber-700]="collectionStatus() === 'sold'"
+              [class.border-stone-200]="collectionStatus() !== 'sold'"
+              [class.hover:border-amber-300]="collectionStatus() !== 'sold'"
+            >
+              <span class="material-icons-round text-lg">sell</span>
+              <span class="font-medium">Sold</span>
+            </button>
+
+            <button
+              (click)="setStatus('none')"
+              [disabled]="isSaving()"
+              class="flex items-center justify-center gap-2 py-3 px-4 rounded-lg border-2 transition-all"
+              [class.border-stone-400]="collectionStatus() === 'none'"
+              [class.bg-stone-100]="collectionStatus() === 'none'"
+              [class.text-stone-600]="collectionStatus() === 'none'"
+              [class.border-stone-200]="collectionStatus() !== 'none'"
+              [class.hover:border-stone-300]="collectionStatus() !== 'none'"
+            >
+              <span class="material-icons-round text-lg">remove_circle_outline</span>
+              <span class="font-medium">None</span>
+            </button>
+          </div>
+
+          <!-- Quantity (only show if in collection) -->
+          @if (collectionStatus() !== 'none') {
+            <div class="mt-4 pt-4 border-t border-stone-200">
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-[var(--color-text-muted)]">Quantity</span>
+                <div class="flex items-center gap-3">
+                  <button
+                    (click)="updateQuantity(-1)"
+                    [disabled]="isSaving() || quantity() <= 1"
+                    class="w-8 h-8 flex items-center justify-center rounded-full bg-stone-200 hover:bg-stone-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span class="material-icons-round text-lg">remove</span>
+                  </button>
+                  <span class="text-lg font-medium w-8 text-center">{{ quantity() }}</span>
+                  <button
+                    (click)="updateQuantity(1)"
+                    [disabled]="isSaving()"
+                    class="w-8 h-8 flex items-center justify-center rounded-full bg-stone-200 hover:bg-stone-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <span class="material-icons-round text-lg">add</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- Provider Data (if available) -->
+        @if (registry()!.providerData) {
+          <div class="bg-stone-50 rounded-lg p-4">
+            <h2 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">Details</h2>
+            <dl class="grid grid-cols-2 gap-2 text-sm">
+              @if (registry()!.providerData.year) {
+                <dt class="text-[var(--color-text-muted)]">Year</dt>
+                <dd>{{ registry()!.providerData.year }}</dd>
+              }
+              @if (registry()!.providerData.pieces) {
+                <dt class="text-[var(--color-text-muted)]">Pieces</dt>
+                <dd>{{ registry()!.providerData.pieces }}</dd>
+              }
+              @if (registry()!.providerData.minifigs) {
+                <dt class="text-[var(--color-text-muted)]">Minifigs</dt>
+                <dd>{{ registry()!.providerData.minifigs }}</dd>
+              }
+              @if (registry()!.providerData.rrp) {
+                <dt class="text-[var(--color-text-muted)]">RRP</dt>
+                <dd>{{ registry()!.providerData.rrp }}</dd>
+              }
+            </dl>
+          </div>
+        }
       </div>
-    </div>
-  } @else {
-    <div class="flex-1 flex items-center justify-center">
-      <div class="text-[var(--color-text-muted)]">Registry item not found</div>
-    </div>
-  }
+    } @else {
+      <div class="flex flex-col items-center justify-center h-64 text-[var(--color-text-muted)]">
+        <span class="material-icons-round text-4xl mb-2">error_outline</span>
+        <p>Item not found</p>
+      </div>
+    }
+  </div>
 </div>

@@ -5,6 +5,7 @@ import type { JWTPayload } from '@maple/shared';
 import {
     findPapersByUserId,
     findPaperById,
+    findPaperByRegistryData,
     createPaper,
     updatePaper,
     deletePaper,
@@ -46,6 +47,38 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
             query: t.Object({
                 tagId: t.Optional(t.String()),
                 status: t.Optional(t.String()),
+            }),
+        },
+    )
+
+    // Get paper by registry data (for collectible registry view)
+    .get(
+        '/by-registry/:registryId',
+        async ({ auth, params, query, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            if (!query.tagId) {
+                set.status = 400;
+                return { error: 'Bad Request', message: 'tagId query parameter required' };
+            }
+
+            const paper = await findPaperByRegistryData(
+                params.registryId,
+                query.tagId,
+                auth.user._id,
+            );
+
+            // Return null paper if not found (not a 404 - the registry exists, user just doesn't have it)
+            return { paper };
+        },
+        {
+            params: t.Object({
+                registryId: t.String(),
+            }),
+            query: t.Object({
+                tagId: t.String(),
             }),
         },
     )
