@@ -13,9 +13,9 @@ interface PaperDocument {
         registryData?: ObjectId;
         status: PaperStatus;
         quantity: number;
-        created: Date;
+        created?: Date;
     };
-    createdBy: ObjectId;
+    createdBy: ObjectId | string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -35,9 +35,9 @@ function toPaperResponse(doc: PaperDocument): Paper {
             registryData: doc.data.registryData?.toString(),
             status: doc.data.status,
             quantity: doc.data.quantity,
-            created: doc.data.created.toISOString(),
+            created: doc.data.created?.toISOString() ?? doc.createdAt.toISOString(),
         },
-        createdBy: doc.createdBy.toString(),
+        createdBy: typeof doc.createdBy === 'string' ? doc.createdBy : doc.createdBy.toString(),
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
     };
