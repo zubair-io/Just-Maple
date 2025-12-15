@@ -16,7 +16,7 @@
     "build:api": "bun run --cwd apps/api build",
     "build:web": "bun run --cwd apps/web build",
     "build:web:native": "bun run --cwd apps/web build && ./scripts/bundle-native.sh",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun run --cwd packages/shared tsc --noEmit && bun run --cwd apps/web tsc -p tsconfig.app.json --noEmit",
     "test": "bun run test:api && bun run test:web",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
