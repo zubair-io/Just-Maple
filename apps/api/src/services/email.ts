@@ -4,6 +4,7 @@ import { spawn, execSync } from 'child_process';
 export interface SendMagicLinkOptions {
     email: string;
     token: string;
+    code: string;
     baseUrl?: string;
 }
 
@@ -29,16 +30,16 @@ async function sendWithAzure(options: SendMagicLinkOptions, verifyUrl: string): 
               Sign In
             </a>
           </div>
-          <p style="color: #666; font-size: 14px;">
-            Or copy this link: <br>
-            <a href="${verifyUrl}" style="color: #D94E3B;">${verifyUrl}</a>
-          </p>
-          <p style="color: #999; font-size: 12px; margin-top: 24px;">
-            This link expires in 15 minutes. If you didn't request this, you can ignore this email.
+          <div style="text-align: center; margin: 24px 0; padding: 20px; background: #f5f5f5; border-radius: 8px;">
+            <p style="color: #666; font-size: 14px; margin: 0 0 8px 0;">Or enter this code:</p>
+            <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #D94E3B; margin: 0;">${options.code}</p>
+          </div>
+          <p style="color: #999; font-size: 12px; margin-top: 24px; text-align: center;">
+            This code expires in 15 minutes. If you didn't request this, you can ignore this email.
           </p>
         </div>
       `,
-            plainText: `Sign in to Just Maple\n\nClick this link to sign in: ${verifyUrl}\n\nThis link expires in 15 minutes.`,
+            plainText: `Sign in to Just Maple\n\nClick this link to sign in: ${verifyUrl}\n\nOr enter this code: ${options.code}\n\nThis code expires in 15 minutes.`,
         },
         recipients: {
             to: [{ address: options.email }],
@@ -84,17 +85,17 @@ async function sendWithLocalMail(options: SendMagicLinkOptions, verifyUrl: strin
       Sign In
     </a>
   </div>
-  <p style="color: #666; font-size: 14px;">
-    Or copy this link: <br>
-    <a href="${verifyUrl}" style="color: #D94E3B;">${verifyUrl}</a>
-  </p>
-  <p style="color: #999; font-size: 12px; margin-top: 24px;">
-    This link expires in 15 minutes. If you didn't request this, you can ignore this email.
+  <div style="text-align: center; margin: 24px 0; padding: 20px; background: #f5f5f5; border-radius: 8px;">
+    <p style="color: #666; font-size: 14px; margin: 0 0 8px 0;">Or enter this code:</p>
+    <p style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #D94E3B; margin: 0;">${options.code}</p>
+  </div>
+  <p style="color: #999; font-size: 12px; margin-top: 24px; text-align: center;">
+    This code expires in 15 minutes. If you didn't request this, you can ignore this email.
   </p>
 </body>
 </html>`;
 
-    const textBody = `Sign in to Just Maple\n\nClick this link to sign in: ${verifyUrl}\n\nThis link expires in 15 minutes.`;
+    const textBody = `Sign in to Just Maple\n\nClick this link to sign in: ${verifyUrl}\n\nOr enter this code: ${options.code}\n\nThis code expires in 15 minutes.`;
 
     return new Promise((resolve, reject) => {
         if (mailCmd === 'sendmail') {

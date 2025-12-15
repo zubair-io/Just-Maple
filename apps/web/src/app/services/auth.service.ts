@@ -134,6 +134,32 @@ export class AuthService {
     }
   }
 
+  async verifyCode(email: string, code: string): Promise<void> {
+    this._isLoading.set(true);
+    this._error.set(null);
+
+    try {
+      const response = await firstValueFrom(
+        this.http.post<AuthResponse>('/api/auth/verify-code', { email, code }),
+      );
+
+      this._accessToken.set(response.accessToken);
+      this._user.set(response.user);
+      this.saveToStorage({
+        accessToken: response.accessToken,
+        user: response.user,
+      });
+
+      await this.router.navigate(['/']);
+    } catch (err: any) {
+      const message = err?.error?.error || 'Invalid or expired code';
+      this._error.set(message);
+      throw new Error(message);
+    } finally {
+      this._isLoading.set(false);
+    }
+  }
+
   async fetchCurrentUser(): Promise<UserResponse | null> {
     if (!this._accessToken()) {
       return null;

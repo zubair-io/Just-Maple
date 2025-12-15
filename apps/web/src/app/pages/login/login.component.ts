@@ -25,6 +25,9 @@ export class LoginComponent {
   readonly email = signal('');
   readonly emailSent = signal(false);
   readonly devToken = signal<string | null>(null);
+  readonly devCode = signal<string | null>(null);
+  readonly code = signal('');
+  readonly codeError = signal<string | null>(null);
 
   async onSubmit(): Promise<void> {
     if (!this.email()) return;
@@ -33,12 +36,30 @@ export class LoginComponent {
       const response = await this.authService.requestMagicLink(this.email());
       this.emailSent.set(true);
 
-      // In dev mode, store the token for easy testing
+      // In dev mode, store the token and code for easy testing
       if (response.devToken) {
         this.devToken.set(response.devToken);
       }
+      if (response.devCode) {
+        this.devCode.set(response.devCode);
+      }
     } catch {
       // Error is handled by auth service
+    }
+  }
+
+  async verifyCode(): Promise<void> {
+    if (!this.code() || this.code().length !== 6) {
+      this.codeError.set('Please enter a 6-digit code');
+      return;
+    }
+
+    this.codeError.set(null);
+
+    try {
+      await this.authService.verifyCode(this.email(), this.code());
+    } catch (err: any) {
+      this.codeError.set(err.message || 'Invalid or expired code');
     }
   }
 
@@ -46,6 +67,9 @@ export class LoginComponent {
     this.email.set('');
     this.emailSent.set(false);
     this.devToken.set(null);
+    this.devCode.set(null);
+    this.code.set('');
+    this.codeError.set(null);
   }
 
   async loginWithPasskey(): Promise<void> {

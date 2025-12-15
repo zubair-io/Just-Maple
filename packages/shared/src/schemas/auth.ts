@@ -8,8 +8,9 @@ export type MagicLinkRequest = Static<typeof MagicLinkRequestSchema>;
 
 export const MagicLinkResponseSchema = Type.Object({
     message: Type.String(),
-    // In dev mode, we include the token for testing
+    // In dev mode, we include the token and code for testing
     devToken: Type.Optional(Type.String()),
+    devCode: Type.Optional(Type.String()),
 });
 
 export type MagicLinkResponse = Static<typeof MagicLinkResponseSchema>;

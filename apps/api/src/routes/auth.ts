@@ -8,7 +8,7 @@ import {
 } from '@simplewebauthn/server';
 import type { AuthenticatorTransportFuture } from '@simplewebauthn/server';
 import { findOrCreateUser, findUserById, findUserByEmail } from '../repositories/user.repo';
-import { createMagicLink, validateAndConsumeMagicLink } from '../repositories/magic-link.repo';
+import { createMagicLink, validateAndConsumeMagicLink, validateAndConsumeCode } from '../repositories/magic-link.repo';
 import {
     createPasskey,
     findPasskeyByCredentialId,
@@ -64,23 +64,24 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 // Find or create user
                 const user = await findOrCreateUser(email);
 
-                // Create magic link
-                const token = await createMagicLink(user._id, email);
+                // Create magic link (returns both token and code)
+                const { token, code } = await createMagicLink(user._id, email);
 
                 // Get base URL from request origin or use default
                 const origin = request.headers.get('origin') || 'http://localhost:4200';
 
-                // Send magic link email (logs to console in dev)
-                await sendMagicLinkEmail({ email, token, baseUrl: origin });
+                // Send magic link email with code
+                await sendMagicLinkEmail({ email, token, code, baseUrl: origin });
 
-                const response: { message: string; devToken?: string } = {
+                const response: { message: string; devToken?: string; devCode?: string } = {
                     message: 'Magic link sent to your email',
                 };
 
-                // Only include devToken in local development (never in production)
+                // Only include devToken/devCode in local development (never in production)
                 const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168.');
                 if (config.isDev && isLocalhost) {
                     response.devToken = token;
+                    response.devCode = code;
                 }
 
                 return response;
@@ -148,6 +149,57 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         {
             query: t.Object({
                 token: t.String(),
+            }),
+        },
+    )
+
+    // Verify 6-digit code and return JWT
+    .post(
+        '/verify-code',
+        async ({ body, jwt, set }) => {
+            try {
+                const { email, code } = body;
+
+                // Validate and consume the code
+                const result = await validateAndConsumeCode(email, code);
+
+                if (!result) {
+                    set.status = 401;
+                    return { error: 'Invalid or expired code' };
+                }
+
+                // Get the user
+                const user = await findUserById(result.userId);
+
+                if (!user) {
+                    set.status = 401;
+                    return { error: 'User not found' };
+                }
+
+                // Generate JWT
+                const accessToken = await jwt.sign({
+                    sub: user._id,
+                    email: user.email,
+                });
+
+                return {
+                    accessToken,
+                    user: {
+                        _id: user._id,
+                        email: user.email,
+                        displayName: user.displayName,
+                    },
+                };
+            } catch (error) {
+                console.error('Verify code error:', error);
+                set.status = 500;
+                return { error: 'Verification failed' };
+            }
+        },
+        {
+            body: t.Object({
+                email: t.String({ format: 'email' }),
+                code: t.String({ minLength: 6, maxLength: 6 }),
             }),
         },
     )

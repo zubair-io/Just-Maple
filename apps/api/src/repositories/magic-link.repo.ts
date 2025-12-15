@@ -8,6 +8,7 @@ interface MagicLinkDocument {
     userId: string;
     email: string;
     token: string;
+    code: string; // 6-digit code for manual entry
     expiresAt: Date;
     createdAt: Date;
 }
@@ -20,8 +21,19 @@ export function generateToken(): string {
     return randomBytes(32).toString('hex');
 }
 
-export async function createMagicLink(userId: string, email: string): Promise<string> {
+export function generateCode(): string {
+    // Generate a 6-digit numeric code
+    return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+export interface MagicLinkResult {
+    token: string;
+    code: string;
+}
+
+export async function createMagicLink(userId: string, email: string): Promise<MagicLinkResult> {
     const token = generateToken();
+    const code = generateCode();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + config.magicLinkExpiresIn);
 
@@ -34,11 +46,12 @@ export async function createMagicLink(userId: string, email: string): Promise<st
         userId,
         email: email.toLowerCase(),
         token,
+        code,
         expiresAt,
         createdAt: now,
     });
 
-    return token;
+    return { token, code };
 }
 
 export interface ValidatedMagicLink {
@@ -51,6 +64,26 @@ export async function validateAndConsumeMagicLink(
 ): Promise<ValidatedMagicLink | null> {
     const doc = await getCollection().findOneAndDelete({
         token,
+        expiresAt: { $gt: new Date() },
+    });
+
+    if (!doc) {
+        return null;
+    }
+
+    return {
+        userId: doc.userId,
+        email: doc.email,
+    };
+}
+
+export async function validateAndConsumeCode(
+    email: string,
+    code: string,
+): Promise<ValidatedMagicLink | null> {
+    const doc = await getCollection().findOneAndDelete({
+        email: email.toLowerCase(),
+        code,
         expiresAt: { $gt: new Date() },
     });
 

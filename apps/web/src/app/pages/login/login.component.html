@@ -105,22 +105,59 @@
           <h2 class="text-xl font-semibold text-[var(--color-charcoal)]">Check your email!</h2>
 
           <p class="text-[var(--color-warm-gray)]">
-            We sent a magic link to<br />
+            We sent a magic link and code to<br />
             <strong class="text-[var(--color-charcoal)]">{{ email() }}</strong>
           </p>
 
-          @if (devToken()) {
+          <!-- Code Input -->
+          <div class="mt-6 space-y-4">
+            <ui-divider text="or enter code" />
+
+            <div class="flex justify-center">
+              <input
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                maxlength="6"
+                placeholder="000000"
+                class="w-48 text-center text-2xl font-bold tracking-[0.5em] py-3 px-4 border-2 border-[var(--color-pearl)] rounded-lg focus:border-[var(--color-maple)] focus:outline-none transition-colors"
+                [(ngModel)]="code"
+                [disabled]="authService.isLoading()"
+              />
+            </div>
+
+            @if (codeError()) {
+              <p class="text-sm text-[var(--color-error)]">{{ codeError() }}</p>
+            }
+
+            <ui-button
+              type="button"
+              variant="primary"
+              [fullWidth]="true"
+              [loading]="authService.isLoading()"
+              [disabled]="code().length !== 6"
+              (clicked)="verifyCode()"
+            >
+              Verify Code
+            </ui-button>
+          </div>
+
+          @if (devToken() || devCode()) {
             <div
               class="mt-6 p-4 bg-[var(--color-info-bg)] rounded-lg border border-dashed border-[var(--color-info)]"
             >
               <p class="text-sm font-semibold text-[var(--color-info)] mb-2">Dev Mode</p>
-              <a
-                [href]="'/verify?token=' + devToken()"
-                class="text-[var(--color-info)] hover:underline text-sm break-all"
-              >
-                Click here to verify
-              </a>
-              <p class="text-xs text-[var(--color-mist)] mt-2 break-all">Token: {{ devToken() }}</p>
+              @if (devToken()) {
+                <a
+                  [href]="'/verify?token=' + devToken()"
+                  class="text-[var(--color-info)] hover:underline text-sm break-all block"
+                >
+                  Click here to verify
+                </a>
+              }
+              @if (devCode()) {
+                <p class="text-xs text-[var(--color-mist)] mt-2">Code: {{ devCode() }}</p>
+              }
             </div>
           }
 
