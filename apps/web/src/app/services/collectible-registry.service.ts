@@ -42,7 +42,6 @@ export class CollectibleRegistryService {
     initialValue: [] as CollectibleRegistry[],
   });
 
-
   // Expose registries as a signal for reactive components
   registries(): CollectibleRegistry[] {
     return this._registriesSignal() ?? [];
@@ -226,7 +225,6 @@ export class CollectibleRegistryService {
   getCached(id: string): CollectibleRegistry | undefined {
     return this.store.query(getEntity(id));
   }
-
 
   /**
    * Get all cached registries

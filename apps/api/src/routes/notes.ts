@@ -92,7 +92,14 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
         },
         {
             body: t.Object({
-                type: t.Optional(t.Union([t.Literal('write'), t.Literal('lego'), t.Literal('draw'), t.Literal('kanban')])),
+                type: t.Optional(
+                    t.Union([
+                        t.Literal('write'),
+                        t.Literal('lego'),
+                        t.Literal('draw'),
+                        t.Literal('kanban'),
+                    ]),
+                ),
                 title: t.Optional(t.String({ maxLength: 500 })),
                 content: t.Optional(t.Any()),
                 tagId: t.Optional(t.String()),

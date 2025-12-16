@@ -10,54 +10,56 @@ import { PaperListComponent } from '../../components';
 import type { Paper, CollectibleRegistry, RegistryTag } from '@maple/shared';
 
 @Component({
-    selector: 'app-lego-view',
-    standalone: true,
-    imports: [CommonModule, FormsModule, PaperListComponent],
-    templateUrl: './lego-view.component.html',
-    styleUrl: './lego-view.component.scss',
+  selector: 'app-lego-view',
+  standalone: true,
+  imports: [CommonModule, FormsModule, PaperListComponent],
+  templateUrl: './lego-view.component.html',
+  styleUrl: './lego-view.component.scss',
 })
 export class LegoViewComponent implements OnInit, OnDestroy {
-    private readonly router = inject(Router);
-    private readonly route = inject(ActivatedRoute);
-    readonly tagService = inject(TagService);
-    readonly paperService = inject(PaperService);
-    readonly registryService = inject(CollectibleRegistryService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  readonly tagService = inject(TagService);
+  readonly paperService = inject(PaperService);
+  readonly registryService = inject(CollectibleRegistryService);
 
-    private routeSubscription?: Subscription;
+  private routeSubscription?: Subscription;
 
-    readonly selectedTagId = signal<string | null>(null);
-    readonly showFilterPanel = signal(false);
-    readonly searchQuery = signal('');
-    readonly selectedRegistryTags = signal<string[]>([]);
+  readonly selectedTagId = signal<string | null>(null);
+  readonly showFilterPanel = signal(false);
+  readonly searchQuery = signal('');
+  readonly selectedRegistryTags = signal<string[]>([]);
 
-    // Computed signals reactively derive from store - no validation needed
-    readonly selectedTag = computed(() => {
-        const tagId = this.selectedTagId();
-        if (!tagId) return null;
-        return this.tagService.tags().find((t) => t._id === tagId) || null;
+  // Computed signals reactively derive from store - no validation needed
+  readonly selectedTag = computed(() => {
+    const tagId = this.selectedTagId();
+    if (!tagId) return null;
+    return this.tagService.tags().find((t) => t._id === tagId) || null;
+  });
+
+  // Computed map for O(1) registry lookups (reactive to store changes)
+  private readonly registriesMap = computed(() => {
+    const registries = this.registryService.registries();
+    return new Map(registries.map((r) => [r._id, r]));
+  });
+
+  constructor() {
+    // Load papers when tagId changes
+    effect(() => {
+      const tagId = this.selectedTagId();
+      if (tagId) {
+        this.loadPapersForTag(tagId);
+      }
     });
-
-    // Computed map for O(1) registry lookups (reactive to store changes)
-    private readonly registriesMap = computed(() => {
-        const registries = this.registryService.registries();
-        return new Map(registries.map((r) => [r._id, r]));
-    });
-
-    constructor() {
-        // Load papers when tagId changes
-        effect(() => {
-            const tagId = this.selectedTagId();
-            if (tagId) {
-                this.loadPapersForTag(tagId);
-            }
-        });
-    }
+  }
 
   /** Get all papers for the tag (excluding 'none' status) */
   private readonly allPapersForTag = computed(() => {
     const tagId = this.selectedTagId();
     if (!tagId) return [];
-    return this.paperService.papers().filter((p) => p.tags.includes(tagId) && p.data.status !== 'none');
+    return this.paperService
+      .papers()
+      .filter((p) => p.tags.includes(tagId) && p.data.status !== 'none');
   });
 
   /** Get unique registry tags from all papers for filter options */
@@ -130,24 +132,24 @@ export class LegoViewComponent implements OnInit, OnDestroy {
     return this.searchQuery().trim().length > 0 || this.selectedRegistryTags().length > 0;
   });
 
-    /** Get registry for a paper (reactive O(1) lookup) */
-    getRegistryForPaper(paper: Paper): CollectibleRegistry | undefined {
-        if (!paper.data.registryData) return undefined;
-        return this.registriesMap().get(paper.data.registryData);
-    }
+  /** Get registry for a paper (reactive O(1) lookup) */
+  getRegistryForPaper(paper: Paper): CollectibleRegistry | undefined {
+    if (!paper.data.registryData) return undefined;
+    return this.registriesMap().get(paper.data.registryData);
+  }
 
-    ngOnInit(): void {
-        // Subscribe to route params and set ID directly - effect handles loading
-        this.routeSubscription = this.route.params.subscribe((params) => {
-            this.selectedTagId.set(params['tagId'] || null);
-        });
-    }
+  ngOnInit(): void {
+    // Subscribe to route params and set ID directly - effect handles loading
+    this.routeSubscription = this.route.params.subscribe((params) => {
+      this.selectedTagId.set(params['tagId'] || null);
+    });
+  }
 
-    ngOnDestroy(): void {
-        this.routeSubscription?.unsubscribe();
-    }
+  ngOnDestroy(): void {
+    this.routeSubscription?.unsubscribe();
+  }
 
-    private loadPapersForTag(tagId: string): void {
+  private loadPapersForTag(tagId: string): void {
     this.registryService.initializeRegistry().subscribe({
       next: () => {
         this.paperService.loadPapers({ tagId }).subscribe();

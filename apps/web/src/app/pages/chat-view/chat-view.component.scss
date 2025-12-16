@@ -1,43 +1,43 @@
 :host {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: var(--color-text-muted);
+
+  .empty-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--color-surface);
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 100%;
-    text-align: center;
-    color: var(--color-text-muted);
+    margin-bottom: 1rem;
 
-    .empty-icon {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        background: var(--color-surface);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 1rem;
-
-        span {
-            font-size: 2.5rem;
-            color: var(--color-text-muted);
-        }
+    span {
+      font-size: 2.5rem;
+      color: var(--color-text-muted);
     }
+  }
 
-    h2 {
-        font-size: 1.125rem;
-        font-weight: 600;
-        color: var(--color-text-main);
-        margin-bottom: 0.5rem;
-    }
+  h2 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text-main);
+    margin-bottom: 0.5rem;
+  }
 
-    p {
-        font-size: 0.875rem;
-    }
+  p {
+    font-size: 0.875rem;
+  }
 }

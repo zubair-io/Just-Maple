@@ -69,9 +69,9 @@ function toTagResponse(doc: LegacyTagDocument): Tag {
     }
 
     // Normalize value - default to 'mixed' for legacy docs
-    const value = (['mixed', 'recordings', 'notes'].includes(doc.value)
-        ? doc.value
-        : 'mixed') as TagValue;
+    const value = (
+        ['mixed', 'recordings', 'notes'].includes(doc.value) ? doc.value : 'mixed'
+    ) as TagValue;
 
     return {
         _id: doc._id.toString(),

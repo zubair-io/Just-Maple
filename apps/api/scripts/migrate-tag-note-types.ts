@@ -38,7 +38,10 @@ async function migrate() {
 
         const tagsCollection = db.collection('tags');
         const tagsWithoutValue = await tagsCollection.countDocuments({
-            $or: [{ value: { $exists: false } }, { value: { $nin: ['mixed', 'recordings', 'notes'] } }],
+            $or: [
+                { value: { $exists: false } },
+                { value: { $nin: ['mixed', 'recordings', 'notes'] } },
+            ],
         });
         console.log(`Found ${tagsWithoutValue} tags without valid value field`);
 
@@ -57,7 +60,11 @@ async function migrate() {
 
         // Migration 2: Remove deprecated fields from tags
         const tagsWithDeprecated = await tagsCollection.countDocuments({
-            $or: [{ color: { $exists: true } }, { parentId: { $exists: true } }, { order: { $exists: true } }],
+            $or: [
+                { color: { $exists: true } },
+                { parentId: { $exists: true } },
+                { order: { $exists: true } },
+            ],
         });
         console.log(`Found ${tagsWithDeprecated} tags with deprecated fields`);
 
@@ -66,7 +73,9 @@ async function migrate() {
                 {},
                 { $unset: { color: '', parentId: '', order: '' } },
             );
-            console.log(`Removed deprecated fields from ${removeDeprecatedResult.modifiedCount} tags`);
+            console.log(
+                `Removed deprecated fields from ${removeDeprecatedResult.modifiedCount} tags`,
+            );
         }
 
         // Migration 3: Update notes - set type = 'write' where not set

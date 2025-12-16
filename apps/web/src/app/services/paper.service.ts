@@ -26,47 +26,53 @@ import {
 import { IndexedDBService } from './indexed-db.service';
 import { RealtimeService } from './realtime.service';
 import { DB_STORES } from './db-stores';
-import type { Paper, CreatePaperInput, UpdatePaperInput, PaperStatus, ChatEvent } from '@maple/shared';
+import type {
+  Paper,
+  CreatePaperInput,
+  UpdatePaperInput,
+  PaperStatus,
+  ChatEvent,
+} from '@maple/shared';
 
 const STORE_NAME = DB_STORES.PAPER;
 const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
 
 export interface PaperFilters {
-    tagId?: string;
-    status?: PaperStatus;
+  tagId?: string;
+  status?: PaperStatus;
 }
 
 @Injectable({ providedIn: 'root' })
 export class PaperService {
-    private readonly http = inject(HttpClient);
-    private readonly indexedDB = inject(IndexedDBService);
-    private readonly platformId = inject(PLATFORM_ID);
-    private readonly realtime = inject(RealtimeService);
-    private readonly destroyRef = inject(DestroyRef);
+  private readonly http = inject(HttpClient);
+  private readonly indexedDB = inject(IndexedDBService);
+  private readonly platformId = inject(PLATFORM_ID);
+  private readonly realtime = inject(RealtimeService);
+  private readonly destroyRef = inject(DestroyRef);
 
-    // Track last fetch time per tagId for caching
-    private readonly lastFetchMap = new Map<string, number>();
+  // Track last fetch time per tagId for caching
+  private readonly lastFetchMap = new Map<string, number>();
 
-    // ELF Store
-    private readonly store = createStore(
-        { name: STORE_NAME },
-        withEntities<Paper, '_id'>({ idKey: '_id' }),
-        withActiveId(),
-    );
+  // ELF Store
+  private readonly store = createStore(
+    { name: STORE_NAME },
+    withEntities<Paper, '_id'>({ idKey: '_id' }),
+    withActiveId(),
+  );
 
-    // Observable selectors
-    readonly papers$ = this.store.pipe(selectAllEntities());
-    readonly activePaper$ = this.store.pipe(selectActiveEntity());
+  // Observable selectors
+  readonly papers$ = this.store.pipe(selectAllEntities());
+  readonly activePaper$ = this.store.pipe(selectActiveEntity());
 
-    // Signal wrappers for Angular reactivity
-    private readonly _papersSignal = toSignal(this.papers$, { initialValue: [] as Paper[] });
+  // Signal wrappers for Angular reactivity
+  private readonly _papersSignal = toSignal(this.papers$, { initialValue: [] as Paper[] });
 
-    // UI state signals (not persisted)
-    private readonly _isLoading = signal(false);
-    private readonly _error = signal<string | null>(null);
+  // UI state signals (not persisted)
+  private readonly _isLoading = signal(false);
+  private readonly _error = signal<string | null>(null);
 
-    readonly isLoading = this._isLoading.asReadonly();
-    readonly error = this._error.asReadonly();
+  readonly isLoading = this._isLoading.asReadonly();
+  readonly error = this._error.asReadonly();
 
   constructor() {
     // Hydrate from IndexedDB on construction
@@ -179,8 +185,10 @@ export class PaperService {
       ? this.store.query(getAllEntities()).filter((p) => p.tags.includes(filters.tagId!))
       : this.store.query(getAllEntities());
     if (existingPapers.length > 0) {
-      const newest = existingPapers.reduce((max, p) =>
-        p.updatedAt > max ? p.updatedAt : max, existingPapers[0].updatedAt);
+      const newest = existingPapers.reduce(
+        (max, p) => (p.updatedAt > max ? p.updatedAt : max),
+        existingPapers[0].updatedAt,
+      );
       params['updatedAfter'] = newest;
     }
 

@@ -322,13 +322,13 @@ bun run typecheck
 
 ## Quick Reference
 
-| Do                           | Don't                               |
-| ---------------------------- | ----------------------------------- |
-| Use Tailwind classes         | Write custom CSS unless necessary   |
-| Use signals for state        | Use BehaviorSubject in components   |
-| Separate component files     | Inline templates/styles             |
-| Run Prettier on save         | Manually format code                |
-| Use `import type`            | Import types without `type` keyword |
-| Use design tokens            | Hardcode colors                     |
-| One concern per page component | Combine views with conditionals   |
-| Route-level view switching   | Component-level type checking       |
+| Do                             | Don't                               |
+| ------------------------------ | ----------------------------------- |
+| Use Tailwind classes           | Write custom CSS unless necessary   |
+| Use signals for state          | Use BehaviorSubject in components   |
+| Separate component files       | Inline templates/styles             |
+| Run Prettier on save           | Manually format code                |
+| Use `import type`              | Import types without `type` keyword |
+| Use design tokens              | Hardcode colors                     |
+| One concern per page component | Combine views with conditionals     |
+| Route-level view switching     | Component-level type checking       |

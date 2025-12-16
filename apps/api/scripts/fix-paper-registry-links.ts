@@ -126,7 +126,9 @@ async function migrate() {
         for (const [key, papersInGroup] of papersByRegistryAndTag) {
             if (papersInGroup.length > 1) {
                 const [registryId, tagId] = key.split(':');
-                console.log(`\n  Found ${papersInGroup.length} papers with registryData=${registryId} in tag=${tagId}`);
+                console.log(
+                    `\n  Found ${papersInGroup.length} papers with registryData=${registryId} in tag=${tagId}`,
+                );
 
                 // Sort by createdAt, keep the oldest one
                 papersInGroup.sort(
