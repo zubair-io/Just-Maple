@@ -121,8 +121,8 @@
   />
 </div>
 
-<!-- FAB for scanning -->
-<div class="absolute bottom-24 right-4 md:bottom-12 md:right-12 z-20">
+<!-- FAB for scanning (hidden on mobile) -->
+<div class="hidden md:block absolute bottom-12 right-12 z-20">
   <button
     (click)="openScanner()"
     class="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white rounded-2xl w-14 h-14 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-[var(--color-primary)]/30 group"
