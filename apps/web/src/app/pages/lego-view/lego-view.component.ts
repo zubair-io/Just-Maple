@@ -49,7 +49,14 @@ export class LegoViewComponent implements OnInit {
       const registry = this.getRegistryForPaper(paper);
       if (registry?.tags) {
         for (const tag of registry.tags) {
-          tagSet.set(tag.value, tag);
+          // Only include string tags without dashes and not purely numeric
+          if (
+            typeof tag.value === 'string' &&
+            !tag.value.includes('-') &&
+            isNaN(Number(tag.value))
+          ) {
+            tagSet.set(tag.value, tag);
+          }
         }
       }
     }
