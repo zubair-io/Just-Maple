@@ -7,6 +7,7 @@ WORKDIR /app
 COPY package.json bun.lock tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
 
 # Install dependencies
 RUN bun install
@@ -14,6 +15,7 @@ RUN bun install
 # Copy source code
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
+COPY apps/web ./apps/web
 
 # Build shared package
 WORKDIR /app/packages/shared
@@ -23,6 +25,10 @@ RUN bun run build
 WORKDIR /app/apps/api
 RUN bun build src/index.ts --outdir dist --target bun --minify
 
+# Build Web (paperbark config outputs to apps/api/dist/web/paperbark)
+WORKDIR /app/apps/web
+RUN bun run build:paperbark
+
 # Production stage
 FROM oven/bun:latest
 
@@ -31,10 +37,9 @@ WORKDIR /app
 # Install wget for health checks (curl is pre-installed in bun:latest)
 RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf /var/lib/apt/lists/*
 
-# Copy built files and dependencies
+# Copy built API and frontend files
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
@@ -42,4 +47,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 EXPOSE 7071
 
-CMD ["bun", "run", "dist/index.js"]
+# Run from dist directory so public/browser is found
+WORKDIR /app/dist
+CMD ["bun", "run", "index.js"]

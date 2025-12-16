@@ -4,7 +4,9 @@ export const config = {
     jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
     jwtExpiresIn: '7d',
     magicLinkExpiresIn: 15 * 60 * 1000, // 15 minutes
-    isDev: process.env.NODE_ENV !== 'production',
+    get isDev() {
+        return process.env.NODE_ENV !== 'production';
+    },
     corsOrigins: process.env.CORS_ORIGINS?.split(',') || [
         'http://localhost:4200',
         'https://localhost:4200',

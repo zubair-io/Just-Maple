@@ -36,7 +36,8 @@
       "name": "paperbark",
       "urls": [
         "https://tatarian.justmaple.app/*",
-        "https://paperbark.justmaple.app/*"
+        "https://paperbark.justmaple.app/*",
+        "/api/*"
       ],
       "cacheConfig": {
         "maxSize": 1000,

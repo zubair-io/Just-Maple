@@ -5,6 +5,7 @@ on:
         branches: [main]
         paths:
             - 'apps/api/**'
+            - 'apps/web/**'
             - 'packages/shared/**'
             - '.github/workflows/deploy-api.yml'
     workflow_dispatch:
