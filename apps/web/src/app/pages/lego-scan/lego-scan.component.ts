@@ -218,7 +218,8 @@ export class LegoScanComponent implements OnInit, OnDestroy {
     }
 
     isInCollection(registryId: string): boolean {
-        return this.papersMap().has(registryId);
+        const paper = this.papersMap().get(registryId);
+        return paper !== undefined && paper.data.status !== 'none';
     }
 
     trackByRegistryId(_index: number, registry: CollectibleRegistry): string {
@@ -234,14 +235,20 @@ export class LegoScanComponent implements OnInit, OnDestroy {
         const existingPaper = this.papersMap().get(registry._id);
         this.isSaving.set(registry._id);
 
-        if (existingPaper) {
-            // Remove from collection
-            this.paperService.deletePaper(existingPaper._id).subscribe({
+        if (existingPaper && existingPaper.data.status !== 'none') {
+            // Mark as 'none' (soft remove from collection)
+            this.paperService.updatePaper(existingPaper._id, { data: { status: 'none' } }).subscribe({
+                next: () => this.isSaving.set(null),
+                error: () => this.isSaving.set(null),
+            });
+        } else if (existingPaper) {
+            // Paper exists with 'none' status - update to 'have'
+            this.paperService.updatePaper(existingPaper._id, { data: { status: 'have' } }).subscribe({
                 next: () => this.isSaving.set(null),
                 error: () => this.isSaving.set(null),
             });
         } else {
-            // Add to collection with "have" status
+            // Create new paper with "have" status
             this.paperService
                 .createPaper({
                     tags: [tagId],

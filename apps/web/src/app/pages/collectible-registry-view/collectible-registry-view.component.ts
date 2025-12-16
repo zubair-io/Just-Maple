@@ -56,7 +56,7 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
         return this.paperService.isLoading() || !this.registry();
     });
 
-    readonly collectionStatus = computed<PaperStatus | 'none'>(() => {
+    readonly collectionStatus = computed<PaperStatus>(() => {
         const p = this.paper();
         if (!p) return 'none';
         return p.data.status;
@@ -96,7 +96,7 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
     this.location.back();
   }
 
-    setStatus(status: PaperStatus | 'none'): void {
+    setStatus(status: PaperStatus): void {
         const registryId = this.registryId();
         const tagId = this.tagId();
         const currentPaper = this.paper();
@@ -106,17 +106,7 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
 
         this.isSaving.set(true);
 
-        if (status === 'none') {
-            // Delete the paper - store update will clear computed
-            if (currentPaper) {
-                this.paperService.deletePaper(currentPaper._id).subscribe({
-                    next: () => this.isSaving.set(false),
-                    error: () => this.isSaving.set(false),
-                });
-            } else {
-                this.isSaving.set(false);
-            }
-        } else if (currentPaper) {
+        if (currentPaper) {
             // Update existing paper - store update will refresh computed
             this.paperService.updatePaper(currentPaper._id, { data: { status } }).subscribe({
                 next: () => this.isSaving.set(false),
@@ -159,7 +149,7 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
     this.selectedImageIndex.set(index);
   }
 
-  getStatusLabel(status: PaperStatus | 'none'): string {
+  getStatusLabel(status: PaperStatus): string {
     switch (status) {
       case 'have':
         return 'Have';
@@ -172,7 +162,7 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
     }
   }
 
-  getStatusIcon(status: PaperStatus | 'none'): string {
+  getStatusIcon(status: PaperStatus): string {
     switch (status) {
       case 'have':
         return 'check_circle';

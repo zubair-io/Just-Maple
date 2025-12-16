@@ -73,9 +73,9 @@
       }
     </div>
 
-    <!-- Tags Filter -->
+    <!-- Tags Filter (desktop only) -->
     @if (availableRegistryTags().length > 0) {
-      <div class="mb-3">
+      <div class="mb-3 hidden md:block">
         <div class="text-xs font-medium text-[var(--color-text-muted)] mb-2">Filter by theme</div>
         <div class="flex flex-wrap gap-1.5">
           @for (tag of availableRegistryTags(); track tag.value) {

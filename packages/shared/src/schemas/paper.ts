@@ -4,6 +4,7 @@ export const PaperStatusSchema = Type.Union([
     Type.Literal('have'),
     Type.Literal('want'),
     Type.Literal('sold'),
+    Type.Literal('none'),
 ]);
 
 export type PaperStatus = Static<typeof PaperStatusSchema>;

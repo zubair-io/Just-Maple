@@ -53,11 +53,11 @@ export class LegoViewComponent implements OnInit, OnDestroy {
         });
     }
 
-  /** Get all papers for the tag */
+  /** Get all papers for the tag (excluding 'none' status) */
   private readonly allPapersForTag = computed(() => {
     const tagId = this.selectedTagId();
     if (!tagId) return [];
-    return this.paperService.papers().filter((p) => p.tags.includes(tagId));
+    return this.paperService.papers().filter((p) => p.tags.includes(tagId) && p.data.status !== 'none');
   });
 
   /** Get unique registry tags from all papers for filter options */
@@ -69,10 +69,11 @@ export class LegoViewComponent implements OnInit, OnDestroy {
       const registry = this.getRegistryForPaper(paper);
       if (registry?.tags) {
         for (const tag of registry.tags) {
-          // Only include string tags without dashes and not purely numeric
+          // Only include string tags without dashes, not purely numeric, and not ending in "+"
           if (
             typeof tag.value === 'string' &&
             !tag.value.includes('-') &&
+            !tag.value.endsWith('+') &&
             isNaN(Number(tag.value))
           ) {
             tagSet.set(tag.value, tag);
