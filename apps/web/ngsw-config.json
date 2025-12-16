@@ -6,7 +6,13 @@
       "name": "app",
       "installMode": "prefetch",
       "resources": {
-        "files": ["/favicon.ico", "/index.html", "/manifest.webmanifest", "/*.css", "/*.js"]
+        "files": [
+          "/favicon.ico",
+          "/index.html",
+          "/manifest.webmanifest",
+          "/*.css",
+          "/*.js"
+        ]
       }
     },
     {
@@ -14,20 +20,30 @@
       "installMode": "lazy",
       "updateMode": "prefetch",
       "resources": {
-        "files": ["/**/*.(svg|cur|jpg|jpeg|png|apng|webp|avif|gif|otf|ttf|woff|woff2)"],
-        "urls": ["https://fonts.googleapis.com/**", "https://fonts.gstatic.com/**"]
+        "files": [
+          "/**/*.(svg|cur|jpg|jpeg|png|apng|webp|avif|gif|otf|ttf|woff|woff2)"
+        ],
+        "urls": [
+          "https://lego.justmaple.app/**",
+          "https://fonts.sandbox.google.com/**",
+          "https://fonts.googleapis.com/**",
+          "https://hornbeam.justmaple.app/**"
+        ]
       }
     }
   ],
   "dataGroups": [
     {
-      "name": "api",
-      "urls": ["/api/*"],
+      "name": "paperbark",
+      "urls": [
+        "https://tatarian.justmaple.app/*",
+        "https://paperbark.justmaple.app/*"
+      ],
       "cacheConfig": {
-        "maxSize": 100,
-        "maxAge": "1h",
+        "maxSize": 1000,
+        "maxAge": "1d",
         "strategy": "freshness",
-        "timeout": "10s"
+        "timeout": "90s"
       }
     }
   ]
