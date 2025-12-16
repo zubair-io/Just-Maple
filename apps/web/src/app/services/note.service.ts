@@ -133,34 +133,6 @@ export class NoteService {
   }
 
   /**
-   * Load a single note by ID
-   */
-  loadNote(id: string): Observable<Note | null> {
-    const cached = this.store.query(getEntity(id));
-    if (cached) {
-      return of(cached);
-    }
-
-    this._isLoading.set(true);
-    this._error.set(null);
-
-    return this.http.get<{ note: Note }>(`/api/notes/${id}`).pipe(
-      tap((response) => {
-        this.store.update(upsertEntities([response.note]));
-        this.persistToIndexedDB([response.note]);
-        this._isLoading.set(false);
-      }),
-      map((response) => response.note),
-      catchError((err) => {
-        const message = err?.error?.error || 'Failed to load note';
-        this._error.set(message);
-        this._isLoading.set(false);
-        return of(null);
-      }),
-    );
-  }
-
-  /**
    * Create a new note with optimistic update
    */
   createNote(data: CreateNoteInput = {}): Observable<Note> {
@@ -177,6 +149,7 @@ export class NoteService {
     const tempNote: Note = {
       _id: tempId,
       userId: 'temp',
+      type: data.type || 'write',
       title: data.title || 'Untitled',
       content: data.content || defaultContent,
       version: 1,

@@ -13,6 +13,7 @@ import type {
   PublicKeyCredentialRequestOptionsJSON,
 } from '@simplewebauthn/browser';
 import type { UserResponse, AuthResponse, MagicLinkResponse } from '@maple/shared';
+import { IndexedDBService } from './indexed-db.service';
 
 interface PasskeyInfo {
   id: string;
@@ -34,6 +35,7 @@ export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly platformId = inject(PLATFORM_ID);
+  private readonly indexedDB = inject(IndexedDBService);
 
   private readonly _accessToken = signal<string | null>(null);
   private readonly _user = signal<UserResponse | null>(null);
@@ -185,6 +187,14 @@ export class AuthService {
     this._accessToken.set(null);
     this._user.set(null);
     this.clearStorage();
+
+    // Clear all cached data from IndexedDB
+    try {
+      await this.indexedDB.clearAll();
+    } catch {
+      // Ignore IndexedDB errors during logout
+    }
+
     await this.router.navigate(['/login']);
   }
 

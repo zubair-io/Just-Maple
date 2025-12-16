@@ -1,0 +1,46 @@
+<!-- Header -->
+@if (selectedTag()) {
+  <header
+    class="h-14 flex items-center justify-between px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
+  >
+    <!-- Breadcrumb -->
+    <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+      <div
+        class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-stone-100"
+      >
+        <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">tag</span>
+        <span>{{ selectedTag()!.label }}</span>
+      </div>
+      <span class="text-stone-300">/</span>
+      <div class="flex items-center gap-1.5 text-[var(--color-text-muted)] font-medium p-1">
+        <span class="material-symbols-rounded text-sm">chat</span>
+        <span>Messages</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-1">
+      <button
+        (click)="createNote()"
+        class="ml-2 flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg transition-colors"
+        title="New Note"
+      >
+        <span class="material-symbols-rounded text-sm">add</span>
+        <span>New Note</span>
+      </button>
+    </div>
+  </header>
+}
+
+<!-- Chat Content -->
+@if (selectedTag()) {
+  <app-chat [tagId]="selectedTag()!._id" />
+} @else {
+  <div class="empty-state">
+    <div class="empty-icon">
+      <span class="material-symbols-rounded">forum</span>
+    </div>
+    <h2>Select a folder</h2>
+    <p>Choose a folder from the sidebar to view messages</p>
+  </div>
+}

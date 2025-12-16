@@ -1,7 +1,8 @@
-import { Injectable, inject, PLATFORM_ID, signal } from '@angular/core';
+import { Injectable, inject, PLATFORM_ID, signal, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, map, catchError, throwError, of } from 'rxjs';
+import { Observable, tap, map, catchError, throwError, of, filter } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { createStore } from '@ngneat/elf';
 import {
@@ -23,47 +24,97 @@ import {
   getActiveEntity,
 } from '@ngneat/elf-entities';
 import { IndexedDBService } from './indexed-db.service';
+import { RealtimeService } from './realtime.service';
 import { DB_STORES } from './db-stores';
-import type { Paper, CreatePaperInput, UpdatePaperInput, PaperStatus } from '@maple/shared';
+import type { Paper, CreatePaperInput, UpdatePaperInput, PaperStatus, ChatEvent } from '@maple/shared';
 
 const STORE_NAME = DB_STORES.PAPER;
+const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
 
 export interface PaperFilters {
-  tagId?: string;
-  status?: PaperStatus;
+    tagId?: string;
+    status?: PaperStatus;
 }
 
 @Injectable({ providedIn: 'root' })
 export class PaperService {
-  private readonly http = inject(HttpClient);
-  private readonly indexedDB = inject(IndexedDBService);
-  private readonly platformId = inject(PLATFORM_ID);
+    private readonly http = inject(HttpClient);
+    private readonly indexedDB = inject(IndexedDBService);
+    private readonly platformId = inject(PLATFORM_ID);
+    private readonly realtime = inject(RealtimeService);
+    private readonly destroyRef = inject(DestroyRef);
 
-  // ELF Store
-  private readonly store = createStore(
-    { name: STORE_NAME },
-    withEntities<Paper, '_id'>({ idKey: '_id' }),
-    withActiveId(),
-  );
+    // Track last fetch time per tagId for caching
+    private readonly lastFetchMap = new Map<string, number>();
 
-  // Observable selectors
-  readonly papers$ = this.store.pipe(selectAllEntities());
-  readonly activePaper$ = this.store.pipe(selectActiveEntity());
+    // ELF Store
+    private readonly store = createStore(
+        { name: STORE_NAME },
+        withEntities<Paper, '_id'>({ idKey: '_id' }),
+        withActiveId(),
+    );
 
-  // Signal wrappers for Angular reactivity
-  private readonly _papersSignal = toSignal(this.papers$, { initialValue: [] as Paper[] });
+    // Observable selectors
+    readonly papers$ = this.store.pipe(selectAllEntities());
+    readonly activePaper$ = this.store.pipe(selectActiveEntity());
 
-  // UI state signals (not persisted)
-  private readonly _isLoading = signal(false);
-  private readonly _error = signal<string | null>(null);
+    // Signal wrappers for Angular reactivity
+    private readonly _papersSignal = toSignal(this.papers$, { initialValue: [] as Paper[] });
 
-  readonly isLoading = this._isLoading.asReadonly();
-  readonly error = this._error.asReadonly();
+    // UI state signals (not persisted)
+    private readonly _isLoading = signal(false);
+    private readonly _error = signal<string | null>(null);
+
+    readonly isLoading = this._isLoading.asReadonly();
+    readonly error = this._error.asReadonly();
 
   constructor() {
     // Hydrate from IndexedDB on construction
     if (isPlatformBrowser(this.platformId)) {
       this.hydrateFromIndexedDB();
+      this.subscribeToRealtimeEvents();
+    }
+  }
+
+  /**
+   * Subscribe to paper events from websocket
+   */
+  private subscribeToRealtimeEvents(): void {
+    this.realtime.events$
+      .pipe(
+        filter(
+          (event): event is ChatEvent =>
+            event.action === 'paper_created' ||
+            event.action === 'paper_updated' ||
+            event.action === 'paper_deleted',
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((event) => {
+        this.handleRealtimeEvent(event);
+      });
+  }
+
+  /**
+   * Handle incoming paper events from websocket
+   */
+  private handleRealtimeEvent(event: ChatEvent): void {
+    switch (event.action) {
+      case 'paper_created':
+      case 'paper_updated': {
+        const paper = event.data as Paper;
+        this.store.update(upsertEntities([paper]));
+        this.persistToIndexedDB([paper]);
+        break;
+      }
+      case 'paper_deleted': {
+        const { _id } = event.data as { _id: string };
+        this.store.update(deleteEntities(_id));
+        if (isPlatformBrowser(this.platformId)) {
+          this.indexedDB.delete(_id, STORE_NAME);
+        }
+        break;
+      }
     }
   }
 
@@ -101,8 +152,21 @@ export class PaperService {
 
   /**
    * Load papers from API with optional filters
+   * Uses 1-minute cache per tagId to prevent duplicate requests
    */
   loadPapers(filters?: PaperFilters): Observable<Paper[]> {
+    const cacheKey = filters?.tagId || '_all';
+    const now = Date.now();
+    const lastFetch = this.lastFetchMap.get(cacheKey);
+
+    // Return cached data if within TTL
+    if (lastFetch && now - lastFetch < CACHE_TTL_MS) {
+      const cached = filters?.tagId
+        ? this.store.query(getAllEntities()).filter((p) => p.tags.includes(filters.tagId!))
+        : this.store.query(getAllEntities());
+      return of(cached);
+    }
+
     this._isLoading.set(true);
     this._error.set(null);
 
@@ -110,11 +174,22 @@ export class PaperService {
     if (filters?.tagId) params['tagId'] = filters.tagId;
     if (filters?.status) params['status'] = filters.status;
 
+    // Get newest updatedAt for incremental sync
+    const existingPapers = filters?.tagId
+      ? this.store.query(getAllEntities()).filter((p) => p.tags.includes(filters.tagId!))
+      : this.store.query(getAllEntities());
+    if (existingPapers.length > 0) {
+      const newest = existingPapers.reduce((max, p) =>
+        p.updatedAt > max ? p.updatedAt : max, existingPapers[0].updatedAt);
+      params['updatedAfter'] = newest;
+    }
+
     return this.http.get<{ papers: Paper[] }>('/api/papers', { params }).pipe(
       tap((response) => {
         // Upsert papers into store
         this.store.update(upsertEntities(response.papers));
         this.persistToIndexedDB(response.papers);
+        this.lastFetchMap.set(cacheKey, now);
         this._isLoading.set(false);
       }),
       map((response) => response.papers),

@@ -136,6 +136,40 @@ components/
 - Use ID-based routes: `/:tagId/:noteId`
 - Keep route params simple and stable
 
+### Page Component Separation
+
+Each page component should handle **one concern only**. Do not combine multiple views into a single component with conditional rendering.
+
+**Do:**
+
+```typescript
+// chat-view.component.ts - Only handles chat/messages
+// note-view.component.ts - Only handles note editing
+// lego-view.component.ts - Only handles lego items
+```
+
+**Don't:**
+
+```typescript
+// bad: single component handling multiple concerns
+@if (hasNote) {
+    <app-note-editor />
+} @else {
+    <app-chat />
+}
+```
+
+**Use route-level switching**, not component-level:
+
+```typescript
+// app.routes.ts
+{ path: ':tagId', loadComponent: () => import('./pages/chat-view/...') },
+{ path: ':tagId/:noteId', canMatch: [WriteNoteGuard], loadComponent: () => import('./pages/note-view/...') },
+{ path: ':tagId/:noteId', canMatch: [LegoNoteGuard], loadComponent: () => import('./pages/lego-view/...') },
+```
+
+Route guards (`canMatch`) determine which component loads based on data (e.g., note type). Components should not need to know about other view types.
+
 ---
 
 ## API Conventions (Elysia)
@@ -288,11 +322,13 @@ bun run typecheck
 
 ## Quick Reference
 
-| Do                       | Don't                               |
-| ------------------------ | ----------------------------------- |
-| Use Tailwind classes     | Write custom CSS unless necessary   |
-| Use signals for state    | Use BehaviorSubject in components   |
-| Separate component files | Inline templates/styles             |
-| Run Prettier on save     | Manually format code                |
-| Use `import type`        | Import types without `type` keyword |
-| Use design tokens        | Hardcode colors                     |
+| Do                           | Don't                               |
+| ---------------------------- | ----------------------------------- |
+| Use Tailwind classes         | Write custom CSS unless necessary   |
+| Use signals for state        | Use BehaviorSubject in components   |
+| Separate component files     | Inline templates/styles             |
+| Run Prettier on save         | Manually format code                |
+| Use `import type`            | Import types without `type` keyword |
+| Use design tokens            | Hardcode colors                     |
+| One concern per page component | Combine views with conditionals   |
+| Route-level view switching   | Component-level type checking       |

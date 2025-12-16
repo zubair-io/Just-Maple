@@ -3,6 +3,7 @@ import { getDb } from '../db/client';
 import type {
     Note,
     NoteContent,
+    NoteType,
     CreateNoteInput,
     UpdateNoteInput,
     DEFAULT_NOTE_CONTENT,
@@ -12,6 +13,7 @@ import { findTagsByUserId, findTagByIdWithAccess } from './tag.repo';
 interface NoteDocument {
     _id: ObjectId;
     userId: ObjectId;
+    type: NoteType;
     title: string;
     content: NoteContent;
     version: number;
@@ -32,6 +34,7 @@ function toNoteResponse(doc: NoteDocument): Note {
     return {
         _id: doc._id.toString(),
         userId: doc.userId.toString(),
+        type: doc.type || 'write', // Default for legacy notes
         title: doc.title,
         content: doc.content,
         version: doc.version,
@@ -140,8 +143,10 @@ export async function findNoteById(id: string, userId: string): Promise<Note | n
 
 export async function createNote(userId: string, data: CreateNoteInput): Promise<Note> {
     const now = new Date();
+    const noteType = data.type || 'write';
     const doc: Omit<NoteDocument, '_id'> = {
         userId: new ObjectId(userId),
+        type: noteType,
         title: data.title || 'Untitled',
         content: data.content || defaultContent,
         version: 1,
@@ -158,6 +163,7 @@ export async function createNote(userId: string, data: CreateNoteInput): Promise
     return {
         _id: result.insertedId.toString(),
         userId: userId,
+        type: noteType,
         title: doc.title,
         content: doc.content,
         version: doc.version,

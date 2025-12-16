@@ -121,10 +121,8 @@ export class TagService {
     const tempTag: Tag = {
       _id: tempId,
       type: 'folder',
-      value: data.label.toLowerCase().replace(/\s+/g, '-'),
+      value: data.value || 'mixed',
       label: data.label,
-      color: data.color,
-      parentId: data.parentId,
       sharing: {
         sharedWith: [{ userId: currentUserId, accessLevel: 'owner' }],
         isPublic: false,

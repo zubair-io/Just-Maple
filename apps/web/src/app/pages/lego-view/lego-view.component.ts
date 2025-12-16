@@ -1,7 +1,8 @@
-import { Component, inject, signal, computed, effect, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { TagService } from '../../services/tag.service';
 import { PaperService } from '../../services/paper.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
@@ -9,29 +10,48 @@ import { PaperListComponent } from '../../components';
 import type { Paper, CollectibleRegistry, RegistryTag } from '@maple/shared';
 
 @Component({
-  selector: 'app-lego-view',
-  standalone: true,
-  imports: [CommonModule, FormsModule, PaperListComponent],
-  templateUrl: './lego-view.component.html',
-  styleUrl: './lego-view.component.scss',
+    selector: 'app-lego-view',
+    standalone: true,
+    imports: [CommonModule, FormsModule, PaperListComponent],
+    templateUrl: './lego-view.component.html',
+    styleUrl: './lego-view.component.scss',
 })
-export class LegoViewComponent implements OnInit {
-  private readonly router = inject(Router);
-  private readonly route = inject(ActivatedRoute);
-  readonly tagService = inject(TagService);
-  readonly paperService = inject(PaperService);
-  readonly registryService = inject(CollectibleRegistryService);
+export class LegoViewComponent implements OnInit, OnDestroy {
+    private readonly router = inject(Router);
+    private readonly route = inject(ActivatedRoute);
+    readonly tagService = inject(TagService);
+    readonly paperService = inject(PaperService);
+    readonly registryService = inject(CollectibleRegistryService);
 
-  readonly selectedTagId = signal<string | null>(null);
-  readonly showFilterPanel = signal(false);
-  readonly searchQuery = signal('');
-  readonly selectedRegistryTags = signal<string[]>([]);
+    private routeSubscription?: Subscription;
 
-  readonly selectedTag = computed(() => {
-    const tagId = this.selectedTagId();
-    if (!tagId) return null;
-    return this.tagService.tags().find((t) => t._id === tagId) || null;
-  });
+    readonly selectedTagId = signal<string | null>(null);
+    readonly showFilterPanel = signal(false);
+    readonly searchQuery = signal('');
+    readonly selectedRegistryTags = signal<string[]>([]);
+
+    // Computed signals reactively derive from store - no validation needed
+    readonly selectedTag = computed(() => {
+        const tagId = this.selectedTagId();
+        if (!tagId) return null;
+        return this.tagService.tags().find((t) => t._id === tagId) || null;
+    });
+
+    // Computed map for O(1) registry lookups (reactive to store changes)
+    private readonly registriesMap = computed(() => {
+        const registries = this.registryService.registries();
+        return new Map(registries.map((r) => [r._id, r]));
+    });
+
+    constructor() {
+        // Load papers when tagId changes
+        effect(() => {
+            const tagId = this.selectedTagId();
+            if (tagId) {
+                this.loadPapersForTag(tagId);
+            }
+        });
+    }
 
   /** Get all papers for the tag */
   private readonly allPapersForTag = computed(() => {
@@ -109,46 +129,24 @@ export class LegoViewComponent implements OnInit {
     return this.searchQuery().trim().length > 0 || this.selectedRegistryTags().length > 0;
   });
 
-  /** Get registry for a paper (cached lookup) */
-  getRegistryForPaper(paper: Paper): CollectibleRegistry | undefined {
-    if (!paper.data.registryData) return undefined;
-    return this.registryService.getCached(paper.data.registryData);
-  }
-
-  private initialized = false;
-
-  constructor() {
-    effect(() => {
-      const tags = this.tagService.tags();
-      if (tags.length === 0) return;
-      if (this.initialized) return;
-
-      this.initialized = true;
-      this.syncFromRoute();
-    });
-  }
-
-  ngOnInit(): void {
-    this.route.params.subscribe(() => {
-      if (this.initialized) {
-        this.syncFromRoute();
-      }
-    });
-  }
-
-  private syncFromRoute(): void {
-    const tagId = this.route.snapshot.params['tagId'];
-
-    if (tagId) {
-      const tag = this.tagService.tags().find((t) => t._id === tagId);
-      if (tag) {
-        this.selectedTagId.set(tagId);
-        this.loadPapersForTag(tagId);
-      }
+    /** Get registry for a paper (reactive O(1) lookup) */
+    getRegistryForPaper(paper: Paper): CollectibleRegistry | undefined {
+        if (!paper.data.registryData) return undefined;
+        return this.registriesMap().get(paper.data.registryData);
     }
-  }
 
-  private loadPapersForTag(tagId: string): void {
+    ngOnInit(): void {
+        // Subscribe to route params and set ID directly - effect handles loading
+        this.routeSubscription = this.route.params.subscribe((params) => {
+            this.selectedTagId.set(params['tagId'] || null);
+        });
+    }
+
+    ngOnDestroy(): void {
+        this.routeSubscription?.unsubscribe();
+    }
+
+    private loadPapersForTag(tagId: string): void {
     this.registryService.initializeRegistry().subscribe({
       next: () => {
         this.paperService.loadPapers({ tagId }).subscribe();
@@ -162,7 +160,7 @@ export class LegoViewComponent implements OnInit {
   onSelectPaper(paper: Paper): void {
     const tagId = this.selectedTagId();
     if (tagId && paper.data.registryData) {
-      this.router.navigate(['/', tagId, paper.data.registryData]);
+      this.router.navigate(['/', tagId, 'collectible', paper.data.registryData]);
     }
   }
 

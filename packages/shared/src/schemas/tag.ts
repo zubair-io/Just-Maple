@@ -22,15 +22,20 @@ export const TagSharingSchema = Type.Object({
 });
 export type TagSharing = Static<typeof TagSharingSchema>;
 
+// Tag value - metadata for folder content type
+export const TagValueSchema = Type.Union([
+    Type.Literal('mixed'),
+    Type.Literal('recordings'),
+    Type.Literal('notes'),
+]);
+export type TagValue = Static<typeof TagValueSchema>;
+
 export const TagSchema = Type.Object({
     _id: Type.String(),
     type: Type.Literal('folder'),
-    value: Type.String(), // URL-friendly slug
-    label: Type.String(), // Display name
-    color: Type.Optional(Type.String()), // Optional color for the tag
-    parentId: Type.Optional(Type.String()), // For nested tags
-    order: Type.Optional(Type.Number()), // Sort order
-    sharing: TagSharingSchema, // Sharing configuration (replaces userId)
+    value: TagValueSchema,
+    label: Type.String(),
+    sharing: TagSharingSchema,
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
 });
@@ -39,17 +44,14 @@ export type Tag = Static<typeof TagSchema>;
 
 export const CreateTagSchema = Type.Object({
     label: Type.String({ minLength: 1, maxLength: 100 }),
-    color: Type.Optional(Type.String()),
-    parentId: Type.Optional(Type.String()),
+    value: Type.Optional(TagValueSchema),
 });
 
 export type CreateTagInput = Static<typeof CreateTagSchema>;
 
 export const UpdateTagSchema = Type.Object({
     label: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
-    color: Type.Optional(Type.String()),
-    parentId: Type.Optional(Type.String()),
-    order: Type.Optional(Type.Number()),
+    value: Type.Optional(TagValueSchema),
 });
 
 export type UpdateTagInput = Static<typeof UpdateTagSchema>;

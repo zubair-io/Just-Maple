@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
-import type { JWTPayload } from '@maple/shared';
+import type { JWTPayload, ChatEvent } from '@maple/shared';
 import {
     findPapersByUserId,
     findPaperById,
@@ -10,6 +10,7 @@ import {
     updatePaper,
     deletePaper,
 } from '../repositories/paper.repo';
+import { getRealtimeService } from '../services/realtime.service';
 
 export const paperRoutes = new Elysia({ prefix: '/api/papers' })
     .use(jwtPlugin)
@@ -40,6 +41,7 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
             const papers = await findPapersByUserId(auth.user._id, {
                 tagId: query.tagId,
                 status: query.status as 'have' | 'want' | 'sold' | undefined,
+                updatedAfter: query.updatedAfter,
             });
             return { papers };
         },
@@ -47,6 +49,7 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
             query: t.Object({
                 tagId: t.Optional(t.String()),
                 status: t.Optional(t.String()),
+                updatedAfter: t.Optional(t.String()),
             }),
         },
     )
@@ -114,6 +117,24 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
             const paper = await createPaper(auth.user._id, body);
+
+            // Broadcast to all tags this paper belongs to
+            try {
+                const realtime = getRealtimeService();
+                for (const tagId of paper.tags) {
+                    const event: ChatEvent = {
+                        action: 'paper_created',
+                        data: paper,
+                        tagId,
+                        userId: auth.user._id,
+                        timestamp: new Date().toISOString(),
+                    };
+                    await realtime.broadcast(tagId, event);
+                }
+            } catch {
+                // Realtime not initialized, skip broadcasting
+            }
+
             return { paper };
         },
         {
@@ -146,6 +167,23 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                 return { error: 'Paper not found' };
             }
 
+            // Broadcast to all tags this paper belongs to
+            try {
+                const realtime = getRealtimeService();
+                for (const tagId of paper.tags) {
+                    const event: ChatEvent = {
+                        action: 'paper_updated',
+                        data: paper,
+                        tagId,
+                        userId: auth.user._id,
+                        timestamp: new Date().toISOString(),
+                    };
+                    await realtime.broadcast(tagId, event);
+                }
+            } catch {
+                // Realtime not initialized, skip broadcasting
+            }
+
             return { paper };
         },
         {
@@ -176,11 +214,36 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
+
+            // Get paper first to know which tags to broadcast to
+            const paper = await findPaperById(params.id, auth.user._id);
+            if (!paper) {
+                set.status = 404;
+                return { error: 'Paper not found' };
+            }
+
             const deleted = await deletePaper(params.id, auth.user._id);
 
             if (!deleted) {
                 set.status = 404;
                 return { error: 'Paper not found' };
+            }
+
+            // Broadcast deletion to all tags this paper belonged to
+            try {
+                const realtime = getRealtimeService();
+                for (const tagId of paper.tags) {
+                    const event: ChatEvent = {
+                        action: 'paper_deleted',
+                        data: { _id: params.id },
+                        tagId,
+                        userId: auth.user._id,
+                        timestamp: new Date().toISOString(),
+                    };
+                    await realtime.broadcast(tagId, event);
+                }
+            } catch {
+                // Realtime not initialized, skip broadcasting
             }
 
             return { message: 'Paper deleted' };

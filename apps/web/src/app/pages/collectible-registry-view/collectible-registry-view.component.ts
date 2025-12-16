@@ -1,197 +1,159 @@
-import { Component, inject, signal, computed, effect, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule, Location } from '@angular/common';
+import { ActivatedRoute } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { TagService } from '../../services/tag.service';
 import { PaperService } from '../../services/paper.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
-import type { Paper, CollectibleRegistry, PaperStatus } from '@maple/shared';
+import type { PaperStatus } from '@maple/shared';
 
 @Component({
-  selector: 'app-collectible-registry-view',
-  standalone: true,
-  imports: [CommonModule],
-  templateUrl: './collectible-registry-view.component.html',
-  styleUrl: './collectible-registry-view.component.scss',
+    selector: 'app-collectible-registry-view',
+    standalone: true,
+    imports: [CommonModule],
+    templateUrl: './collectible-registry-view.component.html',
+    styleUrl: './collectible-registry-view.component.scss',
 })
-export class CollectibleRegistryViewComponent implements OnInit {
-  private readonly router = inject(Router);
-  private readonly route = inject(ActivatedRoute);
-  readonly tagService = inject(TagService);
-  readonly paperService = inject(PaperService);
-  readonly registryService = inject(CollectibleRegistryService);
+export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
+    private readonly location = inject(Location);
+    private readonly route = inject(ActivatedRoute);
+    readonly tagService = inject(TagService);
+    readonly paperService = inject(PaperService);
+    readonly registryService = inject(CollectibleRegistryService);
 
-  readonly tagId = signal<string | null>(null);
-  readonly registryId = signal<string | null>(null);
-  readonly registry = signal<CollectibleRegistry | null>(null);
-  readonly paper = signal<Paper | null>(null);
-  readonly isLoading = signal(true);
-  readonly isSaving = signal(false);
-  readonly selectedImageIndex = signal(0);
+    private routeSubscription?: Subscription;
 
-  readonly selectedTag = computed(() => {
-    const id = this.tagId();
-    if (!id) return null;
-    return this.tagService.tags().find((t) => t._id === id) || null;
-  });
+    readonly tagId = signal<string | null>(null);
+    readonly registryId = signal<string | null>(null);
+    readonly isSaving = signal(false);
+    readonly selectedImageIndex = signal(0);
 
-  readonly collectionStatus = computed<PaperStatus | 'none'>(() => {
-    const p = this.paper();
-    if (!p) return 'none';
-    return p.data.status;
-  });
-
-  readonly quantity = computed(() => {
-    const p = this.paper();
-    return p?.data.quantity ?? 0;
-  });
-
-  private initialized = false;
-
-  constructor() {
-    effect(() => {
-      const tags = this.tagService.tags();
-      if (tags.length === 0) return;
-      if (this.initialized) return;
-
-      this.initialized = true;
-      this.syncFromRoute();
+    // Computed signals reactively derive from stores
+    readonly selectedTag = computed(() => {
+        const id = this.tagId();
+        if (!id) return null;
+        return this.tagService.tags().find((t) => t._id === id) || null;
     });
-  }
 
-  ngOnInit(): void {
-    this.route.params.subscribe(() => {
-      if (this.initialized) {
-        this.syncFromRoute();
-      }
+    readonly registry = computed(() => {
+        const id = this.registryId();
+        if (!id) return null;
+        return this.registryService.registries().find((r) => r._id === id) || null;
     });
-  }
 
-  private syncFromRoute(): void {
-    const tagId = this.route.snapshot.params['tagId'];
-    const registryId = this.route.snapshot.params['registryId'];
+    readonly paper = computed(() => {
+        const registryId = this.registryId();
+        const tagId = this.tagId();
+        if (!registryId || !tagId) return null;
+        return (
+            this.paperService
+                .papers()
+                .find((p) => p.data.registryData === registryId && p.tags.includes(tagId)) || null
+        );
+    });
 
-    if (tagId) {
-      this.tagId.set(tagId);
+    readonly isLoading = computed(() => {
+        return this.paperService.isLoading() || !this.registry();
+    });
+
+    readonly collectionStatus = computed<PaperStatus | 'none'>(() => {
+        const p = this.paper();
+        if (!p) return 'none';
+        return p.data.status;
+    });
+
+    readonly quantity = computed(() => {
+        const p = this.paper();
+        return p?.data.quantity ?? 0;
+    });
+
+    constructor() {
+        // Load data when tagId changes
+        effect(() => {
+            const tagId = this.tagId();
+            if (tagId) {
+                // Load all papers for this tag
+                this.paperService.loadPapers({ tagId }).subscribe();
+                // Initialize registry (loads all registries)
+                this.registryService.initializeRegistry().subscribe();
+            }
+        });
     }
-    if (registryId) {
-      this.registryId.set(registryId);
-      this.loadData(registryId, tagId);
+
+    ngOnInit(): void {
+        // Subscribe to route params and set IDs directly - computed signals handle the rest
+        this.routeSubscription = this.route.params.subscribe((params) => {
+            this.tagId.set(params['tagId'] || null);
+            this.registryId.set(params['collectibleId'] || null);
+        });
     }
-  }
 
-  private loadData(registryId: string, tagId: string): void {
-    this.isLoading.set(true);
-
-    // Load registry
-    this.registryService.getById(registryId).subscribe({
-      next: (registry) => {
-        this.registry.set(registry);
-      },
-      error: () => {
-        this.registry.set(null);
-      },
-    });
-
-    // Load paper (collection status)
-    this.paperService.loadPaperByRegistry(registryId, tagId).subscribe({
-      next: (paper) => {
-        this.paper.set(paper);
-        this.isLoading.set(false);
-      },
-      error: () => {
-        this.paper.set(null);
-        this.isLoading.set(false);
-      },
-    });
-  }
+    ngOnDestroy(): void {
+        this.routeSubscription?.unsubscribe();
+    }
 
   goBack(): void {
-    const tagId = this.tagId();
-    if (tagId) {
-      this.router.navigate(['/', tagId]);
-    } else {
-      this.router.navigate(['/']);
-    }
+    this.location.back();
   }
 
-  setStatus(status: PaperStatus | 'none'): void {
-    const registryId = this.registryId();
-    const tagId = this.tagId();
-    const currentPaper = this.paper();
-    const registry = this.registry();
+    setStatus(status: PaperStatus | 'none'): void {
+        const registryId = this.registryId();
+        const tagId = this.tagId();
+        const currentPaper = this.paper();
+        const registry = this.registry();
 
-    if (!registryId || !tagId || !registry) return;
+        if (!registryId || !tagId || !registry) return;
 
-    this.isSaving.set(true);
+        this.isSaving.set(true);
 
-    if (status === 'none') {
-      // Delete the paper
-      if (currentPaper) {
-        this.paperService.deletePaper(currentPaper._id).subscribe({
-          next: () => {
-            this.paper.set(null);
-            this.isSaving.set(false);
-          },
-          error: () => {
-            this.isSaving.set(false);
-          },
-        });
-      } else {
-        this.isSaving.set(false);
-      }
-    } else if (currentPaper) {
-      // Update existing paper
-      this.paperService.updatePaper(currentPaper._id, { data: { status } }).subscribe({
-        next: (updatedPaper) => {
-          this.paper.set(updatedPaper);
-          this.isSaving.set(false);
-        },
-        error: () => {
-          this.isSaving.set(false);
-        },
-      });
-    } else {
-      // Create new paper
-      this.paperService
-        .createPaper({
-          tags: [tagId],
-          data: {
-            itemId: registry.providerId,
-            provider: registry.provider,
-            registryData: registryId,
-            status,
-            quantity: 1,
-          },
-        })
-        .subscribe({
-          next: (newPaper) => {
-            this.paper.set(newPaper);
-            this.isSaving.set(false);
-          },
-          error: () => {
-            this.isSaving.set(false);
-          },
+        if (status === 'none') {
+            // Delete the paper - store update will clear computed
+            if (currentPaper) {
+                this.paperService.deletePaper(currentPaper._id).subscribe({
+                    next: () => this.isSaving.set(false),
+                    error: () => this.isSaving.set(false),
+                });
+            } else {
+                this.isSaving.set(false);
+            }
+        } else if (currentPaper) {
+            // Update existing paper - store update will refresh computed
+            this.paperService.updatePaper(currentPaper._id, { data: { status } }).subscribe({
+                next: () => this.isSaving.set(false),
+                error: () => this.isSaving.set(false),
+            });
+        } else {
+            // Create new paper - store update will populate computed
+            this.paperService
+                .createPaper({
+                    tags: [tagId],
+                    data: {
+                        itemId: registry.providerId,
+                        provider: registry.provider,
+                        registryData: registryId,
+                        status,
+                        quantity: 1,
+                    },
+                })
+                .subscribe({
+                    next: () => this.isSaving.set(false),
+                    error: () => this.isSaving.set(false),
+                });
+        }
+    }
+
+    updateQuantity(delta: number): void {
+        const currentPaper = this.paper();
+        if (!currentPaper) return;
+
+        const newQuantity = Math.max(0, (currentPaper.data.quantity ?? 1) + delta);
+
+        this.isSaving.set(true);
+        this.paperService.updatePaper(currentPaper._id, { data: { quantity: newQuantity } }).subscribe({
+            next: () => this.isSaving.set(false),
+            error: () => this.isSaving.set(false),
         });
     }
-  }
-
-  updateQuantity(delta: number): void {
-    const currentPaper = this.paper();
-    if (!currentPaper) return;
-
-    const newQuantity = Math.max(0, (currentPaper.data.quantity ?? 1) + delta);
-
-    this.isSaving.set(true);
-    this.paperService.updatePaper(currentPaper._id, { data: { quantity: newQuantity } }).subscribe({
-      next: (updatedPaper) => {
-        this.paper.set(updatedPaper);
-        this.isSaving.set(false);
-      },
-      error: () => {
-        this.isSaving.set(false);
-      },
-    });
-  }
 
   selectImage(index: number): void {
     this.selectedImageIndex.set(index);

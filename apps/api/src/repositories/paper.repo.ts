@@ -58,6 +58,7 @@ export async function findPapersByUserId(
     options?: {
         tagId?: string;
         status?: PaperStatus;
+        updatedAfter?: string;
     },
 ): Promise<Paper[]> {
     // If specific tagId is provided, verify access first
@@ -73,6 +74,11 @@ export async function findPapersByUserId(
 
         if (options?.status) {
             query['data.status'] = options.status;
+        }
+
+        // Incremental sync: only return papers updated after the given timestamp
+        if (options?.updatedAfter) {
+            query.updatedAt = { $gt: new Date(options.updatedAfter) };
         }
 
         const docs = await getCollection().find(query).sort({ updatedAt: -1 }).toArray();
@@ -96,6 +102,11 @@ export async function findPapersByUserId(
 
     if (options?.status) {
         query['data.status'] = options.status;
+    }
+
+    // Incremental sync: only return papers updated after the given timestamp
+    if (options?.updatedAfter) {
+        query.updatedAt = { $gt: new Date(options.updatedAfter) };
     }
 
     const docs = await getCollection().find(query).sort({ updatedAt: -1 }).toArray();

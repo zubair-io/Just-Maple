@@ -79,8 +79,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         {
             body: t.Object({
                 label: t.String({ minLength: 1, maxLength: 100 }),
-                color: t.Optional(t.String()),
-                parentId: t.Optional(t.String()),
+                value: t.Optional(t.Union([t.Literal('mixed'), t.Literal('recordings'), t.Literal('notes')])),
             }),
         },
     )
@@ -107,9 +106,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
             }),
             body: t.Object({
                 label: t.Optional(t.String({ minLength: 1, maxLength: 100 })),
-                color: t.Optional(t.String()),
-                parentId: t.Optional(t.String()),
-                order: t.Optional(t.Number()),
+                value: t.Optional(t.Union([t.Literal('mixed'), t.Literal('recordings'), t.Literal('notes')])),
             }),
         },
     )

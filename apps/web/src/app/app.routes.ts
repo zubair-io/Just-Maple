@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { AuthGuard, PublicGuard } from './guards/auth.guard';
-import { LegoTagGuard, NotLegoTagGuard } from './guards/lego-tag.guard';
+import { WriteNoteGuard, LegoNoteGuard } from './guards/note-type.guard';
 
 export const routes: Routes = [
   // Settings route - must come before the home route
@@ -16,43 +16,49 @@ export const routes: Routes = [
     loadComponent: () => import('./layouts/home/home.component').then((m) => m.HomeComponent),
     canMatch: [AuthGuard],
     children: [
-      // Root - always note view
+      // Root - chat view (shows empty state prompting to select a folder)
       {
         path: '',
         loadComponent: () =>
-          import('./pages/note-view/note-view.component').then((m) => m.NoteViewComponent),
+          import('./pages/chat-view/chat-view.component').then((m) => m.ChatViewComponent),
       },
-      // Lego tag routes - matched first
-      {
-        path: ':tagId',
-        canMatch: [LegoTagGuard],
-        loadComponent: () =>
-          import('./pages/lego-view/lego-view.component').then((m) => m.LegoViewComponent),
-      },
+      // Lego scan route (direct access)
       {
         path: ':tagId/scan',
-        canMatch: [LegoTagGuard],
         loadComponent: () =>
           import('./pages/lego-scan/lego-scan.component').then((m) => m.LegoScanComponent),
       },
+      // Collectible registry view
       {
-        path: ':tagId/:registryId',
-        canMatch: [LegoTagGuard],
+        path: ':tagId/collectible/:collectibleId',
         loadComponent: () =>
           import('./pages/collectible-registry-view/collectible-registry-view.component').then(
             (m) => m.CollectibleRegistryViewComponent,
           ),
       },
-      // Regular note routes - fallback
+      // Tag view - shows chat/messages for the tag
       {
         path: ':tagId',
-        canMatch: [NotLegoTagGuard],
+        loadComponent: () =>
+          import('./pages/chat-view/chat-view.component').then((m) => m.ChatViewComponent),
+      },
+      // Lego-type note - shows lego view
+      {
+        path: ':tagId/:noteId',
+        canMatch: [LegoNoteGuard],
+        loadComponent: () =>
+          import('./pages/lego-view/lego-view.component').then((m) => m.LegoViewComponent),
+      },
+      // Write-type note (default) - shows note editor
+      {
+        path: ':tagId/:noteId',
+        canMatch: [WriteNoteGuard],
         loadComponent: () =>
           import('./pages/note-view/note-view.component').then((m) => m.NoteViewComponent),
       },
+      // Fallback for any note type - shows note view
       {
         path: ':tagId/:noteId',
-        canMatch: [NotLegoTagGuard],
         loadComponent: () =>
           import('./pages/note-view/note-view.component').then((m) => m.NoteViewComponent),
       },

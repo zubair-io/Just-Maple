@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, inject, computed } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
+import { switchMap, of } from 'rxjs';
 import type { Paper, CollectibleRegistry } from '@maple/shared';
 import { CollectibleRegistryService } from '../../../services/collectible-registry.service';
 
@@ -17,13 +19,14 @@ export class PaperListItemComponent {
   readonly paper = input.required<Paper>();
   readonly selected = input(false);
 
-  readonly registryData = computed<CollectibleRegistry | undefined>(() => {
-    const paper = this.paper();
-    if (paper.data.registryData) {
-      return this.registryService.getCached(paper.data.registryData);
-    }
-    return undefined;
-  });
+  private readonly registryData$ = toObservable(this.paper).pipe(
+    switchMap((paper) =>
+      paper.data.registryData
+        ? this.registryService.select(paper.data.registryData)
+        : of(undefined),
+    ),
+  );
+  readonly registryData = toSignal(this.registryData$);
 
   readonly title = computed(() => {
     return this.registryData()?.title || this.paper().data.itemId;

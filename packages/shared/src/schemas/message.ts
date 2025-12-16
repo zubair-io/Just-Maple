@@ -54,6 +54,9 @@ export const ChatActionSchema = Type.Union([
     Type.Literal('typing'),
     Type.Literal('edited'),
     Type.Literal('deleted'),
+    Type.Literal('paper_created'),
+    Type.Literal('paper_updated'),
+    Type.Literal('paper_deleted'),
 ]);
 
 export type ChatAction = Static<typeof ChatActionSchema>;

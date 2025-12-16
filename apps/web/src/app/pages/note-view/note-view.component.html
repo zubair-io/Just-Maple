@@ -1,5 +1,5 @@
 <!-- Header -->
-@if (selectedNote() || selectedTag()) {
+@if (selectedNote()) {
   <header
     class="h-14 flex items-center justify-between px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
   >
@@ -12,60 +12,48 @@
           <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">tag</span>
           <span>{{ selectedTag()!.label }}</span>
         </div>
-        @if (selectedNote()) {
-          <span class="text-stone-300">/</span>
-        }
+        <span class="text-stone-300">/</span>
       }
-      @if (selectedNote()) {
-        <div
-          class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100"
-        >
-          <span class="material-symbols-rounded text-sm">article</span>
-          <span>{{ selectedNote()!.title }}</span>
-        </div>
-      } @else {
-        <div class="flex items-center gap-1.5 text-[var(--color-text-muted)] font-medium p-1">
-          <span class="material-symbols-rounded text-sm">chat</span>
-          <span>Messages</span>
-        </div>
-      }
+      <div
+        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100"
+      >
+        <span class="material-symbols-rounded text-sm">article</span>
+        <span>{{ selectedNote()!.title }}</span>
+      </div>
     </div>
 
     <!-- Actions -->
     <div class="flex items-center gap-1">
-      @if (selectedNote()) {
-        <span class="text-xs text-[var(--color-text-muted)] mr-2">
-          Edited {{ formattedDate() }}
-        </span>
-        <div class="flex items-center border-l border-[var(--color-border)] pl-2 gap-1">
-          <button
-            class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
-            title="Note Info"
-          >
-            <span class="material-symbols-rounded text-lg">info</span>
-          </button>
-          <button
-            (click)="toggleFavorite()"
-            class="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
-            [class.text-[var(--color-primary)]]="selectedNote()?.isFavorite"
-            [class.text-[var(--color-text-muted)]]="!selectedNote()?.isFavorite"
-            [class.hover:text-[var(--color-text-main)]]="!selectedNote()?.isFavorite"
-            [class.hover:bg-stone-100]="true"
-            title="Favorite"
-          >
-            <span class="material-symbols-rounded text-lg">
-              {{ selectedNote()?.isFavorite ? 'star' : 'star_border' }}
-            </span>
-          </button>
-          <button
-            class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
-            title="More"
-          >
-            <span class="material-symbols-rounded text-lg">more_horiz</span>
-          </button>
-        </div>
-      }
-      <!-- New Note Button -->
+      <span class="text-xs text-[var(--color-text-muted)] mr-2">
+        Edited {{ formattedDate() }}
+      </span>
+      <div class="flex items-center border-l border-[var(--color-border)] pl-2 gap-1">
+        <button
+          class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+          title="Note Info"
+        >
+          <span class="material-symbols-rounded text-lg">info</span>
+        </button>
+        <button
+          (click)="toggleFavorite()"
+          class="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+          [class.text-[var(--color-primary)]]="selectedNote()?.isFavorite"
+          [class.text-[var(--color-text-muted)]]="!selectedNote()?.isFavorite"
+          [class.hover:text-[var(--color-text-main)]]="!selectedNote()?.isFavorite"
+          [class.hover:bg-stone-100]="true"
+          title="Favorite"
+        >
+          <span class="material-symbols-rounded text-lg">
+            {{ selectedNote()?.isFavorite ? 'star' : 'star_border' }}
+          </span>
+        </button>
+        <button
+          class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+          title="More"
+        >
+          <span class="material-symbols-rounded text-lg">more_horiz</span>
+        </button>
+      </div>
       <button
         (click)="createNote()"
         class="ml-2 flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg transition-colors"
@@ -78,21 +66,19 @@
   </header>
 }
 
-<!-- Content Area -->
+<!-- Note Editor -->
 @if (selectedNote()) {
   <app-note-editor
     [note]="selectedNote()"
     [tag]="selectedTag()"
     (contentChange)="onContentChange($event)"
   />
-} @else if (selectedTag()) {
-  <app-chat [tagId]="selectedTag()!._id" />
 } @else {
   <div class="empty-state">
     <div class="empty-icon">
       <span class="material-symbols-rounded">edit_note</span>
     </div>
-    <h2>Select a note</h2>
-    <p>Choose a note from the sidebar or create a new one</p>
+    <h2>Note not found</h2>
+    <p>The requested note could not be loaded</p>
   </div>
 }

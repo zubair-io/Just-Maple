@@ -13,6 +13,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { Router, ActivatedRoute } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { BrowserCodeReader, BrowserMultiFormatReader, BarcodeFormat } from '@zxing/browser';
 import { DecodeHintType } from '@zxing/library';
 import { TagService } from '../../services/tag.service';
@@ -36,20 +37,31 @@ export class LegoScanComponent implements OnInit, OnDestroy {
     readonly paperService = inject(PaperService);
     readonly registryService = inject(CollectibleRegistryService);
 
+    private routeSubscription?: Subscription;
+    private controls: { stop: () => void } | null = null;
+
     readonly tagId = signal<string | null>(null);
     readonly searchQuery = signal('');
     readonly cameraEnabled = signal(false);
     readonly isScanning = signal(false);
     readonly isSaving = signal<string | null>(null); // registryId being saved
 
-    private controls: { stop: () => void } | null = null;
-    private initialized = false;
-
+    // Computed signals reactively derive from store - no validation needed
     readonly selectedTag = computed(() => {
         const id = this.tagId();
         if (!id) return null;
         return this.tagService.tags().find((t) => t._id === id) || null;
     });
+
+    constructor() {
+        // Load papers when tagId changes
+        effect(() => {
+            const tagId = this.tagId();
+            if (tagId) {
+                this.paperService.loadPapers({ tagId }).subscribe();
+            }
+        });
+    }
 
     /** Map of registryId -> Paper for quick lookup */
     readonly papersMap = computed(() => {
@@ -88,22 +100,10 @@ export class LegoScanComponent implements OnInit, OnDestroy {
         return [...filtered].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
     });
 
-    constructor() {
-        effect(() => {
-            const tags = this.tagService.tags();
-            if (tags.length === 0) return;
-            if (this.initialized) return;
-
-            this.initialized = true;
-            this.syncFromRoute();
-        });
-    }
-
     ngOnInit(): void {
-        this.route.params.subscribe(() => {
-            if (this.initialized) {
-                this.syncFromRoute();
-            }
+        // Subscribe to route params and set ID directly - effect handles loading
+        this.routeSubscription = this.route.params.subscribe((params) => {
+            this.tagId.set(params['tagId'] || null);
         });
 
         // Initialize registry data
@@ -111,16 +111,8 @@ export class LegoScanComponent implements OnInit, OnDestroy {
     }
 
     ngOnDestroy(): void {
+        this.routeSubscription?.unsubscribe();
         this.stopCamera();
-    }
-
-    private syncFromRoute(): void {
-        const tagId = this.route.snapshot.params['tagId'];
-        if (tagId) {
-            this.tagId.set(tagId);
-            // Load papers for this tag
-            this.paperService.loadPapers({ tagId }).subscribe();
-        }
     }
 
     goBack(): void {
@@ -221,7 +213,7 @@ export class LegoScanComponent implements OnInit, OnDestroy {
     onSelectRegistry(registry: CollectibleRegistry): void {
         const tagId = this.tagId();
         if (tagId) {
-            this.router.navigate(['/', tagId, registry._id]);
+            this.router.navigate(['/', tagId, 'collectible', registry._id]);
         }
     }
 

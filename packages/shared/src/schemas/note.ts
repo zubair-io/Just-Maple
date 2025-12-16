@@ -19,9 +19,20 @@ export const SyncStatusSchema = Type.Union([
 
 export type SyncStatus = Static<typeof SyncStatusSchema>;
 
+// Note type - determines the editor/view used
+export const NoteTypeSchema = Type.Union([
+    Type.Literal('write'),
+    Type.Literal('lego'),
+    Type.Literal('draw'),
+    Type.Literal('kanban'),
+]);
+
+export type NoteType = Static<typeof NoteTypeSchema>;
+
 export const NoteSchema = Type.Object({
     _id: Type.String(),
     userId: Type.String(),
+    type: NoteTypeSchema,
     title: Type.String(),
     content: NoteContentSchema, // ProseMirror JSON format
     version: Type.Number(),
@@ -37,6 +48,7 @@ export const NoteSchema = Type.Object({
 export type Note = Static<typeof NoteSchema>;
 
 export const CreateNoteSchema = Type.Object({
+    type: Type.Optional(NoteTypeSchema),
     title: Type.Optional(Type.String({ maxLength: 500 })),
     content: Type.Optional(NoteContentSchema),
     tagId: Type.Optional(Type.String()),

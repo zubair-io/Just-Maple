@@ -96,7 +96,7 @@
       }
     </div>
   } @else {
-    <cdk-virtual-scroll-viewport itemSize="80" class="flex-1">
+    <cdk-virtual-scroll-viewport itemSize="80" minBufferPx="400" maxBufferPx="800" class="flex-1">
       <div
         *cdkVirtualFor="let registry of filteredRegistries(); trackBy: trackByRegistryId"
         (click)="onSelectRegistry(registry)"

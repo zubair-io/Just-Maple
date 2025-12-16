@@ -152,4 +152,22 @@ export class IndexedDBService {
       request.onerror = () => reject(request.error);
     });
   }
+
+  async clearAll(): Promise<void> {
+    if (!isPlatformBrowser(this.platformId)) return;
+
+    const db = await this.initializeDB();
+    const storeNames = this.config.stores.map((s) => s.name);
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(storeNames, 'readwrite');
+
+      for (const storeName of storeNames) {
+        transaction.objectStore(storeName).clear();
+      }
+
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
 }

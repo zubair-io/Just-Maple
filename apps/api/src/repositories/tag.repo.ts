@@ -7,6 +7,7 @@ import type {
     AccessLevel,
     TagSharing,
     ShareTagInput,
+    TagValue,
 } from '@maple/shared';
 
 interface SharedWithEntryDocument {
@@ -22,11 +23,8 @@ interface TagSharingDocument {
 interface TagDocument {
     _id: ObjectId;
     type: 'folder';
-    value: string;
+    value: TagValue;
     label: string;
-    color?: string;
-    parentId?: ObjectId;
-    order?: number;
     sharing: TagSharingDocument;
     createdAt: Date;
     updatedAt: Date;
@@ -36,7 +34,7 @@ function getCollection(): Collection<TagDocument> {
     return getDb().collection<TagDocument>('tags');
 }
 
-// Legacy document type (with userId instead of sharing)
+// Legacy document type (with userId instead of sharing, and deprecated fields)
 interface LegacyTagDocument {
     _id: ObjectId;
     userId?: ObjectId;
@@ -70,14 +68,16 @@ function toTagResponse(doc: LegacyTagDocument): Tag {
         sharing = { sharedWith: [], isPublic: false };
     }
 
+    // Normalize value - default to 'mixed' for legacy docs
+    const value = (['mixed', 'recordings', 'notes'].includes(doc.value)
+        ? doc.value
+        : 'mixed') as TagValue;
+
     return {
         _id: doc._id.toString(),
         type: doc.type,
-        value: doc.value,
+        value,
         label: doc.label,
-        color: doc.color,
-        parentId: doc.parentId?.toString(),
-        order: doc.order,
         sharing,
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
@@ -177,12 +177,11 @@ export async function findTagByIdWithAccess(
  */
 export async function createTag(userId: string, data: CreateTagInput): Promise<Tag> {
     const now = new Date();
+    const value = data.value || 'mixed';
     const doc: Omit<TagDocument, '_id'> = {
         type: 'folder',
-        value: labelToSlug(data.label),
+        value,
         label: data.label,
-        color: data.color,
-        parentId: data.parentId ? new ObjectId(data.parentId) : undefined,
         sharing: {
             sharedWith: [{ userId, accessLevel: 'owner' }],
             isPublic: false,
@@ -196,10 +195,8 @@ export async function createTag(userId: string, data: CreateTagInput): Promise<T
     return {
         _id: result.insertedId.toString(),
         type: 'folder',
-        value: doc.value,
+        value,
         label: doc.label,
-        color: doc.color,
-        parentId: data.parentId,
         sharing: doc.sharing,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -224,16 +221,9 @@ export async function updateTag(
 
     if (data.label !== undefined) {
         updateData.label = data.label;
-        updateData.value = labelToSlug(data.label);
     }
-    if (data.color !== undefined) {
-        updateData.color = data.color;
-    }
-    if (data.parentId !== undefined) {
-        updateData.parentId = data.parentId ? new ObjectId(data.parentId) : undefined;
-    }
-    if (data.order !== undefined) {
-        updateData.order = data.order;
+    if (data.value !== undefined) {
+        updateData.value = data.value;
     }
 
     try {

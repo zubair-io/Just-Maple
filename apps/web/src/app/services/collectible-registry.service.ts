@@ -1,7 +1,7 @@
 import { Injectable, inject, PLATFORM_ID, signal } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, map, from, of, switchMap, shareReplay } from 'rxjs';
+import { Observable, tap, map, from, of, switchMap, shareReplay, take } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { createStore } from '@ngneat/elf';
 import {
@@ -14,6 +14,7 @@ import {
   getAllEntities,
   getEntitiesCount,
 } from '@ngneat/elf-entities';
+import { filterNil } from '@ngneat/elf';
 import { IndexedDBService } from './indexed-db.service';
 import { DB_STORES } from './db-stores';
 import type { CollectibleRegistry } from '@maple/shared';
@@ -40,6 +41,7 @@ export class CollectibleRegistryService {
   private readonly _registriesSignal = toSignal(this.registries$, {
     initialValue: [] as CollectibleRegistry[],
   });
+
 
   // Expose registries as a signal for reactive components
   registries(): CollectibleRegistry[] {
@@ -123,20 +125,11 @@ export class CollectibleRegistryService {
 
   /**
    * Get a single registry by ID
-   * Returns from cache if available, otherwise fetches from API
+   * Ensures registry is initialized, then returns from store
    */
-  getById(id: string): Observable<CollectibleRegistry | null> {
-    const cached = this.store.query(getEntity(id));
-    if (cached) {
-      return of(cached);
-    }
-
-    return this.http.get<{ registry: CollectibleRegistry }>(`/api/collectible-registry/${id}`).pipe(
-      tap((response) => {
-        this.store.update(upsertEntities([response.registry]));
-        this.persistToIndexedDB([response.registry]);
-      }),
-      map((response) => response.registry),
+  getById(id: string): Observable<CollectibleRegistry> {
+    return this.initializeRegistry().pipe(
+      switchMap(() => this.store.pipe(selectEntity(id), filterNil(), take(1))),
     );
   }
 
@@ -189,15 +182,9 @@ export class CollectibleRegistryService {
 
   /**
    * Get registry by provider ID (e.g., lego set number)
+   * Fetches from API and updates store, returns the registry
    */
   getByProviderId(provider: string, providerId: string): Observable<CollectibleRegistry | null> {
-    // First check cache
-    const all = this.store.query(getAllEntities());
-    const cached = all.find((r) => r.provider === provider && r.providerId === providerId);
-    if (cached) {
-      return of(cached);
-    }
-
     return this.http
       .get<{
         registry: CollectibleRegistry;
@@ -234,11 +221,12 @@ export class CollectibleRegistryService {
   }
 
   /**
-   * Get cached registry by ID (synchronous)
+   * Get cached registry by ID (synchronous - use for non-reactive contexts only)
    */
   getCached(id: string): CollectibleRegistry | undefined {
     return this.store.query(getEntity(id));
   }
+
 
   /**
    * Get all cached registries

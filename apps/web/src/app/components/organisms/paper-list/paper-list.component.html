@@ -1,4 +1,4 @@
-<cdk-virtual-scroll-viewport itemSize="116" appendOnly class="paper-list-viewport">
+<cdk-virtual-scroll-viewport itemSize="116" minBufferPx="400" maxBufferPx="800" appendOnly class="paper-list-viewport">
   <app-paper-list-item
     *cdkVirtualFor="let paper of papers(); trackBy: trackByFn"
     [paper]="paper"
