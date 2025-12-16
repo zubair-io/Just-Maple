@@ -7,14 +7,14 @@
       (click)="goBack()"
       class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
     >
-      <span class="material-icons-round">arrow_back</span>
+      <span class="material-symbols-rounded">arrow_back</span>
     </button>
 
     @if (selectedTag()) {
       <div
         class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium text-sm p-1 px-2 rounded bg-stone-100"
       >
-        <span class="material-icons-round text-sm text-[var(--color-primary)]">folder</span>
+        <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
         <span>{{ selectedTag()!.label }}</span>
       </div>
     }
@@ -107,7 +107,7 @@
               [class.border-stone-200]="collectionStatus() !== 'have'"
               [class.hover:border-green-300]="collectionStatus() !== 'have'"
             >
-              <span class="material-icons-round text-lg">check_circle</span>
+              <span class="material-symbols-rounded text-lg">check_circle</span>
               <span class="font-medium">Have</span>
             </button>
 
@@ -121,7 +121,7 @@
               [class.border-stone-200]="collectionStatus() !== 'want'"
               [class.hover:border-red-300]="collectionStatus() !== 'want'"
             >
-              <span class="material-icons-round text-lg">favorite</span>
+              <span class="material-symbols-rounded text-lg">favorite</span>
               <span class="font-medium">Want</span>
             </button>
 
@@ -135,7 +135,7 @@
               [class.border-stone-200]="collectionStatus() !== 'sold'"
               [class.hover:border-amber-300]="collectionStatus() !== 'sold'"
             >
-              <span class="material-icons-round text-lg">sell</span>
+              <span class="material-symbols-rounded text-lg">sell</span>
               <span class="font-medium">Sold</span>
             </button>
 
@@ -149,7 +149,7 @@
               [class.border-stone-200]="collectionStatus() !== 'none'"
               [class.hover:border-stone-300]="collectionStatus() !== 'none'"
             >
-              <span class="material-icons-round text-lg">remove_circle_outline</span>
+              <span class="material-symbols-rounded text-lg">remove_circle_outline</span>
               <span class="font-medium">None</span>
             </button>
           </div>
@@ -165,7 +165,7 @@
                     [disabled]="isSaving() || quantity() <= 1"
                     class="w-8 h-8 flex items-center justify-center rounded-full bg-stone-200 hover:bg-stone-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    <span class="material-icons-round text-lg">remove</span>
+                    <span class="material-symbols-rounded text-lg">remove</span>
                   </button>
                   <span class="text-lg font-medium w-8 text-center">{{ quantity() }}</span>
                   <button
@@ -173,7 +173,7 @@
                     [disabled]="isSaving()"
                     class="w-8 h-8 flex items-center justify-center rounded-full bg-stone-200 hover:bg-stone-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    <span class="material-icons-round text-lg">add</span>
+                    <span class="material-symbols-rounded text-lg">add</span>
                   </button>
                 </div>
               </div>
@@ -208,7 +208,7 @@
       </div>
     } @else {
       <div class="flex flex-col items-center justify-center h-64 text-[var(--color-text-muted)]">
-        <span class="material-icons-round text-4xl mb-2">error_outline</span>
+        <span class="material-symbols-rounded text-4xl mb-2">error_outline</span>
         <p>Item not found</p>
       </div>
     }

@@ -7,7 +7,7 @@
       <div
         class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100"
       >
-        <span class="material-icons-round text-sm text-[var(--color-primary)]">folder</span>
+        <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
         <span>{{ selectedTag()!.label }}</span>
       </div>
     }
@@ -29,7 +29,7 @@
         [class.hover:bg-stone-100]="!hasActiveFilters()"
         title="Filter"
       >
-        <span class="material-icons-round text-lg">filter_list</span>
+        <span class="material-symbols-rounded text-lg">filter_list</span>
         @if (hasActiveFilters()) {
           <span
             class="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[var(--color-primary)] rounded-full"
@@ -41,7 +41,7 @@
         class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
         title="Scan Barcode"
       >
-        <span class="material-icons-round text-lg">qr_code_scanner</span>
+        <span class="material-symbols-rounded text-lg">qr_code_scanner</span>
       </button>
     </div>
   </div>
@@ -53,7 +53,7 @@
     <!-- Search Input -->
     <div class="relative mb-3">
       <span
-        class="material-icons-round absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] text-lg"
+        class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] text-lg"
         >search</span
       >
       <input
@@ -68,7 +68,7 @@
           (click)="searchQuery.set('')"
           class="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
         >
-          <span class="material-icons-round text-lg">close</span>
+          <span class="material-symbols-rounded text-lg">close</span>
         </button>
       }
     </div>
@@ -105,7 +105,7 @@
         (click)="clearFilters()"
         class="text-xs text-[var(--color-primary)] hover:underline flex items-center gap-1"
       >
-        <span class="material-icons-round text-sm">clear_all</span>
+        <span class="material-symbols-rounded text-sm">clear_all</span>
         Clear all filters
       </button>
     }
@@ -128,7 +128,7 @@
     class="bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white rounded-2xl w-14 h-14 flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-[var(--color-primary)]/30 group"
   >
     <span
-      class="material-icons-round text-2xl group-hover:scale-110 transition-transform duration-300"
+      class="material-symbols-rounded text-2xl group-hover:scale-110 transition-transform duration-300"
       >qr_code_scanner</span
     >
   </button>

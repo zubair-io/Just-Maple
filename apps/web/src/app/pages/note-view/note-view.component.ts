@@ -3,13 +3,24 @@ import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { TagService } from '../../services/tag.service';
 import { NoteService } from '../../services/note.service';
-import { NoteEditorComponent } from '../../components';
-import type { NoteContent } from '@maple/shared';
+import { NoteEditorComponent, ChatComponent } from '../../components';
+import { type NoteContent, DEFAULT_NOTE_CONTENT } from '@maple/shared';
+
+/** Extract title text from the first H1 heading in content */
+function extractTitleFromContent(content: NoteContent): string {
+    const firstNode = content.content?.[0];
+    if (firstNode?.type === 'heading' && firstNode.attrs?.level === 1) {
+        // Get text from the heading's content array
+        const textNode = firstNode.content?.[0];
+        return textNode?.text || 'Untitled';
+    }
+    return 'Untitled';
+}
 
 @Component({
   selector: 'app-note-view',
   standalone: true,
-  imports: [CommonModule, NoteEditorComponent],
+  imports: [CommonModule, NoteEditorComponent, ChatComponent],
   templateUrl: './note-view.component.html',
   styleUrl: './note-view.component.scss',
 })
@@ -38,6 +49,13 @@ export class NoteViewComponent implements OnInit {
       return this.tagService.tags().find((t) => t._id === note.tagId) || null;
     }
     return null;
+  });
+
+  /** Cached formatted date to avoid ExpressionChangedAfterItHasBeenCheckedError */
+  readonly formattedDate = computed(() => {
+    const note = this.selectedNote();
+    if (!note?.updatedAt) return '';
+    return this.formatDateValue(note.updatedAt);
   });
 
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -91,6 +109,7 @@ export class NoteViewComponent implements OnInit {
     this.noteService
       .createNote({
         title: 'Untitled',
+        content: DEFAULT_NOTE_CONTENT,
         tagId: tagId || undefined,
       })
       .subscribe({
@@ -119,12 +138,10 @@ export class NoteViewComponent implements OnInit {
     });
   }
 
-  onTitleChange(title: string): void {
-    this.debouncedSave({ title });
-  }
-
   onContentChange(content: NoteContent): void {
-    this.debouncedSave({ content });
+    // Extract title from H1 and save both
+    const title = extractTitleFromContent(content);
+    this.debouncedSave({ content, title });
   }
 
   private debouncedSave(data: { title?: string; content?: NoteContent }): void {
@@ -144,7 +161,7 @@ export class NoteViewComponent implements OnInit {
     }, 500);
   }
 
-  formatDate(dateString: string): string {
+  private formatDateValue(dateString: string): string {
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();

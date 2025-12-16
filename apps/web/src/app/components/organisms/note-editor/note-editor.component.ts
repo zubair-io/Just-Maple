@@ -7,80 +7,69 @@ import {
   ElementRef,
   ViewChild,
   OnDestroy,
-  AfterViewInit,
+  afterNextRender,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ChatComponent } from '../chat/chat.component';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Document from '@tiptap/extension-document';
+import Heading from '@tiptap/extension-heading';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
 import Highlight from '@tiptap/extension-highlight';
 import Typography from '@tiptap/extension-typography';
 import { EmojiReplacer } from './extensions/emoji-replacer';
+import { CodeEnterHandler } from './extensions/code-enter-handler';
 import type { Note, Tag, NoteContent } from '@maple/shared';
 
 @Component({
   selector: 'app-note-editor',
   standalone: true,
-  imports: [CommonModule, ChatComponent],
+  imports: [CommonModule],
   templateUrl: './note-editor.component.html',
   styleUrl: './note-editor.component.scss',
 })
-export class NoteEditorComponent implements AfterViewInit, OnDestroy {
+export class NoteEditorComponent implements OnDestroy {
   @ViewChild('editorElement', { static: false })
   private editorRef?: ElementRef<HTMLElement>;
-
-  @ViewChild('titleInput', { static: false })
-  private titleInputRef?: ElementRef<HTMLInputElement>;
 
   readonly note = input<Note | null>(null);
   readonly tag = input<Tag | null>(null);
   readonly editable = input<boolean>(true);
 
-  readonly titleChange = output<string>();
   readonly contentChange = output<NoteContent>();
 
-  readonly title = signal('');
   readonly isFocused = signal(false);
 
   private editor: Editor | null = null;
   private lastNoteId: string | null = null;
   private isUpdatingFromNote = false;
+  private readonly viewReady = signal(false);
 
   constructor() {
+    // Initialize editor after view is ready
+    afterNextRender(() => {
+      this.initEditor();
+      this.viewReady.set(true);
+    });
+
+    // Handle note changes (initial load + updates)
     effect(() => {
       const currentNote = this.note();
-      if (currentNote && currentNote._id !== this.lastNoteId) {
-        this.lastNoteId = currentNote._id;
-        this.title.set(currentNote.title);
-        // Initialize editor if not yet done
-        if (!this.editor && this.editorRef) {
-          this.initEditor();
-        }
-        this.updateEditorContent(currentNote.content);
-      } else if (!currentNote) {
-        this.lastNoteId = null;
-        this.title.set('');
-        this.updateEditorContent(null);
+      if (!this.viewReady() || !this.editor) return;
+
+      if (currentNote?._id !== this.lastNoteId) {
+        this.lastNoteId = currentNote?._id ?? null;
+        this.updateEditorContent(currentNote?.content ?? null);
       }
     });
 
+    // Update editable state
     effect(() => {
       const isEditable = this.editable();
-      if (this.editor) {
-        this.editor.setEditable(isEditable);
-      }
+      this.editor?.setEditable(isEditable);
     });
-  }
-
-  ngAfterViewInit(): void {
-    // Only initialize if note is already set and we have the element
-    if (this.note() && this.editorRef) {
-      this.initEditor();
-    }
   }
 
   ngOnDestroy(): void {
@@ -90,17 +79,22 @@ export class NoteEditorComponent implements AfterViewInit, OnDestroy {
   private initEditor(): void {
     if (!this.editorRef?.nativeElement) return;
 
-    const CustomDocument = Document.extend({
-      content: 'block+',
+    // Document schema: must start with heading, then any blocks
+    const TitleDocument = Document.extend({
+      content: 'heading block*',
     });
 
     this.editor = new Editor({
       element: this.editorRef.nativeElement,
       editable: this.editable(),
       extensions: [
-        CustomDocument,
+        TitleDocument,
         StarterKit.configure({
           document: false,
+          heading: false, // Use custom Heading below
+        }),
+        Heading.configure({
+          levels: [1, 2, 3],
         }),
         TaskItem.configure({
           nested: true,
@@ -109,8 +103,14 @@ export class NoteEditorComponent implements AfterViewInit, OnDestroy {
         Highlight,
         Typography,
         EmojiReplacer,
+        CodeEnterHandler,
         Placeholder.configure({
-          placeholder: 'Start writing...',
+          placeholder: ({ node }) => {
+            if (node.type.name === 'heading' && node.attrs['level'] === 1) {
+              return 'Untitled';
+            }
+            return 'Start writing...';
+          },
         }),
       ],
       content: '',
@@ -129,10 +129,6 @@ export class NoteEditorComponent implements AfterViewInit, OnDestroy {
     });
 
     // Load initial content if note exists
-    const currentNote = this.note();
-    if (currentNote) {
-      this.updateEditorContent(currentNote.content);
-    }
   }
 
   private updateEditorContent(content: NoteContent | null | undefined): void {
@@ -150,25 +146,13 @@ export class NoteEditorComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  onTitleChange(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    this.title.set(input.value);
-    this.titleChange.emit(input.value);
-  }
-
-  onTitleKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      this.editor?.commands.focus('start');
-    }
+  focusEditor(): void {
+    this.editor?.commands.focus();
   }
 
   focusTitle(): void {
-    this.titleInputRef?.nativeElement?.focus();
-  }
-
-  focusEditor(): void {
-    this.editor?.commands.focus();
+    // Focus at the start (the H1 title)
+    this.editor?.commands.focus('start');
   }
 
   // Toolbar commands

@@ -56,10 +56,15 @@ export const UpdateNoteSchema = Type.Object({
 
 export type UpdateNoteInput = Static<typeof UpdateNoteSchema>;
 
-// Default empty note content
+// Default empty note content - starts with H1 heading as title
 export const DEFAULT_NOTE_CONTENT: NoteContent = {
     type: 'doc',
     content: [
+        {
+            type: 'heading',
+            attrs: { level: 1 },
+            content: [],
+        },
         {
             type: 'paragraph',
             content: [],

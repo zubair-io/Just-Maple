@@ -4,3 +4,43 @@
   height: 100%;
   overflow: hidden;
 }
+
+// Empty State
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 2rem;
+  color: var(--color-text-muted);
+
+  .empty-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 5rem;
+    height: 5rem;
+    background-color: var(--color-surface-alt);
+    border-radius: 50%;
+    margin-bottom: 1.5rem;
+
+    .material-symbols-rounded {
+      font-size: 2.5rem;
+      color: var(--color-text-muted);
+    }
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--color-text-main);
+    margin: 0 0 0.5rem 0;
+  }
+
+  p {
+    font-size: 1rem;
+    margin: 0;
+  }
+}

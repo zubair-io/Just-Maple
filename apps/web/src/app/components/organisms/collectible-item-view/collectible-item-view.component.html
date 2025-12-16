@@ -8,7 +8,7 @@
       class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
       title="Back to list"
     >
-      <span class="material-icons-round text-lg">arrow_back</span>
+      <span class="material-symbols-rounded text-lg">arrow_back</span>
     </button>
     <span class="text-sm font-medium text-[var(--color-text-main)] truncate flex-1 mx-4">
       {{ title() }}
@@ -66,7 +66,7 @@
           [class.text-gray-700]="!isHave()"
           [class.hover:bg-gray-200]="!isHave()"
         >
-          <span class="material-icons-round text-lg">check_circle</span>
+          <span class="material-symbols-rounded text-lg">check_circle</span>
           Have
         </button>
         <button
@@ -79,7 +79,7 @@
           [class.text-gray-700]="!isWant()"
           [class.hover:bg-gray-200]="!isWant()"
         >
-          <span class="material-icons-round text-lg">favorite</span>
+          <span class="material-symbols-rounded text-lg">favorite</span>
           Want
         </button>
       </div>
@@ -101,7 +101,7 @@
             [class.text-gray-300]="quantity() <= 1"
             [class.cursor-not-allowed]="quantity() <= 1"
           >
-            <span class="material-icons-round">remove</span>
+            <span class="material-symbols-rounded">remove</span>
           </button>
           <span class="text-3xl font-bold text-[var(--color-text-main)] w-16 text-center">
             {{ quantity() }}
@@ -110,7 +110,7 @@
             (click)="incrementQuantity()"
             class="w-12 h-12 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold text-xl transition-all flex items-center justify-center"
           >
-            <span class="material-icons-round">add</span>
+            <span class="material-symbols-rounded">add</span>
           </button>
         </div>
       </div>

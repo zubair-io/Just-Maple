@@ -9,7 +9,7 @@
         <div
           class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-stone-100"
         >
-          <span class="material-icons-round text-sm text-[var(--color-primary)]">tag</span>
+          <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">tag</span>
           <span>{{ selectedTag()!.label }}</span>
         </div>
         @if (selectedNote()) {
@@ -20,12 +20,12 @@
         <div
           class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100"
         >
-          <span class="material-icons-round text-sm">article</span>
+          <span class="material-symbols-rounded text-sm">article</span>
           <span>{{ selectedNote()!.title }}</span>
         </div>
       } @else {
         <div class="flex items-center gap-1.5 text-[var(--color-text-muted)] font-medium p-1">
-          <span class="material-icons-round text-sm">chat</span>
+          <span class="material-symbols-rounded text-sm">chat</span>
           <span>Messages</span>
         </div>
       }
@@ -35,14 +35,14 @@
     <div class="flex items-center gap-1">
       @if (selectedNote()) {
         <span class="text-xs text-[var(--color-text-muted)] mr-2">
-          Edited {{ formatDate(selectedNote()!.updatedAt) }}
+          Edited {{ formattedDate() }}
         </span>
         <div class="flex items-center border-l border-[var(--color-border)] pl-2 gap-1">
           <button
             class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
             title="Note Info"
           >
-            <span class="material-icons-round text-lg">info_outline</span>
+            <span class="material-symbols-rounded text-lg">info</span>
           </button>
           <button
             (click)="toggleFavorite()"
@@ -53,7 +53,7 @@
             [class.hover:bg-stone-100]="true"
             title="Favorite"
           >
-            <span class="material-icons-round text-lg">
+            <span class="material-symbols-rounded text-lg">
               {{ selectedNote()?.isFavorite ? 'star' : 'star_border' }}
             </span>
           </button>
@@ -61,7 +61,7 @@
             class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
             title="More"
           >
-            <span class="material-icons-round text-lg">more_horiz</span>
+            <span class="material-symbols-rounded text-lg">more_horiz</span>
           </button>
         </div>
       }
@@ -71,17 +71,28 @@
         class="ml-2 flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg transition-colors"
         title="New Note"
       >
-        <span class="material-icons-round text-sm">add</span>
+        <span class="material-symbols-rounded text-sm">add</span>
         <span>New Note</span>
       </button>
     </div>
   </header>
 }
 
-<!-- Note Editor -->
-<app-note-editor
-  [note]="selectedNote()"
-  [tag]="selectedTag()"
-  (titleChange)="onTitleChange($event)"
-  (contentChange)="onContentChange($event)"
-/>
+<!-- Content Area -->
+@if (selectedNote()) {
+  <app-note-editor
+    [note]="selectedNote()"
+    [tag]="selectedTag()"
+    (contentChange)="onContentChange($event)"
+  />
+} @else if (selectedTag()) {
+  <app-chat [tagId]="selectedTag()!._id" />
+} @else {
+  <div class="empty-state">
+    <div class="empty-icon">
+      <span class="material-symbols-rounded">edit_note</span>
+    </div>
+    <h2>Select a note</h2>
+    <p>Choose a note from the sidebar or create a new one</p>
+  </div>
+}

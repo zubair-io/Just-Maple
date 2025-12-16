@@ -8,7 +8,7 @@ export type IconSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <span class="material-icons-round" [class]="iconClasses">
+    <span class="material-symbols-rounded" [class]="iconClasses">
       {{ name() }}
     </span>
   `,

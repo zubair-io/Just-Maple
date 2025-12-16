@@ -30,7 +30,7 @@
             >Free</span
           >
         </div>
-        <span class="material-icons-round text-[var(--color-text-muted)] text-lg">expand_more</span>
+        <span class="material-symbols-rounded text-[var(--color-text-muted)] text-lg">expand_more</span>
       </button>
     </div> -->
 
@@ -38,7 +38,7 @@
     <div class="px-4 pb-4 flex gap-2">
       <div class="relative flex-1">
         <span
-          class="material-icons-round absolute left-2.5 top-1.5 text-[var(--color-text-muted)] text-lg"
+          class="material-symbols-rounded absolute left-2.5 top-1.5 text-[var(--color-text-muted)] text-lg"
           >search</span
         >
         <input
@@ -53,7 +53,7 @@
         class="w-8 h-8 flex items-center justify-center bg-[var(--color-primary)] text-white rounded-md shadow-sm hover:bg-[var(--color-primary-hover)] hover:shadow transition-all"
         title="New Note"
       >
-        <span class="material-icons-round text-lg">edit</span>
+        <span class="material-symbols-rounded text-lg">edit</span>
       </button>
     </div>
   </div>
@@ -69,7 +69,7 @@
         (click)="onCreateTag()"
         class="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
       >
-        <span class="material-icons-round text-base">add</span>
+        <span class="material-symbols-rounded text-base">add</span>
       </button>
     </div>
 
@@ -80,27 +80,23 @@
           <div
             (click)="toggleTag(tag._id)"
             class="group flex items-center justify-between px-2 py-1.5 text-sm rounded-md cursor-pointer transition-colors"
-            [class.bg-white]="expandedTags().has(tag._id)"
-            [class.shadow-sm]="expandedTags().has(tag._id)"
-            [class.ring-1]="expandedTags().has(tag._id)"
-            [class.ring-stone-200]="expandedTags().has(tag._id)"
-            [class.hover:bg-stone-200/50]="!expandedTags().has(tag._id)"
+            [class.bg-white]="selectedTagId() === tag._id"
+            [class.shadow-sm]="selectedTagId() === tag._id"
+            [class.ring-1]="selectedTagId() === tag._id"
+            [class.ring-stone-200]="selectedTagId() === tag._id"
+            [class.hover:bg-stone-200/50]="selectedTagId() !== tag._id"
           >
             <div class="flex items-center gap-2">
               <span
-                class="material-icons-round text-sm transition-colors"
-                [class.text-[var(--color-primary)]]="
-                  expandedTags().has(tag._id) || selectedTagId() === tag._id
-                "
-                [class.text-[var(--color-text-muted)]]="
-                  !expandedTags().has(tag._id) && selectedTagId() !== tag._id
-                "
-                >folder</span
+                class="material-symbols-rounded text-sm transition-colors"
+                [class.text-[var(--color-primary)]]="selectedTagId() === tag._id"
+                [class.text-[var(--color-text-muted)]]="selectedTagId() !== tag._id"
+                >tag</span
               >
               <span
-                [class.font-medium]="expandedTags().has(tag._id)"
-                [class.text-[var(--color-text-main)]]="expandedTags().has(tag._id)"
-                [class.text-[var(--color-text-muted)]]="!expandedTags().has(tag._id)"
+                [class.font-medium]="selectedTagId() === tag._id"
+                [class.text-[var(--color-text-main)]]="selectedTagId() === tag._id"
+                [class.text-[var(--color-text-muted)]]="selectedTagId() !== tag._id"
                 >{{ tag.label }}</span
               >
               <!-- Unread badge -->
@@ -113,7 +109,7 @@
               }
             </div>
             @if (getNotesForTag(tag._id).length > 0) {
-              <span class="material-icons-round text-base text-[var(--color-text-muted)]">
+              <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">
                 {{ expandedTags().has(tag._id) ? 'expand_less' : 'expand_more' }}
               </span>
             }
@@ -169,7 +165,7 @@
       (click)="onSettings()"
       class="text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-colors p-1.5"
     >
-      <span class="material-icons-round text-xl">settings</span>
+      <span class="material-symbols-rounded text-xl">settings</span>
     </button>
   </div>
 </aside>
