@@ -58,7 +58,8 @@ export type WebToNativeMessageType =
   | { type: 'getToken'; payload?: GetTokenPayload }
   | { type: 'clearToken'; payload?: ClearTokenPayload }
   | { type: 'requestPushPermission' }
-  | { type: 'getPushStatus' };
+  | { type: 'getPushStatus' }
+  | { type: 'unregisterPushNotifications' };
 
 // MARK: - Native to Web Messages
 
