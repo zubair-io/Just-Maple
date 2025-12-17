@@ -131,7 +131,7 @@ export class PreferencesService {
     }
   }
 
-  async addServer(name: string, url: string): Promise<void> {
+  async addServer(name: string, url: string, apiUrl?: string): Promise<void> {
     if (!this.nativeBridge.isNativeApp()) {
       console.warn('[Preferences] Adding servers only available in native app');
       return;
@@ -143,7 +143,7 @@ export class PreferencesService {
       throw new Error(this.validationError() || 'Server validation failed');
     }
 
-    this.nativeBridge.addServer(name, url);
+    this.nativeBridge.addServer(name, url, apiUrl);
 
     try {
       const response = await firstValueFrom(this.nativeBridge.onServerList().pipe(take(1)));

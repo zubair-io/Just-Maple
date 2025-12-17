@@ -15,13 +15,10 @@ class ServerConfigService {
     private let serverListKey = "saved_servers"
     private let activeServerKey = "active_server"
 
-    // API URL (separate from web app server)
-    private let productionAPIUrl = "https://paperbark.justmaple.app"
-
-    // Default servers (for webview)
+    // Default servers
     private let defaultServers: [ServerConfig] = [
-        ServerConfig(name: "Production", url: "https://justmaple.app", isCustom: false),
-        ServerConfig(name: "Localhost (Dev)", url: "https://localhost:4200", isCustom: false)
+        ServerConfig(name: "Production", url: "https://justmaple.app", apiUrl: "https://paperbark.justmaple.app", isCustom: false),
+        ServerConfig(name: "Localhost (Dev)", url: "https://localhost:4200", apiUrl: nil, isCustom: false)
     ]
 
     private init() {}
@@ -32,13 +29,20 @@ class ServerConfigService {
         let id: String
         let name: String
         let url: String
+        let apiUrl: String?  // Optional separate API URL
         let isCustom: Bool
 
-        init(name: String, url: String, isCustom: Bool) {
+        init(name: String, url: String, apiUrl: String? = nil, isCustom: Bool) {
             self.id = UUID().uuidString
             self.name = name
             self.url = url
+            self.apiUrl = apiUrl
             self.isCustom = isCustom
+        }
+
+        /// Get the API URL (uses apiUrl if set, otherwise falls back to url)
+        func getAPIUrl() -> String {
+            return apiUrl ?? url
         }
     }
 
@@ -77,12 +81,7 @@ class ServerConfigService {
 
     func getAPIUrl() -> String {
         let activeServer = getActiveServer()
-        // If localhost, use localhost API (for dev)
-        if activeServer.url.contains("localhost") {
-            return activeServer.url
-        }
-        // Otherwise use production API
-        return productionAPIUrl
+        return activeServer.getAPIUrl()
     }
 
     func validateServer(url: String) async throws -> Bool {

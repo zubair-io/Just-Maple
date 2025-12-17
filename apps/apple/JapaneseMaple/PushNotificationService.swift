@@ -17,11 +17,14 @@ import AppKit
 class PushNotificationService: NSObject {
     static let shared = PushNotificationService()
 
-    private let serverKeyKey = "push_server_key"
+    private let serverKeyMapKey = "push_server_key_map"  // serverKey → serverId mapping
     private let deviceTokenKey = "push_device_token"
 
     // Completion handler for registration flow
     private var registrationCompletion: ((Bool, Error?) -> Void)?
+
+    // Temporary serverId for current registration flow
+    private var currentServerId: String?
 
     private override init() {
         super.init()
@@ -30,8 +33,9 @@ class PushNotificationService: NSObject {
     // MARK: - Public API
 
     /// Request notification permissions and register for push
-    func requestPermissionsAndRegister(completion: @escaping (Bool, Error?) -> Void) async throws {
-        // Store completion for later when device token arrives
+    func requestPermissionsAndRegister(serverId: String, completion: @escaping (Bool, Error?) -> Void) async throws {
+        // Store serverId and completion for later when device token arrives
+        self.currentServerId = serverId
         self.registrationCompletion = completion
 
         // Request authorization
@@ -42,6 +46,7 @@ class PushNotificationService: NSObject {
             // Call completion immediately if permission denied
             completion(false, PushError.permissionDenied)
             self.registrationCompletion = nil
+            self.currentServerId = nil
             throw PushError.permissionDenied
         }
 
@@ -54,7 +59,7 @@ class PushNotificationService: NSObject {
             #endif
         }
 
-        print("[PushNotificationService] Requested permissions and registered for push")
+        print("[PushNotificationService] Requested permissions and registered for push on server: \(serverId)")
         // Completion will be called when device token arrives and API registration completes
     }
 
@@ -66,19 +71,26 @@ class PushNotificationService: NSObject {
         // Save device token
         UserDefaults.standard.set(tokenString, forKey: deviceTokenKey)
 
-        // Generate or retrieve serverKey
-        let serverKey = getOrCreateServerKey()
+        // Get the serverId for this registration
+        guard let serverId = self.currentServerId else {
+            print("[PushNotificationService] No serverId for registration, ignoring")
+            return
+        }
+
+        // Generate or retrieve serverKey for this serverId
+        let serverKey = getOrCreateServerKey(for: serverId)
 
         // Register with API (which handles APNs directly)
         Task {
             do {
                 try await registerWithMapleAPI(serverKey: serverKey, deviceToken: tokenString)
-                print("[PushNotificationService] Successfully registered with Maple API")
+                print("[PushNotificationService] Successfully registered with Maple API for server: \(serverId)")
 
                 // Call completion handler if present
                 if let completion = self.registrationCompletion {
                     completion(true, nil)
                     self.registrationCompletion = nil
+                    self.currentServerId = nil
                 }
             } catch {
                 print("[PushNotificationService] Failed to register with Maple API: \(error)")
@@ -87,6 +99,7 @@ class PushNotificationService: NSObject {
                 if let completion = self.registrationCompletion {
                     completion(false, error)
                     self.registrationCompletion = nil
+                    self.currentServerId = nil
                 }
             }
         }
@@ -100,43 +113,105 @@ class PushNotificationService: NSObject {
         if let completion = self.registrationCompletion {
             completion(false, error)
             self.registrationCompletion = nil
+            self.currentServerId = nil
         }
     }
 
-    /// Unregister device from push notifications
-    func unregister() async throws {
-        guard let serverKey = UserDefaults.standard.string(forKey: serverKeyKey) else {
-            print("[PushNotificationService] No serverKey found, nothing to unregister")
+    /// Unregister device from push notifications for a specific server
+    func unregister(serverId: String) async throws {
+        guard let serverKey = getServerKey(for: serverId) else {
+            print("[PushNotificationService] No serverKey found for server: \(serverId)")
             return
         }
 
         // Unregister from Maple API
         try await unregisterFromMapleAPI(serverKey: serverKey)
 
-        // Clear local data
-        UserDefaults.standard.removeObject(forKey: serverKeyKey)
-        UserDefaults.standard.removeObject(forKey: deviceTokenKey)
+        // Remove from local map
+        var map = getServerKeyMap()
+        map.removeValue(forKey: serverKey)
+        saveServerKeyMap(map)
 
-        print("[PushNotificationService] Successfully unregistered")
+        print("[PushNotificationService] Successfully unregistered from server: \(serverId)")
+    }
+
+    /// Unregister device from push notifications (all servers)
+    func unregister() async throws {
+        let map = getServerKeyMap()
+        guard !map.isEmpty else {
+            print("[PushNotificationService] No registrations found")
+            return
+        }
+
+        // Unregister from all servers
+        for (serverKey, serverId) in map {
+            do {
+                try await unregisterFromMapleAPI(serverKey: serverKey)
+                print("[PushNotificationService] Unregistered from server: \(serverId)")
+            } catch {
+                print("[PushNotificationService] Failed to unregister from server \(serverId): \(error)")
+            }
+        }
+
+        // Clear all local data
+        UserDefaults.standard.removeObject(forKey: serverKeyMapKey)
+
+        print("[PushNotificationService] Successfully unregistered from all servers")
     }
 
     /// Get current server key (if registered)
     func getServerKey() -> String? {
-        return UserDefaults.standard.string(forKey: serverKeyKey)
+        // Return first serverKey (for backwards compatibility)
+        let map = getServerKeyMap()
+        return map.keys.first
+    }
+
+    /// Get serverId for a given serverKey
+    func getServerId(for serverKey: String) -> String? {
+        let map = getServerKeyMap()
+        return map[serverKey]
+    }
+
+    /// Get serverKey for a given serverId
+    func getServerKey(for serverId: String) -> String? {
+        let map = getServerKeyMap()
+        return map.first(where: { $0.value == serverId })?.key
     }
 
     // MARK: - Private Helpers
 
-    private func getOrCreateServerKey() -> String {
-        if let existing = UserDefaults.standard.string(forKey: serverKeyKey) {
-            return existing
+    /// Get the serverKey → serverId mapping from UserDefaults
+    private func getServerKeyMap() -> [String: String] {
+        guard let data = UserDefaults.standard.data(forKey: serverKeyMapKey),
+              let map = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return [:]
+        }
+        return map
+    }
+
+    /// Save the serverKey → serverId mapping to UserDefaults
+    private func saveServerKeyMap(_ map: [String: String]) {
+        if let data = try? JSONEncoder().encode(map) {
+            UserDefaults.standard.set(data, forKey: serverKeyMapKey)
+        }
+    }
+
+    /// Get or create serverKey for a specific serverId
+    private func getOrCreateServerKey(for serverId: String) -> String {
+        // Check if we already have a serverKey for this serverId
+        if let existingServerKey = getServerKey(for: serverId) {
+            return existingServerKey
         }
 
         // Generate new opaque server key (cryptographically random)
         let serverKey = UUID().uuidString + "-" + UUID().uuidString
-        UserDefaults.standard.set(serverKey, forKey: serverKeyKey)
 
-        print("[PushNotificationService] Generated new serverKey")
+        // Store the mapping
+        var map = getServerKeyMap()
+        map[serverKey] = serverId
+        saveServerKeyMap(map)
+
+        print("[PushNotificationService] Generated new serverKey for server: \(serverId)")
         return serverKey
     }
 

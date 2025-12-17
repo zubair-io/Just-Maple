@@ -199,11 +199,11 @@ export class NotificationService {
   /**
    * Fetch a single notification by ID
    */
-  async fetchNotification(id: string): Promise<Notification> {
+  async fetchNotification(id: string, apiUrl?: string): Promise<Notification> {
     try {
-      const response = await firstValueFrom(
-        this.http.get<{ notification: Notification }>(`/api/notifications/${id}`),
-      );
+      const url = apiUrl ? `${apiUrl}/api/notifications/${id}` : `/api/notifications/${id}`;
+
+      const response = await firstValueFrom(this.http.get<{ notification: Notification }>(url));
 
       return response.notification;
     } catch (error) {
@@ -248,9 +248,13 @@ export class NotificationService {
 
   // MARK: - Notification Handling
 
-  private handleNotificationTap(notification: { notificationId: string; type: string }): void {
-    // Fetch full notification content and navigate
-    this.fetchNotification(notification.notificationId)
+  private handleNotificationTap(notification: {
+    notificationId: string;
+    type: string;
+    apiUrl: string;
+  }): void {
+    // Fetch full notification content from the correct server and navigate
+    this.fetchNotification(notification.notificationId, notification.apiUrl)
       .then((fullNotification) => {
         this.navigateToNotification(fullNotification);
       })

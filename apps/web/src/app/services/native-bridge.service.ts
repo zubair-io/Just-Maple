@@ -248,10 +248,10 @@ export class NativeBridgeService {
     });
   }
 
-  addServer(name: string, url: string): void {
+  addServer(name: string, url: string, apiUrl?: string): void {
     this.sendMessage({
       type: 'addServer',
-      payload: { name, url },
+      payload: { name, url, apiUrl },
     });
   }
 

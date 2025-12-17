@@ -36,6 +36,8 @@ export class SettingsComponent implements OnInit {
   readonly showAddServerDialog = signal(false);
   readonly newServerName = signal('');
   readonly newServerUrl = signal('');
+  readonly newServerApiUrl = signal('');
+  readonly showAdvanced = signal(false);
   readonly serverError = signal<string | null>(null);
 
   ngOnInit(): void {
@@ -123,6 +125,8 @@ export class SettingsComponent implements OnInit {
     this.showAddServerDialog.set(true);
     this.newServerName.set('');
     this.newServerUrl.set('');
+    this.newServerApiUrl.set('');
+    this.showAdvanced.set(false);
     this.serverError.set(null);
   }
 
@@ -133,6 +137,7 @@ export class SettingsComponent implements OnInit {
   async addServer(): Promise<void> {
     const name = this.newServerName().trim();
     const url = this.newServerUrl().trim();
+    const apiUrl = this.newServerApiUrl().trim();
 
     if (!name || !url) {
       this.serverError.set('Please enter both name and URL');
@@ -145,10 +150,16 @@ export class SettingsComponent implements OnInit {
       return;
     }
 
+    // Validate API URL if provided
+    if (apiUrl && !apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+      this.serverError.set('API URL must start with http:// or https://');
+      return;
+    }
+
     this.serverError.set(null);
 
     try {
-      await this.preferences.addServer(name, url);
+      await this.preferences.addServer(name, url, apiUrl || undefined);
       this.closeAddServerDialog();
     } catch (err: any) {
       this.serverError.set(err.message || 'Failed to add server');

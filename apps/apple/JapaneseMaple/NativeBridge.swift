@@ -45,6 +45,7 @@ enum WebToNativeMessage: Codable {
     struct AddServerPayload: Codable {
         let name: String
         let url: String
+        let apiUrl: String?
     }
 
     struct RemoveServerPayload: Codable {
@@ -191,6 +192,7 @@ enum NativeToWebMessage {
     case pushPermissionResult(PushPermissionResponse)
     case pushUnregistered(PushUnregisteredResponse)
     case pushStatus(PushStatusResponse)
+    case notificationTapped(NotificationTapped)
     case deepLink(DeepLinkPayload)
     case error(ErrorMessage)
 
@@ -254,6 +256,7 @@ enum NativeToWebMessage {
             let id: String
             let name: String
             let url: String
+            let apiUrl: String?
             let isCustom: Bool
         }
     }
@@ -262,6 +265,7 @@ enum NativeToWebMessage {
         let id: String
         let name: String
         let url: String
+        let apiUrl: String?
         let isCustom: Bool
     }
 
@@ -296,6 +300,12 @@ enum NativeToWebMessage {
     struct PushStatusResponse: Codable {
         let isRegistered: Bool
         let serverKey: String?
+    }
+
+    struct NotificationTapped: Codable {
+        let notificationId: String
+        let type: String
+        let apiUrl: String
     }
 
     struct DeepLinkPayload: Codable {
@@ -362,6 +372,9 @@ extension NativeToWebMessage: Encodable {
             try container.encode(payload, forKey: .payload)
         case .pushStatus(let payload):
             try container.encode("pushStatus", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .notificationTapped(let payload):
+            try container.encode("notificationTapped", forKey: .type)
             try container.encode(payload, forKey: .payload)
         case .deepLink(let payload):
             try container.encode("deepLink", forKey: .type)
@@ -544,6 +557,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                     id: server.id,
                     name: server.name,
                     url: server.url,
+                    apiUrl: server.apiUrl,
                     isCustom: server.isCustom
                 )
             }
@@ -555,6 +569,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 id: server.id,
                 name: server.name,
                 url: server.url,
+                apiUrl: server.apiUrl,
                 isCustom: server.isCustom
             )))
 
@@ -574,6 +589,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 id: server.id,
                 name: server.name,
                 url: server.url,
+                apiUrl: server.apiUrl,
                 isCustom: server.isCustom
             )))
 
@@ -597,6 +613,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             let server = ServerConfigService.ServerConfig(
                 name: payload.name,
                 url: payload.url,
+                apiUrl: payload.apiUrl,
                 isCustom: true
             )
             ServerConfigService.shared.addServer(server)
@@ -606,6 +623,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                     id: server.id,
                     name: server.name,
                     url: server.url,
+                    apiUrl: server.apiUrl,
                     isCustom: server.isCustom
                 )
             }
@@ -619,6 +637,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                     id: server.id,
                     name: server.name,
                     url: server.url,
+                    apiUrl: server.apiUrl,
                     isCustom: server.isCustom
                 )
             }
@@ -639,7 +658,8 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .requestPushPermission:
             Task {
                 do {
-                    try await PushNotificationService.shared.requestPermissionsAndRegister { [weak self] success, error in
+                    let activeServer = ServerConfigService.shared.getActiveServer()
+                    try await PushNotificationService.shared.requestPermissionsAndRegister(serverId: activeServer.id) { [weak self] success, error in
                         // This completion is called after device token arrives and API registration completes
                         self?.send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
                             granted: success,
@@ -658,6 +678,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .unregisterPushNotifications:
             Task {
                 do {
+                    // Unregister from all servers
                     try await PushNotificationService.shared.unregister()
                     send(.pushUnregistered(NativeToWebMessage.PushUnregisteredResponse(
                         success: true,
@@ -785,6 +806,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                     id: server.id,
                     name: server.name,
                     url: server.url,
+                    apiUrl: server.apiUrl,
                     isCustom: server.isCustom
                 )
             }
@@ -796,6 +818,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 id: server.id,
                 name: server.name,
                 url: server.url,
+                apiUrl: server.apiUrl,
                 isCustom: server.isCustom
             )))
 
@@ -815,6 +838,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 id: server.id,
                 name: server.name,
                 url: server.url,
+                apiUrl: server.apiUrl,
                 isCustom: server.isCustom
             )))
 
@@ -838,6 +862,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             let server = ServerConfigService.ServerConfig(
                 name: payload.name,
                 url: payload.url,
+                apiUrl: payload.apiUrl,
                 isCustom: true
             )
             ServerConfigService.shared.addServer(server)
@@ -847,6 +872,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                     id: server.id,
                     name: server.name,
                     url: server.url,
+                    apiUrl: server.apiUrl,
                     isCustom: server.isCustom
                 )
             }
@@ -860,6 +886,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                     id: server.id,
                     name: server.name,
                     url: server.url,
+                    apiUrl: server.apiUrl,
                     isCustom: server.isCustom
                 )
             }
@@ -881,7 +908,8 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .requestPushPermission:
             Task {
                 do {
-                    try await PushNotificationService.shared.requestPermissionsAndRegister { [weak self] success, error in
+                    let activeServer = ServerConfigService.shared.getActiveServer()
+                    try await PushNotificationService.shared.requestPermissionsAndRegister(serverId: activeServer.id) { [weak self] success, error in
                         // This completion is called after device token arrives and API registration completes
                         self?.send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
                             granted: success,
@@ -900,6 +928,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .unregisterPushNotifications:
             Task {
                 do {
+                    // Unregister from all servers
                     try await PushNotificationService.shared.unregister()
                     send(.pushUnregistered(NativeToWebMessage.PushUnregisteredResponse(
                         success: true,
@@ -983,5 +1012,13 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
 
     func sendDeepLink(url: String) {
         send(.deepLink(NativeToWebMessage.DeepLinkPayload(url: url)))
+    }
+
+    func handleNotificationTap(notificationId: String, type: String, apiUrl: String) {
+        send(.notificationTapped(NativeToWebMessage.NotificationTapped(
+            notificationId: notificationId,
+            type: type,
+            apiUrl: apiUrl
+        )))
     }
 }

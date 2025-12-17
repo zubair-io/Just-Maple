@@ -79,6 +79,16 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
             }
         }
 
+        // Listen for notification tap events
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("NotificationTapped"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let userInfo = notification.userInfo else { return }
+            self?.handleNotificationTap(userInfo: userInfo)
+        }
+
         // Load the web app
         loadWebApp()
     }
@@ -172,6 +182,43 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
     func handleDeepLink(_ urlString: String) {
         print("[WebViewController] Handling deep link: \(urlString)")
         bridge?.sendDeepLink(url: urlString)
+    }
+
+    func handleNotificationTap(userInfo: [AnyHashable: Any]) {
+        print("[WebViewController] Handling notification tap")
+
+        // Extract notification data
+        guard let notificationId = userInfo["notificationId"] as? String,
+              let type = userInfo["type"] as? String,
+              let serverKey = userInfo["serverKey"] as? String else {
+            print("[WebViewController] Missing notification data in userInfo")
+            return
+        }
+
+        print("[WebViewController] Notification: id=\(notificationId), type=\(type), serverKey=\(serverKey)")
+
+        // Look up serverId from serverKey
+        guard let serverId = PushNotificationService.shared.getServerId(for: serverKey) else {
+            print("[WebViewController] No serverId found for serverKey: \(serverKey)")
+            // TODO: Show error to user - server no longer configured
+            return
+        }
+
+        // Get server configuration
+        let servers = ServerConfigService.shared.getServers()
+        guard let server = servers.first(where: { $0.id == serverId }) else {
+            print("[WebViewController] No server found for serverId: \(serverId)")
+            // TODO: Show error to user - server no longer configured
+            return
+        }
+
+        // Get API URL (uses apiUrl if set, otherwise falls back to url)
+        let apiUrl = server.getAPIUrl()
+
+        print("[WebViewController] Sending notification to web app: apiUrl=\(apiUrl)")
+
+        // Send to web app via bridge
+        bridge?.handleNotificationTap(notificationId: notificationId, type: type, apiUrl: apiUrl)
     }
 
     // MARK: - WKNavigationDelegate

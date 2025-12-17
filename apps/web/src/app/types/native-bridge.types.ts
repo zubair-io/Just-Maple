@@ -24,6 +24,7 @@ export interface ValidateServerPayload {
 export interface AddServerPayload {
   name: string;
   url: string;
+  apiUrl?: string;
 }
 
 export interface RemoveServerPayload {
@@ -120,6 +121,7 @@ export interface ServerInfo {
   id: string;
   name: string;
   url: string;
+  apiUrl?: string;
   isCustom: boolean;
 }
 
@@ -131,6 +133,7 @@ export interface ActiveServerResponse {
   id: string;
   name: string;
   url: string;
+  apiUrl?: string;
   isCustom: boolean;
 }
 
@@ -179,6 +182,7 @@ export interface PushStatusResponse {
 export interface NotificationTapped {
   notificationId: string;
   type: string;
+  apiUrl: string;
 }
 
 export type NativeToWebMessageType =
