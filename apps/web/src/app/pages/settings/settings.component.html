@@ -338,7 +338,14 @@
                 </div>
               </div>
 
-              @if (!notifications.isRegistered()) {
+              @if (notifications.isRegistered()) {
+                <button
+                  (click)="disablePushNotifications()"
+                  class="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  Disable
+                </button>
+              } @else {
                 <button
                   (click)="requestPushPermission()"
                   [disabled]="notifications.isRequestingPermission()"

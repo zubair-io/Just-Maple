@@ -97,21 +97,80 @@ export class NotificationService {
 
   /**
    * Check current push notification registration status
+   * Verifies with server to ensure registration is valid
    */
   async checkPushStatus(): Promise<void> {
     if (!this.nativeBridge.isNativeApp()) {
       return;
     }
 
+    // Get local status first
     this.nativeBridge.getPushStatus();
 
     try {
       const response = await firstValueFrom(this.nativeBridge.onPushStatus().pipe(take(1)));
 
-      this.isRegistered.set(response.isRegistered);
-      this.serverKey.set(response.serverKey || null);
+      // If local says registered, verify with server
+      if (response.isRegistered && response.serverKey) {
+        try {
+          const devices = await this.getDevices();
+          const isRegisteredOnServer = devices.some((d) => d.serverKey === response.serverKey);
+
+          this.isRegistered.set(isRegisteredOnServer);
+          this.serverKey.set(isRegisteredOnServer ? response.serverKey : null);
+
+          if (!isRegisteredOnServer) {
+            console.warn(
+              '[NotificationService] Local registration found but not on server, clearing local state',
+            );
+            // TODO: Clear local state in native app
+          }
+        } catch (error) {
+          console.error('[NotificationService] Failed to verify registration with server:', error);
+          // Fallback to local status if server check fails
+          this.isRegistered.set(response.isRegistered);
+          this.serverKey.set(response.serverKey || null);
+        }
+      } else {
+        this.isRegistered.set(false);
+        this.serverKey.set(null);
+      }
     } catch (error) {
       console.error('[NotificationService] Failed to check push status:', error);
+    }
+  }
+
+  /**
+   * Unregister from push notifications
+   */
+  async unregisterPushNotifications(): Promise<void> {
+    if (!this.nativeBridge.isNativeApp()) {
+      console.warn('[NotificationService] Push notifications only available in native app');
+      return;
+    }
+
+    const currentServerKey = this.serverKey();
+    if (!currentServerKey) {
+      console.log('[NotificationService] No server key found, nothing to unregister');
+      return;
+    }
+
+    try {
+      // Unregister from server
+      await firstValueFrom(
+        this.http.delete<{ message: string }>('/api/notifications/unregister', {
+          body: { serverKey: currentServerKey },
+        }),
+      );
+
+      // Clear local state
+      this.isRegistered.set(false);
+      this.serverKey.set(null);
+
+      console.log('[NotificationService] Successfully unregistered from push notifications');
+    } catch (error) {
+      console.error('[NotificationService] Failed to unregister from push notifications:', error);
+      throw error;
     }
   }
 

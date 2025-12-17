@@ -103,6 +103,14 @@ export class SettingsComponent implements OnInit {
   }
 
   async logout(): Promise<void> {
+    // Unregister from push notifications before logging out
+    if (this.preferences.isNativeApp() && this.notifications.isRegistered()) {
+      try {
+        await this.notifications.unregisterPushNotifications();
+      } catch (error) {
+        console.error('[Settings] Failed to unregister push notifications on logout:', error);
+      }
+    }
     await this.authService.logout();
   }
 
@@ -164,6 +172,19 @@ export class SettingsComponent implements OnInit {
       }
     } catch (error) {
       console.error('[Settings] Failed to request push permission:', error);
+    }
+  }
+
+  async disablePushNotifications(): Promise<void> {
+    if (!confirm('Are you sure you want to disable push notifications?')) {
+      return;
+    }
+
+    try {
+      await this.notifications.unregisterPushNotifications();
+      console.log('[Settings] Push notifications disabled');
+    } catch (error) {
+      console.error('[Settings] Failed to disable push notifications:', error);
     }
   }
 }
