@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../services/auth.service';
+import { PreferencesService } from '../../services/preferences.service';
 import { ButtonComponent, InputComponent, IconComponent } from '../../components/atoms';
 import { FormFieldComponent, DividerComponent } from '../../components/molecules';
 
@@ -21,6 +22,7 @@ import { FormFieldComponent, DividerComponent } from '../../components/molecules
 })
 export class LoginComponent {
   readonly authService = inject(AuthService);
+  readonly preferences = inject(PreferencesService);
 
   readonly email = signal('');
   readonly emailSent = signal(false);
