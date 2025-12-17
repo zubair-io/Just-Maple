@@ -32,15 +32,24 @@ export const config = {
     signalrServiceKey: process.env.SIGNALR_SERVICE_KEY,
 
     // Paperbark config (push notification relay service)
-    paperbarkUrl: process.env.PAPERBARK_URL || 'https://paperbark.justmaple.app',
-    paperbarkApiKey: process.env.PAPERBARK_API_KEY,
+    // Supports both PAPERBARK_API_KEY and paperbark-api-key formats for Azure compatibility
+    paperbarkUrl:
+        process.env.PAPERBARK_URL ||
+        process.env['paperbark-url'] ||
+        'https://paperbark.justmaple.app',
+    paperbarkApiKey: process.env.PAPERBARK_API_KEY || process.env['paperbark-api-key'],
 
     // APNs config (for direct push in production)
-    apnsKeyId: process.env.APNS_KEY_ID,
-    apnsTeamId: process.env.APNS_TEAM_ID,
-    apnsKeyPath: process.env.APNS_KEY_PATH,
-    apnsBundleId: process.env.APNS_BUNDLE_ID || 'com.just.maple.JapaneseMaple',
-    apnsProduction: process.env.APNS_PRODUCTION === 'true',
+    // Supports both APNS_KEY_ID and apns-key-id formats for Azure compatibility
+    apnsKeyId: process.env.APNS_KEY_ID || process.env['apns-key-id'],
+    apnsTeamId: process.env.APNS_TEAM_ID || process.env['apns-team-id'],
+    apnsKeyPath: process.env.APNS_KEY_PATH || process.env['apns-key-path'],
+    apnsBundleId:
+        process.env.APNS_BUNDLE_ID ||
+        process.env['apns-bundle-id'] ||
+        'com.just.maple.JapaneseMaple',
+    apnsProduction:
+        process.env.APNS_PRODUCTION === 'true' || process.env['apns-production'] === 'true',
 
     // Use direct APNs if origin is production
     get useDirectApns() {
