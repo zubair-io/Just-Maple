@@ -12,13 +12,19 @@ function getApnProvider(): apn.Provider {
         return apnProvider;
     }
 
-    if (!config.apnsKeyId || !config.apnsTeamId || !config.apnsKeyPath) {
-        throw new Error('APNs not configured: missing APNS_KEY_ID, APNS_TEAM_ID, or APNS_KEY_PATH');
+    if (!config.apnsKeyId || !config.apnsTeamId) {
+        throw new Error('APNs not configured: missing APNS_KEY_ID or APNS_TEAM_ID');
+    }
+
+    // Check for key content (preferred for Azure) or key file path
+    if (!config.apnsKey && !config.apnsKeyPath) {
+        throw new Error('APNs not configured: missing APNS_KEY or APNS_KEY_PATH');
     }
 
     const options: apn.ProviderOptions = {
         token: {
-            key: config.apnsKeyPath,
+            // Use key content if provided (Azure secret), otherwise use file path
+            key: config.apnsKey || config.apnsKeyPath!,
             keyId: config.apnsKeyId,
             teamId: config.apnsTeamId,
         },
@@ -27,7 +33,7 @@ function getApnProvider(): apn.Provider {
 
     apnProvider = new apn.Provider(options);
     console.log(
-        `[APNs] Initialized provider (production: ${config.apnsProduction}, bundle: ${config.apnsBundleId})`,
+        `[APNs] Initialized provider (production: ${config.apnsProduction}, bundle: ${config.apnsBundleId}, key source: ${config.apnsKey ? 'secret' : 'file'})`,
     );
 
     return apnProvider;
