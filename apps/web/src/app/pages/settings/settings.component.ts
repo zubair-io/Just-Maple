@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { PreferencesService } from '../../services/preferences.service';
+import { NotificationService } from '../../services/notification.service';
 
 interface PasskeyInfo {
   id: string;
@@ -24,6 +25,7 @@ export class SettingsComponent implements OnInit {
   private readonly router = inject(Router);
   readonly authService = inject(AuthService);
   readonly preferences = inject(PreferencesService);
+  readonly notifications = inject(NotificationService);
 
   readonly passkeys = signal<PasskeyInfo[]>([]);
   readonly isLoadingPasskeys = signal(false);
@@ -148,6 +150,20 @@ export class SettingsComponent implements OnInit {
   async removeServer(serverId: string): Promise<void> {
     if (confirm('Are you sure you want to remove this server?')) {
       await this.preferences.removeServer(serverId);
+    }
+  }
+
+  // Notification Management
+  async requestPushPermission(): Promise<void> {
+    try {
+      const granted = await this.notifications.requestPushPermission();
+      if (granted) {
+        console.log('[Settings] Push permission granted');
+      } else {
+        console.log('[Settings] Push permission denied');
+      }
+    } catch (error) {
+      console.error('[Settings] Failed to request push permission:', error);
     }
   }
 }

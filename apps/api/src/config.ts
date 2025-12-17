@@ -30,4 +30,8 @@ export const config = {
     useSignalR: process.env.USE_SIGNALR === 'true',
     signalrServiceUrl: process.env.SIGNALR_SERVICE_URL,
     signalrServiceKey: process.env.SIGNALR_SERVICE_KEY,
+
+    // Paperbark config (push notification relay service)
+    paperbarkUrl: process.env.PAPERBARK_URL || 'https://paperbark.justmaple.app',
+    paperbarkApiKey: process.env.PAPERBARK_API_KEY,
 };

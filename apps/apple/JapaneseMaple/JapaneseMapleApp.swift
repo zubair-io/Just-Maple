@@ -7,9 +7,17 @@
 
 import SwiftUI
 import SwiftData
+import UserNotifications
+
+#if os(iOS)
+import UIKit
+#endif
 
 @main
 struct JapaneseMapleApp: App {
+    #if os(iOS)
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    #endif
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -56,3 +64,68 @@ struct JapaneseMapleApp: App {
         )
     }
 }
+
+#if os(iOS)
+// MARK: - AppDelegate for Push Notifications
+
+class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // Set notification center delegate
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    // Handle successful device token registration
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        PushNotificationService.shared.didReceiveDeviceToken(deviceToken)
+    }
+
+    // Handle device token registration failure
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        PushNotificationService.shared.didFailToRegisterForRemoteNotifications(error: error)
+    }
+
+    // Handle notification when app is in foreground
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        // Show notification even when app is in foreground
+        completionHandler([.banner, .sound, .badge])
+    }
+
+    // Handle notification tap
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+
+        // Extract notification data
+        if let notificationId = userInfo["notificationId"] as? String,
+           let type = userInfo["type"] as? String {
+            print("[AppDelegate] Notification tapped: \(type), id: \(notificationId)")
+
+            // Post notification for app to handle
+            NotificationCenter.default.post(
+                name: NSNotification.Name("NotificationTapped"),
+                object: nil,
+                userInfo: ["notificationId": notificationId, "type": type]
+            )
+        }
+
+        completionHandler()
+    }
+}
+#endif

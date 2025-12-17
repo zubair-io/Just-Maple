@@ -14,6 +14,7 @@ import {
     getTagMembers,
     getAccessLevel,
 } from '../repositories/tag.repo';
+import { sendNotification } from '../services/notification.service';
 
 export const tagRoutes = new Elysia({ prefix: '/api/tags' })
     .use(jwtPlugin)
@@ -187,6 +188,18 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
                     error: 'Forbidden',
                     message: 'You do not have permission to share this tag',
                 };
+            }
+
+            // Send notification to the user who received the share
+            try {
+                await sendNotification(targetUser._id, 'share_received', {
+                    tagId: params.id,
+                    sharedBy: auth.user._id,
+                    tagLabel: tag.label,
+                });
+            } catch (error) {
+                console.error('[Tags] Failed to send share notification:', error);
+                // Don't fail the request if notification fails
             }
 
             return { tag };

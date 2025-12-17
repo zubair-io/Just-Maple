@@ -8,6 +8,7 @@ import { noteRoutes } from './routes/notes';
 import { messageRoutes } from './routes/messages';
 import { paperRoutes } from './routes/papers';
 import { collectibleRegistryRoutes } from './routes/collectible-registry';
+import { notificationRoutes } from './routes/notifications';
 import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
 import { SignalRRealtimeService } from './services/signalr.service';
 import { setRealtimeService } from './services/realtime.service';
@@ -57,6 +58,7 @@ async function main() {
         .use(messageRoutes)
         .use(paperRoutes)
         .use(collectibleRegistryRoutes)
+        .use(notificationRoutes)
         .use(chatWebSocket)
         .get('/api/health', async ({ set }) => {
             try {

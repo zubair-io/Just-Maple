@@ -24,6 +24,8 @@ enum WebToNativeMessage: Codable {
     case saveToken(SaveTokenPayload)
     case getToken(GetTokenPayload?)
     case clearToken(ClearTokenPayload?)
+    case requestPushPermission
+    case getPushStatus
     case unknown
 
     struct TestPayload: Codable {
@@ -105,6 +107,10 @@ enum WebToNativeMessage: Codable {
         case "clearToken":
             let payload = try? container.decode(ClearTokenPayload.self, forKey: .payload)
             self = .clearToken(payload)
+        case "requestPushPermission":
+            self = .requestPushPermission
+        case "getPushStatus":
+            self = .getPushStatus
         default:
             self = .unknown
         }
@@ -152,6 +158,10 @@ enum WebToNativeMessage: Codable {
             if let payload = payload {
                 try container.encode(payload, forKey: .payload)
             }
+        case .requestPushPermission:
+            try container.encode("requestPushPermission", forKey: .type)
+        case .getPushStatus:
+            try container.encode("getPushStatus", forKey: .type)
         case .unknown:
             try container.encode("unknown", forKey: .type)
         }
@@ -173,6 +183,8 @@ enum NativeToWebMessage {
     case tokenSaved(TokenSavedResponse)
     case currentToken(CurrentTokenResponse)
     case tokenCleared(TokenClearedResponse)
+    case pushPermissionResult(PushPermissionResponse)
+    case pushStatus(PushStatusResponse)
     case deepLink(DeepLinkPayload)
     case error(ErrorMessage)
 
@@ -265,6 +277,16 @@ enum NativeToWebMessage {
         let success: Bool
     }
 
+    struct PushPermissionResponse: Codable {
+        let granted: Bool
+        let error: String?
+    }
+
+    struct PushStatusResponse: Codable {
+        let isRegistered: Bool
+        let serverKey: String?
+    }
+
     struct DeepLinkPayload: Codable {
         let url: String
     }
@@ -320,6 +342,12 @@ extension NativeToWebMessage: Encodable {
             try container.encode(payload, forKey: .payload)
         case .tokenCleared(let payload):
             try container.encode("tokenCleared", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .pushPermissionResult(let payload):
+            try container.encode("pushPermissionResult", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .pushStatus(let payload):
+            try container.encode("pushStatus", forKey: .type)
             try container.encode(payload, forKey: .payload)
         case .deepLink(let payload):
             try container.encode("deepLink", forKey: .type)
@@ -594,6 +622,9 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             let success = ServerConfigService.shared.clearToken(serverId: payload?.serverId)
             send(.tokenCleared(NativeToWebMessage.TokenClearedResponse(success: success)))
 
+        case .requestPushPermission, .getPushStatus:
+            print("[Bridge] Push notifications not supported on macOS")
+
         case .unknown:
             print("[Bridge] Unknown message type")
         }
@@ -792,6 +823,34 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .clearToken(let payload):
             let success = ServerConfigService.shared.clearToken(serverId: payload?.serverId)
             send(.tokenCleared(NativeToWebMessage.TokenClearedResponse(success: success)))
+
+        #if os(iOS)
+        case .requestPushPermission:
+            Task {
+                do {
+                    try await PushNotificationService.shared.requestPermissionsAndRegister()
+                    send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
+                        granted: true,
+                        error: nil
+                    )))
+                } catch {
+                    send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
+                        granted: false,
+                        error: error.localizedDescription
+                    )))
+                }
+            }
+
+        case .getPushStatus:
+            let serverKey = PushNotificationService.shared.getServerKey()
+            send(.pushStatus(NativeToWebMessage.PushStatusResponse(
+                isRegistered: serverKey != nil,
+                serverKey: serverKey
+            )))
+        #else
+        case .requestPushPermission, .getPushStatus:
+            print("[Bridge] Push notifications not supported on macOS")
+        #endif
 
         case .unknown:
             print("[Bridge] Unknown message type")

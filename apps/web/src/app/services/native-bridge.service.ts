@@ -11,6 +11,9 @@ import type {
   TokenSavedResponse,
   CurrentTokenResponse,
   TokenClearedResponse,
+  PushPermissionResponse,
+  PushStatusResponse,
+  NotificationTapped,
   DeepLinkPayload,
   RecordingStarted,
   RecordingStopped,
@@ -173,6 +176,27 @@ export class NativeBridgeService {
     );
   }
 
+  onPushPermissionResult(): Observable<PushPermissionResponse> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'pushPermissionResult'),
+      map((msg) => msg.payload as PushPermissionResponse),
+    );
+  }
+
+  onPushStatus(): Observable<PushStatusResponse> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'pushStatus'),
+      map((msg) => msg.payload as PushStatusResponse),
+    );
+  }
+
+  onNotificationTapped(): Observable<NotificationTapped> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'notificationTapped'),
+      map((msg) => msg.payload as NotificationTapped),
+    );
+  }
+
   // MARK: - Send Messages
 
   private sendMessage(message: WebToNativeMessageType): void {
@@ -251,6 +275,16 @@ export class NativeBridgeService {
       type: 'clearToken',
       payload: serverId ? { serverId } : undefined,
     });
+  }
+
+  // MARK: - Push Notifications
+
+  requestPushPermission(): void {
+    this.sendMessage({ type: 'requestPushPermission' });
+  }
+
+  getPushStatus(): void {
+    this.sendMessage({ type: 'getPushStatus' });
   }
 
   // MARK: - Audio Recording

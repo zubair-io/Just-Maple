@@ -5,3 +5,4 @@ export * from './note';
 export * from './message';
 export * from './paper';
 export * from './collectible-registry';
+export * from './notification';

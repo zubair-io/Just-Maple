@@ -56,7 +56,9 @@ export type WebToNativeMessageType =
   | { type: 'removeServer'; payload: RemoveServerPayload }
   | { type: 'saveToken'; payload: SaveTokenPayload }
   | { type: 'getToken'; payload?: GetTokenPayload }
-  | { type: 'clearToken'; payload?: ClearTokenPayload };
+  | { type: 'clearToken'; payload?: ClearTokenPayload }
+  | { type: 'requestPushPermission' }
+  | { type: 'getPushStatus' };
 
 // MARK: - Native to Web Messages
 
@@ -158,6 +160,21 @@ export interface ErrorMessage {
   message: string;
 }
 
+export interface PushPermissionResponse {
+  granted: boolean;
+  error?: string;
+}
+
+export interface PushStatusResponse {
+  isRegistered: boolean;
+  serverKey: string | null;
+}
+
+export interface NotificationTapped {
+  notificationId: string;
+  type: string;
+}
+
 export type NativeToWebMessageType =
   | { type: 'initialize'; payload: InitialState }
   | { type: 'testResponse'; payload: TestResponse }
@@ -173,6 +190,9 @@ export type NativeToWebMessageType =
   | { type: 'tokenSaved'; payload: TokenSavedResponse }
   | { type: 'currentToken'; payload: CurrentTokenResponse }
   | { type: 'tokenCleared'; payload: TokenClearedResponse }
+  | { type: 'pushPermissionResult'; payload: PushPermissionResponse }
+  | { type: 'pushStatus'; payload: PushStatusResponse }
+  | { type: 'notificationTapped'; payload: NotificationTapped }
   | { type: 'deepLink'; payload: DeepLinkPayload }
   | { type: 'error'; payload: ErrorMessage };
 
