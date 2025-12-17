@@ -55,6 +55,12 @@ export const config = {
 
     // Use direct APNs if origin is production
     get useDirectApns() {
+        console.warn(
+            'useDirectApns',
+            this.origin === 'https://justmaple.app',
+            !!this.apnsKeyId,
+            !!this.apnsTeamId,
+        );
         return this.origin === 'https://justmaple.app' && !!this.apnsKeyId && !!this.apnsTeamId;
     },
 };
