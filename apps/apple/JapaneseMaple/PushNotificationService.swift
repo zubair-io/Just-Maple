@@ -10,6 +10,9 @@ import UserNotifications
 
 #if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 class PushNotificationService: NSObject {
     static let shared = PushNotificationService()
@@ -35,7 +38,11 @@ class PushNotificationService: NSObject {
 
         // Register for remote notifications (must be on main thread)
         await MainActor.run {
+            #if os(iOS)
             UIApplication.shared.registerForRemoteNotifications()
+            #elseif os(macOS)
+            NSApplication.shared.registerForRemoteNotifications()
+            #endif
         }
 
         print("[PushNotificationService] Requested permissions and registered for push")
@@ -52,10 +59,10 @@ class PushNotificationService: NSObject {
         // Generate or retrieve serverKey
         let serverKey = getOrCreateServerKey()
 
-        // Register with Paperbark via Maple API
+        // Register with API (which handles APNs directly)
         Task {
             do {
-                try await registerWithMapleAPI(serverKey: serverKey)
+                try await registerWithMapleAPI(serverKey: serverKey, deviceToken: tokenString)
                 print("[PushNotificationService] Successfully registered with Maple API")
             } catch {
                 print("[PushNotificationService] Failed to register with Maple API: \(error)")
@@ -105,7 +112,7 @@ class PushNotificationService: NSObject {
         return serverKey
     }
 
-    private func registerWithMapleAPI(serverKey: String) async throws {
+    private func registerWithMapleAPI(serverKey: String, deviceToken: String) async throws {
         let activeServer = ServerConfigService.shared.getActiveServer()
         guard let url = URL(string: "\(activeServer.url)/api/notifications/register") else {
             throw PushError.invalidURL
@@ -120,9 +127,16 @@ class PushNotificationService: NSObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let body = [
+        #if os(iOS)
+        let platform = "ios"
+        #elseif os(macOS)
+        let platform = "macos"
+        #endif
+
+        let body: [String: String] = [
             "serverKey": serverKey,
-            "platform": "ios"
+            "deviceToken": deviceToken,
+            "platform": platform
         ]
         request.httpBody = try JSONEncoder().encode(body)
 
@@ -183,5 +197,3 @@ class PushNotificationService: NSObject {
         }
     }
 }
-
-#endif

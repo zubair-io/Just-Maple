@@ -38,14 +38,20 @@ export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const registration = await registerDevice(auth.user._id, body.serverKey, body.platform);
+            const registration = await registerDevice(
+                auth.user._id,
+                body.serverKey,
+                body.deviceToken,
+                body.platform,
+            );
 
             return { registration };
         },
         {
             body: t.Object({
                 serverKey: t.String({ minLength: 1 }),
-                platform: t.Literal('ios'),
+                deviceToken: t.String({ minLength: 1 }),
+                platform: t.Union([t.Literal('ios'), t.Literal('macos')]),
             }),
         },
     )

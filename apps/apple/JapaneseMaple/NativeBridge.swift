@@ -622,8 +622,28 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             let success = ServerConfigService.shared.clearToken(serverId: payload?.serverId)
             send(.tokenCleared(NativeToWebMessage.TokenClearedResponse(success: success)))
 
-        case .requestPushPermission, .getPushStatus:
-            print("[Bridge] Push notifications not supported on macOS")
+        case .requestPushPermission:
+            Task {
+                do {
+                    try await PushNotificationService.shared.requestPermissionsAndRegister()
+                    send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
+                        granted: true,
+                        error: nil
+                    )))
+                } catch {
+                    send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
+                        granted: false,
+                        error: error.localizedDescription
+                    )))
+                }
+            }
+
+        case .getPushStatus:
+            let serverKey = PushNotificationService.shared.getServerKey()
+            send(.pushStatus(NativeToWebMessage.PushStatusResponse(
+                isRegistered: serverKey != nil,
+                serverKey: serverKey
+            )))
 
         case .unknown:
             print("[Bridge] Unknown message type")

@@ -2,7 +2,7 @@ import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { firstValueFrom, filter, take } from 'rxjs';
+import { firstValueFrom, take, Observable, ReplaySubject } from 'rxjs';
 import {
   startRegistration,
   startAuthentication,
@@ -63,11 +63,19 @@ export class AuthService {
   private readonly _user = signal<UserResponse | null>(null);
   private readonly _isLoading = signal(false);
   private readonly _error = signal<string | null>(null);
+  private readonly _isInitReady = signal(false);
+
+  // ReplaySubject ensures late subscribers get the ready state
+  private readonly _initReady$ = new ReplaySubject<boolean>(1);
 
   readonly accessToken = this._accessToken.asReadonly();
   readonly user = this._user.asReadonly();
   readonly isLoading = this._isLoading.asReadonly();
   readonly error = this._error.asReadonly();
+  readonly isInitReady = this._isInitReady.asReadonly();
+
+  /** Observable that emits true once auth initialization is complete */
+  readonly initReady$ = this._initReady$.asObservable();
 
   readonly isAuthenticated = computed(() => !!this._accessToken());
 
@@ -85,13 +93,17 @@ export class AuthService {
 
   private async initFromStorage(): Promise<void> {
     if (!isPlatformBrowser(this.platformId)) {
+      this.markInitReady();
       return;
     }
 
     // If running in native app, get token from native keychain
     if (this.nativeBridge.isNativeApp()) {
       const serverId = this.getNativeServerId();
-      console.log('[Auth] Running in native app, requesting token from keychain for server:', serverId);
+      console.log(
+        '[Auth] Running in native app, requesting token from keychain for server:',
+        serverId,
+      );
       this.nativeBridge.getToken(serverId);
 
       // Wait for token response
@@ -108,6 +120,7 @@ export class AuthService {
               const auth: StoredAuth = JSON.parse(stored);
               this._accessToken.set(response.token);
               this._user.set(auth.user);
+              this.markInitReady();
               return;
             } catch {
               // Failed to parse, will fetch user from server
@@ -121,6 +134,7 @@ export class AuthService {
       } catch {
         console.log('[Auth] No token in native keychain');
       }
+      this.markInitReady();
       return;
     }
 
@@ -135,6 +149,13 @@ export class AuthService {
         localStorage.removeItem(this.getStorageKey());
       }
     }
+    this.markInitReady();
+  }
+
+  private markInitReady(): void {
+    this._isInitReady.set(true);
+    this._initReady$.next(true);
+    this._initReady$.complete();
   }
 
   private saveToStorage(auth: StoredAuth): void {

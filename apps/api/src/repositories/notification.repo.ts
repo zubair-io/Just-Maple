@@ -17,7 +17,8 @@ interface DeviceRegistrationDocument {
     _id: ObjectId;
     userId: string;
     serverKey: string;
-    platform: 'ios';
+    deviceToken: string;
+    platform: 'ios' | 'macos';
     registeredAt: Date;
     lastUsed: Date;
 }
@@ -49,6 +50,7 @@ function toDeviceRegistrationResponse(doc: DeviceRegistrationDocument): DeviceRe
         _id: doc._id.toString(),
         userId: doc.userId,
         serverKey: doc.serverKey,
+        deviceToken: doc.deviceToken,
         platform: doc.platform,
         registeredAt: doc.registeredAt.toISOString(),
         lastUsed: doc.lastUsed.toISOString(),
@@ -132,7 +134,8 @@ export async function deleteExpiredNotifications(): Promise<number> {
 export async function registerDevice(
     userId: string,
     serverKey: string,
-    platform: 'ios' = 'ios',
+    deviceToken: string,
+    platform: 'ios' | 'macos' = 'ios',
 ): Promise<DeviceRegistration> {
     const now = new Date();
 
@@ -143,14 +146,15 @@ export async function registerDevice(
     });
 
     if (existing) {
-        // Update lastUsed
+        // Update deviceToken and lastUsed
         await getDeviceRegistrationCollection().updateOne(
             { _id: existing._id },
-            { $set: { lastUsed: now } },
+            { $set: { deviceToken, lastUsed: now } },
         );
 
         return toDeviceRegistrationResponse({
             ...existing,
+            deviceToken,
             lastUsed: now,
         });
     }
@@ -159,6 +163,7 @@ export async function registerDevice(
     const doc: Omit<DeviceRegistrationDocument, '_id'> = {
         userId,
         serverKey,
+        deviceToken,
         platform,
         registeredAt: now,
         lastUsed: now,

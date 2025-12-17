@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { CanActivate, CanMatch, Router, UrlTree } from '@angular/router';
+import { Observable, map } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 
 @Injectable({
@@ -16,10 +17,9 @@ export class AuthGuard implements CanActivate, CanMatch {
     return this.router.createUrlTree(['/login']);
   }
 
-  canMatch(): boolean {
-    // For canMatch, just return boolean - don't redirect
-    // This allows route matching to fall through to next route
-    return this.authService.isAuthenticated();
+  canMatch(): Observable<boolean> {
+    // Wait for auth initialization to complete before checking authentication
+    return this.authService.initReady$.pipe(map(() => this.authService.isAuthenticated()));
   }
 }
 
@@ -37,8 +37,8 @@ export class PublicGuard implements CanActivate, CanMatch {
     return this.router.createUrlTree(['/']);
   }
 
-  canMatch(): boolean {
-    // For canMatch, just return boolean
-    return !this.authService.isAuthenticated();
+  canMatch(): Observable<boolean> {
+    // Wait for auth initialization to complete before checking authentication
+    return this.authService.initReady$.pipe(map(() => !this.authService.isAuthenticated()));
   }
 }

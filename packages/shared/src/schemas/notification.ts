@@ -54,7 +54,8 @@ export const DeviceRegistrationSchema = Type.Object({
     _id: Type.String(),
     userId: Type.String(),
     serverKey: Type.String(),
-    platform: Type.Literal('ios'),
+    deviceToken: Type.String(),
+    platform: Type.Union([Type.Literal('ios'), Type.Literal('macos')]),
     registeredAt: Type.String(),
     lastUsed: Type.String(),
 });
@@ -64,7 +65,8 @@ export type DeviceRegistration = Static<typeof DeviceRegistrationSchema>;
 // API request/response types
 export const RegisterDeviceRequestSchema = Type.Object({
     serverKey: Type.String(),
-    platform: Type.Literal('ios'),
+    deviceToken: Type.String(),
+    platform: Type.Union([Type.Literal('ios'), Type.Literal('macos')]),
 });
 
 export type RegisterDeviceRequest = Static<typeof RegisterDeviceRequestSchema>;

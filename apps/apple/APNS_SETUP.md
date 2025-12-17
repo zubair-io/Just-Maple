@@ -1,6 +1,6 @@
 # Apple Push Notifications (APNs) Setup Guide
 
-This guide explains how to set up push notifications for the Just Maple iOS app using the Paperbark relay service.
+This guide explains how to set up push notifications for the Just Maple iOS and macOS apps using the Paperbark relay service.
 
 ## Architecture Overview
 
@@ -8,13 +8,13 @@ Just Maple uses a privacy-preserving push notification architecture:
 
 1. **Maple API** - Your self-hosted server (e.g., `https://justmaple.app`)
 2. **Paperbark Relay** - Push notification relay service (`https://paperbark.justmaple.app`)
-3. **iOS App** - Native iOS application with WKWebView
+3. **Native Apps** - iOS and macOS applications with WKWebView
 
 ### Privacy Design
 
 - Paperbark never sees sensitive notification content
 - Only generic fallback messages are sent through Paperbark
-- iOS app fetches full content directly from user's Maple server
+- Native apps fetch full content directly from user's Maple server
 - Each server generates an opaque `serverKey` identifier
 
 ## Prerequisites
@@ -48,17 +48,30 @@ Just Maple uses a privacy-preserving push notification architecture:
 
 ### Step 1: Add Push Notification Capability
 
+**For iOS:**
+
 1. Open `JapaneseMaple.xcodeproj` in Xcode
-2. Select the **JapaneseMaple** target
+2. Select the **JapaneseMaple (iOS)** target
 3. Go to **Signing & Capabilities** tab
 4. Click **+ Capability**
 5. Add **Push Notifications**
 
+**For macOS:**
+
+1. Select the **JapaneseMaple (macOS)** target
+2. Go to **Signing & Capabilities** tab
+3. Click **+ Capability**
+4. Add **Push Notifications**
+
 ### Step 2: Verify Entitlements
 
-The `JapaneseMaple.entitlements` file should already include:
+The `JapaneseMaple.entitlements` file should include:
 
 ```xml
+<key>aps-environment</key>
+<string>development</string>
+<key>com.apple.developer.aps-environment</key>
+<string>development</string>
 <key>com.apple.developer.associated-domains</key>
 <array>
     <string>applinks:justmaple.app</string>
@@ -66,7 +79,9 @@ The `JapaneseMaple.entitlements` file should already include:
 </array>
 ```
 
-The `webcredentials` entry enables seamless push notification registration.
+**Note:** Change `aps-environment` to `production` when building for release.
+
+The `webcredentials` entry enables seamless push notification registration across both iOS and macOS.
 
 ## Part 3: Paperbark Configuration
 
@@ -122,10 +137,11 @@ The API will use these settings from `apps/api/src/config.ts`.
 
 ### Test Flow
 
-1. **Launch the iOS app**
+1. **Launch the native app** (iOS or macOS)
 2. **Sign in with your account**
-3. **Grant push notification permission** (the app should request this after login)
-4. **Trigger a notification event** (e.g., share a tag with another user)
+3. **Navigate to Settings → Notifications**
+4. **Grant push notification permission** (tap "Enable")
+5. **Trigger a notification event** (e.g., share a tag with another user)
 
 ### Check Device Registration
 
@@ -190,7 +206,7 @@ Check logs on each service:
 [Notification] Push sent successfully: notificationId=...
 ```
 
-**iOS App:**
+**Native App (iOS/macOS):**
 
 ```bash
 # In Xcode console
@@ -205,25 +221,28 @@ Check logs on each service:
 - [ ] APNs key uploaded to Paperbark server with secure permissions
 - [ ] Paperbark environment variables configured
 - [ ] Maple API environment variables configured
-- [ ] Push Notifications capability enabled in Xcode
-- [ ] App built with production provisioning profile
+- [ ] Push Notifications capability enabled in Xcode (iOS and macOS targets)
+- [ ] Entitlements configured with `aps-environment: production`
+- [ ] App built with production provisioning profile (iOS and macOS)
 - [ ] `APNS_PRODUCTION=true` on Paperbark server
-- [ ] Test notification successfully delivered
-- [ ] Notification tap navigation works correctly
+- [ ] Test notification successfully delivered on iOS
+- [ ] Test notification successfully delivered on macOS
+- [ ] Notification tap navigation works correctly on both platforms
 
 ## Troubleshooting
 
 ### No Device Token Received
 
-**Symptom:** iOS app doesn't receive a device token.
+**Symptom:** App doesn't receive a device token.
 
 **Solutions:**
 
-1. Ensure Push Notifications capability is enabled in Xcode
+1. Ensure Push Notifications capability is enabled in Xcode for your target (iOS or macOS)
 2. Verify app is signed with a valid provisioning profile
 3. Check that the bundle ID matches: `com.just.maple.JapaneseMaple`
-4. Ensure running on physical device (push doesn't work in simulator)
-5. Check Xcode console for error messages
+4. **iOS:** Ensure running on physical device (push doesn't work in simulator)
+5. **macOS:** App should work on both physical and virtual machines
+6. Check Xcode console for error messages
 
 ### Device Token Received But Registration Fails
 
@@ -264,7 +283,8 @@ Check logs on each service:
 
 ```
 ┌─────────────────┐
-│   iOS Device    │
+│  Native Device  │
+│  (iOS / macOS)  │
 │                 │
 │  1. Registers   │
 │     with APNs   │
@@ -273,7 +293,7 @@ Check logs on each service:
          │ Device Token
          ▼
 ┌─────────────────┐      ServerKey      ┌──────────────┐
-│   Maple API     │◄──────────────────┤  iOS App     │
+│   Maple API     │◄──────────────────┤ Native App   │
 │ (Your Server)   │                     └──────────────┘
 │                 │
 │ 2. Saves        │
@@ -298,7 +318,8 @@ Check logs on each service:
          │    notification
          ▼
 ┌─────────────────┐
-│   iOS Device    │
+│  Native Device  │
+│  (iOS / macOS)  │
 │                 │
 │ 7. Fetches full │
 │    content from │
