@@ -20,6 +20,9 @@ class PushNotificationService: NSObject {
     private let serverKeyKey = "push_server_key"
     private let deviceTokenKey = "push_device_token"
 
+    // Completion handler for registration flow
+    private var registrationCompletion: ((Bool, Error?) -> Void)?
+
     private override init() {
         super.init()
     }
@@ -27,12 +30,18 @@ class PushNotificationService: NSObject {
     // MARK: - Public API
 
     /// Request notification permissions and register for push
-    func requestPermissionsAndRegister() async throws {
+    func requestPermissionsAndRegister(completion: @escaping (Bool, Error?) -> Void) async throws {
+        // Store completion for later when device token arrives
+        self.registrationCompletion = completion
+
         // Request authorization
         let center = UNUserNotificationCenter.current()
         let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
 
         guard granted else {
+            // Call completion immediately if permission denied
+            completion(false, PushError.permissionDenied)
+            self.registrationCompletion = nil
             throw PushError.permissionDenied
         }
 
@@ -46,6 +55,7 @@ class PushNotificationService: NSObject {
         }
 
         print("[PushNotificationService] Requested permissions and registered for push")
+        // Completion will be called when device token arrives and API registration completes
     }
 
     /// Handle device token receipt from APNs
@@ -64,8 +74,20 @@ class PushNotificationService: NSObject {
             do {
                 try await registerWithMapleAPI(serverKey: serverKey, deviceToken: tokenString)
                 print("[PushNotificationService] Successfully registered with Maple API")
+
+                // Call completion handler if present
+                if let completion = self.registrationCompletion {
+                    completion(true, nil)
+                    self.registrationCompletion = nil
+                }
             } catch {
                 print("[PushNotificationService] Failed to register with Maple API: \(error)")
+
+                // Call completion handler with error if present
+                if let completion = self.registrationCompletion {
+                    completion(false, error)
+                    self.registrationCompletion = nil
+                }
             }
         }
     }
@@ -73,6 +95,12 @@ class PushNotificationService: NSObject {
     /// Handle device token registration failure
     func didFailToRegisterForRemoteNotifications(error: Error) {
         print("[PushNotificationService] Failed to register for remote notifications: \(error)")
+
+        // Call completion handler with error if present
+        if let completion = self.registrationCompletion {
+            completion(false, error)
+            self.registrationCompletion = nil
+        }
     }
 
     /// Unregister device from push notifications
@@ -113,14 +141,19 @@ class PushNotificationService: NSObject {
     }
 
     private func registerWithMapleAPI(serverKey: String, deviceToken: String) async throws {
-        let activeServer = ServerConfigService.shared.getActiveServer()
-        guard let url = URL(string: "\(activeServer.url)/api/notifications/register") else {
+        let apiUrl = ServerConfigService.shared.getAPIUrl()
+        guard let url = URL(string: "\(apiUrl)/api/notifications/register") else {
             throw PushError.invalidURL
         }
 
+        print("[PushNotificationService] 📍 Registering with API: \(apiUrl)")
+
         guard let token = ServerConfigService.shared.getToken() else {
+            print("[PushNotificationService] ❌ No auth token found")
             throw PushError.notAuthenticated
         }
+
+        print("[PushNotificationService] 🔑 Auth token: \(token.prefix(20))...")
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -138,19 +171,39 @@ class PushNotificationService: NSObject {
             "deviceToken": deviceToken,
             "platform": platform
         ]
-        request.httpBody = try JSONEncoder().encode(body)
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let jsonData = try JSONEncoder().encode(body)
+        request.httpBody = jsonData
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            print("[PushNotificationService] 📤 Request URL: \(url)")
+            print("[PushNotificationService] 📤 Request Body: \(jsonString)")
+        }
+
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            print("[PushNotificationService] ❌ Invalid response type")
             throw PushError.registrationFailed
         }
+
+        print("[PushNotificationService] 📥 Response Status: \(httpResponse.statusCode)")
+
+        if let responseString = String(data: responseData, encoding: .utf8) {
+            print("[PushNotificationService] 📥 Response Body: \(responseString)")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            print("[PushNotificationService] ❌ Registration failed with status \(httpResponse.statusCode)")
+            throw PushError.registrationFailed
+        }
+
+        print("[PushNotificationService] ✅ Registration successful")
     }
 
     private func unregisterFromMapleAPI(serverKey: String) async throws {
-        let activeServer = ServerConfigService.shared.getActiveServer()
-        guard let url = URL(string: "\(activeServer.url)/api/notifications/unregister") else {
+        let apiUrl = ServerConfigService.shared.getAPIUrl()
+        guard let url = URL(string: "\(apiUrl)/api/notifications/unregister") else {
             throw PushError.invalidURL
         }
 

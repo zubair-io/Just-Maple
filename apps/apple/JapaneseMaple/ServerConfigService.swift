@@ -15,7 +15,10 @@ class ServerConfigService {
     private let serverListKey = "saved_servers"
     private let activeServerKey = "active_server"
 
-    // Default servers
+    // API URL (separate from web app server)
+    private let productionAPIUrl = "https://paperbark.justmaple.app"
+
+    // Default servers (for webview)
     private let defaultServers: [ServerConfig] = [
         ServerConfig(name: "Production", url: "https://justmaple.app", isCustom: false),
         ServerConfig(name: "Localhost (Dev)", url: "https://localhost:4200", isCustom: false)
@@ -70,6 +73,16 @@ class ServerConfigService {
 
     func setActiveServer(id: String) {
         userDefaults.set(id, forKey: activeServerKey)
+    }
+
+    func getAPIUrl() -> String {
+        let activeServer = getActiveServer()
+        // If localhost, use localhost API (for dev)
+        if activeServer.url.contains("localhost") {
+            return activeServer.url
+        }
+        // Otherwise use production API
+        return productionAPIUrl
     }
 
     func validateServer(url: String) async throws -> Bool {

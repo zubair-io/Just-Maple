@@ -625,12 +625,15 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .requestPushPermission:
             Task {
                 do {
-                    try await PushNotificationService.shared.requestPermissionsAndRegister()
-                    send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
-                        granted: true,
-                        error: nil
-                    )))
+                    try await PushNotificationService.shared.requestPermissionsAndRegister { [weak self] success, error in
+                        // This completion is called after device token arrives and API registration completes
+                        self?.send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
+                            granted: success,
+                            error: error?.localizedDescription
+                        )))
+                    }
                 } catch {
+                    // This catch handles immediate failures (e.g., permission denied before device token)
                     send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
                         granted: false,
                         error: error.localizedDescription
@@ -848,12 +851,15 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .requestPushPermission:
             Task {
                 do {
-                    try await PushNotificationService.shared.requestPermissionsAndRegister()
-                    send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
-                        granted: true,
-                        error: nil
-                    )))
+                    try await PushNotificationService.shared.requestPermissionsAndRegister { [weak self] success, error in
+                        // This completion is called after device token arrives and API registration completes
+                        self?.send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
+                            granted: success,
+                            error: error?.localizedDescription
+                        )))
+                    }
                 } catch {
+                    // This catch handles immediate failures (e.g., permission denied before device token)
                     send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
                         granted: false,
                         error: error.localizedDescription
