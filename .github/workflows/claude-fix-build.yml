@@ -1,0 +1,49 @@
+name: Claude Fix Build Failures
+
+on:
+    workflow_run:
+        workflows: ['CI']
+        types: [completed]
+
+jobs:
+    fix-build:
+        if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.event.workflow_run.head_branch }}
+                  fetch-depth: 1
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - name: Install dependencies
+              run: bun install
+
+            - name: Run Claude Code to fix build
+              uses: anthropics/claude-code-action@v1
+              with:
+                  anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+                  prompt: |
+                      The CI build just failed on branch `${{ github.event.workflow_run.head_branch }}`.
+
+                      Please diagnose and fix the build failure by:
+
+                      1. Run `bun run build:shared` to check shared package builds
+                      2. Run `bun run typecheck` to find type errors
+                      3. Run `bun run format:check` to find formatting issues (fix with `bun run format`)
+                      4. Run `bun run test` to check for test failures
+                      5. Run `bun run build:api` and `bun run build:web` to verify builds
+
+                      Fix any issues you find following the CLAUDE.md conventions:
+                      - Use Tailwind classes for styling
+                      - Use Angular signals for state
+                      - Use TypeBox schemas in @maple/shared for types
+                      - Run `bun run format` after making changes
+
+                      Create a commit with the fix and push to the branch.
