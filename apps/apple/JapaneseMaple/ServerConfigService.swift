@@ -105,16 +105,26 @@ class ServerConfigService {
     // MARK: - Token Management (Keychain)
 
     private let keychainService = "com.just.maple.JapaneseMaple"
-    private let tokenKey = "bearer_token"
+    private let tokenKeyPrefix = "bearer_token"
 
-    func saveToken(_ token: String) -> Bool {
+    /// Get the keychain account name for a server
+    private func tokenKey(for serverId: String?) -> String {
+        if let serverId = serverId, !serverId.isEmpty {
+            return "\(tokenKeyPrefix):\(serverId)"
+        }
+        // Fallback to active server URL if no serverId provided
+        return "\(tokenKeyPrefix):\(getActiveServer().url)"
+    }
+
+    func saveToken(_ token: String, serverId: String? = nil) -> Bool {
         let data = token.data(using: .utf8)!
+        let account = tokenKey(for: serverId)
 
         // Delete existing token first
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: tokenKey
+            kSecAttrAccount as String: account
         ]
         SecItemDelete(deleteQuery as CFDictionary)
 
@@ -122,7 +132,7 @@ class ServerConfigService {
         let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: tokenKey,
+            kSecAttrAccount as String: account,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
         ]
@@ -131,11 +141,13 @@ class ServerConfigService {
         return status == errSecSuccess
     }
 
-    func getToken() -> String? {
+    func getToken(serverId: String? = nil) -> String? {
+        let account = tokenKey(for: serverId)
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: tokenKey,
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -152,11 +164,13 @@ class ServerConfigService {
         return token
     }
 
-    func clearToken() -> Bool {
+    func clearToken(serverId: String? = nil) -> Bool {
+        let account = tokenKey(for: serverId)
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: tokenKey
+            kSecAttrAccount as String: account
         ]
 
         let status = SecItemDelete(query as CFDictionary)

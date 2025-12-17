@@ -22,8 +22,8 @@ enum WebToNativeMessage: Codable {
     case addServer(AddServerPayload)
     case removeServer(RemoveServerPayload)
     case saveToken(SaveTokenPayload)
-    case getToken
-    case clearToken
+    case getToken(GetTokenPayload?)
+    case clearToken(ClearTokenPayload?)
     case unknown
 
     struct TestPayload: Codable {
@@ -50,6 +50,15 @@ enum WebToNativeMessage: Codable {
 
     struct SaveTokenPayload: Codable {
         let token: String
+        let serverId: String?
+    }
+
+    struct GetTokenPayload: Codable {
+        let serverId: String?
+    }
+
+    struct ClearTokenPayload: Codable {
+        let serverId: String?
     }
 
     enum CodingKeys: String, CodingKey {
@@ -91,9 +100,11 @@ enum WebToNativeMessage: Codable {
             let payload = try container.decode(SaveTokenPayload.self, forKey: .payload)
             self = .saveToken(payload)
         case "getToken":
-            self = .getToken
+            let payload = try? container.decode(GetTokenPayload.self, forKey: .payload)
+            self = .getToken(payload)
         case "clearToken":
-            self = .clearToken
+            let payload = try? container.decode(ClearTokenPayload.self, forKey: .payload)
+            self = .clearToken(payload)
         default:
             self = .unknown
         }
@@ -131,10 +142,16 @@ enum WebToNativeMessage: Codable {
         case .saveToken(let payload):
             try container.encode("saveToken", forKey: .type)
             try container.encode(payload, forKey: .payload)
-        case .getToken:
+        case .getToken(let payload):
             try container.encode("getToken", forKey: .type)
-        case .clearToken:
+            if let payload = payload {
+                try container.encode(payload, forKey: .payload)
+            }
+        case .clearToken(let payload):
             try container.encode("clearToken", forKey: .type)
+            if let payload = payload {
+                try container.encode(payload, forKey: .payload)
+            }
         case .unknown:
             try container.encode("unknown", forKey: .type)
         }
@@ -557,15 +574,15 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             send(.serverList(NativeToWebMessage.ServerListResponse(servers: serverInfos)))
 
         case .saveToken(let payload):
-            let success = ServerConfigService.shared.saveToken(payload.token)
+            let success = ServerConfigService.shared.saveToken(payload.token, serverId: payload.serverId)
             send(.tokenSaved(NativeToWebMessage.TokenSavedResponse(success: success)))
 
-        case .getToken:
-            let token = ServerConfigService.shared.getToken()
+        case .getToken(let payload):
+            let token = ServerConfigService.shared.getToken(serverId: payload?.serverId)
             send(.currentToken(NativeToWebMessage.CurrentTokenResponse(token: token)))
 
-        case .clearToken:
-            let success = ServerConfigService.shared.clearToken()
+        case .clearToken(let payload):
+            let success = ServerConfigService.shared.clearToken(serverId: payload?.serverId)
             send(.tokenCleared(NativeToWebMessage.TokenClearedResponse(success: success)))
 
         case .unknown:
@@ -747,15 +764,15 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             send(.serverList(NativeToWebMessage.ServerListResponse(servers: serverInfos)))
 
         case .saveToken(let payload):
-            let success = ServerConfigService.shared.saveToken(payload.token)
+            let success = ServerConfigService.shared.saveToken(payload.token, serverId: payload.serverId)
             send(.tokenSaved(NativeToWebMessage.TokenSavedResponse(success: success)))
 
-        case .getToken:
-            let token = ServerConfigService.shared.getToken()
+        case .getToken(let payload):
+            let token = ServerConfigService.shared.getToken(serverId: payload?.serverId)
             send(.currentToken(NativeToWebMessage.CurrentTokenResponse(token: token)))
 
-        case .clearToken:
-            let success = ServerConfigService.shared.clearToken()
+        case .clearToken(let payload):
+            let success = ServerConfigService.shared.clearToken(serverId: payload?.serverId)
             send(.tokenCleared(NativeToWebMessage.TokenClearedResponse(success: success)))
 
         case .unknown:

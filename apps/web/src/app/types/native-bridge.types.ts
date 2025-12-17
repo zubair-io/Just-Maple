@@ -32,6 +32,15 @@ export interface RemoveServerPayload {
 
 export interface SaveTokenPayload {
   token: string;
+  serverId?: string;
+}
+
+export interface GetTokenPayload {
+  serverId?: string;
+}
+
+export interface ClearTokenPayload {
+  serverId?: string;
 }
 
 export type WebToNativeMessageType =
@@ -46,8 +55,8 @@ export type WebToNativeMessageType =
   | { type: 'addServer'; payload: AddServerPayload }
   | { type: 'removeServer'; payload: RemoveServerPayload }
   | { type: 'saveToken'; payload: SaveTokenPayload }
-  | { type: 'getToken' }
-  | { type: 'clearToken' };
+  | { type: 'getToken'; payload?: GetTokenPayload }
+  | { type: 'clearToken'; payload?: ClearTokenPayload };
 
 // MARK: - Native to Web Messages
 

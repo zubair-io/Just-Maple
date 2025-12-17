@@ -39,6 +39,26 @@ export class AuthService {
   private readonly indexedDB = inject(IndexedDBService);
   private readonly nativeBridge = inject(NativeBridgeService);
 
+  /**
+   * Get storage key for current origin (allows separate auth per server)
+   */
+  private getStorageKey(): string {
+    if (!isPlatformBrowser(this.platformId)) {
+      return 'auth';
+    }
+    // Use origin as part of key to keep auth separate per server
+    const origin = window.location.origin;
+    return `auth:${origin}`;
+  }
+
+  /**
+   * Get server identifier for native keychain (uses server URL from initial state or origin)
+   */
+  private getNativeServerId(): string {
+    const initialState = this.nativeBridge.getInitialState();
+    return initialState?.serverUrl || window.location.origin;
+  }
+
   private readonly _accessToken = signal<string | null>(null);
   private readonly _user = signal<UserResponse | null>(null);
   private readonly _isLoading = signal(false);
@@ -70,8 +90,9 @@ export class AuthService {
 
     // If running in native app, get token from native keychain
     if (this.nativeBridge.isNativeApp()) {
-      console.log('[Auth] Running in native app, requesting token from keychain');
-      this.nativeBridge.getToken();
+      const serverId = this.getNativeServerId();
+      console.log('[Auth] Running in native app, requesting token from keychain for server:', serverId);
+      this.nativeBridge.getToken(serverId);
 
       // Wait for token response
       try {
@@ -81,7 +102,7 @@ export class AuthService {
           console.log('[Auth] Token received from native keychain');
           // We have the token from native, but we still need the user data
           // Try to get it from localStorage first
-          const stored = localStorage.getItem('auth');
+          const stored = localStorage.getItem(this.getStorageKey());
           if (stored) {
             try {
               const auth: StoredAuth = JSON.parse(stored);
@@ -104,14 +125,14 @@ export class AuthService {
     }
 
     // Web app: use localStorage
-    const stored = localStorage.getItem('auth');
+    const stored = localStorage.getItem(this.getStorageKey());
     if (stored) {
       try {
         const auth: StoredAuth = JSON.parse(stored);
         this._accessToken.set(auth.accessToken);
         this._user.set(auth.user);
       } catch {
-        localStorage.removeItem('auth');
+        localStorage.removeItem(this.getStorageKey());
       }
     }
   }
@@ -122,12 +143,13 @@ export class AuthService {
     }
 
     // Always save to localStorage for user data
-    localStorage.setItem('auth', JSON.stringify(auth));
+    localStorage.setItem(this.getStorageKey(), JSON.stringify(auth));
 
     // If running in native app, also save token to native keychain
     if (this.nativeBridge.isNativeApp()) {
-      console.log('[Auth] Saving token to native keychain');
-      this.nativeBridge.saveToken(auth.accessToken);
+      const serverId = this.getNativeServerId();
+      console.log('[Auth] Saving token to native keychain for server:', serverId);
+      this.nativeBridge.saveToken(auth.accessToken, serverId);
     }
   }
 
@@ -136,12 +158,13 @@ export class AuthService {
       return;
     }
 
-    localStorage.removeItem('auth');
+    localStorage.removeItem(this.getStorageKey());
 
     // If running in native app, also clear token from native keychain
     if (this.nativeBridge.isNativeApp()) {
-      console.log('[Auth] Clearing token from native keychain');
-      this.nativeBridge.clearToken();
+      const serverId = this.getNativeServerId();
+      console.log('[Auth] Clearing token from native keychain for server:', serverId);
+      this.nativeBridge.clearToken(serverId);
     }
   }
 

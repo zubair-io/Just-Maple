@@ -232,19 +232,25 @@ export class NativeBridgeService {
 
   // MARK: - Token Management
 
-  saveToken(token: string): void {
+  saveToken(token: string, serverId?: string): void {
     this.sendMessage({
       type: 'saveToken',
-      payload: { token },
+      payload: { token, serverId },
     });
   }
 
-  getToken(): void {
-    this.sendMessage({ type: 'getToken' });
+  getToken(serverId?: string): void {
+    this.sendMessage({
+      type: 'getToken',
+      payload: serverId ? { serverId } : undefined,
+    });
   }
 
-  clearToken(): void {
-    this.sendMessage({ type: 'clearToken' });
+  clearToken(serverId?: string): void {
+    this.sendMessage({
+      type: 'clearToken',
+      payload: serverId ? { serverId } : undefined,
+    });
   }
 
   // MARK: - Audio Recording
