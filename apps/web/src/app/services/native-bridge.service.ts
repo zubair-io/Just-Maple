@@ -1,0 +1,263 @@
+import { Injectable } from '@angular/core';
+import { Subject, Observable } from 'rxjs';
+import { filter, map } from 'rxjs/operators';
+import type {
+  NativeToWebMessage,
+  WebToNativeMessageType,
+  InitialState,
+  ServerListResponse,
+  ActiveServerResponse,
+  ServerValidationResponse,
+  TokenSavedResponse,
+  CurrentTokenResponse,
+  TokenClearedResponse,
+  DeepLinkPayload,
+  RecordingStarted,
+  RecordingStopped,
+  AudioLevel,
+  TranscriptionProgress,
+  TranscriptionComplete,
+  ErrorMessage,
+} from '../types/native-bridge.types';
+
+@Injectable({
+  providedIn: 'root',
+})
+export class NativeBridgeService {
+  private readonly _messages$ = new Subject<NativeToWebMessage>();
+  private _isNativeApp = false;
+  private _initialState: InitialState | null = null;
+
+  // Public observables for different message types
+  readonly messages$ = this._messages$.asObservable();
+
+  constructor() {
+    this.detectNativeApp();
+    if (this._isNativeApp) {
+      this.setupMessageReceiver();
+    }
+  }
+
+  // MARK: - Detection
+
+  private detectNativeApp(): void {
+    this._isNativeApp = !!(window.webkit?.messageHandlers?.nativeBridge || window.__nativeBridge__);
+
+    if (this._isNativeApp) {
+      console.log('[NativeBridge] Running in native app');
+    }
+  }
+
+  isNativeApp(): boolean {
+    return this._isNativeApp;
+  }
+
+  getInitialState(): InitialState | null {
+    return this._initialState;
+  }
+
+  // MARK: - Message Reception
+
+  private setupMessageReceiver(): void {
+    window.__nativeBridge__ = {
+      receive: (message: NativeToWebMessage) => {
+        console.log('[NativeBridge] Received:', message);
+
+        // Store initial state
+        if (message.type === 'initialize') {
+          this._initialState = message.payload as InitialState;
+        }
+
+        this._messages$.next(message);
+      },
+    };
+  }
+
+  // MARK: - Typed Observables
+
+  onInitialize(): Observable<InitialState> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'initialize'),
+      map((msg) => msg.payload as InitialState),
+    );
+  }
+
+  onServerList(): Observable<ServerListResponse> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'serverList'),
+      map((msg) => msg.payload as ServerListResponse),
+    );
+  }
+
+  onActiveServer(): Observable<ActiveServerResponse> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'activeServer'),
+      map((msg) => msg.payload as ActiveServerResponse),
+    );
+  }
+
+  onServerValidation(): Observable<ServerValidationResponse> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'serverValidationResult'),
+      map((msg) => msg.payload as ServerValidationResponse),
+    );
+  }
+
+  onTokenSaved(): Observable<TokenSavedResponse> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'tokenSaved'),
+      map((msg) => msg.payload as TokenSavedResponse),
+    );
+  }
+
+  onCurrentToken(): Observable<CurrentTokenResponse> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'currentToken'),
+      map((msg) => msg.payload as CurrentTokenResponse),
+    );
+  }
+
+  onTokenCleared(): Observable<TokenClearedResponse> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'tokenCleared'),
+      map((msg) => msg.payload as TokenClearedResponse),
+    );
+  }
+
+  onDeepLink(): Observable<DeepLinkPayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'deepLink'),
+      map((msg) => msg.payload as DeepLinkPayload),
+    );
+  }
+
+  onRecordingStarted(): Observable<RecordingStarted> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'recordingStarted'),
+      map((msg) => msg.payload as RecordingStarted),
+    );
+  }
+
+  onRecordingStopped(): Observable<RecordingStopped> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'recordingStopped'),
+      map((msg) => msg.payload as RecordingStopped),
+    );
+  }
+
+  onAudioLevel(): Observable<AudioLevel> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'audioLevel'),
+      map((msg) => msg.payload as AudioLevel),
+    );
+  }
+
+  onTranscriptionProgress(): Observable<TranscriptionProgress> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'transcriptionProgress'),
+      map((msg) => msg.payload as TranscriptionProgress),
+    );
+  }
+
+  onTranscriptionComplete(): Observable<TranscriptionComplete> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'transcriptionComplete'),
+      map((msg) => msg.payload as TranscriptionComplete),
+    );
+  }
+
+  onError(): Observable<ErrorMessage> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'error'),
+      map((msg) => msg.payload as ErrorMessage),
+    );
+  }
+
+  // MARK: - Send Messages
+
+  private sendMessage(message: WebToNativeMessageType): void {
+    if (!this._isNativeApp) {
+      console.warn('[NativeBridge] Not in native app, message not sent:', message);
+      return;
+    }
+
+    const handler = window.webkit?.messageHandlers?.nativeBridge;
+    if (!handler) {
+      console.error('[NativeBridge] Native bridge not available');
+      return;
+    }
+
+    const json = JSON.stringify(message);
+    handler.postMessage(json);
+    console.log('[NativeBridge] Sent:', message);
+  }
+
+  // MARK: - Server Management
+
+  getServerList(): void {
+    this.sendMessage({ type: 'getServerList' });
+  }
+
+  getActiveServer(): void {
+    this.sendMessage({ type: 'getActiveServer' });
+  }
+
+  setActiveServer(serverId: string): void {
+    this.sendMessage({
+      type: 'setActiveServer',
+      payload: { serverId },
+    });
+  }
+
+  validateServer(url: string): void {
+    this.sendMessage({
+      type: 'validateServer',
+      payload: { url },
+    });
+  }
+
+  addServer(name: string, url: string): void {
+    this.sendMessage({
+      type: 'addServer',
+      payload: { name, url },
+    });
+  }
+
+  removeServer(serverId: string): void {
+    this.sendMessage({
+      type: 'removeServer',
+      payload: { serverId },
+    });
+  }
+
+  // MARK: - Token Management
+
+  saveToken(token: string): void {
+    this.sendMessage({
+      type: 'saveToken',
+      payload: { token },
+    });
+  }
+
+  getToken(): void {
+    this.sendMessage({ type: 'getToken' });
+  }
+
+  clearToken(): void {
+    this.sendMessage({ type: 'clearToken' });
+  }
+
+  // MARK: - Audio Recording
+
+  startRecording(): void {
+    this.sendMessage({ type: 'startRecording' });
+  }
+
+  stopRecording(): void {
+    this.sendMessage({ type: 'stopRecording' });
+  }
+
+  cancelRecording(): void {
+    this.sendMessage({ type: 'cancelRecording' });
+  }
+}

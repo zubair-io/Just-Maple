@@ -1,7 +1,9 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
+import { PreferencesService } from '../../services/preferences.service';
 
 interface PasskeyInfo {
   id: string;
@@ -14,19 +16,25 @@ interface PasskeyInfo {
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',
 })
 export class SettingsComponent implements OnInit {
   private readonly router = inject(Router);
   readonly authService = inject(AuthService);
+  readonly preferences = inject(PreferencesService);
 
   readonly passkeys = signal<PasskeyInfo[]>([]);
   readonly isLoadingPasskeys = signal(false);
   readonly isAddingPasskey = signal(false);
   readonly passkeyError = signal<string | null>(null);
   readonly passkeySuccess = signal<string | null>(null);
+
+  readonly showAddServerDialog = signal(false);
+  readonly newServerName = signal('');
+  readonly newServerUrl = signal('');
+  readonly serverError = signal<string | null>(null);
 
   ngOnInit(): void {
     this.loadPasskeys();
@@ -94,5 +102,52 @@ export class SettingsComponent implements OnInit {
 
   async logout(): Promise<void> {
     await this.authService.logout();
+  }
+
+  // Server Management
+  async switchServer(serverId: string): Promise<void> {
+    await this.preferences.setActiveServer(serverId);
+  }
+
+  openAddServerDialog(): void {
+    this.showAddServerDialog.set(true);
+    this.newServerName.set('');
+    this.newServerUrl.set('');
+    this.serverError.set(null);
+  }
+
+  closeAddServerDialog(): void {
+    this.showAddServerDialog.set(false);
+  }
+
+  async addServer(): Promise<void> {
+    const name = this.newServerName().trim();
+    const url = this.newServerUrl().trim();
+
+    if (!name || !url) {
+      this.serverError.set('Please enter both name and URL');
+      return;
+    }
+
+    // Basic URL validation
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      this.serverError.set('URL must start with http:// or https://');
+      return;
+    }
+
+    this.serverError.set(null);
+
+    try {
+      await this.preferences.addServer(name, url);
+      this.closeAddServerDialog();
+    } catch (err: any) {
+      this.serverError.set(err.message || 'Failed to add server');
+    }
+  }
+
+  async removeServer(serverId: string): Promise<void> {
+    if (confirm('Are you sure you want to remove this server?')) {
+      await this.preferences.removeServer(serverId);
+    }
   }
 }

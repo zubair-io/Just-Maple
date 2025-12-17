@@ -2,7 +2,7 @@ import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, filter, take } from 'rxjs';
 import {
   startRegistration,
   startAuthentication,
@@ -14,6 +14,7 @@ import type {
 } from '@simplewebauthn/browser';
 import type { UserResponse, AuthResponse, MagicLinkResponse } from '@maple/shared';
 import { IndexedDBService } from './indexed-db.service';
+import { NativeBridgeService } from './native-bridge.service';
 
 interface PasskeyInfo {
   id: string;
@@ -36,6 +37,7 @@ export class AuthService {
   private readonly router = inject(Router);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly indexedDB = inject(IndexedDBService);
+  private readonly nativeBridge = inject(NativeBridgeService);
 
   private readonly _accessToken = signal<string | null>(null);
   private readonly _user = signal<UserResponse | null>(null);
@@ -61,11 +63,47 @@ export class AuthService {
     this.initFromStorage();
   }
 
-  private initFromStorage(): void {
+  private async initFromStorage(): Promise<void> {
     if (!isPlatformBrowser(this.platformId)) {
       return;
     }
 
+    // If running in native app, get token from native keychain
+    if (this.nativeBridge.isNativeApp()) {
+      console.log('[Auth] Running in native app, requesting token from keychain');
+      this.nativeBridge.getToken();
+
+      // Wait for token response
+      try {
+        const response = await firstValueFrom(this.nativeBridge.onCurrentToken().pipe(take(1)));
+
+        if (response.token) {
+          console.log('[Auth] Token received from native keychain');
+          // We have the token from native, but we still need the user data
+          // Try to get it from localStorage first
+          const stored = localStorage.getItem('auth');
+          if (stored) {
+            try {
+              const auth: StoredAuth = JSON.parse(stored);
+              this._accessToken.set(response.token);
+              this._user.set(auth.user);
+              return;
+            } catch {
+              // Failed to parse, will fetch user from server
+            }
+          }
+
+          // Set token and fetch user from server
+          this._accessToken.set(response.token);
+          await this.fetchCurrentUser();
+        }
+      } catch {
+        console.log('[Auth] No token in native keychain');
+      }
+      return;
+    }
+
+    // Web app: use localStorage
     const stored = localStorage.getItem('auth');
     if (stored) {
       try {
@@ -79,14 +117,31 @@ export class AuthService {
   }
 
   private saveToStorage(auth: StoredAuth): void {
-    if (isPlatformBrowser(this.platformId)) {
-      localStorage.setItem('auth', JSON.stringify(auth));
+    if (!isPlatformBrowser(this.platformId)) {
+      return;
+    }
+
+    // Always save to localStorage for user data
+    localStorage.setItem('auth', JSON.stringify(auth));
+
+    // If running in native app, also save token to native keychain
+    if (this.nativeBridge.isNativeApp()) {
+      console.log('[Auth] Saving token to native keychain');
+      this.nativeBridge.saveToken(auth.accessToken);
     }
   }
 
   private clearStorage(): void {
-    if (isPlatformBrowser(this.platformId)) {
-      localStorage.removeItem('auth');
+    if (!isPlatformBrowser(this.platformId)) {
+      return;
+    }
+
+    localStorage.removeItem('auth');
+
+    // If running in native app, also clear token from native keychain
+    if (this.nativeBridge.isNativeApp()) {
+      console.log('[Auth] Clearing token from native keychain');
+      this.nativeBridge.clearToken();
     }
   }
 

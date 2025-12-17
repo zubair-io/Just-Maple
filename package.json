@@ -8,14 +8,15 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "bun run dev:api & bun run dev:web",
+    "dev": "bun run build:shared && (bun run dev:api & bun run dev:web)",
     "dev:api": "bun run --cwd apps/api dev",
     "dev:web": "bun run --cwd apps/web start",
     "build": "bun run build:shared && bun run build:api && bun run build:web",
     "build:shared": "bun run --cwd packages/shared build",
     "build:api": "bun run --cwd apps/api build",
     "build:web": "bun run --cwd apps/web build",
-    "build:web:native": "bun run --cwd apps/web build && ./scripts/bundle-native.sh",
+    "build:web:paperbark": "bun run --cwd apps/web build:paperbark",
+    "build:web:production": "bun run --cwd apps/web build:production",
     "typecheck": "bun run --cwd packages/shared tsc --noEmit && bun run --cwd apps/web tsc -p tsconfig.app.json --noEmit",
     "test": "bun run test:api",
     "test:watch": "vitest",
