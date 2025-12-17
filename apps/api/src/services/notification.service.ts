@@ -17,9 +17,15 @@ interface PaperbarkPushRequest {
 
 async function callPaperbark(serverKey: string, notificationId: string, type: NotificationType) {
     if (!config.paperbarkUrl || !config.paperbarkApiKey) {
-        console.warn('[Notification] Paperbark not configured, skipping push');
+        console.warn(
+            `[Notification] Paperbark not configured (url: ${!!config.paperbarkUrl}, apiKey: ${!!config.paperbarkApiKey}), skipping push`,
+        );
         return;
     }
+
+    console.log(
+        `[Notification] Sending push for notification ${notificationId} to serverKey ${serverKey.substring(0, 8)}...`,
+    );
 
     // Generic fallback messages (no sensitive content)
     const fallbackMessages: Record<NotificationType, { title: string; body: string }> = {
@@ -94,14 +100,32 @@ export async function sendNotification(
 ): Promise<string> {
     // Create notification in MongoDB
     const notification = await notificationRepo.createNotification(userId, type, data);
+    console.log(
+        `[Notification] Created notification ${notification._id} for user ${userId}, type: ${type}`,
+    );
 
     // Get all serverKeys for this user
     const serverKeys = await notificationRepo.findServerKeysByUserId(userId);
+    console.log(
+        `[Notification] Found ${serverKeys.length} device registration(s) for user ${userId}`,
+    );
+
+    if (serverKeys.length === 0) {
+        console.warn(
+            `[Notification] No device registrations found for user ${userId}, skipping push`,
+        );
+        return notification._id;
+    }
 
     // Send push to each registered device via Paperbark
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
         serverKeys.map((serverKey) => callPaperbark(serverKey, notification._id, type)),
     );
+
+    // Log results
+    const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    console.log(`[Notification] Push results: ${succeeded} succeeded, ${failed} failed`);
 
     return notification._id;
 }
