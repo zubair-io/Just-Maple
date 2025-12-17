@@ -1,6 +1,7 @@
 import type { NotificationType } from '@maple/shared';
 import * as notificationRepo from '../repositories/notification.repo';
 import { config } from '../config';
+import { sendApnsPush } from './apns.service';
 
 // Paperbark API client
 interface PaperbarkPushRequest {
@@ -104,28 +105,69 @@ export async function sendNotification(
         `[Notification] Created notification ${notification._id} for user ${userId}, type: ${type}`,
     );
 
-    // Get all serverKeys for this user
-    const serverKeys = await notificationRepo.findServerKeysByUserId(userId);
-    console.log(
-        `[Notification] Found ${serverKeys.length} device registration(s) for user ${userId}`,
-    );
+    // Get all device registrations for this user
+    const devices = await notificationRepo.findDeviceRegistrationsByUserId(userId);
+    console.log(`[Notification] Found ${devices.length} device registration(s) for user ${userId}`);
 
-    if (serverKeys.length === 0) {
+    if (devices.length === 0) {
         console.warn(
             `[Notification] No device registrations found for user ${userId}, skipping push`,
         );
         return notification._id;
     }
 
-    // Send push to each registered device via Paperbark
+    // Get generic message for this notification type
+    const fallbackMessages: Record<NotificationType, { title: string; body: string }> = {
+        transcription_complete: {
+            title: 'Transcription Complete',
+            body: 'Your voice memo has been transcribed',
+        },
+        share_received: {
+            title: 'New Share',
+            body: 'Someone shared a memo with you',
+        },
+        reminder: {
+            title: 'Reminder',
+            body: 'You have a reminder',
+        },
+        processing_failed: {
+            title: 'Processing Failed',
+            body: 'Unable to process your memo',
+        },
+        export_ready: {
+            title: 'Export Ready',
+            body: 'Your export is ready to download',
+        },
+        message_received: {
+            title: 'New Message',
+            body: 'You have a new message',
+        },
+    };
+
+    const { title, body } = fallbackMessages[type];
+
+    // Send push to each registered device
     const results = await Promise.allSettled(
-        serverKeys.map((serverKey) => callPaperbark(serverKey, notification._id, type)),
+        devices.map(async (device) => {
+            if (config.useDirectApns) {
+                // Use direct APNs in production
+                console.log(
+                    `[Notification] Using direct APNs for device ${device.deviceToken.substring(0, 8)}...`,
+                );
+                return sendApnsPush(device.deviceToken, notification._id, type, title, body);
+            } else {
+                // Use Paperbark relay in dev/test
+                return callPaperbark(device.serverKey, notification._id, type);
+            }
+        }),
     );
 
     // Log results
     const succeeded = results.filter((r) => r.status === 'fulfilled').length;
     const failed = results.filter((r) => r.status === 'rejected').length;
-    console.log(`[Notification] Push results: ${succeeded} succeeded, ${failed} failed`);
+    console.log(
+        `[Notification] Push results: ${succeeded} succeeded, ${failed} failed (method: ${config.useDirectApns ? 'direct APNs' : 'Paperbark'})`,
+    );
 
     return notification._id;
 }

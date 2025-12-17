@@ -34,4 +34,16 @@ export const config = {
     // Paperbark config (push notification relay service)
     paperbarkUrl: process.env.PAPERBARK_URL || 'https://paperbark.justmaple.app',
     paperbarkApiKey: process.env.PAPERBARK_API_KEY,
+
+    // APNs config (for direct push in production)
+    apnsKeyId: process.env.APNS_KEY_ID,
+    apnsTeamId: process.env.APNS_TEAM_ID,
+    apnsKeyPath: process.env.APNS_KEY_PATH,
+    apnsBundleId: process.env.APNS_BUNDLE_ID || 'com.just.maple.JapaneseMaple',
+    apnsProduction: process.env.APNS_PRODUCTION === 'true',
+
+    // Use direct APNs if origin is production
+    get useDirectApns() {
+        return this.origin === 'https://justmaple.app' && !!this.apnsKeyId && !!this.apnsTeamId;
+    },
 };
