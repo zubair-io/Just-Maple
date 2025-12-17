@@ -97,8 +97,8 @@ export class PreferencesService {
       const response = await firstValueFrom(this.nativeBridge.onActiveServer().pipe(take(1)));
       this.activeServer.set(response);
 
-      // Reload the app from new server
-      window.location.reload();
+      // Native side will reload WebView to new server's root URL
+      console.log('[Preferences] Switched to server:', response.name, response.url);
     } catch {
       console.error('[Preferences] Failed to set active server');
     }

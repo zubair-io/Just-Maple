@@ -519,6 +519,15 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .setActiveServer(let payload):
             ServerConfigService.shared.setActiveServer(id: payload.serverId)
             let server = ServerConfigService.shared.getActiveServer()
+
+            // Navigate to root of new server
+            if let newURL = URL(string: server.url) {
+                DispatchQueue.main.async { [weak self] in
+                    let request = URLRequest(url: newURL)
+                    self?.webView?.load(request)
+                }
+            }
+
             send(.activeServer(NativeToWebMessage.ActiveServerResponse(
                 id: server.id,
                 name: server.name,
@@ -709,6 +718,15 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .setActiveServer(let payload):
             ServerConfigService.shared.setActiveServer(id: payload.serverId)
             let server = ServerConfigService.shared.getActiveServer()
+
+            // Navigate to root of new server
+            if let newURL = URL(string: server.url) {
+                DispatchQueue.main.async { [weak self] in
+                    let request = URLRequest(url: newURL)
+                    self?.webView?.load(request)
+                }
+            }
+
             send(.activeServer(NativeToWebMessage.ActiveServerResponse(
                 id: server.id,
                 name: server.name,
