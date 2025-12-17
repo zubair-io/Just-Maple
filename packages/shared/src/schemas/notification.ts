@@ -7,6 +7,7 @@ export const NotificationTypeSchema = Type.Union([
     Type.Literal('reminder'),
     Type.Literal('processing_failed'),
     Type.Literal('export_ready'),
+    Type.Literal('message_received'),
 ]);
 
 export type NotificationType = Static<typeof NotificationTypeSchema>;
@@ -34,6 +35,12 @@ export const ProcessingFailedDataSchema = Type.Object({
 export const ExportReadyDataSchema = Type.Object({
     exportId: Type.String(),
     format: Type.String(),
+});
+
+export const MessageReceivedDataSchema = Type.Object({
+    tagId: Type.String(),
+    messageId: Type.String(),
+    senderEmail: Type.String(),
 });
 
 // Notification schema

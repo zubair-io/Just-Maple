@@ -6,6 +6,7 @@ import {
     findTagsByUserId,
     findTagByIdWithAccess,
     hasAccess,
+    getTagMembers,
 } from '../repositories/tag.repo';
 import type { JWTPayload, ChatEvent } from '@maple/shared';
 import {
@@ -21,6 +22,7 @@ import {
     getUnreadCountForTag,
 } from '../repositories/unread.repo';
 import { broadcastChatEvent } from '../services/realtime.service';
+import { sendMessageReceivedNotification } from '../services/notification.service';
 
 export const messageRoutes = new Elysia({ prefix: '/api' })
     .use(jwtPlugin)
@@ -100,6 +102,25 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 timestamp: new Date().toISOString(),
             };
             broadcastChatEvent(params.id, chatEvent).catch(console.error);
+
+            // Send push notifications to all tag members except the author
+            const tagMembers = await getTagMembers(params.id, auth.user._id);
+            if (tagMembers) {
+                // Send notification to each member except the message author
+                const notificationPromises = tagMembers
+                    .filter((member) => member.userId !== auth.user._id)
+                    .map((member) =>
+                        sendMessageReceivedNotification(
+                            member.userId,
+                            params.id,
+                            message._id,
+                            auth.user.email,
+                        ),
+                    );
+
+                // Send all notifications in parallel, but don't wait for them
+                Promise.allSettled(notificationPromises).catch(console.error);
+            }
 
             return { message };
         },

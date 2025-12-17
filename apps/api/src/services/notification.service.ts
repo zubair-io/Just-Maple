@@ -43,6 +43,10 @@ async function callPaperbark(serverKey: string, notificationId: string, type: No
             title: 'Export Ready',
             body: 'Your export is ready to download',
         },
+        message_received: {
+            title: 'New Message',
+            body: 'You have a new message',
+        },
     };
 
     const fallback = fallbackMessages[type];
@@ -154,4 +158,16 @@ export async function sendExportReadyNotification(
     format: string,
 ): Promise<string> {
     return sendNotification(userId, 'export_ready', { exportId, format });
+}
+
+/**
+ * Send message received notification
+ */
+export async function sendMessageReceivedNotification(
+    userId: string,
+    tagId: string,
+    messageId: string,
+    senderEmail: string,
+): Promise<string> {
+    return sendNotification(userId, 'message_received', { tagId, messageId, senderEmail });
 }

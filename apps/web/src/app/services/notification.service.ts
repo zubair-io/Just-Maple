@@ -273,6 +273,13 @@ export class NotificationService {
         }
         break;
 
+      case 'message_received':
+        if (notification.data['tagId']) {
+          // Navigate to tag with the new message
+          window.location.hash = `/${notification.data['tagId']}`;
+        }
+        break;
+
       case 'transcription_complete':
         if (notification.data['memoId']) {
           // Navigate to memo
