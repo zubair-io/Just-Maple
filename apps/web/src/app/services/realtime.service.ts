@@ -3,10 +3,12 @@ import { isPlatformBrowser } from '@angular/common';
 import { Subject, Observable, filter } from 'rxjs';
 import * as signalR from '@microsoft/signalr';
 import { AuthService } from './auth.service';
-import { environment } from '../../environments/environment';
 import type { ChatEvent, TypingEvent } from '@maple/shared';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+
+// SignalR negotiate URL for justmaple.app domain
+const SIGNALR_NEGOTIATE_URL = 'https://autumn-blaze.justmaple.app/api/signalr';
 
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
@@ -22,7 +24,7 @@ export class RealtimeService {
     private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
     private pingInterval: ReturnType<typeof setInterval> | null = null;
 
-    // SignalR (production)
+    // SignalR (production on justmaple.app)
     private signalrConnection: signalR.HubConnection | null = null;
 
     // State signals
@@ -47,14 +49,24 @@ export class RealtimeService {
     }
 
     /**
-     * Connect to realtime server (WebSocket or SignalR based on environment)
+     * Check if we should use SignalR (only on justmaple.app domain)
+     */
+    private shouldUseSignalR(): boolean {
+        if (!isPlatformBrowser(this.platformId)) {
+            return false;
+        }
+        return window.location.hostname.endsWith('justmaple.app');
+    }
+
+    /**
+     * Connect to realtime server (WebSocket or SignalR based on domain)
      */
     async connect(): Promise<void> {
         if (!isPlatformBrowser(this.platformId)) {
             return;
         }
 
-        if (environment.useSignalR) {
+        if (this.shouldUseSignalR()) {
             await this.connectSignalR();
         } else {
             await this.connectWebSocket();
@@ -65,7 +77,7 @@ export class RealtimeService {
      * Disconnect from realtime server
      */
     disconnect(): void {
-        if (environment.useSignalR) {
+        if (this.shouldUseSignalR()) {
             this.disconnectSignalR();
         } else {
             this.disconnectWebSocket();
@@ -76,7 +88,7 @@ export class RealtimeService {
      * Send typing indicator
      */
     sendTyping(tagId: string, isTyping: boolean = true): void {
-        if (environment.useSignalR) {
+        if (this.shouldUseSignalR()) {
             // SignalR: invoke method on hub
             this.signalrConnection?.invoke('SendTyping', tagId, isTyping).catch(console.error);
         } else {
@@ -93,7 +105,7 @@ export class RealtimeService {
      */
     subscribe(tagId: string): void {
         if (!this._subscribedTags().includes(tagId)) {
-            if (environment.useSignalR) {
+            if (this.shouldUseSignalR()) {
                 this.signalrConnection?.invoke('Subscribe', tagId).catch(console.error);
             } else {
                 this.sendWs({ type: 'subscribe', tagId });
@@ -105,7 +117,7 @@ export class RealtimeService {
      * Unsubscribe from a tag's chat
      */
     unsubscribe(tagId: string): void {
-        if (environment.useSignalR) {
+        if (this.shouldUseSignalR()) {
             this.signalrConnection?.invoke('Unsubscribe', tagId).catch(console.error);
         } else {
             this.sendWs({ type: 'unsubscribe', tagId });
@@ -146,7 +158,7 @@ export class RealtimeService {
         try {
             // Step 1: Get connection info from negotiate endpoint
             const userId = this.authService.user()?._id;
-            const negotiateUrl = `${environment.signalrNegotiateUrl}?userId=${encodeURIComponent(userId || '')}`;
+            const negotiateUrl = `${SIGNALR_NEGOTIATE_URL}?userId=${encodeURIComponent(userId || '')}`;
 
             const response = await fetch(negotiateUrl, {
                 method: 'GET',
@@ -316,9 +328,7 @@ export class RealtimeService {
     }
 
     private getWebSocketUrl(token: string): string {
-        if (environment.wsUrl) {
-            return `${environment.wsUrl}/ws/chat?token=${encodeURIComponent(token)}`;
-        }
+        // Always use relative URL - WebSocket connects to same origin
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
         return `${protocol}//${host}/ws/chat?token=${encodeURIComponent(token)}`;
