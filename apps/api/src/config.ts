@@ -23,8 +23,8 @@ export const config = {
 
     // WebAuthn/Passkey config
     rpName: process.env.RP_NAME || 'Just Maple',
-    rpID: process.env.RP_ID || 'justmaple.ai',
-    origin: process.env.ORIGIN || 'https://dev.justmaple.ai:4200',
+    rpID: process.env.RP_ID || 'justmaple.app',
+    origin: process.env.ORIGIN || 'https://justmaple.app',
 
     // SignalR config (for production mode using Azure SignalR via AutumnBlaze)
     useSignalR: process.env.USE_SIGNALR === 'true',

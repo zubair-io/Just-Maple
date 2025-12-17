@@ -139,3 +139,69 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 dist/
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+xcuserdata/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# CocoaPods
+Pods/
+*.xcworkspace
+!default.xcworkspace
+
+# Carthage
+Carthage/Build/
+Carthage/Checkouts/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+
+# Code Injection (e.g., Injection III)
+iOSInjectionProject/
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# macOS specific
+.DS_Store
+*.swp
+*~
+.fseventsd
+.Spotlight-V100
+.Trashes
+
+# App packaging
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Provisioning profiles (optional - some teams commit these)
+*.mobileprovision
+*.provisionprofile
+
+# Secrets/keys (if applicable)
+*.xcconfig
+!*.example.xcconfig
+
+# Miscellaneous
+.angular/cache/*
+.sass-cache/
+connect.lock
+coverage
+libpeerconnection.log
+testem.log
+typings
+__screenshots__/

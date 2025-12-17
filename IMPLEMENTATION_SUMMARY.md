@@ -116,6 +116,15 @@ All Auth0 code has been removed and a complete native bridge integration has bee
 - **Automatic Sync**: Native ↔ Web token synchronization
 - **Secure Logout**: Clears both keychain and localStorage
 
+### 🔑 Passkey Support (iOS 16+ / macOS 13+)
+
+- **WebAuthn Integration**: Native passkey support via WKWebView
+- **Biometric Authentication**: Face ID / Touch ID for login
+- **iCloud Keychain Sync**: Passkeys sync across all user's Apple devices
+- **Phishing Resistant**: Domain-bound credentials prevent credential theft
+- **Associated Domains**: Configured for `webcredentials:justmaple.app`
+- **Fallback Support**: Magic link login still available
+
 ### 🌍 Server Management
 
 - **Default Production**: `https://justmaple.app`
@@ -194,10 +203,14 @@ Open `apps/apple/JapaneseMaple.xcodeproj` and:
 1. **Add ServerConfigService.swift** to project
 2. **Remove Auth0 dependencies** from SPM packages
 3. **Add Associated Domains** capability:
-    - Domain: `applinks:justmaple.app`
+    - Domain: `applinks:justmaple.app` (deep linking)
+    - Domain: `webcredentials:justmaple.app` (passkeys)
 4. **Add URL Scheme**:
     - Identifier: `com.just.maple`
     - URL Scheme: `justmaple`
+5. **Verify Entitlements**:
+    - Ensure `JapaneseMaple.entitlements` includes both associated domains
+    - Required for iOS 16+ / macOS 13+ passkey support
 
 ### 2. Server Deployment (Required)
 
@@ -215,6 +228,10 @@ Deploy to `https://justmaple.app`:
     # Content-Type: application/json
     # No file extension
     ```
+
+    This file now includes:
+    - `applinks` section for deep linking
+    - `webcredentials` section for passkey support (iOS 16+ / macOS 13+)
 
 2. **HTML Title Tag**:
     - Ensure all HTML responses include `<title>Just Maple</title>`
@@ -254,6 +271,15 @@ cp -r dist/apps/web/browser ../apple/JapaneseMaple/WebApp/browser
 - [ ] Token persists after app restart
 - [ ] Logout clears keychain
 - [ ] Web ↔ Native token sync
+
+#### Passkeys (iOS 16+ / macOS 13+)
+
+- [ ] Passkey registration works with Face ID/Touch ID
+- [ ] Passkey login works with biometric authentication
+- [ ] Passkeys sync across devices via iCloud Keychain
+- [ ] Associated domains configured correctly in Xcode
+- [ ] Apple App Site Association file deployed to https://justmaple.app/.well-known/
+- [ ] Fallback to magic link works when passkeys unavailable
 
 #### Deep Linking
 

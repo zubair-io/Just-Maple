@@ -5,6 +5,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:justmaple.app</string>
+		<string>webcredentials:justmaple.app</string>
 	</array>
 </dict>
 </plist>
