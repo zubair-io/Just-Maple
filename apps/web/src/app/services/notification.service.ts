@@ -156,18 +156,20 @@ export class NotificationService {
     }
 
     try {
-      // Unregister from server
-      await firstValueFrom(
-        this.http.delete<{ message: string }>('/api/notifications/unregister', {
-          body: { serverKey: currentServerKey },
-        }),
-      );
+      // Tell native app to unregister (it will call the API and clear local state)
+      this.nativeBridge.unregisterPushNotifications();
 
-      // Clear local state
-      this.isRegistered.set(false);
-      this.serverKey.set(null);
+      // Wait for response
+      const response = await firstValueFrom(this.nativeBridge.onPushUnregistered().pipe(take(1)));
 
-      console.log('[NotificationService] Successfully unregistered from push notifications');
+      if (response.success) {
+        // Clear web app state
+        this.isRegistered.set(false);
+        this.serverKey.set(null);
+        console.log('[NotificationService] Successfully unregistered from push notifications');
+      } else {
+        throw new Error(response.error || 'Failed to unregister');
+      }
     } catch (error) {
       console.error('[NotificationService] Failed to unregister from push notifications:', error);
       throw error;

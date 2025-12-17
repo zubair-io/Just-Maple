@@ -183,6 +183,13 @@ export class NativeBridgeService {
     );
   }
 
+  onPushUnregistered(): Observable<PushUnregisteredResponse> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'pushUnregistered'),
+      map((msg) => msg.payload as PushUnregisteredResponse),
+    );
+  }
+
   onPushStatus(): Observable<PushStatusResponse> {
     return this.messages$.pipe(
       filter((msg) => msg.type === 'pushStatus'),
@@ -281,6 +288,10 @@ export class NativeBridgeService {
 
   requestPushPermission(): void {
     this.sendMessage({ type: 'requestPushPermission' });
+  }
+
+  unregisterPushNotifications(): void {
+    this.sendMessage({ type: 'unregisterPushNotifications' });
   }
 
   getPushStatus(): void {

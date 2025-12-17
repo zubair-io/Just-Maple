@@ -165,6 +165,11 @@ export interface PushPermissionResponse {
   error?: string;
 }
 
+export interface PushUnregisteredResponse {
+  success: boolean;
+  error?: string;
+}
+
 export interface PushStatusResponse {
   isRegistered: boolean;
   serverKey: string | null;
@@ -191,6 +196,7 @@ export type NativeToWebMessageType =
   | { type: 'currentToken'; payload: CurrentTokenResponse }
   | { type: 'tokenCleared'; payload: TokenClearedResponse }
   | { type: 'pushPermissionResult'; payload: PushPermissionResponse }
+  | { type: 'pushUnregistered'; payload: PushUnregisteredResponse }
   | { type: 'pushStatus'; payload: PushStatusResponse }
   | { type: 'notificationTapped'; payload: NotificationTapped }
   | { type: 'deepLink'; payload: DeepLinkPayload }

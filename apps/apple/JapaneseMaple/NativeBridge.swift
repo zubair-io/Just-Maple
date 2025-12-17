@@ -25,6 +25,7 @@ enum WebToNativeMessage: Codable {
     case getToken(GetTokenPayload?)
     case clearToken(ClearTokenPayload?)
     case requestPushPermission
+    case unregisterPushNotifications
     case getPushStatus
     case unknown
 
@@ -109,6 +110,8 @@ enum WebToNativeMessage: Codable {
             self = .clearToken(payload)
         case "requestPushPermission":
             self = .requestPushPermission
+        case "unregisterPushNotifications":
+            self = .unregisterPushNotifications
         case "getPushStatus":
             self = .getPushStatus
         default:
@@ -160,6 +163,8 @@ enum WebToNativeMessage: Codable {
             }
         case .requestPushPermission:
             try container.encode("requestPushPermission", forKey: .type)
+        case .unregisterPushNotifications:
+            try container.encode("unregisterPushNotifications", forKey: .type)
         case .getPushStatus:
             try container.encode("getPushStatus", forKey: .type)
         case .unknown:
@@ -184,6 +189,7 @@ enum NativeToWebMessage {
     case currentToken(CurrentTokenResponse)
     case tokenCleared(TokenClearedResponse)
     case pushPermissionResult(PushPermissionResponse)
+    case pushUnregistered(PushUnregisteredResponse)
     case pushStatus(PushStatusResponse)
     case deepLink(DeepLinkPayload)
     case error(ErrorMessage)
@@ -282,6 +288,11 @@ enum NativeToWebMessage {
         let error: String?
     }
 
+    struct PushUnregisteredResponse: Codable {
+        let success: Bool
+        let error: String?
+    }
+
     struct PushStatusResponse: Codable {
         let isRegistered: Bool
         let serverKey: String?
@@ -345,6 +356,9 @@ extension NativeToWebMessage: Encodable {
             try container.encode(payload, forKey: .payload)
         case .pushPermissionResult(let payload):
             try container.encode("pushPermissionResult", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .pushUnregistered(let payload):
+            try container.encode("pushUnregistered", forKey: .type)
             try container.encode(payload, forKey: .payload)
         case .pushStatus(let payload):
             try container.encode("pushStatus", forKey: .type)
@@ -641,6 +655,22 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 }
             }
 
+        case .unregisterPushNotifications:
+            Task {
+                do {
+                    try await PushNotificationService.shared.unregister()
+                    send(.pushUnregistered(NativeToWebMessage.PushUnregisteredResponse(
+                        success: true,
+                        error: nil
+                    )))
+                } catch {
+                    send(.pushUnregistered(NativeToWebMessage.PushUnregisteredResponse(
+                        success: false,
+                        error: error.localizedDescription
+                    )))
+                }
+            }
+
         case .getPushStatus:
             let serverKey = PushNotificationService.shared.getServerKey()
             send(.pushStatus(NativeToWebMessage.PushStatusResponse(
@@ -867,6 +897,22 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 }
             }
 
+        case .unregisterPushNotifications:
+            Task {
+                do {
+                    try await PushNotificationService.shared.unregister()
+                    send(.pushUnregistered(NativeToWebMessage.PushUnregisteredResponse(
+                        success: true,
+                        error: nil
+                    )))
+                } catch {
+                    send(.pushUnregistered(NativeToWebMessage.PushUnregisteredResponse(
+                        success: false,
+                        error: error.localizedDescription
+                    )))
+                }
+            }
+
         case .getPushStatus:
             let serverKey = PushNotificationService.shared.getServerKey()
             send(.pushStatus(NativeToWebMessage.PushStatusResponse(
@@ -874,7 +920,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 serverKey: serverKey
             )))
         #else
-        case .requestPushPermission, .getPushStatus:
+        case .requestPushPermission, .unregisterPushNotifications, .getPushStatus:
             print("[Bridge] Push notifications not supported on macOS")
         #endif
 
