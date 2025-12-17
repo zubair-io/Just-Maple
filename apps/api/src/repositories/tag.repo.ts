@@ -159,6 +159,18 @@ export async function findTagById(id: string, userId: string): Promise<Tag | nul
 }
 
 /**
+ * Find a tag by ID without access check (for internal use like broadcasting)
+ */
+export async function findTagByIdUnsafe(id: string): Promise<Tag | null> {
+    try {
+        const doc = await getCollection().findOne({ _id: new ObjectId(id) });
+        return doc ? toTagResponse(doc) : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Find a tag by ID with specific access level required
  */
 export async function findTagByIdWithAccess(

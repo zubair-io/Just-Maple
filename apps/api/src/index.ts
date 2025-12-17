@@ -9,6 +9,7 @@ import { messageRoutes } from './routes/messages';
 import { paperRoutes } from './routes/papers';
 import { collectibleRegistryRoutes } from './routes/collectible-registry';
 import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
+import { SignalRRealtimeService } from './services/signalr.service';
 import { setRealtimeService } from './services/realtime.service';
 import { config } from './config';
 
@@ -33,8 +34,15 @@ async function main() {
     // Connect to MongoDB
     await connectToDatabase();
 
-    // Initialize realtime service (WebSocket for dev/self-hosted)
-    setRealtimeService(new WebSocketRealtimeService());
+    // Initialize realtime service
+    // - WebSocket: dev/self-hosted (direct connections)
+    // - SignalR: production (via AutumnBlaze Azure Functions)
+    if (config.useSignalR) {
+        console.log('   Using SignalR realtime service');
+        setRealtimeService(new SignalRRealtimeService());
+    } else {
+        setRealtimeService(new WebSocketRealtimeService());
+    }
 
     const app = new Elysia()
         .use(

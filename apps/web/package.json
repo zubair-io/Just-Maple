@@ -4,6 +4,7 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve --host 0.0.0.0 --port 4200",
+    "start:signalr": "ng serve --configuration signalr-local --host 0.0.0.0 --port 4200",
     "build": "ng build",
     "build:paperbark": "ng build --configuration paperbark",
     "watch": "ng build --watch --configuration development",
@@ -32,6 +33,7 @@
     "@angular/router": "^21.0.0",
     "@angular/service-worker": "^21.0.5",
     "@maple/shared": "workspace:*",
+    "@microsoft/signalr": "^10.0.0",
     "@ngneat/elf": "^2.5.1",
     "@ngneat/elf-entities": "^5.0.2",
     "@simplewebauthn/browser": "^13.2.2",

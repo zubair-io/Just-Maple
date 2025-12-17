@@ -84,6 +84,17 @@
                   "with": "src/environments/environment.paperbark.ts"
                 }
               ]
+            },
+            "signalr-local": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true,
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.signalr-local.ts"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"
@@ -102,6 +113,9 @@
             },
             "development": {
               "buildTarget": "web:build:development"
+            },
+            "signalr-local": {
+              "buildTarget": "web:build:signalr-local"
             }
           },
           "defaultConfiguration": "development"

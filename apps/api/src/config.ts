@@ -25,4 +25,9 @@ export const config = {
     rpName: process.env.RP_NAME || 'Just Maple',
     rpID: process.env.RP_ID || 'justmaple.ai',
     origin: process.env.ORIGIN || 'https://dev.justmaple.ai:4200',
+
+    // SignalR config (for production mode using Azure SignalR via AutumnBlaze)
+    useSignalR: process.env.USE_SIGNALR === 'true',
+    signalrServiceUrl: process.env.SIGNALR_SERVICE_URL,
+    signalrServiceKey: process.env.SIGNALR_SERVICE_KEY,
 };
