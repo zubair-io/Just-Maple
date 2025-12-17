@@ -12,6 +12,7 @@ import type {
   CurrentTokenResponse,
   TokenClearedResponse,
   PushPermissionResponse,
+  PushUnregisteredResponse,
   PushStatusResponse,
   NotificationTapped,
   DeepLinkPayload,
