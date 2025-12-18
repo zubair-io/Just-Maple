@@ -707,10 +707,11 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             }
 
         case .getPushStatus:
-            let serverKey = PushNotificationService.shared.getServerKey()
+            let activeServer = ServerConfigService.shared.getActiveServer()
+            let isRegistered = PushNotificationService.shared.isServerRegistered(serverId: activeServer.id)
             send(.pushStatus(NativeToWebMessage.PushStatusResponse(
-                isRegistered: serverKey != nil,
-                serverKey: serverKey
+                isRegistered: isRegistered,
+                serverId: isRegistered ? activeServer.id : nil
             )))
 
         case .unknown:
@@ -957,10 +958,11 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             }
 
         case .getPushStatus:
-            let serverKey = PushNotificationService.shared.getServerKey()
+            let activeServer = ServerConfigService.shared.getActiveServer()
+            let isRegistered = PushNotificationService.shared.isServerRegistered(serverId: activeServer.id)
             send(.pushStatus(NativeToWebMessage.PushStatusResponse(
-                isRegistered: serverKey != nil,
-                serverKey: serverKey
+                isRegistered: isRegistered,
+                serverId: isRegistered ? activeServer.id : nil
             )))
         #else
         case .requestPushPermission, .unregisterPushNotifications, .getPushStatus:
