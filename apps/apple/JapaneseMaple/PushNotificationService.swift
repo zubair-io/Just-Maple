@@ -193,6 +193,12 @@ class PushNotificationService: NSObject {
     private func saveServerKeyMap(_ map: [String: String]) {
         if let data = try? JSONEncoder().encode(map) {
             UserDefaults.standard.set(data, forKey: serverKeyMapKey)
+            
+            // Also save to shared container for extension access
+            if let sharedDefaults = UserDefaults(suiteName: "group.com.just.maple.JapaneseMaple") {
+                sharedDefaults.set(data, forKey: serverKeyMapKey)
+                print("[PushNotificationService] Synced server key map to shared storage")
+            }
         }
     }
 

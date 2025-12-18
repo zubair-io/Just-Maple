@@ -22,6 +22,12 @@ struct JapaneseMapleApp: App {
     #elseif os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     #endif
+    
+    init() {
+        // Initialize notification extension support
+        initializeNotificationExtensionSupport()
+    }
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -144,11 +150,23 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             print("[AppDelegate] 👆 Notification tapped - ID: \(notificationId), Type: \(type)")
             print("[AppDelegate] 👆 Posting notification to app for handling...")
 
+            // Build notification data
+            var notificationData: [String: Any] = [
+                "notificationId": notificationId,
+                "type": type
+            ]
+            
+            // Include serverKey if present (for multi-server support)
+            if let serverKey = userInfo["serverKey"] as? String {
+                notificationData["serverKey"] = serverKey
+                print("[AppDelegate] 🔑 Including serverKey: \(serverKey)")
+            }
+
             // Post notification for app to handle
             NotificationCenter.default.post(
                 name: NSNotification.Name("NotificationTapped"),
                 object: nil,
-                userInfo: ["notificationId": notificationId, "type": type]
+                userInfo: notificationData
             )
             print("[AppDelegate] ✅ Posted notification to NotificationCenter")
         } else {
@@ -217,11 +235,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             print("[AppDelegate] 👆 Notification tapped - ID: \(notificationId), Type: \(type)")
             print("[AppDelegate] 👆 Posting notification to app for handling...")
 
+            // Build notification data
+            var notificationData: [String: Any] = [
+                "notificationId": notificationId,
+                "type": type
+            ]
+            
+            // Include serverKey if present (for multi-server support)
+            if let serverKey = userInfo["serverKey"] as? String {
+                notificationData["serverKey"] = serverKey
+                print("[AppDelegate] 🔑 Including serverKey: \(serverKey)")
+            }
+
             // Post notification for app to handle
             NotificationCenter.default.post(
                 name: NSNotification.Name("NotificationTapped"),
                 object: nil,
-                userInfo: ["notificationId": notificationId, "type": type]
+                userInfo: notificationData
             )
             print("[AppDelegate] ✅ Posted notification to NotificationCenter")
         } else {
@@ -232,3 +262,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
 }
 #endif
+
+// MARK: - Notification Extension Support
+
+/// Initialize shared data for notification extension access
+private func initializeNotificationExtensionSupport() {
+    print("[AppInit] 🔧 Initializing notification extension support")
+    
+    // Sync server configurations to shared storage
+    ServerConfigService.shared.syncServersToSharedStorage()
+    print("[AppInit] ✅ Synced server configurations")
+    
+    // Note: Tokens are automatically saved to shared keychain via ServerConfigService
+    // Server key mapping is automatically synced via PushNotificationService
+    
+    print("[AppInit] ✅ Notification extension support initialized")
+}

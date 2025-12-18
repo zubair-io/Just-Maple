@@ -161,6 +161,7 @@ export async function sendNotification(
                     title,
                     body,
                     device.production,
+                    device.serverKey, // Pass serverKey for multi-server support
                 );
             } else {
                 // Use Paperbark relay in dev/test

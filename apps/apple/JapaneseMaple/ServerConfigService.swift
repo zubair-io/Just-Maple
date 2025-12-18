@@ -11,9 +11,10 @@ import Security
 class ServerConfigService {
     static let shared = ServerConfigService()
 
-    private let userDefaults = UserDefaults.standard
+    private let userDefaults = UserDefaults(suiteName: "group.com.just.maple.JapaneseMaple") ?? UserDefaults.standard
     private let serverListKey = "saved_servers"
     private let activeServerKey = "active_server"
+    private let sharedServersKey = "saved_servers_shared"
 
     // Default servers
     private let defaultServers: [ServerConfig] = [
@@ -58,12 +59,23 @@ class ServerConfigService {
         var servers = getCustomServers()
         servers.append(server)
         saveCustomServers(servers)
+        syncServersToSharedStorage()
     }
 
     func removeServer(id: String) {
         var servers = getCustomServers()
         servers.removeAll { $0.id == id }
         saveCustomServers(servers)
+        syncServersToSharedStorage()
+    }
+    
+    /// Sync server configurations to shared storage for extension access
+    func syncServersToSharedStorage() {
+        let servers = getServers()
+        if let data = try? JSONEncoder().encode(servers) {
+            userDefaults.set(data, forKey: sharedServersKey)
+            print("[ServerConfigService] Synced \(servers.count) servers to shared storage")
+        }
     }
 
     func getActiveServer() -> ServerConfig {
@@ -136,21 +148,31 @@ class ServerConfigService {
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: "group.com.just.maple.JapaneseMaple"
         ]
         SecItemDelete(deleteQuery as CFDictionary)
 
-        // Add new token
+        // Add new token with shared access group
         let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: account,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+            kSecAttrAccessGroup as String: "group.com.just.maple.JapaneseMaple"
         ]
 
         let status = SecItemAdd(addQuery as CFDictionary, nil)
-        return status == errSecSuccess
+        let success = status == errSecSuccess
+        
+        if success {
+            print("[ServerConfigService] Saved token to shared keychain for account: \(account)")
+        } else {
+            print("[ServerConfigService] Failed to save token: \(status)")
+        }
+        
+        return success
     }
 
     func getToken(serverId: String? = nil) -> String? {
@@ -161,7 +183,8 @@ class ServerConfigService {
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecAttrAccessGroup as String: "group.com.just.maple.JapaneseMaple"
         ]
 
         var result: AnyObject?
@@ -182,7 +205,8 @@ class ServerConfigService {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: "group.com.just.maple.JapaneseMaple"
         ]
 
         let status = SecItemDelete(query as CFDictionary)
