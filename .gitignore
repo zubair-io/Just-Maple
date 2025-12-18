@@ -206,4 +206,4 @@ testem.log
 typings
 __screenshots__/
 
-apps/api/scripts/test/
+apps/api/scripts/test//apps/api/.env

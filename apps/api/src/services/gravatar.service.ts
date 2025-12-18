@@ -9,9 +9,10 @@ interface GravatarProfile {
 
 /**
  * Hash an email address for Gravatar API
+ * Gravatar uses MD5 hashes, not SHA-256
  */
 function hashEmail(email: string): string {
-    return createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
+    return createHash('md5').update(email.trim().toLowerCase()).digest('hex');
 }
 
 /**
