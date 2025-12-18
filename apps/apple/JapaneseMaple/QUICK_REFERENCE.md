@@ -1,11 +1,13 @@
 # Notification Service Extension - Quick Reference
 
 ## 🎯 Purpose
+
 Modify push notifications before they're displayed to users. Supports media attachments, content enrichment, and server-side updates.
 
 ## ⚡ Quick Setup
 
 ### 1. Xcode (5 steps)
+
 ```
 1. File → New → Target → Notification Service Extension
 2. Add files to extension target
@@ -15,6 +17,7 @@ Modify push notifications before they're displayed to users. Supports media atta
 ```
 
 ### 2. Main App Init
+
 ```swift
 @main
 struct JapaneseMapleApp: App {
@@ -25,40 +28,45 @@ struct JapaneseMapleApp: App {
 ```
 
 ### 3. Server Payload
+
 ```json
 {
-  "aps": {
-    "alert": {"title": "Title", "body": "Body"},
-    "mutable-content": 1,  // ← REQUIRED!
-    "sound": "default"
-  },
-  "notificationId": "123",
-  "serverKey": "abc",
-  "type": "message",
-  "imageUrl": "https://example.com/image.jpg"  // Optional
+    "aps": {
+        "alert": { "title": "Title", "body": "Body" },
+        "mutable-content": 1, // ← REQUIRED!
+        "sound": "default"
+    },
+    "notificationId": "123",
+    "serverKey": "abc",
+    "type": "message",
+    "imageUrl": "https://example.com/image.jpg" // Optional
 }
 ```
 
 ## 📋 Required Capabilities
 
 ### Main App Target
+
 - ✅ Push Notifications
 - ✅ App Groups: `group.com.just.maple.JapaneseMaple`
 - ✅ Keychain Sharing: `group.com.just.maple.JapaneseMaple`
 
 ### Extension Target
+
 - ✅ App Groups: `group.com.just.maple.JapaneseMaple`
 - ✅ Keychain Sharing: `group.com.just.maple.JapaneseMaple`
 
 ## 🔑 Key Points
 
 ### Must Have
+
 - `"mutable-content": 1` in push payload
 - Physical iOS device (not simulator)
 - HTTPS URLs for media
 - Proper app group configuration
 
 ### Good to Know
+
 - Extension has ~30 seconds to process
 - Media should be <10MB
 - Extension bypassed if app in foreground
@@ -67,16 +75,19 @@ struct JapaneseMapleApp: App {
 ## 📱 Media Attachments
 
 ### Image
+
 ```json
 "imageUrl": "https://example.com/image.jpg"
 ```
 
 ### Video
+
 ```json
 "videoUrl": "https://example.com/video.mp4"
 ```
 
 ### Audio
+
 ```json
 "audioUrl": "https://example.com/audio.mp3"
 ```
@@ -84,6 +95,7 @@ struct JapaneseMapleApp: App {
 ## 🐛 Debug
 
 ### View Logs
+
 ```bash
 # On Mac, open Console.app
 # Filter: "NotificationService"
@@ -92,6 +104,7 @@ struct JapaneseMapleApp: App {
 ```
 
 ### In-App Debug
+
 ```swift
 #if DEBUG
 NavigationLink("Extension Debug") {
@@ -101,6 +114,7 @@ NavigationLink("Extension Debug") {
 ```
 
 ### Verify Setup
+
 ```swift
 if PushNotificationService.shared.verifyExtensionAccess() {
     print("✅ Ready")
@@ -112,6 +126,7 @@ if PushNotificationService.shared.verifyExtensionAccess() {
 ## 🧪 Testing
 
 ### Script
+
 ```bash
 # Configure test_push_notifications.sh
 TEAM_ID="YOUR_TEAM_ID"
@@ -124,6 +139,7 @@ chmod +x test_push_notifications.sh
 ```
 
 ### Manual Test
+
 ```bash
 curl --http2 \
   --header "authorization: bearer $JWT" \
@@ -139,13 +155,13 @@ curl --http2 \
 
 ## ⚠️ Common Issues
 
-| Problem | Fix |
-|---------|-----|
+| Problem                 | Fix                        |
+| ----------------------- | -------------------------- |
 | Extension not triggered | Add `"mutable-content": 1` |
-| Can't access data | Check App Groups setup |
-| Media not shown | Use HTTPS URLs |
-| Crashes | Check Console.app logs |
-| Token not found | Verify Keychain Sharing |
+| Can't access data       | Check App Groups setup     |
+| Media not shown         | Use HTTPS URLs             |
+| Crashes                 | Check Console.app logs     |
+| Token not found         | Verify Keychain Sharing    |
 
 ## 📊 Verification Checklist
 

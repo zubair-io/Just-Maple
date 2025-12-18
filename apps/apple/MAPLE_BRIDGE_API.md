@@ -7,8 +7,8 @@ The Maple Bridge JavaScript SDK provides a clean, Promise-based API for integrat
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [API Reference](#api-reference)
-  - [MapleBridge](#maplebridge)
-  - [Recorder](#recorder)
+    - [MapleBridge](#maplebridge)
+    - [Recorder](#recorder)
 - [Events](#events)
 - [Multi-Track Recording](#multi-track-recording)
 - [Examples](#examples)
@@ -26,6 +26,7 @@ Include the SDK in your HTML:
 ```
 
 The SDK automatically creates global instances:
+
 - `mapleBridge` - Main bridge instance
 - `recorder` - High-level recorder instance
 
@@ -53,7 +54,7 @@ console.log('Transcription:', result.text);
 
 // Multi-track segments (if available)
 if (result.segments) {
-    result.segments.forEach(segment => {
+    result.segments.forEach((segment) => {
         console.log(`[${segment.startTime}s] ${segment.speaker}: ${segment.text}`);
     });
 }
@@ -62,13 +63,15 @@ if (result.segments) {
 ### Promise-Based API
 
 ```javascript
-recorder.start()
+recorder
+    .start()
     .then(() => console.log('Recording started'))
-    .catch(err => console.error('Failed to start:', err));
+    .catch((err) => console.error('Failed to start:', err));
 
-recorder.stop()
-    .then(result => console.log('Transcription:', result.text))
-    .catch(err => console.error('Failed to stop:', err));
+recorder
+    .stop()
+    .then((result) => console.log('Transcription:', result.text))
+    .catch((err) => console.error('Failed to stop:', err));
 ```
 
 ### Event-Based API
@@ -110,11 +113,12 @@ await mapleBridge.initialize();
 ```
 
 **InitialState:**
+
 ```typescript
 {
-    appVersion: string;  // e.g., "1.0.0"
-    platform: string;    // "macOS" or "iOS"
-    timestamp: string;   // ISO 8601 timestamp
+    appVersion: string; // e.g., "1.0.0"
+    platform: string; // "macOS" or "iOS"
+    timestamp: string; // ISO 8601 timestamp
 }
 ```
 
@@ -139,10 +143,11 @@ const metadata = await mapleBridge.startRecording();
 ```
 
 **RecordingMetadata:**
+
 ```typescript
 {
-    filePath: string;    // Path to audio file
-    timestamp: string;   // ISO 8601 timestamp
+    filePath: string; // Path to audio file
+    timestamp: string; // ISO 8601 timestamp
 }
 ```
 
@@ -156,6 +161,7 @@ const result = await mapleBridge.stopRecording();
 ```
 
 **TranscriptionResult:**
+
 ```typescript
 {
     text: string;              // Full transcription
@@ -387,17 +393,17 @@ await recorder.cancel();
 
 All events emitted by MapleBridge:
 
-| Event | Payload | Description |
-|-------|---------|-------------|
-| `initialize` | `InitialState` | Bridge initialized |
-| `recordingStarted` | `RecordingMetadata` | Recording started |
-| `recordingStopped` | `RecordingResult` | Recording stopped |
-| `recordingCancelled` | `null` | Recording cancelled |
-| `audioLevel` | `AudioLevelData` | Audio level update |
-| `transcriptionProgress` | `{ text, progress }` | Transcription in progress |
-| `transcriptionComplete` | `TranscriptionResult` | Transcription complete |
-| `error` | `ErrorData` | Error occurred |
-| `testResponse` | `TestResponse` | Test message response |
+| Event                   | Payload               | Description               |
+| ----------------------- | --------------------- | ------------------------- |
+| `initialize`            | `InitialState`        | Bridge initialized        |
+| `recordingStarted`      | `RecordingMetadata`   | Recording started         |
+| `recordingStopped`      | `RecordingResult`     | Recording stopped         |
+| `recordingCancelled`    | `null`                | Recording cancelled       |
+| `audioLevel`            | `AudioLevelData`      | Audio level update        |
+| `transcriptionProgress` | `{ text, progress }`  | Transcription in progress |
+| `transcriptionComplete` | `TranscriptionResult` | Transcription complete    |
+| `error`                 | `ErrorData`           | Error occurred            |
+| `testResponse`          | `TestResponse`        | Test message response     |
 
 ---
 
@@ -419,7 +425,7 @@ const result = await recorder.stop();
 
 if (result.segments) {
     // Multi-track transcription available
-    result.segments.forEach(segment => {
+    result.segments.forEach((segment) => {
         const time = MapleBridge.formatDuration(segment.startTime);
         const speaker = segment.speaker; // "You" or "Other"
         console.log(`[${time}] ${speaker}: ${segment.text}`);
@@ -438,7 +444,7 @@ recorder.onComplete = (result) => {
     container.innerHTML = '';
 
     if (result.segments) {
-        result.segments.forEach(segment => {
+        result.segments.forEach((segment) => {
             const div = document.createElement('div');
             div.className = `segment ${segment.speaker.toLowerCase()}`;
 
@@ -499,8 +505,7 @@ async function recordAndTranscribe() {
         // Setup callbacks
         recorder.onAudioLevel = (level, duration) => {
             document.getElementById('level').style.width = `${level * 100}%`;
-            document.getElementById('timer').textContent =
-                MapleBridge.formatDuration(duration);
+            document.getElementById('timer').textContent = MapleBridge.formatDuration(duration);
         };
 
         recorder.onProgress = (text, progress) => {
@@ -518,7 +523,6 @@ async function recordAndTranscribe() {
 
         // User clicks stop button...
         // (handled by your UI)
-
     } catch (error) {
         console.error('Failed:', error);
     }
@@ -530,7 +534,6 @@ async function stopAndProcess() {
 
         // Display results
         displayTranscription(result);
-
     } catch (error) {
         console.error('Failed to stop:', error);
     }
@@ -541,13 +544,17 @@ function displayTranscription(result) {
 
     if (result.segments) {
         // Multi-track conversation view
-        container.innerHTML = result.segments.map(seg => `
+        container.innerHTML = result.segments
+            .map(
+                (seg) => `
             <div class="segment ${seg.speaker.toLowerCase()}">
                 <strong>${seg.speaker}</strong>
                 <span>[${MapleBridge.formatDuration(seg.startTime)}]</span>
                 <p>${seg.text}</p>
             </div>
-        `).join('');
+        `,
+            )
+            .join('');
     } else {
         // Simple text view
         container.textContent = result.text;
@@ -566,8 +573,7 @@ class RecordingTimer {
     start() {
         this.interval = setInterval(() => {
             const duration = recorder.duration;
-            document.getElementById('timer').textContent =
-                MapleBridge.formatDuration(duration);
+            document.getElementById('timer').textContent = MapleBridge.formatDuration(duration);
         }, 100);
     }
 
@@ -722,7 +728,7 @@ interface TranscriptionResult {
 }
 
 interface TranscriptSegment {
-    speaker: "You" | "Other";
+    speaker: 'You' | 'Other';
     text: string;
     startTime: number;
     endTime: number;
@@ -747,12 +753,14 @@ declare const recorder: Recorder;
 ## Browser Compatibility
 
 The SDK is compatible with all modern browsers that support:
+
 - ES6 Promises
 - Map/Set
 - Arrow functions
 - Template literals
 
 Required for native integration:
+
 - WebKit message handlers (iOS/macOS WKWebView)
 
 ---

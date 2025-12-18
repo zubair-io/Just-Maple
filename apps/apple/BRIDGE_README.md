@@ -93,7 +93,7 @@ const result = await recorder.stop();
 
 if (result.segments) {
     // Display conversation with speaker labels
-    result.segments.forEach(segment => {
+    result.segments.forEach((segment) => {
         console.log(`[${segment.startTime}s] ${segment.speaker}: ${segment.text}`);
     });
 } else {
@@ -149,15 +149,15 @@ await recorder.cancel();
 
 ## Events
 
-| Event | Description |
-|-------|-------------|
-| `recordingStarted` | Recording has started |
-| `recordingStopped` | Recording has stopped |
-| `recordingCancelled` | Recording was cancelled |
-| `audioLevel` | Audio level update (~10/sec) |
-| `transcriptionProgress` | Transcription in progress |
-| `transcriptionComplete` | Transcription finished |
-| `error` | An error occurred |
+| Event                   | Description                  |
+| ----------------------- | ---------------------------- |
+| `recordingStarted`      | Recording has started        |
+| `recordingStopped`      | Recording has stopped        |
+| `recordingCancelled`    | Recording was cancelled      |
+| `audioLevel`            | Audio level update (~10/sec) |
+| `transcriptionProgress` | Transcription in progress    |
+| `transcriptionComplete` | Transcription finished       |
+| `error`                 | An error occurred            |
 
 ## Data Types
 
@@ -197,7 +197,7 @@ await recorder.cancel();
 
 ```javascript
 // Format duration to MM:SS
-MapleBridge.formatDuration(125)  // "02:05"
+MapleBridge.formatDuration(125); // "02:05"
 
 // Format segments to text
 const text = MapleBridge.formatSegments(result.segments);
@@ -208,6 +208,7 @@ const text = MapleBridge.formatSegments(result.segments);
 ## Complete Example
 
 See [example.html](JapaneseMaple/Resources/WebApp/example.html) for a fully working demo with:
+
 - Visual audio level meter
 - Real-time timer
 - Progress tracking
@@ -244,16 +245,19 @@ See [example.html](JapaneseMaple/Resources/WebApp/example.html) for a fully work
 ## Requirements
 
 **Web:**
+
 - Modern browser with ES6 support
 - Running inside WKWebView (provided by app)
 
 **Native:**
+
 - macOS 13+ (for multi-track recording)
 - macOS 11+ or iOS 15+ (single-track fallback)
 
 ## API Documentation
 
 See [MAPLE_BRIDGE_API.md](MAPLE_BRIDGE_API.md) for complete API reference with:
+
 - All methods and properties
 - Event documentation
 - Error handling

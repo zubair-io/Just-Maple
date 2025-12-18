@@ -72,7 +72,7 @@ The `serverKey` is the identity. Paperbark never knows server names/URLs — it 
 
 #### 1.1 Device Registration
 
-Devices register their push token with Paperbark, associating it with one or more serverKeys. Each serverKey creates a separate record internally. in the setting there is a notifcations button on native 
+Devices register their push token with Paperbark, associating it with one or more serverKeys. Each serverKey creates a separate record internally. in the setting there is a notifcations button on native
 
 ```
 POST /api/v1/devices/register
@@ -100,6 +100,7 @@ Response 400:
 ```
 
 **Behavior:**
+
 - Creates/updates one record per `(deviceId, serverKey)` pair
 - All records share the same `userId`, `platform`, `pushToken`
 - Idempotent — calling again with same data updates `updated_at`
@@ -107,11 +108,11 @@ Response 400:
 
 **Internal storage (3 separate records):**
 
-| deviceId | userId | serverKeyHash | platform | pushToken |
-|----------|--------|---------------|----------|-----------|
-| device_iphone_xyz | user_zubair | hash(sk_abc123) | ios | T1 |
-| device_iphone_xyz | user_zubair | hash(sk_def456) | ios | T1 |
-| device_iphone_xyz | user_zubair | hash(sk_ghi789) | ios | T1 |
+| deviceId          | userId      | serverKeyHash   | platform | pushToken |
+| ----------------- | ----------- | --------------- | -------- | --------- |
+| device_iphone_xyz | user_zubair | hash(sk_abc123) | ios      | T1        |
+| device_iphone_xyz | user_zubair | hash(sk_def456) | ios      | T1        |
+| device_iphone_xyz | user_zubair | hash(sk_ghi789) | ios      | T1        |
 
 #### 1.2 Device Unregistration
 
@@ -134,6 +135,7 @@ Response 200:
 ```
 
 **Behavior:**
+
 - If `serverKeys` provided: removes only those specific registrations
 - If `serverKeys` omitted: removes ALL registrations for that deviceId (full logout)
 
@@ -200,6 +202,7 @@ Response 400:
 ```
 
 **Behavior:**
+
 - Finds all records matching `(serverKey, userId)`
 - Sends push to each device's pushToken
 - Returns count of successful deliveries
@@ -210,18 +213,18 @@ Paperbark constructs and sends:
 
 ```json
 {
-  "aps": {
-    "mutable-content": 1,
-    "alert": {
-      "title": "{{fallback.title}}",
-      "body": "{{fallback.body}}"
+    "aps": {
+        "mutable-content": 1,
+        "alert": {
+            "title": "{{fallback.title}}",
+            "body": "{{fallback.body}}"
+        },
+        "sound": "default"
     },
-    "sound": "default"
-  },
-  "maple": {
-    "serverKey": "sk_abc123",
-    "notificationId": "notif_abc123"
-  }
+    "maple": {
+        "serverKey": "sk_abc123",
+        "notificationId": "notif_abc123"
+    }
 }
 ```
 
@@ -229,15 +232,15 @@ Paperbark constructs and sends:
 
 ```json
 {
-  "data": {
-    "serverKey": "sk_abc123",
-    "notificationId": "notif_abc123",
-    "fallbackTitle": "New voice memo",
-    "fallbackBody": "Open Maple to view"
-  },
-  "android": {
-    "priority": "high"
-  }
+    "data": {
+        "serverKey": "sk_abc123",
+        "notificationId": "notif_abc123",
+        "fallbackTitle": "New voice memo",
+        "fallbackBody": "Open Maple to view"
+    },
+    "android": {
+        "priority": "high"
+    }
 }
 ```
 
@@ -257,7 +260,7 @@ CREATE TABLE registrations (
     push_token VARCHAR(256) NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
-    
+
     UNIQUE (device_id, server_key_hash),
     INDEX idx_server_key_user (server_key_hash, user_id),  -- For push lookup
     INDEX idx_device_id (device_id)  -- For unregister all
@@ -265,6 +268,7 @@ CREATE TABLE registrations (
 ```
 
 **Notes:**
+
 - `server_key_hash`: Store hashed, not plaintext (SHA-256)
 - Composite unique constraint prevents duplicate registrations
 - Index on `(server_key_hash, user_id)` for fast push lookups
@@ -349,13 +353,13 @@ Response 401:
 
 #### 3.4 Notification Types
 
-| Type | Description | Data Fields |
-|------|-------------|-------------|
-| `transcription_complete` | Voice memo transcribed | `memoId` |
-| `share_received` | Someone shared a memo | `memoId`, `sharedBy` |
-| `reminder` | Scheduled reminder | `memoId`, `reminderTime` |
-| `processing_failed` | Transcription failed | `memoId`, `errorCode` |
-| `export_ready` | Export file ready | `exportId`, `format` |
+| Type                     | Description            | Data Fields              |
+| ------------------------ | ---------------------- | ------------------------ |
+| `transcription_complete` | Voice memo transcribed | `memoId`                 |
+| `share_received`         | Someone shared a memo  | `memoId`, `sharedBy`     |
+| `reminder`               | Scheduled reminder     | `memoId`, `reminderTime` |
+| `processing_failed`      | Transcription failed   | `memoId`, `errorCode`    |
+| `export_ready`           | Export file ready      | `exportId`, `format`     |
 
 #### 3.5 Notification Storage Schema (Maple Server)
 
@@ -390,8 +394,8 @@ CREATE TABLE device_registrations (
 Run periodically to purge expired notifications:
 
 ```sql
-DELETE FROM notifications 
-WHERE expires_at < NOW() 
+DELETE FROM notifications
+WHERE expires_at < NOW()
    OR (fetched_at IS NOT NULL AND fetched_at < NOW() - INTERVAL '1 hour');
 ```
 
@@ -422,10 +426,10 @@ struct ServerConnection: Codable {
 func application(_ application: UIApplication,
                  didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
     let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
-    
+
     // Update Paperbark with all connected servers in one call
     let allServerKeys = ConnectedServers.all.map { $0.serverKey }
-    
+
     Task {
         await PaperbarkClient.register(
             deviceId: DeviceIdentifier.current,
@@ -441,7 +445,7 @@ func application(_ application: UIApplication,
 
 func onConnectServer(_ server: MapleServer) async {
     let serverKey = generateSecureRandomKey()  // 32-byte random
-    
+
     // 1. Register with Paperbark (just this new serverKey)
     await PaperbarkClient.register(
         deviceId: DeviceIdentifier.current,
@@ -450,13 +454,13 @@ func onConnectServer(_ server: MapleServer) async {
         pushToken: CurrentPushToken.value,
         serverKeys: [serverKey]
     )
-    
+
     // 2. Tell the Maple server its key
     await server.api.registerForNotifications(
         deviceId: DeviceIdentifier.current,
         serverKey: serverKey
     )
-    
+
     // 3. Store locally
     let connection = ServerConnection(
         serverUrl: server.url,
@@ -474,7 +478,7 @@ func onDisconnectServer(_ server: ServerConnection) async {
         deviceId: DeviceIdentifier.current,
         serverKeys: [server.serverKey]
     )
-    
+
     ConnectedServers.remove(server)
 }
 
@@ -486,7 +490,7 @@ func onLogout() async {
         deviceId: DeviceIdentifier.current
         // No serverKeys = remove all
     )
-    
+
     ConnectedServers.removeAll()
 }
 ```
@@ -507,18 +511,18 @@ group.app.justmaple.maple
 import UserNotifications
 
 class NotificationService: UNNotificationServiceExtension {
-    
+
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var bestAttemptContent: UNMutableNotificationContent?
     private var fetchTask: URLSessionDataTask?
-    
+
     override func didReceive(
         _ request: UNNotificationRequest,
         withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
     ) {
         self.contentHandler = contentHandler
         bestAttemptContent = request.content.mutableCopy() as? UNMutableNotificationContent
-        
+
         guard let content = bestAttemptContent,
               let mapleData = request.content.userInfo["maple"] as? [String: Any],
               let serverKey = mapleData["serverKey"] as? String,
@@ -527,14 +531,14 @@ class NotificationService: UNNotificationServiceExtension {
             contentHandler(request.content)
             return
         }
-        
+
         // Look up server URL from serverKey
         guard let serverConnection = ConnectedServers.findByServerKey(serverKey) else {
             // Unknown serverKey, show fallback
             contentHandler(request.content)
             return
         }
-        
+
         fetchNotificationContent(
             serverUrl: serverConnection.serverUrl,
             authToken: serverConnection.authToken,
@@ -543,7 +547,7 @@ class NotificationService: UNNotificationServiceExtension {
             contentHandler: contentHandler
         )
     }
-    
+
     private func fetchNotificationContent(
         serverUrl: String,
         authToken: String,
@@ -555,15 +559,15 @@ class NotificationService: UNNotificationServiceExtension {
             contentHandler(content)
             return
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 25 // Leave buffer before iOS kills us at 30s
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
-        
+
         fetchTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             defer { contentHandler(content) }
-            
+
             guard let self = self,
                   error == nil,
                   let httpResponse = response as? HTTPURLResponse,
@@ -572,15 +576,15 @@ class NotificationService: UNNotificationServiceExtension {
                 // Fetch failed, fallback content already set
                 return
             }
-            
+
             do {
                 let notification = try JSONDecoder().decode(MapleNotification.self, from: data)
                 content.title = notification.title
                 content.body = notification.body
-                
+
                 // Add deep link data
                 content.userInfo["mapleAction"] = notification.data
-                
+
                 // Optional: group by memo
                 if let memoId = notification.data?["memoId"] as? String {
                     content.threadIdentifier = memoId
@@ -589,10 +593,10 @@ class NotificationService: UNNotificationServiceExtension {
                 // Decode failed, use fallback
             }
         }
-        
+
         fetchTask?.resume()
     }
-    
+
     override func serviceExtensionTimeWillExpire() {
         fetchTask?.cancel()
         if let contentHandler = contentHandler, let content = bestAttemptContent {
@@ -622,60 +626,60 @@ struct MapleNotification: Codable {
 import Security
 
 class KeychainHelper {
-    
+
     private static let appGroup = "group.app.justmaple.maple"
-    
+
     static func saveServerConnection(_ connection: ServerConnection) {
         let key = "server_\(connection.serverKey.hashValue)"
         let data = try! JSONEncoder().encode(connection)
-        
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecAttrAccessGroup as String: appGroup,
             kSecValueData as String: data
         ]
-        
+
         SecItemDelete(query as CFDictionary)
         SecItemAdd(query as CFDictionary, nil)
     }
-    
+
     static func getServerConnection(forServerKey serverKey: String) -> ServerConnection? {
         let key = "server_\(serverKey.hashValue)"
-        
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecAttrAccessGroup as String: appGroup,
             kSecReturnData as String: true
         ]
-        
+
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        
+
         guard status == errSecSuccess,
               let data = result as? Data,
               let connection = try? JSONDecoder().decode(ServerConnection.self, from: data) else {
             return nil
         }
-        
+
         return connection
     }
-    
+
     static func getAllServerConnections() -> [ServerConnection] {
         // Implementation to list all server connections
         // Used for push token refresh
     }
-    
+
     static func deleteServerConnection(forServerKey serverKey: String) {
         let key = "server_\(serverKey.hashValue)"
-        
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecAttrAccessGroup as String: appGroup
         ]
-        
+
         SecItemDelete(query as CFDictionary)
     }
 }
@@ -691,33 +695,33 @@ class KeychainHelper {
 
 ```kotlin
 class MapleFirebaseMessagingService : FirebaseMessagingService() {
-    
+
     private val notificationManager by lazy {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
-    
+
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    
+
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         val data = remoteMessage.data
-        
+
         val serverKey = data["serverKey"] ?: return
         val notificationId = data["notificationId"] ?: return
         val fallbackTitle = data["fallbackTitle"] ?: "Maple"
         val fallbackBody = data["fallbackBody"] ?: "You have a new notification"
-        
+
         // Look up server from serverKey
         val serverConnection = ServerConnectionStore.findByServerKey(this, serverKey)
-        
+
         coroutineScope.launch {
             val notification = serverConnection?.let {
                 fetchNotificationContent(it.serverUrl, it.authToken, notificationId)
             }
-            
+
             val title = notification?.title ?: fallbackTitle
             val body = notification?.body ?: fallbackBody
             val notifData = notification?.data
-            
+
             showNotification(
                 id = notificationId.hashCode(),
                 title = title,
@@ -726,7 +730,7 @@ class MapleFirebaseMessagingService : FirebaseMessagingService() {
             )
         }
     }
-    
+
     private suspend fun fetchNotificationContent(
         serverUrl: String,
         authToken: String,
@@ -741,7 +745,7 @@ class MapleFirebaseMessagingService : FirebaseMessagingService() {
             null
         }
     }
-    
+
     private fun showNotification(
         id: Int,
         title: String,
@@ -752,12 +756,12 @@ class MapleFirebaseMessagingService : FirebaseMessagingService() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             data?.let { putExtra("mapleAction", JSONObject(it).toString()) }
         }
-        
+
         val pendingIntent = PendingIntent.getActivity(
             this, id, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        
+
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -766,15 +770,15 @@ class MapleFirebaseMessagingService : FirebaseMessagingService() {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
-        
+
         notificationManager.notify(id, notification)
     }
-    
+
     override fun onNewToken(token: String) {
         coroutineScope.launch {
             val connections = ServerConnectionStore.getAll(this@MapleFirebaseMessagingService)
             val serverKeys = connections.map { it.serverKey }
-            
+
             if (serverKeys.isNotEmpty()) {
                 PaperbarkClient.register(
                     deviceId = DeviceIdentifier.get(this@MapleFirebaseMessagingService),
@@ -786,7 +790,7 @@ class MapleFirebaseMessagingService : FirebaseMessagingService() {
             }
         }
     }
-    
+
     companion object {
         const val CHANNEL_ID = "maple_notifications"
     }
@@ -799,35 +803,35 @@ class MapleFirebaseMessagingService : FirebaseMessagingService() {
 
 ```kotlin
 object ServerConnectionStore {
-    
+
     private const val PREFS_NAME = "maple_server_connections"
-    
+
     fun save(context: Context, connection: ServerConnection) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json = Gson().toJson(connection)
         prefs.edit().putString(connection.serverKey, json).apply()
     }
-    
+
     fun findByServerKey(context: Context, serverKey: String): ServerConnection? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json = prefs.getString(serverKey, null) ?: return null
         return Gson().fromJson(json, ServerConnection::class.java)
     }
-    
+
     fun getAll(context: Context): List<ServerConnection> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.all.values.mapNotNull { value ->
-            (value as? String)?.let { 
-                Gson().fromJson(it, ServerConnection::class.java) 
+            (value as? String)?.let {
+                Gson().fromJson(it, ServerConnection::class.java)
             }
         }
     }
-    
+
     fun delete(context: Context, serverKey: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().remove(serverKey).apply()
     }
-    
+
     fun deleteAll(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().clear().apply()
@@ -848,38 +852,38 @@ data class ServerConnection(
 
 #### 6.1 What Paperbark Knows vs Doesn't Know
 
-| Data | Visible to Paperbark |
-|------|---------------------|
-| Device push tokens | ✅ Yes (required for APNs/FCM) |
-| Device IDs | ✅ Yes (routing) |
-| User IDs | ✅ Yes (routing) |
-| Server Keys (hashed) | ✅ Yes (routing) |
-| Notification timing | ✅ Yes (when pushes are sent) |
-| Server names/URLs | ❌ No |
-| Notification content | ❌ No (only generic fallback) |
+| Data                  | Visible to Paperbark                     |
+| --------------------- | ---------------------------------------- |
+| Device push tokens    | ✅ Yes (required for APNs/FCM)           |
+| Device IDs            | ✅ Yes (routing)                         |
+| User IDs              | ✅ Yes (routing)                         |
+| Server Keys (hashed)  | ✅ Yes (routing)                         |
+| Notification timing   | ✅ Yes (when pushes are sent)            |
+| Server names/URLs     | ❌ No                                    |
+| Notification content  | ❌ No (only generic fallback)            |
 | Which server is which | ❌ No (only app knows serverKey mapping) |
 
 #### 6.2 Server Isolation
 
-| Actor | Can see |
-|-------|---------|
-| homelab (sk_abc) | Only devices registered with sk_abc |
-| worklab (sk_def) | Only devices registered with sk_def |
-| justmaple.app (sk_ghi) | Only devices registered with sk_ghi |
-| App | Knows all serverKeys (stored locally) |
-| Paperbark | Sees all registrations, but doesn't know server identities |
+| Actor                  | Can see                                                    |
+| ---------------------- | ---------------------------------------------------------- |
+| homelab (sk_abc)       | Only devices registered with sk_abc                        |
+| worklab (sk_def)       | Only devices registered with sk_def                        |
+| justmaple.app (sk_ghi) | Only devices registered with sk_ghi                        |
+| App                    | Knows all serverKeys (stored locally)                      |
+| Paperbark              | Sees all registrations, but doesn't know server identities |
 
 #### 6.3 Threat Model
 
-| Threat | Mitigation |
-|--------|-----------|
-| Paperbark compromised | Attacker sees only fallback text, device IDs, and opaque serverKeys |
-| Forked app tries to send pushes | Doesn't have valid `serverKey` for any real device |
-| Rogue server spams random deviceIds | `serverKey` won't match any registration |
-| Server A impersonates Server B | Each server only knows its own serverKey |
-| Man-in-the-middle | All connections require HTTPS |
-| Replay attacks | Notification IDs are single-use, expire after fetch |
-| User removes server | Registration deleted, pushes rejected |
+| Threat                              | Mitigation                                                          |
+| ----------------------------------- | ------------------------------------------------------------------- |
+| Paperbark compromised               | Attacker sees only fallback text, device IDs, and opaque serverKeys |
+| Forked app tries to send pushes     | Doesn't have valid `serverKey` for any real device                  |
+| Rogue server spams random deviceIds | `serverKey` won't match any registration                            |
+| Server A impersonates Server B      | Each server only knows its own serverKey                            |
+| Man-in-the-middle                   | All connections require HTTPS                                       |
+| Replay attacks                      | Notification IDs are single-use, expire after fetch                 |
+| User removes server                 | Registration deleted, pushes rejected                               |
 
 #### 6.4 Server Key Generation
 
@@ -895,17 +899,17 @@ func generateSecureRandomKey() -> String {
 
 ### 7. Error Handling Matrix
 
-| Scenario | Behavior |
-|----------|----------|
-| Paperbark unreachable | Server retries with exponential backoff (3 attempts) |
-| Invalid serverKey | Paperbark returns 400, server logs error |
-| No devices found for serverKey+userId | Paperbark returns success with `delivered: 0` |
-| User's Maple server unreachable | Show fallback notification |
-| Notification fetch timeout | Show fallback notification |
-| Notification not found (404) | Show fallback notification |
-| Unknown serverKey in push payload | Show fallback notification |
-| Auth token expired | Show fallback, main app refreshes token on next open |
-| Malformed notification response | Show fallback notification |
+| Scenario                              | Behavior                                             |
+| ------------------------------------- | ---------------------------------------------------- |
+| Paperbark unreachable                 | Server retries with exponential backoff (3 attempts) |
+| Invalid serverKey                     | Paperbark returns 400, server logs error             |
+| No devices found for serverKey+userId | Paperbark returns success with `delivered: 0`        |
+| User's Maple server unreachable       | Show fallback notification                           |
+| Notification fetch timeout            | Show fallback notification                           |
+| Notification not found (404)          | Show fallback notification                           |
+| Unknown serverKey in push payload     | Show fallback notification                           |
+| Auth token expired                    | Show fallback, main app refreshes token on next open |
+| Malformed notification response       | Show fallback notification                           |
 
 ---
 
@@ -948,6 +952,7 @@ func generateSecureRandomKey() -> String {
 ### 9. Implementation Phases
 
 #### Phase 1: Paperbark Service
+
 - [ ] Database schema setup
 - [ ] POST /api/v1/devices/register (with array support)
 - [ ] DELETE /api/v1/devices/unregister
@@ -957,6 +962,7 @@ func generateSecureRandomKey() -> String {
 - [ ] FCM integration
 
 #### Phase 2: iOS Client
+
 - [ ] ServerConnection model and Keychain storage
 - [ ] PaperbarkClient (register, unregister)
 - [ ] ConnectedServers manager
@@ -967,6 +973,7 @@ func generateSecureRandomKey() -> String {
 - [ ] Push token refresh flow
 
 #### Phase 3: Android Client
+
 - [ ] ServerConnection model and storage
 - [ ] PaperbarkClient (register, unregister)
 - [ ] Firebase Messaging Service
@@ -975,6 +982,7 @@ func generateSecureRandomKey() -> String {
 - [ ] Token refresh flow
 
 #### Phase 4: Maple Server Updates
+
 - [ ] Device registration table (deviceId, serverKey)
 - [ ] Notification storage table
 - [ ] POST /api/v1/notifications/register
@@ -1002,21 +1010,21 @@ func generateSecureRandomKey() -> String {
 
 Keep fallbacks generic but useful:
 
-| Notification Type | Fallback Title | Fallback Body |
-|-------------------|----------------|---------------|
-| `transcription_complete` | New voice memo | Your transcription is ready |
-| `share_received` | Shared with you | Someone shared a memo with you |
-| `reminder` | Maple Reminder | You have a reminder |
-| `processing_failed` | Processing update | Open Maple for details |
-| `export_ready` | Export ready | Your export is ready to download |
+| Notification Type        | Fallback Title    | Fallback Body                    |
+| ------------------------ | ----------------- | -------------------------------- |
+| `transcription_complete` | New voice memo    | Your transcription is ready      |
+| `share_received`         | Shared with you   | Someone shared a memo with you   |
+| `reminder`               | Maple Reminder    | You have a reminder              |
+| `processing_failed`      | Processing update | Open Maple for details           |
+| `export_ready`           | Export ready      | Your export is ready to download |
 
 ---
 
 ### Appendix B: API Summary
 
-| Endpoint | Method | Called By | Purpose |
-|----------|--------|-----------|---------|
-| `/api/v1/devices/register` | POST | App | Register device with serverKey(s) |
-| `/api/v1/devices/unregister` | DELETE | App | Remove registrations |
-| `/api/v1/devices/list` | GET | Server | List devices for a serverKey |
-| `/api/v1/push/send` | POST | Server | Trigger push notification |
+| Endpoint                     | Method | Called By | Purpose                           |
+| ---------------------------- | ------ | --------- | --------------------------------- |
+| `/api/v1/devices/register`   | POST   | App       | Register device with serverKey(s) |
+| `/api/v1/devices/unregister` | DELETE | App       | Remove registrations              |
+| `/api/v1/devices/list`       | GET    | Server    | List devices for a serverKey      |
+| `/api/v1/push/send`          | POST   | Server    | Trigger push notification         |

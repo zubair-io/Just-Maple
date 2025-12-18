@@ -89,7 +89,7 @@
 4. Extension → Server (optional)
    GET /api/notifications/msg-123
    Authorization: Bearer {token}
-   
+
    Response: {
      "title": "John Doe",
      "body": "Hello! How are you?",

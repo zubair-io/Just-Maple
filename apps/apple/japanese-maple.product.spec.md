@@ -16,14 +16,15 @@ The core insight is that documents should be smart containers that understand th
 
 ### Current Landscape Gaps
 
-| Tool | Strength | Limitation |
-|------|----------|------------|
-| **Notion/Coda** | Databases, automations, formulas | Automations feel bolted-on; widgets are static embeds |
-| **n8n/Zapier** | Powerful node-based workflows | No document context; separate from content |
-| **Observable/marimo** | Reactive notebooks with code | Developer-focused; code-first paradigm |
-| **Tana** | Supertags, live queries | Outliner-focused; not document-centric |
+| Tool                  | Strength                         | Limitation                                            |
+| --------------------- | -------------------------------- | ----------------------------------------------------- |
+| **Notion/Coda**       | Databases, automations, formulas | Automations feel bolted-on; widgets are static embeds |
+| **n8n/Zapier**        | Powerful node-based workflows    | No document context; separate from content            |
+| **Observable/marimo** | Reactive notebooks with code     | Developer-focused; code-first paradigm                |
+| **Tana**              | Supertags, live queries          | Outliner-focused; not document-centric                |
 
 **The Gap**: No tool provides documents that are:
+
 1. **Contextually intelligent** - understand what they are based on title/structure
 2. **Reactively updated** - respond to events and data changes
 3. **Widget-embeddable** - contain interactive components inline
@@ -36,6 +37,7 @@ The core insight is that documents should be smart containers that understand th
 ### 1. Document Context Intelligence
 
 Documents infer their purpose from:
+
 - **Title patterns**: "Interview: [Name]" → activates interview widgets
 - **Parent documents**: Child of "Interviews" folder → inherits interview template
 - **Explicit templates**: User-defined document types with preset widgets
@@ -44,6 +46,7 @@ Documents infer their purpose from:
 ### 2. Reactive Widgets
 
 Inline components that:
+
 - **Capture data**: Audio recording, form inputs, selections
 - **Display state**: Home Assistant entities, API data, live metrics
 - **Trigger actions**: Button clicks, threshold crossings, time-based events
@@ -52,6 +55,7 @@ Inline components that:
 ### 3. Widget-Document Binding
 
 Widgets can:
+
 - Read document context (title, sections, sibling content)
 - Write to specific document locations
 - Trigger document-level events
@@ -60,6 +64,7 @@ Widgets can:
 ### 4. Event-Driven Updates
 
 Documents respond to:
+
 - **User events**: Widget interactions, selections, form submissions
 - **Time events**: Calendar triggers, scheduled refreshes
 - **External events**: Webhooks, API changes, IoT state changes
@@ -90,6 +95,7 @@ Documents respond to:
 ```
 
 **Reactive Behaviors:**
+
 - Dropdown selection → AI reads question + score + transcript → writes section summary
 - All dropdowns filled → generates overall assessment
 - Parent "Interviews" doc updates its aggregated view
@@ -175,28 +181,28 @@ Documents respond to:
 
 ```typescript
 interface Widget {
-  // Identity
-  id: string;
-  type: WidgetType;
-  
-  // Context Access
-  documentContext: DocumentContext;  // title, sections, parent doc
-  siblingWidgets: Widget[];          // other widgets in doc
-  
-  // State
-  state: WidgetState;                // widget-specific state
-  outputs: Record<string, any>;      // exposed to other widgets/doc
-  
-  // Lifecycle
-  onMount(): void;
-  onContextChange(ctx: DocumentContext): void;
-  onEvent(event: DocumentEvent): void;
-  onUnmount(): void;
-  
-  // Actions
-  emitEvent(event: WidgetEvent): void;
-  writeToDocument(location: DocLocation, content: Content): void;
-  triggerExternalAction(action: ExternalAction): void;
+    // Identity
+    id: string;
+    type: WidgetType;
+
+    // Context Access
+    documentContext: DocumentContext; // title, sections, parent doc
+    siblingWidgets: Widget[]; // other widgets in doc
+
+    // State
+    state: WidgetState; // widget-specific state
+    outputs: Record<string, any>; // exposed to other widgets/doc
+
+    // Lifecycle
+    onMount(): void;
+    onContextChange(ctx: DocumentContext): void;
+    onEvent(event: DocumentEvent): void;
+    onUnmount(): void;
+
+    // Actions
+    emitEvent(event: WidgetEvent): void;
+    writeToDocument(location: DocLocation, content: Content): void;
+    triggerExternalAction(action: ExternalAction): void;
 }
 ```
 
@@ -204,29 +210,29 @@ interface Widget {
 
 ```typescript
 interface DocumentContext {
-  // Identity
-  id: string;
-  title: string;
-  inferredType: DocumentType;  // "interview", "meeting", "dashboard", etc.
-  
-  // Hierarchy
-  parent?: DocumentContext;
-  children: DocumentContext[];
-  
-  // Content
-  sections: Section[];
-  widgets: WidgetInstance[];
-  
-  // Metadata
-  createdAt: Date;
-  modifiedAt: Date;
-  tags: string[];
-  
-  // Templates
-  template?: DocumentTemplate;
-  
-  // Event Subscriptions
-  subscriptions: EventSubscription[];
+    // Identity
+    id: string;
+    title: string;
+    inferredType: DocumentType; // "interview", "meeting", "dashboard", etc.
+
+    // Hierarchy
+    parent?: DocumentContext;
+    children: DocumentContext[];
+
+    // Content
+    sections: Section[];
+    widgets: WidgetInstance[];
+
+    // Metadata
+    createdAt: Date;
+    modifiedAt: Date;
+    tags: string[];
+
+    // Templates
+    template?: DocumentTemplate;
+
+    // Event Subscriptions
+    subscriptions: EventSubscription[];
 }
 ```
 
@@ -234,28 +240,28 @@ interface DocumentContext {
 
 ```typescript
 interface DocumentEvent {
-  type: EventType;
-  source: 'widget' | 'document' | 'external' | 'user' | 'time';
-  payload: any;
-  timestamp: Date;
+    type: EventType;
+    source: 'widget' | 'document' | 'external' | 'user' | 'time';
+    payload: any;
+    timestamp: Date;
 }
 
 type EventType =
-  // Widget Events
-  | 'widget:value_changed'
-  | 'widget:action_triggered'
-  | 'widget:data_received'
-  // Document Events
-  | 'document:section_completed'
-  | 'document:context_changed'
-  | 'document:child_created'
-  // External Events
-  | 'external:webhook_received'
-  | 'external:api_data_changed'
-  | 'external:iot_state_changed'
-  // Time Events
-  | 'time:scheduled'
-  | 'time:interval';
+    // Widget Events
+    | 'widget:value_changed'
+    | 'widget:action_triggered'
+    | 'widget:data_received'
+    // Document Events
+    | 'document:section_completed'
+    | 'document:context_changed'
+    | 'document:child_created'
+    // External Events
+    | 'external:webhook_received'
+    | 'external:api_data_changed'
+    | 'external:iot_state_changed'
+    // Time Events
+    | 'time:scheduled'
+    | 'time:interval';
 ```
 
 ---
@@ -264,68 +270,73 @@ type EventType =
 
 ### Data Capture Widgets
 
-| Widget | Description | Outputs |
-|--------|-------------|---------|
-| **Audio Recorder** | Records and transcribes audio | `transcript: string`, `duration: number` |
-| **Form Input** | Text, number, date inputs | `value: any` |
-| **Dropdown/Select** | Single or multi-select | `selected: string[]` |
-| **Rating** | Star rating, scales | `rating: number` |
-| **Signature** | Digital signature capture | `signature: ImageData` |
-| **File Upload** | Attach files | `files: File[]` |
+| Widget              | Description                   | Outputs                                  |
+| ------------------- | ----------------------------- | ---------------------------------------- |
+| **Audio Recorder**  | Records and transcribes audio | `transcript: string`, `duration: number` |
+| **Form Input**      | Text, number, date inputs     | `value: any`                             |
+| **Dropdown/Select** | Single or multi-select        | `selected: string[]`                     |
+| **Rating**          | Star rating, scales           | `rating: number`                         |
+| **Signature**       | Digital signature capture     | `signature: ImageData`                   |
+| **File Upload**     | Attach files                  | `files: File[]`                          |
 
 ### Display Widgets
 
-| Widget | Description | Inputs |
-|--------|-------------|--------|
-| **Live Data** | Show real-time API/IoT data | `source: DataSource` |
-| **Chart/Graph** | Visualize data over time | `data: TimeSeriesData` |
-| **Status Indicator** | Show on/off, health status | `entity: Entity` |
-| **Embed** | iFrame external content | `url: string` |
-| **AI Summary** | Generated text from context | `context: string[]` |
+| Widget               | Description                 | Inputs                 |
+| -------------------- | --------------------------- | ---------------------- |
+| **Live Data**        | Show real-time API/IoT data | `source: DataSource`   |
+| **Chart/Graph**      | Visualize data over time    | `data: TimeSeriesData` |
+| **Status Indicator** | Show on/off, health status  | `entity: Entity`       |
+| **Embed**            | iFrame external content     | `url: string`          |
+| **AI Summary**       | Generated text from context | `context: string[]`    |
 
 ### Action Widgets
 
-| Widget | Description | Triggers |
-|--------|-------------|----------|
-| **Button** | Trigger actions | `onClick: Action[]` |
-| **Toggle** | On/off state changes | `onToggle: Action[]` |
-| **Timer** | Countdown/interval | `onComplete: Action[]` |
-| **Threshold** | Value-based triggers | `onCross: Action[]` |
+| Widget        | Description          | Triggers               |
+| ------------- | -------------------- | ---------------------- |
+| **Button**    | Trigger actions      | `onClick: Action[]`    |
+| **Toggle**    | On/off state changes | `onToggle: Action[]`   |
+| **Timer**     | Countdown/interval   | `onComplete: Action[]` |
+| **Threshold** | Value-based triggers | `onCross: Action[]`    |
 
 ### Structural Widgets
 
-| Widget | Description | Behavior |
-|--------|-------------|----------|
-| **Calendar** | Date-based child creation | Creates docs for events |
-| **Template Picker** | Choose doc template | Applies template |
-| **Section Generator** | AI-creates sections | Based on context |
-| **Aggregator** | Roll up child data | Sums, averages, lists |
+| Widget                | Description               | Behavior                |
+| --------------------- | ------------------------- | ----------------------- |
+| **Calendar**          | Date-based child creation | Creates docs for events |
+| **Template Picker**   | Choose doc template       | Applies template        |
+| **Section Generator** | AI-creates sections       | Based on context        |
+| **Aggregator**        | Roll up child data        | Sums, averages, lists   |
 
 ---
 
 ## Integration Points
 
 ### Home Assistant
+
 - Widget: `[HomeAssistant: entity_id="sensor.living_room_temp"]`
 - Events: Subscribe to state changes
 - Actions: Call services
 
 ### Calendar (Google/Outlook)
+
 - Widget: `[Calendar: source="google" range="today"]`
 - Events: Meeting starts, ends, created
 - Actions: Create events, update attendees
 
 ### AI Models
+
 - Widget: `[AI: model="claude" prompt="Summarize above transcript"]`
 - Triggers: Section complete, widget value change
 - Context: Automatic document context injection
 
 ### Webhooks
+
 - Widget: `[Webhook: endpoint="/api/interviews" method="POST"]`
 - Events: Receive incoming webhooks
 - Actions: Send data to external services
 
 ### Task Managers (Todoist, Things, etc.)
+
 - Widget: `[Task: service="todoist"]`
 - Events: Task completed externally
 - Actions: Create tasks from document content
@@ -337,44 +348,45 @@ type EventType =
 ### Template Definition
 
 ```yaml
-name: "Interview Template"
+name: 'Interview Template'
 trigger:
-  title_pattern: "^Interview:.*"
-  parent_folder: "Interviews"
+    title_pattern: '^Interview:.*'
+    parent_folder: 'Interviews'
 
 sections:
-  - name: "Recording"
-    widgets:
-      - type: audio_recorder
-        on_stop: 
-          - transcribe
-          - write_to: "Transcript"
-  
-  - name: "Questions"
-    repeating: true
-    widgets:
-      - type: text
-        label: "Question"
-      - type: dropdown
-        options: ["Bad", "Fair", "Good", "Great"]
-        on_change:
-          - ai_summarize:
-              context: ["this_section", "Transcript"]
-              write_to: "this_section.summary"
-  
-  - name: "Transcript"
-    generated: true
-  
-  - name: "Overall Summary"
-    widgets:
-      - type: ai_summary
-        trigger: "all_questions_answered"
-        context: ["all_sections"]
+    - name: 'Recording'
+      widgets:
+          - type: audio_recorder
+            on_stop:
+                - transcribe
+                - write_to: 'Transcript'
+
+    - name: 'Questions'
+      repeating: true
+      widgets:
+          - type: text
+            label: 'Question'
+          - type: dropdown
+            options: ['Bad', 'Fair', 'Good', 'Great']
+            on_change:
+                - ai_summarize:
+                      context: ['this_section', 'Transcript']
+                      write_to: 'this_section.summary'
+
+    - name: 'Transcript'
+      generated: true
+
+    - name: 'Overall Summary'
+      widgets:
+          - type: ai_summary
+            trigger: 'all_questions_answered'
+            context: ['all_sections']
 ```
 
 ### Inheritance
 
 Documents can:
+
 - Inherit from parent document templates
 - Override specific sections/widgets
 - Add additional widgets while keeping base template
@@ -384,21 +396,25 @@ Documents can:
 ## Technical Considerations
 
 ### State Management
+
 - **CRDT-based**: Use Yjs or Automerge for conflict-free real-time sync
 - **Local-first**: Full offline support with sync when connected
 - **Event sourcing**: All changes as events for time-travel/undo
 
 ### Editor Framework
+
 - Built on **BlockSuite** or **ProseMirror** for rich text editing
 - Widgets as custom block types within the editor
 - Markdown import/export with widget serialization
 
 ### Widget Runtime
+
 - Sandboxed JavaScript execution for custom widgets
 - React/Web Components for widget rendering
 - PostMessage-based communication for security
 
 ### Data Storage
+
 - Document content: SQLite/IndexedDB (local), PostgreSQL (server)
 - Widget state: Embedded in document or separate widget store
 - Media: S3-compatible blob storage
@@ -408,6 +424,7 @@ Documents can:
 ## MVP Scope
 
 ### Phase 1: Core Document + Basic Widgets
+
 1. Block-based document editor
 2. Inline widget embedding
 3. Basic widgets: Text input, Dropdown, Button
@@ -415,18 +432,21 @@ Documents can:
 5. Simple event: widget change → write to document
 
 ### Phase 2: AI Integration
+
 1. AI Summary widget
 2. Audio recording + transcription
 3. Context-aware AI prompts
 4. Section generation
 
 ### Phase 3: External Integrations
+
 1. Home Assistant widget
 2. Calendar integration
 3. Webhook support
 4. Task manager sync
 
 ### Phase 4: Templates & Hierarchy
+
 1. Template definition system
 2. Parent-child document relationships
 3. Aggregation widgets
@@ -436,15 +456,15 @@ Documents can:
 
 ## Competitive Differentiation
 
-| Feature | Living Documents | Notion | Coda | Observable | Tana |
-|---------|-----------------|--------|------|------------|------|
-| Reactive widgets | ✅ Native | ❌ Embeds only | 🟡 Limited | ✅ Code-based | 🟡 Supertags |
-| Document context | ✅ Smart | ❌ Manual | 🟡 Formulas | ❌ Code | 🟡 Templates |
-| Linear document flow | ✅ | ✅ | ✅ | ❌ Cells | ❌ Outliner |
-| No-code automations | ✅ | 🟡 Buttons | ✅ | ❌ | 🟡 |
-| IoT integration | ✅ Native | ❌ | ❌ | ❌ | ❌ |
-| Real-time external data | ✅ | ❌ | 🟡 Packs | ✅ | ❌ |
-| Local-first | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Feature                 | Living Documents | Notion         | Coda        | Observable    | Tana         |
+| ----------------------- | ---------------- | -------------- | ----------- | ------------- | ------------ |
+| Reactive widgets        | ✅ Native        | ❌ Embeds only | 🟡 Limited  | ✅ Code-based | 🟡 Supertags |
+| Document context        | ✅ Smart         | ❌ Manual      | 🟡 Formulas | ❌ Code       | 🟡 Templates |
+| Linear document flow    | ✅               | ✅             | ✅          | ❌ Cells      | ❌ Outliner  |
+| No-code automations     | ✅               | 🟡 Buttons     | ✅          | ❌            | 🟡           |
+| IoT integration         | ✅ Native        | ❌             | ❌          | ❌            | ❌           |
+| Real-time external data | ✅               | ❌             | 🟡 Packs    | ✅            | ❌           |
+| Local-first             | ✅               | ❌             | ❌          | ❌            | ❌           |
 
 ---
 
@@ -473,10 +493,10 @@ Documents can:
 ## Next Steps
 
 1. Build proof-of-concept with:
-   - ProseMirror/BlockNote editor
-   - 3 basic widgets (dropdown, text, AI summary)
-   - Title-based context detection
-   - Simple event → document write flow
+    - ProseMirror/BlockNote editor
+    - 3 basic widgets (dropdown, text, AI summary)
+    - Title-based context detection
+    - Simple event → document write flow
 
 2. Validate interview use case end-to-end
 
@@ -486,4 +506,4 @@ Documents can:
 
 ---
 
-*This is a living document. It will react and update as the project evolves.*
+_This is a living document. It will react and update as the project evolves._

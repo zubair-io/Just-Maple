@@ -3,12 +3,15 @@
 ## ✅ Files Modified in Your Project
 
 ### 1. **JapaneseMapleApp.swift** ✨ UPDATED
+
 **What changed:**
+
 - Added `init()` method that calls `initializeNotificationExtensionSupport()`
 - Added `initializeNotificationExtensionSupport()` function at the bottom
 - Updated iOS and macOS AppDelegate to include `serverKey` in notification tap events
 
 **What it does:**
+
 - Syncs server configurations to shared storage on app launch
 - Passes serverKey to WebViewController when notifications are tapped
 
@@ -17,7 +20,9 @@
 ---
 
 ### 2. **ServerConfigService.swift** ✨ UPDATED
+
 **What changed:**
+
 - Changed `userDefaults` to use shared app group suite
 - Added `sharedServersKey` constant
 - Added `syncServersToSharedStorage()` method
@@ -25,6 +30,7 @@
 - Updated `saveToken()`, `getToken()`, and `clearToken()` to use shared keychain access group
 
 **What it does:**
+
 - Saves all data to shared storage that the extension can access
 - Uses shared keychain so extension can access auth tokens
 
@@ -33,10 +39,13 @@
 ---
 
 ### 3. **PushNotificationService.swift** ✨ UPDATED
+
 **What changed:**
+
 - Updated `saveServerKeyMap()` to also save to shared UserDefaults
 
 **What it does:**
+
 - Syncs server key mappings so extension can look up server IDs
 
 **Lines changed:** ~5 lines
@@ -44,6 +53,7 @@
 ---
 
 ### 4. **WebViewController.swift** ✅ NO CHANGES NEEDED
+
 Your existing code already handles notification taps correctly!
 
 ---
@@ -51,17 +61,20 @@ Your existing code already handles notification taps correctly!
 ## 📁 New Files for Extension Target
 
 ### 5. **NotificationService.swift** ✨ NEW
+
 - Main extension implementation
 - Downloaded and attached media
 - Fetches server data
 - Modifies notifications before display
 
 ### 6. **NotificationServiceExtension-Info.plist** ✨ NEW
+
 - Extension configuration
 - Extension point identifier
 - Principal class reference
 
 ### 7. **NotificationServiceExtension.entitlements** ✨ NEW
+
 - App Groups capability
 - Keychain Sharing capability
 
@@ -86,6 +99,7 @@ These are helper files for you to reference:
 ## 🎯 Summary of Changes
 
 ### Main App Changes (3 files)
+
 ```
 JapaneseMapleApp.swift
 ├─ Added init() with extension support initialization
@@ -103,6 +117,7 @@ PushNotificationService.swift
 ```
 
 ### Extension Files (3 files)
+
 ```
 NotificationService.swift
 ├─ Main extension logic
@@ -123,6 +138,7 @@ NotificationServiceExtension.entitlements
 ## 🔍 What Each Change Does
 
 ### JapaneseMapleApp.swift
+
 ```swift
 // Before
 @main
@@ -146,6 +162,7 @@ func initializeNotificationExtensionSupport() {
 ```
 
 ### ServerConfigService.swift
+
 ```swift
 // Before
 private let userDefaults = UserDefaults.standard
@@ -168,12 +185,13 @@ func saveToken(_ token: String, serverId: String? = nil) -> Bool {
 ```
 
 ### PushNotificationService.swift
+
 ```swift
 // Updated to sync to shared storage
 private func saveServerKeyMap(_ map: [String: String]) {
     if let data = try? JSONEncoder().encode(map) {
         UserDefaults.standard.set(data, forKey: serverKeyMapKey)
-        
+
         // NEW: Also save to shared container
         if let sharedDefaults = UserDefaults(suiteName: "group.com.just.maple.JapaneseMaple") {
             sharedDefaults.set(data, forKey: serverKeyMapKey)
@@ -187,6 +205,7 @@ private func saveServerKeyMap(_ map: [String: String]) {
 ## ✨ Benefits
 
 After these changes:
+
 - ✅ Extension can access server configurations
 - ✅ Extension can access auth tokens
 - ✅ Extension can look up server IDs from server keys
@@ -202,6 +221,7 @@ After these changes:
 **Open `SETUP_STEPS.md`** and follow the Xcode configuration steps. It will take about 15 minutes!
 
 All the code changes are already done. You just need to:
+
 1. Add App Groups capability to both targets
 2. Add Keychain Sharing capability to both targets
 3. Link the entitlements file to the extension target

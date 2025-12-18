@@ -7,40 +7,40 @@ Complete TypeScript SDK for Japanese Maple native integration with full type saf
 ### Core Files
 
 - **[maple-bridge.ts](JapaneseMaple/Resources/WebApp/maple-bridge.ts)** - TypeScript source (530+ lines)
-  - Full type definitions
-  - Complete API implementation
-  - Proper generics and type safety
-  - Global type declarations
+    - Full type definitions
+    - Complete API implementation
+    - Proper generics and type safety
+    - Global type declarations
 
 - **[maple-bridge.js](JapaneseMaple/Resources/WebApp/maple-bridge.js)** - JavaScript fallback
-  - Works without compilation
-  - JSDoc comments for IDE support
-  - Backward compatible
+    - Works without compilation
+    - JSDoc comments for IDE support
+    - Backward compatible
 
 ### Configuration
 
 - **[tsconfig.json](JapaneseMaple/Resources/WebApp/tsconfig.json)** - TypeScript compiler config
-  - Strict mode enabled
-  - ES2020 target
-  - Multiple module formats
+    - Strict mode enabled
+    - ES2020 target
+    - Multiple module formats
 
 - **[package.json](JapaneseMaple/Resources/WebApp/package.json)** - NPM package config
-  - Build scripts
-  - Multiple entry points (ESM, CJS, UMD)
-  - Type definitions export
+    - Build scripts
+    - Multiple entry points (ESM, CJS, UMD)
+    - Type definitions export
 
 - **[build.sh](JapaneseMaple/Resources/WebApp/build.sh)** - Build automation script
-  - Builds all formats
-  - Creates source maps
-  - Generates type definitions
+    - Builds all formats
+    - Creates source maps
+    - Generates type definitions
 
 ### Documentation
 
 - **[README.md](JapaneseMaple/Resources/WebApp/README.md)** - TypeScript-specific guide
-  - Installation instructions
-  - TypeScript examples
-  - React, Vue, Angular examples
-  - Type safety guide
+    - Installation instructions
+    - TypeScript examples
+    - React, Vue, Angular examples
+    - Type safety guide
 
 - **[MAPLE_BRIDGE_API.md](MAPLE_BRIDGE_API.md)** - Complete API reference
 - **[BRIDGE_README.md](BRIDGE_README.md)** - Quick start guide
@@ -104,7 +104,7 @@ export interface TranscriptionResult {
 }
 
 export interface TranscriptSegment {
-    speaker: "You" | "Other";
+    speaker: 'You' | 'Other';
     text: string;
     startTime: number;
     endTime: number;
@@ -137,21 +137,25 @@ export class Recorder {
 The build process generates multiple formats:
 
 ### 1. ES Module (`.mjs`)
+
 ```typescript
 import { mapleBridge } from './dist/maple-bridge.mjs';
 ```
 
 ### 2. CommonJS (`.js`)
+
 ```typescript
 const { mapleBridge } = require('./dist/maple-bridge.js');
 ```
 
 ### 3. UMD Bundle (`.umd.js`)
+
 ```html
 <script src="dist/maple-bridge.umd.js"></script>
 ```
 
 ### 4. Type Definitions (`.d.ts`)
+
 ```typescript
 // Automatic IDE completion and type checking
 ```
@@ -165,7 +169,7 @@ import {
     mapleBridge,
     recorder,
     TranscriptionResult,
-    TranscriptSegment
+    TranscriptSegment,
 } from '@japanese-maple/bridge';
 
 // Initialize with type checking
@@ -301,25 +305,28 @@ dist/
 ## 🎯 Type Safety Features
 
 ### 1. Strict Null Checks
+
 ```typescript
 // result.segments might be undefined
 if (result.segments) {
     // TypeScript knows segments is defined here
-    result.segments.forEach(seg => console.log(seg.text));
+    result.segments.forEach((seg) => console.log(seg.text));
 }
 ```
 
 ### 2. Union Types
+
 ```typescript
 // Speaker is "You" | "Other"
 const speaker: Speaker = segment.speaker;
 
-if (speaker === "You") {
+if (speaker === 'You') {
     // TypeScript narrows the type
 }
 ```
 
 ### 3. Generic Events
+
 ```typescript
 // Type-safe event listeners
 mapleBridge.on<AudioLevelData>('audioLevel', (data) => {
@@ -329,6 +336,7 @@ mapleBridge.on<AudioLevelData>('audioLevel', (data) => {
 ```
 
 ### 4. Promise Types
+
 ```typescript
 // Return types are enforced
 const result: TranscriptionResult = await recorder.stop();
@@ -354,15 +362,15 @@ const metadata: RecordingMetadata = await recorder.start();
 
 ## 📊 Comparison
 
-| Feature | JavaScript | TypeScript |
-|---------|-----------|------------|
-| Type safety | ❌ | ✅ |
-| IDE completion | Partial | Full |
-| Compile-time errors | ❌ | ✅ |
-| Refactoring support | Basic | Advanced |
-| Documentation | JSDoc | Native |
-| Build step required | ❌ | ✅ |
-| Bundle size | Same | Same |
+| Feature             | JavaScript | TypeScript |
+| ------------------- | ---------- | ---------- |
+| Type safety         | ❌         | ✅         |
+| IDE completion      | Partial    | Full       |
+| Compile-time errors | ❌         | ✅         |
+| Refactoring support | Basic      | Advanced   |
+| Documentation       | JSDoc      | Native     |
+| Build step required | ❌         | ✅         |
+| Bundle size         | Same       | Same       |
 
 ## 🚢 Publishing (Optional)
 

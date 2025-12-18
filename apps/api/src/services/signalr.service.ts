@@ -13,7 +13,9 @@ export class SignalRRealtimeService implements RealtimeService {
     constructor() {
         const url = config.signalrServiceUrl;
         if (!url) {
-            throw new Error('SIGNALR_SERVICE_URL environment variable is required for SignalR mode');
+            throw new Error(
+                'SIGNALR_SERVICE_URL environment variable is required for SignalR mode',
+            );
         }
         this.baseUrl = url;
     }
@@ -45,7 +47,9 @@ export class SignalRRealtimeService implements RealtimeService {
             });
 
             if (!response.ok) {
-                console.error(`[SignalR] Broadcast failed: ${response.status} ${response.statusText}`);
+                console.error(
+                    `[SignalR] Broadcast failed: ${response.status} ${response.statusText}`,
+                );
             }
         } catch (error) {
             console.error('[SignalR] Broadcast error:', error);
@@ -67,7 +71,9 @@ export class SignalRRealtimeService implements RealtimeService {
             });
 
             if (!response.ok) {
-                console.error(`[SignalR] SendToUser failed: ${response.status} ${response.statusText}`);
+                console.error(
+                    `[SignalR] SendToUser failed: ${response.status} ${response.statusText}`,
+                );
             }
         } catch (error) {
             console.error('[SignalR] SendToUser error:', error);

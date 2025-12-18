@@ -26,22 +26,24 @@ This guide shows you how to add real Whisper speech-to-text transcription to Jap
 Open `TranscriptionService.swift` and make these changes:
 
 1. **Uncomment the import** (line 18):
-   ```swift
-   import WhisperKit
-   ```
+
+    ```swift
+    import WhisperKit
+    ```
 
 2. **Uncomment the property** (line 24):
-   ```swift
-   private var whisperKit: WhisperKit?
-   ```
+
+    ```swift
+    private var whisperKit: WhisperKit?
+    ```
 
 3. **Replace the mock initialization** (lines 42-64) with the real code:
-   - Remove the mock Task.sleep
-   - Uncomment the WhisperKit initialization block
+    - Remove the mock Task.sleep
+    - Uncomment the WhisperKit initialization block
 
 4. **Replace the mock transcription** (lines 79-136) with the real code:
-   - Uncomment the WhisperKit transcription block
-   - Remove the mock Task.sleep and mockTranscription
+    - Uncomment the WhisperKit transcription block
+    - Remove the mock Task.sleep and mockTranscription
 
 ### Step 3: Build and Test
 
@@ -67,6 +69,7 @@ For hour-long recordings, `base.en` or `small.en` are recommended.
 ## Model Download
 
 On first run, WhisperKit will automatically download the model:
+
 - The model is cached in ~/Library/Caches/
 - Subsequent runs will use the cached model
 - No internet required after first download
@@ -74,6 +77,7 @@ On first run, WhisperKit will automatically download the model:
 ## Performance Expectations
 
 ### base.en model on M1/M2 Mac:
+
 - **Short recordings** (1-5 min): ~10-30 seconds
 - **Medium recordings** (10-30 min): ~1-3 minutes
 - **Long recordings** (1 hour): ~5-10 minutes
@@ -83,16 +87,19 @@ Processing happens in the background - the UI stays responsive.
 ## Troubleshooting
 
 ### Build Errors
+
 - Make sure you're using Xcode Beta
 - Clean build folder (Cmd+Shift+K)
 - Restart Xcode
 
 ### Model Download Fails
+
 - Check internet connection
 - Try deleting `~/Library/Caches/WhisperKit/`
 - Re-run the app
 
 ### Poor Transcription Quality
+
 - Use a better model (`small.en` or `medium.en`)
 - Check microphone levels (should see green visualizer)
 - Reduce background noise
@@ -101,7 +108,9 @@ Processing happens in the background - the UI stays responsive.
 ## Advanced Configuration
 
 ### Change Language
+
 Edit line 96 in `TranscriptionService.swift`:
+
 ```swift
 language: "es"  // Spanish
 language: "fr"  // French
@@ -112,7 +121,9 @@ language: "de"  // German
 Note: For non-English, use `large-v3` model (not `.en` models)
 
 ### Adjust Decoding Options
+
 Edit lines 93-97:
+
 ```swift
 decodeOptions: DecodingOptions(
     verbose: true,
