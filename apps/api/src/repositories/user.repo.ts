@@ -61,3 +61,25 @@ export async function findOrCreateUser(email: string): Promise<UserResponse> {
     }
     return createUser({ email });
 }
+
+export async function updateUserDisplayName(
+    userId: string,
+    displayName: string | undefined,
+): Promise<UserResponse | null> {
+    try {
+        const result = await getCollection().findOneAndUpdate(
+            { _id: new ObjectId(userId) },
+            {
+                $set: {
+                    displayName: displayName || undefined,
+                    updatedAt: new Date(),
+                },
+            },
+            { returnDocument: 'after' },
+        );
+
+        return result ? toUserResponse(result) : null;
+    } catch {
+        return null;
+    }
+}

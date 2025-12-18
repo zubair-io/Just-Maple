@@ -384,4 +384,23 @@ export class AuthService {
       return [];
     }
   }
+
+  async updateDisplayName(displayName: string | undefined): Promise<void> {
+    try {
+      const response = await firstValueFrom(
+        this.http.patch<{ user: { _id: string; email: string; displayName?: string } }>(
+          '/api/auth/me',
+          { displayName },
+        ),
+      );
+
+      // Update user signal with new display name
+      const currentUser = this._user();
+      if (currentUser) {
+        this._user.set({ ...currentUser, displayName: response.user.displayName });
+      }
+    } catch (error: any) {
+      throw new Error(error?.message || 'Failed to update display name');
+    }
+  }
 }

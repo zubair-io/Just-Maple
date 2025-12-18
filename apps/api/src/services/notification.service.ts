@@ -248,21 +248,25 @@ export async function sendMessageReceivedNotification(
     tagId: string,
     messageId: string,
     senderEmail: string,
+    senderName: string | undefined,
     messageContent: any,
 ): Promise<string> {
     // Extract plain text from TipTap JSON for notification body
     const messageText = extractTextFromTipTap(messageContent);
     const messagePreview = messageText.substring(0, 200); // Store up to 200 chars
 
+    // Use sender name if available, otherwise email
+    const displayName = senderName || senderEmail;
+
     const notificationBody = messageText
-        ? `${senderEmail}: ${messageText.substring(0, 100)}${messageText.length > 100 ? '...' : ''}`
-        : `${senderEmail} sent you a message`;
+        ? `${displayName}: ${messageText.substring(0, 100)}${messageText.length > 100 ? '...' : ''}`
+        : `${displayName} sent you a message`;
 
     return sendNotification(
         userId,
         'message_received',
-        { tagId, messageId, senderEmail, messagePreview }, // Store message preview in data
-        senderEmail, // Use sender email as title
+        { tagId, messageId, senderEmail, senderName, messagePreview }, // Store name and preview
+        displayName, // Use sender name or email as title
         messagePreview || 'New message', // Use message text as body
     );
 }

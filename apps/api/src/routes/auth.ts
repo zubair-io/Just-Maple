@@ -7,7 +7,12 @@ import {
     verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
 import type { AuthenticatorTransportFuture } from '@simplewebauthn/server';
-import { findOrCreateUser, findUserById, findUserByEmail } from '../repositories/user.repo';
+import {
+    findOrCreateUser,
+    findUserById,
+    findUserByEmail,
+    updateUserDisplayName,
+} from '../repositories/user.repo';
 import {
     createMagicLink,
     validateAndConsumeMagicLink,
@@ -518,4 +523,32 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 createdAt: p.createdAt,
             })),
         };
-    });
+    })
+    .patch(
+        '/me',
+        async ({ jwt, request, set, body }) => {
+            const user = await verifyAndGetUser(
+                (token) => jwt.verify(token) as Promise<JWTPayload | false>,
+                request.headers.get('authorization'),
+            );
+
+            if (!user) {
+                set.status = 401;
+                return { error: 'Unauthorized' };
+            }
+
+            const updatedUser = await updateUserDisplayName(user._id, body.displayName);
+
+            if (!updatedUser) {
+                set.status = 500;
+                return { error: 'Failed to update user' };
+            }
+
+            return { user: updatedUser };
+        },
+        {
+            body: t.Object({
+                displayName: t.Optional(t.String()),
+            }),
+        },
+    );

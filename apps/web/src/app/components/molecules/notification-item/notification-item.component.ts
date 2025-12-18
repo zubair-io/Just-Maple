@@ -62,8 +62,8 @@ export class NotificationItemComponent {
     const notif = this.notification();
     switch (notif.type) {
       case 'message_received':
-        // Show sender email/name as title
-        return notif.data['senderEmail'] || 'New Message';
+        // Show sender name, fallback to email
+        return notif.data['senderName'] || notif.data['senderEmail'] || 'New Message';
 
       case 'share_received':
         return 'New Share';

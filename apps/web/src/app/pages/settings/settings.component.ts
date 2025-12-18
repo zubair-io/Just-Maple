@@ -40,8 +40,18 @@ export class SettingsComponent implements OnInit {
   readonly showAdvanced = signal(false);
   readonly serverError = signal<string | null>(null);
 
+  readonly displayName = signal('');
+  readonly isSavingName = signal(false);
+  readonly nameError = signal<string | null>(null);
+  readonly nameSuccess = signal<string | null>(null);
+
   ngOnInit(): void {
     this.loadPasskeys();
+    // Initialize display name from current user
+    const user = this.authService.user();
+    if (user) {
+      this.displayName.set(user.displayName || '');
+    }
   }
 
   async loadPasskeys(): Promise<void> {
@@ -196,6 +206,25 @@ export class SettingsComponent implements OnInit {
       console.log('[Settings] Push notifications disabled');
     } catch (error) {
       console.error('[Settings] Failed to disable push notifications:', error);
+    }
+  }
+
+  // Profile Management
+  async saveDisplayName(): Promise<void> {
+    this.isSavingName.set(true);
+    this.nameError.set(null);
+    this.nameSuccess.set(null);
+
+    try {
+      await this.authService.updateDisplayName(this.displayName().trim() || undefined);
+      this.nameSuccess.set('Display name updated!');
+
+      // Clear success message after 3 seconds
+      setTimeout(() => this.nameSuccess.set(null), 3000);
+    } catch (err: any) {
+      this.nameError.set(err.message || 'Failed to update display name');
+    } finally {
+      this.isSavingName.set(false);
     }
   }
 }

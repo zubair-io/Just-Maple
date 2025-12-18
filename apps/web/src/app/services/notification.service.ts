@@ -311,8 +311,11 @@ export class NotificationService {
 
           switch (fullNotification.type) {
             case 'message_received':
-              // Show sender email as title and message preview as body
-              title = fullNotification.data['senderEmail'] || 'New Message';
+              // Show sender name (fallback to email) as title and message preview as body
+              title =
+                fullNotification.data['senderName'] ||
+                fullNotification.data['senderEmail'] ||
+                'New Message';
               message = fullNotification.data['messagePreview'] || 'New message';
               break;
 
