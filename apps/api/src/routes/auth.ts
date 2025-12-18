@@ -12,6 +12,7 @@ import {
     findUserById,
     findUserByEmail,
     updateUserDisplayName,
+    updateUserProfilePicture,
 } from '../repositories/user.repo';
 import {
     createMagicLink,
@@ -28,6 +29,7 @@ import {
 import { sendMagicLinkEmail } from '../services/email';
 import { config } from '../config';
 import type { JWTPayload, UserResponse } from '@maple/shared';
+import { uploadProfilePicture } from '../services/storage.service';
 
 // Store challenges temporarily (in production, use Redis or DB)
 const challengeStore = new Map<string, string>();
@@ -551,4 +553,53 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 displayName: t.Optional(t.String()),
             }),
         },
-    );
+    )
+    .post('/me/profile-picture', async ({ jwt, request, set }) => {
+        const user = await verifyAndGetUser(
+            (token) => jwt.verify(token) as Promise<JWTPayload | false>,
+            request.headers.get('authorization'),
+        );
+
+        if (!user) {
+            set.status = 401;
+            return { error: 'Unauthorized' };
+        }
+
+        try {
+            // Get the uploaded file from the request
+            const contentType = request.headers.get('content-type') || '';
+
+            // Check if it's a valid image type
+            if (!contentType.startsWith('image/')) {
+                set.status = 400;
+                return { error: 'Only image files are allowed' };
+            }
+
+            // Read the file buffer
+            const arrayBuffer = await request.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            // Check file size (max 5MB)
+            if (buffer.length > 5 * 1024 * 1024) {
+                set.status = 400;
+                return { error: 'Image must be less than 5MB' };
+            }
+
+            // Upload to blob storage
+            const profilePictureUrl = await uploadProfilePicture(user._id, buffer, contentType);
+
+            // Update user with new profile picture URL
+            const updatedUser = await updateUserProfilePicture(user._id, profilePictureUrl);
+
+            if (!updatedUser) {
+                set.status = 500;
+                return { error: 'Failed to update profile picture' };
+            }
+
+            return { user: updatedUser };
+        } catch (error) {
+            console.error('Profile picture upload error:', error);
+            set.status = 500;
+            return { error: 'Failed to upload profile picture' };
+        }
+    });

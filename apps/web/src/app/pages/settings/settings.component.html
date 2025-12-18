@@ -51,6 +51,70 @@
       <div
         class="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 space-y-4"
       >
+        <!-- Profile Picture -->
+        <div>
+          <label class="block text-sm font-medium text-[var(--color-text-main)] mb-2">
+            Profile Picture
+          </label>
+          <p class="text-xs text-[var(--color-text-muted)] mb-3">
+            Your profile picture will be shown in messages and notifications.
+          </p>
+          <div class="flex items-center gap-4">
+            @if (profilePictureUrl()) {
+              <img
+                [src]="profilePictureUrl()!"
+                alt="Profile picture"
+                class="w-16 h-16 rounded-full object-cover border-2 border-[var(--color-border)]"
+              />
+            } @else {
+              <div
+                class="w-16 h-16 rounded-full bg-[var(--color-surface-hover)] border-2 border-[var(--color-border)] flex items-center justify-center"
+              >
+                <span class="material-symbols-rounded text-2xl text-[var(--color-text-muted)]">
+                  person
+                </span>
+              </div>
+            }
+            <div class="flex-1">
+              <input
+                type="file"
+                id="profilePicture"
+                accept="image/*"
+                (change)="onProfilePictureSelected($event)"
+                class="hidden"
+              />
+              <label
+                for="profilePicture"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-[var(--color-border)] rounded-lg cursor-pointer hover:bg-[var(--color-surface-hover)] transition-colors"
+                [class.opacity-50]="isUploadingPicture()"
+                [class.cursor-not-allowed]="isUploadingPicture()"
+              >
+                @if (isUploadingPicture()) {
+                  <span class="material-symbols-rounded text-base animate-spin">sync</span>
+                  <span class="text-sm">Uploading...</span>
+                } @else {
+                  <span class="material-symbols-rounded text-base">upload</span>
+                  <span class="text-sm">Upload Image</span>
+                }
+              </label>
+              <p class="text-xs text-[var(--color-text-muted)] mt-1">Max 5MB. JPG, PNG, or GIF.</p>
+            </div>
+          </div>
+
+          @if (pictureError()) {
+            <div class="mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+              <p class="text-sm text-red-700">{{ pictureError() }}</p>
+            </div>
+          }
+
+          @if (pictureSuccess()) {
+            <div class="mt-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+              <p class="text-sm text-green-700">{{ pictureSuccess() }}</p>
+            </div>
+          }
+        </div>
+
+        <!-- Display Name -->
         <div>
           <label
             for="displayName"

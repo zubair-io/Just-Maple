@@ -403,4 +403,30 @@ export class AuthService {
       throw new Error(error?.message || 'Failed to update display name');
     }
   }
+
+  async uploadProfilePicture(file: File): Promise<void> {
+    try {
+      const response = await firstValueFrom(
+        this.http.post<{
+          user: { _id: string; email: string; displayName?: string; profilePictureUrl?: string };
+        }>('/api/auth/me/profile-picture', file, {
+          headers: {
+            'Content-Type': file.type,
+          },
+        }),
+      );
+
+      // Update user signal with new profile picture
+      const currentUser = this._user();
+      if (currentUser) {
+        this._user.set({
+          ...currentUser,
+          displayName: response.user.displayName,
+          profilePictureUrl: response.user.profilePictureUrl,
+        });
+      }
+    } catch (error: any) {
+      throw new Error(error?.message || 'Failed to upload profile picture');
+    }
+  }
 }

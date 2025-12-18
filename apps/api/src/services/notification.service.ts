@@ -101,6 +101,7 @@ export async function sendNotification(
     data: Record<string, any>,
     customTitle?: string,
     customBody?: string,
+    iconUrl?: string,
 ): Promise<string> {
     // Create notification in MongoDB
     const notification = await notificationRepo.createNotification(userId, type, data);
@@ -159,6 +160,8 @@ export async function sendNotification(
                 console.log(
                     `[Notification] Using direct APNs (${device.production ? 'production' : 'sandbox'}) for device ${device.deviceToken.substring(0, 8)}...`,
                 );
+                // Add iconUrl to data if provided
+                const payloadData = iconUrl ? { ...data, iconUrl } : data;
                 return sendApnsPush(
                     device.deviceToken,
                     notification._id,
@@ -167,7 +170,7 @@ export async function sendNotification(
                     body,
                     device.production,
                     device.serverUrl, // Pass serverUrl for multi-server support
-                    data, // Pass notification data as additional payload data
+                    payloadData, // Pass notification data with iconUrl
                 );
             } else {
                 // Use Paperbark relay in dev/test
@@ -249,6 +252,7 @@ export async function sendMessageReceivedNotification(
     messageId: string,
     senderEmail: string,
     senderName: string | undefined,
+    senderProfilePictureUrl: string | undefined,
     messageContent: any,
 ): Promise<string> {
     // Extract plain text from TipTap JSON for notification body
@@ -265,8 +269,16 @@ export async function sendMessageReceivedNotification(
     return sendNotification(
         userId,
         'message_received',
-        { tagId, messageId, senderEmail, senderName, messagePreview }, // Store name and preview
+        {
+            tagId,
+            messageId,
+            senderEmail,
+            senderName,
+            senderProfilePictureUrl,
+            messagePreview,
+        },
         displayName, // Use sender name or email as title
         messagePreview || 'New message', // Use message text as body
+        senderProfilePictureUrl, // Use profile picture as icon
     );
 }

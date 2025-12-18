@@ -58,4 +58,11 @@ export const config = {
         );
         return this.origin === 'https://justmaple.app' && !!this.apnsKeyId && !!this.apnsTeamId;
     },
+
+    // Gravatar config
+    gravatarKey: process.env.GRAVATAR_KEY,
+
+    // Azure Blob Storage config (Hornbeam - for profile pictures)
+    hornbeamConnectionString: process.env.HORNBEAM,
+    profilePictureContainer: 'profile-picture',
 };

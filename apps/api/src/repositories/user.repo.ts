@@ -1,11 +1,14 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import type { User, CreateUser, UserResponse } from '@maple/shared';
+import { fetchGravatarProfile, getGravatarUrl } from '../services/gravatar.service';
+import { deleteProfilePicture } from '../services/storage.service';
 
 interface UserDocument {
     _id: ObjectId;
     email: string;
     displayName?: string;
+    profilePictureUrl?: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -19,6 +22,7 @@ function toUserResponse(doc: UserDocument): UserResponse {
         _id: doc._id.toString(),
         email: doc.email,
         displayName: doc.displayName,
+        profilePictureUrl: doc.profilePictureUrl,
     };
 }
 
@@ -38,9 +42,15 @@ export async function findUserById(id: string): Promise<UserResponse | null> {
 
 export async function createUser(data: CreateUser): Promise<UserResponse> {
     const now = new Date();
+
+    // Try to fetch Gravatar profile data
+    const gravatarProfile = await fetchGravatarProfile(data.email);
+
     const doc: Omit<UserDocument, '_id'> = {
         email: data.email.toLowerCase(),
-        displayName: data.displayName,
+        displayName: data.displayName || gravatarProfile.displayName,
+        // Use Gravatar thumbnail if available, otherwise generate Gravatar URL
+        profilePictureUrl: gravatarProfile.thumbnailUrl || getGravatarUrl(data.email),
         createdAt: now,
         updatedAt: now,
     };
@@ -51,6 +61,7 @@ export async function createUser(data: CreateUser): Promise<UserResponse> {
         _id: result.insertedId.toString(),
         email: doc.email,
         displayName: doc.displayName,
+        profilePictureUrl: doc.profilePictureUrl,
     };
 }
 
@@ -72,6 +83,38 @@ export async function updateUserDisplayName(
             {
                 $set: {
                     displayName: displayName || undefined,
+                    updatedAt: new Date(),
+                },
+            },
+            { returnDocument: 'after' },
+        );
+
+        return result ? toUserResponse(result) : null;
+    } catch {
+        return null;
+    }
+}
+
+export async function updateUserProfilePicture(
+    userId: string,
+    profilePictureUrl: string,
+): Promise<UserResponse | null> {
+    try {
+        // Get current user to delete old picture if it's not from Gravatar
+        const currentUser = await findUserById(userId);
+        if (
+            currentUser?.profilePictureUrl &&
+            !currentUser.profilePictureUrl.includes('gravatar.com')
+        ) {
+            // Delete old custom profile picture
+            await deleteProfilePicture(currentUser.profilePictureUrl);
+        }
+
+        const result = await getCollection().findOneAndUpdate(
+            { _id: new ObjectId(userId) },
+            {
+                $set: {
+                    profilePictureUrl,
                     updatedAt: new Date(),
                 },
             },

@@ -45,12 +45,18 @@ export class SettingsComponent implements OnInit {
   readonly nameError = signal<string | null>(null);
   readonly nameSuccess = signal<string | null>(null);
 
+  readonly profilePictureUrl = signal<string | null>(null);
+  readonly isUploadingPicture = signal(false);
+  readonly pictureError = signal<string | null>(null);
+  readonly pictureSuccess = signal<string | null>(null);
+
   ngOnInit(): void {
     this.loadPasskeys();
-    // Initialize display name from current user
+    // Initialize display name and profile picture from current user
     const user = this.authService.user();
     if (user) {
       this.displayName.set(user.displayName || '');
+      this.profilePictureUrl.set(user.profilePictureUrl || null);
     }
   }
 
@@ -225,6 +231,50 @@ export class SettingsComponent implements OnInit {
       this.nameError.set(err.message || 'Failed to update display name');
     } finally {
       this.isSavingName.set(false);
+    }
+  }
+
+  async onProfilePictureSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      this.pictureError.set('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      this.pictureError.set('Image must be less than 5MB');
+      return;
+    }
+
+    this.isUploadingPicture.set(true);
+    this.pictureError.set(null);
+    this.pictureSuccess.set(null);
+
+    try {
+      await this.authService.uploadProfilePicture(file);
+      this.pictureSuccess.set('Profile picture updated!');
+      // Update local preview
+      const user = this.authService.user();
+      if (user?.profilePictureUrl) {
+        this.profilePictureUrl.set(user.profilePictureUrl);
+      }
+
+      // Clear success message after 3 seconds
+      setTimeout(() => this.pictureSuccess.set(null), 3000);
+    } catch (err: any) {
+      this.pictureError.set(err.message || 'Failed to upload profile picture');
+    } finally {
+      this.isUploadingPicture.set(false);
+      // Clear the input so the same file can be selected again
+      input.value = '';
     }
   }
 }
