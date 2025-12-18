@@ -62,17 +62,24 @@ export class NotificationItemComponent {
     const notif = this.notification();
     switch (notif.type) {
       case 'message_received':
-        return 'New Message';
+        // Show sender email/name as title
+        return notif.data['senderEmail'] || 'New Message';
+
       case 'share_received':
         return 'New Share';
+
       case 'transcription_complete':
         return 'Transcription Ready';
+
       case 'reminder':
         return 'Reminder';
+
       case 'export_ready':
         return 'Export Ready';
+
       case 'processing_failed':
         return 'Processing Failed';
+
       default:
         return 'Notification';
     }
@@ -82,9 +89,8 @@ export class NotificationItemComponent {
     const notif = this.notification();
     switch (notif.type) {
       case 'message_received':
-        return notif.data['senderEmail']
-          ? `Message from ${notif.data['senderEmail']}`
-          : 'You have a new message';
+        // Show actual message content
+        return notif.data['messagePreview'] || 'New message';
 
       case 'share_received':
         return notif.data['sharedBy']

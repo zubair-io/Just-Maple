@@ -311,10 +311,9 @@ export class NotificationService {
 
           switch (fullNotification.type) {
             case 'message_received':
-              title = 'New Message';
-              message = fullNotification.data['senderEmail']
-                ? `Message from ${fullNotification.data['senderEmail']}`
-                : 'You have a new message';
+              // Show sender email as title and message preview as body
+              title = fullNotification.data['senderEmail'] || 'New Message';
+              message = fullNotification.data['messagePreview'] || 'New message';
               break;
 
             case 'share_received':
