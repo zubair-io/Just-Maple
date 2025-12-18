@@ -204,20 +204,20 @@ class PushNotificationService: NSObject {
         return false
         #else
         // Check the entitlement
-        guard let path = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision") else {
-            // No provisioning profile = App Store build = production
-            return true
+        if Bundle.main.path(forResource: "embedded", ofType: "mobileprovision") != nil {
+            // Has provisioning profile = development or ad-hoc = sandbox
+            // Note: TestFlight builds don't have embedded.mobileprovision
+            return false
         }
-
-        // Has provisioning profile = development or ad-hoc = sandbox
-        // Note: TestFlight builds don't have embedded.mobileprovision
-        return false
+        
+        // No provisioning profile = App Store build = production
+        return true
         #endif
     }
 
     private func registerWithMapleAPI(serverId: String, deviceToken: String) async throws {
         // Get server URL for this serverId
-        guard let server = ServerConfigService.shared.getSavedServers().first(where: { $0.id == serverId }) else {
+        guard let server = ServerConfigService.shared.getServers().first(where: { $0.id == serverId }) else {
             print("[PushNotificationService] ❌ Server not found: \(serverId)")
             throw PushError.invalidURL
         }
@@ -288,7 +288,7 @@ class PushNotificationService: NSObject {
 
     private func unregisterFromMapleAPI(serverId: String) async throws {
         // Get server URL for this serverId
-        guard let server = ServerConfigService.shared.getSavedServers().first(where: { $0.id == serverId }) else {
+        guard let server = ServerConfigService.shared.getServers().first(where: { $0.id == serverId }) else {
             print("[PushNotificationService] ❌ Server not found: \(serverId)")
             throw PushError.invalidURL
         }
