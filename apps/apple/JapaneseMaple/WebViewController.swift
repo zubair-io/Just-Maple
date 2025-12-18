@@ -185,40 +185,55 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     func handleNotificationTap(userInfo: [AnyHashable: Any]) {
-        print("[WebViewController] Handling notification tap")
+        print("[WebViewController] 🔔 Handling notification tap")
+        print("[WebViewController] 🔔 UserInfo received: \(userInfo)")
 
         // Extract notification data
         guard let notificationId = userInfo["notificationId"] as? String,
-              let type = userInfo["type"] as? String,
-              let serverKey = userInfo["serverKey"] as? String else {
-            print("[WebViewController] Missing notification data in userInfo")
+              let type = userInfo["type"] as? String else {
+            print("[WebViewController] ❌ Missing notificationId or type in userInfo")
             return
         }
 
-        print("[WebViewController] Notification: id=\(notificationId), type=\(type), serverKey=\(serverKey)")
+        print("[WebViewController] 🔔 Notification ID: \(notificationId), Type: \(type)")
 
-        // Look up serverId from serverKey
-        guard let serverId = PushNotificationService.shared.getServerId(for: serverKey) else {
-            print("[WebViewController] No serverId found for serverKey: \(serverKey)")
-            // TODO: Show error to user - server no longer configured
-            return
+        // Get API URL - use active server since that's where the user is logged in
+        let activeServer = ServerConfigService.shared.getActiveServer()
+        let apiUrl = activeServer.getAPIUrl()
+        print("[WebViewController] 🌐 Using active server API URL: \(apiUrl)")
+
+        // Try to get serverKey if available (for multi-server support)
+        if let serverKey = userInfo["serverKey"] as? String {
+            print("[WebViewController] 🔑 ServerKey found in payload: \(serverKey)")
+
+            // Look up serverId from serverKey
+            if let serverId = PushNotificationService.shared.getServerId(for: serverKey) {
+                print("[WebViewController] 🔍 Found serverId: \(serverId)")
+
+                // Get server configuration
+                let servers = ServerConfigService.shared.getServers()
+                if let server = servers.first(where: { $0.id == serverId }) {
+                    let serverApiUrl = server.getAPIUrl()
+                    print("[WebViewController] 🌐 Using server-specific API URL: \(serverApiUrl)")
+
+                    // Send to web app via bridge
+                    bridge?.handleNotificationTap(notificationId: notificationId, type: type, apiUrl: serverApiUrl)
+                    print("[WebViewController] ✅ Sent notification tap to web app")
+                    return
+                } else {
+                    print("[WebViewController] ⚠️ Server not found for serverId: \(serverId), using active server")
+                }
+            } else {
+                print("[WebViewController] ⚠️ No serverId found for serverKey: \(serverKey), using active server")
+            }
+        } else {
+            print("[WebViewController] ℹ️ No serverKey in payload, using active server")
         }
 
-        // Get server configuration
-        let servers = ServerConfigService.shared.getServers()
-        guard let server = servers.first(where: { $0.id == serverId }) else {
-            print("[WebViewController] No server found for serverId: \(serverId)")
-            // TODO: Show error to user - server no longer configured
-            return
-        }
-
-        // Get API URL (uses apiUrl if set, otherwise falls back to url)
-        let apiUrl = server.getAPIUrl()
-
-        print("[WebViewController] Sending notification to web app: apiUrl=\(apiUrl)")
-
-        // Send to web app via bridge
+        // Fallback to active server API URL
+        print("[WebViewController] 🔔 Sending notification to web app with active server API")
         bridge?.handleNotificationTap(notificationId: notificationId, type: type, apiUrl: apiUrl)
+        print("[WebViewController] ✅ Sent notification tap to web app (apiUrl: \(apiUrl))")
     }
 
     // MARK: - WKNavigationDelegate

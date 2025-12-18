@@ -63,6 +63,7 @@ export const DeviceRegistrationSchema = Type.Object({
     serverKey: Type.String(),
     deviceToken: Type.String(),
     platform: Type.Union([Type.Literal('ios'), Type.Literal('macos')]),
+    production: Type.Boolean(), // APNs environment: true = production, false = sandbox
     registeredAt: Type.String(),
     lastUsed: Type.String(),
 });
@@ -74,6 +75,7 @@ export const RegisterDeviceRequestSchema = Type.Object({
     serverKey: Type.String(),
     deviceToken: Type.String(),
     platform: Type.Union([Type.Literal('ios'), Type.Literal('macos')]),
+    production: Type.Boolean(), // APNs environment: true = production, false = sandbox
 });
 
 export type RegisterDeviceRequest = Static<typeof RegisterDeviceRequestSchema>;

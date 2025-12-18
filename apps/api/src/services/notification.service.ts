@@ -150,11 +150,18 @@ export async function sendNotification(
     const results = await Promise.allSettled(
         devices.map(async (device) => {
             if (config.useDirectApns) {
-                // Use direct APNs in production
+                // Use direct APNs with device-specific environment (production or sandbox)
                 console.log(
-                    `[Notification] Using direct APNs for device ${device.deviceToken.substring(0, 8)}...`,
+                    `[Notification] Using direct APNs (${device.production ? 'production' : 'sandbox'}) for device ${device.deviceToken.substring(0, 8)}...`,
                 );
-                return sendApnsPush(device.deviceToken, notification._id, type, title, body);
+                return sendApnsPush(
+                    device.deviceToken,
+                    notification._id,
+                    type,
+                    title,
+                    body,
+                    device.production,
+                );
             } else {
                 // Use Paperbark relay in dev/test
                 return callPaperbark(device.serverKey, notification._id, type);

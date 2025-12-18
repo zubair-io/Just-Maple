@@ -205,3 +205,5 @@ libpeerconnection.log
 testem.log
 typings
 __screenshots__/
+
+apps/api/scripts/test/

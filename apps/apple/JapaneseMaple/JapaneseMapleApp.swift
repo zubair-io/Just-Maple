@@ -74,7 +74,23 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     ) -> Bool {
         // Set notification center delegate
         UNUserNotificationCenter.current().delegate = self
+        print("[AppDelegate] ✅ Set UNUserNotificationCenter delegate to AppDelegate")
+
+        // Check if app was launched from notification tap
+        if let notificationOption = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
+            print("[AppDelegate] 🚀 App launched from notification tap!")
+            print("[AppDelegate] 🚀 Notification payload: \(notificationOption)")
+        }
+
         return true
+    }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        print("[AppDelegate] 🔄 App became active")
+    }
+
+    func applicationWillEnterForeground(_ application: UIApplication) {
+        print("[AppDelegate] 🔄 App will enter foreground")
     }
 
     // Handle successful device token registration
@@ -99,6 +115,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let userInfo = notification.request.content.userInfo
+        print("[AppDelegate] 📬 Notification received (foreground)")
+        print("[AppDelegate] 📬 Payload: \(userInfo)")
+
+        if let notificationId = userInfo["notificationId"] as? String,
+           let type = userInfo["type"] as? String {
+            print("[AppDelegate] 📬 Notification ID: \(notificationId), Type: \(type)")
+        }
+
         // Show notification even when app is in foreground
         completionHandler([.banner, .sound, .badge])
     }
@@ -110,11 +135,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
+        print("[AppDelegate] 👆 Notification tapped!")
+        print("[AppDelegate] 👆 Full payload: \(userInfo)")
 
         // Extract notification data
         if let notificationId = userInfo["notificationId"] as? String,
            let type = userInfo["type"] as? String {
-            print("[AppDelegate] Notification tapped: \(type), id: \(notificationId)")
+            print("[AppDelegate] 👆 Notification tapped - ID: \(notificationId), Type: \(type)")
+            print("[AppDelegate] 👆 Posting notification to app for handling...")
 
             // Post notification for app to handle
             NotificationCenter.default.post(
@@ -122,6 +150,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 object: nil,
                 userInfo: ["notificationId": notificationId, "type": type]
             )
+            print("[AppDelegate] ✅ Posted notification to NotificationCenter")
+        } else {
+            print("[AppDelegate] ❌ Failed to extract notificationId or type from payload")
         }
 
         completionHandler()
@@ -157,6 +188,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let userInfo = notification.request.content.userInfo
+        print("[AppDelegate] 📬 Notification received (foreground)")
+        print("[AppDelegate] 📬 Payload: \(userInfo)")
+
+        if let notificationId = userInfo["notificationId"] as? String,
+           let type = userInfo["type"] as? String {
+            print("[AppDelegate] 📬 Notification ID: \(notificationId), Type: \(type)")
+        }
+
         // Show notification even when app is in foreground
         completionHandler([.banner, .sound, .badge])
     }
@@ -168,11 +208,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
+        print("[AppDelegate] 👆 Notification tapped!")
+        print("[AppDelegate] 👆 Full payload: \(userInfo)")
 
         // Extract notification data
         if let notificationId = userInfo["notificationId"] as? String,
            let type = userInfo["type"] as? String {
-            print("[AppDelegate] Notification tapped: \(type), id: \(notificationId)")
+            print("[AppDelegate] 👆 Notification tapped - ID: \(notificationId), Type: \(type)")
+            print("[AppDelegate] 👆 Posting notification to app for handling...")
 
             // Post notification for app to handle
             NotificationCenter.default.post(
@@ -180,6 +223,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 object: nil,
                 userInfo: ["notificationId": notificationId, "type": type]
             )
+            print("[AppDelegate] ✅ Posted notification to NotificationCenter")
+        } else {
+            print("[AppDelegate] ❌ Failed to extract notificationId or type from payload")
         }
 
         completionHandler()

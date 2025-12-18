@@ -43,6 +43,7 @@ export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
                 body.serverKey,
                 body.deviceToken,
                 body.platform,
+                body.production,
             );
 
             return { registration };
@@ -52,6 +53,7 @@ export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
                 serverKey: t.String({ minLength: 1 }),
                 deviceToken: t.String({ minLength: 1 }),
                 platform: t.Union([t.Literal('ios'), t.Literal('macos')]),
+                production: t.Boolean(),
             }),
         },
     )

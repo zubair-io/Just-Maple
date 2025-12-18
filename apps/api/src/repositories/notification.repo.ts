@@ -19,6 +19,7 @@ interface DeviceRegistrationDocument {
     serverKey: string;
     deviceToken: string;
     platform: 'ios' | 'macos';
+    production: boolean;
     registeredAt: Date;
     lastUsed: Date;
 }
@@ -52,6 +53,7 @@ function toDeviceRegistrationResponse(doc: DeviceRegistrationDocument): DeviceRe
         serverKey: doc.serverKey,
         deviceToken: doc.deviceToken,
         platform: doc.platform,
+        production: doc.production,
         registeredAt: doc.registeredAt.toISOString(),
         lastUsed: doc.lastUsed.toISOString(),
     };
@@ -136,6 +138,7 @@ export async function registerDevice(
     serverKey: string,
     deviceToken: string,
     platform: 'ios' | 'macos' = 'ios',
+    production: boolean = false,
 ): Promise<DeviceRegistration> {
     const now = new Date();
 
@@ -146,15 +149,16 @@ export async function registerDevice(
     });
 
     if (existing) {
-        // Update deviceToken and lastUsed
+        // Update deviceToken, production flag, and lastUsed
         await getDeviceRegistrationCollection().updateOne(
             { _id: existing._id },
-            { $set: { deviceToken, lastUsed: now } },
+            { $set: { deviceToken, production, lastUsed: now } },
         );
 
         return toDeviceRegistrationResponse({
             ...existing,
             deviceToken,
+            production,
             lastUsed: now,
         });
     }
@@ -165,6 +169,7 @@ export async function registerDevice(
         serverKey,
         deviceToken,
         platform,
+        production,
         registeredAt: now,
         lastUsed: now,
     };

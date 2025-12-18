@@ -215,6 +215,27 @@ class PushNotificationService: NSObject {
         return serverKey
     }
 
+    /// Detect if the app is using production or sandbox APNs environment
+    private func isProductionEnvironment() -> Bool {
+        // Check the aps-environment entitlement
+        // Production builds (TestFlight/App Store) will have "production"
+        // Development builds will have "development"
+        #if targetEnvironment(simulator)
+        // Simulator always uses sandbox
+        return false
+        #else
+        // Check the entitlement
+        guard let path = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision") else {
+            // No provisioning profile = App Store build = production
+            return true
+        }
+
+        // Has provisioning profile = development or ad-hoc = sandbox
+        // Note: TestFlight builds don't have embedded.mobileprovision
+        return false
+        #endif
+    }
+
     private func registerWithMapleAPI(serverKey: String, deviceToken: String) async throws {
         let apiUrl = ServerConfigService.shared.getAPIUrl()
         guard let url = URL(string: "\(apiUrl)/api/notifications/register") else {
@@ -241,13 +262,17 @@ class PushNotificationService: NSObject {
         let platform = "macos"
         #endif
 
-        let body: [String: String] = [
+        let isProduction = isProductionEnvironment()
+        print("[PushNotificationService] 🏷️ APNs Environment: \(isProduction ? "production" : "sandbox")")
+
+        let body: [String: Any] = [
             "serverKey": serverKey,
             "deviceToken": deviceToken,
-            "platform": platform
+            "platform": platform,
+            "production": isProduction
         ]
 
-        let jsonData = try JSONEncoder().encode(body)
+        let jsonData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = jsonData
 
         if let jsonString = String(data: jsonData, encoding: .utf8) {

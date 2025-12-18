@@ -200,14 +200,24 @@ export class NotificationService {
    * Fetch a single notification by ID
    */
   async fetchNotification(id: string, apiUrl?: string): Promise<Notification> {
+    console.log(`[NotificationService] 📡 Fetching notification ID: ${id}`);
+    console.log(`[NotificationService] 📡 API URL: ${apiUrl || 'default'}`);
+
     try {
       const url = apiUrl ? `${apiUrl}/api/notifications/${id}` : `/api/notifications/${id}`;
+      console.log(`[NotificationService] 📡 Full URL: ${url}`);
+      console.log(`[NotificationService] 📡 Making HTTP GET request...`);
 
       const response = await firstValueFrom(this.http.get<{ notification: Notification }>(url));
 
+      console.log(
+        `[NotificationService] ✅ Successfully fetched notification:`,
+        response.notification,
+      );
       return response.notification;
     } catch (error) {
-      console.error('[NotificationService] Failed to fetch notification:', error);
+      console.error('[NotificationService] ❌ Failed to fetch notification:', error);
+      console.error('[NotificationService] ❌ Error details:', JSON.stringify(error, null, 2));
       throw error;
     }
   }
@@ -253,64 +263,97 @@ export class NotificationService {
     type: string;
     apiUrl: string;
   }): void {
+    console.log('[NotificationService] 👆 Notification tap received from native app!');
+    console.log('[NotificationService] 👆 Notification ID:', notification.notificationId);
+    console.log('[NotificationService] 👆 Type:', notification.type);
+    console.log('[NotificationService] 👆 API URL:', notification.apiUrl);
+
     // Fetch full notification content from the correct server and navigate
+    console.log('[NotificationService] 👆 Fetching full notification data...');
     this.fetchNotification(notification.notificationId, notification.apiUrl)
       .then((fullNotification) => {
+        console.log('[NotificationService] 👆 Got full notification, navigating...');
         this.navigateToNotification(fullNotification);
       })
       .catch((error) => {
-        console.error('[NotificationService] Failed to fetch tapped notification:', error);
+        console.error('[NotificationService] ❌ Failed to fetch tapped notification:', error);
       });
   }
 
   private navigateToNotification(notification: Notification): void {
+    console.log(
+      '[NotificationService] 🧭 Navigating based on notification type:',
+      notification.type,
+    );
+    console.log('[NotificationService] 🧭 Notification data:', notification.data);
+
     // Handle navigation based on notification type
     switch (notification.type) {
       case 'share_received':
         if (notification.data['tagId']) {
-          // Navigate to shared tag
-          window.location.hash = `/${notification.data['tagId']}`;
+          const tagId = notification.data['tagId'];
+          console.log(`[NotificationService] 🧭 Navigating to shared tag: ${tagId}`);
+          window.location.hash = `/${tagId}`;
+        } else {
+          console.warn('[NotificationService] ⚠️ share_received notification missing tagId');
         }
         break;
 
       case 'message_received':
         if (notification.data['tagId']) {
-          // Navigate to tag with the new message
-          window.location.hash = `/${notification.data['tagId']}`;
+          const tagId = notification.data['tagId'];
+          console.log(`[NotificationService] 🧭 Navigating to tag with new message: ${tagId}`);
+          window.location.hash = `/${tagId}`;
+        } else {
+          console.warn('[NotificationService] ⚠️ message_received notification missing tagId');
         }
         break;
 
       case 'transcription_complete':
         if (notification.data['memoId']) {
-          // Navigate to memo
-          window.location.hash = `/${notification.data['memoId']}`;
+          const memoId = notification.data['memoId'];
+          console.log(`[NotificationService] 🧭 Navigating to memo: ${memoId}`);
+          window.location.hash = `/${memoId}`;
+        } else {
+          console.warn(
+            '[NotificationService] ⚠️ transcription_complete notification missing memoId',
+          );
         }
         break;
 
       case 'reminder':
         if (notification.data['memoId']) {
-          // Navigate to memo
-          window.location.hash = `/${notification.data['memoId']}`;
+          const memoId = notification.data['memoId'];
+          console.log(`[NotificationService] 🧭 Navigating to memo (reminder): ${memoId}`);
+          window.location.hash = `/${memoId}`;
+        } else {
+          console.warn('[NotificationService] ⚠️ reminder notification missing memoId');
         }
         break;
 
       case 'export_ready':
-        // Could open export download page
-        console.log('[NotificationService] Export ready:', notification.data['exportId']);
+        console.log('[NotificationService] 📦 Export ready:', notification.data['exportId']);
         break;
 
       case 'processing_failed':
-        // Show error details
-        console.error('[NotificationService] Processing failed:', notification.data['errorCode']);
+        console.error(
+          '[NotificationService] ❌ Processing failed:',
+          notification.data['errorCode'],
+        );
         break;
 
       default:
-        console.log('[NotificationService] Unknown notification type:', notification.type);
+        console.warn('[NotificationService] ⚠️ Unknown notification type:', notification.type);
     }
 
     // Mark as read after navigation
-    this.markAsRead(notification._id).catch((error) => {
-      console.error('[NotificationService] Failed to mark notification as read:', error);
-    });
+    console.log(`[NotificationService] 📖 Marking notification ${notification._id} as read...`);
+    this.markAsRead(notification._id)
+      .then(() => {
+        console.log(`[NotificationService] ✅ Marked notification ${notification._id} as read`);
+      })
+      .catch((error) => {
+        console.error('[NotificationService] ❌ Failed to mark notification as read:', error);
+      });
   }
 }

@@ -2,14 +2,20 @@ import apn from '@parse/node-apn';
 import { config } from '../config';
 import type { NotificationType } from '@maple/shared';
 
-let apnProvider: apn.Provider | null = null;
+let apnProviderProduction: apn.Provider | null = null;
+let apnProviderSandbox: apn.Provider | null = null;
 
 /**
  * Initialize APNs provider (lazy initialization)
+ * @param production - true for production APNs, false for sandbox
  */
-function getApnProvider(): apn.Provider {
-    if (apnProvider) {
-        return apnProvider;
+function getApnProvider(production: boolean): apn.Provider {
+    // Check which provider is needed and if already initialized
+    if (production && apnProviderProduction) {
+        return apnProviderProduction;
+    }
+    if (!production && apnProviderSandbox) {
+        return apnProviderSandbox;
     }
 
     if (!config.apnsKeyId || !config.apnsTeamId) {
@@ -28,20 +34,32 @@ function getApnProvider(): apn.Provider {
             keyId: config.apnsKeyId,
             teamId: config.apnsTeamId,
         },
-        production: config.apnsProduction,
+        production,
     };
-    console.log('[APNs] Initializing provider with options:', options);
 
-    apnProvider = new apn.Provider(options);
+    const provider = new apn.Provider(options);
     console.log(
-        `[APNs] Initialized provider (production: ${config.apnsProduction}, bundle: ${config.apnsBundleId}, key source: ${config.apnsKey ? 'secret' : 'file'})`,
+        `[APNs] Initialized ${production ? 'production' : 'sandbox'} provider (bundle: ${config.apnsBundleId}, key source: ${config.apnsKey ? 'secret' : 'file'})`,
     );
 
-    return apnProvider;
+    // Store the provider for reuse
+    if (production) {
+        apnProviderProduction = provider;
+    } else {
+        apnProviderSandbox = provider;
+    }
+
+    return provider;
 }
 
 /**
  * Send push notification directly via APNs
+ * @param deviceToken - APNs device token
+ * @param notificationId - Notification ID
+ * @param type - Notification type
+ * @param title - Push notification title
+ * @param body - Push notification body
+ * @param production - true for production APNs, false for sandbox
  */
 export async function sendApnsPush(
     deviceToken: string,
@@ -49,9 +67,10 @@ export async function sendApnsPush(
     type: NotificationType,
     title: string,
     body: string,
+    production: boolean = false,
 ): Promise<void> {
     try {
-        const provider = getApnProvider();
+        const provider = getApnProvider(production);
 
         const notification = new apn.Notification({
             alert: {
@@ -66,22 +85,9 @@ export async function sendApnsPush(
             sound: 'default',
             badge: 1,
         });
+
         console.log(
-            `[APNs] Sending push`,
-            {
-                alert: {
-                    title,
-                    body,
-                },
-                topic: config.apnsBundleId,
-                payload: {
-                    notificationId,
-                    type,
-                },
-                sound: 'default',
-                badge: 1,
-            },
-            deviceToken,
+            `[APNs] Sending ${production ? 'production' : 'sandbox'} push to ${deviceToken.substring(0, 8)}... for notification ${notificationId}`,
         );
 
         const result = await provider.send(notification, deviceToken);
@@ -95,7 +101,7 @@ export async function sendApnsPush(
         }
 
         console.log(
-            `[APNs] Successfully sent push to ${deviceToken.substring(0, 8)}... for notification ${notificationId}`,
+            `[APNs] Successfully sent ${production ? 'production' : 'sandbox'} push to ${deviceToken.substring(0, 8)}... for notification ${notificationId}`,
         );
     } catch (error) {
         console.error(`[APNs] Error sending push:`, error);
@@ -104,12 +110,17 @@ export async function sendApnsPush(
 }
 
 /**
- * Cleanup APNs provider on shutdown
+ * Cleanup APNs providers on shutdown
  */
 export function shutdownApns(): void {
-    if (apnProvider) {
-        apnProvider.shutdown();
-        apnProvider = null;
-        console.log('[APNs] Provider shutdown');
+    if (apnProviderProduction) {
+        apnProviderProduction.shutdown();
+        apnProviderProduction = null;
+        console.log('[APNs] Production provider shutdown');
+    }
+    if (apnProviderSandbox) {
+        apnProviderSandbox.shutdown();
+        apnProviderSandbox = null;
+        console.log('[APNs] Sandbox provider shutdown');
     }
 }
