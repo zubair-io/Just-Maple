@@ -33,7 +33,12 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     // Load tags and notes
-    this.tagService.ensureDefaultTag().subscribe();
+    this.tagService.ensureDefaultTag().subscribe({
+      next: () => {
+        // Auto-select first tag if on root path
+        this.autoSelectFirstTag();
+      },
+    });
     this.noteService.loadNotes().subscribe();
 
     // Connect to realtime service
@@ -69,6 +74,19 @@ export class HomeComponent implements OnInit, OnDestroy {
     if (segments.length >= 2) {
       // Second segment is noteId
       this.selectedNoteId.set(segments[1]);
+    }
+  }
+
+  private autoSelectFirstTag(): void {
+    // Only redirect if on root path (no tag selected)
+    const url = this.router.url;
+    const segments = url.split('/').filter(Boolean);
+
+    if (segments.length === 0) {
+      const tags = this.tagService.tags();
+      if (tags.length > 0) {
+        this.router.navigate(['/', tags[0]._id]);
+      }
     }
   }
 
