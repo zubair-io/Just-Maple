@@ -66,6 +66,23 @@ export async function sendApnsPush(
             sound: 'default',
             badge: 1,
         });
+        console.log(
+            `[APNs] Sending push`,
+            {
+                alert: {
+                    title,
+                    body,
+                },
+                topic: config.apnsBundleId,
+                payload: {
+                    notificationId,
+                    type,
+                },
+                sound: 'default',
+                badge: 1,
+            },
+            deviceToken,
+        );
 
         const result = await provider.send(notification, deviceToken);
 

@@ -37,21 +37,16 @@ export const config = {
         process.env.PAPERBARK_URL ||
         process.env['paperbark-url'] ||
         'https://paperbark.justmaple.app',
-    paperbarkApiKey: process.env.PAPERBARK_API_KEY || process.env['paperbark-api-key'],
+    paperbarkApiKey: process.env.PAPERBARK_API_KEY,
 
     // APNs config (for direct push in production)
-    // Supports both APNS_KEY_ID and apns-key-id formats for Azure compatibility
-    apnsKeyId: process.env.APNS_KEY_ID || process.env['apns-key-id'],
-    apnsTeamId: process.env.APNS_TEAM_ID || process.env['apns-team-id'],
+    apnsKeyId: process.env.APNS_KEY_ID,
+    apnsTeamId: process.env.APNS_TEAM_ID,
     // Key can be provided as file path OR as the actual key content (preferred for Azure)
-    apnsKeyPath: process.env.APNS_KEY_PATH || process.env['apns-key-path'],
-    apnsKey: process.env.APNS_KEY || process.env['apns-key'], // .p8 key content
-    apnsBundleId:
-        process.env.APNS_BUNDLE_ID ||
-        process.env['apns-bundle-id'] ||
-        'com.just.maple.JapaneseMaple',
-    apnsProduction:
-        process.env.APNS_PRODUCTION === 'true' || process.env['apns-production'] === 'true',
+    apnsKeyPath: process.env.APNS_KEY_PATH,
+    apnsKey: process.env.APNS_KEY, // .p8 key content
+    apnsBundleId: process.env.APNS_BUNDLE_ID || 'com.just.maple.JapaneseMaple',
+    apnsProduction: process.env.APNS_PRODUCTION === 'true',
 
     // Use direct APNs if origin is production
     get useDirectApns() {
