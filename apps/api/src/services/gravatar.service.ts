@@ -8,21 +8,21 @@ interface GravatarProfile {
 }
 
 /**
- * Hash an email address for Gravatar API
- * Gravatar uses MD5 hashes, not SHA-256
+ * Hash an email address for Gravatar v3 API
+ * v3 API uses SHA-256 hashes
  */
 function hashEmail(email: string): string {
-    return createHash('md5').update(email.trim().toLowerCase()).digest('hex');
+    return createHash('sha256').update(email.trim().toLowerCase()).digest('hex');
 }
 
 /**
- * Fetch Gravatar profile data for an email address
+ * Fetch Gravatar profile data for an email address using v3 API
  * Returns displayName and profilePictureUrl if available
  */
 export async function fetchGravatarProfile(email: string): Promise<GravatarProfile> {
     try {
         const hash = hashEmail(email);
-        const url = `https://api.gravatar.com/${hash}.json`;
+        const url = `https://api.gravatar.com/v3/profiles/${hash}`;
 
         const response = await fetch(url, {
             headers: config.gravatarKey
@@ -33,22 +33,17 @@ export async function fetchGravatarProfile(email: string): Promise<GravatarProfi
         });
 
         if (!response.ok) {
-            // No Gravatar profile found
+            // No Gravatar profile found (404) or other error
             return {};
         }
 
         const data = await response.json();
 
-        // Gravatar API returns an array of profile entries
-        const entry = data.entry?.[0];
-        if (!entry) {
-            return {};
-        }
-
+        // v3 API returns profile data directly
         return {
-            displayName: entry.displayName || entry.preferredUsername,
-            profileUrl: entry.profileUrl,
-            thumbnailUrl: entry.thumbnailUrl,
+            displayName: data.display_name || data.name?.formatted,
+            profileUrl: data.profile_url,
+            thumbnailUrl: data.avatar_url,
         };
     } catch (error) {
         console.error('[Gravatar] Failed to fetch profile:', error);
@@ -59,6 +54,7 @@ export async function fetchGravatarProfile(email: string): Promise<GravatarProfi
 /**
  * Get Gravatar image URL for an email address
  * This doesn't require API access - it's a public URL
+ * Note: The public avatar URL uses MD5, not SHA-256
  * @param email - User's email address
  * @param size - Image size in pixels (default: 200)
  * @param defaultImage - What to show if no Gravatar exists (default: 'mp' for mystery person)
@@ -68,6 +64,7 @@ export function getGravatarUrl(
     size: number = 200,
     defaultImage: string = 'mp',
 ): string {
-    const hash = hashEmail(email);
-    return `https://www.gravatar.com/avatar/${hash}?s=${size}&d=${defaultImage}`;
+    // Avatar URL uses MD5 (different from API which uses SHA-256)
+    const md5Hash = createHash('md5').update(email.trim().toLowerCase()).digest('hex');
+    return `https://www.gravatar.com/avatar/${md5Hash}?s=${size}&d=${defaultImage}`;
 }
