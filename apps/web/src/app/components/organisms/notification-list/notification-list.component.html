@@ -1,0 +1,23 @@
+<div class="notification-list">
+  <app-notification-filters [filters]="filters()" (filtersChanged)="onFiltersChanged($event)" />
+
+  @if (isLoading()) {
+    <div class="notification-list__loading">
+      <p>Loading notifications...</p>
+    </div>
+  } @else if (filteredNotifications().length === 0) {
+    <div class="notification-list__empty">
+      <p>No notifications</p>
+    </div>
+  } @else {
+    <div class="notification-list__items">
+      @for (notification of filteredNotifications(); track notification._id) {
+        <app-notification-item
+          [notification]="notification"
+          (clicked)="onNotificationClicked($event)"
+          (markAsRead)="onMarkAsRead($event)"
+        />
+      }
+    </div>
+  }
+</div>

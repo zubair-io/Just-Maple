@@ -6,6 +6,7 @@ import { AuthService } from '../../../services/auth.service';
 import { TagService } from '../../../services/tag.service';
 import { NoteService } from '../../../services/note.service';
 import { MessageService } from '../../../services/message.service';
+import { NotificationService } from '../../../services/notification.service';
 import type { Note } from '@maple/shared';
 
 @Component({
@@ -21,6 +22,7 @@ export class SidebarComponent implements OnInit {
   readonly tagService = inject(TagService);
   readonly noteService = inject(NoteService);
   readonly messageService = inject(MessageService);
+  readonly notificationService = inject(NotificationService);
 
   readonly selectedTagId = input<string | null>(null);
   readonly selectedNoteId = input<string | null>(null);
@@ -108,5 +110,13 @@ export class SidebarComponent implements OnInit {
 
   onSettings(): void {
     this.settings.emit();
+  }
+
+  onNotifications(): void {
+    this.router.navigate(['/notifications']);
+  }
+
+  get notificationUnreadCount(): () => number {
+    return () => this.notificationService.unreadCount();
   }
 }

@@ -1,0 +1,21 @@
+.notification-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--color-bg);
+
+  &__loading,
+  &__empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 16px;
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+
+  &__items {
+    flex: 1;
+    overflow-y: auto;
+  }
+}

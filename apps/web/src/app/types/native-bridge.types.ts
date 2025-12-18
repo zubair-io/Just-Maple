@@ -176,13 +176,23 @@ export interface PushUnregisteredResponse {
 
 export interface PushStatusResponse {
   isRegistered: boolean;
-  serverKey: string | null;
+  serverId: string | null;
 }
 
 export interface NotificationTapped {
   notificationId: string;
   type: string;
   apiUrl: string;
+  tagId?: string;
+  messageId?: string;
+}
+
+export interface ForegroundNotification {
+  notificationId: string;
+  type: string;
+  apiUrl: string;
+  tagId?: string;
+  messageId?: string;
 }
 
 export type NativeToWebMessageType =
@@ -204,6 +214,7 @@ export type NativeToWebMessageType =
   | { type: 'pushUnregistered'; payload: PushUnregisteredResponse }
   | { type: 'pushStatus'; payload: PushStatusResponse }
   | { type: 'notificationTapped'; payload: NotificationTapped }
+  | { type: 'foregroundNotification'; payload: ForegroundNotification }
   | { type: 'deepLink'; payload: DeepLinkPayload }
   | { type: 'error'; payload: ErrorMessage };
 

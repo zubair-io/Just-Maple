@@ -1,9 +1,10 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { TagService } from '../../services/tag.service';
 import { NoteService } from '../../services/note.service';
+import { NotificationService } from '../../services/notification.service';
 import { ChatComponent } from '../../components';
 import { DEFAULT_NOTE_CONTENT } from '@maple/shared';
 
@@ -19,10 +20,19 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   readonly tagService = inject(TagService);
   readonly noteService = inject(NoteService);
+  private readonly notificationService = inject(NotificationService);
 
   private routeSubscription?: Subscription;
 
   readonly selectedTagId = signal<string | null>(null);
+
+  constructor() {
+    // Track active tag for smart notification filtering
+    effect(() => {
+      const tagId = this.selectedTagId();
+      this.notificationService.setActiveTag(tagId);
+    });
+  }
 
   // Computed signals reactively derive from store - no validation needed
   readonly selectedTag = computed(() => {
@@ -40,6 +50,8 @@ export class ChatViewComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.routeSubscription?.unsubscribe();
+    // Clear active tag when leaving chat view
+    this.notificationService.setActiveTag(null);
   }
 
   createNote(): void {

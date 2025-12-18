@@ -1,0 +1,24 @@
+<div class="notification-filters">
+  <div class="notification-filters__type">
+    @for (type of notificationTypes; track type.value) {
+      <button
+        class="notification-filters__type-btn"
+        [class.notification-filters__type-btn--active]="filters().type === type.value"
+        (click)="onTypeChange(type.value)"
+        type="button"
+      >
+        {{ type.label }}
+      </button>
+    }
+  </div>
+
+  <button
+    class="notification-filters__unread-toggle"
+    [class.notification-filters__unread-toggle--active]="filters().showUnreadOnly"
+    (click)="onUnreadToggle()"
+    type="button"
+  >
+    <span class="notification-filters__unread-icon">●</span>
+    Unread only
+  </button>
+</div>

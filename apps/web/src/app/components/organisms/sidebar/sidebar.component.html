@@ -161,11 +161,28 @@
         </span>
       </div>
     </div>
-    <button
-      (click)="onSettings()"
-      class="text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-colors p-1.5"
-    >
-      <span class="material-symbols-rounded text-xl">settings</span>
-    </button>
+    <div class="flex items-center gap-1">
+      <button
+        (click)="onNotifications()"
+        class="relative text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-colors p-1.5"
+        title="Notifications"
+      >
+        <span class="material-symbols-rounded text-xl">notifications</span>
+        @if (notificationUnreadCount() > 0) {
+          <span
+            class="absolute -top-0.5 -right-0.5 px-1 py-0.5 text-[9px] font-bold bg-[var(--color-primary)] text-white rounded-full min-w-[14px] text-center leading-none"
+          >
+            {{ notificationUnreadCount() > 9 ? '9+' : notificationUnreadCount() }}
+          </span>
+        }
+      </button>
+      <button
+        (click)="onSettings()"
+        class="text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-colors p-1.5"
+        title="Settings"
+      >
+        <span class="material-symbols-rounded text-xl">settings</span>
+      </button>
+    </div>
   </div>
 </aside>

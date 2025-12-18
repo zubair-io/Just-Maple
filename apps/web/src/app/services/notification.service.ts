@@ -4,6 +4,8 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom, take } from 'rxjs';
 import { NativeBridgeService } from './native-bridge.service';
 import type { Notification, NotificationListResponse, DeviceRegistration } from '@maple/shared';
+import type { ToastData } from '../components/atoms/toast/toast.component';
+import { Router } from '@angular/router';
 
 @Injectable({
   providedIn: 'root',
@@ -12,6 +14,7 @@ export class NotificationService {
   private readonly http = inject(HttpClient);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly nativeBridge = inject(NativeBridgeService);
+  private readonly router = inject(Router);
 
   // Signals for reactive state
   readonly notifications = signal<Notification[]>([]);
@@ -19,7 +22,13 @@ export class NotificationService {
   readonly isRequestingPermission = signal(false);
   readonly permissionGranted = signal(false);
   readonly isRegistered = signal(false);
-  readonly serverKey = signal<string | null>(null);
+  readonly serverId = signal<string | null>(null);
+
+  // Toast notifications
+  readonly toasts = signal<ToastData[]>([]);
+
+  // Current active tag (for smart toast filtering)
+  readonly activeTagId = signal<string | null>(null);
 
   constructor() {
     this.init();
@@ -45,14 +54,19 @@ export class NotificationService {
       // Listen for push status updates
       this.nativeBridge.onPushStatus().subscribe((response) => {
         this.isRegistered.set(response.isRegistered);
-        this.serverKey.set(response.serverKey || null);
+        this.serverId.set(response.serverId || null);
       });
 
       // Listen for notification taps
       this.nativeBridge.onNotificationTapped().subscribe((notification) => {
         console.log('[NotificationService] Notification tapped:', notification);
-        // TODO: Handle navigation based on notification type
         this.handleNotificationTap(notification);
+      });
+
+      // Listen for foreground notifications
+      this.nativeBridge.onForegroundNotification().subscribe((notification) => {
+        console.log('[NotificationService] Foreground notification:', notification);
+        this.handleForegroundNotification(notification);
       });
 
       // Check initial push status
@@ -110,31 +124,9 @@ export class NotificationService {
     try {
       const response = await firstValueFrom(this.nativeBridge.onPushStatus().pipe(take(1)));
 
-      // If local says registered, verify with server
-      if (response.isRegistered && response.serverKey) {
-        try {
-          const devices = await this.getDevices();
-          const isRegisteredOnServer = devices.some((d) => d.serverKey === response.serverKey);
-
-          this.isRegistered.set(isRegisteredOnServer);
-          this.serverKey.set(isRegisteredOnServer ? response.serverKey : null);
-
-          if (!isRegisteredOnServer) {
-            console.warn(
-              '[NotificationService] Local registration found but not on server, clearing local state',
-            );
-            // TODO: Clear local state in native app
-          }
-        } catch (error) {
-          console.error('[NotificationService] Failed to verify registration with server:', error);
-          // Fallback to local status if server check fails
-          this.isRegistered.set(response.isRegistered);
-          this.serverKey.set(response.serverKey || null);
-        }
-      } else {
-        this.isRegistered.set(false);
-        this.serverKey.set(null);
-      }
+      // If local says registered, just trust it (no longer need server verification with serverUrl approach)
+      this.isRegistered.set(response.isRegistered);
+      this.serverId.set(response.serverId || null);
     } catch (error) {
       console.error('[NotificationService] Failed to check push status:', error);
     }
@@ -149,9 +141,9 @@ export class NotificationService {
       return;
     }
 
-    const currentServerKey = this.serverKey();
-    if (!currentServerKey) {
-      console.log('[NotificationService] No server key found, nothing to unregister');
+    const currentServerId = this.serverId();
+    if (!currentServerId) {
+      console.log('[NotificationService] No server ID found, nothing to unregister');
       return;
     }
 
@@ -165,7 +157,7 @@ export class NotificationService {
       if (response.success) {
         // Clear web app state
         this.isRegistered.set(false);
-        this.serverKey.set(null);
+        this.serverId.set(null);
         console.log('[NotificationService] Successfully unregistered from push notifications');
       } else {
         throw new Error(response.error || 'Failed to unregister');
@@ -256,7 +248,82 @@ export class NotificationService {
     }
   }
 
+  // MARK: - Toast Management
+
+  /**
+   * Display an in-app toast notification
+   */
+  showToast(toast: Omit<ToastData, 'id'>): void {
+    const id = crypto.randomUUID();
+    const newToast: ToastData = { ...toast, id };
+    this.toasts.update((toasts) => [...toasts, newToast]);
+
+    // Auto-remove after duration
+    const duration = toast.duration || 5000;
+    setTimeout(() => this.removeToast(id), duration);
+  }
+
+  /**
+   * Remove a toast notification by ID
+   */
+  removeToast(id: string): void {
+    this.toasts.update((toasts) => toasts.filter((t) => t.id !== id));
+  }
+
+  /**
+   * Set the currently active tag ID (for smart toast filtering)
+   */
+  setActiveTag(tagId: string | null): void {
+    this.activeTagId.set(tagId);
+  }
+
   // MARK: - Notification Handling
+
+  /**
+   * Handle foreground notifications with smart filtering
+   * Only show toast if user is NOT currently viewing the tag
+   */
+  private handleForegroundNotification(notification: {
+    notificationId: string;
+    type: string;
+    apiUrl: string;
+    tagId?: string;
+    messageId?: string;
+  }): void {
+    console.log('[NotificationService] 🔔 Processing foreground notification');
+    console.log('[NotificationService] 🔔 Current active tag:', this.activeTagId());
+    console.log('[NotificationService] 🔔 Notification tag:', notification.tagId);
+
+    // Check if user is viewing this tag's messages
+    const currentTagId = this.activeTagId();
+    const notificationTagId = notification.tagId;
+
+    // Only show toast if NOT currently viewing this tag
+    if (!notificationTagId || notificationTagId !== currentTagId) {
+      console.log('[NotificationService] 🔔 Showing toast (user not in this tag)');
+
+      // Fetch full notification to get message content
+      this.fetchNotification(notification.notificationId, notification.apiUrl)
+        .then((fullNotification) => {
+          const title = fullNotification.title || 'New Message';
+          const message = fullNotification.body || 'You have a new message';
+
+          this.showToast({
+            title,
+            message,
+            type: 'info',
+            duration: 5000,
+          });
+        })
+        .catch((error) => {
+          console.error('[NotificationService] ❌ Failed to fetch foreground notification:', error);
+        });
+    } else {
+      console.log(
+        '[NotificationService] 🔔 Suppressing toast (user is in this tag - message shown via SignalR)',
+      );
+    }
+  }
 
   private handleNotificationTap(notification: {
     notificationId: string;

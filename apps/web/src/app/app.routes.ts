@@ -10,6 +10,13 @@ export const routes: Routes = [
       import('./pages/settings/settings.component').then((m) => m.SettingsComponent),
     canActivate: [AuthGuard],
   },
+  // Notifications route
+  {
+    path: 'notifications',
+    loadComponent: () =>
+      import('./pages/notifications/notifications.component').then((m) => m.NotificationsComponent),
+    canActivate: [AuthGuard],
+  },
   // Authenticated app routes - matched first if user is authenticated
   {
     path: '',

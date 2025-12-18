@@ -1,0 +1,31 @@
+<div
+  class="notification-item"
+  [class.notification-item--unread]="!notification().read"
+  (click)="onClick()"
+>
+  <div class="notification-item__icon">{{ getNotificationIcon(notification().type) }}</div>
+
+  <div class="notification-item__content">
+    <div class="notification-item__header">
+      <h4 class="notification-item__title">{{ notification().title }}</h4>
+      <span class="notification-item__time">{{ getRelativeTime(notification().createdAt) }}</span>
+    </div>
+
+    <p class="notification-item__body">{{ notification().body }}</p>
+
+    @if (!notification().read) {
+      <button
+        class="notification-item__mark-read"
+        (click)="onMarkAsRead($event)"
+        type="button"
+        aria-label="Mark as read"
+      >
+        Mark as read
+      </button>
+    }
+  </div>
+
+  @if (!notification().read) {
+    <div class="notification-item__unread-indicator"></div>
+  }
+</div>

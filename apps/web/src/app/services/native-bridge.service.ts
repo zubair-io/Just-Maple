@@ -15,6 +15,7 @@ import type {
   PushUnregisteredResponse,
   PushStatusResponse,
   NotificationTapped,
+  ForegroundNotification,
   DeepLinkPayload,
   RecordingStarted,
   RecordingStopped,
@@ -202,6 +203,13 @@ export class NativeBridgeService {
     return this.messages$.pipe(
       filter((msg) => msg.type === 'notificationTapped'),
       map((msg) => msg.payload as NotificationTapped),
+    );
+  }
+
+  onForegroundNotification(): Observable<ForegroundNotification> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'foregroundNotification'),
+      map((msg) => msg.payload as ForegroundNotification),
     );
   }
 
