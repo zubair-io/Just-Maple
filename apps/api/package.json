@@ -8,7 +8,8 @@
     "start": "bun run src/index.ts",
     "build": "bun run --cwd ../../packages/shared build && bun build src/index.ts --outdir dist --target bun",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "migrate:gravatar": "bun run scripts/migrate-gravatar-profiles.ts"
   },
   "dependencies": {
     "@azure/communication-email": "^1.1.0",
