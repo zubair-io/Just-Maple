@@ -30,6 +30,7 @@ function getApnProvider(): apn.Provider {
         },
         production: config.apnsProduction,
     };
+    console.log('[APNs] Initializing provider with options:', options);
 
     apnProvider = new apn.Provider(options);
     console.log(

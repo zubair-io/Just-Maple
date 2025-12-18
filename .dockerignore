@@ -1,0 +1,52 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs
+dist
+**/dist
+.angular
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test files
+coverage
+**/*.spec.ts
+**/*.test.ts
+playwright-report
+test-results
+
+# Documentation
+*.md
+designs
+docs
+
+# Environment files (will be injected at runtime)
+.env*
+!.env.example
+
+# Apple app
+apps/apple
+
+# Web app (not needed for API image)
+apps/web
+
+# CI/CD
+.github
+.claude
