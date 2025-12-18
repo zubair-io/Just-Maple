@@ -305,8 +305,47 @@ export class NotificationService {
       // Fetch full notification to get message content
       this.fetchNotification(notification.notificationId, notification.apiUrl)
         .then((fullNotification) => {
-          const title = fullNotification.title || 'New Message';
-          const message = fullNotification.body || 'You have a new message';
+          // Construct toast message from notification data
+          let title = 'Notification';
+          let message = 'You have a new notification';
+
+          switch (fullNotification.type) {
+            case 'message_received':
+              title = 'New Message';
+              message = fullNotification.data['senderEmail']
+                ? `Message from ${fullNotification.data['senderEmail']}`
+                : 'You have a new message';
+              break;
+
+            case 'share_received':
+              title = 'New Share';
+              message = fullNotification.data['sharedBy']
+                ? `Shared by ${fullNotification.data['sharedBy']}`
+                : 'Someone shared a note with you';
+              break;
+
+            case 'transcription_complete':
+              title = 'Transcription Ready';
+              message = 'Your audio transcription is complete';
+              break;
+
+            case 'reminder':
+              title = 'Reminder';
+              message = 'You have a reminder';
+              break;
+
+            case 'export_ready':
+              title = 'Export Ready';
+              message = 'Your export is ready for download';
+              break;
+
+            case 'processing_failed':
+              title = 'Processing Failed';
+              message = fullNotification.data['errorCode']
+                ? `Error: ${fullNotification.data['errorCode']}`
+                : 'An error occurred while processing';
+              break;
+          }
 
           this.showToast({
             title,

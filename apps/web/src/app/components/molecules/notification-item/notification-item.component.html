@@ -7,11 +7,11 @@
 
   <div class="notification-item__content">
     <div class="notification-item__header">
-      <h4 class="notification-item__title">{{ notification().title }}</h4>
+      <h4 class="notification-item__title">{{ getNotificationTitle() }}</h4>
       <span class="notification-item__time">{{ getRelativeTime(notification().createdAt) }}</span>
     </div>
 
-    <p class="notification-item__body">{{ notification().body }}</p>
+    <p class="notification-item__body">{{ getNotificationBody() }}</p>
 
     @if (!notification().read) {
       <button
