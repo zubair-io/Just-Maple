@@ -193,6 +193,7 @@ enum NativeToWebMessage {
     case pushUnregistered(PushUnregisteredResponse)
     case pushStatus(PushStatusResponse)
     case notificationTapped(NotificationTapped)
+    case foregroundNotification(ForegroundNotification)
     case deepLink(DeepLinkPayload)
     case error(ErrorMessage)
 
@@ -299,13 +300,23 @@ enum NativeToWebMessage {
 
     struct PushStatusResponse: Codable {
         let isRegistered: Bool
-        let serverKey: String?
+        let serverId: String?
     }
 
     struct NotificationTapped: Codable {
         let notificationId: String
         let type: String
         let apiUrl: String
+        let tagId: String?
+        let messageId: String?
+    }
+
+    struct ForegroundNotification: Codable {
+        let notificationId: String
+        let type: String
+        let apiUrl: String
+        let tagId: String?
+        let messageId: String?
     }
 
     struct DeepLinkPayload: Codable {
@@ -375,6 +386,9 @@ extension NativeToWebMessage: Encodable {
             try container.encode(payload, forKey: .payload)
         case .notificationTapped(let payload):
             try container.encode("notificationTapped", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .foregroundNotification(let payload):
+            try container.encode("foregroundNotification", forKey: .type)
             try container.encode(payload, forKey: .payload)
         case .deepLink(let payload):
             try container.encode("deepLink", forKey: .type)
@@ -1014,11 +1028,23 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         send(.deepLink(NativeToWebMessage.DeepLinkPayload(url: url)))
     }
 
-    func handleNotificationTap(notificationId: String, type: String, apiUrl: String) {
+    func handleNotificationTap(notificationId: String, type: String, apiUrl: String, tagId: String? = nil, messageId: String? = nil) {
         send(.notificationTapped(NativeToWebMessage.NotificationTapped(
             notificationId: notificationId,
             type: type,
-            apiUrl: apiUrl
+            apiUrl: apiUrl,
+            tagId: tagId,
+            messageId: messageId
+        )))
+    }
+
+    func handleForegroundNotification(notificationId: String, type: String, apiUrl: String, tagId: String? = nil, messageId: String? = nil) {
+        send(.foregroundNotification(NativeToWebMessage.ForegroundNotification(
+            notificationId: notificationId,
+            type: type,
+            apiUrl: apiUrl,
+            tagId: tagId,
+            messageId: messageId
         )))
     }
 }

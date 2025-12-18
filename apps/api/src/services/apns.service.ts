@@ -60,7 +60,8 @@ function getApnProvider(production: boolean): apn.Provider {
  * @param title - Push notification title
  * @param body - Push notification body
  * @param production - true for production APNs, false for sandbox
- * @param serverKey - Optional server key for multi-server support
+ * @param serverUrl - Optional server URL for multi-server support
+ * @param additionalData - Optional additional data to include in payload
  */
 export async function sendApnsPush(
     deviceToken: string,
@@ -69,7 +70,8 @@ export async function sendApnsPush(
     title: string,
     body: string,
     production: boolean = false,
-    serverKey?: string,
+    serverUrl?: string,
+    additionalData?: Record<string, any>,
 ): Promise<void> {
     try {
         const provider = getApnProvider(production);
@@ -77,11 +79,12 @@ export async function sendApnsPush(
         const payload: Record<string, any> = {
             notificationId,
             type,
+            ...additionalData,
         };
 
-        // Include serverKey if provided (for multi-server support)
-        if (serverKey) {
-            payload.serverKey = serverKey;
+        // Include serverUrl if provided (for multi-server support)
+        if (serverUrl) {
+            payload.serverUrl = serverUrl;
         }
 
         const notification = new apn.Notification({
@@ -93,7 +96,6 @@ export async function sendApnsPush(
             payload,
             sound: 'default',
             badge: 1,
-            mutableContent: 1, // Enable Notification Service Extension
         });
 
         console.log(

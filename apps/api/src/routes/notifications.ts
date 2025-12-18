@@ -40,7 +40,7 @@ export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
 
             const registration = await registerDevice(
                 auth.user._id,
-                body.serverKey,
+                body.serverUrl,
                 body.deviceToken,
                 body.platform,
                 body.production,
@@ -50,7 +50,7 @@ export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
         },
         {
             body: t.Object({
-                serverKey: t.String({ minLength: 1 }),
+                serverUrl: t.String({ minLength: 1 }),
                 deviceToken: t.String({ minLength: 1 }),
                 platform: t.Union([t.Literal('ios'), t.Literal('macos')]),
                 production: t.Boolean(),
@@ -66,7 +66,7 @@ export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const deleted = await unregisterDevice(auth.user._id, body.serverKey);
+            const deleted = await unregisterDevice(auth.user._id, body.serverUrl);
 
             if (!deleted) {
                 set.status = 404;
@@ -77,7 +77,7 @@ export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
         },
         {
             body: t.Object({
-                serverKey: t.String({ minLength: 1 }),
+                serverUrl: t.String({ minLength: 1 }),
             }),
         },
     )

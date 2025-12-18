@@ -23,11 +23,6 @@ struct JapaneseMapleApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     #endif
     
-    init() {
-        // Initialize notification extension support
-        initializeNotificationExtensionSupport()
-    }
-    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -128,10 +123,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         if let notificationId = userInfo["notificationId"] as? String,
            let type = userInfo["type"] as? String {
             print("[AppDelegate] 📬 Notification ID: \(notificationId), Type: \(type)")
+
+            // Post to NotificationCenter so Angular app can show in-app toast
+            NotificationCenter.default.post(
+                name: NSNotification.Name("ForegroundNotificationReceived"),
+                object: nil,
+                userInfo: userInfo
+            )
+            print("[AppDelegate] 📬 Posted foreground notification to NotificationCenter")
         }
 
-        // Show notification even when app is in foreground
-        completionHandler([.banner, .sound, .badge])
+        // Don't show native banner when app is in foreground - let Angular handle it
+        completionHandler([])
     }
 
     // Handle notification tap
@@ -155,11 +158,19 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 "notificationId": notificationId,
                 "type": type
             ]
-            
-            // Include serverKey if present (for multi-server support)
-            if let serverKey = userInfo["serverKey"] as? String {
-                notificationData["serverKey"] = serverKey
-                print("[AppDelegate] 🔑 Including serverKey: \(serverKey)")
+
+            // Include serverUrl if present (for multi-server support)
+            if let serverUrl = userInfo["serverUrl"] as? String {
+                notificationData["serverUrl"] = serverUrl
+                print("[AppDelegate] 🔗 Including serverUrl: \(serverUrl)")
+            }
+
+            // Include additional data (tagId, messageId, etc.)
+            if let tagId = userInfo["tagId"] as? String {
+                notificationData["tagId"] = tagId
+            }
+            if let messageId = userInfo["messageId"] as? String {
+                notificationData["messageId"] = messageId
             }
 
             // Post notification for app to handle
@@ -213,10 +224,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         if let notificationId = userInfo["notificationId"] as? String,
            let type = userInfo["type"] as? String {
             print("[AppDelegate] 📬 Notification ID: \(notificationId), Type: \(type)")
+
+            // Post to NotificationCenter so Angular app can show in-app toast
+            NotificationCenter.default.post(
+                name: NSNotification.Name("ForegroundNotificationReceived"),
+                object: nil,
+                userInfo: userInfo
+            )
+            print("[AppDelegate] 📬 Posted foreground notification to NotificationCenter")
         }
 
-        // Show notification even when app is in foreground
-        completionHandler([.banner, .sound, .badge])
+        // Don't show native banner when app is in foreground - let Angular handle it
+        completionHandler([])
     }
 
     // Handle notification tap
@@ -240,11 +259,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                 "notificationId": notificationId,
                 "type": type
             ]
-            
-            // Include serverKey if present (for multi-server support)
-            if let serverKey = userInfo["serverKey"] as? String {
-                notificationData["serverKey"] = serverKey
-                print("[AppDelegate] 🔑 Including serverKey: \(serverKey)")
+
+            // Include serverUrl if present (for multi-server support)
+            if let serverUrl = userInfo["serverUrl"] as? String {
+                notificationData["serverUrl"] = serverUrl
+                print("[AppDelegate] 🔗 Including serverUrl: \(serverUrl)")
+            }
+
+            // Include additional data (tagId, messageId, etc.)
+            if let tagId = userInfo["tagId"] as? String {
+                notificationData["tagId"] = tagId
+            }
+            if let messageId = userInfo["messageId"] as? String {
+                notificationData["messageId"] = messageId
             }
 
             // Post notification for app to handle
@@ -263,18 +290,3 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 }
 #endif
 
-// MARK: - Notification Extension Support
-
-/// Initialize shared data for notification extension access
-private func initializeNotificationExtensionSupport() {
-    print("[AppInit] 🔧 Initializing notification extension support")
-    
-    // Sync server configurations to shared storage
-    ServerConfigService.shared.syncServersToSharedStorage()
-    print("[AppInit] ✅ Synced server configurations")
-    
-    // Note: Tokens are automatically saved to shared keychain via ServerConfigService
-    // Server key mapping is automatically synced via PushNotificationService
-    
-    print("[AppInit] ✅ Notification extension support initialized")
-}

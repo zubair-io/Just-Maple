@@ -17,7 +17,7 @@ import AppKit
 class PushNotificationService: NSObject {
     static let shared = PushNotificationService()
 
-    private let serverKeyMapKey = "push_server_key_map"  // serverKey → serverId mapping
+    private let registeredServersKey = "push_registered_servers"  // Set of registered server IDs
     private let deviceTokenKey = "push_device_token"
 
     // Completion handler for registration flow
@@ -77,14 +77,14 @@ class PushNotificationService: NSObject {
             return
         }
 
-        // Generate or retrieve serverKey for this serverId
-        let serverKey = getOrCreateServerKey(for: serverId)
-
         // Register with API (which handles APNs directly)
         Task {
             do {
-                try await registerWithMapleAPI(serverKey: serverKey, deviceToken: tokenString)
+                try await registerWithMapleAPI(serverId: serverId, deviceToken: tokenString)
                 print("[PushNotificationService] Successfully registered with Maple API for server: \(serverId)")
+
+                // Mark server as registered
+                markServerAsRegistered(serverId: serverId)
 
                 // Call completion handler if present
                 if let completion = self.registrationCompletion {
@@ -119,34 +119,32 @@ class PushNotificationService: NSObject {
 
     /// Unregister device from push notifications for a specific server
     func unregister(serverId: String) async throws {
-        guard let serverKey = getServerKey(for: serverId) else {
-            print("[PushNotificationService] No serverKey found for server: \(serverId)")
+        guard isServerRegistered(serverId: serverId) else {
+            print("[PushNotificationService] Server not registered: \(serverId)")
             return
         }
 
         // Unregister from Maple API
-        try await unregisterFromMapleAPI(serverKey: serverKey)
+        try await unregisterFromMapleAPI(serverId: serverId)
 
-        // Remove from local map
-        var map = getServerKeyMap()
-        map.removeValue(forKey: serverKey)
-        saveServerKeyMap(map)
+        // Remove from local set
+        markServerAsUnregistered(serverId: serverId)
 
         print("[PushNotificationService] Successfully unregistered from server: \(serverId)")
     }
 
     /// Unregister device from push notifications (all servers)
     func unregister() async throws {
-        let map = getServerKeyMap()
-        guard !map.isEmpty else {
+        let registeredServers = getRegisteredServers()
+        guard !registeredServers.isEmpty else {
             print("[PushNotificationService] No registrations found")
             return
         }
 
         // Unregister from all servers
-        for (serverKey, serverId) in map {
+        for serverId in registeredServers {
             do {
-                try await unregisterFromMapleAPI(serverKey: serverKey)
+                try await unregisterFromMapleAPI(serverId: serverId)
                 print("[PushNotificationService] Unregistered from server: \(serverId)")
             } catch {
                 print("[PushNotificationService] Failed to unregister from server \(serverId): \(error)")
@@ -154,71 +152,46 @@ class PushNotificationService: NSObject {
         }
 
         // Clear all local data
-        UserDefaults.standard.removeObject(forKey: serverKeyMapKey)
+        UserDefaults.standard.removeObject(forKey: registeredServersKey)
 
         print("[PushNotificationService] Successfully unregistered from all servers")
     }
 
-    /// Get current server key (if registered)
-    func getServerKey() -> String? {
-        // Return first serverKey (for backwards compatibility)
-        let map = getServerKeyMap()
-        return map.keys.first
-    }
-
-    /// Get serverId for a given serverKey
-    func getServerId(for serverKey: String) -> String? {
-        let map = getServerKeyMap()
-        return map[serverKey]
-    }
-
-    /// Get serverKey for a given serverId
-    func getServerKey(for serverId: String) -> String? {
-        let map = getServerKeyMap()
-        return map.first(where: { $0.value == serverId })?.key
+    /// Check if a server is registered for push notifications
+    func isServerRegistered(serverId: String) -> Bool {
+        let servers = getRegisteredServers()
+        return servers.contains(serverId)
     }
 
     // MARK: - Private Helpers
 
-    /// Get the serverKey → serverId mapping from UserDefaults
-    private func getServerKeyMap() -> [String: String] {
-        guard let data = UserDefaults.standard.data(forKey: serverKeyMapKey),
-              let map = try? JSONDecoder().decode([String: String].self, from: data) else {
-            return [:]
+    /// Get the set of registered server IDs from UserDefaults
+    private func getRegisteredServers() -> Set<String> {
+        guard let data = UserDefaults.standard.data(forKey: registeredServersKey),
+              let servers = try? JSONDecoder().decode(Set<String>.self, from: data) else {
+            return []
         }
-        return map
+        return servers
     }
 
-    /// Save the serverKey → serverId mapping to UserDefaults
-    private func saveServerKeyMap(_ map: [String: String]) {
-        if let data = try? JSONEncoder().encode(map) {
-            UserDefaults.standard.set(data, forKey: serverKeyMapKey)
-            
-            // Also save to shared container for extension access
-            if let sharedDefaults = UserDefaults(suiteName: "group.com.just.maple.JapaneseMaple") {
-                sharedDefaults.set(data, forKey: serverKeyMapKey)
-                print("[PushNotificationService] Synced server key map to shared storage")
-            }
+    /// Mark a server as registered
+    private func markServerAsRegistered(serverId: String) {
+        var servers = getRegisteredServers()
+        servers.insert(serverId)
+        if let data = try? JSONEncoder().encode(servers) {
+            UserDefaults.standard.set(data, forKey: registeredServersKey)
+            print("[PushNotificationService] Marked server as registered: \(serverId)")
         }
     }
 
-    /// Get or create serverKey for a specific serverId
-    private func getOrCreateServerKey(for serverId: String) -> String {
-        // Check if we already have a serverKey for this serverId
-        if let existingServerKey = getServerKey(for: serverId) {
-            return existingServerKey
+    /// Mark a server as unregistered
+    private func markServerAsUnregistered(serverId: String) {
+        var servers = getRegisteredServers()
+        servers.remove(serverId)
+        if let data = try? JSONEncoder().encode(servers) {
+            UserDefaults.standard.set(data, forKey: registeredServersKey)
+            print("[PushNotificationService] Marked server as unregistered: \(serverId)")
         }
-
-        // Generate new opaque server key (cryptographically random)
-        let serverKey = UUID().uuidString + "-" + UUID().uuidString
-
-        // Store the mapping
-        var map = getServerKeyMap()
-        map[serverKey] = serverId
-        saveServerKeyMap(map)
-
-        print("[PushNotificationService] Generated new serverKey for server: \(serverId)")
-        return serverKey
     }
 
     /// Detect if the app is using production or sandbox APNs environment
@@ -242,16 +215,22 @@ class PushNotificationService: NSObject {
         #endif
     }
 
-    private func registerWithMapleAPI(serverKey: String, deviceToken: String) async throws {
-        let apiUrl = ServerConfigService.shared.getAPIUrl()
+    private func registerWithMapleAPI(serverId: String, deviceToken: String) async throws {
+        // Get server URL for this serverId
+        guard let server = ServerConfigService.shared.getSavedServers().first(where: { $0.id == serverId }) else {
+            print("[PushNotificationService] ❌ Server not found: \(serverId)")
+            throw PushError.invalidURL
+        }
+
+        let apiUrl = server.getAPIUrl()
         guard let url = URL(string: "\(apiUrl)/api/notifications/register") else {
             throw PushError.invalidURL
         }
 
         print("[PushNotificationService] 📍 Registering with API: \(apiUrl)")
 
-        guard let token = ServerConfigService.shared.getToken() else {
-            print("[PushNotificationService] ❌ No auth token found")
+        guard let token = ServerConfigService.shared.getToken(serverId: serverId) else {
+            print("[PushNotificationService] ❌ No auth token found for server: \(serverId)")
             throw PushError.notAuthenticated
         }
 
@@ -272,7 +251,7 @@ class PushNotificationService: NSObject {
         print("[PushNotificationService] 🏷️ APNs Environment: \(isProduction ? "production" : "sandbox")")
 
         let body: [String: Any] = [
-            "serverKey": serverKey,
+            "serverUrl": apiUrl,
             "deviceToken": deviceToken,
             "platform": platform,
             "production": isProduction
@@ -307,13 +286,19 @@ class PushNotificationService: NSObject {
         print("[PushNotificationService] ✅ Registration successful")
     }
 
-    private func unregisterFromMapleAPI(serverKey: String) async throws {
-        let apiUrl = ServerConfigService.shared.getAPIUrl()
+    private func unregisterFromMapleAPI(serverId: String) async throws {
+        // Get server URL for this serverId
+        guard let server = ServerConfigService.shared.getSavedServers().first(where: { $0.id == serverId }) else {
+            print("[PushNotificationService] ❌ Server not found: \(serverId)")
+            throw PushError.invalidURL
+        }
+
+        let apiUrl = server.getAPIUrl()
         guard let url = URL(string: "\(apiUrl)/api/notifications/unregister") else {
             throw PushError.invalidURL
         }
 
-        guard let token = ServerConfigService.shared.getToken() else {
+        guard let token = ServerConfigService.shared.getToken(serverId: serverId) else {
             throw PushError.notAuthenticated
         }
 
@@ -322,7 +307,7 @@ class PushNotificationService: NSObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        let body = ["serverKey": serverKey]
+        let body = ["serverUrl": apiUrl]
         request.httpBody = try JSONEncoder().encode(body)
 
         let (_, response) = try await URLSession.shared.data(for: request)

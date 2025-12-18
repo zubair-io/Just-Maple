@@ -115,6 +115,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                             params.id,
                             message._id,
                             auth.user.email,
+                            message.content, // Pass actual message content
                         ),
                     );
 

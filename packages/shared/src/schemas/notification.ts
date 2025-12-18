@@ -60,7 +60,7 @@ export type Notification = Static<typeof NotificationSchema>;
 export const DeviceRegistrationSchema = Type.Object({
     _id: Type.String(),
     userId: Type.String(),
-    serverKey: Type.String(),
+    serverUrl: Type.String(),
     deviceToken: Type.String(),
     platform: Type.Union([Type.Literal('ios'), Type.Literal('macos')]),
     production: Type.Boolean(), // APNs environment: true = production, false = sandbox
@@ -72,7 +72,7 @@ export type DeviceRegistration = Static<typeof DeviceRegistrationSchema>;
 
 // API request/response types
 export const RegisterDeviceRequestSchema = Type.Object({
-    serverKey: Type.String(),
+    serverUrl: Type.String(),
     deviceToken: Type.String(),
     platform: Type.Union([Type.Literal('ios'), Type.Literal('macos')]),
     production: Type.Boolean(), // APNs environment: true = production, false = sandbox

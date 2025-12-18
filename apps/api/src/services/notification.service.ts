@@ -5,7 +5,7 @@ import { sendApnsPush } from './apns.service';
 
 // Paperbark API client
 interface PaperbarkPushRequest {
-    serverKey: string;
+    serverUrl: string;
     notification: {
         title: string;
         body: string;
@@ -16,7 +16,38 @@ interface PaperbarkPushRequest {
     };
 }
 
-async function callPaperbark(serverKey: string, notificationId: string, type: NotificationType) {
+/**
+ * Extract plain text from TipTap JSON content
+ */
+function extractTextFromTipTap(content: any): string {
+    if (!content || typeof content !== 'object') {
+        return '';
+    }
+
+    let text = '';
+
+    function traverse(node: any) {
+        if (node.type === 'text') {
+            text += node.text || '';
+        }
+        if (node.content && Array.isArray(node.content)) {
+            for (const child of node.content) {
+                traverse(child);
+            }
+        }
+    }
+
+    traverse(content);
+    return text.trim();
+}
+
+async function callPaperbark(
+    serverUrl: string,
+    notificationId: string,
+    type: NotificationType,
+    title: string,
+    body: string,
+) {
     if (!config.paperbarkUrl || !config.paperbarkApiKey) {
         console.warn(
             `[Notification] Paperbark not configured (url: ${!!config.paperbarkUrl}, apiKey: ${!!config.paperbarkApiKey}), skipping push`,
@@ -25,44 +56,14 @@ async function callPaperbark(serverKey: string, notificationId: string, type: No
     }
 
     console.log(
-        `[Notification] Sending push for notification ${notificationId} to serverKey ${serverKey.substring(0, 8)}...`,
+        `[Notification] Sending push for notification ${notificationId} to serverUrl ${serverUrl}`,
     );
 
-    // Generic fallback messages (no sensitive content)
-    const fallbackMessages: Record<NotificationType, { title: string; body: string }> = {
-        transcription_complete: {
-            title: 'Transcription Complete',
-            body: 'Your voice memo has been transcribed',
-        },
-        share_received: {
-            title: 'New Share',
-            body: 'Someone shared a memo with you',
-        },
-        reminder: {
-            title: 'Reminder',
-            body: 'You have a reminder',
-        },
-        processing_failed: {
-            title: 'Processing Failed',
-            body: 'Unable to process your memo',
-        },
-        export_ready: {
-            title: 'Export Ready',
-            body: 'Your export is ready to download',
-        },
-        message_received: {
-            title: 'New Message',
-            body: 'You have a new message',
-        },
-    };
-
-    const fallback = fallbackMessages[type];
-
     const payload: PaperbarkPushRequest = {
-        serverKey,
+        serverUrl,
         notification: {
-            title: fallback.title,
-            body: fallback.body,
+            title,
+            body,
             data: {
                 notificationId,
                 type,
@@ -98,6 +99,8 @@ export async function sendNotification(
     userId: string,
     type: NotificationType,
     data: Record<string, any>,
+    customTitle?: string,
+    customBody?: string,
 ): Promise<string> {
     // Create notification in MongoDB
     const notification = await notificationRepo.createNotification(userId, type, data);
@@ -144,7 +147,9 @@ export async function sendNotification(
         },
     };
 
-    const { title, body } = fallbackMessages[type];
+    const fallback = fallbackMessages[type];
+    const title = customTitle || fallback.title;
+    const body = customBody || fallback.body;
 
     // Send push to each registered device
     const results = await Promise.allSettled(
@@ -161,11 +166,12 @@ export async function sendNotification(
                     title,
                     body,
                     device.production,
-                    device.serverKey, // Pass serverKey for multi-server support
+                    device.serverUrl, // Pass serverUrl for multi-server support
+                    data, // Pass notification data as additional payload data
                 );
             } else {
                 // Use Paperbark relay in dev/test
-                return callPaperbark(device.serverKey, notification._id, type);
+                return callPaperbark(device.serverUrl, notification._id, type, title, body);
             }
         }),
     );
@@ -242,6 +248,19 @@ export async function sendMessageReceivedNotification(
     tagId: string,
     messageId: string,
     senderEmail: string,
+    messageContent: any,
 ): Promise<string> {
-    return sendNotification(userId, 'message_received', { tagId, messageId, senderEmail });
+    // Extract plain text from TipTap JSON for notification body
+    const messageText = extractTextFromTipTap(messageContent);
+    const notificationBody = messageText
+        ? `${senderEmail}: ${messageText.substring(0, 100)}${messageText.length > 100 ? '...' : ''}`
+        : `${senderEmail} sent you a message`;
+
+    return sendNotification(
+        userId,
+        'message_received',
+        { tagId, messageId, senderEmail },
+        'New Message', // Keep standard title
+        notificationBody, // Use actual message content in body
+    );
 }

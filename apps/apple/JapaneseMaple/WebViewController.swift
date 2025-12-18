@@ -89,6 +89,16 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
             self?.handleNotificationTap(userInfo: userInfo)
         }
 
+        // Listen for foreground notification events
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("ForegroundNotificationReceived"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let userInfo = notification.userInfo else { return }
+            self?.handleForegroundNotification(userInfo: userInfo)
+        }
+
         // Load the web app
         loadWebApp()
     }
@@ -197,43 +207,61 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
 
         print("[WebViewController] 🔔 Notification ID: \(notificationId), Type: \(type)")
 
-        // Get API URL - use active server since that's where the user is logged in
-        let activeServer = ServerConfigService.shared.getActiveServer()
-        let apiUrl = activeServer.getAPIUrl()
-        print("[WebViewController] 🌐 Using active server API URL: \(apiUrl)")
-
-        // Try to get serverKey if available (for multi-server support)
-        if let serverKey = userInfo["serverKey"] as? String {
-            print("[WebViewController] 🔑 ServerKey found in payload: \(serverKey)")
-
-            // Look up serverId from serverKey
-            if let serverId = PushNotificationService.shared.getServerId(for: serverKey) {
-                print("[WebViewController] 🔍 Found serverId: \(serverId)")
-
-                // Get server configuration
-                let servers = ServerConfigService.shared.getServers()
-                if let server = servers.first(where: { $0.id == serverId }) {
-                    let serverApiUrl = server.getAPIUrl()
-                    print("[WebViewController] 🌐 Using server-specific API URL: \(serverApiUrl)")
-
-                    // Send to web app via bridge
-                    bridge?.handleNotificationTap(notificationId: notificationId, type: type, apiUrl: serverApiUrl)
-                    print("[WebViewController] ✅ Sent notification tap to web app")
-                    return
-                } else {
-                    print("[WebViewController] ⚠️ Server not found for serverId: \(serverId), using active server")
-                }
-            } else {
-                print("[WebViewController] ⚠️ No serverId found for serverKey: \(serverKey), using active server")
-            }
+        // Try to get serverUrl from payload (for multi-server support)
+        let apiUrl: String
+        if let serverUrl = userInfo["serverUrl"] as? String {
+            print("[WebViewController] 🔗 ServerUrl found in payload: \(serverUrl)")
+            apiUrl = serverUrl
         } else {
-            print("[WebViewController] ℹ️ No serverKey in payload, using active server")
+            // Fallback to active server API URL
+            print("[WebViewController] ℹ️ No serverUrl in payload, using active server")
+            let activeServer = ServerConfigService.shared.getActiveServer()
+            apiUrl = activeServer.getAPIUrl()
         }
 
-        // Fallback to active server API URL
-        print("[WebViewController] 🔔 Sending notification to web app with active server API")
-        bridge?.handleNotificationTap(notificationId: notificationId, type: type, apiUrl: apiUrl)
-        print("[WebViewController] ✅ Sent notification tap to web app (apiUrl: \(apiUrl))")
+        print("[WebViewController] 🌐 Using API URL: \(apiUrl)")
+
+        // Extract tagId and messageId if present
+        let tagId = userInfo["tagId"] as? String
+        let messageId = userInfo["messageId"] as? String
+
+        // Send to web app via bridge
+        bridge?.handleNotificationTap(notificationId: notificationId, type: type, apiUrl: apiUrl, tagId: tagId, messageId: messageId)
+        print("[WebViewController] ✅ Sent notification tap to web app")
+    }
+
+    private func handleForegroundNotification(userInfo: [AnyHashable: Any]) {
+        print("[WebViewController] 🔔 Handling foreground notification")
+
+        guard let notificationId = userInfo["notificationId"] as? String,
+              let type = userInfo["type"] as? String else {
+            print("[WebViewController] ⚠️ Missing notificationId or type in foreground notification")
+            return
+        }
+
+        print("[WebViewController] 🔔 Foreground Notification ID: \(notificationId), Type: \(type)")
+
+        // Try to get serverUrl from payload (for multi-server support)
+        let apiUrl: String
+        if let serverUrl = userInfo["serverUrl"] as? String {
+            print("[WebViewController] 🔗 ServerUrl found in payload: \(serverUrl)")
+            apiUrl = serverUrl
+        } else {
+            // Fallback to active server API URL
+            print("[WebViewController] ℹ️ No serverUrl in payload, using active server")
+            let activeServer = ServerConfigService.shared.getActiveServer()
+            apiUrl = activeServer.getAPIUrl()
+        }
+
+        print("[WebViewController] 🌐 Using API URL: \(apiUrl)")
+
+        // Extract tagId and messageId if present
+        let tagId = userInfo["tagId"] as? String
+        let messageId = userInfo["messageId"] as? String
+
+        // Send to web app via bridge
+        bridge?.handleForegroundNotification(notificationId: notificationId, type: type, apiUrl: apiUrl, tagId: tagId, messageId: messageId)
+        print("[WebViewController] ✅ Sent foreground notification to web app")
     }
 
     // MARK: - WKNavigationDelegate

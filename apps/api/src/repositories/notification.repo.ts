@@ -16,7 +16,7 @@ interface NotificationDocument {
 interface DeviceRegistrationDocument {
     _id: ObjectId;
     userId: string;
-    serverKey: string;
+    serverUrl: string;
     deviceToken: string;
     platform: 'ios' | 'macos';
     production: boolean;
@@ -50,7 +50,7 @@ function toDeviceRegistrationResponse(doc: DeviceRegistrationDocument): DeviceRe
     return {
         _id: doc._id.toString(),
         userId: doc.userId,
-        serverKey: doc.serverKey,
+        serverUrl: doc.serverUrl,
         deviceToken: doc.deviceToken,
         platform: doc.platform,
         production: doc.production,
@@ -135,7 +135,7 @@ export async function deleteExpiredNotifications(): Promise<number> {
 // Device registration operations
 export async function registerDevice(
     userId: string,
-    serverKey: string,
+    serverUrl: string,
     deviceToken: string,
     platform: 'ios' | 'macos' = 'ios',
     production: boolean = false,
@@ -145,7 +145,7 @@ export async function registerDevice(
     // Check if already registered
     const existing = await getDeviceRegistrationCollection().findOne({
         userId,
-        serverKey,
+        serverUrl,
     });
 
     if (existing) {
@@ -166,7 +166,7 @@ export async function registerDevice(
     // Create new registration
     const doc: Omit<DeviceRegistrationDocument, '_id'> = {
         userId,
-        serverKey,
+        serverUrl,
         deviceToken,
         platform,
         production,
@@ -184,10 +184,10 @@ export async function registerDevice(
     } as DeviceRegistrationDocument);
 }
 
-export async function unregisterDevice(userId: string, serverKey: string): Promise<boolean> {
+export async function unregisterDevice(userId: string, serverUrl: string): Promise<boolean> {
     const result = await getDeviceRegistrationCollection().deleteOne({
         userId,
-        serverKey,
+        serverUrl,
     });
     return result.deletedCount > 0;
 }
@@ -199,7 +199,7 @@ export async function findDeviceRegistrationsByUserId(
     return docs.map(toDeviceRegistrationResponse);
 }
 
-export async function findServerKeysByUserId(userId: string): Promise<string[]> {
+export async function findServerUrlsByUserId(userId: string): Promise<string[]> {
     const registrations = await findDeviceRegistrationsByUserId(userId);
-    return registrations.map((r) => r.serverKey);
+    return registrations.map((r) => r.serverUrl);
 }
