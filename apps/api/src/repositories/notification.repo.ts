@@ -142,23 +142,24 @@ export async function registerDevice(
 ): Promise<DeviceRegistration> {
     const now = new Date();
 
-    // Check if already registered
+    // Check if already registered - match the unique index (userId, serverUrl, production)
     const existing = await getDeviceRegistrationCollection().findOne({
         userId,
         serverUrl,
+        production,
     });
 
     if (existing) {
-        // Update deviceToken, production flag, and lastUsed
+        // Update deviceToken and other fields - device token can change if user reinstalls app
         await getDeviceRegistrationCollection().updateOne(
             { _id: existing._id },
-            { $set: { deviceToken, production, lastUsed: now } },
+            { $set: { deviceToken, platform, lastUsed: now } },
         );
 
         return toDeviceRegistrationResponse({
             ...existing,
             deviceToken,
-            production,
+            platform,
             lastUsed: now,
         });
     }
