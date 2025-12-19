@@ -272,8 +272,8 @@ class PushNotificationService: NSObject {
 
         print("[PushNotificationService] 📍 Registering with API: \(apiUrl)")
 
-        guard let token = ServerConfigService.shared.getToken(serverId: serverId) else {
-            print("[PushNotificationService] ❌ No auth token found for server: \(serverId)")
+        guard let token = ServerConfigService.shared.getToken(serverId: server.url) else {
+            print("[PushNotificationService] ❌ No auth token found for server URL: \(server.url)")
             throw PushError.notAuthenticated
         }
 
@@ -341,7 +341,7 @@ class PushNotificationService: NSObject {
             throw PushError.invalidURL
         }
 
-        guard let token = ServerConfigService.shared.getToken(serverId: serverId) else {
+        guard let token = ServerConfigService.shared.getToken(serverId: server.url) else {
             throw PushError.notAuthenticated
         }
 
