@@ -9,81 +9,110 @@ import { ProfileAvatarComponent } from '../../atoms';
   standalone: true,
   imports: [CommonModule, DatePipe, ContentRendererComponent, ProfileAvatarComponent],
   template: `
-    <div class="message" [class.own]="isOwn()">
-      @if (!isOwn()) {
-        <app-profile-avatar
-          [email]="message().senderEmail ?? 'unknown@justmaple.app'"
-          [displayName]="senderDisplayName()"
-          [profilePictureUrl]="senderProfilePictureUrl()"
-          size="sm"
-          class="avatar"
-        />
-      }
-      <div class="bubble" [class.own]="isOwn()">
-        @if (!isOwn()) {
-          <div class="sender">{{ senderDisplay() }}</div>
+    <div class="message-wrapper" [class.grouped]="isGrouped()">
+      <div class="message-content">
+        <!-- Avatar (hidden when grouped) -->
+        @if (!isGrouped()) {
+          <app-profile-avatar
+            [email]="message().senderEmail ?? 'unknown@justmaple.app'"
+            [displayName]="senderDisplayName()"
+            [profilePictureUrl]="senderProfilePictureUrl()"
+            size="sm"
+            class="avatar"
+          />
+        } @else {
+          <div class="avatar-spacer"></div>
         }
-        <app-content-renderer [content]="message().content" />
-        <div class="meta">
-          <span class="time">{{ message().createdAt | date: 'shortTime' }}</span>
-          @if (message().editedAt) {
-            <span class="edited">(edited)</span>
+
+        <!-- Message bubble with two rows -->
+        <div class="bubble-container">
+          <!-- Top row: Name and datetime (hidden when grouped) -->
+          @if (!isGrouped()) {
+            <div class="message-header">
+              <span class="sender-name">{{ senderDisplay() }}</span>
+              <span class="timestamp">{{ message().createdAt | date: 'short' }}</span>
+            </div>
           }
+
+          <!-- Bottom row: Message content -->
+          <div class="message-body">
+            <app-content-renderer [content]="message().content" />
+            @if (message().editedAt) {
+              <span class="edited">(edited)</span>
+            }
+          </div>
         </div>
       </div>
     </div>
   `,
   styles: [
     `
-      .message {
+      .message-wrapper {
+        width: 100%;
         display: flex;
-        gap: 8px;
-        margin-bottom: 8px;
+        justify-content: center;
+        margin-bottom: 12px;
 
-        &.own {
-          justify-content: flex-end;
+        &.grouped {
+          margin-bottom: 2px;
         }
+      }
+
+      .message-content {
+        width: 100%;
+        max-width: 800px;
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
       }
 
       .avatar {
         flex-shrink: 0;
-        margin-top: 4px;
+        margin-top: 2px;
       }
 
-      .bubble {
-        max-width: 800px;
-        padding: 8px 12px;
-        border-radius: 12px;
-        background: var(--color-bg-elevated);
-
-        &.own {
-          background: rgba(199, 91, 57, 0.1); // Maple at 10% opacity
-          border-bottom-right-radius: 4px;
-          border-bottom-left-radius: 12px;
-        }
-
-        &:not(.own) {
-          border-bottom-left-radius: 4px;
-        }
+      .avatar-spacer {
+        width: 28px; // Same as sm avatar size (w-7)
+        flex-shrink: 0;
       }
 
-      .sender {
-        font-size: 12px;
-        font-weight: 500;
-        color: var(--color-primary);
-        margin-bottom: 2px;
-      }
-
-      .meta {
+      .bubble-container {
+        flex: 1;
+        min-width: 0; // Allow text to wrap
         display: flex;
+        flex-direction: column;
         gap: 4px;
-        margin-top: 4px;
-        font-size: 11px;
+      }
+
+      .message-header {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+
+      .sender-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--color-text-main);
+      }
+
+      .timestamp {
+        font-size: 12px;
         color: var(--color-text-muted);
       }
 
+      .message-body {
+        font-size: 14px;
+        color: var(--color-text-main);
+        line-height: 1.5;
+        word-wrap: break-word;
+      }
+
       .edited {
+        font-size: 11px;
         font-style: italic;
+        color: var(--color-text-muted);
+        margin-left: 4px;
       }
     `,
   ],
@@ -91,6 +120,7 @@ import { ProfileAvatarComponent } from '../../atoms';
 export class ChatMessageComponent {
   readonly message = input.required<Message>();
   readonly isOwn = input<boolean>(false);
+  readonly isGrouped = input<boolean>(false);
   readonly senderDisplayName = input<string | undefined>();
   readonly senderProfilePictureUrl = input<string | undefined>();
 

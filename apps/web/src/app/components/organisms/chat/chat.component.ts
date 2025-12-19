@@ -2,6 +2,7 @@ import {
   Component,
   input,
   signal,
+  computed,
   effect,
   inject,
   ViewChild,
@@ -22,6 +23,10 @@ import { ChatMessageComponent } from './chat-message.component';
 import { ChatTypingComponent } from './chat-typing.component';
 import type { Message, NoteContent, TypingEvent } from '@maple/shared';
 import { Subscription } from 'rxjs';
+
+interface MessageWithGrouping extends Message {
+  isGrouped: boolean;
+}
 
 @Component({
   selector: 'app-chat',
@@ -49,6 +54,29 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   readonly typingUsers = signal<TypingEvent[]>([]);
   readonly showScrollButton = signal(false);
   readonly newMessageCount = signal(0);
+
+  // Compute messages with grouping information
+  readonly messagesWithGrouping = computed(() => {
+    const messages = this.messages();
+    const FIVE_MINUTES = 5 * 60 * 1000;
+
+    return messages.map((message, index): MessageWithGrouping => {
+      if (index === 0) {
+        return { ...message, isGrouped: false };
+      }
+
+      const prevMessage = messages[index - 1];
+      const isSameUser = message.userId === prevMessage.userId;
+      const timeDiff =
+        new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime();
+      const isWithinFiveMinutes = timeDiff < FIVE_MINUTES;
+
+      return {
+        ...message,
+        isGrouped: isSameUser && isWithinFiveMinutes,
+      };
+    });
+  });
 
   private editor: Editor | null = null;
   private typingSubscription: Subscription | null = null;
