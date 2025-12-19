@@ -12,6 +12,7 @@ import {
     unshareTag,
     updateTagPublicStatus,
     getTagMembers,
+    getTagMembersWithUserData,
     getAccessLevel,
 } from '../repositories/tag.repo';
 import { sendNotification } from '../services/notification.service';
@@ -139,7 +140,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Get tag members (users with access)
+    // Get tag members (users with access) including full user data
     .get(
         '/:id/members',
         async ({ auth, params, set }) => {
@@ -147,7 +148,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const members = await getTagMembers(params.id, auth.user._id);
+            const members = await getTagMembersWithUserData(params.id, auth.user._id);
             if (!members) {
                 set.status = 404;
                 return { error: 'Tag not found' };

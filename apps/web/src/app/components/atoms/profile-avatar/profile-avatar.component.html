@@ -1,0 +1,17 @@
+<div
+  class="rounded-full bg-gradient-to-br from-orange-200 to-red-300 flex items-center justify-center font-bold text-orange-900 flex-shrink-0"
+  [class]="sizeClasses()"
+  [class.border]="showBorder()"
+  [class.border-white]="showBorder()"
+  [class.shadow-sm]="showBorder()"
+>
+  @if (profilePictureUrl()) {
+    <img
+      [src]="profilePictureUrl()"
+      [alt]="displayName() || email()"
+      class="w-full h-full rounded-full object-cover"
+    />
+  } @else {
+    {{ initials() }}
+  }
+</div>

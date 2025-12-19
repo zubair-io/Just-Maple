@@ -68,3 +68,13 @@ export const UpdateSharingSchema = Type.Object({
     isPublic: Type.Optional(Type.Boolean()),
 });
 export type UpdateSharingInput = Static<typeof UpdateSharingSchema>;
+
+// Tag member with full user data (for displaying member list)
+export const TagMemberSchema = Type.Object({
+    userId: Type.String(),
+    email: Type.String({ format: 'email' }),
+    displayName: Type.Optional(Type.String()),
+    profilePictureUrl: Type.Optional(Type.String()),
+    accessLevel: AccessLevelSchema,
+});
+export type TagMember = Static<typeof TagMemberSchema>;

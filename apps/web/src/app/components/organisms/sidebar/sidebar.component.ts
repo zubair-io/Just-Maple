@@ -7,12 +7,13 @@ import { TagService } from '../../../services/tag.service';
 import { NoteService } from '../../../services/note.service';
 import { MessageService } from '../../../services/message.service';
 import { NotificationService } from '../../../services/notification.service';
+import { ProfileAvatarComponent } from '../../atoms';
 import type { Note } from '@maple/shared';
 
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ProfileAvatarComponent],
   templateUrl: './sidebar.component.html',
   styleUrl: './sidebar.component.scss',
 })

@@ -8,6 +8,7 @@ import type {
     TagSharing,
     ShareTagInput,
     TagValue,
+    TagMember,
 } from '@maple/shared';
 
 interface SharedWithEntryDocument {
@@ -370,4 +371,35 @@ export async function getTagMembers(
     const tag = await findTagById(tagId, userId);
     if (!tag) return null;
     return tag.sharing.sharedWith;
+}
+
+/**
+ * Get all users with access to a tag, including full user data
+ */
+export async function getTagMembersWithUserData(
+    tagId: string,
+    userId: string,
+): Promise<TagMember[] | null> {
+    const tag = await findTagById(tagId, userId);
+    if (!tag) return null;
+
+    // Get the users collection
+    const usersCollection = getDb().collection('users');
+
+    // Fetch full user data for each member
+    const members: TagMember[] = [];
+    for (const member of tag.sharing.sharedWith) {
+        const user = await usersCollection.findOne({ _id: new ObjectId(member.userId) });
+        if (user) {
+            members.push({
+                userId: member.userId,
+                email: user.email,
+                displayName: user.displayName,
+                profilePictureUrl: user.profilePictureUrl,
+                accessLevel: member.accessLevel,
+            });
+        }
+    }
+
+    return members;
 }

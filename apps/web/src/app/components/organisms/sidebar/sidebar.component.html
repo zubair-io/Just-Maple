@@ -149,11 +149,12 @@
     <div
       class="flex items-center gap-2 cursor-pointer hover:bg-stone-200/50 p-1.5 rounded-md transition-colors"
     >
-      <div
-        class="w-7 h-7 rounded-full bg-gradient-to-br from-orange-200 to-red-300 flex items-center justify-center text-xs font-bold text-orange-900 border border-white shadow-sm"
-      >
-        {{ userInitials() }}
-      </div>
+      <app-profile-avatar
+        [email]="authService.user()?.email ?? ''"
+        [displayName]="authService.user()?.displayName"
+        [profilePictureUrl]="authService.user()?.profilePictureUrl"
+        size="sm"
+      />
       <div class="flex flex-col">
         <span class="text-xs font-semibold text-[var(--color-text-main)]">{{ userName() }}</span>
         <span class="text-[10px] text-[var(--color-text-muted)] flex items-center gap-1">

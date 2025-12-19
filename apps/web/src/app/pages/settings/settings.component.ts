@@ -54,6 +54,7 @@ export class SettingsComponent implements OnInit {
     this.loadPasskeys();
     // Initialize display name and profile picture from current user
     const user = this.authService.user();
+    console.log('Loaded user in settings:', user);
     if (user) {
       this.displayName.set(user.displayName || '');
       this.profilePictureUrl.set(user.profilePictureUrl || null);
