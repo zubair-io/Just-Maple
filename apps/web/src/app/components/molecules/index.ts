@@ -5,3 +5,4 @@ export {
   NotificationFiltersComponent,
   type NotificationFilters,
 } from './notification-filters/notification-filters.component';
+export { MemberAvatarGroupComponent } from './member-avatar-group/member-avatar-group.component';

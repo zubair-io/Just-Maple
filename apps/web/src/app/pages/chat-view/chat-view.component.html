@@ -18,16 +18,42 @@
       </div>
     </div>
 
-    <!-- Actions -->
-    <div class="flex items-center gap-1">
-      <button
-        (click)="createNote()"
-        class="ml-2 flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg transition-colors"
-        title="New Note"
-      >
-        <span class="material-symbols-rounded text-sm">add</span>
-        <span>New Note</span>
-      </button>
+    <!-- Shared Members -->
+    <div class="flex items-center gap-3">
+      @if (members().length > 0) {
+        <div
+          class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-stone-100 transition-colors"
+          title="Click to manage sharing"
+        >
+          <span class="text-xs text-[var(--color-text-muted)]">Shared with</span>
+          <app-member-avatar-group
+            [members]="members()"
+            [maxDisplay]="3"
+            size="xs"
+            (clicked)="openShareModal()"
+          />
+        </div>
+      }
+
+      <!-- Actions -->
+      <div class="flex items-center gap-1">
+        <button
+          (click)="openShareModal()"
+          class="flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 text-xs font-medium rounded-lg transition-colors"
+          title="Manage Sharing"
+        >
+          <span class="material-symbols-rounded text-sm">share</span>
+          <span>Share</span>
+        </button>
+        <button
+          (click)="createNote()"
+          class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg transition-colors"
+          title="New Note"
+        >
+          <span class="material-symbols-rounded text-sm">add</span>
+          <span>New Note</span>
+        </button>
+      </div>
     </div>
   </header>
 }
@@ -43,4 +69,14 @@
     <h2>Select a folder</h2>
     <p>Choose a folder from the sidebar to view messages</p>
   </div>
+}
+
+<!-- Share Modal -->
+@if (showShareModal() && selectedTag()) {
+  <app-share-modal
+    [tag]="selectedTag()!"
+    [members]="members()"
+    (closed)="closeShareModal()"
+    (membersChanged)="onMembersChanged()"
+  />
 }

@@ -1,0 +1,38 @@
+<div
+  class="flex items-center"
+  [class.cursor-pointer]="clickable()"
+  [class.hover:opacity-80]="clickable()"
+  [class.transition-opacity]="clickable()"
+  (click)="onGroupClick()"
+>
+  <!-- Stacked avatars -->
+  <div class="flex -space-x-2">
+    @for (member of displayMembers(); track member.userId) {
+      <app-profile-avatar
+        [email]="member.email"
+        [displayName]="member.displayName"
+        [profilePictureUrl]="member.profilePictureUrl"
+        [size]="size()"
+        [showBorder]="true"
+        class="ring-2 ring-[var(--color-surface)]"
+        [title]="member.displayName || member.email"
+      />
+    }
+
+    <!-- Remaining count badge -->
+    @if (remainingCount() > 0) {
+      <div
+        class="flex items-center justify-center rounded-full bg-stone-200 text-stone-600 font-semibold ring-2 ring-[var(--color-surface)]"
+        [ngClass]="{
+          'w-5 h-5 text-[10px]': size() === 'xs',
+          'w-7 h-7 text-xs': size() === 'sm',
+          'w-10 h-10 text-sm': size() === 'md',
+          'w-12 h-12 text-base': size() === 'lg',
+          'w-16 h-16 text-xl': size() === 'xl',
+        }"
+      >
+        +{{ remainingCount() }}
+      </div>
+    }
+  </div>
+</div>

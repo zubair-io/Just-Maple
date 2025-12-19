@@ -31,6 +31,7 @@ import type {
   UpdateTagInput,
   AccessLevel,
   SharedWithEntry,
+  TagMember,
 } from '@maple/shared';
 
 const STORE_NAME = DB_STORES.TAG;
@@ -351,6 +352,20 @@ export class TagService {
     return this.http.get<{ members: SharedWithEntry[] }>(`/api/tags/${tagId}/members`).pipe(
       map((response) => response.members),
       catchError(() => of([])),
+    );
+  }
+
+  /**
+   * Fetch tag members with full user data
+   */
+  fetchTagMembers(tagId: string): Observable<TagMember[]> {
+    return this.http.get<{ members: TagMember[] }>(`/api/tags/${tagId}/members`).pipe(
+      map((response) => response.members),
+      catchError((err) => {
+        const message = err?.error?.message || err?.error?.error || 'Failed to fetch tag members';
+        console.error('[TagService] Failed to fetch members:', message);
+        return of([]); // Return empty array on error
+      }),
     );
   }
 

@@ -1,0 +1,110 @@
+<!-- Modal Overlay -->
+<div
+  class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+  (click)="onClose()"
+>
+  <!-- Modal Content -->
+  <div
+    class="bg-[var(--color-surface)] rounded-xl shadow-2xl max-w-md w-full max-h-[80vh] flex flex-col"
+    (click)="$event.stopPropagation()"
+  >
+    <!-- Header -->
+    <div class="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
+      <h2 class="text-lg font-semibold text-[var(--color-text-main)]">Share "{{ tag().label }}"</h2>
+      <button
+        (click)="onClose()"
+        class="p-1 hover:bg-stone-100 rounded-lg transition-colors text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
+      >
+        <span class="material-symbols-rounded text-xl">close</span>
+      </button>
+    </div>
+
+    <!-- Add Member Form -->
+    <div class="p-4 border-b border-[var(--color-border)]">
+      <label class="block text-sm font-medium text-[var(--color-text-main)] mb-2">
+        Share with someone
+      </label>
+      <div class="flex gap-2">
+        <input
+          type="email"
+          [(ngModel)]="emailInput"
+          placeholder="Enter email address"
+          class="flex-1 px-3 py-2 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)]"
+          [disabled]="isSharing()"
+          (keyup.enter)="shareTag()"
+        />
+        <select
+          [(ngModel)]="selectedAccessLevel"
+          class="px-3 py-2 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)]"
+          [disabled]="isSharing()"
+        >
+          <option value="write">Can edit</option>
+          <option value="read">Can view</option>
+        </select>
+        <button
+          (click)="shareTag()"
+          [disabled]="isSharing() || !emailInput().trim()"
+          class="px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {{ isSharing() ? 'Sharing...' : 'Share' }}
+        </button>
+      </div>
+
+      @if (shareError()) {
+        <p class="mt-2 text-xs text-red-600">{{ shareError() }}</p>
+      }
+    </div>
+
+    <!-- Members List -->
+    <div class="flex-1 overflow-y-auto p-4">
+      <h3 class="text-sm font-medium text-[var(--color-text-main)] mb-3">
+        People with access ({{ members().length }})
+      </h3>
+
+      <div class="space-y-2">
+        @for (member of members(); track member.userId) {
+          <div
+            class="flex items-center justify-between p-2 rounded-lg hover:bg-stone-50 transition-colors"
+          >
+            <div class="flex items-center gap-3">
+              <app-profile-avatar
+                [email]="member.email"
+                [displayName]="member.displayName"
+                [profilePictureUrl]="member.profilePictureUrl"
+                size="sm"
+              />
+              <div>
+                <div class="text-sm font-medium text-[var(--color-text-main)]">
+                  {{ member.displayName || member.email.split('@')[0] }}
+                </div>
+                <div class="text-xs text-[var(--color-text-muted)]">{{ member.email }}</div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-[var(--color-text-muted)] px-2 py-1 bg-stone-100 rounded">
+                {{ getAccessLevelLabel(member.accessLevel) }}
+              </span>
+
+              @if (member.accessLevel !== 'owner') {
+                <button
+                  (click)="removeMember(member.userId)"
+                  class="p-1 text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                  title="Remove access"
+                >
+                  <span class="material-symbols-rounded text-base">person_remove</span>
+                </button>
+              }
+            </div>
+          </div>
+        } @empty {
+          <div class="text-center py-8 text-[var(--color-text-muted)] text-sm">
+            <span class="material-symbols-rounded text-4xl mb-2 block opacity-30">group</span>
+            <p>No one has access yet</p>
+            <p class="text-xs mt-1">Share this tag to collaborate</p>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>

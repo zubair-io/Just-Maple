@@ -5,13 +5,13 @@ import { Subscription } from 'rxjs';
 import { TagService } from '../../services/tag.service';
 import { NoteService } from '../../services/note.service';
 import { NotificationService } from '../../services/notification.service';
-import { ChatComponent } from '../../components';
-import { DEFAULT_NOTE_CONTENT } from '@maple/shared';
+import { ChatComponent, MemberAvatarGroupComponent, ShareModalComponent } from '../../components';
+import { DEFAULT_NOTE_CONTENT, type TagMember } from '@maple/shared';
 
 @Component({
   selector: 'app-chat-view',
   standalone: true,
-  imports: [CommonModule, ChatComponent],
+  imports: [CommonModule, ChatComponent, MemberAvatarGroupComponent, ShareModalComponent],
   templateUrl: './chat-view.component.html',
   styleUrl: './chat-view.component.scss',
 })
@@ -25,12 +25,27 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   private routeSubscription?: Subscription;
 
   readonly selectedTagId = signal<string | null>(null);
+  readonly members = signal<TagMember[]>([]);
+  readonly showShareModal = signal<boolean>(false);
 
   constructor() {
     // Track active tag for smart notification filtering
     effect(() => {
       const tagId = this.selectedTagId();
       this.notificationService.setActiveTag(tagId);
+    });
+
+    // Fetch members when tag changes
+    effect(() => {
+      const tagId = this.selectedTagId();
+      if (tagId) {
+        this.tagService.fetchTagMembers(tagId).subscribe({
+          next: (members) => this.members.set(members),
+          error: () => this.members.set([]),
+        });
+      } else {
+        this.members.set([]);
+      }
     });
   }
 
@@ -73,5 +88,24 @@ export class ChatViewComponent implements OnInit, OnDestroy {
           console.error('Failed to create note:', error);
         },
       });
+  }
+
+  openShareModal(): void {
+    this.showShareModal.set(true);
+  }
+
+  closeShareModal(): void {
+    this.showShareModal.set(false);
+  }
+
+  onMembersChanged(): void {
+    // Refetch members after sharing/unsharing
+    const tagId = this.selectedTagId();
+    if (tagId) {
+      this.tagService.fetchTagMembers(tagId).subscribe({
+        next: (members) => this.members.set(members),
+        error: () => this.members.set([]),
+      });
+    }
   }
 }
