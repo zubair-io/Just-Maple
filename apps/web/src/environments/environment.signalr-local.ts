@@ -5,4 +5,6 @@ export const environment = {
   // SignalR config (local testing with production AutumnBlaze)
   useSignalR: true,
   signalrNegotiateUrl: 'https://autumn-blaze.justmaple.app/api/signalr',
+  // LogRocket (only enabled in production)
+  logRocketAppId: '',
 };

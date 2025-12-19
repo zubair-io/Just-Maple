@@ -5,4 +5,6 @@ export const environment = {
   // SignalR config (disabled for self-hosted - use WebSocket)
   useSignalR: false,
   signalrNegotiateUrl: '',
+  // LogRocket disabled for self-hosted deployments
+  logRocketAppId: '',
 };
