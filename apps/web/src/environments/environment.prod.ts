@@ -6,5 +6,5 @@ export const environment = {
   useSignalR: true,
   signalrNegotiateUrl: 'https://autumn-blaze.justmaple.app/api/signalr',
   // LogRocket (only enabled in production)
-  logRocketAppId: 'your-app-id/just-maple', // Replace with your actual LogRocket app ID
+  logRocketAppId: 'd4ksdx/just-maple', // Replace with your actual LogRocket app ID
 };
