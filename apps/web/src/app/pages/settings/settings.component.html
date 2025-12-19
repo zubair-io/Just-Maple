@@ -22,11 +22,12 @@
       </h2>
       <div class="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
         <div class="flex items-center gap-4">
-          <div
-            class="w-12 h-12 rounded-full bg-gradient-to-br from-orange-200 to-red-300 flex items-center justify-center text-lg font-bold text-orange-900"
-          >
-            {{ (authService.user()?.email ?? '?').slice(0, 2).toUpperCase() }}
-          </div>
+          <app-profile-avatar
+            [email]="authService.user()?.email ?? ''"
+            [displayName]="authService.user()?.displayName"
+            [profilePictureUrl]="authService.user()?.profilePictureUrl"
+            size="lg"
+          />
           <div>
             <p class="font-medium text-[var(--color-text-main)]">
               {{

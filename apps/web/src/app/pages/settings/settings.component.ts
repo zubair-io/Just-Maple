@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { PreferencesService } from '../../services/preferences.service';
 import { NotificationService } from '../../services/notification.service';
+import { ProfileAvatarComponent } from '../../components';
 
 interface PasskeyInfo {
   id: string;
@@ -17,7 +18,7 @@ interface PasskeyInfo {
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ProfileAvatarComponent],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',
 })
