@@ -17,6 +17,7 @@ import {
 } from '@ngneat/elf-entities';
 import { IndexedDBService } from './indexed-db.service';
 import { RealtimeService } from './realtime.service';
+import { AuthService } from './auth.service';
 import { DB_STORES } from './db-stores';
 import type {
   Message,
@@ -33,6 +34,7 @@ export class MessageService {
   private readonly http = inject(HttpClient);
   private readonly indexedDB = inject(IndexedDBService);
   private readonly realtime = inject(RealtimeService);
+  private readonly authService = inject(AuthService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -215,11 +217,15 @@ export class MessageService {
 
     const tempId = `temp-${Date.now()}`;
     const now = new Date().toISOString();
+    const currentUser = this.authService.user();
 
     const tempMessage: Message = {
       _id: tempId,
       tagId,
-      userId: 'temp',
+      userId: currentUser?._id || 'temp',
+      senderEmail: currentUser?.email,
+      senderDisplayName: currentUser?.displayName,
+      senderProfilePictureUrl: currentUser?.profilePictureUrl,
       content,
       createdAt: now,
       updatedAt: now,

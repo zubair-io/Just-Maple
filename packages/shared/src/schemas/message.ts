@@ -7,6 +7,8 @@ export const MessageSchema = Type.Object({
     tagId: Type.String(), // Chat is per-tag
     userId: Type.String(), // Sender
     senderEmail: Type.Optional(Type.String()), // Populated sender email
+    senderDisplayName: Type.Optional(Type.String()), // Populated sender display name
+    senderProfilePictureUrl: Type.Optional(Type.String()), // Populated sender profile picture
     content: NoteContentSchema, // TipTap/ProseMirror JSON (rich text)
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.Optional(Type.String({ format: 'date-time' })),

@@ -91,7 +91,14 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Forbidden', message: 'You do not have write access to this tag' };
             }
 
-            const message = await createMessage(params.id, auth.user._id, body, auth.user.email);
+            const message = await createMessage(
+                params.id,
+                auth.user._id,
+                body,
+                auth.user.email,
+                auth.user.displayName,
+                auth.user.profilePictureUrl,
+            );
 
             // Broadcast message via realtime service
             const chatEvent: ChatEvent = {

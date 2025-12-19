@@ -15,19 +15,26 @@ interface MessageDocument {
 }
 
 interface MessageWithUser extends MessageDocument {
-    user?: { email: string }[];
+    user?: { email: string; displayName?: string; profilePictureUrl?: string }[];
 }
 
 function getCollection(): Collection<MessageDocument> {
     return getDb().collection<MessageDocument>('messages');
 }
 
-function toMessageResponse(doc: MessageDocument, senderEmail?: string): Message {
+function toMessageResponse(
+    doc: MessageDocument,
+    senderEmail?: string,
+    senderDisplayName?: string,
+    senderProfilePictureUrl?: string,
+): Message {
     return {
         _id: doc._id.toString(),
         tagId: doc.tagId.toString(),
         userId: doc.userId.toString(),
         senderEmail,
+        senderDisplayName,
+        senderProfilePictureUrl,
         content: doc.content,
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
@@ -78,8 +85,8 @@ export async function findMessagesByTagId(
 
     // Return in chronological order (oldest first)
     return docs.reverse().map((doc) => {
-        const senderEmail = doc.user?.[0]?.email;
-        return toMessageResponse(doc, senderEmail);
+        const user = doc.user?.[0];
+        return toMessageResponse(doc, user?.email, user?.displayName, user?.profilePictureUrl);
     });
 }
 
@@ -108,6 +115,8 @@ export async function createMessage(
     userId: string,
     data: CreateMessageInput,
     senderEmail?: string,
+    senderDisplayName?: string,
+    senderProfilePictureUrl?: string,
 ): Promise<Message> {
     const now = new Date();
     const doc: Omit<MessageDocument, '_id'> = {
@@ -125,6 +134,8 @@ export async function createMessage(
         tagId: tagId,
         userId: userId,
         senderEmail,
+        senderDisplayName,
+        senderProfilePictureUrl,
         content: doc.content,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),

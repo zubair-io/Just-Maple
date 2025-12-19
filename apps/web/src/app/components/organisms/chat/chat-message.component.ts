@@ -15,8 +15,8 @@ import { ProfileAvatarComponent } from '../../atoms';
         @if (!isGrouped()) {
           <app-profile-avatar
             [email]="message().senderEmail ?? 'unknown@justmaple.app'"
-            [displayName]="senderDisplayName()"
-            [profilePictureUrl]="senderProfilePictureUrl()"
+            [displayName]="message().senderDisplayName"
+            [profilePictureUrl]="message().senderProfilePictureUrl"
             size="sm"
             class="avatar"
           />
@@ -121,14 +121,10 @@ export class ChatMessageComponent {
   readonly message = input.required<Message>();
   readonly isOwn = input<boolean>(false);
   readonly isGrouped = input<boolean>(false);
-  readonly senderDisplayName = input<string | undefined>();
-  readonly senderProfilePictureUrl = input<string | undefined>();
 
   readonly senderDisplay = computed(() => {
-    const displayName = this.senderDisplayName();
-    if (displayName) return displayName;
-
     const msg = this.message();
+    if (msg.senderDisplayName) return msg.senderDisplayName;
     return msg.senderEmail?.split('@')[0] || 'Unknown';
   });
 }
