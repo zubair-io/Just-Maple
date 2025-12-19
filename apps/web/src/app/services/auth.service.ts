@@ -145,6 +145,12 @@ export class AuthService {
         const auth: StoredAuth = JSON.parse(stored);
         this._accessToken.set(auth.accessToken);
         this._user.set(auth.user);
+
+        // Fetch fresh user data from server in background to ensure up-to-date info
+        // Don't await - let it update asynchronously
+        this.fetchCurrentUser().catch(() => {
+          // If fetch fails, token is likely invalid, logout will be handled by fetchCurrentUser
+        });
       } catch {
         localStorage.removeItem(this.getStorageKey());
       }
@@ -269,6 +275,13 @@ export class AuthService {
     try {
       const response = await firstValueFrom(this.http.get<{ user: UserResponse }>('/api/auth/me'));
       this._user.set(response.user);
+
+      // Update storage with fresh user data
+      const token = this._accessToken();
+      if (token) {
+        this.saveToStorage({ accessToken: token, user: response.user });
+      }
+
       return response.user;
     } catch {
       this.logout();
@@ -397,7 +410,14 @@ export class AuthService {
       // Update user signal with new display name
       const currentUser = this._user();
       if (currentUser) {
-        this._user.set({ ...currentUser, displayName: response.user.displayName });
+        const updatedUser = { ...currentUser, displayName: response.user.displayName };
+        this._user.set(updatedUser);
+
+        // Update storage with fresh user data
+        const token = this._accessToken();
+        if (token) {
+          this.saveToStorage({ accessToken: token, user: updatedUser });
+        }
       }
     } catch (error: any) {
       throw new Error(error?.message || 'Failed to update display name');
@@ -419,11 +439,18 @@ export class AuthService {
       // Update user signal with new profile picture
       const currentUser = this._user();
       if (currentUser) {
-        this._user.set({
+        const updatedUser = {
           ...currentUser,
           displayName: response.user.displayName,
           profilePictureUrl: response.user.profilePictureUrl,
-        });
+        };
+        this._user.set(updatedUser);
+
+        // Update storage with fresh user data
+        const token = this._accessToken();
+        if (token) {
+          this.saveToStorage({ accessToken: token, user: updatedUser });
+        }
       }
     } catch (error: any) {
       throw new Error(error?.message || 'Failed to upload profile picture');
