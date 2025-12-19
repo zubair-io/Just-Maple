@@ -5,4 +5,6 @@ export const environment = {
   // SignalR config (disabled in dev - use WebSocket)
   useSignalR: false,
   signalrNegotiateUrl: '',
+  // LogRocket (only enabled in production)
+  logRocketAppId: '',
 };

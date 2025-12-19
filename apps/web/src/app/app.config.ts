@@ -11,6 +11,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
 import { authInterceptor } from './interceptors/auth.interceptor';
 import { SwUpdateService } from './services/sw-update.service';
+import { LogRocketService } from './services/logrocket.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -26,6 +27,13 @@ export const appConfig: ApplicationConfig = {
       provide: APP_INITIALIZER,
       useFactory: () => () => {},
       deps: [SwUpdateService],
+      multi: true,
+    },
+    // Initialize LogRocket (production only)
+    {
+      provide: APP_INITIALIZER,
+      useFactory: (logRocketService: LogRocketService) => () => logRocketService.init(),
+      deps: [LogRocketService],
       multi: true,
     },
   ],

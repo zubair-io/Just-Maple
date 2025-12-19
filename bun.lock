@@ -70,6 +70,7 @@
         "@tiptap/starter-kit": "^2.11.5",
         "@zxing/browser": "^0.1.5",
         "@zxing/library": "^0.21.3",
+        "logrocket": "^11.0.0",
         "rxjs": "~7.8.0",
         "tslib": "^2.3.0",
       },
@@ -1205,6 +1206,8 @@
     "log-symbols": ["log-symbols@7.0.1", "", { "dependencies": { "is-unicode-supported": "^2.0.0", "yoctocolors": "^2.1.1" } }, "sha512-ja1E3yCr9i/0hmBVaM0bfwDjnGy8I/s6PP4DFp+yP+a+mrHO4Rm7DtmnqROTUkHIkqffC84YY7AeqX6oFk0WFg=="],
 
     "log-update": ["log-update@6.1.0", "", { "dependencies": { "ansi-escapes": "^7.0.0", "cli-cursor": "^5.0.0", "slice-ansi": "^7.1.0", "strip-ansi": "^7.1.0", "wrap-ansi": "^9.0.0" } }, "sha512-9ie8ItPR6tjY5uYJh8K/Zrv/RMZ5VOlOWvtZdEHYSTFKZfIBPQa9tOAEeAWhd+AnIneLJ22w5fjOYtoutpWq5w=="],
+
+    "logrocket": ["logrocket@11.0.0", "", {}, "sha512-/WBl2VJ/WVRsveU0PhWcO++XZpKUifRQZwAFqjUyPSwxdy+OFEgKk+W69WSQFM9pejizarXRwmb3Wo7msD75+g=="],
 
     "lru-cache": ["lru-cache@11.2.4", "", {}, "sha512-B5Y16Jr9LB9dHVkh6ZevG+vAbOsNOYCX+sXvFWFu7B3Iz5mijW3zdbMyhsh8ANd2mSWBYdJgnqi+mL7/LrOPYg=="],
 

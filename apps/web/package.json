@@ -54,6 +54,7 @@
     "@tiptap/starter-kit": "^2.11.5",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
+    "logrocket": "^11.0.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },
