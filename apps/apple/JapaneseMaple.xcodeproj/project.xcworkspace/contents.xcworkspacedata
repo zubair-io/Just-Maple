@@ -4,4 +4,7 @@
    <FileRef
       location = "self:">
    </FileRef>
+   <FileRef
+      location = "group:NOTIFICATION_PERMISSION_FIX.md">
+   </FileRef>
 </Workspace>

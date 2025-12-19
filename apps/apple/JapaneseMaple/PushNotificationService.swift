@@ -25,6 +25,9 @@ class PushNotificationService: NSObject {
 
     // Temporary serverId for current registration flow
     private var currentServerId: String?
+    
+    // Timeout task for registration
+    private var registrationTimeoutTask: Task<Void, Never>?
 
     private override init() {
         super.init()
@@ -34,37 +37,74 @@ class PushNotificationService: NSObject {
 
     /// Request notification permissions and register for push
     func requestPermissionsAndRegister(serverId: String, completion: @escaping (Bool, Error?) -> Void) async throws {
+        // Cancel any existing timeout
+        registrationTimeoutTask?.cancel()
+        
         // Store serverId and completion for later when device token arrives
         self.currentServerId = serverId
         self.registrationCompletion = completion
 
         // Request authorization
         let center = UNUserNotificationCenter.current()
-        let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
-
-        guard granted else {
-            // Call completion immediately if permission denied
-            completion(false, PushError.permissionDenied)
+        
+        do {
+            let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+            
+            guard granted else {
+                // Call completion immediately if permission denied
+                let error = PushError.permissionDenied
+                completion(false, error)
+                self.registrationCompletion = nil
+                self.currentServerId = nil
+                throw error
+            }
+            
+            print("[PushNotificationService] ✅ User granted notification permissions")
+            
+            // Register for remote notifications (must be on main thread)
+            await MainActor.run {
+                #if os(iOS)
+                UIApplication.shared.registerForRemoteNotifications()
+                #elseif os(macOS)
+                NSApplication.shared.registerForRemoteNotifications()
+                #endif
+            }
+            
+            print("[PushNotificationService] 📱 Called registerForRemoteNotifications, waiting for device token...")
+            
+            // Set up timeout (30 seconds) in case device token never arrives
+            registrationTimeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds
+                
+                guard !Task.isCancelled else { return }
+                
+                print("[PushNotificationService] ⏰ Device token timeout - registration took too long")
+                
+                if let completion = self?.registrationCompletion {
+                    let error = PushError.registrationTimeout
+                    completion(false, error)
+                    self?.registrationCompletion = nil
+                    self?.currentServerId = nil
+                }
+            }
+            
+            // Completion will be called when device token arrives and API registration completes
+            // Note: This function returns here, but completion is stored and will be called later
+        } catch {
+            print("[PushNotificationService] ❌ Authorization request failed: \(error)")
+            registrationTimeoutTask?.cancel()
+            completion(false, error)
             self.registrationCompletion = nil
             self.currentServerId = nil
-            throw PushError.permissionDenied
+            throw error
         }
-
-        // Register for remote notifications (must be on main thread)
-        await MainActor.run {
-            #if os(iOS)
-            UIApplication.shared.registerForRemoteNotifications()
-            #elseif os(macOS)
-            NSApplication.shared.registerForRemoteNotifications()
-            #endif
-        }
-
-        print("[PushNotificationService] Requested permissions and registered for push on server: \(serverId)")
-        // Completion will be called when device token arrives and API registration completes
     }
 
     /// Handle device token receipt from APNs
     func didReceiveDeviceToken(_ deviceToken: Data) {
+        // Cancel timeout since we got the token
+        registrationTimeoutTask?.cancel()
+        
         let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
         print("[PushNotificationService] Received device token: \(tokenString)")
 
@@ -107,6 +147,9 @@ class PushNotificationService: NSObject {
 
     /// Handle device token registration failure
     func didFailToRegisterForRemoteNotifications(error: Error) {
+        // Cancel timeout
+        registrationTimeoutTask?.cancel()
+        
         print("[PushNotificationService] Failed to register for remote notifications: \(error)")
 
         // Call completion handler with error if present
@@ -324,6 +367,7 @@ class PushNotificationService: NSObject {
         case notAuthenticated
         case registrationFailed
         case unregistrationFailed
+        case registrationTimeout
 
         var errorDescription: String? {
             switch self {
@@ -337,6 +381,8 @@ class PushNotificationService: NSObject {
                 return "Failed to register device with server"
             case .unregistrationFailed:
                 return "Failed to unregister device from server"
+            case .registrationTimeout:
+                return "Device registration timed out. Please check your network connection and try again."
             }
         }
     }

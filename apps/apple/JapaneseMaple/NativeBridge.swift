@@ -671,17 +671,23 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
 
         case .requestPushPermission:
             Task {
+                let activeServer = ServerConfigService.shared.getActiveServer()
                 do {
-                    let activeServer = ServerConfigService.shared.getActiveServer()
                     try await PushNotificationService.shared.requestPermissionsAndRegister(serverId: activeServer.id) { [weak self] success, error in
                         // This completion is called after device token arrives and API registration completes
-                        self?.send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
-                            granted: success,
-                            error: error?.localizedDescription
-                        )))
+                        DispatchQueue.main.async {
+                            self?.send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
+                                granted: success,
+                                error: error?.localizedDescription
+                            )))
+                        }
                     }
+                    // If we get here without throwing, permission was granted and we're waiting for device token
+                    // Response will be sent via the completion handler above
+                    print("[Bridge] ✅ Permission granted, waiting for device token and API registration...")
                 } catch {
                     // This catch handles immediate failures (e.g., permission denied before device token)
+                    print("[Bridge] ❌ Permission request failed immediately: \(error)")
                     send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
                         granted: false,
                         error: error.localizedDescription
@@ -922,17 +928,23 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         #if os(iOS)
         case .requestPushPermission:
             Task {
+                let activeServer = ServerConfigService.shared.getActiveServer()
                 do {
-                    let activeServer = ServerConfigService.shared.getActiveServer()
                     try await PushNotificationService.shared.requestPermissionsAndRegister(serverId: activeServer.id) { [weak self] success, error in
                         // This completion is called after device token arrives and API registration completes
-                        self?.send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
-                            granted: success,
-                            error: error?.localizedDescription
-                        )))
+                        DispatchQueue.main.async {
+                            self?.send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
+                                granted: success,
+                                error: error?.localizedDescription
+                            )))
+                        }
                     }
+                    // If we get here without throwing, permission was granted and we're waiting for device token
+                    // Response will be sent via the completion handler above
+                    print("[Bridge] ✅ Permission granted, waiting for device token and API registration...")
                 } catch {
                     // This catch handles immediate failures (e.g., permission denied before device token)
+                    print("[Bridge] ❌ Permission request failed immediately: \(error)")
                     send(.pushPermissionResult(NativeToWebMessage.PushPermissionResponse(
                         granted: false,
                         error: error.localizedDescription
