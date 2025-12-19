@@ -1,4 +1,4 @@
-import { Component, inject, signal, output, input, effect, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, output, input, effect, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -50,6 +50,24 @@ export class SidebarComponent implements OnInit {
     });
   }
 
+  // Reactive computed signals for user data
+  readonly userInitials = computed(() => {
+    const user = this.authService.user();
+    if (!user) return '?';
+    const name = user.displayName || user.email.split('@')[0];
+    return name.slice(0, 2).toUpperCase();
+  });
+
+  readonly userName = computed(() => {
+    const user = this.authService.user();
+    if (!user) return 'Guest';
+    return user.displayName || user.email.split('@')[0];
+  });
+
+  readonly notificationUnreadCount = computed(() => {
+    return this.notificationService.unreadCount();
+  });
+
   ngOnInit(): void {
     // Load unread counts when sidebar initializes
     this.messageService.loadUnreadCounts().subscribe();
@@ -57,24 +75,6 @@ export class SidebarComponent implements OnInit {
 
   getUnreadCount(tagId: string): number {
     return this.messageService.getUnreadCount(tagId);
-  }
-
-  get userInitials(): () => string {
-    return () => {
-      const user = this.authService.user();
-      if (!user) return '?';
-      const email = user.email;
-      const name = user.displayName || email.split('@')[0];
-      return name.slice(0, 2).toUpperCase();
-    };
-  }
-
-  get userName(): () => string {
-    return () => {
-      const user = this.authService.user();
-      if (!user) return 'Guest';
-      return user.displayName || user.email.split('@')[0];
-    };
   }
 
   toggleTag(tagId: string): void {
@@ -114,9 +114,5 @@ export class SidebarComponent implements OnInit {
 
   onNotifications(): void {
     this.router.navigate(['/notifications']);
-  }
-
-  get notificationUnreadCount(): () => number {
-    return () => this.notificationService.unreadCount();
   }
 }
