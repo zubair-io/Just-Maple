@@ -148,9 +148,7 @@ export class AuthService {
 
         // Fetch fresh user data from server in background to ensure up-to-date info
         // Don't await - let it update asynchronously
-        this.fetchCurrentUser().catch(() => {
-          // If fetch fails, token is likely invalid, logout will be handled by fetchCurrentUser
-        });
+        this.fetchCurrentUser().catch(() => {});
       } catch {
         localStorage.removeItem(this.getStorageKey());
       }
@@ -284,7 +282,6 @@ export class AuthService {
 
       return response.user;
     } catch {
-      this.logout();
       return null;
     }
   }
