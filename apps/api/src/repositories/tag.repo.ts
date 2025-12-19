@@ -389,15 +389,31 @@ export async function getTagMembersWithUserData(
     // Fetch full user data for each member
     const members: TagMember[] = [];
     for (const member of tag.sharing.sharedWith) {
-        const user = await usersCollection.findOne({ _id: new ObjectId(member.userId) });
-        if (user) {
-            members.push({
-                userId: member.userId,
-                email: user.email,
-                displayName: user.displayName,
-                profilePictureUrl: user.profilePictureUrl,
-                accessLevel: member.accessLevel,
-            });
+        // Validate that userId is a valid ObjectId before querying
+        if (!ObjectId.isValid(member.userId)) {
+            console.warn(
+                `[TagRepo] Invalid userId in sharedWith: ${member.userId} for tag ${tagId}`,
+            );
+            continue;
+        }
+
+        try {
+            const user = await usersCollection.findOne({ _id: new ObjectId(member.userId) });
+            if (user) {
+                members.push({
+                    userId: member.userId,
+                    email: user.email,
+                    displayName: user.displayName,
+                    profilePictureUrl: user.profilePictureUrl,
+                    accessLevel: member.accessLevel,
+                });
+            }
+        } catch (error) {
+            console.error(
+                `[TagRepo] Failed to fetch user ${member.userId} for tag ${tagId}:`,
+                error,
+            );
+            // Continue to next member
         }
     }
 
