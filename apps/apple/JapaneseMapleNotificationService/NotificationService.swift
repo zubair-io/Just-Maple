@@ -6,6 +6,9 @@
 //
 
 import UserNotifications
+import os.log
+
+private let logger = Logger(subsystem: "com.just.maple.JapaneseMaple.JapaneseMapleNotificationService", category: "NotificationService")
 
 class NotificationService: UNNotificationServiceExtension {
 
@@ -21,29 +24,36 @@ class NotificationService: UNNotificationServiceExtension {
             return
         }
 
-        print("[NotificationService] Received notification: \(request.identifier)")
-        print("[NotificationService] User info: \(bestAttemptContent.userInfo)")
+        logger.info("Received notification: \(request.identifier)")
+        logger.info("User info keys: \(bestAttemptContent.userInfo.keys.map { String(describing: $0) }.joined(separator: ", "))")
+
+        // Log the senderProfilePictureUrl specifically to debug
+        if let url = bestAttemptContent.userInfo["senderProfilePictureUrl"] {
+            logger.info("senderProfilePictureUrl value: \(String(describing: url))")
+        } else {
+            logger.warning("senderProfilePictureUrl NOT found in userInfo")
+        }
 
         // Extract profile picture URL from notification payload
         guard let profilePictureUrl = bestAttemptContent.userInfo["senderProfilePictureUrl"] as? String,
               !profilePictureUrl.isEmpty,
               let imageUrl = URL(string: profilePictureUrl) else {
-            print("[NotificationService] No profile picture URL found, delivering notification as-is")
+            logger.warning("No valid profile picture URL found, delivering notification as-is")
             contentHandler(bestAttemptContent)
             return
         }
 
-        print("[NotificationService] Downloading profile picture from: \(imageUrl)")
+        logger.info("Downloading profile picture from: \(imageUrl.absoluteString)")
 
         // Download and attach profile picture
         Task {
             do {
                 let attachment = try await downloadImageAttachment(from: imageUrl)
                 bestAttemptContent.attachments = [attachment]
-                print("[NotificationService] ✅ Profile picture attached successfully")
+                logger.info("Profile picture attached successfully")
                 contentHandler(bestAttemptContent)
             } catch {
-                print("[NotificationService] ❌ Failed to download profile picture: \(error)")
+                logger.error("Failed to download profile picture: \(error.localizedDescription)")
                 // Deliver notification without image
                 contentHandler(bestAttemptContent)
             }
@@ -52,7 +62,7 @@ class NotificationService: UNNotificationServiceExtension {
 
     override func serviceExtensionTimeWillExpire() {
         // Called just before the extension will be terminated by the system.
-        print("[NotificationService] ⏰ Service extension time will expire")
+        logger.warning("Service extension time will expire")
         if let contentHandler = contentHandler, let bestAttemptContent = bestAttemptContent {
             contentHandler(bestAttemptContent)
         }
@@ -64,10 +74,12 @@ class NotificationService: UNNotificationServiceExtension {
 
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            logger.error("Download failed with status code: \(statusCode)")
             throw NotificationServiceError.downloadFailed
         }
 
-        print("[NotificationService] Downloaded \(data.count) bytes")
+        logger.info("Downloaded \(data.count) bytes")
 
         // Determine file extension from URL or content type
         var fileExtension = url.pathExtension
@@ -86,7 +98,7 @@ class NotificationService: UNNotificationServiceExtension {
         let fileURL = tempDirectory.appendingPathComponent(fileName)
 
         try data.write(to: fileURL)
-        print("[NotificationService] Saved to: \(fileURL)")
+        logger.info("Saved image to: \(fileURL.path)")
 
         // Determine type hint based on extension
         let typeHint: String

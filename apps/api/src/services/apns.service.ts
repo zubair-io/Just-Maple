@@ -102,6 +102,9 @@ export async function sendApnsPush(
         console.log(
             `[APNs] Sending ${production ? 'production' : 'sandbox'} push to ${deviceToken.substring(0, 8)}... for notification ${notificationId}`,
         );
+        console.log(
+            `[APNs] Payload includes senderProfilePictureUrl: ${additionalData?.senderProfilePictureUrl ? 'yes' : 'no'}`,
+        );
 
         const result = await provider.send(notification, deviceToken);
 
