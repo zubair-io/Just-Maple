@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E3D4817E2EF6705700056DE5 /* JapaneseMapleNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E3D481772EF6705700056DE5 /* JapaneseMapleNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E3E2C52E2EDC2E5100F16E47 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 26495016164A4B7D820F1D18 /* WhisperKit */; };
 /* End PBXBuildFile section */
 
@@ -25,6 +26,13 @@
 			remoteGlobalIDString = E37162722EDC1981006A0A2F;
 			remoteInfo = JapaneseMaple;
 		};
+		E3D4817C2EF6705700056DE5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E371626B2EDC1981006A0A2F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E3D481762EF6705700056DE5;
+			remoteInfo = JapaneseMapleNotificationService;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -34,6 +42,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				E3D4817E2EF6705700056DE5 /* JapaneseMapleNotificationService.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -44,9 +53,17 @@
 		E37162732EDC1981006A0A2F /* JapaneseMaple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JapaneseMaple.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E37162822EDC1982006A0A2F /* JapaneseMapleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JapaneseMapleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E371628C2EDC1982006A0A2F /* JapaneseMapleUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JapaneseMapleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3D481772EF6705700056DE5 /* JapaneseMapleNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JapaneseMapleNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		E3D481822EF6705700056DE5 /* Exceptions for "JapaneseMapleNotificationService" folder in "JapaneseMapleNotificationService" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = E3D481762EF6705700056DE5 /* JapaneseMapleNotificationService */;
+		};
 		E3E2C50C2EDC1FB900F16E47 /* Exceptions for "JapaneseMaple" folder in "JapaneseMaple" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -75,6 +92,14 @@
 			path = JapaneseMapleUITests;
 			sourceTree = "<group>";
 		};
+		E3D481782EF6705700056DE5 /* JapaneseMapleNotificationService */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E3D481822EF6705700056DE5 /* Exceptions for "JapaneseMapleNotificationService" folder in "JapaneseMapleNotificationService" target */,
+			);
+			path = JapaneseMapleNotificationService;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -100,6 +125,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E3D481742EF6705700056DE5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -109,6 +141,7 @@
 				E37162752EDC1981006A0A2F /* JapaneseMaple */,
 				E37162852EDC1982006A0A2F /* JapaneseMapleTests */,
 				E371628F2EDC1982006A0A2F /* JapaneseMapleUITests */,
+				E3D481782EF6705700056DE5 /* JapaneseMapleNotificationService */,
 				E37162742EDC1981006A0A2F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -119,6 +152,7 @@
 				E37162732EDC1981006A0A2F /* JapaneseMaple.app */,
 				E37162822EDC1982006A0A2F /* JapaneseMapleTests.xctest */,
 				E371628C2EDC1982006A0A2F /* JapaneseMapleUITests.xctest */,
+				E3D481772EF6705700056DE5 /* JapaneseMapleNotificationService.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -138,6 +172,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				E3D4817D2EF6705700056DE5 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				E37162752EDC1981006A0A2F /* JapaneseMaple */,
@@ -196,6 +231,28 @@
 			productReference = E371628C2EDC1982006A0A2F /* JapaneseMapleUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		E3D481762EF6705700056DE5 /* JapaneseMapleNotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E3D481812EF6705700056DE5 /* Build configuration list for PBXNativeTarget "JapaneseMapleNotificationService" */;
+			buildPhases = (
+				E3D481732EF6705700056DE5 /* Sources */,
+				E3D481742EF6705700056DE5 /* Frameworks */,
+				E3D481752EF6705700056DE5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				E3D481782EF6705700056DE5 /* JapaneseMapleNotificationService */,
+			);
+			name = JapaneseMapleNotificationService;
+			packageProductDependencies = (
+			);
+			productName = JapaneseMapleNotificationService;
+			productReference = E3D481772EF6705700056DE5 /* JapaneseMapleNotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -216,6 +273,9 @@
 					E371628B2EDC1982006A0A2F = {
 						CreatedOnToolsVersion = 26.1;
 						TestTargetID = E37162722EDC1981006A0A2F;
+					};
+					E3D481762EF6705700056DE5 = {
+						CreatedOnToolsVersion = 26.1;
 					};
 				};
 			};
@@ -239,6 +299,7 @@
 				E37162722EDC1981006A0A2F /* JapaneseMaple */,
 				E37162812EDC1982006A0A2F /* JapaneseMapleTests */,
 				E371628B2EDC1982006A0A2F /* JapaneseMapleUITests */,
+				E3D481762EF6705700056DE5 /* JapaneseMapleNotificationService */,
 			);
 		};
 /* End PBXProject section */
@@ -259,6 +320,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		E371628A2EDC1982006A0A2F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E3D481752EF6705700056DE5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -289,6 +357,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E3D481732EF6705700056DE5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -301,6 +376,11 @@
 			isa = PBXTargetDependency;
 			target = E37162722EDC1981006A0A2F /* JapaneseMaple */;
 			targetProxy = E371628D2EDC1982006A0A2F /* PBXContainerItemProxy */;
+		};
+		E3D4817D2EF6705700056DE5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E3D481762EF6705700056DE5 /* JapaneseMapleNotificationService */;
+			targetProxy = E3D4817C2EF6705700056DE5 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -494,7 +574,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				AUTOMATION_APPLE_EVENTS = NO;
-				CODE_SIGN_ENTITLEMENTS = JapaneseMaple/JapaneseMaple-Release.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "JapaneseMaple/JapaneseMaple-Release.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = QREP66JW5U;
@@ -663,6 +743,75 @@
 			};
 			name = Release;
 		};
+		E3D4817F2EF6705700056DE5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = JapaneseMapleNotificationService/JapaneseMapleNotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = JapaneseMapleNotificationService/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = JapaneseMapleNotificationService;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.just.maple.JapaneseMaple.JapaneseMapleNotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		E3D481802EF6705700056DE5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = JapaneseMapleNotificationService/JapaneseMapleNotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = JapaneseMapleNotificationService/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = JapaneseMapleNotificationService;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.just.maple.JapaneseMaple.JapaneseMapleNotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -698,6 +847,15 @@
 			buildConfigurations = (
 				E371629D2EDC1982006A0A2F /* Debug */,
 				E371629E2EDC1982006A0A2F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E3D481812EF6705700056DE5 /* Build configuration list for PBXNativeTarget "JapaneseMapleNotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E3D4817F2EF6705700056DE5 /* Debug */,
+				E3D481802EF6705700056DE5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

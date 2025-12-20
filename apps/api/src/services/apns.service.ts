@@ -96,6 +96,7 @@ export async function sendApnsPush(
             payload,
             sound: 'default',
             badge: 1,
+            mutableContent: 1, // Enable notification service extension
         });
 
         console.log(

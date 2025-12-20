@@ -160,8 +160,8 @@ export async function sendNotification(
                 console.log(
                     `[Notification] Using direct APNs (${device.production ? 'production' : 'sandbox'}) for device ${device.deviceToken.substring(0, 8)}...`,
                 );
-                // Add iconUrl to data if provided
-                const payloadData = iconUrl ? { ...data, iconUrl } : data;
+                // Add senderProfilePictureUrl to data if iconUrl is provided
+                const payloadData = iconUrl ? { ...data, senderProfilePictureUrl: iconUrl } : data;
                 return sendApnsPush(
                     device.deviceToken,
                     notification._id,
@@ -170,7 +170,7 @@ export async function sendNotification(
                     body,
                     device.production,
                     device.serverUrl, // Pass serverUrl for multi-server support
-                    payloadData, // Pass notification data with iconUrl
+                    payloadData, // Pass notification data with senderProfilePictureUrl
                 );
             } else {
                 // Use Paperbark relay in dev/test
