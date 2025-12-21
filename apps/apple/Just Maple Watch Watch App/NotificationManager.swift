@@ -17,11 +17,45 @@ class NotificationManager: NSObject, ObservableObject {
     @Published var selectedTagId: String?
     @Published var shouldOpenMessage = false
 
+    private var pendingDeviceToken: String?
+    private let userDefaults = UserDefaults.standard
+    private let deviceTokenKey = "com.justmaple.deviceToken"
+    private let lastRegistrationKey = "com.justmaple.lastRegistration"
+
     private override init() {
         super.init()
     }
 
     // MARK: - Registration
+
+    /// Ensure device is registered - check on boot and register if needed
+    func ensureDeviceRegistration() async {
+        print("[NotificationManager] 🔍 Checking device registration status...")
+
+        // Check if we have a stored device token
+        guard let storedToken = userDefaults.string(forKey: deviceTokenKey) else {
+            print("[NotificationManager] ⚠️ No stored device token - waiting for APNs")
+            return
+        }
+
+        print("[NotificationManager] ✅ Found stored device token")
+
+        // Check last registration time
+        if let lastRegistration = userDefaults.object(forKey: lastRegistrationKey) as? Date {
+            let hoursSinceRegistration = Date().timeIntervalSince(lastRegistration) / 3600
+            print("[NotificationManager] 📅 Last registration: \(Int(hoursSinceRegistration)) hours ago")
+
+            // Re-register if it's been more than 24 hours
+            if hoursSinceRegistration < 24 {
+                print("[NotificationManager] ✅ Registration is fresh, skipping")
+                return
+            }
+        }
+
+        // Register with server
+        print("[NotificationManager] 🔄 Re-registering device with server...")
+        await registerDeviceWithServer(deviceToken: storedToken)
+    }
 
     /// Request notification permissions and register for remote notifications
     func requestAuthorization() async -> Bool {
@@ -44,6 +78,53 @@ class NotificationManager: NSObject, ObservableObject {
         } catch {
             print("[NotificationManager] ❌ Failed to request authorization: \(error)")
             return false
+        }
+    }
+
+    /// Called when device token is received from APNs
+    func didRegisterForRemoteNotifications(deviceToken: Data) {
+        let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        print("[NotificationManager] 📱 Device token received: \(tokenString)")
+
+        // Save token to UserDefaults
+        userDefaults.set(tokenString, forKey: deviceTokenKey)
+        pendingDeviceToken = tokenString
+        print("[NotificationManager] 💾 Saved device token to storage")
+
+        // Register with server
+        Task {
+            await registerDeviceWithServer(deviceToken: tokenString)
+        }
+    }
+
+    /// Called when device token registration fails
+    func didFailToRegisterForRemoteNotifications(error: Error) {
+        print("[NotificationManager] ❌ Failed to register for remote notifications: \(error)")
+    }
+
+    /// Register device token with server
+    private func registerDeviceWithServer(deviceToken: String) async {
+        do {
+            print("[NotificationManager] 📤 Registering device with server...")
+
+            #if DEBUG
+            let isProduction = false
+            #else
+            let isProduction = true
+            #endif
+
+            try await APIClient.shared.registerDevice(
+                deviceToken: deviceToken,
+                platform: "ios",
+                production: isProduction
+            )
+
+            // Save registration timestamp
+            userDefaults.set(Date(), forKey: lastRegistrationKey)
+            print("[NotificationManager] ✅ Device registered with server successfully")
+            print("[NotificationManager] 💾 Saved registration timestamp")
+        } catch {
+            print("[NotificationManager] ❌ Failed to register device with server: \(error)")
         }
     }
 

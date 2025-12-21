@@ -7,6 +7,8 @@
 
 import Foundation
 import Combine
+
+#if os(iOS)
 import WatchConnectivity
 
 class WatchConnectivityService: NSObject, ObservableObject {
@@ -187,3 +189,4 @@ extension WatchConnectivityService: WCSessionDelegate {
         }
     }
 }
+#endif

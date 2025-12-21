@@ -10,8 +10,10 @@ import SwiftUI
 struct TagListView: View {
     @StateObject private var viewModel = TagListViewModel()
     @StateObject private var authManager = AuthenticationManager.shared
+    @StateObject private var signalRManager = SignalRManager.shared
     @EnvironmentObject var notificationManager: NotificationManager
     @State private var navigationPath = NavigationPath()
+    @State private var showDebugInfo = false
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -31,6 +33,18 @@ struct TagListView: View {
             .navigationTitle("Just Maple")
             .navigationDestination(for: Tag.self) { tag in
                 MessageListView(tag: tag)
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showDebugInfo.toggle()
+                    } label: {
+                        Image(systemName: showDebugInfo ? "info.circle.fill" : "info.circle")
+                    }
+                }
+            }
+            .sheet(isPresented: $showDebugInfo) {
+                debugView
             }
         }
         .task {
@@ -171,6 +185,145 @@ struct TagListView: View {
         }
         .refreshable {
             await viewModel.refresh()
+        }
+    }
+
+    private var debugView: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // SignalR Status
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("SignalR Connection")
+                            .font(.headline)
+
+                        HStack {
+                            Circle()
+                                .fill(statusColor)
+                                .frame(width: 8, height: 8)
+
+                            Text(signalRManager.connectionStatus.rawValue.capitalized)
+                                .font(.caption)
+                                .foregroundColor(statusColor)
+                        }
+
+                        if !signalRManager.subscribedTags.isEmpty {
+                            Text("Subscribed Tags:")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+
+                            ForEach(signalRManager.subscribedTags, id: \.self) { tagId in
+                                Text("• \(tagId)")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    // SignalR Logs
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Connection Logs")
+                                .font(.headline)
+
+                            Spacer()
+
+                            if !signalRManager.debugLogs.isEmpty {
+                                Button {
+                                    signalRManager.debugLogs.removeAll()
+                                } label: {
+                                    Text("Clear")
+                                        .font(.caption2)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+
+                        if signalRManager.debugLogs.isEmpty {
+                            Text("No logs yet")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        } else {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(Array(signalRManager.debugLogs.enumerated()), id: \.offset) { _, log in
+                                    Text(log)
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .foregroundColor(
+                                            log.contains("✅") ? .green :
+                                            log.contains("❌") ? .red :
+                                            log.contains("⚠️") ? .orange :
+                                            log.contains("🔄") ? .blue :
+                                            .secondary
+                                        )
+                                }
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    // Actions
+                    VStack(spacing: 12) {
+                        Button {
+                            Task {
+                                await signalRManager.connect()
+                            }
+                        } label: {
+                            Label("Connect SignalR", systemImage: "bolt.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(signalRManager.connectionStatus == .connected)
+
+                        Button {
+                            signalRManager.disconnect()
+                        } label: {
+                            Label("Disconnect SignalR", systemImage: "bolt.slash.fill")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(signalRManager.connectionStatus == .disconnected)
+                    }
+
+                    Divider()
+
+                    // Authentication Info
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Authentication")
+                            .font(.headline)
+
+                        Text("Authenticated: \(authManager.isAuthenticated ? "Yes" : "No")")
+                            .font(.caption)
+
+                        if let apiUrl = authManager.apiUrl {
+                            Text("API URL: \(apiUrl)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Debug Info")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        showDebugInfo = false
+                    }
+                }
+            }
+        }
+    }
+
+    private var statusColor: Color {
+        switch signalRManager.connectionStatus {
+        case .connected:
+            return .green
+        case .connecting, .reconnecting:
+            return .orange
+        case .disconnected:
+            return .red
         }
     }
 }

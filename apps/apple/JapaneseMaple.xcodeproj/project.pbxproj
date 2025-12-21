@@ -23,9 +23,10 @@
 		E3C8DD3C2EF70F33003D56DA /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C8DD2A2EF70F33003D56DA /* APIClient.swift */; };
 		E3C8DD3D2EF70F33003D56DA /* NoteContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C8DD262EF70F33003D56DA /* NoteContent.swift */; };
 		E3C8DD3E2EF70F33003D56DA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C8DD252EF70F33003D56DA /* Message.swift */; };
-		E3D4817E2EF6705700056DE5 /* JapaneseMapleNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E3D481772EF6705700056DE5 /* JapaneseMapleNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E3D4817E2EF6705700056DE5 /* JapaneseMapleNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E3D481772EF6705700056DE5 /* JapaneseMapleNotificationService.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E3DF6CEB2EF7CB10001AA433 /* SignalRClient in Frameworks */ = {isa = PBXBuildFile; productRef = E3DF6CEA2EF7CB00001AA433 /* SignalRClient */; };
 		E3E2C52E2EDC2E5100F16E47 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 26495016164A4B7D820F1D18 /* WhisperKit */; };
-		E3F7D1812EF6839000F8DE3C /* Just Maple Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = E3F7D1612EF6838E00F8DE3C /* Just Maple Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E3F7D1812EF6839000F8DE3C /* Just Maple Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = E3F7D1612EF6838E00F8DE3C /* Just Maple Watch App.app */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -212,6 +213,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E3DF6CEB2EF7CB10001AA433 /* SignalRClient in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -408,6 +410,7 @@
 			);
 			name = "Just Maple Watch App";
 			packageProductDependencies = (
+				E3DF6CEA2EF7CB00001AA433 /* SignalRClient */,
 			);
 			productName = "Just Maple Watch Watch App";
 			productReference = E3F7D1612EF6838E00F8DE3C /* Just Maple Watch App.app */;
@@ -507,6 +510,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				7461055901DA42F78BE46662 /* XCRemoteSwiftPackageReference "WhisperKit" */,
+				E3DF6CE82EF7CAAA001AA433 /* XCRemoteSwiftPackageReference "signalr-client-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E37162742EDC1981006A0A2F /* Products */;
@@ -657,6 +661,7 @@
 		};
 		E3D4817D2EF6705700056DE5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = E3D481762EF6705700056DE5 /* JapaneseMapleNotificationService */;
 			targetProxy = E3D4817C2EF6705700056DE5 /* PBXContainerItemProxy */;
 		};
@@ -672,6 +677,7 @@
 		};
 		E3F7D1802EF6839000F8DE3C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = E3F7D1602EF6838E00F8DE3C /* Just Maple Watch App */;
 			targetProxy = E3F7D17F2EF6839000F8DE3C /* PBXContainerItemProxy */;
 		};
@@ -1354,6 +1360,14 @@
 				minimumVersion = 0.7.0;
 			};
 		};
+		E3DF6CE82EF7CAAA001AA433 /* XCRemoteSwiftPackageReference "signalr-client-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/dotnet/signalr-client-swift";
+			requirement = {
+				branch = dev;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1361,6 +1375,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 7461055901DA42F78BE46662 /* XCRemoteSwiftPackageReference "WhisperKit" */;
 			productName = WhisperKit;
+		};
+		E3DF6CEA2EF7CB00001AA433 /* SignalRClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E3DF6CE82EF7CAAA001AA433 /* XCRemoteSwiftPackageReference "signalr-client-swift" */;
+			productName = SignalRClient;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

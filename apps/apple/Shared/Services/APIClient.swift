@@ -99,6 +99,31 @@ class APIClient {
         return response.user
     }
 
+    // MARK: - Notifications API
+
+    /// Register device for push notifications
+    /// - Parameters:
+    ///   - deviceToken: The device token from APNs
+    ///   - platform: The platform (ios or macos)
+    ///   - production: Whether this is a production build
+    func registerDevice(
+        deviceToken: String,
+        platform: String = "ios",
+        production: Bool = false
+    ) async throws {
+        let serverUrl = baseURL
+        let input = RegisterDeviceInput(
+            serverUrl: serverUrl,
+            deviceToken: deviceToken,
+            platform: platform,
+            production: production
+        )
+        let _: RegisterDeviceResponse = try await post(
+            path: "/api/notifications/register",
+            body: input
+        )
+    }
+
     // MARK: - Generic HTTP Methods
 
     private func get<T: Decodable>(

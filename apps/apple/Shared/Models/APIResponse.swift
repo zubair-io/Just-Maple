@@ -70,3 +70,39 @@ struct MessageResponse: Codable {
 struct MeResponse: Codable {
     let user: User
 }
+
+/// Register device input
+struct RegisterDeviceInput: Codable {
+    let serverUrl: String
+    let deviceToken: String
+    let platform: String
+    let production: Bool
+}
+
+/// Register device response
+struct RegisterDeviceResponse: Codable {
+    let registration: DeviceRegistration
+}
+
+/// Device registration
+struct DeviceRegistration: Codable {
+    let id: String
+    let userId: String
+    let serverUrl: String
+    let deviceToken: String
+    let platform: String
+    let production: Bool
+    let registeredAt: String
+    let lastUsed: String
+
+    enum CodingKeys: String, CodingKey {
+        case id = "_id"
+        case userId
+        case serverUrl
+        case deviceToken
+        case platform
+        case production
+        case registeredAt
+        case lastUsed
+    }
+}

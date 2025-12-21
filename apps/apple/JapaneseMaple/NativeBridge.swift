@@ -661,7 +661,9 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             let success = ServerConfigService.shared.saveToken(payload.token, serverId: payload.serverId)
             if success {
                 // Sync token to Apple Watch
+                #if os(iOS)
                 WatchConnectivityService.shared.syncAuthToken()
+                #endif
             }
             send(.tokenSaved(NativeToWebMessage.TokenSavedResponse(success: success)))
 
@@ -673,7 +675,9 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             let success = ServerConfigService.shared.clearToken(serverId: payload?.serverId)
             if success {
                 // Clear token from Apple Watch
+                #if os(iOS)
                 WatchConnectivityService.shared.clearAuthToken()
+                #endif
             }
             send(.tokenCleared(NativeToWebMessage.TokenClearedResponse(success: success)))
 
@@ -925,7 +929,9 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             let success = ServerConfigService.shared.saveToken(payload.token, serverId: payload.serverId)
             if success {
                 // Sync token to Apple Watch
+                #if os(iOS)
                 WatchConnectivityService.shared.syncAuthToken()
+                #endif
             }
             send(.tokenSaved(NativeToWebMessage.TokenSavedResponse(success: success)))
 
@@ -937,7 +943,9 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             let success = ServerConfigService.shared.clearToken(serverId: payload?.serverId)
             if success {
                 // Clear token from Apple Watch
+                #if os(iOS)
                 WatchConnectivityService.shared.clearAuthToken()
+                #endif
             }
             send(.tokenCleared(NativeToWebMessage.TokenClearedResponse(success: success)))
 

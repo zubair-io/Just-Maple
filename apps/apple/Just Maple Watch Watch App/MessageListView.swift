@@ -49,6 +49,10 @@ struct MessageListView: View {
         }
         .task {
             await viewModel.loadMessages()
+            await viewModel.connectSignalR()
+        }
+        .onDisappear {
+            viewModel.disconnectSignalR()
         }
     }
 
@@ -110,74 +114,99 @@ struct MessageListView: View {
     private var messageListView: some View {
         ScrollViewReader { proxy in
             List {
-                ForEach(viewModel.messages) { message in
-                    MessageRowView(message: message)
-                        .id(message.id)
+                ForEach(groupedMessages, id: \.id) { group in
+                    MessageGroupView(group: group)
+                        .id(group.id)
                 }
             }
             .refreshable {
                 await viewModel.refresh()
             }
             .onAppear {
-                // Scroll to last message
-                if let lastMessage = viewModel.messages.last {
-                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                // Scroll to last message group
+                if let lastGroup = groupedMessages.last {
+                    proxy.scrollTo(lastGroup.id, anchor: .bottom)
                 }
             }
         }
     }
+
+    private var groupedMessages: [MessageGroup] {
+        var groups: [MessageGroup] = []
+        var currentGroup: [Message] = []
+        var currentUserId: String?
+
+        for message in viewModel.messages {
+            if currentUserId == message.userId {
+                // Same user, add to current group
+                currentGroup.append(message)
+            } else {
+                // Different user, save current group and start new one
+                if !currentGroup.isEmpty {
+                    groups.append(MessageGroup(messages: currentGroup))
+                }
+                currentGroup = [message]
+                currentUserId = message.userId
+            }
+        }
+
+        // Add final group
+        if !currentGroup.isEmpty {
+            groups.append(MessageGroup(messages: currentGroup))
+        }
+
+        return groups
+    }
 }
 
-// MARK: - Message Row View
+// MARK: - Message Group Model
 
-struct MessageRowView: View {
-    let message: Message
+struct MessageGroup: Identifiable {
+    let id: String
+    let messages: [Message]
+    let userId: String
+    let senderName: String
+
+    init(messages: [Message]) {
+        self.messages = messages
+        self.id = messages.map(\.id).joined(separator: "-")
+        self.userId = messages.first?.userId ?? ""
+        self.senderName = messages.first?.effectiveSenderName ?? "Unknown"
+    }
+}
+
+// MARK: - Message Group View
+
+struct MessageGroupView: View {
+    let group: MessageGroup
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Sender info
-            HStack(spacing: 4) {
-                Text(message.effectiveSenderName)
-                    .font(.caption)
-                    .fontWeight(.semibold)
+        VStack(alignment: .leading, spacing: 4) {
+            // Sender name
+            Text(group.senderName)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(.secondary)
 
-                Spacer()
+            // All messages stacked (no bubble)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(group.messages) { message in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(message.content.plainText)
+                            .font(.body)
 
-                Text(formattedDate)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-
-            // Message content
-            Text(message.content.plainText)
-                .font(.body)
-
-            // Edit indicator
-            if message.isEdited {
-                Text("Edited")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .italic()
+                        // Edit indicator
+                        if message.isEdited {
+                            Text("Edited")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .italic()
+                        }
+                    }
+                }
             }
         }
         .padding(.vertical, 4)
-    }
-
-    private var formattedDate: String {
-        guard let date = ISO8601DateFormatter().date(from: message.createdAt) else {
-            return message.createdAt
-        }
-
-        let now = Date()
-        let calendar = Calendar.current
-
-        if calendar.isDateInToday(date) {
-            return date.formatted(date: .omitted, time: .shortened)
-        } else if calendar.isDateInYesterday(date) {
-            return "Yesterday"
-        } else {
-            return date.formatted(date: .abbreviated, time: .omitted)
-        }
     }
 }
 
