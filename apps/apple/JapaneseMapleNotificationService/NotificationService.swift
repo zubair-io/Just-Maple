@@ -6,6 +6,7 @@
 //
 
 import UserNotifications
+import Intents
 
 class NotificationService: UNNotificationServiceExtension {
 
@@ -24,7 +25,7 @@ class NotificationService: UNNotificationServiceExtension {
         print("[NotificationService] Received notification: \(request.identifier)")
         print("[NotificationService] User info: \(bestAttemptContent.userInfo)")
 
-        // Extract profile picture URL from notification payload
+        // Extract sender info from notification payload
         guard let profilePictureUrl = bestAttemptContent.userInfo["senderProfilePictureUrl"] as? String,
               !profilePictureUrl.isEmpty,
               let imageUrl = URL(string: profilePictureUrl) else {
@@ -33,15 +34,56 @@ class NotificationService: UNNotificationServiceExtension {
             return
         }
 
+        // Get sender name from title or userInfo
+        let senderName = bestAttemptContent.userInfo["senderName"] as? String ?? bestAttemptContent.title
+
         print("[NotificationService] Downloading profile picture from: \(imageUrl)")
 
-        // Download and attach profile picture
+        // Download and set as communication notification with sender avatar
         Task {
             do {
-                let attachment = try await downloadImageAttachment(from: imageUrl)
-                bestAttemptContent.attachments = [attachment]
-                print("[NotificationService] ✅ Profile picture attached successfully")
-                contentHandler(bestAttemptContent)
+                // Download the image
+                let avatarImage = try await downloadImage(from: imageUrl)
+
+                // Create sender person with avatar
+                let senderHandle = INPersonHandle(value: senderName, type: .unknown)
+                let avatar = INImage(imageData: avatarImage)
+                let sender = INPerson(
+                    personHandle: senderHandle,
+                    nameComponents: nil,
+                    displayName: senderName,
+                    image: avatar,
+                    contactIdentifier: nil,
+                    customIdentifier: nil
+                )
+
+                // Create communication intent (message)
+                let intent = INSendMessageIntent(
+                    recipients: nil,
+                    outgoingMessageType: .outgoingMessageText,
+                    content: bestAttemptContent.body,
+                    speakableGroupName: nil,
+                    conversationIdentifier: bestAttemptContent.threadIdentifier,
+                    serviceName: nil,
+                    sender: sender,
+                    attachments: nil
+                )
+
+                // Donate the intent interaction for Siri suggestions
+                let interaction = INInteraction(intent: intent, response: nil)
+                interaction.direction = .incoming
+                interaction.donate(completion: nil)
+
+                // Update notification content to use the communication intent
+                do {
+                    let updatedContent = try bestAttemptContent.updating(from: intent)
+                    print("[NotificationService] ✅ Profile picture set as sender avatar successfully")
+                    contentHandler(updatedContent)
+                } catch {
+                    print("[NotificationService] ⚠️ Failed to update content from intent: \(error)")
+                    // Fallback: deliver original notification
+                    contentHandler(bestAttemptContent)
+                }
             } catch {
                 print("[NotificationService] ❌ Failed to download profile picture: \(error)")
                 // Deliver notification without image
@@ -58,7 +100,7 @@ class NotificationService: UNNotificationServiceExtension {
         }
     }
 
-    private func downloadImageAttachment(from url: URL) async throws -> UNNotificationAttachment {
+    private func downloadImage(from url: URL) async throws -> Data {
         // Download image data
         let (data, response) = try await URLSession.shared.data(from: url)
 
@@ -68,47 +110,7 @@ class NotificationService: UNNotificationServiceExtension {
         }
 
         print("[NotificationService] Downloaded \(data.count) bytes")
-
-        // Determine file extension from URL or content type
-        var fileExtension = url.pathExtension
-        if fileExtension.isEmpty {
-            // Try to get from content type
-            if let mimeType = httpResponse.mimeType {
-                fileExtension = mimeType.components(separatedBy: "/").last ?? "jpg"
-            } else {
-                fileExtension = "jpg"
-            }
-        }
-
-        // Save to temporary file
-        let tempDirectory = FileManager.default.temporaryDirectory
-        let fileName = "\(UUID().uuidString).\(fileExtension)"
-        let fileURL = tempDirectory.appendingPathComponent(fileName)
-
-        try data.write(to: fileURL)
-        print("[NotificationService] Saved to: \(fileURL)")
-
-        // Determine type hint based on extension
-        let typeHint: String
-        switch fileExtension.lowercased() {
-        case "jpg", "jpeg":
-            typeHint = "public.jpeg"
-        case "png":
-            typeHint = "public.png"
-        case "gif":
-            typeHint = "public.gif"
-        default:
-            typeHint = "public.jpeg"
-        }
-
-        // Create attachment
-        let attachment = try UNNotificationAttachment(
-            identifier: "profile-picture",
-            url: fileURL,
-            options: [UNNotificationAttachmentOptionsTypeHintKey: typeHint]
-        )
-
-        return attachment
+        return data
     }
 
     enum NotificationServiceError: Error {
