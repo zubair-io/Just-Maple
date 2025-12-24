@@ -51,6 +51,23 @@
     </button>
   }
 
+  <!-- Mention Suggestions Dropdown -->
+  @if (showMentionSuggestions()) {
+    <div
+      class="mention-suggestions-container fixed z-50"
+      [style.top.px]="mentionPosition().top"
+      [style.left.px]="mentionPosition().left"
+    >
+      <app-mention-suggestion
+        [items]="mentionSuggestions()"
+        [isLoading]="mentionSuggestionsLoading()"
+        [command]="mentionCommand"
+        (selected)="onMentionSelected($event)"
+        (dismissed)="onMentionDismissed()"
+      />
+    </div>
+  }
+
   <!-- Message Input -->
   <div class="message-input">
     <div class="input-wrapper">

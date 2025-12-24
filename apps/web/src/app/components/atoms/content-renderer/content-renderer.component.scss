@@ -188,5 +188,20 @@
     u {
       text-decoration: underline;
     }
+
+    // Mentions
+    .mention {
+      background: rgba(217, 78, 59, 0.15);
+      color: var(--color-primary);
+      padding: 0 4px;
+      border-radius: 4px;
+      font-weight: 500;
+      text-decoration: none;
+      font-family: var(--font-sans);
+
+      &:hover {
+        background: rgba(217, 78, 59, 0.25);
+      }
+    }
   }
 }

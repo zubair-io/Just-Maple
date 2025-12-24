@@ -19,10 +19,13 @@ import { MessageService } from '../../../services/message.service';
 import { RealtimeService } from '../../../services/realtime.service';
 import { AuthService } from '../../../services/auth.service';
 import { UiStateService } from '../../../services/ui-state.service';
+import { BotService, type BotSuggestion } from '../../../services/bot.service';
 import { ChatMessageComponent } from './chat-message.component';
 import { ChatTypingComponent } from './chat-typing.component';
-import type { Message, NoteContent, TypingEvent } from '@maple/shared';
-import { Subscription } from 'rxjs';
+import { MentionSuggestionComponent } from './mention-suggestion.component';
+import { Mention, type MentionNodeAttrs } from './extensions/mention';
+import type { Message, NoteContent, TypingEvent, Mention as MentionType } from '@maple/shared';
+import { Subscription, Subject, debounceTime, switchMap, takeUntil } from 'rxjs';
 
 interface MessageWithGrouping extends Message {
   isGrouped: boolean;
@@ -31,7 +34,7 @@ interface MessageWithGrouping extends Message {
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [CommonModule, ChatMessageComponent, ChatTypingComponent],
+  imports: [CommonModule, ChatMessageComponent, ChatTypingComponent, MentionSuggestionComponent],
   templateUrl: './chat.component.html',
   styleUrl: './chat.component.scss',
 })
@@ -43,6 +46,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private readonly realtimeService = inject(RealtimeService);
   private readonly authService = inject(AuthService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly botService = inject(BotService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly tagId = input.required<string>();
@@ -54,6 +58,15 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   readonly typingUsers = signal<TypingEvent[]>([]);
   readonly showScrollButton = signal(false);
   readonly newMessageCount = signal(0);
+
+  // Mention autocomplete state
+  readonly showMentionSuggestions = signal(false);
+  readonly mentionSuggestions = signal<BotSuggestion[]>([]);
+  readonly mentionSuggestionsLoading = signal(false);
+  readonly mentionPosition = signal<{ top: number; left: number }>({ top: 0, left: 0 });
+  mentionCommand: ((props: Record<string, unknown>) => void) | null = null;
+  private readonly mentionSearch$ = new Subject<string>();
+  private readonly destroy$ = new Subject<void>();
 
   // Compute messages with grouping information
   readonly messagesWithGrouping = computed(() => {
@@ -127,7 +140,30 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       if (this.typingTimeout) {
         clearTimeout(this.typingTimeout);
       }
+      this.destroy$.next();
+      this.destroy$.complete();
     });
+
+    // Setup mention search with debounce
+    this.mentionSearch$
+      .pipe(
+        debounceTime(200),
+        switchMap((query) => {
+          this.mentionSuggestionsLoading.set(true);
+          return this.botService.searchBots(this.tagId(), query);
+        }),
+        takeUntil(this.destroy$),
+      )
+      .subscribe({
+        next: (bots) => {
+          this.mentionSuggestions.set(bots);
+          this.mentionSuggestionsLoading.set(false);
+        },
+        error: () => {
+          this.mentionSuggestions.set([]);
+          this.mentionSuggestionsLoading.set(false);
+        },
+      });
   }
 
   ngAfterViewInit(): void {
@@ -147,6 +183,10 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       name: 'sendOnEnter',
       addKeyboardShortcuts: () => ({
         Enter: () => {
+          // Don't send if mention suggestions are showing
+          if (this.showMentionSuggestions()) {
+            return false;
+          }
           this.sendMessage();
           return true; // Prevent default (new paragraph)
         },
@@ -167,6 +207,43 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
         Placeholder.configure({
           placeholder: 'Type a message...',
         }),
+        Mention.configure({
+          HTMLAttributes: {
+            class: 'mention',
+          },
+          suggestion: {
+            items: ({ query }) => {
+              // Trigger search - results handled async via mentionSearch$
+              this.mentionSearch$.next(query);
+              return [];
+            },
+            render: () => {
+              return {
+                onStart: (props) => {
+                  this.mentionCommand = props.command;
+                  this.showMentionSuggestions.set(true);
+                  this.updateMentionPosition(props.clientRect);
+                },
+                onUpdate: (props) => {
+                  this.mentionCommand = props.command;
+                  this.updateMentionPosition(props.clientRect);
+                },
+                onKeyDown: (props) => {
+                  if (props.event.key === 'Escape') {
+                    this.showMentionSuggestions.set(false);
+                    return true;
+                  }
+                  return false;
+                },
+                onExit: () => {
+                  this.showMentionSuggestions.set(false);
+                  this.mentionSuggestions.set([]);
+                  this.mentionCommand = null;
+                },
+              };
+            },
+          },
+        }),
         SendOnEnter,
       ],
       content: '',
@@ -180,6 +257,31 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
         this.uiStateService.setChatInputFocused(false);
       },
     });
+  }
+
+  private updateMentionPosition(clientRect: (() => DOMRect | null) | null | undefined): void {
+    if (!clientRect) return;
+    const rect = clientRect();
+    if (!rect) return;
+    this.mentionPosition.set({
+      top: rect.bottom + 4,
+      left: rect.left,
+    });
+  }
+
+  onMentionSelected(bot: BotSuggestion): void {
+    if (this.mentionCommand) {
+      this.mentionCommand({
+        id: bot.id,
+        handle: bot.handle,
+        type: bot.type,
+      });
+    }
+    this.showMentionSuggestions.set(false);
+  }
+
+  onMentionDismissed(): void {
+    this.showMentionSuggestions.set(false);
   }
 
   private loadMessages(tagId: string): void {
@@ -246,13 +348,21 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     // Check if empty
     if (this.isContentEmpty(content)) return;
 
+    // Extract mentions from content
+    const mentions = this.extractMentions(content);
+
     // When sending own message, always scroll to bottom
     this.isAtBottom = true;
 
     this.messageService.sendMessage(this.tagId(), content).subscribe({
-      next: () => {
+      next: (message) => {
         this.editor?.commands.clearContent();
         this.scrollToBottom();
+
+        // Invoke bots for each mention
+        if (mentions.length > 0) {
+          this.invokeMentionedBots(message, mentions, content);
+        }
       },
     });
 
@@ -261,6 +371,81 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       clearTimeout(this.typingTimeout);
     }
     this.messageService.sendTyping(this.tagId(), false);
+  }
+
+  private extractMentions(content: NoteContent): MentionNodeAttrs[] {
+    const mentions: MentionNodeAttrs[] = [];
+
+    const traverse = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return;
+
+      const n = node as Record<string, unknown>;
+      if (n['type'] === 'mention' && n['attrs']) {
+        const attrs = n['attrs'] as MentionNodeAttrs;
+        if (attrs.id && attrs.handle) {
+          mentions.push(attrs);
+        }
+      }
+
+      if (Array.isArray(n['content'])) {
+        n['content'].forEach(traverse);
+      }
+    };
+
+    if (content?.content) {
+      content.content.forEach(traverse);
+    }
+
+    return mentions;
+  }
+
+  private invokeMentionedBots(
+    message: Message,
+    mentions: MentionNodeAttrs[],
+    content: NoteContent,
+  ): void {
+    const fullText = this.extractTextFromContent(content);
+
+    mentions
+      .filter((m) => m.type === 'bot')
+      .forEach((mention) => {
+        this.botService
+          .invokeBot(this.tagId(), mention.handle, 'message', message._id, {
+            mentionText: fullText,
+            fullContent: fullText,
+          })
+          .subscribe({
+            error: (err) => {
+              console.error(`Failed to invoke bot @${mention.handle}:`, err);
+            },
+          });
+      });
+  }
+
+  private extractTextFromContent(content: NoteContent): string {
+    const parts: string[] = [];
+
+    const traverse = (node: unknown): void => {
+      if (!node || typeof node !== 'object') return;
+
+      const n = node as Record<string, unknown>;
+      if (n['type'] === 'text' && typeof n['text'] === 'string') {
+        parts.push(n['text']);
+      } else if (n['type'] === 'mention' && n['attrs']) {
+        const attrs = n['attrs'] as MentionNodeAttrs;
+        parts.push(`@${attrs.handle}`);
+      }
+
+      if (Array.isArray(n['content'])) {
+        n['content'].forEach(traverse);
+      }
+    };
+
+    if (content?.content) {
+      content.content.forEach(traverse);
+    }
+
+    return parts.join('');
   }
 
   private isContentEmpty(content: NoteContent): boolean {
