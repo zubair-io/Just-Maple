@@ -53,6 +53,26 @@ import { ChatThreadComponent } from './chat-thread.component';
           @if (message().hasThread) {
             <app-chat-thread [messageId]="message()._id" [hasThread]="true" />
           }
+
+          <!-- Bot typing indicator -->
+          @if (botTyping()) {
+            <div class="bot-typing">
+              <div class="typing-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <span class="typing-text">Bot is thinking...</span>
+            </div>
+          }
+
+          <!-- Bot error -->
+          @if (botError()) {
+            <div class="bot-error">
+              <span class="material-symbols-rounded">error</span>
+              <span>{{ botError() }}</span>
+            </div>
+          }
         </div>
       </div>
     </div>
@@ -126,6 +146,73 @@ import { ChatThreadComponent } from './chat-thread.component';
         color: var(--color-text-muted);
         margin-left: 4px;
       }
+
+      .bot-typing {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+        padding: 8px 12px;
+        background: var(--color-bg-elevated, rgba(0, 0, 0, 0.05));
+        border-radius: 8px;
+        width: fit-content;
+      }
+
+      .typing-dots {
+        display: flex;
+        gap: 4px;
+      }
+
+      .typing-dots span {
+        width: 6px;
+        height: 6px;
+        background: var(--color-primary);
+        border-radius: 50%;
+        animation: bounce 1.4s infinite ease-in-out both;
+      }
+
+      .typing-dots span:nth-child(1) {
+        animation-delay: -0.32s;
+      }
+
+      .typing-dots span:nth-child(2) {
+        animation-delay: -0.16s;
+      }
+
+      @keyframes bounce {
+        0%,
+        80%,
+        100% {
+          transform: scale(0);
+        }
+        40% {
+          transform: scale(1);
+        }
+      }
+
+      .typing-text {
+        font-size: 12px;
+        color: var(--color-text-muted);
+        font-style: italic;
+      }
+
+      .bot-error {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
+        padding: 8px 12px;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: 8px;
+        color: rgb(239, 68, 68);
+        font-size: 13px;
+        width: fit-content;
+      }
+
+      .bot-error .material-symbols-rounded {
+        font-size: 16px;
+      }
     `,
   ],
 })
@@ -133,6 +220,8 @@ export class ChatMessageComponent {
   readonly message = input.required<Message>();
   readonly isOwn = input<boolean>(false);
   readonly isGrouped = input<boolean>(false);
+  readonly botTyping = input<boolean>(false);
+  readonly botError = input<string | undefined>(undefined);
 
   readonly senderDisplay = computed(() => {
     const msg = this.message();

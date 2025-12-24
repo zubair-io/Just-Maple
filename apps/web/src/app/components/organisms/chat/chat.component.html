@@ -20,6 +20,8 @@
         [message]="message"
         [isOwn]="isOwnMessage(message)"
         [isGrouped]="message.isGrouped"
+        [botTyping]="isBotTyping(message._id)"
+        [botError]="hasFailedBot(message._id)"
       />
     } @empty {
       @if (!isLoading()) {
