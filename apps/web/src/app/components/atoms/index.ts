@@ -7,3 +7,5 @@ export type { IconSize } from './icon/icon.component';
 export { ContentRendererComponent } from './content-renderer/content-renderer.component';
 export { ProfileAvatarComponent } from './profile-avatar/profile-avatar.component';
 export type { AvatarSize } from './profile-avatar/profile-avatar.component';
+export { BotOutputComponent } from './bot-output/bot-output.component';
+export type { UIComponent } from './bot-output/bot-output.component';
