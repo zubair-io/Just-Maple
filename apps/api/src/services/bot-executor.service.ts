@@ -18,6 +18,10 @@ import { getOrCreateThread, incrementThreadMessageCount } from '../repositories/
 import { createMessageInThread, markMessageHasThread } from '../repositories/message.repo';
 import { broadcastChatEvent } from './realtime.service';
 
+// Configuration constants
+const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL || 'claude-sonnet-4-20250514';
+const BOT_EXECUTION_TIMEOUT_MS = parseInt(process.env.BOT_EXECUTION_TIMEOUT_MS || '60000', 10);
+
 interface ExecutionContext {
     invocation: BotInvocation;
     template: BotTemplate;
@@ -69,11 +73,26 @@ export class BotExecutorService {
     }
 
     /**
-     * Execute a pending invocation
+     * Execute a pending invocation with timeout protection
      */
     async execute(invocationId: string): Promise<void> {
         const startTime = Date.now();
 
+        // Create timeout promise for overall execution
+        const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => {
+                reject(new Error(`Bot execution timed out after ${BOT_EXECUTION_TIMEOUT_MS}ms`));
+            }, BOT_EXECUTION_TIMEOUT_MS);
+        });
+
+        // Race execution against timeout
+        await Promise.race([this.executeWithContext(invocationId, startTime), timeoutPromise]);
+    }
+
+    /**
+     * Internal execution logic
+     */
+    private async executeWithContext(invocationId: string, startTime: number): Promise<void> {
         const invocation = await findInvocationById(invocationId);
         if (!invocation) throw new Error('Invocation not found');
 
@@ -221,7 +240,7 @@ export class BotExecutorService {
         // Call Claude API
         const response = await this.callClaudeAPI({
             apiKey,
-            model: config.model || 'claude-sonnet-4-20250514',
+            model: config.model || DEFAULT_LLM_MODEL,
             systemPrompt,
             userPrompt,
             maxTokens: config.maxTokens || 1024,
@@ -554,7 +573,13 @@ export class BotExecutorService {
             case 'split':
                 return typeof value === 'string' ? value.split((op.args as string) || ',') : value;
             case 'parse_json':
-                return typeof value === 'string' ? JSON.parse(value) : value;
+                if (typeof value !== 'string') return value;
+                try {
+                    return JSON.parse(value);
+                } catch {
+                    // Return original value if parsing fails
+                    return value;
+                }
             case 'stringify':
                 return JSON.stringify(value);
             case 'uppercase':

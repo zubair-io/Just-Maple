@@ -88,7 +88,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             const templates = await searchBotTemplates(query.q || '');
             return { templates };
         },
-        { query: t.Object({ q: t.Optional(t.String()) }) },
+        { query: t.Object({ q: t.Optional(t.String({ maxLength: 100 })) }) },
     )
 
     // ============================================
@@ -276,7 +276,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
         },
         {
             params: t.Object({ tagId: t.String() }),
-            query: t.Object({ q: t.Optional(t.String()) }),
+            query: t.Object({ q: t.Optional(t.String({ maxLength: 100 })) }),
         },
     )
 
@@ -382,6 +382,12 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Thread not found' };
             }
 
+            // Verify thread has valid tagId
+            if (!thread.tagId) {
+                set.status = 500;
+                return { error: 'Invalid thread data' };
+            }
+
             // Verify access
             const tag = await findTagById(thread.tagId, auth.user._id);
             if (!tag) {
@@ -409,6 +415,12 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             if (!thread) {
                 set.status = 404;
                 return { error: 'Thread not found' };
+            }
+
+            // Verify thread has valid tagId
+            if (!thread.tagId) {
+                set.status = 500;
+                return { error: 'Invalid thread data' };
             }
 
             // Verify access
