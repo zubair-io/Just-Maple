@@ -106,3 +106,249 @@ export async function createPasskeyFixture(
 export function generateToken(): string {
     return randomBytes(32).toString('hex');
 }
+
+// ============================================
+// Tag Fixtures
+// ============================================
+
+export interface TagDoc {
+    _id: ObjectId;
+    label: string;
+    createdBy: ObjectId;
+    sharing?: {
+        isShared: boolean;
+        sharedWith: Array<{ userId: string; role: string }>;
+    };
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateTagOptions {
+    label?: string;
+    createdBy?: string;
+    sharedWith?: Array<{ userId: string; role: string }>;
+}
+
+export async function createTagFixture(options: CreateTagOptions = {}): Promise<TagDoc> {
+    const now = new Date();
+    const createdBy = options.createdBy ? new ObjectId(options.createdBy) : new ObjectId();
+
+    const doc: TagDoc = {
+        _id: new ObjectId(),
+        label: options.label || `test-tag-${Date.now()}`,
+        createdBy,
+        sharing: {
+            isShared: (options.sharedWith?.length || 0) > 0,
+            sharedWith: options.sharedWith || [{ userId: createdBy.toString(), role: 'owner' }],
+        },
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb!.collection('tags').insertOne(doc);
+    return doc;
+}
+
+// ============================================
+// Bot Template Fixtures
+// ============================================
+
+export interface BotTemplateDoc {
+    _id: ObjectId;
+    name: string;
+    handle: string;
+    description?: string;
+    avatar?: string;
+    definition: {
+        trigger: { mentionPatterns?: string[] };
+        input: { includeContext: Record<string, boolean | number> };
+        actions: Array<{ type: string; id: string; config: Record<string, unknown> }>;
+        output: Record<string, unknown>;
+    };
+    requiresConfig: boolean;
+    configSchema?: unknown;
+    isSystemBot: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateBotTemplateOptions {
+    name?: string;
+    handle?: string;
+    description?: string;
+    requiresConfig?: boolean;
+    isSystemBot?: boolean;
+}
+
+export async function createBotTemplateFixture(
+    options: CreateBotTemplateOptions = {},
+): Promise<BotTemplateDoc> {
+    const now = new Date();
+    const handle = options.handle || `test-bot-${Date.now()}-${randomBytes(4).toString('hex')}`;
+
+    const doc: BotTemplateDoc = {
+        _id: new ObjectId(),
+        name: options.name || 'Test Bot',
+        handle: handle.toLowerCase(),
+        description: options.description,
+        definition: {
+            trigger: { mentionPatterns: ['@' + handle] },
+            input: { includeContext: { mentionText: true } },
+            actions: [{ type: 'reply', id: 'reply', config: { message: 'Hello!' } }],
+            output: { chatView: { components: [] } },
+        },
+        requiresConfig: options.requiresConfig ?? false,
+        isSystemBot: options.isSystemBot ?? true,
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb!.collection('bot_templates').insertOne(doc);
+    return doc;
+}
+
+// ============================================
+// User Bot Fixtures
+// ============================================
+
+export interface UserBotDoc {
+    _id: ObjectId;
+    userId: ObjectId;
+    templateId: ObjectId;
+    handle: string;
+    displayName?: string;
+    config?: { apiKey?: string; customSettings?: Record<string, unknown> };
+    isEnabled: boolean;
+    tagId?: ObjectId;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateUserBotOptions {
+    userId?: string;
+    templateId?: string;
+    handle?: string;
+    displayName?: string;
+    isEnabled?: boolean;
+    tagId?: string;
+    config?: { apiKey?: string };
+}
+
+export async function createUserBotFixture(
+    options: CreateUserBotOptions = {},
+): Promise<UserBotDoc> {
+    const now = new Date();
+    const handle = options.handle || `user-bot-${Date.now()}-${randomBytes(4).toString('hex')}`;
+
+    const doc: UserBotDoc = {
+        _id: new ObjectId(),
+        userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
+        templateId: options.templateId ? new ObjectId(options.templateId) : new ObjectId(),
+        handle: handle.toLowerCase(),
+        displayName: options.displayName,
+        config: options.config,
+        isEnabled: options.isEnabled ?? true,
+        tagId: options.tagId ? new ObjectId(options.tagId) : undefined,
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb!.collection('user_bots').insertOne(doc);
+    return doc;
+}
+
+// ============================================
+// Thread Fixtures
+// ============================================
+
+export interface ThreadDoc {
+    _id: ObjectId;
+    parentMessageId: ObjectId;
+    tagId: ObjectId;
+    botInvocationId?: ObjectId;
+    messageCount: number;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateThreadOptions {
+    parentMessageId?: string;
+    tagId?: string;
+    botInvocationId?: string;
+    messageCount?: number;
+}
+
+export async function createThreadFixture(options: CreateThreadOptions = {}): Promise<ThreadDoc> {
+    const now = new Date();
+
+    const doc: ThreadDoc = {
+        _id: new ObjectId(),
+        parentMessageId: options.parentMessageId
+            ? new ObjectId(options.parentMessageId)
+            : new ObjectId(),
+        tagId: options.tagId ? new ObjectId(options.tagId) : new ObjectId(),
+        botInvocationId: options.botInvocationId
+            ? new ObjectId(options.botInvocationId)
+            : undefined,
+        messageCount: options.messageCount ?? 0,
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb!.collection('threads').insertOne(doc);
+    return doc;
+}
+
+// ============================================
+// Bot Invocation Fixtures
+// ============================================
+
+export interface BotInvocationDoc {
+    _id: ObjectId;
+    userBotId: ObjectId;
+    templateId: ObjectId;
+    sourceType: 'message' | 'note';
+    sourceId: ObjectId;
+    tagId: ObjectId;
+    userId: ObjectId;
+    context: Record<string, unknown>;
+    variables: Record<string, unknown>;
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+    output?: unknown;
+    error?: { code: string; message: string };
+    threadId?: ObjectId;
+    responseMessageId?: ObjectId;
+    executionTimeMs?: number;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateBotInvocationOptions {
+    userBotId?: string;
+    templateId?: string;
+    sourceType?: 'message' | 'note';
+    sourceId?: string;
+    tagId?: string;
+    userId?: string;
+    status?: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+    context?: Record<string, unknown>;
+}
+
+export async function createBotInvocationFixture(
+    options: CreateBotInvocationOptions = {},
+): Promise<BotInvocationDoc> {
+    const now = new Date();
+
+    const doc: BotInvocationDoc = {
+        _id: new ObjectId(),
+        userBotId: options.userBotId ? new ObjectId(options.userBotId) : new ObjectId(),
+        templateId: options.templateId ? new ObjectId(options.templateId) : new ObjectId(),
+        sourceType: options.sourceType || 'message',
+        sourceId: options.sourceId ? new ObjectId(options.sourceId) : new ObjectId(),
+        tagId: options.tagId ? new ObjectId(options.tagId) : new ObjectId(),
+        userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
+        context: options.context || { mentionText: '@bot test' },
+        variables: {},
+        status: options.status || 'pending',
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb!.collection('bot_invocations').insertOne(doc);
+    return doc;
+}
