@@ -71,7 +71,10 @@ export class BotOutputComponent {
     });
   }
 
-  interpolate(template: string): string {
+  interpolate(template: unknown): string {
+    if (typeof template !== 'string') {
+      return String(template || '');
+    }
     const data = this.data();
     return template.replace(/\{\{(\$?\w+(?:\.\w+)*)\}\}/g, (_, path: string) => {
       const parts = path.split('.');
@@ -87,9 +90,10 @@ export class BotOutputComponent {
     });
   }
 
-  sanitizeHtml(html: string): SafeHtml {
+  sanitizeHtml(html: unknown): SafeHtml {
     // Basic markdown-to-html conversion for simple cases
-    const converted = this.simpleMarkdownToHtml(html);
+    const htmlString = typeof html === 'string' ? html : String(html || '');
+    const converted = this.simpleMarkdownToHtml(htmlString);
     return this.sanitizer.bypassSecurityTrustHtml(converted);
   }
 

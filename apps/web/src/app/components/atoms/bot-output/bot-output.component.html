@@ -17,11 +17,11 @@
 
     <!-- Structured components -->
     @for (component of components(); track component.id) {
-      <ng-container [ngSwitch]="component.type">
+      @switch (component.type) {
         <!-- Text -->
         @case ('text') {
           <p [class]="'text-' + (component.props?.['style'] || 'body')">
-            {{ interpolate((component.props?.['content'] as string) || '') }}
+            {{ interpolate(component.props?.['content'] || '') }}
           </p>
         }
 
@@ -29,7 +29,7 @@
         @case ('markdown') {
           <div
             class="markdown-content"
-            [innerHTML]="sanitizeHtml(interpolate((component.props?.['content'] as string) || ''))"
+            [innerHTML]="sanitizeHtml(interpolate(component.props?.['content'] || ''))"
           ></div>
         }
 
@@ -48,7 +48,7 @@
                 </button>
               </div>
             }
-            <pre><code [class]="'language-' + (component.props?.['language'] || 'text')">{{ interpolate((component.props?.['content'] as string) || '') }}</code></pre>
+            <pre><code [class]="'language-' + (component.props?.['language'] || 'text')">{{ interpolate(component.props?.['content'] || '') }}</code></pre>
           </div>
         }
 
@@ -112,22 +112,22 @@
               <div class="card-content">
                 @for (child of component.children; track child.id) {
                   <!-- Recursive component rendering -->
-                  <ng-container [ngSwitch]="child.type">
+                  @switch (child.type) {
                     @case ('text') {
-                      <p>{{ interpolate((child.props?.['content'] as string) || '') }}</p>
+                      <p>{{ interpolate(child.props?.['content'] || '') }}</p>
                     }
                     @case ('status') {
                       <span class="status-badge" [class]="getStatusClass(child.props?.['value'])">
                         {{ child.props?.['label'] || child.props?.['value'] }}
                       </span>
                     }
-                  </ng-container>
+                  }
                 }
               </div>
             }
           </div>
         }
-      </ng-container>
+      }
     }
   }
 </div>
