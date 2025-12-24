@@ -6,6 +6,7 @@ import type { JWTPayload, ChatEvent } from '@maple/shared';
 import {
     findAllBotTemplates,
     findBotTemplateById,
+    findBotTemplatesByIds,
     searchBotTemplates,
 } from '../repositories/bot-template.repo';
 import {
@@ -102,18 +103,21 @@ export const botRoutes = new Elysia({ prefix: '/api' })
 
         const userBots = await findUserBotsByUserId(auth.user._id);
 
+        // Batch load all templates in a single query (fix N+1)
+        const templateIds = [...new Set(userBots.map((b) => b.templateId))];
+        const templates = await findBotTemplatesByIds(templateIds);
+        const templateMap = new Map(templates.map((t) => [t._id, t]));
+
         // Enrich with template info
-        const enrichedBots = await Promise.all(
-            userBots.map(async (userBot) => {
-                const template = await findBotTemplateById(userBot.templateId);
-                return {
-                    ...userBot,
-                    templateName: template?.name,
-                    templateAvatar: template?.avatar,
-                    templateDescription: template?.description,
-                };
-            }),
-        );
+        const enrichedBots = userBots.map((userBot) => {
+            const template = templateMap.get(userBot.templateId);
+            return {
+                ...userBot,
+                templateName: template?.name,
+                templateAvatar: template?.avatar,
+                templateDescription: template?.description,
+            };
+        });
 
         return { userBots: enrichedBots };
     })
@@ -284,11 +288,11 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Unauthorized' };
             }
 
-            // Verify tag access
-            const tag = await findTagByIdWithAccess(params.tagId, auth.user._id, 'read');
+            // Verify tag access - bot invocation requires write access
+            const tag = await findTagByIdWithAccess(params.tagId, auth.user._id, 'write');
             if (!tag) {
                 set.status = 404;
-                return { error: 'Tag not found' };
+                return { error: 'Tag not found or access denied' };
             }
 
             // Find the bot by handle

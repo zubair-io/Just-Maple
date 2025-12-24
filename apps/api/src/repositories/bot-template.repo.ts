@@ -50,6 +50,23 @@ export async function findBotTemplateById(id: string): Promise<BotTemplate | nul
     }
 }
 
+/**
+ * Batch load bot templates by IDs - single query instead of N queries
+ */
+export async function findBotTemplatesByIds(ids: string[]): Promise<BotTemplate[]> {
+    if (ids.length === 0) return [];
+
+    try {
+        const objectIds = ids.map((id) => new ObjectId(id));
+        const docs = await getCollection()
+            .find({ _id: { $in: objectIds } })
+            .toArray();
+        return docs.map(toBotTemplate);
+    } catch {
+        return [];
+    }
+}
+
 export async function findBotTemplateByHandle(handle: string): Promise<BotTemplate | null> {
     const doc = await getCollection().findOne({ handle: handle.toLowerCase() });
     return doc ? toBotTemplate(doc) : null;

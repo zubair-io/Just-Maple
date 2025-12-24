@@ -17,7 +17,10 @@ export function extractTextFromContent(content: NoteContent | undefined | null):
             text += n.text;
         } else if (n.type === 'mention') {
             const attrs = n.attrs as Record<string, unknown> | undefined;
-            text += `@${attrs?.handle || ''}`;
+            // Only add mention if handle exists and is non-empty
+            if (attrs?.handle && typeof attrs.handle === 'string') {
+                text += `@${attrs.handle}`;
+            }
         } else if (n.type === 'paragraph' || n.type === 'heading') {
             if (text.length > 0 && !text.endsWith('\n')) {
                 text += '\n';

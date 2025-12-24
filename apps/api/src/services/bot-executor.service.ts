@@ -8,7 +8,7 @@ import type {
     NoteContent,
 } from '@maple/shared';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
-import { findUserBotById } from '../repositories/user-bot.repo';
+import { findUserBotByIdInternal } from '../repositories/user-bot.repo';
 import {
     findInvocationById,
     updateInvocationStatus,
@@ -42,8 +42,8 @@ export class BotExecutorService {
         userId: string;
         context: BotInvocation['context'];
     }): Promise<BotInvocation> {
-        // Get the user bot and template
-        const userBot = await findUserBotById(params.userBotId);
+        // Get the user bot and template (use internal to get config for execution)
+        const userBot = await findUserBotByIdInternal(params.userBotId);
         if (!userBot) throw new Error('User bot not found');
 
         const template = await findBotTemplateById(userBot.templateId);
@@ -77,7 +77,7 @@ export class BotExecutorService {
         const invocation = await findInvocationById(invocationId);
         if (!invocation) throw new Error('Invocation not found');
 
-        const userBot = await findUserBotById(invocation.userBotId);
+        const userBot = await findUserBotByIdInternal(invocation.userBotId);
         if (!userBot) throw new Error('User bot not found');
 
         const template = await findBotTemplateById(invocation.templateId);
@@ -89,12 +89,12 @@ export class BotExecutorService {
             userBot,
             config: userBot.config,
             variables: {
-                // Built-in context variables
-                $mentionText: invocation.context.mentionText || '',
-                $content: invocation.context.fullContent || '',
-                $documentTitle: invocation.context.documentTitle || '',
-                $selection: invocation.context.selection || '',
-                $previousMessages: invocation.context.previousMessages || [],
+                // Built-in context variables with size limits to prevent memory issues
+                $mentionText: (invocation.context.mentionText || '').slice(0, 1000),
+                $content: (invocation.context.fullContent || '').slice(0, 50000), // 50KB limit
+                $documentTitle: (invocation.context.documentTitle || '').slice(0, 200),
+                $selection: (invocation.context.selection || '').slice(0, 10000),
+                $previousMessages: (invocation.context.previousMessages || []).slice(0, 10), // Max 10 messages
                 $userId: invocation.userId,
                 $tagId: invocation.tagId,
                 $sourceType: invocation.sourceType,
@@ -256,6 +256,55 @@ export class BotExecutorService {
     }
 
     /**
+     * Validate URL to prevent SSRF attacks
+     */
+    private validateUrl(url: string): void {
+        const parsedUrl = new URL(url);
+        const hostname = parsedUrl.hostname.toLowerCase();
+
+        // Only allow HTTP and HTTPS protocols
+        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+            throw new Error('Only HTTP and HTTPS protocols are allowed');
+        }
+
+        // Block localhost and loopback addresses
+        if (
+            hostname === 'localhost' ||
+            hostname === '127.0.0.1' ||
+            hostname === '0.0.0.0' ||
+            hostname === '::1' ||
+            hostname === '[::1]'
+        ) {
+            throw new Error('Access to localhost is not allowed');
+        }
+
+        // Block private IPv4 ranges
+        // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
+        if (
+            hostname.match(/^10\./) ||
+            hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./) ||
+            hostname.match(/^192\.168\./) ||
+            hostname.match(/^169\.254\./)
+        ) {
+            throw new Error('Access to private networks is not allowed');
+        }
+
+        // Block AWS/cloud metadata endpoints
+        if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') {
+            throw new Error('Access to cloud metadata endpoints is not allowed');
+        }
+
+        // Block internal domain patterns (common in enterprises)
+        if (
+            hostname.endsWith('.internal') ||
+            hostname.endsWith('.local') ||
+            hostname.endsWith('.localhost')
+        ) {
+            throw new Error('Access to internal domains is not allowed');
+        }
+    }
+
+    /**
      * HTTP action - makes external API calls
      */
     private async executeHTTP(action: Action, ctx: ExecutionContext): Promise<void> {
@@ -268,6 +317,10 @@ export class BotExecutorService {
         };
 
         const url = this.interpolate(config.url, ctx.variables);
+
+        // SECURITY: Validate URL to prevent SSRF attacks
+        this.validateUrl(url);
+
         const headers = config.headers
             ? Object.fromEntries(
                   Object.entries(config.headers).map(([k, v]) => [
@@ -409,12 +462,26 @@ export class BotExecutorService {
     }
 
     /**
+     * Sanitize a value for safe interpolation
+     * Prevents prompt injection and limits size
+     */
+    private sanitizeValue(value: unknown): string {
+        if (value === undefined || value === null) return '';
+
+        const str = typeof value === 'string' ? value : JSON.stringify(value);
+
+        // Escape template markers to prevent injection
+        // Also limit length to prevent excessive output
+        return str.replace(/\{\{/g, '\\{\\{').replace(/\}\}/g, '\\}\\}').slice(0, 10000); // Max 10KB per value
+    }
+
+    /**
      * Interpolate variables in a template string
      */
     private interpolate(template: string, variables: Record<string, unknown>): string {
         return template.replace(/\{\{(\$?\w+(?:\.\w+)*)\}\}/g, (_, path: string) => {
             const value = this.getNestedValue(variables, path);
-            return value !== undefined ? String(value) : '';
+            return this.sanitizeValue(value);
         });
     }
 
