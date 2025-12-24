@@ -1,13 +1,25 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
-import type { Message, NoteContent, CreateMessageInput, UpdateMessageInput } from '@maple/shared';
+import type {
+    Message,
+    NoteContent,
+    CreateMessageInput,
+    UpdateMessageInput,
+    SenderType,
+    Mention,
+} from '@maple/shared';
 import { findTagByIdWithAccess } from './tag.repo';
 
 interface MessageDocument {
     _id: ObjectId;
     tagId: ObjectId;
+    threadId?: ObjectId;
     userId: ObjectId;
+    senderType?: SenderType;
+    userBotId?: ObjectId;
     content: NoteContent;
+    mentions?: Mention[];
+    hasThread?: boolean;
     createdAt: Date;
     updatedAt: Date;
     editedAt?: Date;
@@ -31,11 +43,16 @@ function toMessageResponse(
     return {
         _id: doc._id.toString(),
         tagId: doc.tagId.toString(),
+        threadId: doc.threadId?.toString(),
         userId: doc.userId.toString(),
+        senderType: doc.senderType,
+        userBotId: doc.userBotId?.toString(),
         senderEmail,
         senderDisplayName,
         senderProfilePictureUrl,
         content: doc.content,
+        mentions: doc.mentions,
+        hasThread: doc.hasThread,
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
         editedAt: doc.editedAt?.toISOString(),
@@ -52,6 +69,7 @@ export async function findMessagesByTagId(
 ): Promise<Message[]> {
     const matchStage: Record<string, unknown> = {
         tagId: new ObjectId(tagId),
+        threadId: { $exists: false }, // Only top-level messages, not thread replies
         deletedAt: { $exists: false },
     };
 
@@ -222,5 +240,109 @@ export async function getLatestMessageTime(tagId: string): Promise<Date | null> 
         return doc.length > 0 ? doc[0].createdAt : null;
     } catch {
         return null;
+    }
+}
+
+// ============================================
+// Thread Message Functions
+// ============================================
+
+export async function findMessagesByThreadId(
+    threadId: string,
+    options?: {
+        limit?: number;
+        before?: string;
+    },
+): Promise<Message[]> {
+    const matchStage: Record<string, unknown> = {
+        threadId: new ObjectId(threadId),
+        deletedAt: { $exists: false },
+    };
+
+    if (options?.before) {
+        try {
+            matchStage._id = { $lt: new ObjectId(options.before) };
+        } catch {
+            // Invalid ObjectId, ignore
+        }
+    }
+
+    const limit = options?.limit || 50;
+
+    // Use aggregation to join with users collection
+    const docs = await getCollection()
+        .aggregate<MessageWithUser>([
+            { $match: matchStage },
+            { $sort: { _id: -1 } },
+            { $limit: limit },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'userId',
+                    foreignField: '_id',
+                    as: 'user',
+                },
+            },
+        ])
+        .toArray();
+
+    // Return in chronological order (oldest first)
+    return docs.reverse().map((doc) => {
+        // For bot messages, use the stored sender info
+        if (doc.senderType === 'bot') {
+            return toMessageResponse(doc);
+        }
+        const user = doc.user?.[0];
+        return toMessageResponse(doc, user?.email, user?.displayName, user?.profilePictureUrl);
+    });
+}
+
+export async function createMessageInThread(data: {
+    tagId: string;
+    threadId: string;
+    userId: string;
+    userBotId?: string;
+    senderType: SenderType;
+    senderDisplayName?: string;
+    senderProfilePictureUrl?: string;
+    content: NoteContent;
+}): Promise<Message> {
+    const now = new Date();
+    const doc: Omit<MessageDocument, '_id'> = {
+        tagId: new ObjectId(data.tagId),
+        threadId: new ObjectId(data.threadId),
+        userId: new ObjectId(data.userId),
+        userBotId: data.userBotId ? new ObjectId(data.userBotId) : undefined,
+        senderType: data.senderType,
+        content: data.content,
+        createdAt: now,
+        updatedAt: now,
+    };
+
+    const result = await getCollection().insertOne(doc as MessageDocument);
+
+    return {
+        _id: result.insertedId.toString(),
+        tagId: data.tagId,
+        threadId: data.threadId,
+        userId: data.userId,
+        userBotId: data.userBotId,
+        senderType: data.senderType,
+        senderDisplayName: data.senderDisplayName,
+        senderProfilePictureUrl: data.senderProfilePictureUrl,
+        content: data.content,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+    };
+}
+
+export async function markMessageHasThread(messageId: string): Promise<void> {
+    try {
+        await getCollection().updateOne(
+            { _id: new ObjectId(messageId) },
+            { $set: { hasThread: true, updatedAt: new Date() } },
+        );
+    } catch {
+        // Ignore errors
     }
 }

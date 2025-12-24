@@ -1,15 +1,40 @@
 import { Type, Static } from '@sinclair/typebox';
 import { NoteContentSchema } from './note';
 
+// Sender type - distinguishes between user and bot messages
+export const SenderTypeSchema = Type.Union([
+    Type.Literal('user'),
+    Type.Literal('bot'),
+    Type.Literal('system'),
+]);
+
+export type SenderType = Static<typeof SenderTypeSchema>;
+
+// Parsed mention in content
+export const MentionSchema = Type.Object({
+    type: Type.Union([Type.Literal('user'), Type.Literal('bot')]),
+    id: Type.String(),
+    handle: Type.String(),
+    startIndex: Type.Number(),
+    endIndex: Type.Number(),
+});
+
+export type Mention = Static<typeof MentionSchema>;
+
 // Message schema - chat messages per tag
 export const MessageSchema = Type.Object({
     _id: Type.String(),
     tagId: Type.String(), // Chat is per-tag
-    userId: Type.String(), // Sender
+    threadId: Type.Optional(Type.String()), // If part of a thread (null = top-level message)
+    userId: Type.String(), // Sender (user ID or bot owner ID)
+    senderType: Type.Optional(SenderTypeSchema), // 'user' | 'bot' | 'system' (defaults to 'user')
+    userBotId: Type.Optional(Type.String()), // If senderType = 'bot', reference to UserBot
     senderEmail: Type.Optional(Type.String()), // Populated sender email
-    senderDisplayName: Type.Optional(Type.String()), // Populated sender display name
-    senderProfilePictureUrl: Type.Optional(Type.String()), // Populated sender profile picture
+    senderDisplayName: Type.Optional(Type.String()), // Populated sender display name (or bot name)
+    senderProfilePictureUrl: Type.Optional(Type.String()), // Populated sender profile picture (or bot avatar)
     content: NoteContentSchema, // TipTap/ProseMirror JSON (rich text)
+    mentions: Type.Optional(Type.Array(MentionSchema)), // Parsed mentions from content
+    hasThread: Type.Optional(Type.Boolean()), // Whether this message has a thread reply
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.Optional(Type.String({ format: 'date-time' })),
     editedAt: Type.Optional(Type.String({ format: 'date-time' })),
@@ -56,6 +81,11 @@ export const ChatActionSchema = Type.Union([
     Type.Literal('typing'),
     Type.Literal('edited'),
     Type.Literal('deleted'),
+    Type.Literal('thread_created'), // New thread started
+    Type.Literal('thread_message'), // Message posted to thread
+    Type.Literal('bot_invocation_started'), // Bot started processing
+    Type.Literal('bot_invocation_completed'), // Bot finished
+    Type.Literal('bot_invocation_failed'), // Bot failed
     Type.Literal('paper_created'),
     Type.Literal('paper_updated'),
     Type.Literal('paper_deleted'),
