@@ -76,7 +76,9 @@ async function createIndexes(database: Db): Promise<void> {
     // Bot invocations collection
     await database.collection('bot_invocations').createIndex({ userBotId: 1 });
     await database.collection('bot_invocations').createIndex({ sourceId: 1 });
+    await database.collection('bot_invocations').createIndex({ sourceType: 1, sourceId: 1 });
     await database.collection('bot_invocations').createIndex({ status: 1, createdAt: -1 });
+    await database.collection('bot_invocations').createIndex({ userId: 1, createdAt: -1 });
 
     // Threads collection
     await database.collection('threads').createIndex({ parentMessageId: 1 }, { unique: true });
