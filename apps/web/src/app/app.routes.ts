@@ -17,6 +17,12 @@ export const routes: Routes = [
       import('./pages/notifications/notifications.component').then((m) => m.NotificationsComponent),
     canActivate: [AuthGuard],
   },
+  // Bots management route
+  {
+    path: 'bots',
+    loadComponent: () => import('./pages/bots/bots.component').then((m) => m.BotsComponent),
+    canActivate: [AuthGuard],
+  },
   // Authenticated app routes - matched first if user is authenticated
   {
     path: '',

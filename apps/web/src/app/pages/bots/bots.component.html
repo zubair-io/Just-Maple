@@ -1,0 +1,272 @@
+<div class="bots-page">
+  <!-- Header -->
+  <header class="page-header">
+    <button type="button" class="back-btn" (click)="goBack()">
+      <span class="material-symbols-rounded">arrow_back</span>
+    </button>
+    <h1>Bots</h1>
+  </header>
+
+  <main class="page-content">
+    <!-- My Bots Section -->
+    <section class="section">
+      <h2 class="section-title">My Bots</h2>
+      <p class="section-description">Bots you've registered to your account</p>
+
+      @if (userBotsLoading()) {
+        <div class="loading-state">Loading your bots...</div>
+      } @else if (userBots().length === 0) {
+        <div class="empty-state">
+          <span class="material-symbols-rounded">smart_toy</span>
+          <p>You haven't registered any bots yet.</p>
+          <p class="hint">Add a bot from the available templates below!</p>
+        </div>
+      } @else {
+        <div class="bot-list">
+          @for (bot of userBots(); track bot._id) {
+            <div class="bot-card" [class.disabled]="!bot.isEnabled">
+              <div class="bot-avatar">
+                @if (bot.templateAvatar) {
+                  <img [src]="bot.templateAvatar" alt="" />
+                } @else {
+                  {{ bot.handle.charAt(0).toUpperCase() }}
+                }
+              </div>
+              <div class="bot-info">
+                <div class="bot-handle">@{{ bot.handle }}</div>
+                <div class="bot-name">{{ bot.templateName || 'Bot' }}</div>
+                @if (!bot.isEnabled) {
+                  <span class="bot-status disabled">Disabled</span>
+                }
+              </div>
+              <div class="bot-actions">
+                <button
+                  type="button"
+                  class="action-btn"
+                  (click)="toggleBotEnabled(bot)"
+                  [title]="bot.isEnabled ? 'Disable' : 'Enable'"
+                >
+                  <span class="material-symbols-rounded">
+                    {{ bot.isEnabled ? 'toggle_on' : 'toggle_off' }}
+                  </span>
+                </button>
+                <button type="button" class="action-btn" (click)="editBot(bot)" title="Edit">
+                  <span class="material-symbols-rounded">edit</span>
+                </button>
+                <button
+                  type="button"
+                  class="action-btn danger"
+                  (click)="deleteBot(bot)"
+                  title="Delete"
+                >
+                  <span class="material-symbols-rounded">delete</span>
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </section>
+
+    <!-- Available Bots Section -->
+    <section class="section">
+      <h2 class="section-title">Available Bots</h2>
+      <p class="section-description">Add bots to use with @mentions in chat</p>
+
+      @if (templatesLoading()) {
+        <div class="loading-state">Loading available bots...</div>
+      } @else if (templates().length === 0) {
+        <div class="empty-state">
+          <span class="material-symbols-rounded">inventory_2</span>
+          <p>No bot templates available.</p>
+        </div>
+      } @else {
+        <div class="template-grid">
+          @for (template of templates(); track template._id) {
+            <div
+              class="template-card"
+              [class.registered]="isBotRegistered(template)"
+              (click)="!isBotRegistered(template) && selectTemplate(template)"
+            >
+              <div class="template-avatar">
+                @if (template.avatar) {
+                  <img [src]="template.avatar" alt="" />
+                } @else {
+                  {{ getTemplateIcon(template) }}
+                }
+              </div>
+              <div class="template-info">
+                <div class="template-name">{{ template.name }}</div>
+                <div class="template-handle">@{{ template.handle }}</div>
+                @if (template.description) {
+                  <div class="template-description">{{ template.description }}</div>
+                }
+              </div>
+              @if (template.requiresConfig) {
+                <span class="config-badge" title="Requires API key">
+                  <span class="material-symbols-rounded">key</span>
+                </span>
+              }
+              @if (isBotRegistered(template)) {
+                <span class="registered-badge">
+                  <span class="material-symbols-rounded">check_circle</span>
+                  Added
+                </span>
+              }
+            </div>
+          }
+        </div>
+      }
+    </section>
+  </main>
+</div>
+
+<!-- Register Bot Dialog -->
+@if (showRegisterDialog()) {
+  <div class="dialog-backdrop" (click)="closeRegisterDialog()">
+    <div class="dialog" (click)="$event.stopPropagation()">
+      <header class="dialog-header">
+        <h2>Add Bot</h2>
+        <button type="button" class="close-btn" (click)="closeRegisterDialog()">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </header>
+
+      @if (selectedTemplate(); as template) {
+        <div class="dialog-content">
+          <div class="template-preview">
+            <div class="template-avatar large">
+              @if (template.avatar) {
+                <img [src]="template.avatar" alt="" />
+              } @else {
+                {{ getTemplateIcon(template) }}
+              }
+            </div>
+            <div>
+              <div class="template-name">{{ template.name }}</div>
+              @if (template.description) {
+                <div class="template-description">{{ template.description }}</div>
+              }
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="handle">Handle</label>
+            <div class="input-with-prefix">
+              <span class="prefix">@</span>
+              <input
+                type="text"
+                id="handle"
+                [ngModel]="customHandle()"
+                (ngModelChange)="customHandle.set($event)"
+                placeholder="{{ template.handle }}"
+              />
+            </div>
+            <p class="field-hint">Customize the handle used to mention this bot</p>
+          </div>
+
+          @if (template.requiresConfig) {
+            <div class="form-field">
+              <label for="apiKey">API Key</label>
+              <input
+                type="password"
+                id="apiKey"
+                [ngModel]="apiKey()"
+                (ngModelChange)="apiKey.set($event)"
+                placeholder="Enter your API key"
+              />
+              <p class="field-hint">
+                This bot requires an API key to function. Your key is stored securely.
+              </p>
+            </div>
+          }
+
+          @if (registerError()) {
+            <div class="error-message">{{ registerError() }}</div>
+          }
+        </div>
+
+        <footer class="dialog-footer">
+          <button type="button" class="btn secondary" (click)="closeRegisterDialog()">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn primary"
+            (click)="registerBot()"
+            [disabled]="isRegistering()"
+          >
+            {{ isRegistering() ? 'Adding...' : 'Add Bot' }}
+          </button>
+        </footer>
+      }
+    </div>
+  </div>
+}
+
+<!-- Edit Bot Dialog -->
+@if (showEditDialog()) {
+  <div class="dialog-backdrop" (click)="closeEditDialog()">
+    <div class="dialog" (click)="$event.stopPropagation()">
+      <header class="dialog-header">
+        <h2>Edit Bot</h2>
+        <button type="button" class="close-btn" (click)="closeEditDialog()">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </header>
+
+      @if (editingBot(); as bot) {
+        <div class="dialog-content">
+          <div class="template-preview">
+            <div class="template-avatar large">
+              @if (bot.templateAvatar) {
+                <img [src]="bot.templateAvatar" alt="" />
+              } @else {
+                {{ bot.handle.charAt(0).toUpperCase() }}
+              }
+            </div>
+            <div>
+              <div class="template-name">@{{ bot.handle }}</div>
+              <div class="template-description">{{ bot.templateName }}</div>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label class="toggle-label">
+              <input
+                type="checkbox"
+                [ngModel]="editEnabled()"
+                (ngModelChange)="editEnabled.set($event)"
+              />
+              <span>Bot enabled</span>
+            </label>
+            <p class="field-hint">Disable to prevent this bot from responding to mentions</p>
+          </div>
+
+          <div class="form-field">
+            <label for="editApiKey">Update API Key</label>
+            <input
+              type="password"
+              id="editApiKey"
+              [ngModel]="editApiKey()"
+              (ngModelChange)="editApiKey.set($event)"
+              placeholder="Leave blank to keep current key"
+            />
+            <p class="field-hint">Only fill this if you want to change the API key</p>
+          </div>
+
+          @if (editError()) {
+            <div class="error-message">{{ editError() }}</div>
+          }
+        </div>
+
+        <footer class="dialog-footer">
+          <button type="button" class="btn secondary" (click)="closeEditDialog()">Cancel</button>
+          <button type="button" class="btn primary" (click)="saveBot()" [disabled]="isUpdating()">
+            {{ isUpdating() ? 'Saving...' : 'Save Changes' }}
+          </button>
+        </footer>
+      }
+    </div>
+  </div>
+}
