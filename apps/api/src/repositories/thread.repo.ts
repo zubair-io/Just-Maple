@@ -1,4 +1,4 @@
-import { ObjectId, Collection } from 'mongodb';
+import { ObjectId, Collection, MongoServerError } from 'mongodb';
 import { getDb } from '../db/client';
 import type { Thread } from '@maple/shared';
 
@@ -94,12 +94,27 @@ export async function findThreadsByTagId(
 }
 
 // Get or create thread for a parent message
+// Uses atomic operations to handle race conditions
 export async function getOrCreateThread(data: {
     parentMessageId: string;
     tagId: string;
     botInvocationId?: string;
 }): Promise<Thread> {
-    const existing = await findThreadByParentMessage(data.parentMessageId);
-    if (existing) return existing;
-    return createThread(data);
+    try {
+        // Try to create first (atomic operation)
+        return await createThread(data);
+    } catch (error) {
+        // If duplicate key error (code 11000), thread already exists from concurrent request
+        if (error instanceof MongoServerError && error.code === 11000) {
+            // Thread was created by another concurrent request, fetch it
+            const existing = await findThreadByParentMessage(data.parentMessageId);
+            if (existing) return existing;
+
+            // Shouldn't happen, but throw if we still can't find it
+            throw new Error(
+                'Thread creation failed: concurrent creation detected but thread not found',
+            );
+        }
+        throw error;
+    }
 }
