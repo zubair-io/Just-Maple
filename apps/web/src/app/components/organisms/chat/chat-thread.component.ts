@@ -1,10 +1,11 @@
-import { Component, input, output, signal, effect, inject, OnInit, OnDestroy } from '@angular/core';
+import { Component, input, signal, effect, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { BotService } from '../../../services/bot.service';
+import { RealtimeService } from '../../../services/realtime.service';
 import { ContentRendererComponent } from '../../atoms/content-renderer/content-renderer.component';
 import { ProfileAvatarComponent } from '../../atoms/profile-avatar/profile-avatar.component';
-import type { Message, Thread } from '@maple/shared';
-import { Subscription } from 'rxjs';
+import type { Message, Thread, ChatEvent } from '@maple/shared';
+import { Subscription, filter } from 'rxjs';
 
 @Component({
   selector: 'app-chat-thread',
@@ -121,6 +122,7 @@ import { Subscription } from 'rxjs';
 })
 export class ChatThreadComponent implements OnInit, OnDestroy {
   private readonly botService = inject(BotService);
+  private readonly realtimeService = inject(RealtimeService);
 
   readonly messageId = input.required<string>();
   readonly hasThread = input<boolean>(false);
@@ -131,6 +133,7 @@ export class ChatThreadComponent implements OnInit, OnDestroy {
   readonly thread = signal<Thread | null>(null);
 
   private loadSubscription: Subscription | null = null;
+  private realtimeSubscription: Subscription | null = null;
 
   constructor() {
     // Load thread when expanded
@@ -146,10 +149,43 @@ export class ChatThreadComponent implements OnInit, OnDestroy {
     if (this.hasThread()) {
       this.isExpanded.set(true);
     }
+
+    // Subscribe to realtime thread messages
+    this.subscribeToThreadMessages();
   }
 
   ngOnDestroy(): void {
     this.loadSubscription?.unsubscribe();
+    this.realtimeSubscription?.unsubscribe();
+  }
+
+  private subscribeToThreadMessages(): void {
+    this.realtimeSubscription = this.realtimeService.events$
+      .pipe(
+        filter(
+          (event) =>
+            event.action === 'thread_message' &&
+            (event.data as Record<string, unknown>)['parentMessageId'] === this.messageId(),
+        ),
+      )
+      .subscribe((event) => {
+        const data = event.data as Record<string, unknown>;
+        const newMessage = data['message'] as Message;
+
+        if (newMessage) {
+          // Add the new message to the thread
+          this.threadMessages.update((messages) => {
+            // Avoid duplicates
+            if (messages.some((m) => m._id === newMessage._id)) {
+              return messages;
+            }
+            return [...messages, newMessage];
+          });
+
+          // Auto-expand when a new message arrives
+          this.isExpanded.set(true);
+        }
+      });
   }
 
   toggleExpanded(): void {

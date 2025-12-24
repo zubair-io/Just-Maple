@@ -24,8 +24,17 @@ import { ChatMessageComponent } from './chat-message.component';
 import { ChatTypingComponent } from './chat-typing.component';
 import { MentionSuggestionComponent } from './mention-suggestion.component';
 import { Mention, type MentionNodeAttrs } from './extensions/mention';
-import type { Message, NoteContent, TypingEvent, Mention as MentionType } from '@maple/shared';
-import { Subscription, Subject, debounceTime, switchMap, takeUntil } from 'rxjs';
+import type { Message, NoteContent, TypingEvent, ChatEvent } from '@maple/shared';
+import { Subscription, Subject, debounceTime, switchMap, takeUntil, filter } from 'rxjs';
+
+// Track pending bot invocations for loading states
+interface PendingBotInvocation {
+  invocationId: string;
+  messageId: string;
+  botHandle: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  error?: string;
+}
 
 interface MessageWithGrouping extends Message {
   isGrouped: boolean;
@@ -67,6 +76,10 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   mentionCommand: ((props: Record<string, unknown>) => void) | null = null;
   private readonly mentionSearch$ = new Subject<string>();
   private readonly destroy$ = new Subject<void>();
+
+  // Bot invocation tracking
+  readonly pendingBotInvocations = signal<PendingBotInvocation[]>([]);
+  readonly botsTyping = signal<{ messageId: string; botHandle: string }[]>([]);
 
   // Compute messages with grouping information
   readonly messagesWithGrouping = computed(() => {
@@ -110,6 +123,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
         this.lastTagId = tagId;
         this.loadMessages(tagId);
         this.subscribeToTyping(tagId);
+        this.subscribeToBotEvents(tagId);
       }
     });
 
@@ -302,6 +316,146 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     this.typingSubscription = this.realtimeService.typingForTag(tagId).subscribe((event) => {
       this.handleTypingEvent(event);
     });
+  }
+
+  private subscribeToBotEvents(tagId: string): void {
+    // Subscribe to bot invocation events for this tag
+    this.realtimeService
+      .messagesForTag(tagId)
+      .pipe(
+        filter((event) => this.isBotEvent(event)),
+        takeUntil(this.destroy$),
+      )
+      .subscribe((event) => {
+        this.handleBotEvent(event);
+      });
+  }
+
+  private isBotEvent(event: ChatEvent): boolean {
+    return [
+      'bot_invocation_started',
+      'bot_invocation_completed',
+      'bot_invocation_failed',
+      'thread_message',
+    ].includes(event.action);
+  }
+
+  private handleBotEvent(event: ChatEvent): void {
+    const data = event.data as Record<string, unknown>;
+
+    switch (event.action) {
+      case 'bot_invocation_started':
+        this.handleBotStarted(data);
+        break;
+      case 'bot_invocation_completed':
+        this.handleBotCompleted(data);
+        break;
+      case 'bot_invocation_failed':
+        this.handleBotFailed(data);
+        break;
+      case 'thread_message':
+        this.handleThreadMessage(data);
+        break;
+    }
+  }
+
+  private handleBotStarted(data: Record<string, unknown>): void {
+    const invocationId = data['invocationId'] as string;
+    const sourceId = data['sourceId'] as string;
+
+    // Add to pending invocations
+    this.pendingBotInvocations.update((invocations) => [
+      ...invocations.filter((i) => i.invocationId !== invocationId),
+      {
+        invocationId,
+        messageId: sourceId,
+        botHandle: 'bot', // Will be updated when we have more info
+        status: 'running',
+      },
+    ]);
+
+    // Add to bots typing indicator
+    this.botsTyping.update((bots) => [
+      ...bots.filter((b) => b.messageId !== sourceId),
+      { messageId: sourceId, botHandle: 'bot' },
+    ]);
+  }
+
+  private handleBotCompleted(data: Record<string, unknown>): void {
+    const invocationId = data['invocationId'] as string;
+    const sourceId = data['sourceId'] as string;
+
+    // Update invocation status
+    this.pendingBotInvocations.update((invocations) =>
+      invocations.map((i) =>
+        i.invocationId === invocationId ? { ...i, status: 'completed' as const } : i,
+      ),
+    );
+
+    // Remove from bots typing
+    this.botsTyping.update((bots) => bots.filter((b) => b.messageId !== sourceId));
+
+    // Clean up completed invocations after a short delay
+    setTimeout(() => {
+      this.pendingBotInvocations.update((invocations) =>
+        invocations.filter((i) => i.invocationId !== invocationId),
+      );
+    }, 1000);
+  }
+
+  private handleBotFailed(data: Record<string, unknown>): void {
+    const invocationId = data['invocationId'] as string;
+    const sourceId = data['sourceId'] as string;
+    const error = data['error'] as string | undefined;
+
+    // Update invocation status
+    this.pendingBotInvocations.update((invocations) =>
+      invocations.map((i) =>
+        i.invocationId === invocationId ? { ...i, status: 'failed' as const, error } : i,
+      ),
+    );
+
+    // Remove from bots typing
+    this.botsTyping.update((bots) => bots.filter((b) => b.messageId !== sourceId));
+
+    // Keep failed invocations visible for longer
+    setTimeout(() => {
+      this.pendingBotInvocations.update((invocations) =>
+        invocations.filter((i) => i.invocationId !== invocationId),
+      );
+    }, 5000);
+  }
+
+  private handleThreadMessage(data: Record<string, unknown>): void {
+    const parentMessageId = data['parentMessageId'] as string;
+
+    // Mark the parent message as having a thread (this triggers UI update)
+    this.messageService.markMessageHasThread(parentMessageId);
+
+    // If user is at bottom, scroll to show the new thread indicator
+    if (this.isAtBottom) {
+      this.scrollToBottom();
+    }
+  }
+
+  // Check if a message has a pending bot invocation
+  hasPendingBot(messageId: string): boolean {
+    return this.pendingBotInvocations().some(
+      (i) => i.messageId === messageId && i.status === 'running',
+    );
+  }
+
+  // Check if a message has a failed bot invocation
+  hasFailedBot(messageId: string): string | undefined {
+    const failed = this.pendingBotInvocations().find(
+      (i) => i.messageId === messageId && i.status === 'failed',
+    );
+    return failed?.error;
+  }
+
+  // Check if a bot is "typing" for a message
+  isBotTyping(messageId: string): boolean {
+    return this.botsTyping().some((b) => b.messageId === messageId);
   }
 
   private handleTypingEvent(event: TypingEvent): void {

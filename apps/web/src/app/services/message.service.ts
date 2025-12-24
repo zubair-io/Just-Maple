@@ -361,6 +361,21 @@ export class MessageService {
     this.realtime.sendTyping(tagId, isTyping);
   }
 
+  /**
+   * Mark a message as having a thread (for real-time updates)
+   */
+  markMessageHasThread(messageId: string): void {
+    const message = this.store.query(getEntity(messageId));
+    if (message && !message.hasThread) {
+      this.store.update(
+        updateEntities(messageId, (entity) => ({
+          ...entity,
+          hasThread: true,
+        })),
+      );
+    }
+  }
+
   private async persistToIndexedDB(messages: Message[]): Promise<void> {
     if (!isPlatformBrowser(this.platformId) || messages.length === 0) return;
     await this.indexedDB.putMany(messages, STORE_NAME);
