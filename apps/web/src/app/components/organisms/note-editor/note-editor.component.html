@@ -92,4 +92,21 @@
 
   <!-- TipTap Editor -->
   <div #editorElement class="editor-content"></div>
+
+  <!-- Mention Suggestions Dropdown -->
+  @if (showMentionSuggestions()) {
+    <div
+      class="mention-suggestions-container fixed z-50"
+      [style.top.px]="mentionPosition().top"
+      [style.left.px]="mentionPosition().left"
+    >
+      <app-mention-suggestion
+        [items]="mentionSuggestions()"
+        [isLoading]="mentionSuggestionsLoading()"
+        [command]="mentionCommand"
+        (selected)="onMentionSelected($event)"
+        (dismissed)="onMentionDismissed()"
+      />
+    </div>
+  }
 </div>

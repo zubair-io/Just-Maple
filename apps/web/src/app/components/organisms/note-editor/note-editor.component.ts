@@ -4,10 +4,12 @@ import {
   output,
   signal,
   effect,
+  inject,
   ElementRef,
   ViewChild,
   OnDestroy,
   afterNextRender,
+  DestroyRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Editor } from '@tiptap/core';
@@ -21,12 +23,17 @@ import Highlight from '@tiptap/extension-highlight';
 import Typography from '@tiptap/extension-typography';
 import { EmojiReplacer } from './extensions/emoji-replacer';
 import { CodeEnterHandler } from './extensions/code-enter-handler';
+import { Mention, type MentionNodeAttrs } from '../../organisms/chat/extensions/mention';
+import { BotWidget, type BotWidgetAttrs } from './extensions/bot-widget';
+import { BotService, type BotSuggestion } from '../../../services/bot.service';
+import { MentionSuggestionComponent } from '../../organisms/chat/mention-suggestion.component';
+import { Subject, debounceTime, switchMap, takeUntil } from 'rxjs';
 import type { Note, Tag, NoteContent } from '@maple/shared';
 
 @Component({
   selector: 'app-note-editor',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, MentionSuggestionComponent],
   templateUrl: './note-editor.component.html',
   styleUrl: './note-editor.component.scss',
 })
@@ -34,13 +41,26 @@ export class NoteEditorComponent implements OnDestroy {
   @ViewChild('editorElement', { static: false })
   private editorRef?: ElementRef<HTMLElement>;
 
+  private readonly botService = inject(BotService);
+  private readonly destroyRef = inject(DestroyRef);
+
   readonly note = input<Note | null>(null);
   readonly tag = input<Tag | null>(null);
   readonly editable = input<boolean>(true);
 
   readonly contentChange = output<NoteContent>();
+  readonly botInvoked = output<{ botHandle: string; widgetId: string }>();
 
   readonly isFocused = signal(false);
+
+  // Mention autocomplete state
+  readonly showMentionSuggestions = signal(false);
+  readonly mentionSuggestions = signal<BotSuggestion[]>([]);
+  readonly mentionSuggestionsLoading = signal(false);
+  readonly mentionPosition = signal<{ top: number; left: number }>({ top: 0, left: 0 });
+  mentionCommand: ((props: Record<string, unknown>) => void) | null = null;
+  private readonly mentionSearch$ = new Subject<string>();
+  private readonly destroy$ = new Subject<void>();
 
   private editor: Editor | null = null;
   private lastNoteId: string | null = null;
@@ -69,6 +89,33 @@ export class NoteEditorComponent implements OnDestroy {
     effect(() => {
       const isEditable = this.editable();
       this.editor?.setEditable(isEditable);
+    });
+
+    // Setup mention search with debounce
+    this.mentionSearch$
+      .pipe(
+        debounceTime(200),
+        switchMap((query) => {
+          this.mentionSuggestionsLoading.set(true);
+          const tagId = this.tag()?._id || this.note()?.tagId || '';
+          return this.botService.searchBots(tagId, query);
+        }),
+        takeUntil(this.destroy$),
+      )
+      .subscribe({
+        next: (bots) => {
+          this.mentionSuggestions.set(bots);
+          this.mentionSuggestionsLoading.set(false);
+        },
+        error: () => {
+          this.mentionSuggestions.set([]);
+          this.mentionSuggestionsLoading.set(false);
+        },
+      });
+
+    this.destroyRef.onDestroy(() => {
+      this.destroy$.next();
+      this.destroy$.complete();
     });
   }
 
@@ -104,6 +151,43 @@ export class NoteEditorComponent implements OnDestroy {
         Typography,
         EmojiReplacer,
         CodeEnterHandler,
+        Mention.configure({
+          HTMLAttributes: {
+            class: 'mention',
+          },
+          suggestion: {
+            items: ({ query }) => {
+              this.mentionSearch$.next(query);
+              return [];
+            },
+            render: () => {
+              return {
+                onStart: (props) => {
+                  this.mentionCommand = props.command;
+                  this.showMentionSuggestions.set(true);
+                  this.updateMentionPosition(props.clientRect);
+                },
+                onUpdate: (props) => {
+                  this.mentionCommand = props.command;
+                  this.updateMentionPosition(props.clientRect);
+                },
+                onKeyDown: (props) => {
+                  if (props.event.key === 'Escape') {
+                    this.showMentionSuggestions.set(false);
+                    return true;
+                  }
+                  return false;
+                },
+                onExit: () => {
+                  this.showMentionSuggestions.set(false);
+                  this.mentionSuggestions.set([]);
+                  this.mentionCommand = null;
+                },
+              };
+            },
+          },
+        }),
+        BotWidget,
         Placeholder.configure({
           placeholder: ({ node }) => {
             if (node.type.name === 'heading' && node.attrs['level'] === 1) {
@@ -144,6 +228,56 @@ export class NoteEditorComponent implements OnDestroy {
     } finally {
       this.isUpdatingFromNote = false;
     }
+  }
+
+  private updateMentionPosition(clientRect: (() => DOMRect | null) | null | undefined): void {
+    if (!clientRect) return;
+    const rect = clientRect();
+    if (!rect) return;
+    this.mentionPosition.set({
+      top: rect.bottom + 4,
+      left: rect.left,
+    });
+  }
+
+  onMentionSelected(bot: BotSuggestion): void {
+    if (this.mentionCommand) {
+      this.mentionCommand({
+        id: bot.id,
+        handle: bot.handle,
+        type: bot.type,
+      });
+
+      // If it's a bot mention, insert a widget after the current block
+      if (bot.type === 'bot') {
+        const widgetId = `widget-${Date.now()}`;
+        // Insert the bot widget after the current selection
+        setTimeout(() => {
+          this.editor
+            ?.chain()
+            .focus()
+            .insertBotWidget({
+              widgetId,
+              botHandle: bot.handle,
+              status: 'pending',
+            })
+            .run();
+
+          // Emit event for parent to handle invocation
+          this.botInvoked.emit({ botHandle: bot.handle, widgetId });
+        }, 100);
+      }
+    }
+    this.showMentionSuggestions.set(false);
+  }
+
+  onMentionDismissed(): void {
+    this.showMentionSuggestions.set(false);
+  }
+
+  // Update a bot widget's state (called from parent when invocation completes)
+  updateBotWidget(widgetId: string, attrs: Partial<BotWidgetAttrs>): void {
+    this.editor?.commands.updateBotWidget(widgetId, attrs);
   }
 
   focusEditor(): void {

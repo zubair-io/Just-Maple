@@ -72,6 +72,7 @@
     [note]="selectedNote()"
     [tag]="selectedTag()"
     (contentChange)="onContentChange($event)"
+    (botInvoked)="onBotInvoked($event)"
   />
 } @else {
   <div class="empty-state">
