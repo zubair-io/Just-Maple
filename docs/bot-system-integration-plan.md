@@ -1905,6 +1905,1198 @@ type BotEvents =
 
 ---
 
+## Testing Strategy
+
+The bot system follows the existing testing patterns in the codebase:
+
+- **API tests**: Vitest with `.test.ts` suffix in `__tests__` folders
+- **Web tests**: Vitest + Angular TestBed with `.spec.ts` suffix in `__tests__` folders
+- **Shared package tests**: Vitest for pure utility functions
+
+### Test File Structure
+
+```
+apps/api/src/
+├── repositories/__tests__/
+│   ├── bot.repo.test.ts
+│   ├── thread.repo.test.ts
+│   └── invocation.repo.test.ts
+├── routes/__tests__/
+│   ├── bots.test.ts
+│   └── threads.test.ts
+├── services/__tests__/
+│   ├── bot-executor.test.ts
+│   └── mention-parser.test.ts
+└── __tests__/helpers/
+    └── fixtures.ts  # Add bot/thread fixtures
+
+apps/web/src/app/
+├── services/__tests__/
+│   ├── bot.service.spec.ts
+│   ├── thread.service.spec.ts
+│   └── widget.service.spec.ts
+├── components/
+│   ├── molecules/mention-suggester/__tests__/
+│   │   └── mention-suggester.component.spec.ts
+│   ├── atoms/bot-output/__tests__/
+│   │   └── bot-output.component.spec.ts
+│   └── organisms/chat/__tests__/
+│       └── chat-thread.component.spec.ts
+└── editor/extensions/__tests__/
+    ├── mention.extension.spec.ts
+    └── bot-widget.extension.spec.ts
+
+packages/shared/src/
+└── utils/__tests__/
+    └── mention-parser.test.ts
+```
+
+### API Test Examples
+
+#### Bot Repository Tests
+
+**Create `apps/api/src/repositories/__tests__/bot.repo.test.ts`:**
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { findBotByHandle, createBot, searchBots, findBotsForTag } from '../bot.repo';
+import {
+    createBotFixture,
+    createUserFixture,
+    createTagFixture,
+} from '../../__tests__/helpers/fixtures';
+import { mongoAvailable } from '../../__tests__/setup';
+
+describe.runIf(mongoAvailable)('BotRepo', () => {
+    describe('findBotByHandle', () => {
+        it('should return bot when handle exists', async () => {
+            const user = await createUserFixture();
+            const bot = await createBotFixture({
+                handle: 'summarize',
+                createdBy: user._id.toString(),
+            });
+
+            const found = await findBotByHandle('summarize');
+
+            expect(found).not.toBeNull();
+            expect(found!.handle).toBe('summarize');
+            expect(found!._id).toBe(bot._id.toString());
+        });
+
+        it('should return null for disabled bot', async () => {
+            const user = await createUserFixture();
+            await createBotFixture({
+                handle: 'disabled-bot',
+                createdBy: user._id.toString(),
+                isEnabled: false,
+            });
+
+            const found = await findBotByHandle('disabled-bot');
+
+            expect(found).toBeNull();
+        });
+
+        it('should be case-insensitive', async () => {
+            const user = await createUserFixture();
+            await createBotFixture({
+                handle: 'mybot',
+                createdBy: user._id.toString(),
+            });
+
+            const found = await findBotByHandle('MYBOT');
+
+            expect(found).not.toBeNull();
+            expect(found!.handle).toBe('mybot');
+        });
+    });
+
+    describe('findBotsForTag', () => {
+        it('should return global bots', async () => {
+            const user = await createUserFixture();
+            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            await createBotFixture({
+                handle: 'global-bot',
+                isGlobal: true,
+                createdBy: user._id.toString(),
+            });
+
+            const bots = await findBotsForTag(tag._id.toString(), user._id.toString());
+
+            expect(bots.some((b) => b.handle === 'global-bot')).toBe(true);
+        });
+
+        it('should return tag-scoped bots', async () => {
+            const user = await createUserFixture();
+            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            await createBotFixture({
+                handle: 'tag-bot',
+                tagId: tag._id.toString(),
+                isGlobal: false,
+                createdBy: user._id.toString(),
+            });
+
+            const bots = await findBotsForTag(tag._id.toString(), user._id.toString());
+
+            expect(bots.some((b) => b.handle === 'tag-bot')).toBe(true);
+        });
+
+        it('should not return bots from other tags', async () => {
+            const user = await createUserFixture();
+            const tag1 = await createTagFixture({ createdBy: user._id.toString() });
+            const tag2 = await createTagFixture({ createdBy: user._id.toString() });
+            await createBotFixture({
+                handle: 'other-tag-bot',
+                tagId: tag2._id.toString(),
+                isGlobal: false,
+                createdBy: user._id.toString(),
+            });
+
+            const bots = await findBotsForTag(tag1._id.toString(), user._id.toString());
+
+            expect(bots.some((b) => b.handle === 'other-tag-bot')).toBe(false);
+        });
+    });
+
+    describe('searchBots', () => {
+        it('should search by handle', async () => {
+            const user = await createUserFixture();
+            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            await createBotFixture({
+                handle: 'summarize',
+                name: 'Summarize Bot',
+                isGlobal: true,
+                createdBy: user._id.toString(),
+            });
+
+            const bots = await searchBots('sum', tag._id.toString(), user._id.toString());
+
+            expect(bots.length).toBe(1);
+            expect(bots[0].handle).toBe('summarize');
+        });
+
+        it('should search by name', async () => {
+            const user = await createUserFixture();
+            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            await createBotFixture({
+                handle: 'mybot',
+                name: 'Weather Bot',
+                isGlobal: true,
+                createdBy: user._id.toString(),
+            });
+
+            const bots = await searchBots('weather', tag._id.toString(), user._id.toString());
+
+            expect(bots.length).toBe(1);
+            expect(bots[0].name).toBe('Weather Bot');
+        });
+    });
+});
+```
+
+#### Bot Executor Tests
+
+**Create `apps/api/src/services/__tests__/bot-executor.test.ts`:**
+
+```typescript
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { BotExecutor } from '../bot-executor';
+import type { Bot, BotInvocation } from '@maple/shared';
+
+// Mock dependencies
+vi.mock('../../repositories/bot.repo', () => ({
+    findBotById: vi.fn(),
+}));
+vi.mock('../../repositories/invocation.repo', () => ({
+    findInvocationById: vi.fn(),
+    updateInvocationStatus: vi.fn(),
+}));
+vi.mock('../realtime.service', () => ({
+    broadcastChatEvent: vi.fn(),
+}));
+
+import { findBotById } from '../../repositories/bot.repo';
+import { findInvocationById, updateInvocationStatus } from '../../repositories/invocation.repo';
+
+describe('BotExecutor', () => {
+    let executor: BotExecutor;
+
+    const mockBot: Bot = {
+        _id: 'bot-1',
+        name: 'Test Bot',
+        handle: 'test',
+        definition: {
+            trigger: { mentionPatterns: ['test'] },
+            input: { includeContext: { mentionText: true } },
+            actions: [
+                {
+                    type: 'set',
+                    id: 'set-result',
+                    config: { variable: 'result', value: 'Hello {{$mentionText}}' },
+                },
+            ],
+            output: {
+                chatView: {
+                    components: [{ id: 'text', type: 'text', props: { content: '{{result}}' } }],
+                },
+            },
+        },
+        createdBy: 'user-1',
+        isGlobal: true,
+        isEnabled: true,
+        version: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
+
+    const mockInvocation: BotInvocation = {
+        _id: 'inv-1',
+        botId: 'bot-1',
+        botVersion: 1,
+        sourceType: 'message',
+        sourceId: 'msg-1',
+        tagId: 'tag-1',
+        userId: 'user-1',
+        context: { mentionText: 'world' },
+        variables: {},
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
+
+    beforeEach(() => {
+        executor = new BotExecutor();
+        vi.clearAllMocks();
+
+        vi.mocked(findBotById).mockResolvedValue(mockBot);
+        vi.mocked(findInvocationById).mockResolvedValue(mockInvocation);
+        vi.mocked(updateInvocationStatus).mockResolvedValue({
+            ...mockInvocation,
+            status: 'completed',
+        });
+    });
+
+    describe('execute', () => {
+        it('should execute set action and interpolate variables', async () => {
+            await executor.execute('inv-1');
+
+            expect(updateInvocationStatus).toHaveBeenCalledWith(
+                'inv-1',
+                'completed',
+                expect.objectContaining({
+                    variables: expect.objectContaining({
+                        result: 'Hello world',
+                    }),
+                }),
+            );
+        });
+
+        it('should update status to running then completed', async () => {
+            await executor.execute('inv-1');
+
+            expect(updateInvocationStatus).toHaveBeenCalledWith('inv-1', 'running');
+            expect(updateInvocationStatus).toHaveBeenCalledWith(
+                'inv-1',
+                'completed',
+                expect.any(Object),
+            );
+        });
+
+        it('should handle execution errors', async () => {
+            vi.mocked(findBotById).mockResolvedValue(null);
+
+            await expect(executor.execute('inv-1')).rejects.toThrow('Bot not found');
+
+            expect(updateInvocationStatus).toHaveBeenCalledWith(
+                'inv-1',
+                'failed',
+                expect.objectContaining({
+                    error: expect.objectContaining({
+                        code: 'EXECUTION_ERROR',
+                    }),
+                }),
+            );
+        });
+    });
+
+    describe('interpolate', () => {
+        it('should replace simple variables', () => {
+            const result = executor['interpolate']('Hello {{name}}', { name: 'World' });
+            expect(result).toBe('Hello World');
+        });
+
+        it('should replace nested variables', () => {
+            const result = executor['interpolate']('{{user.name}}', {
+                user: { name: 'Alice' },
+            });
+            expect(result).toBe('Alice');
+        });
+
+        it('should handle context variables with $ prefix', () => {
+            const result = executor['interpolate']('{{$mentionText}}', {
+                $mentionText: 'test',
+            });
+            expect(result).toBe('test');
+        });
+
+        it('should handle missing variables gracefully', () => {
+            const result = executor['interpolate']('Hello {{missing}}', {});
+            expect(result).toBe('Hello ');
+        });
+    });
+
+    describe('applyTransformOperation', () => {
+        it('should map array values', () => {
+            const result = executor['applyTransformOperation']([{ name: 'a' }, { name: 'b' }], {
+                op: 'map',
+                args: 'name',
+            });
+            expect(result).toEqual(['a', 'b']);
+        });
+
+        it('should filter array values', () => {
+            const result = executor['applyTransformOperation'](
+                [{ active: true }, { active: false }],
+                { op: 'filter', args: 'active' },
+            );
+            expect(result).toEqual([{ active: true }]);
+        });
+
+        it('should join array to string', () => {
+            const result = executor['applyTransformOperation'](['a', 'b', 'c'], {
+                op: 'join',
+                args: ', ',
+            });
+            expect(result).toBe('a, b, c');
+        });
+
+        it('should split string to array', () => {
+            const result = executor['applyTransformOperation']('a,b,c', {
+                op: 'split',
+                args: ',',
+            });
+            expect(result).toEqual(['a', 'b', 'c']);
+        });
+    });
+});
+```
+
+#### Thread Repository Tests
+
+**Create `apps/api/src/repositories/__tests__/thread.repo.test.ts`:**
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import {
+    createThread,
+    findThreadByParentMessage,
+    findThreadById,
+    incrementThreadMessageCount,
+} from '../thread.repo';
+import {
+    createUserFixture,
+    createTagFixture,
+    createMessageFixture,
+} from '../../__tests__/helpers/fixtures';
+import { mongoAvailable } from '../../__tests__/setup';
+
+describe.runIf(mongoAvailable)('ThreadRepo', () => {
+    describe('createThread', () => {
+        it('should create a thread for a message', async () => {
+            const user = await createUserFixture();
+            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const message = await createMessageFixture({
+                tagId: tag._id.toString(),
+                userId: user._id.toString(),
+            });
+
+            const thread = await createThread({
+                parentMessageId: message._id.toString(),
+                tagId: tag._id.toString(),
+            });
+
+            expect(thread._id).toBeDefined();
+            expect(thread.parentMessageId).toBe(message._id.toString());
+            expect(thread.tagId).toBe(tag._id.toString());
+            expect(thread.messageCount).toBe(0);
+        });
+
+        it('should include botInvocationId when provided', async () => {
+            const user = await createUserFixture();
+            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const message = await createMessageFixture({
+                tagId: tag._id.toString(),
+                userId: user._id.toString(),
+            });
+
+            const thread = await createThread({
+                parentMessageId: message._id.toString(),
+                tagId: tag._id.toString(),
+                botInvocationId: 'inv-123',
+            });
+
+            expect(thread.botInvocationId).toBe('inv-123');
+        });
+    });
+
+    describe('findThreadByParentMessage', () => {
+        it('should find thread by parent message id', async () => {
+            const user = await createUserFixture();
+            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const message = await createMessageFixture({
+                tagId: tag._id.toString(),
+                userId: user._id.toString(),
+            });
+            const thread = await createThread({
+                parentMessageId: message._id.toString(),
+                tagId: tag._id.toString(),
+            });
+
+            const found = await findThreadByParentMessage(message._id.toString());
+
+            expect(found).not.toBeNull();
+            expect(found!._id).toBe(thread._id);
+        });
+
+        it('should return null when thread does not exist', async () => {
+            const found = await findThreadByParentMessage('507f1f77bcf86cd799439011');
+
+            expect(found).toBeNull();
+        });
+    });
+
+    describe('incrementThreadMessageCount', () => {
+        it('should increment message count', async () => {
+            const user = await createUserFixture();
+            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const message = await createMessageFixture({
+                tagId: tag._id.toString(),
+                userId: user._id.toString(),
+            });
+            const thread = await createThread({
+                parentMessageId: message._id.toString(),
+                tagId: tag._id.toString(),
+            });
+
+            await incrementThreadMessageCount(thread._id);
+            await incrementThreadMessageCount(thread._id);
+
+            const updated = await findThreadById(thread._id);
+            expect(updated!.messageCount).toBe(2);
+        });
+    });
+});
+```
+
+### Fixtures to Add
+
+**Update `apps/api/src/__tests__/helpers/fixtures.ts`:**
+
+```typescript
+// Add these fixtures to the existing file
+
+export interface BotDoc {
+    _id: ObjectId;
+    name: string;
+    handle: string;
+    description?: string;
+    avatar?: string;
+    definition: BotDefinition;
+    tagId?: ObjectId;
+    createdBy: ObjectId;
+    isGlobal: boolean;
+    isEnabled: boolean;
+    version: number;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateBotOptions {
+    name?: string;
+    handle?: string;
+    description?: string;
+    definition?: Partial<BotDefinition>;
+    tagId?: string;
+    createdBy: string;
+    isGlobal?: boolean;
+    isEnabled?: boolean;
+}
+
+export async function createBotFixture(options: CreateBotOptions): Promise<BotDoc> {
+    const now = new Date();
+    const doc: BotDoc = {
+        _id: new ObjectId(),
+        name: options.name || 'Test Bot',
+        handle: options.handle || `bot-${Date.now()}`,
+        description: options.description,
+        definition: {
+            trigger: { mentionPatterns: [options.handle || 'test'] },
+            input: { includeContext: { mentionText: true } },
+            actions: [],
+            output: { chatView: { components: [] } },
+            ...options.definition,
+        },
+        tagId: options.tagId ? new ObjectId(options.tagId) : undefined,
+        createdBy: new ObjectId(options.createdBy),
+        isGlobal: options.isGlobal ?? true,
+        isEnabled: options.isEnabled ?? true,
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb.collection('bots').insertOne(doc);
+    return doc;
+}
+
+export interface TagDoc {
+    _id: ObjectId;
+    type: 'folder';
+    value: 'mixed';
+    label: string;
+    sharing: { sharedWith: []; isPublic: boolean };
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateTagOptions {
+    label?: string;
+    createdBy: string;
+}
+
+export async function createTagFixture(options: CreateTagOptions): Promise<TagDoc> {
+    const now = new Date();
+    const doc: TagDoc = {
+        _id: new ObjectId(),
+        type: 'folder',
+        value: 'mixed',
+        label: options.label || `Tag ${Date.now()}`,
+        sharing: {
+            sharedWith: [{ userId: options.createdBy, accessLevel: 'owner' }],
+            isPublic: false,
+        },
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb.collection('tags').insertOne(doc);
+    return doc;
+}
+
+export interface MessageDoc {
+    _id: ObjectId;
+    tagId: ObjectId;
+    userId: ObjectId;
+    content: NoteContent;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateMessageOptions {
+    tagId: string;
+    userId: string;
+    content?: NoteContent;
+}
+
+export async function createMessageFixture(options: CreateMessageOptions): Promise<MessageDoc> {
+    const now = new Date();
+    const doc: MessageDoc = {
+        _id: new ObjectId(),
+        tagId: new ObjectId(options.tagId),
+        userId: new ObjectId(options.userId),
+        content: options.content || {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test message' }] }],
+        },
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb.collection('messages').insertOne(doc);
+    return doc;
+}
+
+export interface ThreadDoc {
+    _id: ObjectId;
+    parentMessageId: ObjectId;
+    tagId: ObjectId;
+    botInvocationId?: ObjectId;
+    messageCount: number;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateThreadOptions {
+    parentMessageId: string;
+    tagId: string;
+    botInvocationId?: string;
+}
+
+export async function createThreadFixture(options: CreateThreadOptions): Promise<ThreadDoc> {
+    const now = new Date();
+    const doc: ThreadDoc = {
+        _id: new ObjectId(),
+        parentMessageId: new ObjectId(options.parentMessageId),
+        tagId: new ObjectId(options.tagId),
+        botInvocationId: options.botInvocationId
+            ? new ObjectId(options.botInvocationId)
+            : undefined,
+        messageCount: 0,
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb.collection('threads').insertOne(doc);
+    return doc;
+}
+```
+
+### Web Component Tests
+
+#### Mention Suggester Component Tests
+
+**Create `apps/web/src/app/components/molecules/mention-suggester/__tests__/mention-suggester.component.spec.ts`:**
+
+```typescript
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MentionSuggesterComponent, MentionSuggestion } from '../mention-suggester.component';
+
+describe('MentionSuggesterComponent', () => {
+    let component: MentionSuggesterComponent;
+    let fixture: ComponentFixture<MentionSuggesterComponent>;
+
+    const mockBots: MentionSuggestion[] = [
+        { id: 'bot-1', handle: 'summarize', type: 'bot', description: 'Summarize content' },
+        { id: 'bot-2', handle: 'translate', type: 'bot', description: 'Translate text' },
+    ];
+
+    const mockUsers: MentionSuggestion[] = [
+        { id: 'user-1', handle: 'alice', type: 'user', displayName: 'Alice Smith' },
+        { id: 'user-2', handle: 'bob', type: 'user', displayName: 'Bob Jones' },
+    ];
+
+    beforeEach(async () => {
+        await TestBed.configureTestingModule({
+            imports: [MentionSuggesterComponent],
+        }).compileComponents();
+
+        fixture = TestBed.createComponent(MentionSuggesterComponent);
+        component = fixture.componentInstance;
+    });
+
+    it('should create', () => {
+        fixture.componentRef.setInput('items', []);
+        fixture.detectChanges();
+        expect(component).toBeTruthy();
+    });
+
+    it('should group items by type', () => {
+        fixture.componentRef.setInput('items', [...mockBots, ...mockUsers]);
+        fixture.detectChanges();
+
+        const grouped = component.groupedItems();
+        expect(grouped.bots.length).toBe(2);
+        expect(grouped.users.length).toBe(2);
+    });
+
+    it('should show bots section when bots exist', () => {
+        fixture.componentRef.setInput('items', mockBots);
+        fixture.detectChanges();
+
+        const botsSection = fixture.nativeElement.querySelector('.mention-group-label');
+        expect(botsSection.textContent).toContain('Bots');
+    });
+
+    it('should show users section when users exist', () => {
+        fixture.componentRef.setInput('items', mockUsers);
+        fixture.detectChanges();
+
+        const usersSection = fixture.nativeElement.querySelector('.mention-group-label');
+        expect(usersSection.textContent).toContain('People');
+    });
+
+    it('should emit command on item select', () => {
+        fixture.componentRef.setInput('items', mockBots);
+        fixture.detectChanges();
+
+        const emitSpy = spyOn(component.command, 'emit');
+        component.selectItem(mockBots[0]);
+
+        expect(emitSpy).toHaveBeenCalledWith(mockBots[0]);
+    });
+
+    it('should highlight selected item', () => {
+        fixture.componentRef.setInput('items', mockBots);
+        fixture.componentRef.setInput('selectedIndex', 1);
+        fixture.detectChanges();
+
+        expect(component.isSelected(1)).toBeTrue();
+        expect(component.isSelected(0)).toBeFalse();
+    });
+
+    it('should show empty message when no items', () => {
+        fixture.componentRef.setInput('items', []);
+        fixture.detectChanges();
+
+        const emptyMessage = fixture.nativeElement.querySelector('.mention-empty');
+        expect(emptyMessage).toBeTruthy();
+        expect(emptyMessage.textContent).toContain('No matches found');
+    });
+});
+```
+
+#### Bot Output Component Tests
+
+**Create `apps/web/src/app/components/atoms/bot-output/__tests__/bot-output.component.spec.ts`:**
+
+```typescript
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+import { BotOutputComponent } from '../bot-output.component';
+import type { BotInvocation, UIComponent } from '@maple/shared';
+
+describe('BotOutputComponent', () => {
+    let component: BotOutputComponent;
+    let fixture: ComponentFixture<BotOutputComponent>;
+    let httpMock: HttpTestingController;
+
+    const mockInvocation: BotInvocation = {
+        _id: 'inv-1',
+        botId: 'bot-1',
+        botVersion: 1,
+        sourceType: 'message',
+        sourceId: 'msg-1',
+        tagId: 'tag-1',
+        userId: 'user-1',
+        context: {},
+        variables: { result: 'Hello World' },
+        output: {
+            components: [{ id: 'text-1', type: 'text', props: { content: '{{result}}' } }],
+        },
+        status: 'completed',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
+
+    beforeEach(async () => {
+        await TestBed.configureTestingModule({
+            imports: [BotOutputComponent, HttpClientTestingModule],
+        }).compileComponents();
+
+        httpMock = TestBed.inject(HttpTestingController);
+        fixture = TestBed.createComponent(BotOutputComponent);
+        component = fixture.componentInstance;
+    });
+
+    afterEach(() => {
+        httpMock.verify();
+    });
+
+    it('should create', () => {
+        fixture.componentRef.setInput('invocationId', 'inv-1');
+        fixture.detectChanges();
+
+        const req = httpMock.expectOne('/api/invocations/inv-1');
+        req.flush({ invocation: mockInvocation });
+
+        expect(component).toBeTruthy();
+    });
+
+    it('should load invocation on init', () => {
+        fixture.componentRef.setInput('invocationId', 'inv-1');
+        fixture.detectChanges();
+
+        const req = httpMock.expectOne('/api/invocations/inv-1');
+        expect(req.request.method).toBe('GET');
+        req.flush({ invocation: mockInvocation });
+
+        expect(component.loading()).toBeFalse();
+        expect(component.components().length).toBe(1);
+    });
+
+    it('should show loading state initially', () => {
+        fixture.componentRef.setInput('invocationId', 'inv-1');
+        fixture.detectChanges();
+
+        expect(component.loading()).toBeTrue();
+
+        const loadingEl = fixture.nativeElement.querySelector('.bot-output-loading');
+        expect(loadingEl).toBeTruthy();
+
+        const req = httpMock.expectOne('/api/invocations/inv-1');
+        req.flush({ invocation: mockInvocation });
+    });
+
+    it('should show error state on failure', () => {
+        fixture.componentRef.setInput('invocationId', 'inv-1');
+        fixture.detectChanges();
+
+        const req = httpMock.expectOne('/api/invocations/inv-1');
+        req.flush({ error: 'Not found' }, { status: 404, statusText: 'Not Found' });
+
+        expect(component.error()).toBe('Failed to load bot response');
+    });
+
+    it('should interpolate variables in content', () => {
+        fixture.componentRef.setInput('invocationId', 'inv-1');
+        fixture.detectChanges();
+
+        const req = httpMock.expectOne('/api/invocations/inv-1');
+        req.flush({ invocation: mockInvocation });
+
+        const result = component.interpolate('{{result}}');
+        expect(result).toBe('Hello World');
+    });
+
+    it('should handle nested variable paths', () => {
+        const nestedInvocation = {
+            ...mockInvocation,
+            variables: { user: { name: 'Alice' } },
+        };
+
+        fixture.componentRef.setInput('invocationId', 'inv-1');
+        fixture.detectChanges();
+
+        const req = httpMock.expectOne('/api/invocations/inv-1');
+        req.flush({ invocation: nestedInvocation });
+
+        const result = component.interpolate('Hello {{user.name}}');
+        expect(result).toBe('Hello Alice');
+    });
+});
+```
+
+#### Bot Service Tests
+
+**Create `apps/web/src/app/services/__tests__/bot.service.spec.ts`:**
+
+```typescript
+import { TestBed } from '@angular/core/testing';
+import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+import { BotService } from '../bot.service';
+import type { Bot } from '@maple/shared';
+
+describe('BotService', () => {
+    let service: BotService;
+    let httpMock: HttpTestingController;
+
+    const mockBot: Bot = {
+        _id: 'bot-1',
+        name: 'Summarize',
+        handle: 'summarize',
+        description: 'Summarizes content',
+        definition: {
+            trigger: { mentionPatterns: ['summarize', 'sum'] },
+            input: { includeContext: { mentionText: true } },
+            actions: [],
+            output: { chatView: { components: [] } },
+        },
+        createdBy: 'user-1',
+        isGlobal: true,
+        isEnabled: true,
+        version: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+    };
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            imports: [HttpClientTestingModule],
+            providers: [BotService],
+        });
+
+        service = TestBed.inject(BotService);
+        httpMock = TestBed.inject(HttpTestingController);
+    });
+
+    afterEach(() => {
+        httpMock.verify();
+    });
+
+    describe('searchBots', () => {
+        it('should search bots by query', (done) => {
+            service.searchBots('tag-1', 'sum').subscribe((bots) => {
+                expect(bots.length).toBe(1);
+                expect(bots[0].handle).toBe('summarize');
+                done();
+            });
+
+            const req = httpMock.expectOne('/api/tags/tag-1/bots/search?q=sum');
+            expect(req.request.method).toBe('GET');
+            req.flush({ bots: [mockBot] });
+        });
+
+        it('should handle empty results', (done) => {
+            service.searchBots('tag-1', 'xyz').subscribe((bots) => {
+                expect(bots).toEqual([]);
+                done();
+            });
+
+            const req = httpMock.expectOne('/api/tags/tag-1/bots/search?q=xyz');
+            req.flush({ bots: [] });
+        });
+    });
+
+    describe('invokeBot', () => {
+        it('should create bot invocation', (done) => {
+            const invocationData = {
+                botId: 'bot-1',
+                sourceType: 'message' as const,
+                sourceId: 'msg-1',
+                context: { mentionText: 'hello' },
+            };
+
+            service.invokeBot('tag-1', invocationData).subscribe((result) => {
+                expect(result.invocationId).toBe('inv-1');
+                done();
+            });
+
+            const req = httpMock.expectOne('/api/tags/tag-1/bots/bot-1/invoke');
+            expect(req.request.method).toBe('POST');
+            expect(req.request.body).toEqual({
+                sourceType: 'message',
+                sourceId: 'msg-1',
+                context: { mentionText: 'hello' },
+            });
+            req.flush({ invocationId: 'inv-1' });
+        });
+    });
+
+    describe('getInvocation', () => {
+        it('should fetch invocation by id', (done) => {
+            service.getInvocation('inv-1').subscribe((inv) => {
+                expect(inv._id).toBe('inv-1');
+                expect(inv.status).toBe('completed');
+                done();
+            });
+
+            const req = httpMock.expectOne('/api/invocations/inv-1');
+            expect(req.request.method).toBe('GET');
+            req.flush({
+                invocation: {
+                    _id: 'inv-1',
+                    status: 'completed',
+                    // ... other fields
+                },
+            });
+        });
+    });
+});
+```
+
+### Shared Package Tests
+
+**Create `packages/shared/src/utils/__tests__/mention-parser.test.ts`:**
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { parseMentionsFromContent, extractTextFromContent } from '../mention-parser';
+
+describe('mention-parser', () => {
+    describe('parseMentionsFromContent', () => {
+        it('should parse mention nodes from TipTap content', () => {
+            const content = {
+                type: 'doc',
+                content: [
+                    {
+                        type: 'paragraph',
+                        content: [
+                            { type: 'text', text: 'Hello ' },
+                            {
+                                type: 'mention',
+                                attrs: { id: 'bot-1', handle: 'summarize', mentionType: 'bot' },
+                            },
+                            { type: 'text', text: ' please help' },
+                        ],
+                    },
+                ],
+            };
+
+            const knownBots = new Map([['summarize', 'bot-1']]);
+            const knownUsers = new Map();
+
+            const mentions = parseMentionsFromContent(content, knownBots, knownUsers);
+
+            expect(mentions.length).toBe(1);
+            expect(mentions[0].type).toBe('bot');
+            expect(mentions[0].handle).toBe('summarize');
+            expect(mentions[0].id).toBe('bot-1');
+        });
+
+        it('should parse multiple mentions', () => {
+            const content = {
+                type: 'doc',
+                content: [
+                    {
+                        type: 'paragraph',
+                        content: [
+                            {
+                                type: 'mention',
+                                attrs: { id: 'bot-1', handle: 'summarize', mentionType: 'bot' },
+                            },
+                            { type: 'text', text: ' and ' },
+                            {
+                                type: 'mention',
+                                attrs: { id: 'user-1', handle: 'alice', mentionType: 'user' },
+                            },
+                        ],
+                    },
+                ],
+            };
+
+            const mentions = parseMentionsFromContent(content, new Map(), new Map());
+
+            expect(mentions.length).toBe(2);
+            expect(mentions[0].type).toBe('bot');
+            expect(mentions[1].type).toBe('user');
+        });
+
+        it('should handle empty content', () => {
+            const content = { type: 'doc', content: [] };
+            const mentions = parseMentionsFromContent(content, new Map(), new Map());
+            expect(mentions).toEqual([]);
+        });
+    });
+
+    describe('extractTextFromContent', () => {
+        it('should extract plain text from TipTap content', () => {
+            const content = {
+                type: 'doc',
+                content: [
+                    {
+                        type: 'paragraph',
+                        content: [
+                            { type: 'text', text: 'Hello ' },
+                            {
+                                type: 'mention',
+                                attrs: { handle: 'summarize' },
+                            },
+                            { type: 'text', text: ' world' },
+                        ],
+                    },
+                ],
+            };
+
+            const text = extractTextFromContent(content);
+
+            expect(text).toBe('Hello @summarize world');
+        });
+
+        it('should handle multiple paragraphs', () => {
+            const content = {
+                type: 'doc',
+                content: [
+                    {
+                        type: 'paragraph',
+                        content: [{ type: 'text', text: 'Line 1' }],
+                    },
+                    {
+                        type: 'paragraph',
+                        content: [{ type: 'text', text: 'Line 2' }],
+                    },
+                ],
+            };
+
+            const text = extractTextFromContent(content);
+
+            expect(text).toBe('Line 1\nLine 2');
+        });
+
+        it('should handle null/undefined content', () => {
+            expect(extractTextFromContent(null)).toBe('');
+            expect(extractTextFromContent(undefined)).toBe('');
+        });
+    });
+});
+```
+
+### Test Setup Updates
+
+**Update `apps/api/src/__tests__/setup.ts` to add bot indexes:**
+
+```typescript
+// Add to the beforeAll block after existing indexes:
+
+// Bot system indexes
+await testDb.collection('bots').createIndex({ handle: 1 }, { unique: true });
+await testDb.collection('bots').createIndex({ tagId: 1, isEnabled: 1 });
+await testDb.collection('bots').createIndex({ isGlobal: 1, isEnabled: 1 });
+
+await testDb.collection('bot_invocations').createIndex({ botId: 1, createdAt: -1 });
+await testDb.collection('bot_invocations').createIndex({ sourceType: 1, sourceId: 1 });
+
+await testDb.collection('threads').createIndex({ parentMessageId: 1 }, { unique: true });
+await testDb.collection('threads').createIndex({ tagId: 1, createdAt: -1 });
+
+await testDb.collection('messages').createIndex({ threadId: 1, createdAt: 1 });
+```
+
+### Test Commands
+
+Add to `package.json` scripts:
+
+```json
+{
+    "scripts": {
+        "test": "bun run test:shared && bun run test:api && bun run test:web",
+        "test:shared": "cd packages/shared && vitest run",
+        "test:api": "cd apps/api && vitest run",
+        "test:web": "cd apps/web && vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage"
+    }
+}
+```
+
+### Test Coverage Goals
+
+| Component             | Target Coverage |
+| --------------------- | --------------- |
+| Bot Repository        | 90%             |
+| Thread Repository     | 90%             |
+| Invocation Repository | 85%             |
+| Bot Executor          | 80%             |
+| Mention Parser        | 95%             |
+| Bot Service (Web)     | 85%             |
+| Mention Suggester     | 80%             |
+| Bot Output Component  | 80%             |
+
+### E2E Testing (Future)
+
+For end-to-end testing of the complete bot flow:
+
+```typescript
+// Future: apps/e2e/tests/bot-mention.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('should invoke bot via @mention in chat', async ({ page }) => {
+    // Login
+    await page.goto('/login');
+    // ... auth flow
+
+    // Navigate to a tag
+    await page.click('[data-testid="tag-item"]');
+
+    // Type @mention in chat
+    await page.fill('[data-testid="chat-input"]', '@summarize hello world');
+
+    // Wait for suggester
+    await expect(page.locator('.mention-suggester')).toBeVisible();
+
+    // Select bot
+    await page.click('[data-testid="mention-item-summarize"]');
+
+    // Send message
+    await page.keyboard.press('Enter');
+
+    // Wait for thread indicator
+    await expect(page.locator('[data-testid="thread-indicator"]')).toBeVisible();
+
+    // Open thread
+    await page.click('[data-testid="thread-indicator"]');
+
+    // Verify bot response
+    await expect(page.locator('.bot-message')).toBeVisible();
+});
+```
+
+---
+
 ## Implementation Order
 
 ### Sprint 1: Foundation (Week 1-2)
