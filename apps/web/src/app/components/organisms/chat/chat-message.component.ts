@@ -3,11 +3,18 @@ import { CommonModule, DatePipe } from '@angular/common';
 import type { Message } from '@maple/shared';
 import { ContentRendererComponent } from '../../atoms/content-renderer/content-renderer.component';
 import { ProfileAvatarComponent } from '../../atoms';
+import { ChatThreadComponent } from './chat-thread.component';
 
 @Component({
   selector: 'app-chat-message',
   standalone: true,
-  imports: [CommonModule, DatePipe, ContentRendererComponent, ProfileAvatarComponent],
+  imports: [
+    CommonModule,
+    DatePipe,
+    ContentRendererComponent,
+    ProfileAvatarComponent,
+    ChatThreadComponent,
+  ],
   template: `
     <div class="message-wrapper" [class.grouped]="isGrouped()">
       <div class="message-content">
@@ -41,6 +48,11 @@ import { ProfileAvatarComponent } from '../../atoms';
               <span class="edited">(edited)</span>
             }
           </div>
+
+          <!-- Thread replies -->
+          @if (message().hasThread) {
+            <app-chat-thread [messageId]="message()._id" [hasThread]="true" />
+          }
         </div>
       </div>
     </div>

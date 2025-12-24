@@ -13,6 +13,7 @@ import StarterKit from '@tiptap/starter-kit';
 import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
 import Highlight from '@tiptap/extension-highlight';
+import { Mention } from '../../organisms/chat/extensions/mention';
 import type { NoteContent } from '@maple/shared';
 
 @Component({
@@ -77,6 +78,11 @@ export class ContentRendererComponent implements AfterViewInit, OnDestroy {
         }),
         TaskList,
         Highlight,
+        Mention.configure({
+          HTMLAttributes: {
+            class: 'mention',
+          },
+        }),
       ],
       content: '',
     });
