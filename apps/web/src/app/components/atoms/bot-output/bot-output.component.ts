@@ -1,15 +1,19 @@
-import { Component, input, signal, effect, inject } from '@angular/core';
+import {
+  Component,
+  input,
+  signal,
+  effect,
+  inject,
+  ElementRef,
+  ViewChild,
+  OnDestroy,
+  afterNextRender,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import type { BotInvocation } from '@maple/shared';
-
-export interface UIComponent {
-  id: string;
-  type: 'text' | 'markdown' | 'code' | 'list' | 'status' | 'button' | 'divider' | 'card';
-  props?: Record<string, unknown>;
-  children?: UIComponent[];
-}
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import type { BotInvocation, NoteContent } from '@maple/shared';
 
 @Component({
   selector: 'app-bot-output',
@@ -18,25 +22,85 @@ export interface UIComponent {
   templateUrl: './bot-output.component.html',
   styleUrl: './bot-output.component.scss',
 })
-export class BotOutputComponent {
+export class BotOutputComponent implements OnDestroy {
+  @ViewChild('editorElement', { static: false })
+  private editorRef?: ElementRef<HTMLElement>;
+
   private readonly http = inject(HttpClient);
-  private readonly sanitizer = inject(DomSanitizer);
 
   readonly invocationId = input.required<string>();
 
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
-  readonly components = signal<UIComponent[]>([]);
-  readonly data = signal<Record<string, unknown>>({});
-  readonly rawOutput = signal<string | null>(null);
+  readonly status = signal<BotInvocation['status']>('pending');
+
+  private editor: Editor | null = null;
+  private viewReady = false;
+  private pendingContent: NoteContent | null = null;
 
   constructor() {
+    afterNextRender(() => {
+      this.initEditor();
+      this.viewReady = true;
+
+      // Apply pending content if it arrived before view was ready
+      if (this.pendingContent) {
+        this.setEditorContent(this.pendingContent);
+        this.pendingContent = null;
+      }
+    });
+
     effect(() => {
       const id = this.invocationId();
       if (id) {
         this.loadInvocation(id);
       }
     });
+  }
+
+  ngOnDestroy(): void {
+    this.editor?.destroy();
+  }
+
+  private initEditor(): void {
+    if (!this.editorRef?.nativeElement) return;
+
+    this.editor = new Editor({
+      element: this.editorRef.nativeElement,
+      extensions: [
+        StarterKit.configure({
+          // Disable features not needed for read-only display
+          dropcursor: false,
+          gapcursor: false,
+        }),
+      ],
+      editable: false,
+      content: '',
+    });
+  }
+
+  private setEditorContent(content: NoteContent): void {
+    if (!this.editor) {
+      // Store for later if editor not ready
+      this.pendingContent = content;
+      return;
+    }
+
+    try {
+      this.editor.commands.setContent(content);
+    } catch (e) {
+      console.error('Failed to set editor content:', e);
+      // Fallback: try to extract text and display as paragraph
+      this.editor.commands.setContent({
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: 'Failed to render content' }],
+          },
+        ],
+      });
+    }
   }
 
   loadInvocation(id: string): void {
@@ -46,20 +110,46 @@ export class BotOutputComponent {
     this.http.get<{ invocation: BotInvocation }>(`/api/invocations/${id}`).subscribe({
       next: (response) => {
         const inv = response.invocation;
+        this.status.set(inv.status);
 
-        // Handle structured output with components
-        if (inv.output?.components) {
-          this.components.set(inv.output.components as UIComponent[]);
+        if (inv.status === 'failed') {
+          this.error.set(inv.error?.message || 'Bot execution failed');
+          this.loading.set(false);
+          return;
         }
 
-        // Handle raw string output
-        if (typeof inv.output === 'string') {
-          this.rawOutput.set(inv.output);
+        if (inv.status === 'pending' || inv.status === 'running') {
+          // Poll for updates if still processing
+          setTimeout(() => this.loadInvocation(id), 1000);
+          return;
         }
 
-        // Store variables for interpolation
-        if (inv.variables) {
-          this.data.set(inv.variables);
+        // Handle NoteContent output
+        if (inv.output && typeof inv.output === 'object' && inv.output.type === 'doc') {
+          this.setEditorContent(inv.output as NoteContent);
+        } else if (typeof inv.output === 'string') {
+          // Legacy: Convert raw string to NoteContent
+          this.setEditorContent({
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: inv.output ? [{ type: 'text', text: inv.output }] : [],
+              },
+            ],
+          });
+        } else {
+          // Fallback for other output types
+          const textOutput = inv.variables?.['$response'] as string | undefined;
+          this.setEditorContent({
+            type: 'doc',
+            content: [
+              {
+                type: 'paragraph',
+                content: textOutput ? [{ type: 'text', text: textOutput }] : [],
+              },
+            ],
+          });
         }
 
         this.loading.set(false);
@@ -69,94 +159,5 @@ export class BotOutputComponent {
         this.loading.set(false);
       },
     });
-  }
-
-  interpolate(template: unknown): string {
-    if (typeof template !== 'string') {
-      return String(template || '');
-    }
-    const data = this.data();
-    return template.replace(/\{\{(\$?\w+(?:\.\w+)*)\}\}/g, (_, path: string) => {
-      const parts = path.split('.');
-      let value: unknown = data;
-      for (const part of parts) {
-        if (value && typeof value === 'object') {
-          value = (value as Record<string, unknown>)[part];
-        } else {
-          return '';
-        }
-      }
-      return value !== undefined ? String(value) : '';
-    });
-  }
-
-  sanitizeHtml(html: unknown): SafeHtml {
-    // Basic markdown-to-html conversion for simple cases
-    const htmlString = typeof html === 'string' ? html : String(html || '');
-    const converted = this.simpleMarkdownToHtml(htmlString);
-    return this.sanitizer.bypassSecurityTrustHtml(converted);
-  }
-
-  private simpleMarkdownToHtml(text: string): string {
-    return (
-      text
-        // Bold
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        // Italic
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        // Code inline
-        .replace(/`(.+?)`/g, '<code>$1</code>')
-        // Links
-        .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-        // Line breaks
-        .replace(/\n/g, '<br>')
-    );
-  }
-
-  resolveArray(items: unknown): string[] {
-    if (Array.isArray(items)) {
-      return items.map((item) => String(item));
-    }
-    if (typeof items === 'string') {
-      // Try to parse as JSON array
-      try {
-        const parsed = JSON.parse(items);
-        if (Array.isArray(parsed)) {
-          return parsed.map((item) => String(item));
-        }
-      } catch {
-        // Not JSON, return as single item
-        return [items];
-      }
-    }
-    return [];
-  }
-
-  handleAction(action: unknown): void {
-    if (!action || typeof action !== 'object') return;
-
-    const actionObj = action as { type?: string; url?: string; data?: unknown };
-
-    switch (actionObj.type) {
-      case 'link':
-        if (actionObj.url) {
-          window.open(actionObj.url, '_blank', 'noopener');
-        }
-        break;
-      case 'copy':
-        if (actionObj.data) {
-          navigator.clipboard.writeText(String(actionObj.data));
-        }
-        break;
-      // Add more action types as needed
-    }
-  }
-
-  getStatusClass(value: unknown): string {
-    const status = String(value).toLowerCase();
-    if (['success', 'complete', 'done', 'active'].includes(status)) return 'status-success';
-    if (['error', 'failed', 'failure'].includes(status)) return 'status-error';
-    if (['warning', 'pending', 'processing'].includes(status)) return 'status-warning';
-    return 'status-default';
   }
 }
