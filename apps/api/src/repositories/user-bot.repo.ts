@@ -21,9 +21,9 @@ function getCollection(): Collection<UserBotDocument> {
 
 /**
  * Convert document to UserBot - INTERNAL USE ONLY (includes config)
- * Use toUserBotSafe for API responses
+ * WARNING: Contains sensitive data (API keys). Use toUserBotSafe for API responses.
  */
-function toUserBot(doc: UserBotDocument): UserBot {
+function toUserBotInternal(doc: UserBotDocument): UserBot {
     return {
         _id: doc._id.toString(),
         userId: doc.userId.toString(),
@@ -42,7 +42,7 @@ function toUserBot(doc: UserBotDocument): UserBot {
  * Convert document to UserBot with redacted sensitive data - SAFE FOR API RESPONSES
  */
 function toUserBotSafe(doc: UserBotDocument): UserBot {
-    const bot = toUserBot(doc);
+    const bot = toUserBotInternal(doc);
 
     // Redact sensitive config fields
     if (bot.config) {
@@ -83,7 +83,7 @@ export async function findUserBotById(id: string): Promise<UserBot | null> {
 export async function findUserBotByIdInternal(id: string): Promise<UserBot | null> {
     try {
         const doc = await getCollection().findOne({ _id: new ObjectId(id) });
-        return doc ? toUserBot(doc) : null;
+        return doc ? toUserBotInternal(doc) : null;
     } catch {
         return null;
     }
@@ -168,7 +168,7 @@ export async function findUserBotByHandleForTagInternal(
 ): Promise<UserBot | null> {
     try {
         const doc = await findUserBotDocByHandleForTag(handle, tagId);
-        return doc ? toUserBot(doc) : null;
+        return doc ? toUserBotInternal(doc) : null;
     } catch {
         return null;
     }
