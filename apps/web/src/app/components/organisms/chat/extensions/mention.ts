@@ -1,4 +1,4 @@
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node, mergeAttributes, type Editor } from '@tiptap/core';
 import { PluginKey } from '@tiptap/pm/state';
 import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion';
 
@@ -15,6 +15,15 @@ export interface MentionOptions {
 
 export const MentionPluginKey = new PluginKey('mention');
 
+/**
+ * Check if the node after the cursor starts with a space character
+ * Used to override trailing space when inserting a mention
+ */
+function shouldOverrideTrailingSpace(editor: Editor): boolean {
+  const nodeAfter = editor.view.state.selection.$to.nodeAfter;
+  return nodeAfter?.text?.startsWith(' ') ?? false;
+}
+
 export const Mention = Node.create<MentionOptions>({
   name: 'mention',
 
@@ -27,10 +36,7 @@ export const Mention = Node.create<MentionOptions>({
         command: ({ editor, range, props }) => {
           // Increase range.to by one when the next node is of type "text"
           // and starts with a space character
-          const nodeAfter = editor.view.state.selection.$to.nodeAfter;
-          const overrideSpace = nodeAfter?.text?.startsWith(' ');
-
-          if (overrideSpace) {
+          if (shouldOverrideTrailingSpace(editor)) {
             range.to += 1;
           }
 

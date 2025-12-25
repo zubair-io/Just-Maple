@@ -25,6 +25,7 @@ import { ChatTypingComponent } from './chat-typing.component';
 import { MentionSuggestionComponent } from './mention-suggestion.component';
 import { Mention, type MentionNodeAttrs } from './extensions/mention';
 import type { Message, NoteContent, TypingEvent, ChatEvent } from '@maple/shared';
+import { extractMentions, extractText } from '@maple/shared';
 import { Subscription, Subject, debounceTime, switchMap, takeUntil, filter } from 'rxjs';
 
 // Track pending bot invocations for loading states
@@ -503,7 +504,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     if (this.isContentEmpty(content)) return;
 
     // Extract mentions from content
-    const mentions = this.extractMentions(content);
+    const mentions = this.extractMentionsFromContent(content);
 
     // When sending own message, always scroll to bottom
     this.isAtBottom = true;
@@ -527,30 +528,9 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     this.messageService.sendTyping(this.tagId(), false);
   }
 
-  private extractMentions(content: NoteContent): MentionNodeAttrs[] {
-    const mentions: MentionNodeAttrs[] = [];
-
-    const traverse = (node: unknown): void => {
-      if (!node || typeof node !== 'object') return;
-
-      const n = node as Record<string, unknown>;
-      if (n['type'] === 'mention' && n['attrs']) {
-        const attrs = n['attrs'] as MentionNodeAttrs;
-        if (attrs.id && attrs.handle) {
-          mentions.push(attrs);
-        }
-      }
-
-      if (Array.isArray(n['content'])) {
-        n['content'].forEach(traverse);
-      }
-    };
-
-    if (content?.content) {
-      content.content.forEach(traverse);
-    }
-
-    return mentions;
+  private extractMentionsFromContent(content: NoteContent): MentionNodeAttrs[] {
+    // Use shared utility and map to local MentionNodeAttrs type
+    return extractMentions(content) as MentionNodeAttrs[];
   }
 
   private invokeMentionedBots(
@@ -577,29 +557,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   }
 
   private extractTextFromContent(content: NoteContent): string {
-    const parts: string[] = [];
-
-    const traverse = (node: unknown): void => {
-      if (!node || typeof node !== 'object') return;
-
-      const n = node as Record<string, unknown>;
-      if (n['type'] === 'text' && typeof n['text'] === 'string') {
-        parts.push(n['text']);
-      } else if (n['type'] === 'mention' && n['attrs']) {
-        const attrs = n['attrs'] as MentionNodeAttrs;
-        parts.push(`@${attrs.handle}`);
-      }
-
-      if (Array.isArray(n['content'])) {
-        n['content'].forEach(traverse);
-      }
-    };
-
-    if (content?.content) {
-      content.content.forEach(traverse);
-    }
-
-    return parts.join('');
+    // Use shared utility (without newlines for chat messages)
+    return extractText(content, { includeNewlines: false });
   }
 
   private isContentEmpty(content: NoteContent): boolean {
