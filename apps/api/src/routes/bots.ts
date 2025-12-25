@@ -257,20 +257,23 @@ export const botRoutes = new Elysia({ prefix: '/api' })
 
             const userBots = await searchUserBots(auth.user._id, params.tagId, query.q || '', 10);
 
+            // Batch load all templates in a single query (fix N+1)
+            const templateIds = [...new Set(userBots.map((b) => b.templateId))];
+            const templates = await findBotTemplatesByIds(templateIds);
+            const templateMap = new Map(templates.map((t) => [t._id, t]));
+
             // Enrich with template info
-            const enrichedBots = await Promise.all(
-                userBots.map(async (userBot) => {
-                    const template = await findBotTemplateById(userBot.templateId);
-                    return {
-                        id: userBot._id,
-                        handle: userBot.handle,
-                        displayName: userBot.displayName || template?.name || userBot.handle,
-                        avatar: template?.avatar,
-                        description: template?.description,
-                        type: 'bot' as const,
-                    };
-                }),
-            );
+            const enrichedBots = userBots.map((userBot) => {
+                const template = templateMap.get(userBot.templateId);
+                return {
+                    id: userBot._id,
+                    handle: userBot.handle,
+                    displayName: userBot.displayName || template?.name || userBot.handle,
+                    avatar: template?.avatar,
+                    description: template?.description,
+                    type: 'bot' as const,
+                };
+            });
 
             return { bots: enrichedBots };
         },

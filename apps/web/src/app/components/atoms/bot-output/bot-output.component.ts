@@ -37,6 +37,7 @@ export class BotOutputComponent implements OnDestroy {
   private editor: Editor | null = null;
   private viewReady = false;
   private pendingContent: NoteContent | null = null;
+  private pollTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     afterNextRender(() => {
@@ -59,6 +60,9 @@ export class BotOutputComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.pollTimeoutId) {
+      clearTimeout(this.pollTimeoutId);
+    }
     this.editor?.destroy();
   }
 
@@ -120,7 +124,7 @@ export class BotOutputComponent implements OnDestroy {
 
         if (inv.status === 'pending' || inv.status === 'running') {
           // Poll for updates if still processing
-          setTimeout(() => this.loadInvocation(id), 1000);
+          this.pollTimeoutId = setTimeout(() => this.loadInvocation(id), 1000);
           return;
         }
 
