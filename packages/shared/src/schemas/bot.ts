@@ -217,6 +217,7 @@ export const BotInvocationSchema = Type.Object({
         previousMessages: Type.Optional(Type.Array(Type.Any())),
     }),
     variables: Type.Record(Type.String(), Type.Any()),
+    // Output is NoteContent (ProseMirror JSON) for consistent rendering with TipTap
     output: Type.Optional(Type.Any()),
     status: InvocationStatusSchema,
     error: Type.Optional(

@@ -146,15 +146,16 @@ export class BotExecutorService {
             const executionTimeMs = Date.now() - startTime;
 
             // Update invocation with completed status
+            // Store NoteContent format for consistent rendering with TipTap
             await updateInvocationStatus(invocationId, 'completed', {
-                output: ctx.variables.$response,
+                output: responseContent,
                 threadId,
                 responseMessageId: messageId,
                 executionTimeMs,
                 variables: ctx.variables as Record<string, unknown>,
             });
 
-            this.broadcastStatus(invocation, 'completed', ctx.variables.$response);
+            this.broadcastStatus(invocation, 'completed', responseContent);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             await updateInvocationStatus(invocationId, 'failed', {
