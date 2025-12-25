@@ -1,4 +1,4 @@
-import { ObjectId, Collection, MongoServerError } from 'mongodb';
+import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import type { Thread } from '@maple/shared';
 
@@ -94,27 +94,35 @@ export async function findThreadsByTagId(
 }
 
 // Get or create thread for a parent message
-// Uses atomic operations to handle race conditions
+// Uses atomic findOneAndUpdate with upsert to handle race conditions
 export async function getOrCreateThread(data: {
     parentMessageId: string;
     tagId: string;
     botInvocationId?: string;
 }): Promise<Thread> {
-    try {
-        // Try to create first (atomic operation)
-        return await createThread(data);
-    } catch (error) {
-        // If duplicate key error (code 11000), thread already exists from concurrent request
-        if (error instanceof MongoServerError && error.code === 11000) {
-            // Thread was created by another concurrent request, fetch it
-            const existing = await findThreadByParentMessage(data.parentMessageId);
-            if (existing) return existing;
+    const now = new Date();
+    const parentMessageOid = new ObjectId(data.parentMessageId);
+    const tagOid = new ObjectId(data.tagId);
+    const botInvocationOid = data.botInvocationId ? new ObjectId(data.botInvocationId) : undefined;
 
-            // Shouldn't happen, but throw if we still can't find it
-            throw new Error(
-                'Thread creation failed: concurrent creation detected but thread not found',
-            );
-        }
-        throw error;
+    const result = await getCollection().findOneAndUpdate(
+        { parentMessageId: parentMessageOid },
+        {
+            $setOnInsert: {
+                parentMessageId: parentMessageOid,
+                tagId: tagOid,
+                botInvocationId: botInvocationOid,
+                messageCount: 0,
+                createdAt: now,
+            },
+            $set: { updatedAt: now },
+        },
+        { upsert: true, returnDocument: 'after' },
+    );
+
+    if (!result) {
+        throw new Error('Failed to get or create thread');
     }
+
+    return toThread(result);
 }
