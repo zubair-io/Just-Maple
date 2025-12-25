@@ -7,7 +7,7 @@ import { NoteService } from '../../services/note.service';
 import { BotService } from '../../services/bot.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { NoteEditorComponent } from '../../components';
-import { type NoteContent, DEFAULT_NOTE_CONTENT } from '@maple/shared';
+import { type NoteContent, DEFAULT_NOTE_CONTENT, extractText } from '@maple/shared';
 import type { BotWidgetAttrs } from '../../components/organisms/note-editor/extensions/bot-widget';
 
 /** Extract title text from the first H1 heading in content */
@@ -226,20 +226,8 @@ export class NoteViewComponent implements OnInit, OnDestroy {
   }
 
   private extractNoteContext(content: NoteContent | undefined): string {
-    if (!content?.content) return '';
-
-    // Extract text content from the note
-    const textParts: string[] = [];
-    for (const node of content.content) {
-      if (node.content) {
-        for (const child of node.content) {
-          if (child.type === 'text' && child.text) {
-            textParts.push(child.text);
-          }
-        }
-      }
-    }
-    return textParts.join(' ').slice(0, 500); // Limit context length
+    // Use shared utility with max length for context
+    return extractText(content, { maxLength: 500, includeNewlines: false });
   }
 
   private debouncedSave(data: { title?: string; content?: NoteContent }): void {
