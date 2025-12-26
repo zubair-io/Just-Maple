@@ -5,13 +5,18 @@
   [class.border-white]="showBorder()"
   [class.shadow-sm]="showBorder()"
 >
-  @if (profilePictureUrl()) {
+  @if (profilePictureUrl() && profilePictureUrl()!.length > 5) {
+    <!-- Real URL - render as image -->
     <img
       [src]="profilePictureUrl()"
       [alt]="displayName() || email()"
       class="w-full h-full rounded-full object-cover"
     />
+  } @else if (profilePictureUrl()) {
+    <!-- Emoji or short text - display as text -->
+    {{ profilePictureUrl() }}
   } @else {
+    <!-- No picture - show initials -->
     {{ initials() }}
   }
 </div>

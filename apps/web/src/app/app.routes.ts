@@ -6,21 +6,24 @@ export const routes: Routes = [
   // Settings route - must come before the home route
   {
     path: 'settings',
-    loadComponent: () =>
-      import('./pages/settings/settings.component').then((m) => m.SettingsComponent),
     canActivate: [AuthGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./pages/settings/settings.component').then((m) => m.SettingsComponent),
+      },
+      {
+        path: 'bots',
+        loadComponent: () => import('./pages/bots/bots.component').then((m) => m.BotsComponent),
+      },
+    ],
   },
   // Notifications route
   {
     path: 'notifications',
     loadComponent: () =>
       import('./pages/notifications/notifications.component').then((m) => m.NotificationsComponent),
-    canActivate: [AuthGuard],
-  },
-  // Bots management route
-  {
-    path: 'bots',
-    loadComponent: () => import('./pages/bots/bots.component').then((m) => m.BotsComponent),
     canActivate: [AuthGuard],
   },
   // Authenticated app routes - matched first if user is authenticated

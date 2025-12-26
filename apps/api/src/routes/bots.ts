@@ -58,6 +58,20 @@ export const botRoutes = new Elysia({ prefix: '/api' })
         return { templates };
     })
 
+    // Search bot templates (must come before /:id route)
+    .get(
+        '/bot-templates/search',
+        async ({ auth, query, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized' };
+            }
+
+            const templates = await searchBotTemplates(query.q || '');
+            return { templates };
+        },
+        { query: t.Object({ q: t.Optional(t.String({ maxLength: 100 })) }) },
+    )
+
     // Get a specific bot template
     .get(
         '/bot-templates/:id',
@@ -75,20 +89,6 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             return { template };
         },
         { params: t.Object({ id: t.String() }) },
-    )
-
-    // Search bot templates
-    .get(
-        '/bot-templates/search',
-        async ({ auth, query, set }) => {
-            if (!checkAuth(auth, set)) {
-                return { error: 'Unauthorized' };
-            }
-
-            const templates = await searchBotTemplates(query.q || '');
-            return { templates };
-        },
-        { query: t.Object({ q: t.Optional(t.String({ maxLength: 100 })) }) },
     )
 
     // ============================================
@@ -178,6 +178,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 config: t.Optional(
                     t.Object({
                         apiKey: t.Optional(t.String()),
+                        isOAuthToken: t.Optional(t.Boolean()),
                         customSettings: t.Optional(t.Record(t.String(), t.Any())),
                     }),
                 ),
@@ -209,6 +210,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 config: t.Optional(
                     t.Object({
                         apiKey: t.Optional(t.String()),
+                        isOAuthToken: t.Optional(t.Boolean()),
                         customSettings: t.Optional(t.Record(t.String(), t.Any())),
                     }),
                 ),
@@ -243,19 +245,19 @@ export const botRoutes = new Elysia({ prefix: '/api' })
 
     // Search bots available in a tag (for @mention autocomplete)
     .get(
-        '/tags/:tagId/bots/search',
+        '/tags/:id/bots/search',
         async ({ auth, params, query, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
             }
 
-            const tag = await findTagById(params.tagId, auth.user._id);
+            const tag = await findTagById(params.id, auth.user._id);
             if (!tag) {
                 set.status = 404;
                 return { error: 'Tag not found' };
             }
 
-            const userBots = await searchUserBots(auth.user._id, params.tagId, query.q || '', 10);
+            const userBots = await searchUserBots(auth.user._id, params.id, query.q || '', 10);
 
             // Batch load all templates in a single query (fix N+1)
             const templateIds = [...new Set(userBots.map((b) => b.templateId))];
@@ -278,31 +280,53 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             return { bots: enrichedBots };
         },
         {
-            params: t.Object({ tagId: t.String() }),
+            params: t.Object({ id: t.String() }),
             query: t.Object({ q: t.Optional(t.String({ maxLength: 100 })) }),
         },
     )
 
     // Invoke a bot (trigger via @mention)
     .post(
-        '/tags/:tagId/bots/invoke',
+        '/tags/:id/bots/invoke',
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
             }
 
             // Verify tag access - bot invocation requires write access
-            const tag = await findTagByIdWithAccess(params.tagId, auth.user._id, 'write');
+            const tag = await findTagByIdWithAccess(params.id, auth.user._id, 'write');
             if (!tag) {
                 set.status = 404;
                 return { error: 'Tag not found or access denied' };
             }
 
             // Find the bot by handle
-            const userBot = await findUserBotByHandleForTag(body.botHandle, params.tagId);
+            const userBot = await findUserBotByHandleForTag(body.botHandle, params.id);
             if (!userBot) {
                 set.status = 404;
                 return { error: `Bot @${body.botHandle} not found` };
+            }
+
+            // Build context with conversation history if this is a thread
+            const context: any = { ...body.context };
+
+            // If source is a message, check if it has a thread and fetch thread history
+            if (body.sourceType === 'message') {
+                const { findMessageById } = await import('../repositories/message.repo');
+                const { findThreadByParentMessage } = await import('../repositories/thread.repo');
+                const { findMessagesByThreadId } = await import('../repositories/message.repo');
+
+                const sourceMessage = await findMessageById(body.sourceId);
+
+                // Check if this message has a thread
+                if (sourceMessage?.hasThread) {
+                    const thread = await findThreadByParentMessage(body.sourceId);
+                    if (thread) {
+                        // Fetch all messages in the thread for context
+                        const threadMessages = await findMessagesByThreadId(thread._id);
+                        context.previousMessages = threadMessages;
+                    }
+                }
             }
 
             // Invoke the bot
@@ -311,9 +335,9 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                     userBotId: userBot._id,
                     sourceType: body.sourceType,
                     sourceId: body.sourceId,
-                    tagId: params.tagId,
+                    tagId: params.id,
                     userId: auth.user._id,
-                    context: body.context,
+                    context,
                 });
 
                 return { invocation };
@@ -326,7 +350,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
         },
         {
-            params: t.Object({ tagId: t.String() }),
+            params: t.Object({ id: t.String() }),
             body: t.Object({
                 botHandle: t.String(),
                 sourceType: t.Union([t.Literal('message'), t.Literal('note')]),
@@ -404,6 +428,38 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             return { thread, messages };
         },
         { params: t.Object({ messageId: t.String() }) },
+    )
+
+    // Get thread details by ID
+    .get(
+        '/threads/:id',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized' };
+            }
+
+            const thread = await findThreadById(params.id);
+            if (!thread) {
+                set.status = 404;
+                return { error: 'Thread not found' };
+            }
+
+            // Verify thread has valid tagId
+            if (!thread.tagId) {
+                set.status = 500;
+                return { error: 'Invalid thread data' };
+            }
+
+            // Verify access
+            const tag = await findTagById(thread.tagId, auth.user._id);
+            if (!tag) {
+                set.status = 403;
+                return { error: 'Access denied' };
+            }
+
+            return { thread };
+        },
+        { params: t.Object({ id: t.String() }) },
     )
 
     // Get messages in a thread

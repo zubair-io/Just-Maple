@@ -48,18 +48,26 @@ import { Subscription, filter } from 'rxjs';
               <!-- Avatar -->
               <div class="shrink-0">
                 @if (message.senderType === 'bot') {
-                  <div
-                    class="w-8 h-8 rounded-full bg-[var(--color-primary)] flex items-center justify-center text-white text-sm font-medium"
-                  >
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                      />
-                    </svg>
-                  </div>
+                  @if (
+                    message.senderProfilePictureUrl && message.senderProfilePictureUrl.length > 5
+                  ) {
+                    <!-- Real URL - render as image -->
+                    <img
+                      [src]="message.senderProfilePictureUrl"
+                      [alt]="message.senderDisplayName || 'Bot'"
+                      class="w-8 h-8 rounded-full object-cover"
+                    />
+                  } @else {
+                    <!-- Emoji or no picture - show in circle -->
+                    <div
+                      class="w-8 h-8 rounded-full bg-[var(--color-primary)] flex items-center justify-center text-white text-sm font-xl"
+                    >
+                      {{
+                        message.senderProfilePictureUrl ||
+                          (message.senderDisplayName || 'Bot').charAt(0).toUpperCase()
+                      }}
+                    </div>
+                  }
                 } @else {
                   <app-profile-avatar
                     [email]="message.senderEmail || ''"

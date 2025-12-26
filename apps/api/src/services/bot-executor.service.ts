@@ -4,7 +4,6 @@ import type {
     UserBot,
     BotConfig,
     Action,
-    ResolvedBot,
     NoteContent,
 } from '@maple/shared';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
@@ -17,6 +16,8 @@ import {
 import { getOrCreateThread, incrementThreadMessageCount } from '../repositories/thread.repo';
 import { createMessageInThread, markMessageHasThread } from '../repositories/message.repo';
 import { broadcastChatEvent } from './realtime.service';
+import { extractTextFromContent } from '../utils/content-utils';
+import { markdownToProseMirror } from '../utils/markdown-to-prosemirror';
 
 // Configuration constants
 const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL || 'claude-sonnet-4-20250514';
@@ -233,17 +234,38 @@ export class BotExecutorService {
             throw new Error('Claude API key not configured');
         }
 
-        const systemPrompt = config.systemPrompt
+        const isOAuthToken = ctx.config?.isOAuthToken || false;
+
+        // Build system prompt
+        let systemPrompt = config.systemPrompt
             ? this.interpolate(config.systemPrompt, ctx.variables)
             : undefined;
+
+        // OAuth tokens require the Claude Code system prompt
+        if (isOAuthToken) {
+            const claudeCodePrompt = "You are Claude Code, Anthropic's official CLI for Claude.";
+            systemPrompt = systemPrompt
+                ? `${claudeCodePrompt}\n\n${systemPrompt}`
+                : claudeCodePrompt;
+        }
+
         const userPrompt = this.interpolate(config.userPrompt, ctx.variables);
+
+        // Build conversation history from previous messages
+        const previousMessages = (ctx.variables.$previousMessages || []) as Array<{
+            role?: string;
+            content?: string | { type: string; content: unknown[] };
+            senderType?: string;
+        }>;
 
         // Call Claude API
         const response = await this.callClaudeAPI({
             apiKey,
+            isOAuthToken,
             model: config.model || DEFAULT_LLM_MODEL,
             systemPrompt,
             userPrompt,
+            previousMessages,
             maxTokens: config.maxTokens || 1024,
         });
 
@@ -377,28 +399,99 @@ export class BotExecutorService {
     }
 
     /**
-     * Call Claude API
+     * Call Claude API with support for both API keys and OAuth tokens
      */
     private async callClaudeAPI(params: {
         apiKey: string;
+        isOAuthToken: boolean;
         model: string;
         systemPrompt?: string;
         userPrompt: string;
+        previousMessages?: Array<{
+            role?: string;
+            content?: string | { type: string; content: unknown[] };
+            senderType?: string;
+        }>;
         maxTokens: number;
     }): Promise<string> {
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01',
+        };
+
+        // Build conversation history
+        const messages: Array<{ role: string; content: string }> = [];
+
+        // Add previous messages for context
+        if (params.previousMessages && params.previousMessages.length > 0) {
+            for (const msg of params.previousMessages) {
+                // Extract text content from ProseMirror JSON structure
+                let textContent = '';
+                if (typeof msg.content === 'object' && msg.content && 'content' in msg.content) {
+                    textContent = extractTextFromContent(msg.content as any);
+                } else if (typeof msg.content === 'string') {
+                    textContent = msg.content;
+                }
+
+                if (textContent) {
+                    // Map senderType to Claude API role
+                    const role = msg.senderType === 'bot' ? 'assistant' : 'user';
+                    messages.push({ role, content: textContent });
+                }
+            }
+        }
+
+        // Add current message
+        messages.push({ role: 'user', content: params.userPrompt });
+
+        // Build request body
+        const requestBody: {
+            model: string;
+            max_tokens: number;
+            system?: string | Array<{ type: string; text: string; cache_control?: object }>;
+            messages: Array<{ role: string; content: string }>;
+        } = {
+            model: params.model,
+            max_tokens: params.maxTokens,
+            messages,
+        };
+
+        // OAuth tokens require special handling
+        if (params.isOAuthToken) {
+            // Use Bearer token authentication (NOT x-api-key)
+            headers['Authorization'] = `Bearer ${params.apiKey}`;
+
+            // CRITICAL: Set User-Agent to identify as Claude Code
+            headers['User-Agent'] = "You are Claude Code, Anthropic's official CLI for Claude.";
+
+            // Include OAuth and Claude Code beta features
+            headers['anthropic-beta'] =
+                'claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14';
+
+            // System message must use cache control format for OAuth
+            if (params.systemPrompt) {
+                requestBody.system = [
+                    {
+                        type: 'text',
+                        text: params.systemPrompt,
+                        cache_control: { type: 'ephemeral' },
+                    },
+                ];
+            }
+        } else {
+            // Standard API key authentication
+            headers['x-api-key'] = params.apiKey;
+
+            // Simple string format for system prompt
+            if (params.systemPrompt) {
+                requestBody.system = params.systemPrompt;
+            }
+        }
+
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': params.apiKey,
-                'anthropic-version': '2023-06-01',
-            },
-            body: JSON.stringify({
-                model: params.model,
-                max_tokens: params.maxTokens,
-                system: params.systemPrompt,
-                messages: [{ role: 'user', content: params.userPrompt }],
-            }),
+            headers,
+            body: JSON.stringify(requestBody),
         });
 
         if (!response.ok) {
@@ -419,16 +512,8 @@ export class BotExecutorService {
     private prepareResponse(ctx: ExecutionContext): NoteContent {
         const response = String(ctx.variables.$response || '');
 
-        // Create a simple paragraph with the response text
-        return {
-            type: 'doc',
-            content: [
-                {
-                    type: 'paragraph',
-                    content: response ? [{ type: 'text', text: response }] : [],
-                },
-            ],
-        };
+        // Convert markdown to ProseMirror JSON
+        return markdownToProseMirror(response);
     }
 
     /**
@@ -528,7 +613,7 @@ export class BotExecutorService {
      */
     private resolveVariable(ref: string, variables: Record<string, unknown>): unknown {
         const match = ref.match(/\{\{(\$?\w+(?:\.\w+)*)\}\}/);
-        if (!match) return ref;
+        if (!match || !match[1]) return ref;
         return this.getNestedValue(variables, match[1]);
     }
 

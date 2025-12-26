@@ -121,6 +121,7 @@ export type BotDefinition = Static<typeof BotDefinitionSchema>;
 // Settings that users provide when registering a bot that requires configuration
 export const BotConfigSchema = Type.Object({
     apiKey: Type.Optional(Type.String()), // For bots that need external API keys (e.g., Claude)
+    isOAuthToken: Type.Optional(Type.Boolean()), // Whether apiKey is an OAuth token (vs API key)
     customSettings: Type.Optional(Type.Record(Type.String(), Type.Any())),
 });
 

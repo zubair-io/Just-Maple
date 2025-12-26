@@ -74,6 +74,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   readonly mentionSuggestions = signal<BotSuggestion[]>([]);
   readonly mentionSuggestionsLoading = signal(false);
   readonly mentionPosition = signal<{ top: number; left: number }>({ top: 0, left: 0 });
+  readonly mentionPositionAbove = signal(false);
   mentionCommand: ((props: Record<string, unknown>) => void) | null = null;
   private readonly mentionSearch$ = new Subject<string>();
   private readonly destroy$ = new Subject<void>();
@@ -81,6 +82,9 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   // Bot invocation tracking
   readonly pendingBotInvocations = signal<PendingBotInvocation[]>([]);
   readonly botsTyping = signal<{ messageId: string; botHandle: string }[]>([]);
+
+  // Reply functionality
+  readonly replyingToMessage = signal<Message | null>(null);
 
   // Compute messages with grouping information
   readonly messagesWithGrouping = computed(() => {
@@ -278,10 +282,36 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     if (!clientRect) return;
     const rect = clientRect();
     if (!rect) return;
-    this.mentionPosition.set({
-      top: rect.bottom + 4,
-      left: rect.left,
-    });
+
+    // Estimate dropdown height (max-height is 280px from CSS)
+    const dropdownHeight = 280;
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+
+    // Check if there's enough space below
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+
+    // Position above if not enough space below
+    const shouldPositionAbove = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+    this.mentionPositionAbove.set(shouldPositionAbove);
+
+    // Calculate top position
+    let top = shouldPositionAbove ? rect.top : rect.bottom + 4;
+
+    // Ensure it doesn't go off the top
+    if (top < 0) {
+      top = 4;
+    }
+
+    // Calculate left position and ensure it doesn't go off the right edge
+    let left = rect.left;
+    const dropdownWidth = 320; // max-width from CSS
+    if (left + dropdownWidth > viewportWidth) {
+      left = viewportWidth - dropdownWidth - 4;
+    }
+
+    this.mentionPosition.set({ top, left });
   }
 
   onMentionSelected(bot: BotSuggestion): void {
@@ -306,8 +336,10 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
     this.messageService.loadMessages(tagId).subscribe({
       next: () => {
-        // Scroll to bottom on initial load
-        this.scrollToBottom();
+        // Scroll to bottom on initial load with longer delay to ensure rendering
+        setTimeout(() => {
+          this.scrollToBottom();
+        }, 300);
       },
     });
   }
@@ -509,6 +541,37 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     // When sending own message, always scroll to bottom
     this.isAtBottom = true;
 
+    const replyingTo = this.replyingToMessage();
+
+    if (replyingTo) {
+      // Replying to a message - backend will create thread if needed
+      this.messageService
+        .sendMessage(this.tagId(), content, { parentMessageId: replyingTo._id })
+        .subscribe({
+          next: (message) => {
+            this.editor?.commands.clearContent();
+            this.clearReply();
+            this.scrollToBottom();
+
+            // Invoke bots for each mention (using parent message as source)
+            if (mentions.length > 0) {
+              this.invokeMentionedBots(message, mentions, content);
+            }
+          },
+        });
+    } else {
+      // Regular top-level message
+      this.sendRegularMessage(content, mentions);
+    }
+
+    // Clear typing indicator
+    if (this.typingTimeout) {
+      clearTimeout(this.typingTimeout);
+    }
+    this.messageService.sendTyping(this.tagId(), false);
+  }
+
+  private sendRegularMessage(content: NoteContent, mentions: MentionNodeAttrs[]): void {
     this.messageService.sendMessage(this.tagId(), content).subscribe({
       next: (message) => {
         this.editor?.commands.clearContent();
@@ -520,12 +583,6 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
         }
       },
     });
-
-    // Clear typing indicator
-    if (this.typingTimeout) {
-      clearTimeout(this.typingTimeout);
-    }
-    this.messageService.sendTyping(this.tagId(), false);
   }
 
   private extractMentionsFromContent(content: NoteContent): MentionNodeAttrs[] {
@@ -540,11 +597,38 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   ): void {
     const fullText = this.extractTextFromContent(content);
 
+    // Determine the source message ID for the bot invocation
+    // If this message is in a thread, we need to use the thread's parent message ID
+    // so that all bot responses go to the same thread (threads are one level deep)
+    if (message.threadId) {
+      // Message is inside a thread - get the thread to find its parent message ID
+      this.botService.getThreadById(message.threadId).subscribe({
+        next: (thread) => {
+          if (thread) {
+            // Use the thread's parent message ID as sourceId
+            this.invokeBots(mentions, fullText, thread.parentMessageId);
+          } else {
+            // Fallback to current message if thread not found
+            this.invokeBots(mentions, fullText, message._id);
+          }
+        },
+        error: () => {
+          // Fallback to current message on error
+          this.invokeBots(mentions, fullText, message._id);
+        },
+      });
+    } else {
+      // Top-level message - use its own ID
+      this.invokeBots(mentions, fullText, message._id);
+    }
+  }
+
+  private invokeBots(mentions: MentionNodeAttrs[], fullText: string, sourceId: string): void {
     mentions
       .filter((m) => m.type === 'bot')
       .forEach((mention) => {
         this.botService
-          .invokeBot(this.tagId(), mention.handle, 'message', message._id, {
+          .invokeBot(this.tagId(), mention.handle, 'message', sourceId, {
             mentionText: fullText,
             fullContent: fullText,
           })
@@ -581,24 +665,108 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     this.messageService.loadMore().subscribe();
   }
 
-  trackByMessage(index: number, message: Message): string {
+  trackByMessage(_index: number, message: Message): string {
     return message._id;
   }
 
   private scrollToBottom(): void {
-    setTimeout(() => {
+    // Use requestAnimationFrame to ensure DOM has updated
+    requestAnimationFrame(() => {
       if (this.messageListRef?.nativeElement) {
-        this.messageListRef.nativeElement.scrollTop =
-          this.messageListRef.nativeElement.scrollHeight;
+        const element = this.messageListRef.nativeElement;
+        element.scrollTop = element.scrollHeight;
         this.isAtBottom = true;
         this.showScrollButton.set(false);
         this.newMessageCount.set(0);
       }
-    }, 100);
+    });
   }
 
   scrollToBottomClicked(): void {
     this.scrollToBottom();
+  }
+
+  // Reply functionality
+  selectMessageForReply(message: Message): void {
+    this.replyingToMessage.set(message);
+
+    // If message has a thread, load it and add bot mentions
+    if (message.hasThread) {
+      // First load all bots for this tag
+      this.botService.searchBots(this.tagId(), '').subscribe((suggestions) => {
+        const botSuggestionMap = new Map(suggestions.map((s) => [s.id, s]));
+
+        // Now fetch thread messages
+        this.botService.getThreadForMessage(message._id).subscribe((result) => {
+          if (result && this.editor) {
+            // Extract unique bots from thread messages
+            const botHandles = new Map<string, { id: string; handle: string }>();
+
+            for (const msg of result.messages) {
+              if (msg.senderType === 'bot' && msg.userBotId) {
+                // Look up the bot from suggestions
+                const botSuggestion = botSuggestionMap.get(msg.userBotId);
+
+                if (botSuggestion) {
+                  botHandles.set(msg.userBotId, {
+                    id: msg.userBotId,
+                    handle: botSuggestion.handle,
+                  });
+                }
+              }
+            }
+
+            // Insert mentions for all bots in the thread
+            if (botHandles.size > 0) {
+              const mentions = Array.from(botHandles.values()).map((bot) => ({
+                type: 'mention',
+                attrs: {
+                  id: bot.id,
+                  handle: bot.handle,
+                  type: 'bot',
+                },
+              }));
+
+              // Add space between each mention
+              const content: any[] = [];
+              mentions.forEach((mention, index) => {
+                content.push(mention);
+                if (index < mentions.length - 1) {
+                  content.push({ type: 'text', text: ' ' });
+                }
+              });
+              content.push({ type: 'text', text: ' ' });
+
+              // Clear existing content and insert mentions
+              this.editor.chain().focus().clearContent().insertContentAt(0, content).run();
+            }
+          }
+        });
+      });
+    }
+
+    // Focus the editor when selecting a message for reply
+    setTimeout(() => {
+      (
+        this.editorRef?.nativeElement.querySelector('[contenteditable]') as HTMLInputElement
+      )?.focus();
+    }, 100);
+  }
+
+  clearReply(): void {
+    this.replyingToMessage.set(null);
+  }
+
+  scrollToMessage(messageId: string): void {
+    const messageElement = document.getElementById(`message-${messageId}`);
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Highlight the message briefly
+      messageElement.classList.add('highlight-message');
+      setTimeout(() => {
+        messageElement.classList.remove('highlight-message');
+      }, 2000);
+    }
   }
 
   onScroll(): void {

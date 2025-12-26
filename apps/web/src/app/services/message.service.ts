@@ -88,6 +88,9 @@ export class MessageService {
         case 'deleted':
           this.handleDeletedMessage((event.data as { _id: string })._id);
           break;
+        case 'message_updated':
+          this.handleMessageUpdated(event.data as { _id: string; hasThread?: boolean });
+          break;
       }
     });
   }
@@ -114,6 +117,15 @@ export class MessageService {
     }
   }
 
+  private handleMessageUpdated(data: { _id: string; hasThread?: boolean }): void {
+    this.store.update(
+      updateEntities(data._id, (entity) => ({
+        ...entity,
+        hasThread: data.hasThread ?? entity.hasThread,
+      })),
+    );
+  }
+
   /**
    * Get all messages as a reactive signal
    */
@@ -123,12 +135,13 @@ export class MessageService {
 
   /**
    * Get messages for current tag sorted by creation time
+   * Excludes thread messages (those with threadId set)
    */
   messagesForTag = computed(() => {
     const tagId = this._currentTagId();
     if (!tagId) return [];
     return this.messages()
-      .filter((m) => m.tagId === tagId)
+      .filter((m) => m.tagId === tagId && !m.threadId)
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   });
 
@@ -212,7 +225,11 @@ export class MessageService {
   /**
    * Send a new message
    */
-  sendMessage(tagId: string, content: NoteContent): Observable<Message> {
+  sendMessage(
+    tagId: string,
+    content: NoteContent,
+    options?: { threadId?: string; parentMessageId?: string },
+  ): Observable<Message> {
     this._error.set(null);
 
     const tempId = `temp-${Date.now()}`;
@@ -222,6 +239,7 @@ export class MessageService {
     const tempMessage: Message = {
       _id: tempId,
       tagId,
+      threadId: options?.threadId,
       userId: currentUser?._id || 'temp',
       senderEmail: currentUser?.email,
       senderDisplayName: currentUser?.displayName,
@@ -234,7 +252,17 @@ export class MessageService {
     // Optimistic update
     this.store.update(addEntities(tempMessage));
 
-    return this.http.post<{ message: Message }>(`/api/tags/${tagId}/messages`, { content }).pipe(
+    const body: { content: NoteContent; threadId?: string; parentMessageId?: string } = {
+      content,
+    };
+    if (options?.threadId) {
+      body.threadId = options.threadId;
+    }
+    if (options?.parentMessageId) {
+      body.parentMessageId = options.parentMessageId;
+    }
+
+    return this.http.post<{ message: Message }>(`/api/tags/${tagId}/messages`, body).pipe(
       tap((response) => {
         this.store.update(deleteEntities(tempId));
         // Use upsert - message may already exist from WebSocket broadcast

@@ -122,6 +122,10 @@ export class SettingsComponent implements OnInit {
     this.router.navigate(['/']);
   }
 
+  goToBots(): void {
+    this.router.navigate(['/settings/bots']);
+  }
+
   async logout(): Promise<void> {
     // Unregister from push notifications before logging out
     if (this.preferences.isNativeApp() && this.notifications.isRegistered()) {

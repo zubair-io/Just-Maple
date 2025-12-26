@@ -81,6 +81,7 @@ export const ChatActionSchema = Type.Union([
     Type.Literal('typing'),
     Type.Literal('edited'),
     Type.Literal('deleted'),
+    Type.Literal('message_updated'), // Message metadata updated (e.g., hasThread flag)
     Type.Literal('thread_created'), // New thread started
     Type.Literal('thread_message'), // Message posted to thread
     Type.Literal('bot_invocation_started'), // Bot started processing

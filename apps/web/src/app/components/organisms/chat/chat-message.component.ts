@@ -1,4 +1,4 @@
-import { Component, input, computed } from '@angular/core';
+import { Component, input, output, computed } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import type { Message } from '@maple/shared';
 import { ContentRendererComponent } from '../../atoms/content-renderer/content-renderer.component';
@@ -16,7 +16,12 @@ import { ChatThreadComponent } from './chat-thread.component';
     ChatThreadComponent,
   ],
   template: `
-    <div class="message-wrapper" [class.grouped]="isGrouped()">
+    <div
+      [id]="'message-' + message()._id"
+      class="message-wrapper"
+      [class.grouped]="isGrouped()"
+      (click)="onMessageClick()"
+    >
       <div class="message-content">
         <!-- Avatar (hidden when grouped) -->
         @if (!isGrouped()) {
@@ -84,6 +89,13 @@ import { ChatThreadComponent } from './chat-thread.component';
         display: flex;
         justify-content: center;
         margin-bottom: 12px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        border-radius: 8px;
+
+        &:hover {
+          background-color: rgba(0, 0, 0, 0.02);
+        }
 
         &.grouped {
           margin-bottom: 2px;
@@ -123,7 +135,7 @@ import { ChatThreadComponent } from './chat-thread.component';
       }
 
       .sender-name {
-        font-size: 14px;
+        // font-size: 14px;
         font-weight: 600;
         color: var(--color-text-main);
       }
@@ -134,7 +146,7 @@ import { ChatThreadComponent } from './chat-thread.component';
       }
 
       .message-body {
-        font-size: 14px;
+        // font-size: 14px;
         color: var(--color-text-main);
         line-height: 1.5;
         word-wrap: break-word;
@@ -223,9 +235,15 @@ export class ChatMessageComponent {
   readonly botTyping = input<boolean>(false);
   readonly botError = input<string | undefined>(undefined);
 
+  readonly messageClicked = output<Message>();
+
   readonly senderDisplay = computed(() => {
     const msg = this.message();
     if (msg.senderDisplayName) return msg.senderDisplayName;
     return msg.senderEmail?.split('@')[0] || 'Unknown';
   });
+
+  onMessageClick(): void {
+    this.messageClicked.emit(this.message());
+  }
 }

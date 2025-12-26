@@ -179,6 +179,20 @@
                 This bot requires an API key to function. Your key is stored securely.
               </p>
             </div>
+
+            <div class="form-field">
+              <label class="toggle-label">
+                <input
+                  type="checkbox"
+                  [ngModel]="isOAuthToken()"
+                  (ngModelChange)="isOAuthToken.set($event)"
+                />
+                <span>This is an OAuth token</span>
+              </label>
+              <p class="field-hint">
+                Check this if you're using a Claude OAuth token instead of an API key
+              </p>
+            </div>
           }
 
           @if (registerError()) {
@@ -253,6 +267,20 @@
               placeholder="Leave blank to keep current key"
             />
             <p class="field-hint">Only fill this if you want to change the API key</p>
+          </div>
+
+          <div class="form-field">
+            <label class="toggle-label">
+              <input
+                type="checkbox"
+                [ngModel]="editIsOAuthToken()"
+                (ngModelChange)="editIsOAuthToken.set($event)"
+              />
+              <span>This is an OAuth token</span>
+            </label>
+            <p class="field-hint">
+              Check this if you're using a Claude OAuth token instead of an API key
+            </p>
           </div>
 
           @if (editError()) {

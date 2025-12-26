@@ -19,7 +19,9 @@
     "@maple/shared": "workspace:*",
     "@parse/node-apn": "^6.0.1",
     "@simplewebauthn/server": "^13.2.2",
+    "@types/markdown-it": "^14.1.2",
     "elysia": "^1.2.0",
+    "markdown-it": "^14.1.0",
     "mongodb": "^6.0.0"
   },
   "devDependencies": {

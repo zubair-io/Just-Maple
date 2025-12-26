@@ -21,6 +21,7 @@ import {
     getUnreadCountsForUser,
     getUnreadCountForTag,
 } from '../repositories/unread.repo';
+import { findThreadById } from '../repositories/thread.repo';
 import { broadcastChatEvent } from '../services/realtime.service';
 import { sendMessageReceivedNotification } from '../services/notification.service';
 
@@ -91,6 +92,29 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Forbidden', message: 'You do not have write access to this tag' };
             }
 
+            // Handle thread creation if replying to a parent message
+            let threadId = body.threadId;
+            let parentMessageId: string | undefined;
+
+            if (body.parentMessageId) {
+                // User is replying to a message - get or create thread
+                const { getOrCreateThread } = await import('../repositories/thread.repo');
+                const { markMessageHasThread } = await import('../repositories/message.repo');
+                const thread = await getOrCreateThread({
+                    parentMessageId: body.parentMessageId,
+                    tagId: params.id,
+                });
+                threadId = thread._id;
+                parentMessageId = body.parentMessageId;
+
+                // Mark the parent message as having a thread
+                await markMessageHasThread(body.parentMessageId);
+            } else if (body.threadId) {
+                // Message is being added to existing thread
+                const thread = await findThreadById(body.threadId);
+                parentMessageId = thread?.parentMessageId;
+            }
+
             const message = await createMessage(
                 params.id,
                 auth.user._id,
@@ -98,17 +122,31 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 auth.user.email,
                 auth.user.displayName,
                 auth.user.profilePictureUrl,
+                threadId,
             );
 
             // Broadcast message via realtime service
+            // Use different action for thread messages vs top-level messages
             const chatEvent: ChatEvent = {
-                action: 'message',
-                data: message,
+                action: threadId ? 'thread_message' : 'message',
+                data: threadId ? { message, parentMessageId } : message,
                 tagId: params.id,
                 userId: auth.user._id,
                 timestamp: new Date().toISOString(),
             };
             broadcastChatEvent(params.id, chatEvent).catch(console.error);
+
+            // If we created/updated a thread, broadcast that the parent has a thread
+            if (parentMessageId && body.parentMessageId) {
+                const threadFlagEvent: ChatEvent = {
+                    action: 'message_updated',
+                    data: { _id: parentMessageId, hasThread: true },
+                    tagId: params.id,
+                    userId: auth.user._id,
+                    timestamp: new Date().toISOString(),
+                };
+                broadcastChatEvent(params.id, threadFlagEvent).catch(console.error);
+            }
 
             // Send push notifications to all tag members except the author
             const tagMembers = await getTagMembers(params.id, auth.user._id);
@@ -140,6 +178,8 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             }),
             body: t.Object({
                 content: t.Any(), // TipTap JSON content
+                threadId: t.Optional(t.String()), // If continuing an existing thread
+                parentMessageId: t.Optional(t.String()), // If starting a new thread (first reply)
             }),
         },
     )

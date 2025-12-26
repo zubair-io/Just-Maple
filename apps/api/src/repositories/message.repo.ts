@@ -17,6 +17,8 @@ interface MessageDocument {
     userId: ObjectId;
     senderType?: SenderType;
     userBotId?: ObjectId;
+    senderDisplayName?: string;
+    senderProfilePictureUrl?: string;
     content: NoteContent;
     mentions?: Mention[];
     hasThread?: boolean;
@@ -48,8 +50,9 @@ function toMessageResponse(
         senderType: doc.senderType,
         userBotId: doc.userBotId?.toString(),
         senderEmail,
-        senderDisplayName,
-        senderProfilePictureUrl,
+        // For bots, prefer document fields over passed parameters
+        senderDisplayName: doc.senderDisplayName || senderDisplayName,
+        senderProfilePictureUrl: doc.senderProfilePictureUrl || senderProfilePictureUrl,
         content: doc.content,
         mentions: doc.mentions,
         hasThread: doc.hasThread,
@@ -69,7 +72,7 @@ export async function findMessagesByTagId(
 ): Promise<Message[]> {
     const matchStage: Record<string, unknown> = {
         tagId: new ObjectId(tagId),
-        threadId: { $exists: false }, // Only top-level messages, not thread replies
+        threadId: { $in: [null] }, // Only top-level messages, not thread replies
         deletedAt: { $exists: false },
     };
 
@@ -82,7 +85,7 @@ export async function findMessagesByTagId(
         }
     }
 
-    const limit = options?.limit || 50;
+    const limit = options?.limit || 500;
 
     // Use aggregation to join with users collection
     const docs = await getCollection()
@@ -135,9 +138,10 @@ export async function createMessage(
     senderEmail?: string,
     senderDisplayName?: string,
     senderProfilePictureUrl?: string,
+    threadId?: string,
 ): Promise<Message> {
     const now = new Date();
-    const doc: Omit<MessageDocument, '_id'> = {
+    const doc: any = {
         tagId: new ObjectId(tagId),
         userId: new ObjectId(userId),
         content: data.content,
@@ -145,11 +149,25 @@ export async function createMessage(
         updatedAt: now,
     };
 
-    const result = await getCollection().insertOne(doc as MessageDocument);
+    // Only add threadId if it's provided (avoid storing null/undefined)
+    if (threadId) {
+        doc.threadId = new ObjectId(threadId);
+    }
+
+    // Store bot sender info if provided
+    if (senderDisplayName) {
+        doc.senderDisplayName = senderDisplayName;
+    }
+    if (senderProfilePictureUrl) {
+        doc.senderProfilePictureUrl = senderProfilePictureUrl;
+    }
+
+    const result = await getCollection().insertOne(doc);
 
     return {
         _id: result.insertedId.toString(),
         tagId: tagId,
+        threadId: threadId,
         userId: userId,
         senderEmail,
         senderDisplayName,
@@ -314,6 +332,8 @@ export async function createMessageInThread(data: {
         userId: new ObjectId(data.userId),
         userBotId: data.userBotId ? new ObjectId(data.userBotId) : undefined,
         senderType: data.senderType,
+        senderDisplayName: data.senderDisplayName,
+        senderProfilePictureUrl: data.senderProfilePictureUrl,
         content: data.content,
         createdAt: now,
         updatedAt: now,

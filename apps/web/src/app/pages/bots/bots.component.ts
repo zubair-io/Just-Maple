@@ -29,6 +29,7 @@ export class BotsComponent implements OnInit {
   readonly selectedTemplate = signal<BotTemplate | null>(null);
   readonly customHandle = signal('');
   readonly apiKey = signal('');
+  readonly isOAuthToken = signal(false);
   readonly registerError = signal<string | null>(null);
   readonly isRegistering = signal(false);
 
@@ -36,6 +37,7 @@ export class BotsComponent implements OnInit {
   readonly showEditDialog = signal(false);
   readonly editingBot = signal<EnrichedUserBot | null>(null);
   readonly editApiKey = signal('');
+  readonly editIsOAuthToken = signal(false);
   readonly editEnabled = signal(true);
   readonly editError = signal<string | null>(null);
   readonly isUpdating = signal(false);
@@ -46,7 +48,7 @@ export class BotsComponent implements OnInit {
   }
 
   goBack(): void {
-    this.router.navigate(['/']);
+    this.router.navigate(['/settings']);
   }
 
   // Template selection
@@ -54,6 +56,7 @@ export class BotsComponent implements OnInit {
     this.selectedTemplate.set(template);
     this.customHandle.set(template.handle);
     this.apiKey.set('');
+    this.isOAuthToken.set(false);
     this.registerError.set(null);
     this.showRegisterDialog.set(true);
   }
@@ -63,6 +66,7 @@ export class BotsComponent implements OnInit {
     this.selectedTemplate.set(null);
     this.customHandle.set('');
     this.apiKey.set('');
+    this.isOAuthToken.set(false);
     this.registerError.set(null);
   }
 
@@ -83,7 +87,12 @@ export class BotsComponent implements OnInit {
       .registerBot({
         templateId: template._id,
         handle: this.customHandle().trim() || undefined,
-        config: template.requiresConfig ? { apiKey: this.apiKey().trim() } : undefined,
+        config: template.requiresConfig
+          ? {
+              apiKey: this.apiKey().trim(),
+              isOAuthToken: this.isOAuthToken(),
+            }
+          : undefined,
       })
       .subscribe({
         next: () => {
@@ -101,6 +110,7 @@ export class BotsComponent implements OnInit {
   editBot(bot: EnrichedUserBot): void {
     this.editingBot.set(bot);
     this.editApiKey.set('');
+    this.editIsOAuthToken.set(bot.config?.isOAuthToken || false);
     this.editEnabled.set(bot.isEnabled);
     this.editError.set(null);
     this.showEditDialog.set(true);
@@ -110,6 +120,7 @@ export class BotsComponent implements OnInit {
     this.showEditDialog.set(false);
     this.editingBot.set(null);
     this.editApiKey.set('');
+    this.editIsOAuthToken.set(false);
     this.editError.set(null);
   }
 
@@ -120,12 +131,27 @@ export class BotsComponent implements OnInit {
     this.isUpdating.set(true);
     this.editError.set(null);
 
-    const updateData: { isEnabled?: boolean; config?: { apiKey: string } } = {
+    const updateData: {
+      isEnabled?: boolean;
+      config?: { apiKey?: string; isOAuthToken?: boolean };
+    } = {
       isEnabled: this.editEnabled(),
     };
 
-    if (this.editApiKey().trim()) {
-      updateData.config = { apiKey: this.editApiKey().trim() };
+    // Check if OAuth setting has changed
+    const oauthChanged = this.editIsOAuthToken() !== (bot.config?.isOAuthToken || false);
+
+    // Update config if API key is provided or OAuth setting changed
+    if (this.editApiKey().trim() || oauthChanged) {
+      updateData.config = {};
+
+      if (this.editApiKey().trim()) {
+        updateData.config.apiKey = this.editApiKey().trim();
+      }
+
+      if (oauthChanged) {
+        updateData.config.isOAuthToken = this.editIsOAuthToken();
+      }
     }
 
     this.botService.updateBot(bot._id, updateData).subscribe({

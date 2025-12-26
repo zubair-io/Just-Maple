@@ -101,13 +101,12 @@
 }
 
 // Editor Content
-.editor-content {
+::ng-deep .editor-content {
   flex: 1;
   overflow-y: auto;
   cursor: text;
 
   :deep(.tiptap) {
-    outline: none;
     min-height: 300px;
 
     // Placeholder for paragraphs
@@ -120,19 +119,10 @@
       pointer-events: none;
     }
 
-    // Focus
-    &:focus {
-      outline: none;
-    }
-
-    // Typography - Title H1 (first heading)
+    // Typography - Title H1 (first heading) - editor-specific styling
     > h1:first-child {
-      font-family: var(--font-sans);
       font-size: 2rem;
-      font-weight: 600;
       margin-bottom: 0.5rem;
-      color: var(--color-text-main);
-      outline: none;
 
       // Placeholder for title
       &.is-empty::before {
@@ -145,169 +135,14 @@
       }
     }
 
-    // Regular H1 (not the first one / title)
-    h1:not(:first-child) {
-      font-family: var(--font-sans);
-      font-size: 1.75rem;
-      font-weight: 600;
-      margin-bottom: 1rem;
-      color: var(--color-text-main);
-    }
-
-    h2 {
-      font-family: var(--font-sans);
-      font-size: 1.5rem;
-      font-weight: 600;
-      margin-bottom: 0.75rem;
-      color: var(--color-text-main);
-    }
-
-    h3 {
-      font-family: var(--font-sans);
-      font-size: 1.25rem;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-      color: var(--color-text-main);
-    }
-
-    p {
-      font-family: var(--font-serif);
-      margin-bottom: 1rem;
-      line-height: 1.75;
-    }
-
-    // Lists
-    ul,
-    ol {
-      font-family: var(--font-serif);
-      padding-left: 1.5rem;
-      margin-bottom: 1rem;
-
-      li {
-        margin-bottom: 0.25rem;
-        line-height: 1.75;
-
-        p {
-          margin: 0;
-        }
-      }
-    }
-
-    ol {
-      list-style-type: decimal;
-    }
-
-    ul {
-      list-style-type: disc;
-    }
-
-    // Task List
-    ul[data-type='taskList'] {
-      list-style: none;
-      padding-left: 0;
-
-      li {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.5rem;
-
-        &[data-checked='true'] {
-          > div > p {
-            color: var(--color-text-muted);
-            text-decoration: line-through;
-          }
-        }
-
-        > label {
-          display: flex;
-          align-items: center;
-          margin-top: 0.25rem;
-
-          input[type='checkbox'] {
-            width: 1.125rem;
-            height: 1.125rem;
-            border-radius: 0.25rem;
-            cursor: pointer;
-            accent-color: var(--color-primary);
-          }
-        }
-
-        > div {
-          flex: 1;
-          min-width: 0;
-
-          p {
-            min-width: 2px;
-          }
-        }
-      }
-    }
-
-    // Blockquote
-    blockquote {
-      font-family: var(--font-serif);
-      border-left: 4px solid var(--color-primary);
-      padding-left: 1rem;
-      margin-left: 0;
-      margin-right: 0;
-      margin-bottom: 1rem;
-      font-style: italic;
-      color: var(--color-text-muted);
-    }
-
-    // Highlight
-    mark {
-      background-color: #fef08a;
-      padding: 0.125rem 0;
-      border-radius: 0.125rem;
-    }
-
-    // Horizontal Rule
-    hr {
-      border: none;
-      border-top: 1px solid var(--color-border);
-      margin: 2rem 0;
-    }
-
-    // Links
-    a {
-      color: var(--color-primary);
-      text-decoration: underline;
-      cursor: pointer;
-
-      &:hover {
-        color: var(--color-primary-hover);
-      }
-    }
-
-    // Strong and Emphasis
-    strong {
-      font-weight: 600;
-    }
-
-    em {
-      font-style: italic;
-    }
-
-    u {
-      text-decoration: underline;
-    }
-
-    // Mentions
+    // Mentions in editor show @ prefix
     .mention {
-      background-color: var(--color-primary-light, rgba(217, 78, 59, 0.1));
-      color: var(--color-primary);
-      padding: 0.125rem 0.375rem;
-      border-radius: 0.25rem;
-      font-weight: 500;
-      font-family: var(--font-sans);
-
       &::before {
         content: '@';
       }
     }
 
-    // Bot Widget
+    // Bot Widget - editor-specific component
     .bot-widget {
       margin: 1rem 0;
       border: 1px solid var(--color-border);

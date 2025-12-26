@@ -190,6 +190,13 @@ export class BotService {
   // Threads
   // ============================================
 
+  getThreadById(threadId: string): Observable<Thread | null> {
+    return this.http.get<{ thread: Thread }>(`/api/threads/${threadId}`).pipe(
+      map((response) => response.thread),
+      catchError(() => of(null)),
+    );
+  }
+
   getThreadForMessage(
     messageId: string,
   ): Observable<{ thread: Thread; messages: Message[] } | null> {

@@ -22,6 +22,7 @@
         [isGrouped]="message.isGrouped"
         [botTyping]="isBotTyping(message._id)"
         [botError]="hasFailedBot(message._id)"
+        (messageClicked)="selectMessageForReply($event)"
       />
     } @empty {
       @if (!isLoading()) {
@@ -57,6 +58,7 @@
   @if (showMentionSuggestions()) {
     <div
       class="mention-suggestions-container fixed z-50"
+      [class.position-above]="mentionPositionAbove()"
       [style.top.px]="mentionPosition().top"
       [style.left.px]="mentionPosition().left"
     >
@@ -72,6 +74,35 @@
 
   <!-- Message Input -->
   <div class="message-input">
+    <!-- Reply Pill -->
+    @if (replyingToMessage()) {
+      <div class="reply-pill">
+        <button
+          type="button"
+          class="reply-pill-content"
+          (click)="scrollToMessage(replyingToMessage()!._id)"
+        >
+          <span class="material-symbols-rounded">reply</span>
+          <span class="reply-text">
+            Replying to
+            <strong>{{
+              replyingToMessage()!.senderDisplayName ||
+                replyingToMessage()!.senderEmail ||
+                'Unknown'
+            }}</strong>
+          </span>
+        </button>
+        <button
+          type="button"
+          class="reply-pill-close"
+          (click)="clearReply()"
+          aria-label="Cancel reply"
+        >
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+    }
+
     <div class="input-wrapper">
       <div #editorElement class="editor"></div>
     </div>

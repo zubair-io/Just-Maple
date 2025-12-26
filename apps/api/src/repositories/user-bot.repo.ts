@@ -206,7 +206,25 @@ export async function updateUserBot(
     const updateDoc: Record<string, unknown> = { updatedAt: now };
 
     if (data.displayName !== undefined) updateDoc.displayName = data.displayName;
-    if (data.config !== undefined) updateDoc.config = data.config;
+
+    // Merge config instead of replacing it to preserve existing fields
+    if (data.config !== undefined) {
+        // Get existing bot to merge config
+        const existing = await getCollection().findOne({
+            _id: new ObjectId(id),
+            userId: new ObjectId(userId),
+        });
+
+        if (existing) {
+            updateDoc.config = {
+                ...(existing.config || {}),
+                ...data.config,
+            };
+        } else {
+            updateDoc.config = data.config;
+        }
+    }
+
     if (data.isEnabled !== undefined) updateDoc.isEnabled = data.isEnabled;
     if (data.tagId !== undefined) {
         updateDoc.tagId = data.tagId ? new ObjectId(data.tagId) : null;
