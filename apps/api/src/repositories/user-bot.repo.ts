@@ -10,7 +10,6 @@ interface UserBotDocument {
     displayName?: string;
     config?: BotConfig;
     isEnabled: boolean;
-    tagId?: ObjectId;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -32,7 +31,6 @@ function toUserBotInternal(doc: UserBotDocument): UserBot {
         displayName: doc.displayName,
         config: doc.config,
         isEnabled: doc.isEnabled,
-        tagId: doc.tagId?.toString(),
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
     };
@@ -101,46 +99,28 @@ export async function findUserBotByHandle(userId: string, handle: string): Promi
     }
 }
 
-export async function findEnabledBotsForTag(userId: string, tagId: string): Promise<UserBot[]> {
-    try {
-        const docs = await getCollection()
-            .find({
-                userId: new ObjectId(userId),
-                isEnabled: true,
-                $or: [
-                    { tagId: { $exists: false } }, // Global bots (no tag restriction)
-                    { tagId: null },
-                    { tagId: new ObjectId(tagId) }, // Tag-specific bots
-                ],
-            })
-            .toArray();
-        return docs.map(toUserBotSafe);
-    } catch {
-        return [];
-    }
-}
-
 async function findUserBotDocByHandleForTag(
     handle: string,
     tagId: string,
 ): Promise<UserBotDocument | null> {
-    // Find any user's bot with this handle that is enabled and accessible in this tag
-    // First, we need to find the tag to get the members
+    // Find a bot with this handle that is shared with this tag
     const tagDoc = await getDb()
         .collection('tags')
         .findOne({ _id: new ObjectId(tagId) });
     if (!tagDoc) return null;
 
-    // Get all user IDs that have access to this tag
-    const memberIds =
-        tagDoc.sharing?.sharedWith?.map((m: { userId: string }) => new ObjectId(m.userId)) || [];
+    // Get bot IDs from tag's sharing config
+    const sharedBotIds =
+        tagDoc.sharing?.sharedBots?.map((b: { userBotId: string }) => new ObjectId(b.userBotId)) ||
+        [];
 
-    // Find any enabled bot with this handle from any of these users
+    if (sharedBotIds.length === 0) return null;
+
+    // Find the bot with matching handle
     const doc = await getCollection().findOne({
-        userId: { $in: memberIds },
+        _id: { $in: sharedBotIds },
         handle: handle.toLowerCase(),
         isEnabled: true,
-        $or: [{ tagId: { $exists: false } }, { tagId: null }, { tagId: new ObjectId(tagId) }],
     });
 
     return doc;
@@ -187,7 +167,6 @@ export async function createUserBot(
         displayName: data.displayName,
         config: data.config,
         isEnabled: true,
-        tagId: data.tagId ? new ObjectId(data.tagId) : undefined,
         createdAt: now,
         updatedAt: now,
     };
@@ -226,9 +205,6 @@ export async function updateUserBot(
     }
 
     if (data.isEnabled !== undefined) updateDoc.isEnabled = data.isEnabled;
-    if (data.tagId !== undefined) {
-        updateDoc.tagId = data.tagId ? new ObjectId(data.tagId) : null;
-    }
 
     try {
         const result = await getCollection().findOneAndUpdate(
@@ -255,44 +231,61 @@ export async function deleteUserBot(id: string, userId: string): Promise<boolean
     }
 }
 
-export async function searchUserBots(
-    userId: string,
-    tagId: string,
-    query: string,
-    limit: number = 10,
-): Promise<UserBot[]> {
+export async function findUserBotsForTag(tagId: string): Promise<UserBot[]> {
     try {
-        const searchRegex = new RegExp(query, 'i');
-
-        // Get tag to find all member user IDs
         const tagDoc = await getDb()
             .collection('tags')
             .findOne({ _id: new ObjectId(tagId) });
         if (!tagDoc) return [];
 
-        const memberIds =
-            tagDoc.sharing?.sharedWith?.map((m: { userId: string }) => new ObjectId(m.userId)) ||
-            [];
+        // Get bot IDs from tag's sharing config
+        const sharedBotIds =
+            tagDoc.sharing?.sharedBots?.map(
+                (b: { userBotId: string }) => new ObjectId(b.userBotId),
+            ) || [];
 
-        const docs = await getCollection()
+        if (sharedBotIds.length === 0) return [];
+
+        // Fetch bots
+        const botDocs = await getCollection()
             .find({
-                userId: { $in: memberIds },
+                _id: { $in: sharedBotIds },
                 isEnabled: true,
-                $or: [
-                    { tagId: { $exists: false } },
-                    { tagId: null },
-                    { tagId: new ObjectId(tagId) },
-                ],
-                $and: [
-                    {
-                        $or: [{ handle: searchRegex }, { displayName: searchRegex }],
-                    },
-                ],
             })
-            .limit(limit)
+            .sort({ handle: 1 })
             .toArray();
 
-        return docs.map(toUserBotSafe);
+        // Batch load owners and templates
+        const ownerIds = [...new Set(botDocs.map((b) => b.userId.toString()))];
+        const templateIds = [...new Set(botDocs.map((b) => b.templateId.toString()))];
+
+        const owners = await getDb()
+            .collection('users')
+            .find({ _id: { $in: ownerIds.map((id) => new ObjectId(id)) } })
+            .toArray();
+
+        const { findBotTemplatesByIds } = await import('./bot-template.repo');
+        const templates = await findBotTemplatesByIds(templateIds);
+
+        const ownerMap = new Map(owners.map((u) => [u._id.toString(), u]));
+        const templateMap = new Map(templates.map((t) => [t._id, t]));
+
+        // Enrich bots with owner and template info
+        return botDocs.map((doc) => {
+            const owner = ownerMap.get(doc.userId.toString());
+            const template = templateMap.get(doc.templateId.toString());
+
+            const bot = toUserBotSafe(doc);
+            return {
+                ...bot,
+                // Add enrichment fields (these will be spread into EnrichedUserBot)
+                ownerName: owner?.displayName || owner?.email || 'Unknown',
+                ownerAvatar: owner?.profilePictureUrl,
+                templateName: template?.name,
+                templateAvatar: template?.avatar,
+                templateDescription: template?.description,
+            } as any; // Cast to any since we're adding extra fields
+        });
     } catch {
         return [];
     }

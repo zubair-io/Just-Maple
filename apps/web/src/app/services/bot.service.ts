@@ -9,6 +9,7 @@ import type {
   UpdateUserBotInput,
   Thread,
   Message,
+  Tag,
 } from '@maple/shared';
 
 export interface BotSuggestion {
@@ -18,12 +19,18 @@ export interface BotSuggestion {
   avatar?: string;
   description?: string;
   type: 'bot';
+  // Owner info for disambiguation
+  ownerId: string;
+  ownerName: string;
+  ownerAvatar?: string;
 }
 
 export interface EnrichedUserBot extends UserBot {
   templateName?: string;
   templateAvatar?: string;
   templateDescription?: string;
+  ownerName?: string;
+  ownerAvatar?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -44,11 +51,24 @@ export class BotService {
   readonly userBots = this._userBots.asReadonly();
   readonly userBotsLoading = this._userBotsLoading.asReadonly();
 
+  // Tag bots cache
+  private readonly _tagBotsCache = new Map<string, BotSuggestion[]>();
+  private readonly _tagBotsLoading = signal<Set<string>>(new Set());
+  private readonly _tagBotsCacheVersion = signal(0);
+
+  // Public signal for cache invalidation
+  readonly tagBotsCacheVersion = this._tagBotsCacheVersion.asReadonly();
+
   // ============================================
   // Bot Templates
   // ============================================
 
-  loadTemplates(): Observable<BotTemplate[]> {
+  loadTemplates(forceRefresh = false): Observable<BotTemplate[]> {
+    // Return cached if available and not forcing refresh
+    if (!forceRefresh && this._templates().length > 0) {
+      return of(this._templates());
+    }
+
     this._templatesLoading.set(true);
 
     return this.http.get<{ templates: BotTemplate[] }>('/api/bot-templates').pipe(
@@ -136,15 +156,65 @@ export class BotService {
   // Bot Search (for @mentions)
   // ============================================
 
-  searchBots(tagId: string, query: string): Observable<BotSuggestion[]> {
-    return this.http
-      .get<{ bots: BotSuggestion[] }>(`/api/tags/${tagId}/bots/search`, {
-        params: { q: query },
-      })
-      .pipe(
-        map((response) => response.bots),
-        catchError(() => of([])),
-      );
+  getTagBots(tagId: string): Observable<BotSuggestion[]> {
+    // Return cached if available
+    const cached = this._tagBotsCache.get(tagId);
+    if (cached) {
+      return of(cached);
+    }
+
+    // Check if already loading
+    if (this._tagBotsLoading().has(tagId)) {
+      // Return empty for now, will be updated when load completes
+      return of([]);
+    }
+
+    // Mark as loading
+    this._tagBotsLoading.update((set) => new Set(set).add(tagId));
+
+    return this.http.get<{ bots: BotSuggestion[] }>(`/api/tags/${tagId}/bots`).pipe(
+      tap((response) => {
+        this._tagBotsCache.set(tagId, response.bots);
+        this._tagBotsLoading.update((set) => {
+          const newSet = new Set(set);
+          newSet.delete(tagId);
+          return newSet;
+        });
+      }),
+      map((response) => response.bots),
+      catchError(() => {
+        this._tagBotsLoading.update((set) => {
+          const newSet = new Set(set);
+          newSet.delete(tagId);
+          return newSet;
+        });
+        return of([]);
+      }),
+    );
+  }
+
+  // Client-side filtering for bots
+  static filterBots(bots: BotSuggestion[], query: string): BotSuggestion[] {
+    if (!query.trim()) return bots;
+
+    const lowerQuery = query.toLowerCase();
+    return bots.filter(
+      (bot) =>
+        bot.handle.toLowerCase().includes(lowerQuery) ||
+        bot.displayName.toLowerCase().includes(lowerQuery) ||
+        bot.description?.toLowerCase().includes(lowerQuery),
+    );
+  }
+
+  // Clear tag bots cache
+  clearTagBotsCache(tagId?: string): void {
+    if (tagId) {
+      this._tagBotsCache.delete(tagId);
+    } else {
+      this._tagBotsCache.clear();
+    }
+    // Increment version to trigger reactive updates
+    this._tagBotsCacheVersion.update((v) => v + 1);
   }
 
   // ============================================
@@ -183,6 +253,46 @@ export class BotService {
     return this.http.get<{ invocation: BotInvocation }>(`/api/invocations/${id}`).pipe(
       map((response) => response.invocation),
       catchError(() => of(null)),
+    );
+  }
+
+  // ============================================
+  // Bot-Tag Sharing
+  // ============================================
+
+  // Get bots shared with a tag (with owner info)
+  getTagSharedBots(tagId: string): Observable<EnrichedUserBot[]> {
+    return this.http.get<{ bots: EnrichedUserBot[] }>(`/api/tags/${tagId}/shared-bots`).pipe(
+      map((response) => response.bots),
+      catchError(() => of([])),
+    );
+  }
+
+  // Share bot with tag
+  shareBotToTag(tagId: string, userBotId: string): Observable<Tag> {
+    return this.http.post<{ tag: Tag }>(`/api/tags/${tagId}/bots`, { userBotId }).pipe(
+      tap(() => {
+        this.clearTagBotsCache(tagId);
+      }),
+      map((response) => response.tag),
+      catchError((err) => {
+        const message = err?.error?.error || 'Failed to share bot';
+        return throwError(() => new Error(message));
+      }),
+    );
+  }
+
+  // Remove bot from tag
+  unshareBotFromTag(tagId: string, userBotId: string): Observable<Tag> {
+    return this.http.delete<{ tag: Tag }>(`/api/tags/${tagId}/bots/${userBotId}`).pipe(
+      tap(() => {
+        this.clearTagBotsCache(tagId);
+      }),
+      map((response) => response.tag),
+      catchError((err) => {
+        const message = err?.error?.error || 'Failed to remove bot';
+        return throwError(() => new Error(message));
+      }),
     );
   }
 

@@ -106,5 +106,130 @@
         }
       </div>
     </div>
+
+    <!-- Shared Bots Section -->
+    <div class="p-4 border-t border-[var(--color-border)]">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-medium text-[var(--color-text-main)]">
+          Shared Bots ({{ sharedBots().length }})
+        </h3>
+        @if (isOwner()) {
+          <button
+            (click)="showAddBotDialog.set(true)"
+            class="text-xs px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white font-medium rounded-lg transition-colors"
+          >
+            Add Bot
+          </button>
+        }
+      </div>
+
+      <div class="space-y-2">
+        @if (isLoadingBots()) {
+          <div class="text-center py-4 text-[var(--color-text-muted)] text-sm">Loading bots...</div>
+        } @else if (sharedBots().length === 0) {
+          <div class="text-center py-6 text-[var(--color-text-muted)] text-sm">
+            <span class="material-symbols-rounded text-3xl mb-2 block opacity-30">smart_toy</span>
+            <p>No bots shared yet</p>
+            @if (isOwner()) {
+              <p class="text-xs mt-1">Add bots to use them in this tag</p>
+            }
+          </div>
+        } @else {
+          @for (bot of sharedBots(); track bot._id) {
+            <div
+              class="flex items-center justify-between p-2 rounded-lg hover:bg-stone-50 transition-colors"
+            >
+              <div class="flex items-center gap-3">
+                <app-profile-avatar
+                  [email]="bot.userId + '@bot'"
+                  [displayName]="bot.ownerName"
+                  [profilePictureUrl]="bot.templateAvatar"
+                  size="sm"
+                />
+                <div>
+                  <div class="text-sm font-medium text-[var(--color-text-main)]">
+                    @{{ bot.handle }}
+                  </div>
+                  <div class="text-xs text-[var(--color-text-muted)]">
+                    by {{ bot.ownerName || 'Unknown' }}
+                  </div>
+                </div>
+              </div>
+
+              @if (isOwner()) {
+                <button
+                  (click)="removeBot(bot._id, bot.handle)"
+                  class="p-1 text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                  title="Remove bot"
+                >
+                  <span class="material-symbols-rounded text-base">delete</span>
+                </button>
+              }
+            </div>
+          }
+        }
+      </div>
+    </div>
+
+    <!-- Add Bot Dialog -->
+    @if (showAddBotDialog()) {
+      <div
+        class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+        (click)="showAddBotDialog.set(false)"
+      >
+        <div
+          class="bg-[var(--color-surface)] rounded-xl shadow-2xl max-w-md w-full max-h-[60vh] flex flex-col"
+          (click)="$event.stopPropagation()"
+        >
+          <div class="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
+            <h3 class="text-lg font-semibold text-[var(--color-text-main)]">Add Bot to Tag</h3>
+            <button
+              (click)="showAddBotDialog.set(false)"
+              class="p-1 hover:bg-stone-100 rounded-lg transition-colors text-[var(--color-text-muted)]"
+            >
+              <span class="material-symbols-rounded text-xl">close</span>
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-4">
+            @if (userBots().length === 0) {
+              <div class="text-center py-8 text-[var(--color-text-muted)] text-sm">
+                <span class="material-symbols-rounded text-4xl mb-2 block opacity-30"
+                  >smart_toy</span
+                >
+                <p>You haven't registered any bots yet</p>
+                <p class="text-xs mt-1">Register bots in the Bots page first</p>
+              </div>
+            } @else {
+              <div class="space-y-2">
+                @for (bot of userBots(); track bot._id) {
+                  <button
+                    (click)="addBot(bot._id)"
+                    class="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-stone-50 transition-colors text-left"
+                  >
+                    <app-profile-avatar
+                      [email]="bot.userId + '@bot'"
+                      [displayName]="bot.displayName || bot.templateName"
+                      [profilePictureUrl]="bot.templateAvatar"
+                      size="sm"
+                    />
+                    <div class="flex-1 min-w-0">
+                      <div class="text-sm font-medium text-[var(--color-text-main)] truncate">
+                        @{{ bot.handle }}
+                      </div>
+                      @if (bot.displayName || bot.templateName) {
+                        <div class="text-xs text-[var(--color-text-muted)] truncate">
+                          {{ bot.displayName || bot.templateName }}
+                        </div>
+                      }
+                    </div>
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    }
   </div>
 </div>

@@ -16,9 +16,14 @@ interface SharedWithEntryDocument {
     accessLevel: AccessLevel;
 }
 
+interface SharedBotEntryDocument {
+    userBotId: string;
+}
+
 interface TagSharingDocument {
     sharedWith: SharedWithEntryDocument[];
     isPublic?: boolean;
+    sharedBots?: SharedBotEntryDocument[];
 }
 
 interface TagDocument {
@@ -57,6 +62,7 @@ function toTagResponse(doc: LegacyTagDocument): Tag {
         sharing = {
             sharedWith: doc.sharing.sharedWith,
             isPublic: doc.sharing.isPublic,
+            sharedBots: doc.sharing.sharedBots,
         };
     } else if (doc.userId) {
         // Migrate legacy userId to sharing format
@@ -315,6 +321,7 @@ export async function shareTag(
 
 /**
  * Remove a user's access to a tag (requires owner access)
+ * Also removes all bots owned by the user
  */
 export async function unshareTag(
     tagId: string,
@@ -328,10 +335,18 @@ export async function unshareTag(
     // Cannot remove owner
     if (targetUserId === ownerId) return null;
 
+    // Find all bots owned by the user being removed
+    const { findUserBotsByUserId } = await import('./user-bot.repo');
+    const userBots = await findUserBotsByUserId(targetUserId);
+    const userBotIds = userBots.map((b) => b._id);
+
     const result = await getCollection().findOneAndUpdate(
         { _id: new ObjectId(tagId) },
         {
-            $pull: { 'sharing.sharedWith': { userId: targetUserId } },
+            $pull: {
+                'sharing.sharedWith': { userId: targetUserId },
+                'sharing.sharedBots': { userBotId: { $in: userBotIds } },
+            },
             $set: { updatedAt: new Date() },
         },
         { returnDocument: 'after' },
@@ -418,4 +433,69 @@ export async function getTagMembersWithUserData(
     }
 
     return members;
+}
+
+/**
+ * Share a bot with a tag (requires owner access)
+ */
+export async function shareBotToTag(
+    tagId: string,
+    ownerId: string,
+    userBotId: string,
+): Promise<Tag | null> {
+    // Verify user is tag owner
+    const tag = await findTagByIdWithAccess(tagId, ownerId, 'owner');
+    if (!tag) return null;
+
+    // Verify bot exists and is owned by a tag member
+    const { findUserBotById } = await import('./user-bot.repo');
+    const bot = await findUserBotById(userBotId);
+    if (!bot) return null;
+
+    const memberIds = tag.sharing.sharedWith.map((m) => m.userId);
+    if (!memberIds.includes(bot.userId)) {
+        return null; // Bot owner must be tag member
+    }
+
+    const result = await getCollection().findOneAndUpdate(
+        { _id: new ObjectId(tagId) },
+        {
+            $addToSet: { 'sharing.sharedBots': { userBotId } },
+            $set: { updatedAt: new Date() },
+        },
+        { returnDocument: 'after' },
+    );
+    return result ? toTagResponse(result) : null;
+}
+
+/**
+ * Remove a bot from a tag (requires owner access)
+ */
+export async function unshareBotFromTag(
+    tagId: string,
+    ownerId: string,
+    userBotId: string,
+): Promise<Tag | null> {
+    const tag = await findTagByIdWithAccess(tagId, ownerId, 'owner');
+    if (!tag) return null;
+
+    const result = await getCollection().findOneAndUpdate(
+        { _id: new ObjectId(tagId) },
+        {
+            $pull: { 'sharing.sharedBots': { userBotId } },
+            $set: { updatedAt: new Date() },
+        },
+        { returnDocument: 'after' },
+    );
+    return result ? toTagResponse(result) : null;
+}
+
+/**
+ * Get bots shared with a tag
+ * Returns array of bot IDs
+ */
+export async function getTagBots(tagId: string): Promise<string[]> {
+    const tagDoc = await getCollection().findOne({ _id: new ObjectId(tagId) });
+    if (!tagDoc) return [];
+    return tagDoc.sharing?.sharedBots?.map((b) => b.userBotId) || [];
 }

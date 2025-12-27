@@ -14,7 +14,10 @@ import {
     getTagMembers,
     getTagMembersWithUserData,
     getAccessLevel,
+    shareBotToTag,
+    unshareBotFromTag,
 } from '../repositories/tag.repo';
+import { findUserBotsForTag } from '../repositories/user-bot.repo';
 import { sendNotification } from '../services/notification.service';
 
 export const tagRoutes = new Elysia({ prefix: '/api/tags' })
@@ -295,6 +298,82 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         {
             params: t.Object({
                 id: t.String(),
+            }),
+        },
+    )
+
+    // Get bots shared with this tag
+    .get(
+        '/:id/shared-bots',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const tag = await findTagById(params.id, auth.user._id);
+            if (!tag) {
+                set.status = 404;
+                return { error: 'Tag not found' };
+            }
+
+            const enrichedBots = await findUserBotsForTag(params.id);
+            return { bots: enrichedBots };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+        },
+    )
+
+    // Share bot with tag
+    .post(
+        '/:id/bots',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const updatedTag = await shareBotToTag(params.id, auth.user._id, body.userBotId);
+
+            if (!updatedTag) {
+                set.status = 400;
+                return { error: 'Failed to share bot' };
+            }
+
+            return { tag: updatedTag };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            body: t.Object({
+                userBotId: t.String(),
+            }),
+        },
+    )
+
+    // Remove bot from tag
+    .delete(
+        '/:id/bots/:userBotId',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const updatedTag = await unshareBotFromTag(params.id, auth.user._id, params.userBotId);
+
+            if (!updatedTag) {
+                set.status = 400;
+                return { error: 'Failed to remove bot' };
+            }
+
+            return { tag: updatedTag };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+                userBotId: t.String(),
             }),
         },
     );

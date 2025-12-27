@@ -11,11 +11,12 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { BotSuggestion } from '../../../services/bot.service';
+import { ProfileAvatarComponent } from '../../atoms/profile-avatar/profile-avatar.component';
 
 @Component({
   selector: 'app-mention-suggestion',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ProfileAvatarComponent],
   template: `
     <div
       class="mention-dropdown bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg shadow-lg overflow-hidden"
@@ -29,17 +30,22 @@ import type { BotSuggestion } from '../../../services/bot.service';
           (click)="selectItem(item)"
           (mouseenter)="selectedIndex.set(i)"
         >
-          <div
-            class="w-8 h-8 rounded-full bg-[var(--color-primary)] flex items-center justify-center text-white text-sm font-medium shrink-0"
-          >
-            @if (item.avatar) {
-              <img [src]="item.avatar" class="w-full h-full rounded-full object-cover" />
-            } @else {
-              {{ getInitial(item.handle) }}
-            }
-          </div>
+          <app-profile-avatar
+            [email]="item.ownerId + '@bot'"
+            [displayName]="item.ownerName"
+            [profilePictureUrl]="item.avatar"
+            size="sm"
+            [showBorder]="false"
+          />
           <div class="flex-1 min-w-0">
-            <div class="text-[var(--color-text-main)] font-medium truncate">@{{ item.handle }}</div>
+            <div class="text-[var(--color-text-main)] font-medium truncate">
+              @{{ item.handle }}
+              @if (hasDuplicateHandle()(item.handle)) {
+                <span class="text-[var(--color-text-muted)] font-normal">
+                  ({{ item.ownerName }})
+                </span>
+              }
+            </div>
             @if (item.displayName && item.displayName !== item.handle) {
               <div class="text-[var(--color-text-muted)] text-sm truncate">
                 {{ item.displayName }}
@@ -84,6 +90,15 @@ export class MentionSuggestionComponent {
 
   readonly selected = output<BotSuggestion>();
   readonly dismissed = output<void>();
+
+  // Detect duplicate handles
+  readonly hasDuplicateHandle = computed(() => {
+    const handles = this.items().map((item) => item.handle);
+    const duplicates = new Set(
+      handles.filter((handle, index) => handles.indexOf(handle) !== index),
+    );
+    return (handle: string) => duplicates.has(handle);
+  });
 
   constructor() {
     // Reset selection when items change
@@ -130,9 +145,5 @@ export class MentionSuggestionComponent {
       });
     }
     this.selected.emit(item);
-  }
-
-  getInitial(handle: string): string {
-    return handle.charAt(0).toUpperCase();
   }
 }

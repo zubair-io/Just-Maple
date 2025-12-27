@@ -122,14 +122,3 @@ export async function upsertBotTemplate(
 
     return toBotTemplate(result!);
 }
-
-export async function searchBotTemplates(query: string): Promise<BotTemplate[]> {
-    const searchRegex = new RegExp(query, 'i');
-    const docs = await getCollection()
-        .find({
-            $or: [{ handle: searchRegex }, { name: searchRegex }, { description: searchRegex }],
-        })
-        .limit(20)
-        .toArray();
-    return docs.map(toBotTemplate);
-}

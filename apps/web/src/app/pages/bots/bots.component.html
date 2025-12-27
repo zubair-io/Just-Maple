@@ -25,13 +25,13 @@
         <div class="bot-list">
           @for (bot of userBots(); track bot._id) {
             <div class="bot-card" [class.disabled]="!bot.isEnabled">
-              <div class="bot-avatar">
-                @if (bot.templateAvatar) {
-                  <img [src]="bot.templateAvatar" alt="" />
-                } @else {
-                  {{ bot.handle.charAt(0).toUpperCase() }}
-                }
-              </div>
+              <app-profile-avatar
+                [email]="bot.userId + '@bot'"
+                [displayName]="bot.templateName || bot.handle"
+                [profilePictureUrl]="bot.templateAvatar"
+                size="md"
+                [showBorder]="false"
+              />
               <div class="bot-info">
                 <div class="bot-handle">@{{ bot.handle }}</div>
                 <div class="bot-name">{{ bot.templateName || 'Bot' }}</div>
@@ -88,13 +88,13 @@
               [class.registered]="isBotRegistered(template)"
               (click)="!isBotRegistered(template) && selectTemplate(template)"
             >
-              <div class="template-avatar">
-                @if (template.avatar) {
-                  <img [src]="template.avatar" alt="" />
-                } @else {
-                  {{ getTemplateIcon(template) }}
-                }
-              </div>
+              <app-profile-avatar
+                [email]="'system@' + template.handle"
+                [displayName]="template.name"
+                [profilePictureUrl]="template.avatar"
+                size="md"
+                [showBorder]="false"
+              />
               <div class="template-info">
                 <div class="template-name">{{ template.name }}</div>
                 <div class="template-handle">@{{ template.handle }}</div>
@@ -135,13 +135,13 @@
       @if (selectedTemplate(); as template) {
         <div class="dialog-content">
           <div class="template-preview">
-            <div class="template-avatar large">
-              @if (template.avatar) {
-                <img [src]="template.avatar" alt="" />
-              } @else {
-                {{ getTemplateIcon(template) }}
-              }
-            </div>
+            <app-profile-avatar
+              [email]="'system@' + template.handle"
+              [displayName]="template.name"
+              [profilePictureUrl]="template.avatar"
+              size="lg"
+              [showBorder]="false"
+            />
             <div>
               <div class="template-name">{{ template.name }}</div>
               @if (template.description) {
@@ -232,13 +232,13 @@
       @if (editingBot(); as bot) {
         <div class="dialog-content">
           <div class="template-preview">
-            <div class="template-avatar large">
-              @if (bot.templateAvatar) {
-                <img [src]="bot.templateAvatar" alt="" />
-              } @else {
-                {{ bot.handle.charAt(0).toUpperCase() }}
-              }
-            </div>
+            <app-profile-avatar
+              [email]="bot.userId + '@bot'"
+              [displayName]="bot.templateName || bot.handle"
+              [profilePictureUrl]="bot.templateAvatar"
+              size="lg"
+              [showBorder]="false"
+            />
             <div>
               <div class="template-name">@{{ bot.handle }}</div>
               <div class="template-description">{{ bot.templateName }}</div>

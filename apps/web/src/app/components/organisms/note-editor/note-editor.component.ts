@@ -27,7 +27,7 @@ import { Mention, type MentionNodeAttrs } from '../../organisms/chat/extensions/
 import { BotWidget, type BotWidgetAttrs } from './extensions/bot-widget';
 import { BotService, type BotSuggestion } from '../../../services/bot.service';
 import { MentionSuggestionComponent } from '../../organisms/chat/mention-suggestion.component';
-import { Subject, debounceTime, switchMap, takeUntil } from 'rxjs';
+import { Subject, takeUntil } from 'rxjs';
 import type { Note, Tag, NoteContent } from '@maple/shared';
 
 @Component({
@@ -58,6 +58,7 @@ export class NoteEditorComponent implements OnDestroy {
   readonly mentionSuggestions = signal<BotSuggestion[]>([]);
   readonly mentionSuggestionsLoading = signal(false);
   readonly mentionPosition = signal<{ top: number; left: number }>({ top: 0, left: 0 });
+  readonly allTagBots = signal<BotSuggestion[]>([]);
   mentionCommand: ((props: Record<string, unknown>) => void) | null = null;
   private readonly mentionSearch$ = new Subject<string>();
   private readonly destroy$ = new Subject<void>();
@@ -91,27 +92,27 @@ export class NoteEditorComponent implements OnDestroy {
       this.editor?.setEditable(isEditable);
     });
 
-    // Setup mention search with debounce
-    this.mentionSearch$
-      .pipe(
-        debounceTime(200),
-        switchMap((query) => {
-          this.mentionSuggestionsLoading.set(true);
-          const tagId = this.tag()?._id || this.note()?.tagId || '';
-          return this.botService.searchBots(tagId, query);
-        }),
-        takeUntil(this.destroy$),
-      )
-      .subscribe({
-        next: (bots) => {
-          this.mentionSuggestions.set(bots);
-          this.mentionSuggestionsLoading.set(false);
-        },
-        error: () => {
-          this.mentionSuggestions.set([]);
-          this.mentionSuggestionsLoading.set(false);
-        },
-      });
+    // Load bots when tag changes or cache is invalidated
+    effect(() => {
+      const tagId = this.tag()?._id || this.note()?.tagId;
+      // Also depend on cache version to trigger reload when cache is cleared
+      this.botService.tagBotsCacheVersion();
+
+      if (tagId) {
+        this.botService.getTagBots(tagId).subscribe((bots) => {
+          this.allTagBots.set(bots);
+        });
+      }
+    });
+
+    // Setup mention search with client-side filtering (no debounce needed)
+    this.mentionSearch$.pipe(takeUntil(this.destroy$)).subscribe({
+      next: (query) => {
+        const filtered = BotService.filterBots(this.allTagBots(), query);
+        this.mentionSuggestions.set(filtered);
+        this.mentionSuggestionsLoading.set(false);
+      },
+    });
 
     this.destroyRef.onDestroy(() => {
       this.destroy$.next();

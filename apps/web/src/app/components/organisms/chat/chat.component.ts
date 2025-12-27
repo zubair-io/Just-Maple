@@ -26,7 +26,7 @@ import { MentionSuggestionComponent } from './mention-suggestion.component';
 import { Mention, type MentionNodeAttrs } from './extensions/mention';
 import type { Message, NoteContent, TypingEvent, ChatEvent } from '@maple/shared';
 import { extractMentions, extractText } from '@maple/shared';
-import { Subscription, Subject, debounceTime, switchMap, takeUntil, filter } from 'rxjs';
+import { Subscription, Subject, takeUntil, filter } from 'rxjs';
 
 // Track pending bot invocations for loading states
 interface PendingBotInvocation {
@@ -75,6 +75,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   readonly mentionSuggestionsLoading = signal(false);
   readonly mentionPosition = signal<{ top: number; left: number }>({ top: 0, left: 0 });
   readonly mentionPositionAbove = signal(false);
+  readonly allTagBots = signal<BotSuggestion[]>([]);
   mentionCommand: ((props: Record<string, unknown>) => void) | null = null;
   private readonly mentionSearch$ = new Subject<string>();
   private readonly destroy$ = new Subject<void>();
@@ -163,26 +164,27 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       this.destroy$.complete();
     });
 
-    // Setup mention search with debounce
-    this.mentionSearch$
-      .pipe(
-        debounceTime(200),
-        switchMap((query) => {
-          this.mentionSuggestionsLoading.set(true);
-          return this.botService.searchBots(this.tagId(), query);
-        }),
-        takeUntil(this.destroy$),
-      )
-      .subscribe({
-        next: (bots) => {
-          this.mentionSuggestions.set(bots);
-          this.mentionSuggestionsLoading.set(false);
-        },
-        error: () => {
-          this.mentionSuggestions.set([]);
-          this.mentionSuggestionsLoading.set(false);
-        },
-      });
+    // Load all tag bots when tag changes or cache is invalidated
+    effect(() => {
+      const tagId = this.tagId();
+      // Also depend on cache version to trigger reload when cache is cleared
+      this.botService.tagBotsCacheVersion();
+
+      if (tagId) {
+        this.botService.getTagBots(tagId).subscribe((bots) => {
+          this.allTagBots.set(bots);
+        });
+      }
+    });
+
+    // Setup mention search with client-side filtering (no debounce needed)
+    this.mentionSearch$.pipe(takeUntil(this.destroy$)).subscribe({
+      next: (query) => {
+        const filtered = BotService.filterBots(this.allTagBots(), query);
+        this.mentionSuggestions.set(filtered);
+        this.mentionSuggestionsLoading.set(false);
+      },
+    });
   }
 
   ngAfterViewInit(): void {
@@ -692,56 +694,54 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
     // If message has a thread, load it and add bot mentions
     if (message.hasThread) {
-      // First load all bots for this tag
-      this.botService.searchBots(this.tagId(), '').subscribe((suggestions) => {
-        const botSuggestionMap = new Map(suggestions.map((s) => [s.id, s]));
+      // Use cached bots
+      const botSuggestionMap = new Map(this.allTagBots().map((s) => [s.id, s]));
 
-        // Now fetch thread messages
-        this.botService.getThreadForMessage(message._id).subscribe((result) => {
-          if (result && this.editor) {
-            // Extract unique bots from thread messages
-            const botHandles = new Map<string, { id: string; handle: string }>();
+      // Fetch thread messages
+      this.botService.getThreadForMessage(message._id).subscribe((result) => {
+        if (result && this.editor) {
+          // Extract unique bots from thread messages
+          const botHandles = new Map<string, { id: string; handle: string }>();
 
-            for (const msg of result.messages) {
-              if (msg.senderType === 'bot' && msg.userBotId) {
-                // Look up the bot from suggestions
-                const botSuggestion = botSuggestionMap.get(msg.userBotId);
+          for (const msg of result.messages) {
+            if (msg.senderType === 'bot' && msg.userBotId) {
+              // Look up the bot from suggestions
+              const botSuggestion = botSuggestionMap.get(msg.userBotId);
 
-                if (botSuggestion) {
-                  botHandles.set(msg.userBotId, {
-                    id: msg.userBotId,
-                    handle: botSuggestion.handle,
-                  });
-                }
+              if (botSuggestion) {
+                botHandles.set(msg.userBotId, {
+                  id: msg.userBotId,
+                  handle: botSuggestion.handle,
+                });
               }
             }
-
-            // Insert mentions for all bots in the thread
-            if (botHandles.size > 0) {
-              const mentions = Array.from(botHandles.values()).map((bot) => ({
-                type: 'mention',
-                attrs: {
-                  id: bot.id,
-                  handle: bot.handle,
-                  type: 'bot',
-                },
-              }));
-
-              // Add space between each mention
-              const content: any[] = [];
-              mentions.forEach((mention, index) => {
-                content.push(mention);
-                if (index < mentions.length - 1) {
-                  content.push({ type: 'text', text: ' ' });
-                }
-              });
-              content.push({ type: 'text', text: ' ' });
-
-              // Clear existing content and insert mentions
-              this.editor.chain().focus().clearContent().insertContentAt(0, content).run();
-            }
           }
-        });
+
+          // Insert mentions for all bots in the thread
+          if (botHandles.size > 0) {
+            const mentions = Array.from(botHandles.values()).map((bot) => ({
+              type: 'mention',
+              attrs: {
+                id: bot.id,
+                handle: bot.handle,
+                type: 'bot',
+              },
+            }));
+
+            // Add space between each mention
+            const content: any[] = [];
+            mentions.forEach((mention, index) => {
+              content.push(mention);
+              if (index < mentions.length - 1) {
+                content.push({ type: 'text', text: ' ' });
+              }
+            });
+            content.push({ type: 'text', text: ' ' });
+
+            // Clear existing content and insert mentions
+            this.editor.chain().focus().clearContent().insertContentAt(0, content).run();
+          }
+        }
       });
     }
 

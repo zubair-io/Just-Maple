@@ -66,7 +66,6 @@ async function createIndexes(database: Db): Promise<void> {
 
     // Bot templates collection
     await database.collection('bot_templates').createIndex({ handle: 1 }, { unique: true });
-    await database.collection('bot_templates').createIndex({ name: 'text', description: 'text' });
 
     // User bots collection
     await database.collection('user_bots').createIndex({ userId: 1, handle: 1 }, { unique: true });

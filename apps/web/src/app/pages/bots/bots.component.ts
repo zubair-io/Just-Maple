@@ -3,12 +3,13 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { BotService, type EnrichedUserBot } from '../../services/bot.service';
+import { ProfileAvatarComponent } from '../../components/atoms/profile-avatar/profile-avatar.component';
 import type { BotTemplate } from '@maple/shared';
 
 @Component({
   selector: 'app-bots',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ProfileAvatarComponent],
   templateUrl: './bots.component.html',
   styleUrl: './bots.component.scss',
 })
@@ -188,9 +189,5 @@ export class BotsComponent implements OnInit {
 
   isBotRegistered(template: BotTemplate): boolean {
     return this.userBots().some((b) => b.templateId === template._id);
-  }
-
-  getTemplateIcon(template: BotTemplate): string {
-    return template.handle.charAt(0).toUpperCase();
   }
 }

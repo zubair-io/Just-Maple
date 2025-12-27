@@ -7,7 +7,6 @@ import {
     findAllBotTemplates,
     findBotTemplateById,
     findBotTemplatesByIds,
-    searchBotTemplates,
 } from '../repositories/bot-template.repo';
 import {
     findUserBotsByUserId,
@@ -17,7 +16,7 @@ import {
     createUserBot,
     updateUserBot,
     deleteUserBot,
-    searchUserBots,
+    findUserBotsForTag,
 } from '../repositories/user-bot.repo';
 import { findThreadByParentMessage, findThreadById } from '../repositories/thread.repo';
 import { findMessagesByThreadId } from '../repositories/message.repo';
@@ -57,20 +56,6 @@ export const botRoutes = new Elysia({ prefix: '/api' })
         const templates = await findAllBotTemplates();
         return { templates };
     })
-
-    // Search bot templates (must come before /:id route)
-    .get(
-        '/bot-templates/search',
-        async ({ auth, query, set }) => {
-            if (!checkAuth(auth, set)) {
-                return { error: 'Unauthorized' };
-            }
-
-            const templates = await searchBotTemplates(query.q || '');
-            return { templates };
-        },
-        { query: t.Object({ q: t.Optional(t.String({ maxLength: 100 })) }) },
-    )
 
     // Get a specific bot template
     .get(
@@ -151,15 +136,6 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 return { error: `You already have a bot with handle @${handle}` };
             }
 
-            // Validate tag access if specified
-            if (body.tagId) {
-                const tag = await findTagByIdWithAccess(body.tagId, auth.user._id, 'write');
-                if (!tag) {
-                    set.status = 400;
-                    return { error: 'Invalid tag or no access' };
-                }
-            }
-
             const userBot = await createUserBot(auth.user._id, body, template.handle);
 
             return {
@@ -182,7 +158,6 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                         customSettings: t.Optional(t.Record(t.String(), t.Any())),
                     }),
                 ),
-                tagId: t.Optional(t.String()),
             }),
         },
     )
@@ -215,7 +190,6 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                     }),
                 ),
                 isEnabled: t.Optional(t.Boolean()),
-                tagId: t.Optional(t.String()),
             }),
         },
     )
@@ -243,10 +217,10 @@ export const botRoutes = new Elysia({ prefix: '/api' })
     // Bot Invocation (Triggering bots)
     // ============================================
 
-    // Search bots available in a tag (for @mention autocomplete)
+    // Get all bots available in a tag (for @mention autocomplete)
     .get(
-        '/tags/:id/bots/search',
-        async ({ auth, params, query, set }) => {
+        '/tags/:id/bots',
+        async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
             }
@@ -257,32 +231,24 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Tag not found' };
             }
 
-            const userBots = await searchUserBots(auth.user._id, params.id, query.q || '', 10);
+            const enrichedBots = await findUserBotsForTag(params.id);
 
-            // Batch load all templates in a single query (fix N+1)
-            const templateIds = [...new Set(userBots.map((b) => b.templateId))];
-            const templates = await findBotTemplatesByIds(templateIds);
-            const templateMap = new Map(templates.map((t) => [t._id, t]));
+            // Map to BotSuggestion format with owner info
+            const suggestions = enrichedBots.map((bot: any) => ({
+                id: bot._id,
+                handle: bot.handle,
+                displayName: bot.displayName || bot.templateName || bot.handle,
+                avatar: bot.templateAvatar,
+                description: bot.templateDescription,
+                type: 'bot' as const,
+                ownerId: bot.userId,
+                ownerName: bot.ownerName,
+                ownerAvatar: bot.ownerAvatar,
+            }));
 
-            // Enrich with template info
-            const enrichedBots = userBots.map((userBot) => {
-                const template = templateMap.get(userBot.templateId);
-                return {
-                    id: userBot._id,
-                    handle: userBot.handle,
-                    displayName: userBot.displayName || template?.name || userBot.handle,
-                    avatar: template?.avatar,
-                    description: template?.description,
-                    type: 'bot' as const,
-                };
-            });
-
-            return { bots: enrichedBots };
+            return { bots: suggestions };
         },
-        {
-            params: t.Object({ id: t.String() }),
-            query: t.Object({ q: t.Optional(t.String({ maxLength: 100 })) }),
-        },
+        { params: t.Object({ id: t.String() }) },
     )
 
     // Invoke a bot (trigger via @mention)

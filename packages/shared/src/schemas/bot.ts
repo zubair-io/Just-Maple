@@ -160,7 +160,6 @@ export const UserBotSchema = Type.Object({
     displayName: Type.Optional(Type.String()), // Custom display name
     config: Type.Optional(BotConfigSchema), // User-provided configuration (encrypted)
     isEnabled: Type.Boolean(),
-    tagId: Type.Optional(Type.String()), // Scope to specific tag (null = all user's tags)
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
 });
@@ -173,7 +172,6 @@ export const CreateUserBotSchema = Type.Object({
     handle: Type.Optional(Type.String()), // Optional custom handle
     displayName: Type.Optional(Type.String()),
     config: Type.Optional(BotConfigSchema),
-    tagId: Type.Optional(Type.String()),
 });
 
 export type CreateUserBotInput = Static<typeof CreateUserBotSchema>;
@@ -183,7 +181,6 @@ export const UpdateUserBotSchema = Type.Object({
     displayName: Type.Optional(Type.String()),
     config: Type.Optional(BotConfigSchema),
     isEnabled: Type.Optional(Type.Boolean()),
-    tagId: Type.Optional(Type.String()),
 });
 
 export type UpdateUserBotInput = Static<typeof UpdateUserBotSchema>;

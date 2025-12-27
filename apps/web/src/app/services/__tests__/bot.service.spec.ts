@@ -224,35 +224,150 @@ describe('BotService', () => {
     });
   });
 
-  describe('searchBots', () => {
-    it('should search bots by query', (done) => {
+  describe('getTagBots', () => {
+    it('should get bots for a tag', (done) => {
       const suggestions: BotSuggestion[] = [
         {
           id: 'userbot-1',
           handle: 'hello',
           displayName: 'Hello Bot',
           type: 'bot',
+          ownerId: 'user-1',
+          ownerName: 'John Doe',
+          ownerAvatar: undefined,
         },
       ];
 
-      service.searchBots('tag-1', 'hel').subscribe((result) => {
+      service.getTagBots('tag-1').subscribe((result) => {
         expect(result).toEqual(suggestions);
         done();
       });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/bots/search?q=hel');
+      const req = httpMock.expectOne('/api/tags/tag-1/bots');
       expect(req.request.method).toBe('GET');
       req.flush({ bots: suggestions });
     });
 
+    it('should return cached bots on subsequent calls', (done) => {
+      const suggestions: BotSuggestion[] = [
+        {
+          id: 'userbot-1',
+          handle: 'hello',
+          displayName: 'Hello Bot',
+          type: 'bot',
+          ownerId: 'user-1',
+          ownerName: 'John Doe',
+          ownerAvatar: undefined,
+        },
+      ];
+
+      // First call
+      service.getTagBots('tag-1').subscribe();
+      const req = httpMock.expectOne('/api/tags/tag-1/bots');
+      req.flush({ bots: suggestions });
+
+      // Second call should use cache (no HTTP request)
+      service.getTagBots('tag-1').subscribe((result) => {
+        expect(result).toEqual(suggestions);
+        done();
+      });
+
+      // Verify no additional HTTP request was made
+      httpMock.expectNone('/api/tags/tag-1/bots');
+    });
+
     it('should return empty array on error', (done) => {
-      service.searchBots('tag-1', 'test').subscribe((result) => {
+      service.getTagBots('tag-1').subscribe((result) => {
         expect(result).toEqual([]);
         done();
       });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/bots/search?q=test');
+      const req = httpMock.expectOne('/api/tags/tag-1/bots');
       req.flush({ error: 'Server error' }, { status: 500, statusText: 'Server Error' });
+    });
+
+    it('should increment cache version when cache is cleared', () => {
+      const initialVersion = service.tagBotsCacheVersion();
+
+      service.clearTagBotsCache('tag-1');
+
+      expect(service.tagBotsCacheVersion()).toBe(initialVersion + 1);
+    });
+
+    it('should increment cache version when clearing all caches', () => {
+      const initialVersion = service.tagBotsCacheVersion();
+
+      service.clearTagBotsCache();
+
+      expect(service.tagBotsCacheVersion()).toBe(initialVersion + 1);
+    });
+  });
+
+  describe('filterBots', () => {
+    it('should filter bots by handle', () => {
+      const bots: BotSuggestion[] = [
+        {
+          id: '1',
+          handle: 'hello',
+          displayName: 'Hello Bot',
+          type: 'bot',
+          ownerId: 'user-1',
+          ownerName: 'John',
+        },
+        {
+          id: '2',
+          handle: 'world',
+          displayName: 'World Bot',
+          type: 'bot',
+          ownerId: 'user-2',
+          ownerName: 'Jane',
+        },
+      ];
+
+      const result = BotService.filterBots(bots, 'hel');
+      expect(result.length).toBe(1);
+      expect(result[0].handle).toBe('hello');
+    });
+
+    it('should filter bots by display name', () => {
+      const bots: BotSuggestion[] = [
+        {
+          id: '1',
+          handle: 'bot1',
+          displayName: 'Hello Bot',
+          type: 'bot',
+          ownerId: 'user-1',
+          ownerName: 'John',
+        },
+        {
+          id: '2',
+          handle: 'bot2',
+          displayName: 'World Bot',
+          type: 'bot',
+          ownerId: 'user-2',
+          ownerName: 'Jane',
+        },
+      ];
+
+      const result = BotService.filterBots(bots, 'world');
+      expect(result.length).toBe(1);
+      expect(result[0].displayName).toBe('World Bot');
+    });
+
+    it('should return all bots when query is empty', () => {
+      const bots: BotSuggestion[] = [
+        {
+          id: '1',
+          handle: 'hello',
+          displayName: 'Hello Bot',
+          type: 'bot',
+          ownerId: 'user-1',
+          ownerName: 'John',
+        },
+      ];
+
+      const result = BotService.filterBots(bots, '');
+      expect(result.length).toBe(1);
     });
   });
 

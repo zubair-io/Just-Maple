@@ -15,10 +15,17 @@ export const SharedWithEntrySchema = Type.Object({
 });
 export type SharedWithEntry = Static<typeof SharedWithEntrySchema>;
 
+// Shared bot entry
+export const SharedBotEntrySchema = Type.Object({
+    userBotId: Type.String(),
+});
+export type SharedBotEntry = Static<typeof SharedBotEntrySchema>;
+
 // Sharing configuration
 export const TagSharingSchema = Type.Object({
     sharedWith: Type.Array(SharedWithEntrySchema),
     isPublic: Type.Optional(Type.Boolean()),
+    sharedBots: Type.Optional(Type.Array(SharedBotEntrySchema)),
 });
 export type TagSharing = Static<typeof TagSharingSchema>;
 
