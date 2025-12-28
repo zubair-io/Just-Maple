@@ -60,7 +60,9 @@ export async function findUserBotsByUserId(userId: string): Promise<UserBot[]> {
             .sort({ createdAt: -1 })
             .toArray();
         return docs.map(toUserBotSafe);
-    } catch {
+    } catch (error) {
+        console.error('Error finding user bots by userId:', error);
+        console.error('userId:', userId);
         return [];
     }
 }

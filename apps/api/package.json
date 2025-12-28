@@ -20,8 +20,10 @@
     "@maple/shared": "workspace:*",
     "@parse/node-apn": "^6.0.1",
     "@simplewebauthn/server": "^13.2.2",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/markdown-it": "^14.1.2",
     "elysia": "^1.2.0",
+    "jsonwebtoken": "^9.0.3",
     "markdown-it": "^14.1.0",
     "mongodb": "^6.0.0"
   },
