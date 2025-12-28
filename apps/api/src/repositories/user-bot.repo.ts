@@ -57,12 +57,11 @@ export async function findUserBotsByUserId(userId: string): Promise<UserBot[]> {
     try {
         const docs = await getCollection()
             .find({ userId: new ObjectId(userId) })
-            .sort({ createdAt: -1 })
             .toArray();
+        // Note: Sort removed to avoid CosmosDB indexing issues (no index on createdAt)
         return docs.map(toUserBotSafe);
     } catch (error) {
         console.error('Error finding user bots by userId:', error);
-        console.error('userId:', userId);
         return [];
     }
 }

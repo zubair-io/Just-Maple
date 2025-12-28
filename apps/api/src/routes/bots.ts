@@ -86,15 +86,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             return { error: 'Unauthorized' };
         }
 
-        console.log('[GET /user-bots] User ID:', auth.user._id);
-        console.log('[GET /user-bots] User email:', auth.user.email);
-
         const userBots = await findUserBotsByUserId(auth.user._id);
-        console.log('[GET /user-bots] Found bots:', userBots.length);
-
-        if (userBots.length > 0) {
-            console.log('[GET /user-bots] Bot details:', JSON.stringify(userBots, null, 2));
-        }
 
         // Batch load all templates in a single query (fix N+1)
         const templateIds = [...new Set(userBots.map((b) => b.templateId))];
@@ -112,7 +104,6 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             };
         });
 
-        console.log('[GET /user-bots] Returning enriched bots:', enrichedBots.length);
         return { userBots: enrichedBots };
     })
 
