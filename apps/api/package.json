@@ -12,6 +12,7 @@
     "migrate:gravatar": "bun run scripts/migrate-gravatar-profiles.ts"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@azure/communication-email": "^1.1.0",
     "@azure/storage-blob": "^12.29.1",
     "@elysiajs/cors": "^1.2.0",
