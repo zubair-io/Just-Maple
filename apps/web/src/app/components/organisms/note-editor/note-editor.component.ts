@@ -230,6 +230,7 @@ export class NoteEditorComponent implements OnDestroy {
     } finally {
       this.isUpdatingFromNote = false;
     }
+    this.focusTitle();
   }
 
   private updateMentionPosition(clientRect: (() => DOMRect | null) | null | undefined): void {
@@ -280,10 +281,6 @@ export class NoteEditorComponent implements OnDestroy {
   // Update a bot widget's state (called from parent when invocation completes)
   updateBotWidget(widgetId: string, attrs: Partial<BotWidgetAttrs>): void {
     this.editor?.commands.updateBotWidget(widgetId, attrs);
-  }
-
-  focusEditor(): void {
-    this.editor?.commands.focus();
   }
 
   focusTitle(): void {
