@@ -99,9 +99,10 @@ export class NoteEditorComponent implements OnDestroy {
       this.botService.tagBotsCacheVersion();
 
       if (tagId) {
-        this.botService.getTagBots(tagId).subscribe((bots) => {
-          this.allTagBots.set(bots);
-        });
+        console.log('Loading bots for tag:', tagId);
+        // this.botService.getTagBots(tagId).subscribe((bots) => {
+        //   this.allTagBots.set(bots);
+        // });
       }
     });
 

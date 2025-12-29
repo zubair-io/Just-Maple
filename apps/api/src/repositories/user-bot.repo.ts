@@ -291,3 +291,54 @@ export async function findUserBotsForTag(tagId: string): Promise<UserBot[]> {
         return [];
     }
 }
+
+export async function searchUserBots(
+    userId: string,
+    tagId: string,
+    query: string,
+): Promise<UserBot[]> {
+    try {
+        const regex = new RegExp(query, 'i'); // case-insensitive
+
+        // Get user's bots and tag's bots
+        const userBots = await getCollection()
+            .find({
+                userId: new ObjectId(userId),
+                isEnabled: true,
+                $or: [{ handle: regex }, { displayName: regex }],
+            })
+            .toArray();
+
+        // Get bots shared with the tag
+        const tagDoc = await getDb()
+            .collection('tags')
+            .findOne({ _id: new ObjectId(tagId) });
+
+        if (!tagDoc) {
+            return userBots.map(toUserBotSafe);
+        }
+
+        const sharedBotIds =
+            tagDoc.sharing?.sharedBots?.map(
+                (b: { userBotId: string }) => new ObjectId(b.userBotId),
+            ) || [];
+
+        const tagBots = await getCollection()
+            .find({
+                _id: { $in: sharedBotIds },
+                isEnabled: true,
+                $or: [{ handle: regex }, { displayName: regex }],
+            })
+            .toArray();
+
+        // Combine and deduplicate
+        const allBots = [...userBots, ...tagBots];
+        const uniqueBots = Array.from(
+            new Map(allBots.map((bot) => [bot._id.toString(), bot])).values(),
+        );
+
+        return uniqueBots.map(toUserBotSafe);
+    } catch {
+        return [];
+    }
+}

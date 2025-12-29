@@ -113,11 +113,13 @@ export function generateToken(): string {
 
 export interface TagDoc {
     _id: ObjectId;
+    type: 'folder';
+    value: 'mixed' | 'recordings' | 'notes';
     label: string;
-    createdBy: ObjectId;
-    sharing?: {
-        isShared: boolean;
-        sharedWith: Array<{ userId: string; role: string }>;
+    sharing: {
+        sharedWith: Array<{ userId: string; accessLevel: 'owner' | 'write' | 'read' }>;
+        isPublic?: boolean;
+        sharedBots?: Array<{ userBotId: string }>;
     };
     createdAt: Date;
     updatedAt: Date;
@@ -125,21 +127,25 @@ export interface TagDoc {
 
 export interface CreateTagOptions {
     label?: string;
+    value?: 'mixed' | 'recordings' | 'notes';
     createdBy?: string;
-    sharedWith?: Array<{ userId: string; role: string }>;
+    sharedWith?: Array<{ userId: string; accessLevel: 'owner' | 'write' | 'read' }>;
+    isPublic?: boolean;
 }
 
 export async function createTagFixture(options: CreateTagOptions = {}): Promise<TagDoc> {
     const now = new Date();
-    const createdBy = options.createdBy ? new ObjectId(options.createdBy) : new ObjectId();
+    const createdBy = options.createdBy || new ObjectId().toString();
 
     const doc: TagDoc = {
         _id: new ObjectId(),
+        type: 'folder',
+        value: options.value || 'mixed',
         label: options.label || `test-tag-${Date.now()}`,
-        createdBy,
         sharing: {
-            isShared: (options.sharedWith?.length || 0) > 0,
-            sharedWith: options.sharedWith || [{ userId: createdBy.toString(), role: 'owner' }],
+            sharedWith: options.sharedWith || [{ userId: createdBy, accessLevel: 'owner' }],
+            isPublic: options.isPublic ?? false,
+            sharedBots: [],
         },
         createdAt: now,
         updatedAt: now,
@@ -350,5 +356,115 @@ export async function createBotInvocationFixture(
         updatedAt: now,
     };
     await testDb!.collection('bot_invocations').insertOne(doc);
+    return doc;
+}
+
+// ============================================
+// Note Fixtures
+// ============================================
+
+export interface NoteDoc {
+    _id: ObjectId;
+    userId: ObjectId;
+    type: 'write' | 'lego';
+    title: string;
+    content: any;
+    version: number;
+    tagId?: ObjectId;
+    isFavorite?: boolean;
+    isArchived?: boolean;
+    isTrashed?: boolean;
+    trashedAt?: Date;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateNoteOptions {
+    userId?: string;
+    type?: 'write' | 'lego';
+    title?: string;
+    content?: any;
+    version?: number;
+    tagId?: string;
+    isFavorite?: boolean;
+    isArchived?: boolean;
+    isTrashed?: boolean;
+    trashedAt?: Date;
+}
+
+export async function createNoteFixture(options: CreateNoteOptions = {}): Promise<NoteDoc> {
+    const now = new Date();
+
+    const doc: NoteDoc = {
+        _id: new ObjectId(),
+        userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
+        type: options.type || 'write',
+        title: options.title || 'Test Note',
+        content: options.content || { type: 'doc', content: [] },
+        version: options.version ?? 1,
+        tagId: options.tagId ? new ObjectId(options.tagId) : undefined,
+        isFavorite: options.isFavorite ?? false,
+        isArchived: options.isArchived ?? false,
+        isTrashed: options.isTrashed ?? false,
+        trashedAt: options.trashedAt,
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb!.collection('notes').insertOne(doc);
+    return doc;
+}
+
+// ============================================
+// Message Fixtures
+// ============================================
+
+export interface MessageDoc {
+    _id: ObjectId;
+    tagId: ObjectId;
+    threadId?: ObjectId;
+    userId: ObjectId;
+    senderType?: 'user' | 'bot';
+    userBotId?: ObjectId;
+    senderDisplayName?: string;
+    senderProfilePictureUrl?: string;
+    content: any;
+    mentions?: Array<{ type: string; id: string; handle: string }>;
+    hasThread?: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    editedAt?: Date;
+    deletedAt?: Date;
+}
+
+export interface CreateMessageOptions {
+    tagId?: string;
+    threadId?: string;
+    userId?: string;
+    senderType?: 'user' | 'bot';
+    userBotId?: string;
+    content?: any;
+    mentions?: Array<{ type: string; id: string; handle: string }>;
+    hasThread?: boolean;
+}
+
+export async function createMessageFixture(
+    options: CreateMessageOptions = {},
+): Promise<MessageDoc> {
+    const now = new Date();
+
+    const doc: MessageDoc = {
+        _id: new ObjectId(),
+        tagId: options.tagId ? new ObjectId(options.tagId) : new ObjectId(),
+        threadId: options.threadId ? new ObjectId(options.threadId) : undefined,
+        userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
+        senderType: options.senderType || 'user',
+        userBotId: options.userBotId ? new ObjectId(options.userBotId) : undefined,
+        content: options.content || { type: 'doc', content: [] },
+        mentions: options.mentions,
+        hasThread: options.hasThread ?? false,
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb!.collection('messages').insertOne(doc);
     return doc;
 }

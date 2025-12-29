@@ -9,9 +9,9 @@ export async function connectToDatabase(): Promise<Db> {
     if (db) {
         return db;
     }
-
+    console.log(`Connecting to MongoDB at ${config.mongodbUri}...`);
     try {
-        client = new MongoClient(config.mongodbUri, {
+        client = new MongoClient(config.mongodbUri + '', {
             maxPoolSize: 10,
             minPoolSize: 5,
             serverSelectionTimeoutMS: 5000,

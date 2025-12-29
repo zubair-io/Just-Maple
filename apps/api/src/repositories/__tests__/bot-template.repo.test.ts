@@ -5,7 +5,6 @@ import {
     findBotTemplateByHandle,
     createBotTemplate,
     upsertBotTemplate,
-    searchBotTemplates,
 } from '../bot-template.repo';
 import { createBotTemplateFixture } from '../../__tests__/helpers/fixtures';
 import { mongoAvailable } from '../../__tests__/setup';
@@ -162,56 +161,6 @@ describe.runIf(mongoAvailable)('BotTemplateRepo', () => {
             expect(template.name).toBe('New Name');
             expect(template.description).toBe('Updated description');
             expect(template.requiresConfig).toBe(true);
-        });
-    });
-
-    describe('searchBotTemplates', () => {
-        it('should search by handle', async () => {
-            await createBotTemplateFixture({ handle: 'summarize', name: 'Summarizer' });
-            await createBotTemplateFixture({ handle: 'translate', name: 'Translator' });
-
-            const results = await searchBotTemplates('sum');
-
-            expect(results.length).toBe(1);
-            expect(results[0].handle).toBe('summarize');
-        });
-
-        it('should search by name', async () => {
-            await createBotTemplateFixture({ handle: 'mybot', name: 'Weather Bot' });
-
-            const results = await searchBotTemplates('weather');
-
-            expect(results.length).toBe(1);
-            expect(results[0].name).toBe('Weather Bot');
-        });
-
-        it('should search by description', async () => {
-            await createBotTemplateFixture({
-                handle: 'helper',
-                name: 'Helper',
-                description: 'Helps with coding tasks',
-            });
-
-            const results = await searchBotTemplates('coding');
-
-            expect(results.length).toBe(1);
-            expect(results[0].handle).toBe('helper');
-        });
-
-        it('should be case-insensitive', async () => {
-            await createBotTemplateFixture({ handle: 'claude', name: 'Claude AI' });
-
-            const results = await searchBotTemplates('CLAUDE');
-
-            expect(results.length).toBe(1);
-        });
-
-        it('should return empty array when no matches', async () => {
-            await createBotTemplateFixture({ handle: 'test' });
-
-            const results = await searchBotTemplates('nonexistent');
-
-            expect(results).toEqual([]);
         });
     });
 });

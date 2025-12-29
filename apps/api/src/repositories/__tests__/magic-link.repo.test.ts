@@ -30,11 +30,12 @@ describe.runIf(mongoAvailable)('MagicLinkRepo', () => {
         it('should create a magic link for user', async () => {
             const user = await createUserFixture();
 
-            const token = await createMagicLink(user._id.toString(), user.email);
+            const result = await createMagicLink(user._id.toString(), user.email);
 
-            expect(token).toHaveLength(64);
+            expect(result.token).toHaveLength(64);
+            expect(result.code).toHaveLength(6);
 
-            const doc = await testDb.collection('magic_links').findOne({ token });
+            const doc = await testDb.collection('magic_links').findOne({ token: result.token });
             expect(doc).not.toBeNull();
             expect(doc!.email).toBe(user.email);
             expect(doc!.userId).toBe(user._id.toString());
@@ -43,24 +44,24 @@ describe.runIf(mongoAvailable)('MagicLinkRepo', () => {
         it('should delete existing magic links for same email', async () => {
             const user = await createUserFixture();
 
-            const firstToken = await createMagicLink(user._id.toString(), user.email);
-            const secondToken = await createMagicLink(user._id.toString(), user.email);
+            const first = await createMagicLink(user._id.toString(), user.email);
+            const second = await createMagicLink(user._id.toString(), user.email);
 
-            const firstDoc = await testDb.collection('magic_links').findOne({ token: firstToken });
+            const firstDoc = await testDb.collection('magic_links').findOne({ token: first.token });
             expect(firstDoc).toBeNull();
 
             const secondDoc = await testDb
                 .collection('magic_links')
-                .findOne({ token: secondToken });
+                .findOne({ token: second.token });
             expect(secondDoc).not.toBeNull();
         });
 
         it('should set expiration time', async () => {
             const user = await createUserFixture();
 
-            const token = await createMagicLink(user._id.toString(), user.email);
+            const result = await createMagicLink(user._id.toString(), user.email);
 
-            const doc = await testDb.collection('magic_links').findOne({ token });
+            const doc = await testDb.collection('magic_links').findOne({ token: result.token });
             expect(doc!.expiresAt.getTime()).toBeGreaterThan(Date.now());
             // Should expire in approximately 15 minutes
             expect(doc!.expiresAt.getTime()).toBeLessThan(Date.now() + 16 * 60 * 1000);

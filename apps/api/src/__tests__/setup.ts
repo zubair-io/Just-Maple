@@ -1,13 +1,21 @@
 import { MongoClient, Db } from 'mongodb';
-import { beforeAll, afterAll, afterEach, vi } from 'vitest';
+import { beforeAll, afterEach, vi } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
 
 let client: MongoClient | null = null;
 let testDb: Db | null = null;
-let mongoAvailable = false;
 
-// Use the test database on the development MongoDB
-const MONGODB_TEST_URI =
-    process.env.MONGODB_TEST_URI || 'mongodb://192.168.0.244:27017/just-maple-test';
+// Read MongoDB connection info from global setup
+const tmpFile = path.join(process.cwd(), '.test-tmp', 'mongo-uri.txt');
+let mongoAvailable = false;
+let mongoUri = '';
+
+if (fs.existsSync(tmpFile)) {
+    const data = JSON.parse(fs.readFileSync(tmpFile, 'utf-8'));
+    mongoAvailable = data.available;
+    mongoUri = data.uri || '';
+}
 
 // Mock the db/client module to use our test database
 vi.mock('../db/client', () => ({
@@ -17,36 +25,24 @@ vi.mock('../db/client', () => ({
 }));
 
 beforeAll(async () => {
+    if (!mongoAvailable || !mongoUri) {
+        console.warn('MongoDB not available - tests will be skipped');
+        return;
+    }
+
     try {
-        client = new MongoClient(MONGODB_TEST_URI, {
-            serverSelectionTimeoutMS: 5000, // Fail fast if MongoDB not available
+        // Connect to the MongoDB instance started in global setup
+        client = new MongoClient(mongoUri, {
+            serverSelectionTimeoutMS: 5000,
             connectTimeoutMS: 5000,
         });
         await client.connect();
-        testDb = client.db();
-        mongoAvailable = true;
+        testDb = client.db('just-maple-test');
 
-        // Create indexes like the real DB
-        await testDb.collection('users').createIndex({ email: 1 }, { unique: true });
-        await testDb.collection('magic_links').createIndex({ token: 1 }, { unique: true });
-        await testDb
-            .collection('magic_links')
-            .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-        await testDb.collection('magic_links').createIndex({ email: 1 });
-        await testDb.collection('passkeys').createIndex({ credentialId: 1 }, { unique: true });
-        await testDb.collection('passkeys').createIndex({ userId: 1 });
-
-        console.log('Connected to test database:', MONGODB_TEST_URI);
+        console.log('Connected to test database');
     } catch (error) {
-        console.warn('MongoDB not available - API integration tests will be skipped');
-        console.warn('To run API tests, ensure MongoDB is running at:', MONGODB_TEST_URI);
+        console.warn('Failed to connect to test database:', error);
         mongoAvailable = false;
-    }
-});
-
-afterAll(async () => {
-    if (client) {
-        await client.close();
     }
 });
 

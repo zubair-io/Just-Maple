@@ -203,7 +203,7 @@ export async function sendMagicLinkEmail(options: SendMagicLinkOptions): Promise
             throw error; // Don't silently fall back - surface the error
         }
     } else {
-        console.warn('AZURE_COMMUNICATION_CONNECTION_STRING not configured');
+        //   console.warn('AZURE_COMMUNICATION_CONNECTION_STRING not configured');
     }
 
     // Fallback to local mail
