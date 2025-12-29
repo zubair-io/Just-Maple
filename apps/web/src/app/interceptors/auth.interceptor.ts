@@ -1,13 +1,16 @@
 import { HttpInterceptorFn, HttpRequest, HttpHandlerFn } from '@angular/common/http';
 import { inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../../environments/environment';
+import { catchError, throwError } from 'rxjs';
 
 export const authInterceptor: HttpInterceptorFn = (
   req: HttpRequest<unknown>,
   next: HttpHandlerFn,
 ) => {
   const authService = inject(AuthService);
+  const router = inject(Router);
   const token = authService.accessToken();
 
   let url = req.url;
@@ -31,7 +34,18 @@ export const authInterceptor: HttpInterceptorFn = (
         Authorization: `Bearer ${token}`,
       },
     });
-    return next(authReq);
+    return next(authReq).pipe(
+      catchError((error) => {
+        // On 401, clear auth and redirect (avoid circular dependency by not calling authService.logout())
+        if (error.status === 401) {
+          console.log('[Auth] 401 Unauthorized - clearing token and redirecting to login');
+          // Clear token directly via the service's internal signal (doesn't trigger HTTP call)
+          authService.clearAuthOnExpiration();
+          router.navigate(['/login']);
+        }
+        return throwError(() => error);
+      }),
+    );
   }
 
   const updatedReq = req.clone({ url });

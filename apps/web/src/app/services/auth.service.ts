@@ -145,15 +145,22 @@ export class AuthService {
         const auth: StoredAuth = JSON.parse(stored);
         this._accessToken.set(auth.accessToken);
         this._user.set(auth.user);
-
-        // Fetch fresh user data from server in background to ensure up-to-date info
-        // Don't await - let it update asynchronously
-        this.fetchCurrentUser().catch(() => {});
       } catch {
         localStorage.removeItem(this.getStorageKey());
       }
     }
     this.markInitReady();
+
+    // Defer token refresh until after service initialization completes
+    // This avoids circular dependency with the HTTP interceptor
+    if (stored) {
+      queueMicrotask(() => {
+        this.refreshToken().catch(() => {
+          // If refresh fails (token expired), fetch current user as fallback
+          this.fetchCurrentUser().catch(() => {});
+        });
+      });
+    }
   }
 
   private markInitReady(): void {
@@ -286,6 +293,34 @@ export class AuthService {
     }
   }
 
+  /**
+   * Refresh the access token to extend the session by 14 days.
+   * Call this when the user opens the app with a valid token.
+   */
+  async refreshToken(): Promise<boolean> {
+    const currentToken = this._accessToken();
+    if (!currentToken) {
+      return false;
+    }
+
+    try {
+      const response = await firstValueFrom(this.http.post<AuthResponse>('/api/auth/refresh', {}));
+
+      this._accessToken.set(response.accessToken);
+      this._user.set(response.user);
+      this.saveToStorage({
+        accessToken: response.accessToken,
+        user: response.user,
+      });
+
+      console.log('[Auth] Token refreshed successfully');
+      return true;
+    } catch (error) {
+      console.log('[Auth] Token refresh failed:', error);
+      return false;
+    }
+  }
+
   async logout(): Promise<void> {
     try {
       await firstValueFrom(this.http.post('/api/auth/logout', {}));
@@ -305,6 +340,26 @@ export class AuthService {
     }
 
     await this.router.navigate(['/login']);
+  }
+
+  /**
+   * Clear authentication state when token expires (called by interceptor on 401).
+   * Does not make HTTP call to avoid circular dependency.
+   * Does not navigate - the interceptor handles navigation.
+   */
+  clearAuthOnExpiration(): void {
+    this._accessToken.set(null);
+    this._user.set(null);
+    this.clearStorage();
+
+    // Clear all cached data from IndexedDB
+    try {
+      this.indexedDB.clearAll().catch(() => {
+        // Ignore IndexedDB errors
+      });
+    } catch {
+      // Ignore errors
+    }
   }
 
   // ============ PASSKEY METHODS ============

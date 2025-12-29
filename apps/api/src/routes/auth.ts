@@ -233,6 +233,35 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         return { user };
     })
 
+    // Refresh token (extends session by 14 days)
+    .post('/refresh', async ({ jwt, request, set }) => {
+        const user = await verifyAndGetUser(
+            (token) => jwt.verify(token) as Promise<JWTPayload | false>,
+            request.headers.get('authorization'),
+        );
+
+        if (!user) {
+            set.status = 401;
+            return { error: 'Unauthorized', message: 'Valid authentication required' };
+        }
+
+        // Generate new JWT with fresh 14-day expiration
+        const accessToken = await jwt.sign({
+            sub: user._id,
+            email: user.email,
+        });
+
+        return {
+            accessToken,
+            user: {
+                _id: user._id,
+                email: user.email,
+                displayName: user.displayName,
+                profilePictureUrl: user.profilePictureUrl,
+            },
+        };
+    })
+
     // Logout (client should clear token)
     .post('/logout', () => {
         // Server-side logout is a no-op for JWT
