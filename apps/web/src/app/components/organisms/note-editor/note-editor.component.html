@@ -1,7 +1,7 @@
 <div class="editor-container" [class.readonly]="!editable()">
   <!-- Toolbar -->
   @if (editable()) {
-    <div class="toolbar">
+    <div class="toolbar flex items-center gap-1 mb-2 sticky top-0 z-10 justify-center">
       <button
         type="button"
         (click)="toggleHeading(1)"
