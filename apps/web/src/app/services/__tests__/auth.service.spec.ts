@@ -4,6 +4,7 @@ import { HttpClientTestingModule, HttpTestingController } from '@angular/common/
 import { Router } from '@angular/router';
 import { AuthService } from '../auth.service';
 import { PLATFORM_ID } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -81,7 +82,8 @@ describe('AuthService', () => {
 
   describe('requestMagicLink', () => {
     it('should send POST request to /api/auth/magic-link', async () => {
-      const promise = service.requestMagicLink('test@example.com');
+      const observable = service.requestMagicLink('test@example.com');
+      const promise = firstValueFrom(observable);
 
       const req = httpMock.expectOne('/api/auth/magic-link');
       expect(req.request.method).toBe('POST');
@@ -186,14 +188,15 @@ describe('AuthService', () => {
 
   describe('fetchCurrentUser', () => {
     it('should return null if no token', async () => {
-      const result = await service.fetchCurrentUser();
+      const result = await firstValueFrom(service.fetchCurrentUser());
       expect(result).toBeNull();
     });
 
     it('should fetch user if token exists', async () => {
       service['_accessToken'].set('test-token');
 
-      const promise = service.fetchCurrentUser();
+      const observable = service.fetchCurrentUser();
+      const promise = firstValueFrom(observable);
 
       const req = httpMock.expectOne('/api/auth/me');
       req.flush({ user: { _id: '123', email: 'test@example.com' } });

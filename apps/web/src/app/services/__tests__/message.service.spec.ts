@@ -1,18 +1,19 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { PLATFORM_ID } from '@angular/core';
 import { MessageService } from '../message.service';
 import { RealtimeService } from '../realtime.service';
 import { IndexedDBService } from '../indexed-db.service';
-import { Subject } from 'rxjs';
+import { Subject, firstValueFrom } from 'rxjs';
 import type { Message, ChatEvent, NoteContent } from '@maple/shared';
 
 describe('MessageService', () => {
   let service: MessageService;
   let httpMock: HttpTestingController;
   let realtimeEventsSubject: Subject<ChatEvent>;
-  let mockIndexedDB: jasmine.SpyObj<IndexedDBService>;
-  let mockRealtimeService: jasmine.SpyObj<RealtimeService>;
+  let mockIndexedDB: Partial<IndexedDBService>;
+  let mockRealtimeService: Partial<RealtimeService>;
 
   const mockMessage: Message = {
     _id: 'msg-1',
@@ -29,21 +30,20 @@ describe('MessageService', () => {
   beforeEach(() => {
     realtimeEventsSubject = new Subject<ChatEvent>();
 
-    mockIndexedDB = jasmine.createSpyObj('IndexedDBService', [
-      'getAll',
-      'put',
-      'putMany',
-      'delete',
-      'clear',
-    ]);
-    mockIndexedDB.getAll.and.returnValue(Promise.resolve([]));
-    mockIndexedDB.putMany.and.returnValue(Promise.resolve());
-    mockIndexedDB.delete.and.returnValue(Promise.resolve());
+    mockIndexedDB = {
+      getAll: vi.fn().mockResolvedValue([]),
+      put: vi.fn().mockResolvedValue(undefined),
+      putMany: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    };
 
-    mockRealtimeService = jasmine.createSpyObj('RealtimeService', ['sendTyping'], {
+    mockRealtimeService = {
+      sendTyping: vi.fn(),
       events$: realtimeEventsSubject.asObservable(),
       typing$: new Subject().asObservable(),
-    });
+      status: vi.fn(),
+    };
 
     TestBed.configureTestingModule({
       imports: [HttpClientTestingModule],
@@ -64,7 +64,7 @@ describe('MessageService', () => {
   });
 
   describe('loadMessages', () => {
-    it('should load messages for a tag', (done) => {
+    it('should load messages for a tag', async () => {
       const messages = [mockMessage];
 
       service.loadMessages('tag-1').subscribe((result) => {
@@ -78,7 +78,7 @@ describe('MessageService', () => {
       req.flush({ messages });
     });
 
-    it('should set currentTagId when loading messages', (done) => {
+    it('should set currentTagId when loading messages', async () => {
       service.loadMessages('tag-1').subscribe(() => {
         // Verify the currentTagId is set by checking messagesForTag filter works
         expect(service.messagesForTag().length).toBe(1);
@@ -89,7 +89,7 @@ describe('MessageService', () => {
       req.flush({ messages: [mockMessage] });
     });
 
-    it('should handle errors', (done) => {
+    it('should handle errors', async () => {
       service.loadMessages('tag-1').subscribe({
         next: (result) => {
           expect(result).toEqual([]);
@@ -104,7 +104,7 @@ describe('MessageService', () => {
   });
 
   describe('sendMessage', () => {
-    it('should send a message and update store', (done) => {
+    it('should send a message and update store', async () => {
       const content: NoteContent = {
         type: 'doc',
         content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test' }] }],
@@ -117,7 +117,7 @@ describe('MessageService', () => {
 
       service.sendMessage('tag-1', content).subscribe((result) => {
         expect(result).toEqual(mockMessage);
-        expect(service.messagesForTag().some((m) => m._id === mockMessage._id)).toBeTrue();
+        expect(service.messagesForTag().some((m) => m._id === mockMessage._id)).toBe(true);
         done();
       });
 
@@ -142,14 +142,14 @@ describe('MessageService', () => {
 
       // Should have temp message before response
       const messages = service.messagesForTag();
-      expect(messages.some((m) => m._id.startsWith('temp-'))).toBeTrue();
+      expect(messages.some((m) => m._id.startsWith('temp-'))).toBe(true);
 
       // Complete the request
       const req = httpMock.expectOne('/api/tags/tag-1/messages');
       req.flush({ message: mockMessage });
     });
 
-    it('should rollback on error', (done) => {
+    it('should rollback on error', async () => {
       const content: NoteContent = {
         type: 'doc',
         content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Test' }] }],
@@ -164,7 +164,7 @@ describe('MessageService', () => {
         error: () => {
           // Temp message should be removed
           const messages = service.messagesForTag();
-          expect(messages.some((m) => m._id.startsWith('temp-'))).toBeFalse();
+          expect(messages.some((m) => m._id.startsWith('temp-'))).toBe(false);
           done();
         },
       });
@@ -196,7 +196,7 @@ describe('MessageService', () => {
         timestamp: new Date().toISOString(),
       });
 
-      expect(service.messagesForTag().some((m) => m._id === 'msg-2')).toBeTrue();
+      expect(service.messagesForTag().some((m) => m._id === 'msg-2')).toBe(true);
     });
 
     it('should ignore message from realtime event for different tag', () => {
@@ -214,7 +214,7 @@ describe('MessageService', () => {
         timestamp: new Date().toISOString(),
       });
 
-      expect(service.messagesForTag().some((m) => m._id === 'msg-2')).toBeFalse();
+      expect(service.messagesForTag().some((m) => m._id === 'msg-2')).toBe(false);
     });
 
     it('should update message from realtime edited event', () => {
@@ -258,12 +258,12 @@ describe('MessageService', () => {
         timestamp: new Date().toISOString(),
       });
 
-      expect(service.messagesForTag().some((m) => m._id === mockMessage._id)).toBeFalse();
+      expect(service.messagesForTag().some((m) => m._id === mockMessage._id)).toBe(false);
     });
   });
 
   describe('unread counts', () => {
-    it('should load unread counts', (done) => {
+    it('should load unread counts', async () => {
       const counts = [
         { tagId: 'tag-1', count: 5 },
         { tagId: 'tag-2', count: 3 },
@@ -282,7 +282,7 @@ describe('MessageService', () => {
       req.flush({ counts });
     });
 
-    it('should mark tag as read', (done) => {
+    it('should mark tag as read', async () => {
       // First load unread counts
       service.loadUnreadCounts().subscribe();
       const countsReq = httpMock.expectOne('/api/unread');

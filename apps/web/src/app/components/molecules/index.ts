@@ -7,3 +7,4 @@ export {
 } from './notification-filters/notification-filters.component';
 export { MemberAvatarGroupComponent } from './member-avatar-group/member-avatar-group.component';
 export { SettingsHeaderComponent } from './settings-header/settings-header.component';
+export { OfflineIndicatorComponent } from './offline-indicator/offline-indicator.component';

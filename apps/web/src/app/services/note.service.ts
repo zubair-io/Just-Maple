@@ -23,6 +23,7 @@ import {
   getActiveEntity,
 } from '@ngneat/elf-entities';
 import { IndexedDBService } from './indexed-db.service';
+import { NetworkService } from './network.service';
 import { DB_STORES } from './db-stores';
 import type {
   Note,
@@ -46,6 +47,7 @@ export class NoteService {
   private readonly http = inject(HttpClient);
   private readonly indexedDB = inject(IndexedDBService);
   private readonly platformId = inject(PLATFORM_ID);
+  private readonly network = inject(NetworkService);
 
   // ELF Store
   private readonly store = createStore(
@@ -124,10 +126,19 @@ export class NoteService {
       }),
       map((response) => response.notes),
       catchError((err) => {
-        const message = err?.error?.error || 'Failed to load notes';
+        let message = err?.error?.error || 'Failed to load notes';
+
+        // Network-aware error message
+        if (!this.network.isOnline()) {
+          message = 'Working offline - showing cached data';
+        }
+
         this._error.set(message);
         this._isLoading.set(false);
-        return of([]);
+
+        // Return cached data instead of empty array
+        const cached = this.store.query(getAllEntities());
+        return of(cached);
       }),
     );
   }

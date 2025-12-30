@@ -7,6 +7,7 @@ import { TagService } from '../../../services/tag.service';
 import { NoteService } from '../../../services/note.service';
 import { MessageService } from '../../../services/message.service';
 import { NotificationService } from '../../../services/notification.service';
+import { NetworkService } from '../../../services/network.service';
 import { ProfileAvatarComponent } from '../../atoms';
 import type { Note } from '@maple/shared';
 
@@ -24,6 +25,7 @@ export class SidebarComponent implements OnInit {
   readonly noteService = inject(NoteService);
   readonly messageService = inject(MessageService);
   readonly notificationService = inject(NotificationService);
+  readonly networkService = inject(NetworkService);
 
   readonly selectedTagId = input<string | null>(null);
   readonly selectedNoteId = input<string | null>(null);
@@ -67,6 +69,16 @@ export class SidebarComponent implements OnInit {
 
   readonly notificationUnreadCount = computed(() => {
     return this.notificationService.unreadCount();
+  });
+
+  readonly isOnline = this.networkService.isOnline;
+
+  readonly statusText = computed(() => {
+    return this.networkService.isOnline() ? 'Online' : 'Offline';
+  });
+
+  readonly statusColor = computed(() => {
+    return this.networkService.isOnline() ? 'bg-green-500' : 'bg-gray-400';
   });
 
   ngOnInit(): void {

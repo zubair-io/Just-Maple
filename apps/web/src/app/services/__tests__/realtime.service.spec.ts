@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { PLATFORM_ID, NgZone } from '@angular/core';
 import { RealtimeService } from '../realtime.service';
@@ -6,8 +7,8 @@ import { signal } from '@angular/core';
 
 describe('RealtimeService', () => {
   let service: RealtimeService;
-  let mockAuthService: jasmine.SpyObj<AuthService>;
-  let mockWebSocket: jasmine.SpyObj<WebSocket>;
+  let mockAuthService: Partial<AuthService>;
+  let mockWebSocket: Partial<WebSocket>;
   let originalWebSocket: typeof WebSocket;
 
   beforeEach(() => {
@@ -15,20 +16,20 @@ describe('RealtimeService', () => {
     originalWebSocket = (window as unknown as { WebSocket: typeof WebSocket }).WebSocket;
 
     // Create mock WebSocket
-    mockWebSocket = jasmine.createSpyObj('WebSocket', ['send', 'close'], {
+    mockWebSocket = {
+      send: vi.fn(),
+      close: vi.fn(),
       readyState: WebSocket.OPEN,
-    });
+    };
 
     // Mock WebSocket constructor
-    (window as unknown as { WebSocket: typeof WebSocket }).WebSocket = jasmine
-      .createSpy('WebSocket')
-      .and.callFake(() => {
-        return mockWebSocket;
-      }) as unknown as typeof WebSocket;
+    const WebSocketSpy = vi.fn(() => mockWebSocket);
+    (window as unknown as { WebSocket: typeof WebSocket }).WebSocket =
+      WebSocketSpy as unknown as typeof WebSocket;
 
-    mockAuthService = jasmine.createSpyObj('AuthService', [], {
+    mockAuthService = {
       accessToken: signal('test-token'),
-    });
+    };
 
     TestBed.configureTestingModule({
       providers: [
@@ -52,7 +53,7 @@ describe('RealtimeService', () => {
       await service.connect();
 
       expect(window.WebSocket).toHaveBeenCalledWith(
-        jasmine.stringMatching(/ws:\/\/localhost:7071\/ws\/chat\?token=test-token/),
+        expect.stringMatching(/ws:\/\/localhost:7071\/ws\/chat\?token=test-token/),
       );
     });
 
@@ -114,7 +115,7 @@ describe('RealtimeService', () => {
 
       service.typing$.subscribe((event) => {
         expect(event.tagId).toBe('tag-1');
-        expect(event.isTyping).toBeTrue();
+        expect(event.isTyping).toBe(true);
         done();
       });
 

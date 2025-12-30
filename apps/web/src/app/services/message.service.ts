@@ -18,6 +18,7 @@ import {
 import { IndexedDBService } from './indexed-db.service';
 import { RealtimeService } from './realtime.service';
 import { AuthService } from './auth.service';
+import { NetworkService } from './network.service';
 import { DB_STORES } from './db-stores';
 import type {
   Message,
@@ -37,6 +38,7 @@ export class MessageService {
   private readonly authService = inject(AuthService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly network = inject(NetworkService);
 
   // ELF Store
   private readonly store = createStore(
@@ -68,12 +70,20 @@ export class MessageService {
 
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
+      this.hydrateFromIndexedDB();
       this.setupRealtimeHandlers();
     }
 
     this.destroyRef.onDestroy(() => {
       this.realtimeSubscription?.unsubscribe();
     });
+  }
+
+  private async hydrateFromIndexedDB(): Promise<void> {
+    const cached = await this.indexedDB.getAll<Message>(STORE_NAME);
+    if (cached.length > 0 && this.store.query(getAllEntities()).length === 0) {
+      this.store.update(setEntities(cached));
+    }
   }
 
   private setupRealtimeHandlers(): void {
@@ -177,10 +187,19 @@ export class MessageService {
       }),
       map((response) => response.messages),
       catchError((err) => {
-        const message = err?.error?.error || 'Failed to load messages';
+        let message = err?.error?.error || 'Failed to load messages';
+
+        // Network-aware error message
+        if (!this.network.isOnline()) {
+          message = 'Working offline - showing cached data';
+        }
+
         this._error.set(message);
         this._isLoading.set(false);
-        return of([]);
+
+        // Return cached data instead of empty array
+        const cached = this.store.query(getAllEntities());
+        return of(cached);
       }),
     );
   }
@@ -215,8 +234,17 @@ export class MessageService {
         }),
         map((response) => response.messages),
         catchError((err) => {
-          this._error.set(err?.error?.error || 'Failed to load more messages');
+          let message = err?.error?.error || 'Failed to load more messages';
+
+          // Network-aware error message
+          if (!this.network.isOnline()) {
+            message = 'Working offline - cannot load older messages';
+          }
+
+          this._error.set(message);
           this._isLoading.set(false);
+
+          // Return empty array for pagination errors (can't show cached "older" messages)
           return of([]);
         }),
       );

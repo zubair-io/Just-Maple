@@ -24,6 +24,7 @@ import {
 } from '@ngneat/elf-entities';
 import { IndexedDBService } from './indexed-db.service';
 import { AuthService } from './auth.service';
+import { NetworkService } from './network.service';
 import { DB_STORES } from './db-stores';
 import type {
   Tag,
@@ -42,6 +43,7 @@ export class TagService {
   private readonly indexedDB = inject(IndexedDBService);
   private readonly authService = inject(AuthService);
   private readonly platformId = inject(PLATFORM_ID);
+  private readonly network = inject(NetworkService);
 
   // ELF Store
   private readonly store = createStore(
@@ -101,10 +103,19 @@ export class TagService {
       }),
       map((response) => response.tags),
       catchError((err) => {
-        const message = err?.error?.error || 'Failed to load tags';
+        let message = err?.error?.error || 'Failed to load tags';
+
+        // Network-aware error message
+        if (!this.network.isOnline()) {
+          message = 'Working offline - showing cached data';
+        }
+
         this._error.set(message);
         this._isLoading.set(false);
-        return of([]);
+
+        // Return cached data instead of empty array
+        const cached = this.store.query(getAllEntities());
+        return of(cached);
       }),
     );
   }
