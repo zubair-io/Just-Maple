@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { PreferencesService } from '../../services/preferences.service';
 import { NotificationService } from '../../services/notification.service';
-import { ProfileAvatarComponent } from '../../components';
+import { ProfileAvatarComponent, SettingsHeaderComponent } from '../../components';
 
 interface PasskeyInfo {
   id: string;
@@ -18,7 +18,7 @@ interface PasskeyInfo {
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule, ProfileAvatarComponent],
+  imports: [CommonModule, FormsModule, ProfileAvatarComponent, SettingsHeaderComponent],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',
 })
@@ -62,19 +62,21 @@ export class SettingsComponent implements OnInit {
     }
   }
 
-  async loadPasskeys(): Promise<void> {
+  loadPasskeys(): void {
     this.isLoadingPasskeys.set(true);
-    try {
-      const passkeys = await this.authService.getPasskeys();
-      this.passkeys.set(passkeys);
-    } catch {
-      // Silently fail - passkeys will just show empty
-    } finally {
-      this.isLoadingPasskeys.set(false);
-    }
+    this.authService.getPasskeys().subscribe({
+      next: (passkeys) => {
+        this.passkeys.set(passkeys);
+        this.isLoadingPasskeys.set(false);
+      },
+      error: () => {
+        // Silently fail - passkeys will just show empty
+        this.isLoadingPasskeys.set(false);
+      },
+    });
   }
 
-  async addPasskey(): Promise<void> {
+  addPasskey(): void {
     if (!this.authService.supportsPasskeys()) {
       this.passkeyError.set('Passkeys are not supported on this device or browser');
       return;
@@ -84,18 +86,20 @@ export class SettingsComponent implements OnInit {
     this.passkeyError.set(null);
     this.passkeySuccess.set(null);
 
-    try {
-      const passkey = await this.authService.registerPasskey();
-      this.passkeys.update((list) => [...list, passkey]);
-      this.passkeySuccess.set('Passkey added successfully!');
+    this.authService.registerPasskey().subscribe({
+      next: (passkey) => {
+        this.passkeys.update((list) => [...list, passkey]);
+        this.passkeySuccess.set('Passkey added successfully!');
 
-      // Clear success message after 3 seconds
-      setTimeout(() => this.passkeySuccess.set(null), 3000);
-    } catch (err: any) {
-      this.passkeyError.set(err.message || 'Failed to add passkey');
-    } finally {
-      this.isAddingPasskey.set(false);
-    }
+        // Clear success message after 3 seconds
+        setTimeout(() => this.passkeySuccess.set(null), 3000);
+        this.isAddingPasskey.set(false);
+      },
+      error: (err: any) => {
+        this.passkeyError.set(err.message || 'Failed to add passkey');
+        this.isAddingPasskey.set(false);
+      },
+    });
   }
 
   formatDate(dateString: string): string {
@@ -139,8 +143,8 @@ export class SettingsComponent implements OnInit {
   }
 
   // Server Management
-  async switchServer(serverId: string): Promise<void> {
-    await this.preferences.setActiveServer(serverId);
+  switchServer(serverId: string): void {
+    this.preferences.setActiveServer(serverId).subscribe();
   }
 
   openAddServerDialog(): void {
@@ -156,7 +160,7 @@ export class SettingsComponent implements OnInit {
     this.showAddServerDialog.set(false);
   }
 
-  async addServer(): Promise<void> {
+  addServer(): void {
     const name = this.newServerName().trim();
     const url = this.newServerUrl().trim();
     const apiUrl = this.newServerApiUrl().trim();
@@ -180,17 +184,19 @@ export class SettingsComponent implements OnInit {
 
     this.serverError.set(null);
 
-    try {
-      await this.preferences.addServer(name, url, apiUrl || undefined);
-      this.closeAddServerDialog();
-    } catch (err: any) {
-      this.serverError.set(err.message || 'Failed to add server');
-    }
+    this.preferences.addServer(name, url, apiUrl || undefined).subscribe({
+      next: () => {
+        this.closeAddServerDialog();
+      },
+      error: (err: any) => {
+        this.serverError.set(err.message || 'Failed to add server');
+      },
+    });
   }
 
-  async removeServer(serverId: string): Promise<void> {
+  removeServer(serverId: string): void {
     if (confirm('Are you sure you want to remove this server?')) {
-      await this.preferences.removeServer(serverId);
+      this.preferences.removeServer(serverId).subscribe();
     }
   }
 
@@ -222,25 +228,27 @@ export class SettingsComponent implements OnInit {
   }
 
   // Profile Management
-  async saveDisplayName(): Promise<void> {
+  saveDisplayName(): void {
     this.isSavingName.set(true);
     this.nameError.set(null);
     this.nameSuccess.set(null);
 
-    try {
-      await this.authService.updateDisplayName(this.displayName().trim() || undefined);
-      this.nameSuccess.set('Display name updated!');
+    this.authService.updateDisplayName(this.displayName().trim() || undefined).subscribe({
+      next: () => {
+        this.nameSuccess.set('Display name updated!');
 
-      // Clear success message after 3 seconds
-      setTimeout(() => this.nameSuccess.set(null), 3000);
-    } catch (err: any) {
-      this.nameError.set(err.message || 'Failed to update display name');
-    } finally {
-      this.isSavingName.set(false);
-    }
+        // Clear success message after 3 seconds
+        setTimeout(() => this.nameSuccess.set(null), 3000);
+        this.isSavingName.set(false);
+      },
+      error: (err: any) => {
+        this.nameError.set(err.message || 'Failed to update display name');
+        this.isSavingName.set(false);
+      },
+    });
   }
 
-  async onProfilePictureSelected(event: Event): Promise<void> {
+  onProfilePictureSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
 
@@ -264,23 +272,27 @@ export class SettingsComponent implements OnInit {
     this.pictureError.set(null);
     this.pictureSuccess.set(null);
 
-    try {
-      await this.authService.uploadProfilePicture(file);
-      this.pictureSuccess.set('Profile picture updated!');
-      // Update local preview
-      const user = this.authService.user();
-      if (user?.profilePictureUrl) {
-        this.profilePictureUrl.set(user.profilePictureUrl);
-      }
+    this.authService.uploadProfilePicture(file).subscribe({
+      next: () => {
+        this.pictureSuccess.set('Profile picture updated!');
+        // Update local preview
+        const user = this.authService.user();
+        if (user?.profilePictureUrl) {
+          this.profilePictureUrl.set(user.profilePictureUrl);
+        }
 
-      // Clear success message after 3 seconds
-      setTimeout(() => this.pictureSuccess.set(null), 3000);
-    } catch (err: any) {
-      this.pictureError.set(err.message || 'Failed to upload profile picture');
-    } finally {
-      this.isUploadingPicture.set(false);
-      // Clear the input so the same file can be selected again
-      input.value = '';
-    }
+        // Clear success message after 3 seconds
+        setTimeout(() => this.pictureSuccess.set(null), 3000);
+        this.isUploadingPicture.set(false);
+        // Clear the input so the same file can be selected again
+        input.value = '';
+      },
+      error: (err: any) => {
+        this.pictureError.set(err.message || 'Failed to upload profile picture');
+        this.isUploadingPicture.set(false);
+        // Clear the input so the same file can be selected again
+        input.value = '';
+      },
+    });
   }
 }

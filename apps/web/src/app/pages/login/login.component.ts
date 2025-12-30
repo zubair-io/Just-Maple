@@ -31,23 +31,25 @@ export class LoginComponent {
   readonly code = signal('');
   readonly codeError = signal<string | null>(null);
 
-  async onSubmit(): Promise<void> {
+  onSubmit(): void {
     if (!this.email()) return;
 
-    try {
-      const response = await this.authService.requestMagicLink(this.email());
-      this.emailSent.set(true);
+    this.authService.requestMagicLink(this.email()).subscribe({
+      next: (response) => {
+        this.emailSent.set(true);
 
-      // In dev mode, store the token and code for easy testing
-      if (response.devToken) {
-        this.devToken.set(response.devToken);
-      }
-      if (response.devCode) {
-        this.devCode.set(response.devCode);
-      }
-    } catch {
-      // Error is handled by auth service
-    }
+        // In dev mode, store the token and code for easy testing
+        if (response.devToken) {
+          this.devToken.set(response.devToken);
+        }
+        if (response.devCode) {
+          this.devCode.set(response.devCode);
+        }
+      },
+      error: () => {
+        // Error is handled by auth service
+      },
+    });
   }
 
   async verifyCode(): Promise<void> {

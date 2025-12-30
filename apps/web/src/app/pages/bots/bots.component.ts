@@ -4,12 +4,13 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { BotService, type EnrichedUserBot } from '../../services/bot.service';
 import { ProfileAvatarComponent } from '../../components/atoms/profile-avatar/profile-avatar.component';
+import { SettingsHeaderComponent } from '../../components';
 import type { BotTemplate } from '@maple/shared';
 
 @Component({
   selector: 'app-bots',
   standalone: true,
-  imports: [CommonModule, FormsModule, ProfileAvatarComponent],
+  imports: [CommonModule, FormsModule, ProfileAvatarComponent, SettingsHeaderComponent],
   templateUrl: './bots.component.html',
   styleUrl: './bots.component.scss',
 })

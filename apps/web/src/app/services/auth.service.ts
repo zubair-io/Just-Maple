@@ -2,7 +2,19 @@ import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { firstValueFrom, take, Observable, ReplaySubject } from 'rxjs';
+import {
+  firstValueFrom,
+  take,
+  Observable,
+  ReplaySubject,
+  tap,
+  catchError,
+  throwError,
+  of,
+  map,
+  switchMap,
+  from,
+} from 'rxjs';
 import {
   startRegistration,
   startAuthentication,
@@ -155,9 +167,11 @@ export class AuthService {
     // This avoids circular dependency with the HTTP interceptor
     if (stored) {
       queueMicrotask(() => {
-        this.refreshToken().catch(() => {
-          // If refresh fails (token expired), fetch current user as fallback
-          this.fetchCurrentUser().catch(() => {});
+        this.refreshToken().subscribe({
+          error: () => {
+            // If refresh fails (token expired), fetch current user as fallback
+            this.fetchCurrentUser().subscribe();
+          },
         });
       });
     }
@@ -200,22 +214,19 @@ export class AuthService {
     }
   }
 
-  async requestMagicLink(email: string): Promise<MagicLinkResponse> {
+  requestMagicLink(email: string): Observable<MagicLinkResponse> {
     this._isLoading.set(true);
     this._error.set(null);
 
-    try {
-      const response = await firstValueFrom(
-        this.http.post<MagicLinkResponse>('/api/auth/magic-link', { email }),
-      );
-      return response;
-    } catch (err: any) {
-      const message = err?.error?.error || 'Failed to send magic link';
-      this._error.set(message);
-      throw new Error(message);
-    } finally {
-      this._isLoading.set(false);
-    }
+    return this.http.post<MagicLinkResponse>('/api/auth/magic-link', { email }).pipe(
+      tap(() => this._isLoading.set(false)),
+      catchError((err: any) => {
+        const message = err?.error?.error || 'Failed to send magic link';
+        this._error.set(message);
+        this._isLoading.set(false);
+        return throwError(() => new Error(message));
+      }),
+    );
   }
 
   async verifyToken(token: string): Promise<void> {
@@ -272,53 +283,51 @@ export class AuthService {
     }
   }
 
-  async fetchCurrentUser(): Promise<UserResponse | null> {
+  fetchCurrentUser(): Observable<UserResponse | null> {
     if (!this._accessToken()) {
-      return null;
+      return of(null);
     }
 
-    try {
-      const response = await firstValueFrom(this.http.get<{ user: UserResponse }>('/api/auth/me'));
-      this._user.set(response.user);
+    return this.http.get<{ user: UserResponse }>('/api/auth/me').pipe(
+      tap((response) => {
+        this._user.set(response.user);
 
-      // Update storage with fresh user data
-      const token = this._accessToken();
-      if (token) {
-        this.saveToStorage({ accessToken: token, user: response.user });
-      }
-
-      return response.user;
-    } catch {
-      return null;
-    }
+        // Update storage with fresh user data
+        const token = this._accessToken();
+        if (token) {
+          this.saveToStorage({ accessToken: token, user: response.user });
+        }
+      }),
+      map((response) => response.user),
+      catchError(() => of(null)),
+    );
   }
 
   /**
    * Refresh the access token to extend the session by 14 days.
    * Call this when the user opens the app with a valid token.
    */
-  async refreshToken(): Promise<boolean> {
+  refreshToken(): Observable<boolean> {
     const currentToken = this._accessToken();
     if (!currentToken) {
-      return false;
+      return of(false);
     }
 
-    try {
-      const response = await firstValueFrom(this.http.post<AuthResponse>('/api/auth/refresh', {}));
-
-      this._accessToken.set(response.accessToken);
-      this._user.set(response.user);
-      this.saveToStorage({
-        accessToken: response.accessToken,
-        user: response.user,
-      });
-
-      console.log('[Auth] Token refreshed successfully');
-      return true;
-    } catch (error) {
-      console.log('[Auth] Token refresh failed:', error);
-      return false;
-    }
+    return this.http.post<AuthResponse>('/api/auth/refresh', {}).pipe(
+      tap((response) => {
+        this._accessToken.set(response.accessToken);
+        this._user.set(response.user);
+        this.saveToStorage({
+          accessToken: response.accessToken,
+          user: response.user,
+        });
+      }),
+      map(() => true),
+      catchError((error) => {
+        console.log('[Auth] Token refresh failed:', error);
+        return of(false);
+      }),
+    );
   }
 
   async logout(): Promise<void> {
@@ -364,38 +373,32 @@ export class AuthService {
 
   // ============ PASSKEY METHODS ============
 
-  async registerPasskey(): Promise<PasskeyInfo> {
+  registerPasskey(): Observable<PasskeyInfo> {
     this._isLoading.set(true);
     this._error.set(null);
 
-    try {
-      // Get registration options from server
-      const options = await firstValueFrom(
-        this.http.post<PublicKeyCredentialCreationOptionsJSON>(
-          '/api/auth/passkey/register/start',
-          {},
+    return this.http
+      .post<PublicKeyCredentialCreationOptionsJSON>('/api/auth/passkey/register/start', {})
+      .pipe(
+        switchMap((options) =>
+          // Convert WebAuthn Promise to Observable
+          from(startRegistration({ optionsJSON: options })),
         ),
-      );
-
-      // Start WebAuthn registration in browser
-      const credential = await startRegistration({ optionsJSON: options });
-
-      // Send credential to server
-      const result = await firstValueFrom(
-        this.http.post<{ verified: boolean; passkey: PasskeyInfo }>(
-          '/api/auth/passkey/register/finish',
-          credential,
+        switchMap((credential) =>
+          this.http.post<{ verified: boolean; passkey: PasskeyInfo }>(
+            '/api/auth/passkey/register/finish',
+            credential,
+          ),
         ),
+        map((result) => result.passkey),
+        tap(() => this._isLoading.set(false)),
+        catchError((err: any) => {
+          const message = err?.error?.error || err?.message || 'Failed to register passkey';
+          this._error.set(message);
+          this._isLoading.set(false);
+          return throwError(() => new Error(message));
+        }),
       );
-
-      return result.passkey;
-    } catch (err: any) {
-      const message = err?.error?.error || err?.message || 'Failed to register passkey';
-      this._error.set(message);
-      throw new Error(message);
-    } finally {
-      this._isLoading.set(false);
-    }
   }
 
   async loginWithPasskey(email?: string): Promise<void> {
@@ -439,73 +442,72 @@ export class AuthService {
     }
   }
 
-  async getPasskeys(): Promise<PasskeyInfo[]> {
-    try {
-      const response = await firstValueFrom(
-        this.http.get<{ passkeys: PasskeyInfo[] }>('/api/auth/passkeys'),
-      );
-      return response.passkeys;
-    } catch {
-      return [];
-    }
+  getPasskeys(): Observable<PasskeyInfo[]> {
+    return this.http.get<{ passkeys: PasskeyInfo[] }>('/api/auth/passkeys').pipe(
+      map((response) => response.passkeys),
+      catchError(() => of([])),
+    );
   }
 
-  async updateDisplayName(displayName: string | undefined): Promise<void> {
-    try {
-      const response = await firstValueFrom(
-        this.http.patch<{ user: { _id: string; email: string; displayName?: string } }>(
-          '/api/auth/me',
-          { displayName },
-        ),
-      );
+  updateDisplayName(displayName: string | undefined): Observable<void> {
+    return this.http
+      .patch<{ user: { _id: string; email: string; displayName?: string } }>('/api/auth/me', {
+        displayName,
+      })
+      .pipe(
+        tap((response) => {
+          // Update user signal with new display name
+          const currentUser = this._user();
+          if (currentUser) {
+            const updatedUser = { ...currentUser, displayName: response.user.displayName };
+            this._user.set(updatedUser);
 
-      // Update user signal with new display name
-      const currentUser = this._user();
-      if (currentUser) {
-        const updatedUser = { ...currentUser, displayName: response.user.displayName };
-        this._user.set(updatedUser);
-
-        // Update storage with fresh user data
-        const token = this._accessToken();
-        if (token) {
-          this.saveToStorage({ accessToken: token, user: updatedUser });
-        }
-      }
-    } catch (error: any) {
-      throw new Error(error?.message || 'Failed to update display name');
-    }
-  }
-
-  async uploadProfilePicture(file: File): Promise<void> {
-    try {
-      const response = await firstValueFrom(
-        this.http.post<{
-          user: { _id: string; email: string; displayName?: string; profilePictureUrl?: string };
-        }>('/api/auth/me/profile-picture', file, {
-          headers: {
-            'Content-Type': file.type,
-          },
+            // Update storage with fresh user data
+            const token = this._accessToken();
+            if (token) {
+              this.saveToStorage({ accessToken: token, user: updatedUser });
+            }
+          }
+        }),
+        map(() => void 0),
+        catchError((error: any) => {
+          return throwError(() => new Error(error?.message || 'Failed to update display name'));
         }),
       );
+  }
 
-      // Update user signal with new profile picture
-      const currentUser = this._user();
-      if (currentUser) {
-        const updatedUser = {
-          ...currentUser,
-          displayName: response.user.displayName,
-          profilePictureUrl: response.user.profilePictureUrl,
-        };
-        this._user.set(updatedUser);
+  uploadProfilePicture(file: File): Observable<void> {
+    return this.http
+      .post<{
+        user: { _id: string; email: string; displayName?: string; profilePictureUrl?: string };
+      }>('/api/auth/me/profile-picture', file, {
+        headers: {
+          'Content-Type': file.type,
+        },
+      })
+      .pipe(
+        tap((response) => {
+          // Update user signal with new profile picture
+          const currentUser = this._user();
+          if (currentUser) {
+            const updatedUser = {
+              ...currentUser,
+              displayName: response.user.displayName,
+              profilePictureUrl: response.user.profilePictureUrl,
+            };
+            this._user.set(updatedUser);
 
-        // Update storage with fresh user data
-        const token = this._accessToken();
-        if (token) {
-          this.saveToStorage({ accessToken: token, user: updatedUser });
-        }
-      }
-    } catch (error: any) {
-      throw new Error(error?.message || 'Failed to upload profile picture');
-    }
+            // Update storage with fresh user data
+            const token = this._accessToken();
+            if (token) {
+              this.saveToStorage({ accessToken: token, user: updatedUser });
+            }
+          }
+        }),
+        map(() => void 0),
+        catchError((error: any) => {
+          return throwError(() => new Error(error?.message || 'Failed to upload profile picture'));
+        }),
+      );
   }
 }

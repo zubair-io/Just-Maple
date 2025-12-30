@@ -9,11 +9,12 @@ import {
   ViewChild,
   ElementRef,
 } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { Router, ActivatedRoute } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, switchMap, of } from 'rxjs';
 import { BrowserCodeReader, BrowserMultiFormatReader, BarcodeFormat } from '@zxing/browser';
 import { DecodeHintType } from '@zxing/library';
 import { TagService } from '../../services/tag.service';
@@ -53,15 +54,15 @@ export class LegoScanComponent implements OnInit, OnDestroy {
     return this.tagService.tags().find((t) => t._id === id) || null;
   });
 
-  constructor() {
-    // Load papers when tagId changes
-    effect(() => {
-      const tagId = this.tagId();
-      if (tagId) {
-        this.paperService.loadPapers({ tagId }).subscribe();
-      }
-    });
-  }
+  // Reactively load papers when tagId changes, with proper subscription management
+  private readonly paperLoader = toSignal(
+    toObservable(this.tagId).pipe(
+      switchMap((tagId) => (tagId ? this.paperService.loadPapers({ tagId }) : of(null))),
+    ),
+    { initialValue: null },
+  );
+
+  constructor() {}
 
   /** Map of registryId -> Paper for quick lookup */
   readonly papersMap = computed(() => {

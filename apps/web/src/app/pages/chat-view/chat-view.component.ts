@@ -1,7 +1,8 @@
 import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, switchMap, of, combineLatest } from 'rxjs';
 import { TagService } from '../../services/tag.service';
 import { NoteService } from '../../services/note.service';
 import { NotificationService } from '../../services/notification.service';
@@ -25,27 +26,25 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   private routeSubscription?: Subscription;
 
   readonly selectedTagId = signal<string | null>(null);
-  readonly members = signal<TagMember[]>([]);
   readonly showShareModal = signal<boolean>(false);
+  private readonly membersRefreshTrigger = signal<number>(0);
+
+  // Reactively load members when tag changes or refresh is triggered
+  readonly members = toSignal(
+    combineLatest([
+      toObservable(this.selectedTagId),
+      toObservable(this.membersRefreshTrigger),
+    ]).pipe(
+      switchMap(([tagId, _trigger]) => (tagId ? this.tagService.fetchTagMembers(tagId) : of([]))),
+    ),
+    { initialValue: [] as TagMember[] },
+  );
 
   constructor() {
     // Track active tag for smart notification filtering
     effect(() => {
       const tagId = this.selectedTagId();
       this.notificationService.setActiveTag(tagId);
-    });
-
-    // Fetch members when tag changes
-    effect(() => {
-      const tagId = this.selectedTagId();
-      if (tagId) {
-        this.tagService.fetchTagMembers(tagId).subscribe({
-          next: (members) => this.members.set(members),
-          error: () => this.members.set([]),
-        });
-      } else {
-        this.members.set([]);
-      }
     });
   }
 
@@ -99,13 +98,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   }
 
   onMembersChanged(): void {
-    // Refetch members after sharing/unsharing
-    const tagId = this.selectedTagId();
-    if (tagId) {
-      this.tagService.fetchTagMembers(tagId).subscribe({
-        next: (members) => this.members.set(members),
-        error: () => this.members.set([]),
-      });
-    }
+    // Trigger members refetch after sharing/unsharing
+    this.membersRefreshTrigger.update((n) => n + 1);
   }
 }

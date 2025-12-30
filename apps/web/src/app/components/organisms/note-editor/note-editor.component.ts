@@ -10,7 +10,9 @@ import {
   OnDestroy,
   afterNextRender,
   DestroyRef,
+  computed,
 } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -27,7 +29,7 @@ import { Mention, type MentionNodeAttrs } from '../../organisms/chat/extensions/
 import { BotWidget, type BotWidgetAttrs } from './extensions/bot-widget';
 import { BotService, type BotSuggestion } from '../../../services/bot.service';
 import { MentionSuggestionComponent } from '../../organisms/chat/mention-suggestion.component';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, takeUntil, combineLatest, switchMap, of } from 'rxjs';
 import type { Note, Tag, NoteContent } from '@maple/shared';
 
 @Component({
@@ -58,7 +60,21 @@ export class NoteEditorComponent implements OnDestroy {
   readonly mentionSuggestions = signal<BotSuggestion[]>([]);
   readonly mentionSuggestionsLoading = signal(false);
   readonly mentionPosition = signal<{ top: number; left: number }>({ top: 0, left: 0 });
-  readonly allTagBots = signal<BotSuggestion[]>([]);
+
+  // Computed tag ID from either tag or note
+  readonly tagId = computed(() => this.tag()?._id || this.note()?.tagId);
+
+  // Reactively load bots when tag changes or cache is invalidated
+  readonly allTagBots = toSignal(
+    combineLatest([
+      toObservable(this.tagId),
+      toObservable(this.botService.tagBotsCacheVersion),
+    ]).pipe(
+      switchMap(([tagId, _cacheVersion]) => (tagId ? this.botService.getTagBots(tagId) : of([]))),
+    ),
+    { initialValue: [] as BotSuggestion[] },
+  );
+
   mentionCommand: ((props: Record<string, unknown>) => void) | null = null;
   private readonly mentionSearch$ = new Subject<string>();
   private readonly destroy$ = new Subject<void>();
@@ -90,20 +106,6 @@ export class NoteEditorComponent implements OnDestroy {
     effect(() => {
       const isEditable = this.editable();
       this.editor?.setEditable(isEditable);
-    });
-
-    // Load bots when tag changes or cache is invalidated
-    effect(() => {
-      const tagId = this.tag()?._id || this.note()?.tagId;
-      // Also depend on cache version to trigger reload when cache is cleared
-      this.botService.tagBotsCacheVersion();
-
-      if (tagId) {
-        console.log('Loading bots for tag:', tagId);
-        this.botService.getTagBots(tagId).subscribe((bots) => {
-          this.allTagBots.set(bots);
-        });
-      }
     });
 
     // Setup mention search with client-side filtering (no debounce needed)

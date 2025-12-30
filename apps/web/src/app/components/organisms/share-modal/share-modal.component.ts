@@ -1,6 +1,8 @@
-import { Component, input, output, signal, inject, effect } from '@angular/core';
+import { Component, input, output, signal, inject, effect, computed } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { combineLatest, switchMap, of, tap, catchError } from 'rxjs';
 import { ProfileAvatarComponent } from '../../atoms';
 import { TagService } from '../../../services/tag.service';
 import { BotService, type EnrichedUserBot } from '../../../services/bot.service';
@@ -28,20 +30,34 @@ export class ShareModalComponent {
   readonly selectedAccessLevel = signal<'read' | 'write'>('write');
 
   // Bot sharing state
-  readonly sharedBots = signal<EnrichedUserBot[]>([]);
   readonly userBots = this.botService.userBots;
   readonly showAddBotDialog = signal(false);
   readonly isLoadingBots = signal(false);
+  private readonly sharedBotsRefreshTrigger = signal<number>(0);
 
-  constructor() {
-    // Load shared bots when tag changes
-    effect(() => {
-      const tagId = this.tag()?._id;
-      if (tagId) {
-        this.loadSharedBots(tagId);
-      }
-    });
-  }
+  readonly tagId = computed(() => this.tag()?._id);
+
+  // Reactively load shared bots when tag changes or refresh is triggered
+  readonly sharedBots = toSignal(
+    combineLatest([toObservable(this.tagId), toObservable(this.sharedBotsRefreshTrigger)]).pipe(
+      tap(() => this.isLoadingBots.set(true)),
+      switchMap(([tagId, _trigger]) =>
+        tagId
+          ? this.botService.getTagSharedBots(tagId).pipe(
+              tap(() => this.isLoadingBots.set(false)),
+              catchError((err) => {
+                console.error('Failed to load shared bots:', err);
+                this.isLoadingBots.set(false);
+                return of([]);
+              }),
+            )
+          : of([]),
+      ),
+    ),
+    { initialValue: [] as EnrichedUserBot[] },
+  );
+
+  constructor() {}
 
   onClose(): void {
     this.closed.emit();
@@ -88,25 +104,12 @@ export class ShareModalComponent {
   }
 
   // Bot sharing methods
-  private loadSharedBots(tagId: string): void {
-    this.isLoadingBots.set(true);
-    this.botService.getTagSharedBots(tagId).subscribe({
-      next: (bots) => {
-        this.sharedBots.set(bots);
-        this.isLoadingBots.set(false);
-      },
-      error: (err) => {
-        console.error('Failed to load shared bots:', err);
-        this.isLoadingBots.set(false);
-      },
-    });
-  }
-
   async addBot(userBotId: string): Promise<void> {
     this.botService.shareBotToTag(this.tag()._id, userBotId).subscribe({
       next: () => {
         this.showAddBotDialog.set(false);
-        this.loadSharedBots(this.tag()._id);
+        // Trigger refresh of shared bots
+        this.sharedBotsRefreshTrigger.update((n) => n + 1);
       },
       error: (err) => {
         alert('Failed to add bot: ' + err.message);
@@ -121,7 +124,8 @@ export class ShareModalComponent {
 
     this.botService.unshareBotFromTag(this.tag()._id, userBotId).subscribe({
       next: () => {
-        this.loadSharedBots(this.tag()._id);
+        // Trigger refresh of shared bots
+        this.sharedBotsRefreshTrigger.update((n) => n + 1);
       },
       error: (err) => {
         alert('Failed to remove bot: ' + err.message);

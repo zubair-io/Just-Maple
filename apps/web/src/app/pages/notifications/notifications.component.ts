@@ -3,18 +3,23 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { NotificationListComponent } from '../../components/organisms/notification-list/notification-list.component';
 import { NotificationService } from '../../services/notification.service';
+import { SettingsHeaderComponent } from '../../components';
 import type { Notification } from '@maple/shared';
 
 @Component({
   selector: 'app-notifications',
   standalone: true,
-  imports: [CommonModule, NotificationListComponent],
+  imports: [CommonModule, NotificationListComponent, SettingsHeaderComponent],
   templateUrl: './notifications.component.html',
   styleUrl: './notifications.component.scss',
 })
 export class NotificationsComponent {
   private readonly router = inject(Router);
   private readonly notificationService = inject(NotificationService);
+
+  goBack(): void {
+    this.router.navigate(['/']);
+  }
 
   onNotificationClicked(notification: Notification): void {
     // Navigate based on notification type
@@ -48,7 +53,9 @@ export class NotificationsComponent {
 
     // Mark as read after navigation
     if (!notification.read) {
-      this.notificationService.markAsRead(notification._id).catch(console.error);
+      this.notificationService.markAsRead(notification._id).subscribe({
+        error: console.error,
+      });
     }
   }
 }

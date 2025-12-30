@@ -1,7 +1,7 @@
 import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom, take } from 'rxjs';
+import { firstValueFrom, take, Observable, map, tap, catchError, throwError } from 'rxjs';
 import { NativeBridgeService } from './native-bridge.service';
 import type { Notification, NotificationListResponse, DeviceRegistration } from '@maple/shared';
 import type { ToastData } from '../components/atoms/toast/toast.component';
@@ -173,79 +173,77 @@ export class NotificationService {
   /**
    * Fetch notification history from server
    */
-  async fetchNotifications(limit = 50, skip = 0): Promise<void> {
-    try {
-      const response = await firstValueFrom(
-        this.http.get<NotificationListResponse>('/api/notifications', {
-          params: { limit: limit.toString(), skip: skip.toString() },
+  fetchNotifications(limit = 50, skip = 0): Observable<void> {
+    return this.http
+      .get<NotificationListResponse>('/api/notifications', {
+        params: { limit: limit.toString(), skip: skip.toString() },
+      })
+      .pipe(
+        tap((response) => this.notifications.set(response.notifications)),
+        map(() => void 0),
+        catchError((error) => {
+          console.error('[NotificationService] Failed to fetch notifications:', error);
+          return throwError(() => error);
         }),
       );
-
-      this.notifications.set(response.notifications);
-    } catch (error) {
-      console.error('[NotificationService] Failed to fetch notifications:', error);
-      throw error;
-    }
   }
 
   /**
    * Fetch a single notification by ID
    */
-  async fetchNotification(id: string, apiUrl?: string): Promise<Notification> {
+  fetchNotification(id: string, apiUrl?: string): Observable<Notification> {
     console.log(`[NotificationService] 📡 Fetching notification ID: ${id}`);
     console.log(`[NotificationService] 📡 API URL: ${apiUrl || 'default'}`);
 
-    try {
-      const url = apiUrl ? `${apiUrl}/api/notifications/${id}` : `/api/notifications/${id}`;
-      console.log(`[NotificationService] 📡 Full URL: ${url}`);
-      console.log(`[NotificationService] 📡 Making HTTP GET request...`);
+    const url = apiUrl ? `${apiUrl}/api/notifications/${id}` : `/api/notifications/${id}`;
+    console.log(`[NotificationService] 📡 Full URL: ${url}`);
+    console.log(`[NotificationService] 📡 Making HTTP GET request...`);
 
-      const response = await firstValueFrom(this.http.get<{ notification: Notification }>(url));
-
-      console.log(
-        `[NotificationService] ✅ Successfully fetched notification:`,
-        response.notification,
-      );
-      return response.notification;
-    } catch (error) {
-      console.error('[NotificationService] ❌ Failed to fetch notification:', error);
-      console.error('[NotificationService] ❌ Error details:', JSON.stringify(error, null, 2));
-      throw error;
-    }
+    return this.http.get<{ notification: Notification }>(url).pipe(
+      tap((response) => {
+        console.log(
+          `[NotificationService] ✅ Successfully fetched notification:`,
+          response.notification,
+        );
+      }),
+      map((response) => response.notification),
+      catchError((error) => {
+        console.error('[NotificationService] ❌ Failed to fetch notification:', error);
+        console.error('[NotificationService] ❌ Error details:', JSON.stringify(error, null, 2));
+        return throwError(() => error);
+      }),
+    );
   }
 
   /**
    * Mark notification as read
    */
-  async markAsRead(id: string): Promise<void> {
-    try {
-      await firstValueFrom(
-        this.http.patch<{ message: string }>(`/api/notifications/${id}/read`, {}),
-      );
-
-      // Update local state
-      const updated = this.notifications().map((n) => (n._id === id ? { ...n, read: true } : n));
-      this.notifications.set(updated);
-    } catch (error) {
-      console.error('[NotificationService] Failed to mark notification as read:', error);
-      throw error;
-    }
+  markAsRead(id: string): Observable<void> {
+    return this.http.patch<{ message: string }>(`/api/notifications/${id}/read`, {}).pipe(
+      tap(() => {
+        // Update local state
+        const updated = this.notifications().map((n) => (n._id === id ? { ...n, read: true } : n));
+        this.notifications.set(updated);
+      }),
+      map(() => void 0),
+      catchError((error) => {
+        console.error('[NotificationService] Failed to mark notification as read:', error);
+        return throwError(() => error);
+      }),
+    );
   }
 
   /**
    * Get list of registered devices
    */
-  async getDevices(): Promise<DeviceRegistration[]> {
-    try {
-      const response = await firstValueFrom(
-        this.http.get<{ devices: DeviceRegistration[] }>('/api/notifications/devices'),
-      );
-
-      return response.devices;
-    } catch (error) {
-      console.error('[NotificationService] Failed to fetch devices:', error);
-      throw error;
-    }
+  getDevices(): Observable<DeviceRegistration[]> {
+    return this.http.get<{ devices: DeviceRegistration[] }>('/api/notifications/devices').pipe(
+      map((response) => response.devices),
+      catchError((error) => {
+        console.error('[NotificationService] Failed to fetch devices:', error);
+        return throwError(() => error);
+      }),
+    );
   }
 
   // MARK: - Toast Management
@@ -303,8 +301,8 @@ export class NotificationService {
       console.log('[NotificationService] 🔔 Showing toast (user not in this tag)');
 
       // Fetch full notification to get message content
-      this.fetchNotification(notification.notificationId, notification.apiUrl)
-        .then((fullNotification) => {
+      this.fetchNotification(notification.notificationId, notification.apiUrl).subscribe({
+        next: (fullNotification) => {
           // Construct toast message from notification data
           let title = 'Notification';
           let message = 'You have a new notification';
@@ -355,10 +353,11 @@ export class NotificationService {
             type: 'info',
             duration: 5000,
           });
-        })
-        .catch((error) => {
+        },
+        error: (error) => {
           console.error('[NotificationService] ❌ Failed to fetch foreground notification:', error);
-        });
+        },
+      });
     } else {
       console.log(
         '[NotificationService] 🔔 Suppressing toast (user is in this tag - message shown via SignalR)',
@@ -378,14 +377,15 @@ export class NotificationService {
 
     // Fetch full notification content from the correct server and navigate
     console.log('[NotificationService] 👆 Fetching full notification data...');
-    this.fetchNotification(notification.notificationId, notification.apiUrl)
-      .then((fullNotification) => {
+    this.fetchNotification(notification.notificationId, notification.apiUrl).subscribe({
+      next: (fullNotification) => {
         console.log('[NotificationService] 👆 Got full notification, navigating...');
         this.navigateToNotification(fullNotification);
-      })
-      .catch((error) => {
+      },
+      error: (error) => {
         console.error('[NotificationService] ❌ Failed to fetch tapped notification:', error);
-      });
+      },
+    });
   }
 
   private navigateToNotification(notification: Notification): void {
@@ -456,12 +456,13 @@ export class NotificationService {
 
     // Mark as read after navigation
     console.log(`[NotificationService] 📖 Marking notification ${notification._id} as read...`);
-    this.markAsRead(notification._id)
-      .then(() => {
+    this.markAsRead(notification._id).subscribe({
+      next: () => {
         console.log(`[NotificationService] ✅ Marked notification ${notification._id} as read`);
-      })
-      .catch((error) => {
+      },
+      error: (error) => {
         console.error('[NotificationService] ❌ Failed to mark notification as read:', error);
-      });
+      },
+    });
   }
 }

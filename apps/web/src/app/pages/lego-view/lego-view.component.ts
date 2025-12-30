@@ -1,8 +1,9 @@
 import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, switchMap, of, catchError } from 'rxjs';
 import { TagService } from '../../services/tag.service';
 import { PaperService } from '../../services/paper.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
@@ -43,15 +44,22 @@ export class LegoViewComponent implements OnInit, OnDestroy {
     return new Map(registries.map((r) => [r._id, r]));
   });
 
-  constructor() {
-    // Load papers when tagId changes
-    effect(() => {
-      const tagId = this.selectedTagId();
-      if (tagId) {
-        this.loadPapersForTag(tagId);
-      }
-    });
-  }
+  // Reactively load papers when tagId changes, with proper subscription management
+  private readonly paperLoader = toSignal(
+    toObservable(this.selectedTagId).pipe(
+      switchMap((tagId) =>
+        tagId
+          ? this.registryService.initializeRegistry().pipe(
+              catchError(() => of(null)), // Continue even if registry init fails
+              switchMap(() => this.paperService.loadPapers({ tagId })),
+            )
+          : of(null),
+      ),
+    ),
+    { initialValue: null },
+  );
+
+  constructor() {}
 
   /** Get all papers for the tag (excluding 'none' status) */
   private readonly allPapersForTag = computed(() => {
@@ -147,17 +155,6 @@ export class LegoViewComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.routeSubscription?.unsubscribe();
-  }
-
-  private loadPapersForTag(tagId: string): void {
-    this.registryService.initializeRegistry().subscribe({
-      next: () => {
-        this.paperService.loadPapers({ tagId }).subscribe();
-      },
-      error: () => {
-        this.paperService.loadPapers({ tagId }).subscribe();
-      },
-    });
   }
 
   onSelectPaper(paper: Paper): void {

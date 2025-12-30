@@ -1,9 +1,7 @@
-<div class="notifications">
-  <div class="notifications__header">
-    <h1 class="notifications__title">Notifications</h1>
-  </div>
+<div class="page-wrapper">
+  <app-settings-header title="Notifications" (backClicked)="goBack()" />
 
-  <div class="notifications__content">
+  <div class="page-content">
     <app-notification-list />
   </div>
 </div>

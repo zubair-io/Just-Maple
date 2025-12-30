@@ -1,6 +1,6 @@
 import { Injectable, signal, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
-import { firstValueFrom, take } from 'rxjs';
+import { firstValueFrom, take, Observable, tap, catchError, of, map, switchMap } from 'rxjs';
 import { NativeBridgeService } from './native-bridge.service';
 import type { ServerInfo } from '../types/native-bridge.types';
 
@@ -21,15 +21,15 @@ export class PreferencesService {
     this.init();
   }
 
-  private async init(): Promise<void> {
+  private init(): void {
     if (!isPlatformBrowser(this.platformId)) {
       return;
     }
 
     if (this.nativeBridge.isNativeApp()) {
       // Native app: get servers from native
-      await this.loadServersFromNative();
-      await this.loadActiveServerFromNative();
+      this.loadServersFromNative().subscribe();
+      this.loadActiveServerFromNative().subscribe();
 
       // Listen for server list updates
       this.nativeBridge.onServerList().subscribe((response) => {
@@ -55,59 +55,69 @@ export class PreferencesService {
 
   // MARK: - Server Management
 
-  async loadServersFromNative(): Promise<void> {
+  loadServersFromNative(): Observable<void> {
     if (!this.nativeBridge.isNativeApp()) {
-      return;
+      return of(void 0);
     }
 
     this.nativeBridge.getServerList();
 
-    try {
-      const response = await firstValueFrom(this.nativeBridge.onServerList().pipe(take(1)));
-      this.servers.set(response.servers);
-    } catch {
-      console.error('[Preferences] Failed to load servers from native');
-    }
+    return this.nativeBridge.onServerList().pipe(
+      take(1),
+      tap((response) => this.servers.set(response.servers)),
+      map(() => void 0),
+      catchError(() => {
+        console.error('[Preferences] Failed to load servers from native');
+        return of(void 0);
+      }),
+    );
   }
 
-  async loadActiveServerFromNative(): Promise<void> {
+  loadActiveServerFromNative(): Observable<void> {
     if (!this.nativeBridge.isNativeApp()) {
-      return;
+      return of(void 0);
     }
 
     this.nativeBridge.getActiveServer();
 
-    try {
-      const response = await firstValueFrom(this.nativeBridge.onActiveServer().pipe(take(1)));
-      this.activeServer.set(response);
-    } catch {
-      console.error('[Preferences] Failed to load active server from native');
-    }
+    return this.nativeBridge.onActiveServer().pipe(
+      take(1),
+      tap((response) => this.activeServer.set(response)),
+      map(() => void 0),
+      catchError(() => {
+        console.error('[Preferences] Failed to load active server from native');
+        return of(void 0);
+      }),
+    );
   }
 
-  async setActiveServer(serverId: string): Promise<void> {
+  setActiveServer(serverId: string): Observable<void> {
     if (!this.nativeBridge.isNativeApp()) {
       console.warn('[Preferences] Server switching only available in native app');
-      return;
+      return of(void 0);
     }
 
     this.nativeBridge.setActiveServer(serverId);
 
-    try {
-      const response = await firstValueFrom(this.nativeBridge.onActiveServer().pipe(take(1)));
-      this.activeServer.set(response);
-
-      // Native side will reload WebView to new server's root URL
-      console.log('[Preferences] Switched to server:', response.name, response.url);
-    } catch {
-      console.error('[Preferences] Failed to set active server');
-    }
+    return this.nativeBridge.onActiveServer().pipe(
+      take(1),
+      tap((response) => {
+        this.activeServer.set(response);
+        // Native side will reload WebView to new server's root URL
+        console.log('[Preferences] Switched to server:', response.name, response.url);
+      }),
+      map(() => void 0),
+      catchError(() => {
+        console.error('[Preferences] Failed to set active server');
+        return of(void 0);
+      }),
+    );
   }
 
-  async validateServer(url: string): Promise<boolean> {
+  validateServer(url: string): Observable<boolean> {
     if (!this.nativeBridge.isNativeApp()) {
       console.warn('[Preferences] Server validation only available in native app');
-      return false;
+      return of(false);
     }
 
     this.isValidating.set(true);
@@ -115,58 +125,72 @@ export class PreferencesService {
 
     this.nativeBridge.validateServer(url);
 
-    try {
-      const response = await firstValueFrom(this.nativeBridge.onServerValidation().pipe(take(1)));
-
-      if (!response.isValid) {
-        this.validationError.set(response.error || 'Server validation failed');
-      }
-
-      return response.isValid;
-    } catch {
-      this.validationError.set('Failed to validate server');
-      return false;
-    } finally {
-      this.isValidating.set(false);
-    }
+    return this.nativeBridge.onServerValidation().pipe(
+      take(1),
+      tap((response) => {
+        if (!response.isValid) {
+          this.validationError.set(response.error || 'Server validation failed');
+        }
+        this.isValidating.set(false);
+      }),
+      map((response) => response.isValid),
+      catchError(() => {
+        this.validationError.set('Failed to validate server');
+        this.isValidating.set(false);
+        return of(false);
+      }),
+    );
   }
 
-  async addServer(name: string, url: string, apiUrl?: string): Promise<void> {
+  addServer(name: string, url: string, apiUrl?: string): Observable<void> {
     if (!this.nativeBridge.isNativeApp()) {
       console.warn('[Preferences] Adding servers only available in native app');
-      return;
+      return of(void 0);
     }
 
-    // Validate first
-    const isValid = await this.validateServer(url);
-    if (!isValid) {
-      throw new Error(this.validationError() || 'Server validation failed');
-    }
-
-    this.nativeBridge.addServer(name, url, apiUrl);
-
-    try {
-      const response = await firstValueFrom(this.nativeBridge.onServerList().pipe(take(1)));
-      this.servers.set(response.servers);
-    } catch {
-      console.error('[Preferences] Failed to add server');
-    }
+    // Validate first, then add server if valid
+    return this.validateServer(url).pipe(
+      tap((isValid) => {
+        if (!isValid) {
+          throw new Error(this.validationError() || 'Server validation failed');
+        }
+        this.nativeBridge.addServer(name, url, apiUrl);
+      }),
+      take(1),
+      tap(() => this.nativeBridge.onServerList().pipe(take(1))),
+      map(() => {
+        return this.nativeBridge.onServerList().pipe(
+          take(1),
+          tap((response) => this.servers.set(response.servers)),
+          map(() => void 0),
+          catchError(() => {
+            console.error('[Preferences] Failed to add server');
+            return of(void 0);
+          }),
+        );
+      }),
+      // Flatten the nested observable
+      switchMap((obs: Observable<void>) => obs),
+    );
   }
 
-  async removeServer(serverId: string): Promise<void> {
+  removeServer(serverId: string): Observable<void> {
     if (!this.nativeBridge.isNativeApp()) {
       console.warn('[Preferences] Removing servers only available in native app');
-      return;
+      return of(void 0);
     }
 
     this.nativeBridge.removeServer(serverId);
 
-    try {
-      const response = await firstValueFrom(this.nativeBridge.onServerList().pipe(take(1)));
-      this.servers.set(response.servers);
-    } catch {
-      console.error('[Preferences] Failed to remove server');
-    }
+    return this.nativeBridge.onServerList().pipe(
+      take(1),
+      tap((response) => this.servers.set(response.servers)),
+      map(() => void 0),
+      catchError(() => {
+        console.error('[Preferences] Failed to remove server');
+        return of(void 0);
+      }),
+    );
   }
 
   // Helper to check if we're in native app

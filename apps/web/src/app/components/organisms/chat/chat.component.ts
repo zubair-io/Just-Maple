@@ -11,6 +11,7 @@ import {
   OnDestroy,
   DestroyRef,
 } from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -26,7 +27,7 @@ import { MentionSuggestionComponent } from './mention-suggestion.component';
 import { Mention, type MentionNodeAttrs } from './extensions/mention';
 import type { Message, NoteContent, TypingEvent, ChatEvent } from '@maple/shared';
 import { extractMentions, extractText } from '@maple/shared';
-import { Subscription, Subject, takeUntil, filter } from 'rxjs';
+import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of } from 'rxjs';
 
 // Track pending bot invocations for loading states
 interface PendingBotInvocation {
@@ -75,7 +76,18 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   readonly mentionSuggestionsLoading = signal(false);
   readonly mentionPosition = signal<{ top: number; left: number }>({ top: 0, left: 0 });
   readonly mentionPositionAbove = signal(false);
-  readonly allTagBots = signal<BotSuggestion[]>([]);
+
+  // Reactively load bots when tag changes or cache is invalidated
+  readonly allTagBots = toSignal(
+    combineLatest([
+      toObservable(this.tagId),
+      toObservable(this.botService.tagBotsCacheVersion),
+    ]).pipe(
+      switchMap(([tagId, _cacheVersion]) => (tagId ? this.botService.getTagBots(tagId) : of([]))),
+    ),
+    { initialValue: [] as BotSuggestion[] },
+  );
+
   mentionCommand: ((props: Record<string, unknown>) => void) | null = null;
   private readonly mentionSearch$ = new Subject<string>();
   private readonly destroy$ = new Subject<void>();
@@ -162,20 +174,6 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       }
       this.destroy$.next();
       this.destroy$.complete();
-    });
-
-    // Load all tag bots when tag changes or cache is invalidated
-    effect(() => {
-      const tagId = this.tagId();
-      // Also depend on cache version to trigger reload when cache is cleared
-      this.botService.tagBotsCacheVersion();
-
-      if (tagId) {
-        console.log('Loading bots for tag:', tagId);
-        // this.botService.getTagBots(tagId).subscribe((bots) => {
-        //   this.allTagBots.set(bots);
-        // });
-      }
     });
 
     // Setup mention search with client-side filtering (no debounce needed)
