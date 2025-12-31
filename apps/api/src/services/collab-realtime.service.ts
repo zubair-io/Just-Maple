@@ -22,15 +22,35 @@ export class WebSocketCollabRealtimeService implements ICollabRealtimeService {
 
     broadcast(noteId: string, message: any, senderClientId?: string): void {
         const noteConnections = this.connections.get(noteId);
-        if (!noteConnections) return;
+        if (!noteConnections) {
+            console.log(`[Realtime] No connections for note ${noteId}`);
+            return;
+        }
 
         const msgStr = typeof message === 'string' ? message : JSON.stringify(message);
+        const connectedClients = Array.from(noteConnections.keys());
 
+        console.log(
+            `[Realtime] Broadcasting to note ${noteId}, excluding sender: "${senderClientId}"`,
+        );
+        console.log(`[Realtime] Connected clients:`, connectedClients);
+
+        let sentCount = 0;
         for (const [clientId, ws] of noteConnections.entries()) {
-            if (clientId !== senderClientId && ws.readyState === WebSocket.OPEN) {
+            const isSender = clientId === senderClientId;
+            const isOpen = ws.readyState === WebSocket.OPEN;
+
+            console.log(
+                `[Realtime]   - Client "${clientId}": isSender=${isSender}, isOpen=${isOpen}, willSend=${!isSender && isOpen}`,
+            );
+
+            if (!isSender && isOpen) {
                 ws.send(msgStr);
+                sentCount++;
             }
         }
+
+        console.log(`[Realtime] Sent to ${sentCount} clients`);
     }
 
     sendToClient(clientId: string, message: any): void {

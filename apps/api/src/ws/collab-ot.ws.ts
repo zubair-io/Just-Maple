@@ -56,12 +56,13 @@ export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
                 const doc = await otService.getDocument(noteId);
                 otService.addConnection(noteId, clientID, ws);
 
-                // Send initial version to client
+                // Send initial version, document state, and clientID
                 ws.send(
                     JSON.stringify({
                         type: 'init',
                         version: doc.version,
-                        doc: note.content, // Send full ProseMirror JSON
+                        doc: doc.version === 0 ? note.content : doc.currentDoc,
+                        clientID, // Send assigned clientID to the client
                     }),
                 );
 
@@ -74,7 +75,8 @@ export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
 
         async message(ws, message) {
             try {
-                const data = JSON.parse(message as string);
+                // Handle message as string or object
+                const data = typeof message === 'string' ? JSON.parse(message) : message;
                 const context = (ws.data as unknown as { context: CollabWSContext }).context;
 
                 if (!context) {
@@ -92,17 +94,24 @@ export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
                         data.steps, // Pass as-is (JSON objects)
                         data.version,
                         clientID,
+                        data.doc, // Client's current document state (optional)
                     );
 
-                    // If client is behind, send missing steps
+                    // Send result back (ACK or catch-up or resync)
                     if (result) {
-                        ws.send(
-                            JSON.stringify({
-                                type: 'steps',
-                                version: result.version,
-                                steps: result.steps.map((s: any) => s.toJSON()),
-                            }),
-                        );
+                        if (result.resync) {
+                            ws.send(JSON.stringify({ type: 'resync' }));
+                        } else {
+                            ws.send(
+                                JSON.stringify({
+                                    type: 'steps',
+                                    version: result.version,
+                                    steps: result.steps, // Already JSON
+                                    clientIDs: result.clientIDs,
+                                    clientID: result.clientIDs[0], // Fallback for singular
+                                }),
+                            );
+                        }
                     }
                 }
             } catch (error) {
