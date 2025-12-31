@@ -11,6 +11,7 @@ import { collectibleRegistryRoutes } from './routes/collectible-registry';
 import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
 import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
+import { collabOTWebSocket } from './ws/collab-ot.ws';
 import { SignalRRealtimeService } from './services/signalr.service';
 import { setRealtimeService } from './services/realtime.service';
 import { config } from './config';
@@ -62,6 +63,7 @@ async function main() {
         .use(notificationRoutes)
         .use(botRoutes)
         .use(chatWebSocket)
+        .use(collabOTWebSocket)
         .get('/api/health', async ({ set }) => {
             try {
                 // Check database connection
@@ -142,7 +144,8 @@ async function main() {
     console.log(`🍁 PaperbarkMaple API running at http://localhost:${config.port}`);
     console.log(`   Environment: ${envName}`);
     console.log(`   MongoDB: ${config.mongodbUri}`);
-    console.log(`   WebSocket: ws://localhost:${config.port}/ws/chat`);
+    console.log(`   WebSocket Chat: ws://localhost:${config.port}/ws/chat`);
+    console.log(`   WebSocket Collab: ws://localhost:${config.port}/ws/collab/:noteId`);
     console.log(`   Frontend: ${frontendAvailable ? 'serving from ' + STATIC_DIR : 'not built'}`);
 }
 
