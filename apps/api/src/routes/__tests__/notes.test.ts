@@ -624,4 +624,148 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             expect(data.count).toBe(0);
         });
     });
+
+    describe('POST /api/notes/:id/images', () => {
+        it('should upload image for a note', async () => {
+            const user = await createUserFixture();
+            const note = await createNoteFixture({ userId: user._id.toString() });
+            const token = await getAuthToken(user._id.toString(), user.email);
+
+            // Create a simple PNG image buffer (1x1 red pixel)
+            const pngBuffer = Buffer.from([
+                0x89,
+                0x50,
+                0x4e,
+                0x47,
+                0x0d,
+                0x0a,
+                0x1a,
+                0x0a, // PNG signature
+                0x00,
+                0x00,
+                0x00,
+                0x0d, // IHDR chunk length
+                0x49,
+                0x48,
+                0x44,
+                0x52, // IHDR
+                0x00,
+                0x00,
+                0x00,
+                0x01, // Width: 1
+                0x00,
+                0x00,
+                0x00,
+                0x01, // Height: 1
+                0x08,
+                0x02,
+                0x00,
+                0x00,
+                0x00, // Bit depth, color type, etc.
+                0x90,
+                0x77,
+                0x53,
+                0xde, // CRC
+            ]);
+
+            const response = await app.handle(
+                new Request(`http://localhost/api/notes/${note._id.toString()}/images`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'image/png',
+                    },
+                    body: pngBuffer,
+                }),
+            );
+
+            expect(response.status).toBe(200);
+            const data: any = await response.json();
+            expect(data.url).toBeDefined();
+            expect(data.url).toContain('hornbeam.justmaple.app/media/notes/');
+        });
+
+        it('should reject non-image files', async () => {
+            const user = await createUserFixture();
+            const note = await createNoteFixture({ userId: user._id.toString() });
+            const token = await getAuthToken(user._id.toString(), user.email);
+
+            const response = await app.handle(
+                new Request(`http://localhost/api/notes/${note._id.toString()}/images`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'text/plain',
+                    },
+                    body: 'Hello World',
+                }),
+            );
+
+            expect(response.status).toBe(400);
+            const data: any = await response.json();
+            expect(data.error).toBe('Only images are allowed');
+        });
+
+        it('should reject files larger than 10MB', async () => {
+            const user = await createUserFixture();
+            const note = await createNoteFixture({ userId: user._id.toString() });
+            const token = await getAuthToken(user._id.toString(), user.email);
+
+            // Create a large buffer (11MB)
+            const largeBuffer = Buffer.alloc(11 * 1024 * 1024);
+
+            const response = await app.handle(
+                new Request(`http://localhost/api/notes/${note._id.toString()}/images`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'image/png',
+                    },
+                    body: largeBuffer,
+                }),
+            );
+
+            expect(response.status).toBe(413);
+            const data: any = await response.json();
+            expect(data.error).toBe('File too large (max 10MB)');
+        });
+
+        it('should return 404 for non-existent note', async () => {
+            const user = await createUserFixture();
+            const token = await getAuthToken(user._id.toString(), user.email);
+
+            const response = await app.handle(
+                new Request('http://localhost/api/notes/507f1f77bcf86cd799439011/images', {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'image/png',
+                    },
+                    body: Buffer.from([]),
+                }),
+            );
+
+            expect(response.status).toBe(404);
+        });
+
+        it('should not allow uploading to other users note', async () => {
+            const user1 = await createUserFixture();
+            const user2 = await createUserFixture();
+            const note = await createNoteFixture({ userId: user1._id.toString() });
+            const token = await getAuthToken(user2._id.toString(), user2.email);
+
+            const response = await app.handle(
+                new Request(`http://localhost/api/notes/${note._id.toString()}/images`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'image/png',
+                    },
+                    body: Buffer.from([]),
+                }),
+            );
+
+            expect(response.status).toBe(404);
+        });
+    });
 });

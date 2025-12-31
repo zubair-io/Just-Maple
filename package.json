@@ -41,6 +41,8 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "prettier": "^3.7.4"
+    "lib0": "0.2.102",
+    "prettier": "^3.7.4",
+    "y-protocols": "1.0.5"
   }
 }

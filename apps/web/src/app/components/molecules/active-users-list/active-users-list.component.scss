@@ -1,0 +1,39 @@
+.active-users-list {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.user-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease;
+  cursor: default;
+
+  &:hover {
+    transform: scale(1.1);
+    z-index: 1;
+  }
+
+  &.remaining-count {
+    background-color: var(--color-surface-alt);
+    border-color: var(--color-border);
+  }
+}
+
+.user-initials {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+  user-select: none;
+
+  .remaining-count & {
+    color: var(--color-text-muted);
+  }
+}

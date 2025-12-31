@@ -41,16 +41,19 @@ export class SidebarComponent implements OnInit {
 
   constructor() {
     // Auto-expand tag when selectedTagId changes
-    effect(() => {
-      const tagId = this.selectedTagId();
-      if (tagId) {
-        this.expandedTags.update((tags) => {
-          const newTags = new Set(tags);
-          newTags.add(tagId);
-          return newTags;
-        });
-      }
-    });
+    effect(
+      () => {
+        const tagId = this.selectedTagId();
+        if (tagId) {
+          this.expandedTags.update((tags) => {
+            const newTags = new Set(tags);
+            newTags.add(tagId);
+            return newTags;
+          });
+        }
+      },
+      { allowSignalWrites: true },
+    );
   }
 
   // Reactive computed signals for user data

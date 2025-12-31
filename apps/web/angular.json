@@ -105,7 +105,7 @@
             "proxyConfig": "proxy.conf.json",
             "host": "0.0.0.0",
             "port": 4200,
-            "ssl": true
+            "ssl": false
           },
           "configurations": {
             "production": {

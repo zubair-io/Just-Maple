@@ -34,13 +34,20 @@ export const NoteSchema = Type.Object({
     userId: Type.String(),
     type: NoteTypeSchema,
     title: Type.String(),
-    content: NoteContentSchema, // ProseMirror JSON format
+    content: NoteContentSchema, // ProseMirror JSON format (legacy, synced from Y.Doc)
     version: Type.Number(),
     tagId: Type.Optional(Type.String()), // Associated tag/folder
     isFavorite: Type.Optional(Type.Boolean()),
     isArchived: Type.Optional(Type.Boolean()),
     isTrashed: Type.Optional(Type.Boolean()),
     trashedAt: Type.Optional(Type.String({ format: 'date-time' })),
+
+    // Y.js collaboration fields
+    yjsUpdates: Type.Optional(Type.Array(Type.Any())), // Array of binary Y.js update chunks
+    yjsSnapshot: Type.Optional(Type.Any()), // Compacted Y.js snapshot (binary)
+    lastCompactedAt: Type.Optional(Type.String({ format: 'date-time' })), // Last snapshot time
+    activeUsers: Type.Optional(Type.Array(Type.String())), // Currently editing user IDs
+
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
 });
@@ -64,6 +71,11 @@ export const UpdateNoteSchema = Type.Object({
     isArchived: Type.Optional(Type.Boolean()),
     isTrashed: Type.Optional(Type.Boolean()),
     version: Type.Optional(Type.Number()),
+
+    // Y.js collaboration fields (CRITICAL FIX: Enable persistence of Y.js updates)
+    yjsSnapshot: Type.Optional(Type.Any()),
+    yjsUpdates: Type.Optional(Type.Array(Type.Any())),
+    lastCompactedAt: Type.Optional(Type.String({ format: 'date-time' })),
 });
 
 export type UpdateNoteInput = Static<typeof UpdateNoteSchema>;

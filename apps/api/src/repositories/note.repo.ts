@@ -24,6 +24,12 @@ interface NoteDocument {
     trashedAt?: Date;
     createdAt: Date;
     updatedAt: Date;
+
+    // Y.js collaboration fields
+    yjsSnapshot?: any;
+    yjsUpdates?: any[];
+    lastCompactedAt?: string;
+    activeUsers?: string[];
 }
 
 function getCollection(): Collection<NoteDocument> {
@@ -45,7 +51,27 @@ function toNoteResponse(doc: NoteDocument): Note {
         trashedAt: doc.trashedAt?.toISOString(),
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
+
+        // Y.js collaboration fields
+        yjsSnapshot: doc.yjsSnapshot,
+        yjsUpdates: doc.yjsUpdates,
+        lastCompactedAt: doc.lastCompactedAt,
+        activeUsers: doc.activeUsers,
     };
+}
+
+/**
+ * Internal function to find note by ID without access control.
+ * ONLY use this for internal operations where access has already been verified
+ * (e.g., Y.js service operations after initial WebSocket authentication).
+ */
+export async function findNoteByIdInternal(id: string): Promise<Note | null> {
+    try {
+        const doc = await getCollection().findOne({ _id: new ObjectId(id) });
+        return doc ? toNoteResponse(doc) : null;
+    } catch {
+        return null;
+    }
 }
 
 const defaultContent: NoteContent = {
@@ -174,6 +200,64 @@ export async function createNote(userId: string, data: CreateNoteInput): Promise
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
     };
+}
+
+/**
+ * Internal version of updateNote that doesn't require userId or access checks.
+ * Used by yjs.service.ts for persisting Y.js updates after WebSocket authentication.
+ * Access control should already be verified before calling this function.
+ */
+export async function updateNoteInternal(id: string, data: UpdateNoteInput): Promise<Note | null> {
+    try {
+        const updateData: Partial<NoteDocument> = {
+            updatedAt: new Date(),
+        };
+
+        if (data.title !== undefined) {
+            updateData.title = data.title;
+        }
+        if (data.content !== undefined) {
+            updateData.content = data.content;
+        }
+        if (data.tagId !== undefined) {
+            updateData.tagId = data.tagId ? new ObjectId(data.tagId) : undefined;
+        }
+        if (data.isFavorite !== undefined) {
+            updateData.isFavorite = data.isFavorite;
+        }
+        if (data.isArchived !== undefined) {
+            updateData.isArchived = data.isArchived;
+        }
+        if (data.isTrashed !== undefined) {
+            updateData.isTrashed = data.isTrashed;
+            if (data.isTrashed) {
+                updateData.trashedAt = new Date();
+            } else {
+                updateData.trashedAt = undefined;
+            }
+        }
+
+        // Y.js collaboration fields
+        if (data.yjsSnapshot !== undefined) {
+            updateData.yjsSnapshot = data.yjsSnapshot;
+        }
+        if (data.yjsUpdates !== undefined) {
+            updateData.yjsUpdates = data.yjsUpdates;
+        }
+        if (data.lastCompactedAt !== undefined) {
+            updateData.lastCompactedAt = data.lastCompactedAt;
+        }
+
+        const result = await getCollection().findOneAndUpdate(
+            { _id: new ObjectId(id) },
+            { $set: updateData },
+            { returnDocument: 'after' },
+        );
+
+        return result ? toNoteResponse(result) : null;
+    } catch {
+        return null;
+    }
 }
 
 export async function updateNote(

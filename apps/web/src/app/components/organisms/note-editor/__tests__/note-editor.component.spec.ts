@@ -251,4 +251,46 @@ describe('NoteEditorComponent', () => {
       expect(typeof component.isActive('bold')).toBe('boolean');
     });
   });
+
+  describe('collaboration features', () => {
+    beforeEach(() => {
+      fixture.componentRef.setInput('note', mockNote);
+      fixture.componentRef.setInput('editable', true);
+      fixture.detectChanges();
+    });
+
+    it('should initialize activeUsers signal', () => {
+      expect(component.activeUsers).toBeDefined();
+      expect(component.activeUsers()).toEqual([]);
+    });
+
+    it('should display active users list when users are present', () => {
+      // Simulate active users
+      component.activeUsers.set([
+        { name: 'User 1', color: '#FF6B6B', userId: 'user-1' },
+        { name: 'User 2', color: '#4ECDC4', userId: 'user-2' },
+      ]);
+      fixture.detectChanges();
+
+      const activeUsersList = fixture.nativeElement.querySelector('app-active-users-list');
+      expect(activeUsersList).not.toBeNull();
+    });
+
+    it('should have updateBotWidget method', () => {
+      expect(component.updateBotWidget).toBeDefined();
+      expect(() => component.updateBotWidget('widget-123', { status: 'completed' })).not.toThrow();
+    });
+
+    it.skip('should initialize Y.js collaboration when note ID is available', () => {
+      // TODO: Mock Y.js and WebSocket provider to test collaboration initialization
+    });
+
+    it.skip('should upload images via uploadImage method', async () => {
+      // TODO: Mock fetch to test image upload functionality
+    });
+
+    it.skip('should handle paste and drop image uploads', () => {
+      // TODO: Test image upload extension with paste/drop events
+    });
+  });
 });

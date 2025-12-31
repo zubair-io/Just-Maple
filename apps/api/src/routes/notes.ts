@@ -12,6 +12,7 @@ import {
     restoreNoteFromTrash,
     emptyTrash,
 } from '../repositories/note.repo';
+import { uploadNoteImage } from '../services/storage.service';
 
 export const noteRoutes = new Elysia({ prefix: '/api/notes' })
     .use(jwtPlugin)
@@ -79,6 +80,41 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             }),
         },
     )
+
+    // Upload an image for a note
+    .post('/:id/images', async ({ auth, params, request, set }) => {
+        if (!checkAuth(auth, set)) {
+            return { error: 'Unauthorized', message: 'Valid authentication required' };
+        }
+
+        // Check if note exists and user has access
+        const note = await findNoteById(params.id, auth.user._id);
+        if (!note) {
+            set.status = 404;
+            return { error: 'Note not found' };
+        }
+
+        // Validate content type
+        const contentType = request.headers.get('content-type');
+        if (!contentType?.startsWith('image/')) {
+            set.status = 400;
+            return { error: 'Only images are allowed' };
+        }
+
+        // Read file buffer
+        const fileBuffer = Buffer.from(await request.arrayBuffer());
+
+        // Validate file size (max 10MB)
+        if (fileBuffer.length > 10 * 1024 * 1024) {
+            set.status = 413;
+            return { error: 'File too large (max 10MB)' };
+        }
+
+        // Upload to Azure Blob Storage
+        const imageUrl = await uploadNoteImage(params.id, auth.user._id, fileBuffer, contentType);
+
+        return { url: imageUrl };
+    })
 
     // Create a new note
     .post(

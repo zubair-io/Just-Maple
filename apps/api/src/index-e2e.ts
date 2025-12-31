@@ -21,6 +21,26 @@ async function startE2EDatabase() {
 
     // Import and start the main server AFTER setting the env var
     await import('./index');
+
+    // Wait for server to initialize, then seed test user and note
+    setTimeout(async () => {
+        try {
+            const { findOrCreateUser } = await import('./repositories/user.repo');
+            const testUser = await findOrCreateUser('test@example.com');
+            console.log(`[E2E] Seeded test user: ${testUser._id}`);
+
+            // Create a test note for collaboration testing
+            const { createNote } = await import('./repositories/note.repo');
+            const testNote = await createNote(testUser._id, {
+                type: 'write',
+                title: 'E2E Collaboration Test Note',
+                tagIds: [],
+            });
+            console.log(`[E2E] Seeded test note: ${testNote._id}`);
+        } catch (error) {
+            console.error('[E2E] Failed to seed test data:', error);
+        }
+    }, 2000);
 }
 
 // Handle graceful shutdown

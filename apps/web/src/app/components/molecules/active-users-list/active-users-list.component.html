@@ -1,0 +1,14 @@
+@if (users().length > 0) {
+  <div class="active-users-list">
+    @for (user of visibleUsers(); track user.userId || user.name) {
+      <div class="user-avatar" [style.background-color]="user.color" [title]="user.name">
+        <span class="user-initials">{{ getInitials(user.name) }}</span>
+      </div>
+    }
+    @if (remainingCount() > 0) {
+      <div class="user-avatar remaining-count" title="{{ remainingCount() }} more">
+        <span class="user-initials">+{{ remainingCount() }}</span>
+      </div>
+    }
+  </div>
+}

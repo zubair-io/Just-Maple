@@ -11,6 +11,7 @@ import { collectibleRegistryRoutes } from './routes/collectible-registry';
 import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
 import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
+import { collaborationWebSocket } from './ws/collaboration.ws';
 import { SignalRRealtimeService } from './services/signalr.service';
 import { setRealtimeService } from './services/realtime.service';
 import { config } from './config';
@@ -62,6 +63,7 @@ async function main() {
         .use(notificationRoutes)
         .use(botRoutes)
         .use(chatWebSocket)
+        .use(collaborationWebSocket)
         .get('/api/health', async ({ set }) => {
             try {
                 // Check database connection

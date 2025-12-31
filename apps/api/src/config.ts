@@ -31,6 +31,9 @@ export const config = {
     signalrServiceUrl: process.env.SIGNALR_SERVICE_URL,
     signalrServiceKey: process.env.SIGNALR_SERVICE_KEY,
 
+    // Collaboration config (Y.js real-time editing)
+    enableCollaboration: true, //process.env.ENABLE_COLLABORATION === 'true',
+
     // Paperbark config (push notification relay service)
     // Supports both PAPERBARK_API_KEY and paperbark-api-key formats for Azure compatibility
     paperbarkUrl:
