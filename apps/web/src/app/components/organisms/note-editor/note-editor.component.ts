@@ -31,6 +31,20 @@ import { BotService, type BotSuggestion } from '../../../services/bot.service';
 import { MentionSuggestionComponent } from '../../organisms/chat/mention-suggestion.component';
 import { Subject, takeUntil, combineLatest, switchMap, of } from 'rxjs';
 import type { Note, Tag, NoteContent } from '@maple/shared';
+import { collab, sendableSteps, receiveTransaction, getVersion } from 'prosemirror-collab';
+import { Step } from 'prosemirror-transform';
+import { AuthService } from '../../../services/auth.service';
+import { environment } from '../../../../environments/environment';
+import { Extension } from '@tiptap/core';
+
+// TipTap extension that wraps ProseMirror collab plugin
+const CollabExtension = Extension.create({
+  name: 'collaboration',
+
+  addProseMirrorPlugins() {
+    return [collab({ version: 0 })];
+  },
+});
 
 @Component({
   selector: 'app-note-editor',
@@ -44,7 +58,13 @@ export class NoteEditorComponent implements OnDestroy {
   private editorRef?: ElementRef<HTMLElement>;
 
   private readonly botService = inject(BotService);
+  private readonly authService = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
+
+  // ProseMirror collaboration state
+  private collabWS: WebSocket | null = null;
+  private collabVersion: number = 0;
+  private isSendingSteps = false;
 
   readonly note = input<Note | null>(null);
   readonly tag = input<Tag | null>(null);
@@ -117,13 +137,28 @@ export class NoteEditorComponent implements OnDestroy {
       },
     });
 
+    // Initialize collaboration when note changes
+    effect(() => {
+      const currentNote = this.note();
+      if (!this.viewReady() || !this.editor || !currentNote?._id) {
+        this.disconnectCollaboration();
+        return;
+      }
+
+      if (currentNote._id !== this.lastNoteId) {
+        this.initializeCollaboration(currentNote._id, currentNote.version || 0);
+      }
+    });
+
     this.destroyRef.onDestroy(() => {
       this.destroy$.next();
       this.destroy$.complete();
+      this.disconnectCollaboration();
     });
   }
 
   ngOnDestroy(): void {
+    this.disconnectCollaboration();
     this.editor?.destroy();
   }
 
@@ -200,12 +235,15 @@ export class NoteEditorComponent implements OnDestroy {
             return 'Start writing...';
           },
         }),
+        CollabExtension,
       ],
       content: '',
       onUpdate: ({ editor }) => {
         if (!this.isUpdatingFromNote) {
           const json = editor.getJSON() as NoteContent;
           this.contentChange.emit(json);
+          // Send steps to collaboration server
+          this.sendSteps();
         }
       },
       onFocus: () => {
@@ -288,6 +326,108 @@ export class NoteEditorComponent implements OnDestroy {
   focusTitle(): void {
     // Focus at the start (the H1 title)
     this.editor?.commands.focus('start');
+  }
+
+  // Collaboration methods
+  private initializeCollaboration(noteId: string, version: number): void {
+    this.disconnectCollaboration();
+    this.collabVersion = version;
+
+    const token = this.authService.accessToken();
+    if (!token) {
+      console.error('[Collab] No access token available');
+      return;
+    }
+
+    // Determine WebSocket URL from environment
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = environment.production ? window.location.host : 'localhost:7071';
+    const wsUrl = `${wsProtocol}//${wsHost}/ws/collab/${noteId}?token=${token}`;
+
+    console.log('[Collab] Connecting to:', wsUrl);
+    this.collabWS = new WebSocket(wsUrl);
+
+    this.collabWS.onopen = () => {
+      console.log('[Collab] Connected to collaboration server');
+    };
+
+    this.collabWS.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('[Collab] Received message:', data.type);
+
+        if (data.type === 'init') {
+          this.collabVersion = data.version;
+          console.log('[Collab] Initialized with version:', data.version);
+          // Document content is already loaded, just sync version
+        }
+
+        if (data.type === 'steps' && this.editor) {
+          // Receive steps from other clients
+          const steps = data.steps.map((stepJSON: any) =>
+            Step.fromJSON(this.editor!.schema, stepJSON),
+          );
+
+          // Apply the steps to the editor
+          const tr = receiveTransaction(
+            this.editor.state,
+            steps,
+            data.steps.map(() => data.clientID),
+          );
+
+          this.isUpdatingFromNote = true;
+          try {
+            this.editor.view.dispatch(tr);
+            this.collabVersion = data.version;
+            console.log('[Collab] Applied remote steps, new version:', data.version);
+          } finally {
+            this.isUpdatingFromNote = false;
+          }
+        }
+      } catch (error) {
+        console.error('[Collab] Error processing message:', error);
+      }
+    };
+
+    this.collabWS.onerror = (error) => {
+      console.error('[Collab] WebSocket error:', error);
+    };
+
+    this.collabWS.onclose = (event) => {
+      console.log('[Collab] WebSocket closed:', event.code, event.reason);
+    };
+  }
+
+  private disconnectCollaboration(): void {
+    if (this.collabWS) {
+      this.collabWS.close();
+      this.collabWS = null;
+    }
+  }
+
+  private sendSteps(): void {
+    if (!this.editor || this.isSendingSteps || !this.collabWS) return;
+    if (this.collabWS.readyState !== WebSocket.OPEN) return;
+
+    // Get sendable steps from ProseMirror collab plugin
+    const sendable = sendableSteps(this.editor.state);
+    if (!sendable || sendable.steps.length === 0) return;
+
+    this.isSendingSteps = true;
+    try {
+      this.collabWS.send(
+        JSON.stringify({
+          type: 'steps',
+          version: sendable.version,
+          steps: sendable.steps.map((s) => s.toJSON()),
+        }),
+      );
+      console.log('[Collab] Sent steps, version:', sendable.version);
+    } catch (error) {
+      console.error('[Collab] Error sending steps:', error);
+    } finally {
+      this.isSendingSteps = false;
+    }
   }
 
   // Toolbar commands
