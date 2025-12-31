@@ -67,7 +67,9 @@ class OTService {
 
         // Client is behind - they need to catch up first
         if (clientVersion < doc.version) {
-            const missedStepsData = doc.steps.slice(clientVersion - (doc.version - doc.steps.length));
+            const missedStepsData = doc.steps.slice(
+                clientVersion - (doc.version - doc.steps.length),
+            );
             const missedSteps = missedStepsData.map((s) => s.step);
             const missedClientIDs = missedStepsData.map((s) => s.clientID);
             console.log(`[OT Service] Client behind, sending ${missedSteps.length} missed steps`);
@@ -111,7 +113,9 @@ class OTService {
         }
 
         // Client is ahead - something went wrong (server lost state?)
-        this.debug(`Client ${clientID} is ahead of authority for note ${noteId} (C:${clientVersion} > S:${doc.version})`);
+        this.debug(
+            `Client ${clientID} is ahead of authority for note ${noteId} (C:${clientVersion} > S:${doc.version})`,
+        );
         return {
             version: doc.version,
             steps: [],
