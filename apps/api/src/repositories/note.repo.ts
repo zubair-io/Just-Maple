@@ -299,3 +299,55 @@ export async function emptyTrash(userId: string): Promise<number> {
         return 0;
     }
 }
+
+// Internal functions for trusted services (bypasses permission checks)
+// Only use these from internal services like OT collaboration
+
+/**
+ * Find note by ID without permission checks
+ * WARNING: Only use from trusted internal services (e.g., OT service)
+ */
+export async function findNoteByIdInternal(id: string): Promise<Note | null> {
+    try {
+        const doc = await getCollection().findOne({ _id: new ObjectId(id) });
+        if (!doc) return null;
+        return toNoteResponse(doc);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Update note without permission checks
+ * WARNING: Only use from trusted internal services (e.g., OT service)
+ */
+export async function updateNoteInternal(
+    id: string,
+    data: Partial<UpdateNoteInput>,
+): Promise<Note | null> {
+    try {
+        const updateData: Record<string, unknown> = {
+            updatedAt: new Date(),
+        };
+
+        if (data.title !== undefined) updateData.title = data.title;
+        if (data.content !== undefined) updateData.content = data.content;
+        if (data.version !== undefined) updateData.version = data.version;
+        if (data.tagId !== undefined) {
+            updateData.tagId = data.tagId ? new ObjectId(data.tagId) : null;
+        }
+        if (data.isFavorite !== undefined) updateData.isFavorite = data.isFavorite;
+        if (data.isArchived !== undefined) updateData.isArchived = data.isArchived;
+
+        const result = await getCollection().findOneAndUpdate(
+            { _id: new ObjectId(id) },
+            { $set: updateData },
+            { returnDocument: 'after' },
+        );
+
+        if (!result) return null;
+        return toNoteResponse(result);
+    } catch {
+        return null;
+    }
+}
