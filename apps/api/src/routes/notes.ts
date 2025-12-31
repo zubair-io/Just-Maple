@@ -12,6 +12,7 @@ import {
     restoreNoteFromTrash,
     emptyTrash,
 } from '../repositories/note.repo';
+import { otService } from '../services/ot.service';
 
 export const noteRoutes = new Elysia({ prefix: '/api/notes' })
     .use(jwtPlugin)
@@ -88,6 +89,12 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
             const note = await createNote(auth.user._id, body);
+
+            // Broadcast new note creation to all clients viewing this tag
+            if (note.tagId) {
+                await otService.broadcastNoteCreated(note.tagId, note);
+            }
+
             return { note };
         },
         {
