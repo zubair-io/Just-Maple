@@ -8,7 +8,13 @@ interface DocumentAuthority {
     lastActivity: Date;
     clientIds: Set<string>; // Track connected clients
     currentDoc: any; // Current document state (ProseMirror JSON)
+    cleanupTimeout?: NodeJS.Timeout; // Track cleanup timeout to prevent memory leaks
 }
+
+// Configuration constants
+const MAX_STEPS_IN_MEMORY = 100; // Keep last 100 steps for catchup
+const CLEANUP_DELAY_DEV = 0; // Immediate cleanup in dev
+const CLEANUP_DELAY_PROD = 30 * 60 * 1000; // 30 minutes in production
 
 // Track userId per clientID for permission validation
 interface ConnectionInfo {
@@ -32,25 +38,36 @@ class OTService {
             const note = await findNoteByIdInternal(noteId);
             if (!note) throw new Error('Note not found');
 
-            // Start freshly loaded session, respecting persisted version
+            // Start fresh session from persisted version
             doc = {
                 version: note.version || 0,
                 steps: [],
                 lastActivity: new Date(),
                 clientIds: new Set(),
-                currentDoc: note.content, // Store current document state
+                currentDoc: note.content,
             };
             this.documents.set(noteId, doc);
-            console.log(`[OT Service] Starting new session for note ${noteId} at version 0`);
-        } else if (doc.clientIds.size === 0 && doc.version > 0) {
-            // Stale session - reset to version 0
-            const note = await findNoteByIdInternal(noteId);
             console.log(
-                `[OT Service] Resetting stale session for note ${noteId} from version ${doc.version} to 0`,
+                `[OT Service] Starting new session for note ${noteId} at version ${doc.version}`,
             );
-            doc.version = 0;
-            doc.steps = [];
-            doc.currentDoc = note?.content;
+        } else if (doc.clientIds.size === 0 && doc.version > 0) {
+            // Stale session - reload from database to avoid divergence
+            const note = await findNoteByIdInternal(noteId);
+            const dbVersion = note?.version || 0;
+
+            // Only reset if database version differs (indicates persistence happened)
+            if (dbVersion !== doc.version) {
+                console.log(
+                    `[OT Service] Reloading stale session for note ${noteId} from DB (memory: ${doc.version}, DB: ${dbVersion})`,
+                );
+                doc.version = dbVersion;
+                doc.steps = [];
+                doc.currentDoc = note?.content;
+            } else {
+                console.log(
+                    `[OT Service] Resuming stale session for note ${noteId} at version ${doc.version}`,
+                );
+            }
         }
 
         doc.lastActivity = new Date();
@@ -117,6 +134,16 @@ class OTService {
             // Store steps with author
             const newSteps = clientSteps.map((step) => ({ step, clientID }));
             doc.steps.push(...newSteps);
+
+            // Implement sliding window to prevent unbounded growth
+            if (doc.steps.length > MAX_STEPS_IN_MEMORY) {
+                const excess = doc.steps.length - MAX_STEPS_IN_MEMORY;
+                doc.steps.splice(0, excess);
+                console.log(
+                    `[OT Service] Trimmed ${excess} old steps for note ${noteId} (keeping last ${MAX_STEPS_IN_MEMORY})`,
+                );
+            }
+
             doc.version += clientSteps.length;
 
             // Update current document state if client sent it
@@ -157,13 +184,28 @@ class OTService {
     }
 
     private async persistSteps(noteId: string, steps: any[], version: number): Promise<void> {
-        // Apply steps to ProseMirror document to get updated content
-        const note = await findNoteByIdInternal(noteId);
-        if (!note || !note.content) return;
+        try {
+            const doc = this.documents.get(noteId);
+            if (!doc || !doc.currentDoc) {
+                console.error(
+                    `[OT Service] Cannot persist steps - no document state for ${noteId}`,
+                );
+                return;
+            }
 
-        // TODO: Apply steps to note.content (ProseMirror JSON)
-        // For now, just update version
-        await updateNoteInternal(noteId, { version });
+            // The currentDoc is already up-to-date because clients send their doc state
+            // along with steps. We just need to persist it to MongoDB.
+            await updateNoteInternal(noteId, {
+                version,
+                content: doc.currentDoc,
+            });
+
+            console.log(`[OT Service] Persisted version ${version} for note ${noteId}`);
+        } catch (error) {
+            console.error(`[OT Service] Failed to persist steps for note ${noteId}:`, error);
+            // Don't throw - let collaboration continue even if persistence fails
+            // TODO: Queue for retry
+        }
     }
 
     private broadcastSteps(noteId: string, steps: any[], version: number, sender: string): void {
@@ -203,6 +245,15 @@ class OTService {
         const doc = this.documents.get(noteId);
         if (doc) {
             doc.clientIds.add(clientID);
+
+            // Clear cleanup timeout when new client connects
+            if (doc.cleanupTimeout) {
+                clearTimeout(doc.cleanupTimeout);
+                doc.cleanupTimeout = undefined;
+                console.log(
+                    `[OT Service] Cancelled cleanup for note ${noteId} - client reconnected`,
+                );
+            }
         }
 
         // Store userId for permission validation
@@ -228,12 +279,16 @@ class OTService {
 
             // Cleanup when last client disconnects
             if (doc.clientIds.size === 0) {
-                // In development: clear immediately
-                // In production: wait 30 min to allow quick reconnects
-                const isDev = process.env.NODE_ENV !== 'production';
-                const delay = isDev ? 0 : 30 * 60 * 1000;
+                // Clear any existing timeout to prevent memory leak
+                if (doc.cleanupTimeout) {
+                    clearTimeout(doc.cleanupTimeout);
+                }
 
-                setTimeout(() => {
+                const isDev = process.env.NODE_ENV !== 'production';
+                const delay = isDev ? CLEANUP_DELAY_DEV : CLEANUP_DELAY_PROD;
+
+                // Store timeout reference
+                doc.cleanupTimeout = setTimeout(() => {
                     const d = this.documents.get(noteId);
                     if (d && d.clientIds.size === 0) {
                         this.documents.delete(noteId);
@@ -242,6 +297,12 @@ class OTService {
                         );
                     }
                 }, delay);
+            } else {
+                // If someone else is still connected, clear the cleanup timeout
+                if (doc.cleanupTimeout) {
+                    clearTimeout(doc.cleanupTimeout);
+                    doc.cleanupTimeout = undefined;
+                }
             }
         }
 
