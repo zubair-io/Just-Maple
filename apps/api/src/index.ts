@@ -10,6 +10,7 @@ import { paperRoutes } from './routes/papers';
 import { collectibleRegistryRoutes } from './routes/collectible-registry';
 import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
+import { collabRoutes } from './routes/collab';
 import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
 import { collabOTWebSocket } from './ws/collab-ot.ws';
 import { SignalRRealtimeService } from './services/signalr.service';
@@ -62,27 +63,37 @@ async function main() {
         .use(collectibleRegistryRoutes)
         .use(notificationRoutes)
         .use(botRoutes)
-        .use(chatWebSocket)
-        .use(collabOTWebSocket)
-        .get('/api/health', async ({ set }) => {
-            try {
-                // Check database connection
-                const database = getDb();
-                await database.command({ ping: 1 });
-                return {
-                    status: 'healthy',
-                    timestamp: new Date().toISOString(),
-                    database: 'connected',
-                };
-            } catch {
-                set.status = 503;
-                return {
-                    status: 'unhealthy',
-                    timestamp: new Date().toISOString(),
-                    database: 'disconnected',
-                };
-            }
-        })
+        .use(collabRoutes);
+
+    // Conditionally enable WebSocket routes
+    // - Dev/self-hosted: Direct WebSocket connections
+    // - Production (USE_SIGNALR=true): HTTP routes + SignalR via AutumnBlaze
+    if (!config.useSignalR) {
+        app.use(chatWebSocket).use(collabOTWebSocket);
+        console.log('   WebSocket routes enabled');
+    } else {
+        console.log('   WebSocket routes disabled (using SignalR)');
+    }
+
+    app.get('/api/health', async ({ set }) => {
+        try {
+            // Check database connection
+            const database = getDb();
+            await database.command({ ping: 1 });
+            return {
+                status: 'healthy',
+                timestamp: new Date().toISOString(),
+                database: 'connected',
+            };
+        } catch {
+            set.status = 503;
+            return {
+                status: 'unhealthy',
+                timestamp: new Date().toISOString(),
+                database: 'disconnected',
+            };
+        }
+    })
         // Serve static files and SPA fallback
         .get('*', async ({ path, set }) => {
             // Skip API routes and WebSocket routes
@@ -144,8 +155,13 @@ async function main() {
     console.log(`🍁 PaperbarkMaple API running at http://localhost:${config.port}`);
     console.log(`   Environment: ${envName}`);
     console.log(`   MongoDB: ${config.mongodbUri}`);
-    console.log(`   WebSocket Chat: ws://localhost:${config.port}/ws/chat`);
-    console.log(`   WebSocket Collab: ws://localhost:${config.port}/ws/collab/:noteId`);
+    if (!config.useSignalR) {
+        console.log(`   WebSocket Chat: ws://localhost:${config.port}/ws/chat`);
+        console.log(`   WebSocket Collab: ws://localhost:${config.port}/ws/collab/:noteId`);
+    } else {
+        console.log(`   SignalR Service: ${config.signalrServiceUrl}`);
+        console.log(`   Collab HTTP: http://localhost:${config.port}/api/collab`);
+    }
     console.log(`   Frontend: ${frontendAvailable ? 'serving from ' + STATIC_DIR : 'not built'}`);
 }
 

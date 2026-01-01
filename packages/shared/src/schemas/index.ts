@@ -8,3 +8,4 @@ export * from './bot';
 export * from './paper';
 export * from './collectible-registry';
 export * from './notification';
+export * from './collab';

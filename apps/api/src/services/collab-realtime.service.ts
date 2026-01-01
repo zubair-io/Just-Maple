@@ -65,11 +65,13 @@ export class WebSocketCollabRealtimeService implements ICollabRealtimeService {
         }
     }
 
-    addConnection(noteId: string, clientId: string, connection: WebSocket): void {
+    addConnection(noteId: string, clientId: string, connection: any): void {
         if (!this.connections.has(noteId)) {
             this.connections.set(noteId, new Map());
         }
-        this.connections.get(noteId)!.set(clientId, connection);
+        // Extract WebSocket from connection object (supports both { ws, userId } and direct WebSocket)
+        const ws = connection.ws || connection;
+        this.connections.get(noteId)!.set(clientId, ws);
     }
 
     removeConnection(noteId: string, clientId: string): void {
@@ -90,38 +92,76 @@ export class WebSocketCollabRealtimeService implements ICollabRealtimeService {
 // Azure SignalR implementation (for production)
 export class SignalRCollabRealtimeService implements ICollabRealtimeService {
     private groupMap = new Map<string, Set<string>>(); // noteId -> clientIds
+    private clientToUserMap = new Map<string, string>(); // clientId -> userId
+    private signalrClient: any;
 
-    constructor(private signalrClient: any) {} // Azure SignalR client
+    constructor() {
+        // Import and initialize SignalR client service
+        const { SignalRCollabService } = require('./signalr-collab.service');
+        this.signalrClient = new SignalRCollabService();
+    }
 
     broadcast(noteId: string, message: any, senderClientId?: string): void {
-        // SignalR: send to group (noteId), exclude sender
-        // This would call Azure SignalR Service API
-        // For now, this is a placeholder for production implementation
-        console.log(`[SignalR Collab] Broadcast to ${noteId}, excluding ${senderClientId}`);
-        // TODO: Implement Azure SignalR broadcast
-        // this.signalrClient.group(noteId).excludeConnection(senderClientId).send(message);
+        console.log(`[SignalR Collab] Broadcasting to note ${noteId}, excluding ${senderClientId}`);
+
+        // Determine sender userId to exclude them from broadcast
+        const senderUserId = senderClientId ? this.clientToUserMap.get(senderClientId) : undefined;
+
+        // Create collaboration event
+        const event: any = {
+            type: message.type,
+            noteId,
+            version: message.version,
+            steps: message.steps,
+            clientIDs: message.clientIDs,
+            clientID: message.clientID,
+            doc: message.doc,
+        };
+
+        // Broadcast via AutumnBlaze
+        this.signalrClient.broadcastToNote(noteId, event, senderUserId).catch(console.error);
     }
 
     sendToClient(clientId: string, message: any): void {
-        // TODO: Implement Azure SignalR send to client
-        console.log(`[SignalR Collab] Send to client ${clientId}`);
-        // this.signalrClient.client(clientId).send(message);
+        // SignalR doesn't support direct client-to-client messaging
+        // We can only send to users, so we'll use the userId mapping
+        const userId = this.clientToUserMap.get(clientId);
+        if (!userId) {
+            console.error(`[SignalR Collab] Cannot send to client ${clientId} - no userId mapping`);
+            return;
+        }
+
+        console.log(`[SignalR Collab] Sending to client ${clientId} (user ${userId})`);
+
+        // For now, we'll broadcast to the note and let the client filter
+        // This is a limitation of SignalR's user-based targeting
+        this.broadcast(message.noteId, message, clientId);
     }
 
-    addConnection(noteId: string, clientId: string): void {
+    addConnection(noteId: string, clientId: string, connection?: any): void {
         if (!this.groupMap.has(noteId)) {
             this.groupMap.set(noteId, new Set());
         }
         this.groupMap.get(noteId)!.add(clientId);
 
-        // TODO: Add client to SignalR group
-        // this.signalrClient.addClientToGroup(clientId, noteId);
+        // Extract userId from connection context if available
+        // In SignalR mode, we don't have WebSocket connection, but we track the mapping
+        if (connection?.userId) {
+            this.clientToUserMap.set(clientId, connection.userId);
+        }
+
+        console.log(`[SignalR Collab] Client ${clientId} joined note ${noteId}`);
     }
 
     removeConnection(noteId: string, clientId: string): void {
         this.groupMap.get(noteId)?.delete(clientId);
-        // TODO: Remove client from SignalR group
-        // this.signalrClient.removeClientFromGroup(clientId, noteId);
+        this.clientToUserMap.delete(clientId);
+
+        if (this.groupMap.get(noteId)?.size === 0) {
+            this.groupMap.delete(noteId);
+        }
+
+        console.log(`[SignalR Collab] Client ${clientId} left note ${noteId}`);
     }
 
     getConnectedClients(noteId: string): string[] {

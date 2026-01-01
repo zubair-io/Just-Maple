@@ -36,8 +36,10 @@ import { Step } from 'prosemirror-transform';
 import { AuthService } from '../../../services/auth.service';
 import { OfflineCollabService } from '../../../services/offline-collab.service';
 import { NetworkService } from '../../../services/network.service';
+import { CollabSignalRService } from '../../../services/collab-signalr.service';
 import { environment } from '../../../../environments/environment';
 import { Extension } from '@tiptap/core';
+import { Subscription } from 'rxjs';
 
 // TipTap extension that wraps ProseMirror collab plugin with dynamic version
 const CollabExtension = Extension.create<{ version: number; clientID?: string | number }>({
@@ -75,10 +77,13 @@ export class NoteEditorComponent implements OnDestroy {
   private readonly authService = inject(AuthService);
   private readonly offlineCollab = inject(OfflineCollabService);
   private readonly network = inject(NetworkService);
+  private readonly collabSignalR = inject(CollabSignalRService);
   private readonly destroyRef = inject(DestroyRef);
 
   // ProseMirror collaboration state
   private collabWS: WebSocket | null = null;
+  private signalrSubscription: Subscription | null = null;
+  private clientID: string | null = null;
   private isSendingSteps = false;
 
   readonly note = input<Note | null>(null);
@@ -368,6 +373,30 @@ export class NoteEditorComponent implements OnDestroy {
   private initializeCollaboration(noteId: string, version: number): void {
     this.disconnectCollaboration();
 
+    if (environment.useSignalR) {
+      this.initializeSignalRCollab(noteId, version);
+    } else {
+      this.initializeWebSocketCollab(noteId, version);
+    }
+  }
+
+  private initializeSignalRCollab(noteId: string, version: number): void {
+    console.log('[Collab SignalR] Initializing for note:', noteId);
+
+    // Connect to SignalR hub
+    this.collabSignalR.connect().then(() => {
+      // Subscribe to events for this note
+      this.signalrSubscription = this.collabSignalR.eventsForNote(noteId).subscribe((event) => {
+        console.log('[Collab SignalR] Received event:', event.type);
+        this.handleCollabMessage(event);
+      });
+
+      // Join collaboration session via HTTP
+      this.joinCollabSession(noteId);
+    });
+  }
+
+  private initializeWebSocketCollab(noteId: string, version: number): void {
     const token = this.authService.accessToken();
     if (!token) {
       console.error('[Collab] No access token available');
@@ -391,97 +420,19 @@ export class NoteEditorComponent implements OnDestroy {
     this.collabWS.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('[Collab] Received message:', data.type);
-
-        if (data.type === 'resync') {
-          console.log('[Collab] Received resync request - reinitializing');
-          this.initializeCollaboration(this.note()?._id || '', 0);
-          return;
-        }
-
-        if (data.type === 'init') {
-          // Server sends authoritative document content and version
-          console.log('[Collab] Session initialized at version:', data.version);
-
-          // CRITICAL: Reinitialize editor or update state
-          // If the editor is already initialized and valid, we just need to re-inject the collaboration state
-          if (this.editor && !this.editor.isDestroyed && data.doc) {
-            const currentContent = data.doc;
-            const serverVersion = data.version;
-            const clientID = data.clientID; // Server assigned clientID
-
-            // To "re-initialize" collaboration without destroying the editor UI (which preserves cursor, scrolling, focus, etc):
-            // 1. Create a new state with the correct doc content and collab plugin configuration
-            // 2. Dispatch a transaction that replaces the state entirely
-
-            console.log(`[Collab] Reinjecting collaboration state at version ${serverVersion}`);
-
-            // We need to re-configure the extensions to get a fresh collab plugin instance
-            const extensions = this.getExtensions(serverVersion, clientID);
-
-            // We must destroy and recreate for now because swapping the Collab plugin instance dynamically is tricky in TipTap
-            // However, we can make it seamless.
-            // IF we really want to avoid destroy, we'd need to access the plugin directly.
-            // For robustness, Re-creation is safer but let's do it faster.
-
-            const wasFocused = this.isFocused();
-            const lastSelection = this.editor.state.selection;
-
-            this.editor.destroy();
-            this.createEditor(currentContent, extensions, wasFocused, lastSelection);
-          } else if (this.editorRef?.nativeElement && data.doc) {
-            // First time init
-            const serverVersion = data.version;
-            const clientID = data.clientID;
-            const extensions = this.getExtensions(serverVersion, clientID);
-            this.createEditor(data.doc, extensions, false, null); // [FIX] Added missing lastSelection argument
-          }
-        }
-
-        if (data.type === 'steps' && this.editor) {
-          // Receive steps from other clients
-          const steps = data.steps.map((stepJSON: any) =>
-            Step.fromJSON(this.editor!.schema, stepJSON),
-          );
-
-          // Apply the steps to the editor
-          const clientIDs = data.clientIDs || data.steps.map(() => data.clientID); // Support both formats
-          const tr = receiveTransaction(this.editor.state, steps, clientIDs);
-
-          this.isUpdatingFromNote = true;
-          try {
-            this.editor.view.dispatch(tr);
-            // Version is automatically updated by the collab plugin
-            const newVersion = getVersion(this.editor.state);
-            console.log('[Collab] Applied remote steps, new version:', newVersion);
-          } finally {
-            this.isUpdatingFromNote = false;
-          }
-
-          // Unlock sending mechanism now that we've processed the response
-          this.isSendingSteps = false;
-
-          // Send rebased steps after a short delay to avoid retry storm
-          // If we have pending steps that were rebased, they need to be sent
-          setTimeout(() => {
-            const sendable = sendableSteps(this.editor!.state);
-            if (sendable && sendable.steps.length > 0) {
-              console.log('[Collab] Sending rebased steps after receiving remote steps');
-              this.sendSteps();
-            }
-          }, 100);
-        }
+        console.log('[Collab WS] Received message:', data.type);
+        this.handleCollabMessage(data);
       } catch (error) {
-        console.error('[Collab] Error processing message:', error);
+        console.error('[Collab WS] Error processing message:', error);
       }
     };
 
     this.collabWS.onerror = (error) => {
-      console.error('[Collab] WebSocket error:', error);
+      console.error('[Collab WS] WebSocket error:', error);
     };
 
     this.collabWS.onclose = (event) => {
-      console.log('[Collab] WebSocket closed:', event.code, event.reason);
+      console.log('[Collab WS] WebSocket closed:', event.code, event.reason);
     };
 
     // Register flush callback for offline queue
@@ -497,15 +448,128 @@ export class NoteEditorComponent implements OnDestroy {
             }),
           );
         }
-        console.log(`[Collab] Flushed ${queuedSteps.length} queued steps`);
+        console.log(`[Collab WS] Flushed ${queuedSteps.length} queued steps`);
       }
     });
   }
 
+  private handleCollabMessage(data: any): void {
+    if (data.type === 'resync') {
+      console.log('[Collab] Received resync request - reinitializing');
+      this.initializeCollaboration(this.note()?._id || '', 0);
+      return;
+    }
+
+    if (data.type === 'init') {
+      // Server sends authoritative document content and version
+      console.log('[Collab] Session initialized at version:', data.version);
+
+      // Store clientID for later use
+      this.clientID = data.clientID;
+
+      // CRITICAL: Reinitialize editor or update state
+      // If the editor is already initialized and valid, we just need to re-inject the collaboration state
+      if (this.editor && !this.editor.isDestroyed && data.doc) {
+        const currentContent = data.doc;
+        const serverVersion = data.version;
+        const clientID = data.clientID; // Server assigned clientID
+
+        console.log(`[Collab] Reinjecting collaboration state at version ${serverVersion}`);
+
+        // We need to re-configure the extensions to get a fresh collab plugin instance
+        const extensions = this.getExtensions(serverVersion, clientID);
+
+        const wasFocused = this.isFocused();
+        const lastSelection = this.editor.state.selection;
+
+        this.editor.destroy();
+        this.createEditor(currentContent, extensions, wasFocused, lastSelection);
+      } else if (this.editorRef?.nativeElement && data.doc) {
+        // First time init
+        const serverVersion = data.version;
+        const clientID = data.clientID;
+        const extensions = this.getExtensions(serverVersion, clientID);
+        this.createEditor(data.doc, extensions, false, null);
+      }
+      return;
+    }
+
+    if (data.type === 'steps' && this.editor) {
+      // Receive steps from other clients
+      const steps = data.steps.map((stepJSON: any) => Step.fromJSON(this.editor!.schema, stepJSON));
+
+      // Apply the steps to the editor
+      const clientIDs = data.clientIDs || data.steps.map(() => data.clientID); // Support both formats
+      const tr = receiveTransaction(this.editor.state, steps, clientIDs);
+
+      this.isUpdatingFromNote = true;
+      try {
+        this.editor.view.dispatch(tr);
+        // Version is automatically updated by the collab plugin
+        const newVersion = getVersion(this.editor.state);
+        console.log('[Collab] Applied remote steps, new version:', newVersion);
+      } finally {
+        this.isUpdatingFromNote = false;
+      }
+
+      // Unlock sending mechanism now that we've processed the response
+      this.isSendingSteps = false;
+
+      // Send rebased steps after a short delay to avoid retry storm
+      // If we have pending steps that were rebased, they need to be sent
+      setTimeout(() => {
+        const sendable = sendableSteps(this.editor!.state);
+        if (sendable && sendable.steps.length > 0) {
+          console.log('[Collab] Sending rebased steps after receiving remote steps');
+          this.sendSteps();
+        }
+      }, 100);
+      return;
+    }
+  }
+
+  private async joinCollabSession(noteId: string): Promise<void> {
+    const token = this.authService.accessToken();
+    if (!token) {
+      console.error('[Collab SignalR] No access token available');
+      return;
+    }
+
+    try {
+      const apiUrl = environment.apiUrl || '';
+      const response = await fetch(`${apiUrl}/api/collab/join/${noteId}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Join session failed: ${response.status}`);
+      }
+
+      const initData = await response.json();
+      console.log('[Collab SignalR] Joined session, received init data');
+
+      // Handle init message
+      this.handleCollabMessage(initData);
+    } catch (error) {
+      console.error('[Collab SignalR] Failed to join session:', error);
+    }
+  }
+
   private disconnectCollaboration(): void {
+    // Disconnect WebSocket
     if (this.collabWS) {
       this.collabWS.close();
       this.collabWS = null;
+    }
+
+    // Disconnect SignalR subscription
+    if (this.signalrSubscription) {
+      this.signalrSubscription.unsubscribe();
+      this.signalrSubscription = null;
     }
 
     // Unregister flush callback
@@ -513,6 +577,8 @@ export class NoteEditorComponent implements OnDestroy {
     if (noteId) {
       this.offlineCollab.unregisterFlushCallback(noteId);
     }
+
+    this.clientID = null;
   }
 
   private sendSteps(): void {
@@ -525,20 +591,28 @@ export class NoteEditorComponent implements OnDestroy {
     const noteId = this.note()?._id;
     if (!noteId) return;
 
+    // Delegate to appropriate transport
+    if (environment.useSignalR) {
+      this.sendStepsViaHTTP(noteId, sendable);
+    } else {
+      this.sendStepsViaWebSocket(noteId, sendable);
+    }
+  }
+
+  private sendStepsViaWebSocket(noteId: string, sendable: any): void {
     // Check WebSocket state
     const wsState = this.collabWS?.readyState;
     const wsStateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
     const wsStateName = wsState !== undefined ? wsStateNames[wsState] : 'null';
 
     // Get the actual version from the collab plugin state
-    const currentPluginVersion = getVersion(this.editor.state);
+    const currentPluginVersion = getVersion(this.editor!.state);
     console.log(
-      '[Collab] Sending steps | WS state:',
+      '[Collab WS] Sending steps | WS state:',
       wsStateName,
       '| Version:',
       currentPluginVersion,
     );
-    console.log('[Collab] FORCE UPDATE CHECK - If you see this, code is updated.');
 
     // Check if we can send immediately (WebSocket is fully open)
     const canSendNow = this.collabWS && wsState === WebSocket.OPEN;
@@ -553,13 +627,13 @@ export class NoteEditorComponent implements OnDestroy {
           JSON.stringify({
             type: 'steps',
             version: sendable.version,
-            steps: sendable.steps.map((s) => s.toJSON()),
-            doc: this.editor.getJSON(), // Send current document state
+            steps: sendable.steps.map((s: any) => s.toJSON()),
+            doc: this.editor!.getJSON(), // Send current document state
           }),
         );
-        console.log('[Collab] Sent steps, version:', sendable.version);
+        console.log('[Collab WS] Sent steps, version:', sendable.version);
       } catch (error) {
-        console.error('[Collab] Error sending steps:', error);
+        console.error('[Collab WS] Error sending steps:', error);
         // Queue for retry on error
         this.queueStepsOffline(noteId, Array.from(sendable.steps), sendable.version);
         this.isSendingSteps = false; // Unlock if error occurred
@@ -568,28 +642,87 @@ export class NoteEditorComponent implements OnDestroy {
       // This enforces sequential processing and prevents "Client Ahead" race conditions.
     } else if (this.collabWS && wsState === WebSocket.CONNECTING) {
       // WebSocket is connecting - wait for it to open then send
-      console.log('[Collab] WebSocket connecting - waiting for open');
+      console.log('[Collab WS] WebSocket connecting - waiting for open');
       let attempts = 0;
       const maxAttempts = 50; // Max 5 seconds (50 * 100ms)
       const waitForOpen = () => {
         attempts++;
         if (this.collabWS?.readyState === WebSocket.OPEN) {
-          console.log('[Collab] WebSocket opened - sending queued steps');
+          console.log('[Collab WS] WebSocket opened - sending queued steps');
           this.sendSteps(); // Retry sending
         } else if (this.collabWS?.readyState === WebSocket.CONNECTING && attempts < maxAttempts) {
           // Still connecting, wait a bit more
           setTimeout(waitForOpen, 100);
         } else {
           // Connection failed or timeout, queue for later
-          console.log('[Collab] WebSocket failed to connect or timeout - queueing steps');
+          console.log('[Collab WS] WebSocket failed to connect or timeout - queueing steps');
           this.queueStepsOffline(noteId, Array.from(sendable.steps), sendable.version);
         }
       };
       setTimeout(waitForOpen, 100);
     } else {
       // Offline or disconnected: queue for later
-      console.log(`[Collab] Cannot send (state: ${wsStateName}) - queueing steps for later sync`);
+      console.log(
+        `[Collab WS] Cannot send (state: ${wsStateName}) - queueing steps for later sync`,
+      );
       this.queueStepsOffline(noteId, Array.from(sendable.steps), sendable.version);
+    }
+  }
+
+  private async sendStepsViaHTTP(noteId: string, sendable: any): Promise<void> {
+    const token = this.authService.accessToken();
+    if (!token) {
+      console.error('[Collab HTTP] No access token available');
+      return;
+    }
+
+    this.isSendingSteps = true;
+
+    try {
+      const apiUrl = environment.apiUrl || '';
+      const response = await fetch(`${apiUrl}/api/collab/${noteId}/steps`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          version: sendable.version,
+          steps: sendable.steps.map((s: any) => s.toJSON()),
+          doc: this.editor!.getJSON(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Send steps failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('[Collab HTTP] Steps sent successfully');
+
+      // Handle response (catch-up steps or ACK)
+      if (result.resync) {
+        this.handleCollabMessage({ type: 'resync' });
+      } else if (result.steps && result.steps.length > 0) {
+        // Server sent catch-up steps
+        this.handleCollabMessage(result);
+      } else {
+        // Success ACK - unlock sending
+        this.isSendingSteps = false;
+
+        // Check for rebased steps
+        setTimeout(() => {
+          const newSendable = sendableSteps(this.editor!.state);
+          if (newSendable && newSendable.steps.length > 0) {
+            console.log('[Collab HTTP] Sending rebased steps');
+            this.sendSteps();
+          }
+        }, 100);
+      }
+    } catch (error) {
+      console.error('[Collab HTTP] Error sending steps:', error);
+      this.isSendingSteps = false;
+      // TODO: Queue for retry? For now just unlock
     }
   }
 

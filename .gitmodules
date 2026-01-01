@@ -1,0 +1,3 @@
+[submodule "autumn-blaze"]
+	path = autumn-blaze
+	url = git@github.com:zubair-io/autumn-blaze.git

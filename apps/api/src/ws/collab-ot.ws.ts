@@ -56,7 +56,7 @@ export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
                 };
 
                 const doc = await otService.getDocument(noteId);
-                otService.addConnection(noteId, clientID, ws);
+                otService.addConnection(noteId, clientID, { ws, userId: user._id });
 
                 // Send initial version, document state, and clientID
                 ws.send(
