@@ -26,9 +26,9 @@ class OTService {
             const note = await findNoteByIdInternal(noteId);
             if (!note) throw new Error('Note not found');
 
-            // Start fresh at version 0 for each collaboration session
+            // Start freshly loaded session, respecting persisted version
             doc = {
-                version: 0,
+                version: note.version || 0,
                 steps: [],
                 lastActivity: new Date(),
                 clientIds: new Set(),

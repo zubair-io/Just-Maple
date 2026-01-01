@@ -12,6 +12,7 @@ interface CollabWSContext {
     userId: string;
 }
 
+// @ts-ignore
 export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
     .use(jwt({ name: 'jwt', secret: config.jwtSecret }))
     .ws('/collab/:noteId', {
@@ -44,7 +45,8 @@ export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
                     return;
                 }
 
-                const clientID = `${user._id}-${Date.now()}`;
+                const urlClientID = url.searchParams.get('clientID');
+                const clientID = urlClientID || `${user._id}-${Date.now()}`;
 
                 // Store connection context
                 (ws.data as unknown as { context: CollabWSContext }).context = {
@@ -75,20 +77,35 @@ export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
 
         async message(ws, message) {
             try {
-                // Handle message as string or object
-                const data = typeof message === 'string' ? JSON.parse(message) : message;
                 const context = (ws.data as unknown as { context: CollabWSContext }).context;
-
                 if (!context) {
                     console.error('[Collab OT] No context found');
                     return;
                 }
+
+                let data;
+                if (typeof message === 'string') {
+                    data = JSON.parse(message);
+                } else if (Buffer.isBuffer(message)) {
+                    data = JSON.parse(message.toString());
+                } else {
+                    data = message;
+                }
+
+                // Debug: Full payload dump
+                console.log('[Collab OT] INCOMING PAYLOAD:', JSON.stringify(data));
 
                 const { noteId, clientID } = context;
 
                 if (data.type === 'steps') {
                     // Steps are already JSON objects, no need to deserialize
                     // We'll handle this as plain data since we don't have a schema on the backend
+                    if (!data.steps || !Array.isArray(data.steps)) {
+                        console.error('[Collab OT] Invalid steps format:', data.steps);
+                        return;
+                    }
+                    console.log(`[Collab OT] Processing ${data.steps.length} steps from client`);
+
                     const result = await otService.receiveSteps(
                         noteId,
                         data.steps, // Pass as-is (JSON objects)
