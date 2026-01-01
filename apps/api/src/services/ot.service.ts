@@ -1,4 +1,4 @@
-import { updateNoteInternal, findNoteByIdInternal } from '../repositories/note.repo';
+import { updateNoteInternal, findNoteByIdInternal, findNoteById } from '../repositories/note.repo';
 import { collabRealtimeService } from './collab-realtime.service';
 
 // Store document version + steps in memory (clear after 30 min idle)
@@ -10,8 +10,14 @@ interface DocumentAuthority {
     currentDoc: any; // Current document state (ProseMirror JSON)
 }
 
+// Track userId per clientID for permission validation
+interface ConnectionInfo {
+    userId: string;
+}
+
 class OTService {
     private documents = new Map<string, DocumentAuthority>();
+    private connections = new Map<string, ConnectionInfo>(); // clientID -> ConnectionInfo
 
     // Debug helper
     private debug(msg: string, ...args: any[]) {
@@ -59,6 +65,32 @@ class OTService {
         clientID: string,
         clientDoc?: any, // Optional: client's current document state after applying their steps
     ): Promise<{ version: number; steps: any[]; clientIDs: string[]; resync?: boolean } | null> {
+        // SECURITY: Validate user still has access before processing steps
+        const connInfo = this.connections.get(clientID);
+        if (!connInfo) {
+            console.error(`[OT Service] No connection info for clientID: ${clientID}`);
+            return {
+                version: 0,
+                steps: [],
+                clientIDs: [],
+                resync: true,
+            };
+        }
+
+        // Verify user still has permission to edit this note
+        const note = await findNoteById(noteId, connInfo.userId);
+        if (!note) {
+            console.error(
+                `[OT Service] Permission denied for user ${connInfo.userId} on note ${noteId}`,
+            );
+            return {
+                version: 0,
+                steps: [],
+                clientIDs: [],
+                resync: true, // Force client to resync (will fail and disconnect)
+            };
+        }
+
         const doc = await this.getDocument(noteId);
 
         this.debug(
@@ -173,6 +205,18 @@ class OTService {
             doc.clientIds.add(clientID);
         }
 
+        // Store userId for permission validation
+        if (connection?.userId) {
+            this.connections.set(clientID, { userId: connection.userId });
+            console.log(
+                `[OT Service] Registered connection ${clientID} for user ${connection.userId}`,
+            );
+        } else {
+            console.warn(
+                `[OT Service] Connection ${clientID} missing userId - permission checks will fail`,
+            );
+        }
+
         // Register with realtime service
         collabRealtimeService.addConnection(noteId, clientID, connection);
     }
@@ -200,6 +244,10 @@ class OTService {
                 }, delay);
             }
         }
+
+        // Clean up connection info
+        this.connections.delete(clientID);
+        console.log(`[OT Service] Removed connection ${clientID}`);
 
         // Unregister from realtime service
         collabRealtimeService.removeConnection(noteId, clientID);
