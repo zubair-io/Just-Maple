@@ -31,7 +31,7 @@ import { BotService, type BotSuggestion } from '../../../services/bot.service';
 import { MentionSuggestionComponent } from '../../organisms/chat/mention-suggestion.component';
 import { Subject, takeUntil, combineLatest, switchMap, of } from 'rxjs';
 import type { Note, Tag, NoteContent } from '@maple/shared';
-import { collab, sendableSteps, receiveTransaction, getVersion } from 'prosemirror-collab';
+import { collab, getVersion, sendableSteps, receiveTransaction } from 'prosemirror-collab';
 import { Step } from 'prosemirror-transform';
 import { AuthService } from '../../../services/auth.service';
 import { OfflineCollabService } from '../../../services/offline-collab.service';
@@ -188,7 +188,7 @@ export class NoteEditorComponent implements OnDestroy {
     return [
       TitleDocument,
       StarterKit.configure({
-        document: false, // Use default document to prevent RangeError with strict schema
+        document: false,
         heading: false, // Use custom Heading below
       }),
       Heading.configure({
@@ -538,6 +538,7 @@ export class NoteEditorComponent implements OnDestroy {
       '| Version:',
       currentPluginVersion,
     );
+    console.log('[Collab] FORCE UPDATE CHECK - If you see this, code is updated.');
 
     // Check if we can send immediately (WebSocket is fully open)
     const canSendNow = this.collabWS && wsState === WebSocket.OPEN;
