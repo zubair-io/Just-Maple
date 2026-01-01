@@ -1,3 +1,5 @@
+import type { SignalRCollabService } from './signalr-collab.service';
+
 // Abstract interface for realtime collaboration communication
 export interface ICollabRealtimeService {
     // Broadcast message to all connections for a noteId (except sender)
@@ -93,12 +95,10 @@ export class WebSocketCollabRealtimeService implements ICollabRealtimeService {
 export class SignalRCollabRealtimeService implements ICollabRealtimeService {
     private groupMap = new Map<string, Set<string>>(); // noteId -> clientIds
     private clientToUserMap = new Map<string, string>(); // clientId -> userId
-    private signalrClient: any;
+    private signalrClient: SignalRCollabService;
 
-    constructor() {
-        // Import and initialize SignalR client service
-        const { SignalRCollabService } = require('./signalr-collab.service');
-        this.signalrClient = new SignalRCollabService();
+    constructor(signalrClient: SignalRCollabService) {
+        this.signalrClient = signalrClient;
     }
 
     broadcast(noteId: string, message: any, senderClientId?: string): void {
@@ -172,8 +172,9 @@ export class SignalRCollabRealtimeService implements ICollabRealtimeService {
 // Factory to create appropriate service based on environment
 export function createCollabRealtimeService(): ICollabRealtimeService {
     if (process.env.USE_SIGNALR === 'true') {
-        // Production: Azure SignalR
-        const signalrClient = null; // TODO: Initialize Azure SignalR client
+        // Production: Azure SignalR via AutumnBlaze
+        const { SignalRCollabService } = require('./signalr-collab.service');
+        const signalrClient = new SignalRCollabService();
         return new SignalRCollabRealtimeService(signalrClient);
     } else {
         // Dev/self-hosted: WebSocket

@@ -4,6 +4,7 @@ import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
 import { findNoteById } from '../repositories/note.repo';
 import { otService } from '../services/ot.service';
+import { generateClientID } from '../utils/client-id';
 import type { JWTPayload } from '@maple/shared';
 
 export const collabRoutes = new Elysia({ prefix: '/api/collab' })
@@ -39,7 +40,7 @@ export const collabRoutes = new Elysia({ prefix: '/api/collab' })
         }
 
         // Generate client ID
-        const clientID = `${auth.user._id}-${Date.now()}`;
+        const clientID = generateClientID(auth.user._id, 'signalr');
 
         // Get document state
         const doc = await otService.getDocument(noteId);
@@ -73,7 +74,7 @@ export const collabRoutes = new Elysia({ prefix: '/api/collab' })
         }
 
         // Use temporary clientID based on userId
-        const clientID = `http-${auth.user._id}-${Date.now()}`;
+        const clientID = generateClientID(auth.user._id, 'http');
 
         console.log(
             `[Collab Routes] Received ${steps?.length || 0} steps from ${auth.user._id} for note ${noteId}`,

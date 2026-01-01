@@ -4,6 +4,7 @@ import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
 import { findNoteById } from '../repositories/note.repo';
 import { otService } from '../services/ot.service';
+import { generateClientID } from '../utils/client-id';
 import type { JWTPayload } from '@maple/shared';
 
 interface CollabWSContext {
@@ -46,7 +47,7 @@ export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
                 }
 
                 const urlClientID = url.searchParams.get('clientID');
-                const clientID = urlClientID || `${user._id}-${Date.now()}`;
+                const clientID = urlClientID || generateClientID(user._id, 'ws');
 
                 // Store connection context
                 (ws.data as unknown as { context: CollabWSContext }).context = {
