@@ -1,4 +1,9 @@
-import { updateNoteInternal, findNoteByIdInternal, findNoteById } from '../repositories/note.repo';
+import {
+    updateNoteInternal,
+    findNoteByIdInternal,
+    findNoteById,
+    INTERNAL_CAPABILITY,
+} from '../repositories/note.repo';
 import { collabRealtimeService } from './collab-realtime.service';
 
 // Store document version + steps in memory (clear after 30 min idle)
@@ -9,6 +14,7 @@ interface DocumentAuthority {
     clientIds: Set<string>; // Track connected clients
     currentDoc: any; // Current document state (ProseMirror JSON)
     cleanupTimeout?: NodeJS.Timeout; // Track cleanup timeout to prevent memory leaks
+    generation: number; // Generation counter to detect stale cleanups
 }
 
 // Configuration constants
@@ -21,13 +27,91 @@ interface ConnectionInfo {
     userId: string;
 }
 
+// Permission cache entry
+interface PermissionCacheEntry {
+    hasAccess: boolean;
+    expiresAt: number; // Timestamp
+}
+
+// Permission cache TTL (5 minutes)
+const PERMISSION_CACHE_TTL = 5 * 60 * 1000;
+
 class OTService {
     private documents = new Map<string, DocumentAuthority>();
     private connections = new Map<string, ConnectionInfo>(); // clientID -> ConnectionInfo
+    private permissionCache = new Map<string, PermissionCacheEntry>(); // `${userId}:${noteId}` -> permission
+
+    constructor() {
+        // Periodic cleanup of expired permissions (every 10 minutes)
+        setInterval(
+            () => {
+                this.cleanupExpiredPermissions();
+            },
+            10 * 60 * 1000,
+        );
+    }
 
     // Debug helper
     private debug(msg: string, ...args: any[]) {
         console.log(`[OT Service] ${msg}`, ...args);
+    }
+
+    // Check permission with caching
+    private async checkPermission(noteId: string, userId: string): Promise<boolean> {
+        const cacheKey = `${userId}:${noteId}`;
+        const cached = this.permissionCache.get(cacheKey);
+
+        // Return cached result if still valid
+        if (cached && cached.expiresAt > Date.now()) {
+            return cached.hasAccess;
+        }
+
+        // Check actual permission
+        const note = await findNoteById(noteId, userId);
+        const hasAccess = note !== null;
+
+        // Cache result
+        this.permissionCache.set(cacheKey, {
+            hasAccess,
+            expiresAt: Date.now() + PERMISSION_CACHE_TTL,
+        });
+
+        console.log(
+            `[OT Service] Permission check for user ${userId} on note ${noteId}: ${hasAccess ? 'granted' : 'denied'} (cached for ${PERMISSION_CACHE_TTL / 1000}s)`,
+        );
+
+        return hasAccess;
+    }
+
+    // Invalidate permission cache for a specific note (call this when permissions change)
+    invalidatePermissions(noteId: string): void {
+        let invalidated = 0;
+        for (const key of this.permissionCache.keys()) {
+            if (key.endsWith(`:${noteId}`)) {
+                this.permissionCache.delete(key);
+                invalidated++;
+            }
+        }
+        if (invalidated > 0) {
+            console.log(
+                `[OT Service] Invalidated ${invalidated} permission cache entries for note ${noteId}`,
+            );
+        }
+    }
+
+    // Periodic cleanup of expired cache entries
+    private cleanupExpiredPermissions(): void {
+        const now = Date.now();
+        let cleaned = 0;
+        for (const [key, entry] of this.permissionCache.entries()) {
+            if (entry.expiresAt <= now) {
+                this.permissionCache.delete(key);
+                cleaned++;
+            }
+        }
+        if (cleaned > 0) {
+            console.log(`[OT Service] Cleaned up ${cleaned} expired permission cache entries`);
+        }
     }
 
     // Load document from MongoDB
@@ -35,7 +119,7 @@ class OTService {
         let doc = this.documents.get(noteId);
 
         if (!doc) {
-            const note = await findNoteByIdInternal(noteId);
+            const note = await findNoteByIdInternal(noteId, INTERNAL_CAPABILITY, 'OTService');
             if (!note) throw new Error('Note not found');
 
             // Start fresh session from persisted version
@@ -45,6 +129,7 @@ class OTService {
                 lastActivity: new Date(),
                 clientIds: new Set(),
                 currentDoc: note.content,
+                generation: 0,
             };
             this.documents.set(noteId, doc);
             console.log(
@@ -52,7 +137,7 @@ class OTService {
             );
         } else if (doc.clientIds.size === 0 && doc.version > 0) {
             // Stale session - reload from database to avoid divergence
-            const note = await findNoteByIdInternal(noteId);
+            const note = await findNoteByIdInternal(noteId, INTERNAL_CAPABILITY, 'OTService');
             const dbVersion = note?.version || 0;
 
             // Only reset if database version differs (indicates persistence happened)
@@ -94,12 +179,14 @@ class OTService {
             };
         }
 
-        // Verify user still has permission to edit this note
-        const note = await findNoteById(noteId, connInfo.userId);
-        if (!note) {
+        // Verify user still has permission to edit this note (with caching)
+        const hasPermission = await this.checkPermission(noteId, connInfo.userId);
+        if (!hasPermission) {
             console.error(
                 `[OT Service] Permission denied for user ${connInfo.userId} on note ${noteId}`,
             );
+            // Remove from permission cache to force fresh check on reconnect
+            this.permissionCache.delete(`${connInfo.userId}:${noteId}`);
             return {
                 version: 0,
                 steps: [],
@@ -195,10 +282,15 @@ class OTService {
 
             // The currentDoc is already up-to-date because clients send their doc state
             // along with steps. We just need to persist it to MongoDB.
-            await updateNoteInternal(noteId, {
-                version,
-                content: doc.currentDoc,
-            });
+            await updateNoteInternal(
+                noteId,
+                {
+                    version,
+                    content: doc.currentDoc,
+                },
+                INTERNAL_CAPABILITY,
+                'OTService',
+            );
 
             console.log(`[OT Service] Persisted version ${version} for note ${noteId}`);
         } catch (error) {
@@ -250,8 +342,9 @@ class OTService {
             if (doc.cleanupTimeout) {
                 clearTimeout(doc.cleanupTimeout);
                 doc.cleanupTimeout = undefined;
+                doc.generation++; // Increment generation to invalidate any pending cleanups
                 console.log(
-                    `[OT Service] Cancelled cleanup for note ${noteId} - client reconnected`,
+                    `[OT Service] Cancelled cleanup for note ${noteId} - client reconnected (gen ${doc.generation})`,
                 );
             }
         }
@@ -287,13 +380,24 @@ class OTService {
                 const isDev = process.env.NODE_ENV !== 'production';
                 const delay = isDev ? CLEANUP_DELAY_DEV : CLEANUP_DELAY_PROD;
 
+                // Capture current generation
+                const currentGeneration = doc.generation;
+
                 // Store timeout reference
                 doc.cleanupTimeout = setTimeout(() => {
                     const d = this.documents.get(noteId);
-                    if (d && d.clientIds.size === 0) {
+                    // Only cleanup if:
+                    // 1. Document still exists
+                    // 2. No clients connected
+                    // 3. Generation hasn't changed (no reconnections happened)
+                    if (d && d.clientIds.size === 0 && d.generation === currentGeneration) {
                         this.documents.delete(noteId);
                         console.log(
-                            `[OT Service] Cleaned up session for note ${noteId} after last client disconnected`,
+                            `[OT Service] Cleaned up session for note ${noteId} after last client disconnected (gen ${currentGeneration})`,
+                        );
+                    } else if (d && d.generation !== currentGeneration) {
+                        console.log(
+                            `[OT Service] Skipped cleanup for note ${noteId} - generation changed (stale cleanup from gen ${currentGeneration}, current gen ${d.generation})`,
                         );
                     }
                 }, delay);

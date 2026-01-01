@@ -303,11 +303,41 @@ export async function emptyTrash(userId: string): Promise<number> {
 // Internal functions for trusted services (bypasses permission checks)
 // Only use these from internal services like OT collaboration
 
+// Internal capability token - prevents accidental misuse of internal functions
+const INTERNAL_CAPABILITY = Symbol('note.repo.internal');
+
+// Allowed callers registry for audit logging
+const ALLOWED_INTERNAL_CALLERS = new Set(['OTService', 'MigrationService']);
+
 /**
  * Find note by ID without permission checks
- * WARNING: Only use from trusted internal services (e.g., OT service)
+ * WARNING: Only callable from trusted internal services
+ * @param id - Note ID
+ * @param capability - Internal capability token (prevents accidental usage)
+ * @param caller - Name of calling service (for audit logging)
  */
-export async function findNoteByIdInternal(id: string): Promise<Note | null> {
+export async function findNoteByIdInternal(
+    id: string,
+    capability: symbol,
+    caller: string,
+): Promise<Note | null> {
+    // Runtime guard: Verify capability token
+    if (capability !== INTERNAL_CAPABILITY) {
+        console.error(
+            `[SECURITY] Unauthorized call to findNoteByIdInternal from ${caller} - capability token invalid`,
+        );
+        throw new Error('Unauthorized: Invalid capability token for internal function');
+    }
+
+    // Audit log
+    if (!ALLOWED_INTERNAL_CALLERS.has(caller)) {
+        console.warn(
+            `[SECURITY] Unexpected caller "${caller}" for findNoteByIdInternal on note ${id}`,
+        );
+    } else {
+        console.log(`[AUDIT] findNoteByIdInternal called by ${caller} for note ${id}`);
+    }
+
     try {
         const doc = await getCollection().findOne({ _id: new ObjectId(id) });
         if (!doc) return null;
@@ -319,12 +349,35 @@ export async function findNoteByIdInternal(id: string): Promise<Note | null> {
 
 /**
  * Update note without permission checks
- * WARNING: Only use from trusted internal services (e.g., OT service)
+ * WARNING: Only callable from trusted internal services
+ * @param id - Note ID
+ * @param data - Update data
+ * @param capability - Internal capability token (prevents accidental usage)
+ * @param caller - Name of calling service (for audit logging)
  */
 export async function updateNoteInternal(
     id: string,
     data: Partial<UpdateNoteInput>,
+    capability: symbol,
+    caller: string,
 ): Promise<Note | null> {
+    // Runtime guard: Verify capability token
+    if (capability !== INTERNAL_CAPABILITY) {
+        console.error(
+            `[SECURITY] Unauthorized call to updateNoteInternal from ${caller} - capability token invalid`,
+        );
+        throw new Error('Unauthorized: Invalid capability token for internal function');
+    }
+
+    // Audit log
+    if (!ALLOWED_INTERNAL_CALLERS.has(caller)) {
+        console.warn(
+            `[SECURITY] Unexpected caller "${caller}" for updateNoteInternal on note ${id}`,
+        );
+    } else {
+        console.log(`[AUDIT] updateNoteInternal called by ${caller} for note ${id}`);
+    }
+
     try {
         const updateData: Record<string, unknown> = {
             updatedAt: new Date(),
@@ -351,3 +404,6 @@ export async function updateNoteInternal(
         return null;
     }
 }
+
+// Export capability token for trusted services only
+export { INTERNAL_CAPABILITY };
