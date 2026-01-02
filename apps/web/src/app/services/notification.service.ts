@@ -122,11 +122,19 @@ export class NotificationService {
     this.nativeBridge.getPushStatus();
 
     try {
-      const response = await firstValueFrom(this.nativeBridge.onPushStatus().pipe(take(1)));
+      const localResponse = await firstValueFrom(this.nativeBridge.onPushStatus().pipe(take(1)));
 
-      // If local says registered, just trust it (no longer need server verification with serverUrl approach)
-      this.isRegistered.set(response.isRegistered);
-      this.serverId.set(response.serverId || null);
+      // Verify with server to ensure registration actually exists in database
+      const devices = await firstValueFrom(this.getDevices());
+      const hasServerRegistration = devices.length > 0;
+
+      console.log(
+        `[NotificationService] Push status - local: ${localResponse.isRegistered}, server: ${hasServerRegistration} (${devices.length} devices)`,
+      );
+
+      // Use server state as source of truth
+      this.isRegistered.set(hasServerRegistration);
+      this.serverId.set(localResponse.serverId || null);
     } catch (error) {
       console.error('[NotificationService] Failed to check push status:', error);
     }
