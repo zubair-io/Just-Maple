@@ -41,6 +41,14 @@ export default defineConfig(({ mode }) => {
     resolve: {
       mainFields: ['module'],
     },
+    css: {
+      preprocessorOptions: {
+        scss: {
+          api: 'modern-compiler',
+          includePaths: ['src'],
+        },
+      },
+    },
     optimizeDeps: {
       include: ['@angular/common', '@angular/forms'],
       exclude: [
