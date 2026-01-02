@@ -22,6 +22,7 @@ export default defineConfig(({ mode }) => {
       angular({
         tsconfig: mode === 'test' ? './tsconfig.spec.json' : './tsconfig.app.json',
         workspaceRoot: '../../',
+        inlineStylesExtension: 'scss',
       }),
       wasm(),
       topLevelAwait({
