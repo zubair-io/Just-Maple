@@ -5,6 +5,7 @@
     "ng": "ng",
     "prestart": "bun run --cwd ../../packages/shared build",
     "start": "ng serve --host 0.0.0.0 --port 4200",
+    "start:vite": "bun run --cwd ../../packages/shared build && vite --host 0.0.0.0 --port 4200",
     "start:signalr": "ng serve --configuration signalr-local --host 0.0.0.0 --port 4200",
     "build": "bun run --cwd ../../packages/shared build && ng build",
     "build:paperbark": "bun run --cwd ../../packages/shared build && ng build --configuration paperbark",
