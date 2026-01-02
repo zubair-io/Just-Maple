@@ -16,10 +16,10 @@ class ServerConfigService {
     private let activeServerKey = "active_server"
     private let sharedServersKey = "saved_servers_shared"
 
-    // Default servers
+    // Default servers with stable IDs (must not change across app launches)
     private let defaultServers: [ServerConfig] = [
-        ServerConfig(name: "Production", url: "https://justmaple.app", apiUrl: "https://paperbark.justmaple.app", isCustom: false),
-        ServerConfig(name: "Localhost (Dev)", url: "https://localhost:4200", apiUrl: nil, isCustom: false)
+        ServerConfig(id: "production", name: "Production", url: "https://justmaple.app", apiUrl: "https://paperbark.justmaple.app", isCustom: false),
+        ServerConfig(id: "localhost-dev", name: "Localhost (Dev)", url: "https://localhost:4200", apiUrl: nil, isCustom: false)
     ]
 
     private init() {}
@@ -33,6 +33,16 @@ class ServerConfigService {
         let apiUrl: String?  // Optional separate API URL
         let isCustom: Bool
 
+        /// Initialize with an explicit ID (for default servers with stable IDs)
+        init(id: String, name: String, url: String, apiUrl: String? = nil, isCustom: Bool) {
+            self.id = id
+            self.name = name
+            self.url = url
+            self.apiUrl = apiUrl
+            self.isCustom = isCustom
+        }
+
+        /// Initialize with auto-generated UUID (for custom servers)
         init(name: String, url: String, apiUrl: String? = nil, isCustom: Bool) {
             self.id = UUID().uuidString
             self.name = name
