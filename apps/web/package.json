@@ -5,13 +5,16 @@
     "ng": "ng",
     "prestart": "bun run --cwd ../../packages/shared build",
     "start": "ng serve --host 0.0.0.0 --port 4200",
-    "start:vite": "bun run --cwd ../../packages/shared build && vite --host 0.0.0.0 --port 4200",
+    "dev": "bun run --cwd ../../packages/shared build && vite",
+    "start:vite": "bun run dev",
     "start:signalr": "ng serve --configuration signalr-local --host 0.0.0.0 --port 4200",
     "build": "bun run --cwd ../../packages/shared build && ng build",
+    "build:vite": "bun run --cwd ../../packages/shared build && vite build",
     "build:paperbark": "bun run --cwd ../../packages/shared build && ng build --configuration paperbark",
     "build:production": "bun run --cwd ../../packages/shared build && ng build --configuration production",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "preview": "vite preview"
   },
   "prettier": {
     "printWidth": 100,
