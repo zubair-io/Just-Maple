@@ -400,11 +400,10 @@ export class NoteEditorComponent implements OnDestroy {
 
   private getWebSocketUrl(): string {
     // Determine WebSocket URL from environment
+    // Automerge Repo handles its own protocol on top of WebSocket
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = environment.production
-      ? window.location.host
-      : `${window.location.hostname}:7071`;
-    return `${wsProtocol}//${wsHost}/ws/automerge`;
+    const wsHost = window.location.host;
+    return `${wsProtocol}//${wsHost}/ws`;
   }
 
   private disconnectCollaboration(): void {

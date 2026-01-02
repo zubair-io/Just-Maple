@@ -16,7 +16,8 @@ export class CollabAutomergeService {
   private wasmInitialized = false;
 
   /**
-   * Initialize Automerge Repo with WebSocket and IndexedDB storage
+   * Initialize Automerge Repo with IndexedDB storage (offline-only mode)
+   * TODO: Add network sync adapter once backend Automerge Repo is set up
    */
   async initializeRepo(wsUrl: string): Promise<Repo> {
     if (this.repo) return this.repo;
@@ -29,22 +30,20 @@ export class CollabAutomergeService {
       console.log('[Automerge] Wasm initialized successfully');
     }
 
-    console.log('[Automerge] Initializing Automerge Repo with WebSocket:', wsUrl);
+    console.log('[Automerge] Initializing Automerge Repo (offline-only mode)');
 
     this.repo = new Repo({
-      // WebSocket for server sync
-      network: [new BrowserWebSocketClientAdapter(wsUrl)],
+      // NOTE: Network adapter disabled for now - backend needs Automerge Repo server adapter
+      // network: [new BrowserWebSocketClientAdapter(wsUrl)],
 
-      // IndexedDB for offline persistence (AUTOMATIC)
+      // IndexedDB for offline persistence
       storage: new IndexedDBStorageAdapter(),
 
       // Enable all peers
       sharePolicy: async () => true,
     });
 
-    // Monitor connection status
-    // Note: Repo events are handled automatically by Automerge Repo
-    console.log('[Automerge] Repo initialized with automatic network sync');
+    console.log('[Automerge] Repo initialized with IndexedDB storage (offline-only)');
 
     return this.repo;
   }
