@@ -1,72 +1,46 @@
 import { Injectable } from '@angular/core';
-import { Repo, DocHandle } from '@automerge/automerge-repo/slim';
-import { BrowserWebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket';
-import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
 import * as Automerge from '@automerge/automerge/slim';
 import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64';
+import type { NoteContent } from '@maple/shared';
 
 /**
- * Automerge collaboration service for the frontend
- * Manages Automerge Repo for automatic CRDT sync and offline support
+ * Automerge collaboration service using SignalR for sync
+ * Does NOT use Automerge Repo - uses manual sync via SignalR instead
  */
 @Injectable({ providedIn: 'root' })
 export class CollabAutomergeService {
-  private repo: Repo | null = null;
-  private handles = new Map<string, DocHandle<any>>();
+  private documents = new Map<string, Automerge.Doc<any>>();
+  private syncStates = new Map<string, Automerge.SyncState>();
   private wasmInitialized = false;
 
   /**
-   * Initialize Automerge Repo with IndexedDB storage (offline-only mode)
-   * TODO: Add network sync adapter once backend Automerge Repo is set up
+   * Initialize Wasm for Automerge
    */
-  async initializeRepo(wsUrl: string): Promise<Repo> {
-    if (this.repo) return this.repo;
+  async initialize(): Promise<void> {
+    if (this.wasmInitialized) return;
 
-    // Initialize Wasm first (if not already done)
-    if (!this.wasmInitialized) {
-      console.log('[Automerge] Initializing Wasm with base64');
-      await Automerge.initializeBase64Wasm(automergeWasmBase64);
-      this.wasmInitialized = true;
-      console.log('[Automerge] Wasm initialized successfully');
-    }
-
-    console.log('[Automerge] Initializing Automerge Repo (offline-only mode)');
-
-    this.repo = new Repo({
-      // NOTE: Network adapter disabled for now - backend needs Automerge Repo server adapter
-      // network: [new BrowserWebSocketClientAdapter(wsUrl)],
-
-      // IndexedDB for offline persistence
-      storage: new IndexedDBStorageAdapter(),
-
-      // Enable all peers
-      sharePolicy: async () => true,
-    });
-
-    console.log('[Automerge] Repo initialized with IndexedDB storage (offline-only)');
-
-    return this.repo;
+    console.log('[Automerge] Initializing Wasm with base64');
+    await Automerge.initializeBase64Wasm(automergeWasmBase64);
+    this.wasmInitialized = true;
+    console.log('[Automerge] Wasm initialized successfully');
   }
 
   /**
    * Load or create Automerge document for a note
    * Handles lazy migration from ProseMirror JSON if needed
    */
-  async loadOrCreateDocument(
+  loadOrCreateDocument(
     noteId: string,
     serverData: {
       automergeDoc?: Uint8Array;
       content?: any;
     },
-  ): Promise<DocHandle<any>> {
-    const repo = this.repo;
-    if (!repo) throw new Error('Automerge Repo not initialized');
-
-    // Check if we already have a handle for this note
-    const existingHandle = this.handles.get(noteId);
-    if (existingHandle) {
-      console.log('[Automerge] Using existing document handle for note', noteId);
-      return existingHandle;
+  ): Automerge.Doc<any> {
+    // Check if we already have a document
+    const existingDoc = this.documents.get(noteId);
+    if (existingDoc) {
+      console.log('[Automerge] Using existing document for note', noteId);
+      return existingDoc;
     }
 
     let doc: Automerge.Doc<any>;
@@ -81,26 +55,87 @@ export class CollabAutomergeService {
       doc = this.migrateFromProseMirror(serverData.content);
     }
 
-    // Create handle from existing document
-    const handle = repo.create(doc);
+    // Store document
+    this.documents.set(noteId, doc);
 
-    // Save to IndexedDB immediately
-    await handle.whenReady();
-
-    // Store handle for reuse
-    this.handles.set(noteId, handle);
+    // Initialize sync state for this note
+    this.syncStates.set(noteId, Automerge.initSyncState());
 
     console.log('[Automerge] Document ready for note', noteId);
 
-    return handle;
+    return doc;
+  }
+
+  /**
+   * Update document with new content
+   */
+  updateDocument(noteId: string, content: NoteContent): Automerge.Doc<any> {
+    let doc = this.documents.get(noteId);
+    if (!doc) {
+      throw new Error(`Document not found for note ${noteId}`);
+    }
+
+    // Create change in document
+    doc = Automerge.change(doc, (d: any) => {
+      d.content = content;
+    });
+
+    this.documents.set(noteId, doc);
+    return doc;
+  }
+
+  /**
+   * Get current document
+   */
+  getDocument(noteId: string): Automerge.Doc<any> | undefined {
+    return this.documents.get(noteId);
+  }
+
+  /**
+   * Generate sync message to send to other clients
+   */
+  generateSyncMessage(noteId: string): Uint8Array | null {
+    const doc = this.documents.get(noteId);
+    const syncState = this.syncStates.get(noteId);
+
+    if (!doc || !syncState) {
+      return null;
+    }
+
+    const [newSyncState, message] = Automerge.generateSyncMessage(doc, syncState);
+
+    // Update sync state
+    this.syncStates.set(noteId, newSyncState);
+
+    return message || null;
+  }
+
+  /**
+   * Receive and apply sync message from another client
+   */
+  receiveSyncMessage(noteId: string, message: Uint8Array): Automerge.Doc<any> | null {
+    let doc = this.documents.get(noteId);
+    let syncState = this.syncStates.get(noteId);
+
+    if (!doc || !syncState) {
+      console.error('[Automerge] No document or sync state for note', noteId);
+      return null;
+    }
+
+    // Apply sync message
+    const [newDoc, newSyncState] = Automerge.receiveSyncMessage(doc, syncState, message);
+
+    // Update stored document and sync state
+    this.documents.set(noteId, newDoc);
+    this.syncStates.set(noteId, newSyncState);
+
+    return newDoc;
   }
 
   /**
    * Migrate ProseMirror JSON to Automerge document
    */
   private migrateFromProseMirror(content: any): Automerge.Doc<any> {
-    // Convert ProseMirror JSON to Automerge format
-    // For now, we store it directly - full implementation uses SchemaAdapter
     const doc = Automerge.from({
       content: this.convertProseMirrorToAutomerge(content),
     });
@@ -109,7 +144,6 @@ export class CollabAutomergeService {
 
   /**
    * Convert ProseMirror JSON to Automerge-compatible format
-   * NOTE: Simplified conversion - full implementation uses SchemaAdapter
    */
   private convertProseMirrorToAutomerge(prosemirrorContent: any): any {
     // Deep clone to avoid mutation
@@ -117,21 +151,11 @@ export class CollabAutomergeService {
   }
 
   /**
-   * Clean up document handle when note is closed
+   * Clean up document when note is closed
    */
   cleanupDocument(noteId: string): void {
-    const handle = this.handles.get(noteId);
-    if (handle) {
-      // DocHandle cleanup is automatic in Automerge Repo
-      this.handles.delete(noteId);
-      console.log('[Automerge] Cleaned up document handle for note', noteId);
-    }
-  }
-
-  /**
-   * Get repository instance
-   */
-  getRepo(): Repo | null {
-    return this.repo;
+    this.documents.delete(noteId);
+    this.syncStates.delete(noteId);
+    console.log('[Automerge] Cleaned up document for note', noteId);
   }
 }
