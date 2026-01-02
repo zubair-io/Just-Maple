@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 import angular from '@analogjs/vite-plugin-angular';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
+import tailwindcss from '@tailwindcss/vite';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -19,6 +20,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     plugins: [
+      tailwindcss(),
       angular({
         tsconfig: mode === 'test' ? './tsconfig.spec.json' : './tsconfig.app.json',
         workspaceRoot: '../../',
