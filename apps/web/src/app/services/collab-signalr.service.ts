@@ -1,6 +1,7 @@
 import { Injectable, inject, PLATFORM_ID, DestroyRef, NgZone } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { isPlatformBrowser } from '@angular/common';
-import { Subject, Observable, filter } from 'rxjs';
+import { Subject, Observable, filter, lastValueFrom } from 'rxjs';
 import * as signalR from '@microsoft/signalr';
 import { AuthService } from './auth.service';
 import type { CollabEvent } from '@maple/shared';
@@ -12,6 +13,7 @@ import { environment } from '../../environments/environment';
  */
 @Injectable({ providedIn: 'root' })
 export class CollabSignalRService {
+  private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
@@ -58,18 +60,9 @@ export class CollabSignalRService {
       const userId = this.authService.user()?._id;
       const negotiateUrl = `${environment.signalrNegotiateUrl}/collab?userId=${encodeURIComponent(userId || '')}`;
 
-      const response = await fetch(negotiateUrl, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Negotiate failed: ${response.status}`);
-      }
-
-      const connectionInfo = (await response.json()) as { url: string; accessToken: string };
+      const connectionInfo = await lastValueFrom(
+        this.http.get<{ url: string; accessToken: string }>(negotiateUrl),
+      );
 
       // Step 2: Connect to SignalR collab hub
       this.signalrConnection = new signalR.HubConnectionBuilder()

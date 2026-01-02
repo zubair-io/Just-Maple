@@ -4,7 +4,7 @@ export const environment = {
   wsUrl: '', // Empty = use relative URLs (proxied in dev)
   // SignalR config (disabled in dev - use WebSocket)
   useSignalR: false,
-  signalrNegotiateUrl: '',
+  signalrNegotiateUrl: '/azure/api/signalr', // Only used when useSignalR: true
   // LogRocket (only enabled in production)
   logRocketAppId: '',
 };

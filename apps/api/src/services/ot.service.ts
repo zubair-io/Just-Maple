@@ -1,8 +1,7 @@
 import {
-    updateNoteInternal,
-    findNoteByIdInternal,
+    updateNoteForCollab,
+    findNoteByIdForCollab,
     findNoteById,
-    INTERNAL_CAPABILITY,
 } from '../repositories/note.repo';
 import { collabRealtimeService } from './collab-realtime.service';
 
@@ -119,7 +118,7 @@ class OTService {
         let doc = this.documents.get(noteId);
 
         if (!doc) {
-            const note = await findNoteByIdInternal(noteId, INTERNAL_CAPABILITY, 'OTService');
+            const note = await findNoteByIdForCollab(noteId, 'OTService');
             if (!note) throw new Error('Note not found');
 
             // Start fresh session from persisted version
@@ -137,7 +136,7 @@ class OTService {
             );
         } else if (doc.clientIds.size === 0 && doc.version > 0) {
             // Stale session - reload from database to avoid divergence
-            const note = await findNoteByIdInternal(noteId, INTERNAL_CAPABILITY, 'OTService');
+            const note = await findNoteByIdForCollab(noteId, 'OTService');
             const dbVersion = note?.version || 0;
 
             // Only reset if database version differs (indicates persistence happened)
@@ -282,13 +281,12 @@ class OTService {
 
             // The currentDoc is already up-to-date because clients send their doc state
             // along with steps. We just need to persist it to MongoDB.
-            await updateNoteInternal(
+            await updateNoteForCollab(
                 noteId,
                 {
                     version,
                     content: doc.currentDoc,
                 },
-                INTERNAL_CAPABILITY,
                 'OTService',
             );
 
