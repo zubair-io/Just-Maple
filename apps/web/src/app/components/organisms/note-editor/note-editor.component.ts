@@ -31,37 +31,10 @@ import { BotService, type BotSuggestion } from '../../../services/bot.service';
 import { MentionSuggestionComponent } from '../../organisms/chat/mention-suggestion.component';
 import { Subject, takeUntil, combineLatest, switchMap, of } from 'rxjs';
 import type { Note, Tag, NoteContent } from '@maple/shared';
-import { collab, getVersion, sendableSteps, receiveTransaction } from 'prosemirror-collab';
-import { Step } from 'prosemirror-transform';
-import { AuthService } from '../../../services/auth.service';
-import { OfflineCollabService } from '../../../services/offline-collab.service';
-import { NetworkService } from '../../../services/network.service';
-import { CollabSignalRService } from '../../../services/collab-signalr.service';
-import { CollabHttpService } from '../../../services/collab-http.service';
 import { environment } from '../../../../environments/environment';
-import { Extension } from '@tiptap/core';
-import { Subscription } from 'rxjs';
-
-// TipTap extension that wraps ProseMirror collab plugin with dynamic version
-const CollabExtension = Extension.create<{ version: number; clientID?: string | number }>({
-  name: 'collaboration',
-
-  addOptions() {
-    return {
-      version: 0,
-      clientID: undefined,
-    };
-  },
-
-  addProseMirrorPlugins() {
-    return [
-      collab({
-        version: this.options.version,
-        clientID: this.options.clientID,
-      }),
-    ];
-  },
-});
+import { CollabAutomergeService } from '../../../services/collab-automerge.service';
+import type { DocHandle } from '@automerge/automerge-repo';
+import * as Automerge from '@automerge/automerge';
 
 @Component({
   selector: 'app-note-editor',
@@ -75,18 +48,12 @@ export class NoteEditorComponent implements OnDestroy {
   private editorRef?: ElementRef<HTMLElement>;
 
   private readonly botService = inject(BotService);
-  private readonly authService = inject(AuthService);
-  private readonly offlineCollab = inject(OfflineCollabService);
-  private readonly network = inject(NetworkService);
-  private readonly collabSignalR = inject(CollabSignalRService);
-  private readonly collabHttp = inject(CollabHttpService);
+  private readonly collabAutomerge = inject(CollabAutomergeService);
   private readonly destroyRef = inject(DestroyRef);
 
-  // ProseMirror collaboration state
-  private collabWS: WebSocket | null = null;
-  private signalrSubscription: Subscription | null = null;
-  private clientID: string | null = null;
-  private isSendingSteps = false;
+  // Automerge collaboration state
+  private docHandle: DocHandle<any> | null = null;
+  private isUpdatingFromAutomerge = false;
 
   readonly note = input<Note | null>(null);
   readonly tag = input<Tag | null>(null);
@@ -160,7 +127,7 @@ export class NoteEditorComponent implements OnDestroy {
       },
     });
 
-    // Initialize collaboration when note changes
+    // Initialize Automerge collaboration when note changes
     effect(() => {
       const currentNote = this.note();
       if (!this.viewReady() || !this.editor || !currentNote?._id) {
@@ -171,7 +138,7 @@ export class NoteEditorComponent implements OnDestroy {
 
       if (currentNote._id !== this.lastCollabNoteId) {
         this.lastCollabNoteId = currentNote._id;
-        this.initializeCollaboration(currentNote._id, currentNote.version || 0);
+        this.initializeAutomergeCollaboration(currentNote);
       }
     });
 
@@ -187,7 +154,7 @@ export class NoteEditorComponent implements OnDestroy {
     this.editor?.destroy();
   }
 
-  private getExtensions(collabVersion: number = 0, clientID?: string | number) {
+  private getExtensions() {
     const TitleDocument = Document.extend({
       content: 'heading block*',
     });
@@ -253,7 +220,7 @@ export class NoteEditorComponent implements OnDestroy {
           return 'Start writing...';
         },
       }),
-      CollabExtension.configure({ version: collabVersion, clientID }),
+      // No CollabExtension - using Automerge instead
     ];
   }
 
@@ -267,10 +234,10 @@ export class NoteEditorComponent implements OnDestroy {
       extensions: extensions,
       content: content,
       onUpdate: ({ editor }) => {
-        if (!this.isUpdatingFromNote) {
+        if (!this.isUpdatingFromNote && !this.isUpdatingFromAutomerge) {
           const json = editor.getJSON() as NoteContent;
           this.contentChange.emit(json);
-          this.sendSteps();
+          this.updateAutomergeDocument(json);
         }
       },
       onFocus: () => {
@@ -296,7 +263,7 @@ export class NoteEditorComponent implements OnDestroy {
   }
 
   private initEditor(): void {
-    this.createEditor('', this.getExtensions(0), false, null);
+    this.createEditor('', this.getExtensions(), false, null);
   }
 
   private updateEditorContent(content: NoteContent | null | undefined): void {
@@ -370,364 +337,85 @@ export class NoteEditorComponent implements OnDestroy {
     this.editor?.commands.focus('start');
   }
 
-  // Collaboration methods
-  private initializeCollaboration(noteId: string, version: number): void {
+  // Automerge Collaboration methods
+  private async initializeAutomergeCollaboration(note: Note): Promise<void> {
     this.disconnectCollaboration();
 
-    if (environment.useSignalR) {
-      this.initializeSignalRCollab(noteId, version);
-    } else {
-      this.initializeWebSocketCollab(noteId, version);
-    }
-  }
+    try {
+      console.log('[Automerge Editor] Initializing collaboration for note', note._id);
 
-  private initializeSignalRCollab(noteId: string, version: number): void {
-    // Connect to SignalR hub
-    this.collabSignalR.connect().then(() => {
-      // Subscribe to events for this note
-      this.signalrSubscription = this.collabSignalR.eventsForNote(noteId).subscribe((event) => {
-        this.handleCollabMessage(event);
+      // 1. Initialize Automerge Repo
+      const wsUrl = this.getWebSocketUrl();
+      const repo = await this.collabAutomerge.initializeRepo(wsUrl);
+
+      // 2. Load or migrate document
+      this.docHandle = await this.collabAutomerge.loadOrCreateDocument(note._id, {
+        automergeDoc: note.automergeDoc as Uint8Array | undefined,
+        content: note.content,
       });
 
-      // Join collaboration session via HTTP
-      this.joinCollabSession(noteId);
-    });
-
-    // Register flush callback for offline queue (SignalR/HTTP mode)
-    this.offlineCollab.registerFlushCallback(noteId, async (queuedSteps) => {
-      if (!this.clientID) {
-        console.error('[Collab HTTP] Cannot flush - no clientID');
-        return;
-      }
-
-      console.log(`[Collab HTTP] Flushing ${queuedSteps.length} queued steps in single batch`);
-
-      try {
-        // Convert queued steps to batch format
-        const stepsBatch = queuedSteps.map((qStep) => ({
-          version: qStep.version,
-          steps: [qStep.step],
-        }));
-
-        // Send all steps in a single HTTP request
-        const result = await this.collabHttp.sendStepsBatchAsync(
-          noteId,
-          this.clientID,
-          stepsBatch,
-          this.editor!.getJSON(),
-        );
-
-        // Handle server responses
-        if ('resync' in result && result.resync) {
-          console.log('[Collab HTTP] Server requested resync during flush');
-          this.handleCollabMessage({ type: 'resync' });
-        } else {
-          console.log(`[Collab HTTP] Successfully flushed ${queuedSteps.length} steps`);
+      // 3. Set initial content from Automerge document
+      const doc = await this.docHandle.doc();
+      if (doc && doc['content']) {
+        this.isUpdatingFromAutomerge = true;
+        try {
+          this.editor?.commands.setContent(doc['content']);
+        } finally {
+          this.isUpdatingFromAutomerge = false;
         }
-      } catch (error) {
-        console.error('[Collab HTTP] Error flushing batch:', error);
-        throw error; // Re-throw to keep steps in queue
       }
-    });
+
+      // 4. Listen for remote changes
+      this.docHandle.on('change', ({ doc }) => {
+        if (doc && doc['content'] && !this.isUpdatingFromAutomerge) {
+          console.log('[Automerge Editor] Received remote change');
+          this.isUpdatingFromAutomerge = true;
+          try {
+            this.editor?.commands.setContent(doc['content']);
+          } finally {
+            this.isUpdatingFromAutomerge = false;
+          }
+        }
+      });
+
+      console.log('[Automerge Editor] Collaboration initialized successfully');
+    } catch (error) {
+      console.error('[Automerge Editor] Failed to initialize collaboration:', error);
+    }
   }
 
-  private initializeWebSocketCollab(noteId: string, version: number): void {
-    const token = this.authService.accessToken();
-    if (!token) {
-      console.error('[Collab] No access token available');
-      return;
-    }
+  private updateAutomergeDocument(content: NoteContent): void {
+    if (!this.docHandle || this.isUpdatingFromAutomerge) return;
 
+    try {
+      // Update the Automerge document
+      this.docHandle.change((doc: any) => {
+        doc.content = content;
+      });
+
+      console.log('[Automerge Editor] Updated document from editor changes');
+    } catch (error) {
+      console.error('[Automerge Editor] Error updating Automerge document:', error);
+    }
+  }
+
+  private getWebSocketUrl(): string {
     // Determine WebSocket URL from environment
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = environment.production
       ? window.location.host
       : `${window.location.hostname}:7071`;
-    const wsUrl = `${wsProtocol}//${wsHost}/ws/collab/${noteId}?token=${token}`;
-
-    this.collabWS = new WebSocket(wsUrl);
-
-    this.collabWS.onopen = () => {
-      // Connected successfully
-    };
-
-    this.collabWS.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        this.handleCollabMessage(data);
-      } catch (error) {
-        console.error('[Collab WS] Error processing message:', error);
-      }
-    };
-
-    this.collabWS.onerror = (error) => {
-      console.error('[Collab WS] WebSocket error:', error);
-    };
-
-    this.collabWS.onclose = (event) => {
-      console.log('[Collab WS] WebSocket closed:', event.code, event.reason);
-    };
-
-    // Register flush callback for offline queue
-    this.offlineCollab.registerFlushCallback(noteId, async (queuedSteps) => {
-      // When back online, send all queued steps
-      if (this.collabWS && this.collabWS.readyState === WebSocket.OPEN) {
-        for (const qStep of queuedSteps) {
-          this.collabWS.send(
-            JSON.stringify({
-              type: 'steps',
-              version: qStep.version,
-              steps: [qStep.step], // Send as array
-            }),
-          );
-        }
-        console.log(`[Collab WS] Flushed ${queuedSteps.length} queued steps`);
-      }
-    });
-  }
-
-  private handleCollabMessage(data: any): void {
-    if (data.type === 'resync') {
-      console.log('[Collab] Received resync request - reinitializing');
-      this.initializeCollaboration(this.note()?._id || '', 0);
-      return;
-    }
-
-    if (data.type === 'init') {
-      // Server sends authoritative document content and version
-      // Store clientID for later use
-      this.clientID = data.clientID;
-
-      // CRITICAL: Reinitialize editor or update state
-      // If the editor is already initialized and valid, we just need to re-inject the collaboration state
-      if (this.editor && !this.editor.isDestroyed && data.doc) {
-        const currentContent = data.doc;
-        const serverVersion = data.version;
-        const clientID = data.clientID; // Server assigned clientID
-
-        // We need to re-configure the extensions to get a fresh collab plugin instance
-        const extensions = this.getExtensions(serverVersion, clientID);
-
-        const wasFocused = this.isFocused();
-        const lastSelection = this.editor.state.selection;
-
-        this.editor.destroy();
-        this.createEditor(currentContent, extensions, wasFocused, lastSelection);
-      } else if (this.editorRef?.nativeElement && data.doc) {
-        // First time init
-        const serverVersion = data.version;
-        const clientID = data.clientID;
-        const extensions = this.getExtensions(serverVersion, clientID);
-        this.createEditor(data.doc, extensions, false, null);
-      }
-      return;
-    }
-
-    if (data.type === 'steps' && this.editor) {
-      // Receive steps from all clients (including echo of our own)
-      // ProseMirror's collab plugin needs to receive ALL steps to track versions correctly
-      const steps = data.steps.map((stepJSON: any) => Step.fromJSON(this.editor!.schema, stepJSON));
-      const clientIDs = data.clientIDs || data.steps.map(() => data.clientID);
-
-      // Apply ALL steps (collab plugin handles deduplication)
-      const tr = receiveTransaction(this.editor.state, steps, clientIDs);
-
-      this.isUpdatingFromNote = true;
-      try {
-        this.editor.view.dispatch(tr);
-        // Version is automatically updated by the collab plugin
-      } finally {
-        this.isUpdatingFromNote = false;
-      }
-
-      // Unlock sending mechanism now that we've processed the response
-      this.isSendingSteps = false;
-
-      // Send rebased steps after a short delay to avoid retry storm
-      // If we have pending steps that were rebased, they need to be sent
-      setTimeout(() => {
-        const sendable = sendableSteps(this.editor!.state);
-        if (sendable && sendable.steps.length > 0) {
-          this.sendSteps();
-        }
-      }, 100);
-      return;
-    }
-  }
-
-  private async joinCollabSession(noteId: string): Promise<void> {
-    try {
-      const initData = await this.collabHttp.joinSessionAsync(noteId);
-
-      // CRITICAL: Store the clientID from the server for future step submissions
-      if (initData.clientID) {
-        this.clientID = initData.clientID;
-      }
-
-      // Handle init message
-      this.handleCollabMessage(initData);
-    } catch (error) {
-      console.error('[Collab SignalR] Failed to join session:', error);
-    }
+    return `${wsProtocol}//${wsHost}/ws/automerge`;
   }
 
   private disconnectCollaboration(): void {
-    // Disconnect WebSocket
-    if (this.collabWS) {
-      this.collabWS.close();
-      this.collabWS = null;
-    }
-
-    // Disconnect SignalR subscription
-    if (this.signalrSubscription) {
-      this.signalrSubscription.unsubscribe();
-      this.signalrSubscription = null;
-    }
-
-    // Unregister flush callback
     const noteId = this.note()?._id;
-    if (noteId) {
-      this.offlineCollab.unregisterFlushCallback(noteId);
+
+    if (this.docHandle && noteId) {
+      // Clean up document handle
+      this.collabAutomerge.cleanupDocument(noteId);
+      this.docHandle = null;
     }
-
-    this.clientID = null;
-  }
-
-  private sendSteps(): void {
-    if (!this.editor || this.isSendingSteps) return;
-
-    // Get sendable steps from ProseMirror collab plugin
-    const sendable = sendableSteps(this.editor.state);
-    if (!sendable || sendable.steps.length === 0) return;
-
-    const noteId = this.note()?._id;
-    if (!noteId) return;
-
-    // Delegate to appropriate transport
-    if (environment.useSignalR) {
-      this.sendStepsViaHTTP(noteId, sendable);
-    } else {
-      this.sendStepsViaWebSocket(noteId, sendable);
-    }
-  }
-
-  private sendStepsViaWebSocket(noteId: string, sendable: any): void {
-    // Check WebSocket state
-    const wsState = this.collabWS?.readyState;
-
-    // Check if we can send immediately (WebSocket is fully open)
-    const canSendNow = this.collabWS && wsState === WebSocket.OPEN;
-
-    if (canSendNow) {
-      // Online: send immediately
-      this.isSendingSteps = true;
-      try {
-        // Send steps along with current document state
-        // This allows the server to maintain the authoritative document
-        this.collabWS!.send(
-          JSON.stringify({
-            type: 'steps',
-            version: sendable.version,
-            steps: sendable.steps.map((s: any) => s.toJSON()),
-            doc: this.editor!.getJSON(), // Send current document state
-          }),
-        );
-      } catch (error) {
-        console.error('[Collab WS] Error sending steps:', error);
-        // Queue for retry on error
-        this.queueStepsOffline(noteId, Array.from(sendable.steps), sendable.version);
-        this.isSendingSteps = false; // Unlock if error occurred
-      }
-      // CRITICAL: Do NOT unlock isSendingSteps here. Wait for ACK (onmessage).
-      // This enforces sequential processing and prevents "Client Ahead" race conditions.
-    } else if (this.collabWS && wsState === WebSocket.CONNECTING) {
-      // WebSocket is connecting - wait for it to open then send
-      let attempts = 0;
-      const maxAttempts = 50; // Max 5 seconds (50 * 100ms)
-      const waitForOpen = () => {
-        attempts++;
-        if (this.collabWS?.readyState === WebSocket.OPEN) {
-          this.sendSteps(); // Retry sending
-        } else if (this.collabWS?.readyState === WebSocket.CONNECTING && attempts < maxAttempts) {
-          // Still connecting, wait a bit more
-          setTimeout(waitForOpen, 100);
-        } else {
-          // Connection failed or timeout, queue for later
-          this.queueStepsOffline(noteId, Array.from(sendable.steps), sendable.version);
-        }
-      };
-      setTimeout(waitForOpen, 100);
-    } else {
-      // Offline or disconnected: queue for later
-      this.queueStepsOffline(noteId, Array.from(sendable.steps), sendable.version);
-    }
-  }
-
-  private async sendStepsViaHTTP(noteId: string, sendable: any): Promise<void> {
-    // CRITICAL: Use the stored clientID from join session
-    if (!this.clientID) {
-      console.error('[Collab HTTP] No clientID - cannot send steps. Did join fail?');
-      return;
-    }
-
-    // Check if we're online before attempting HTTP request
-    if (!this.network.isOnline()) {
-      this.queueStepsOffline(noteId, Array.from(sendable.steps), sendable.version);
-      return;
-    }
-
-    this.isSendingSteps = true;
-
-    try {
-      const result = await this.collabHttp.sendStepsAsync(
-        noteId,
-        this.clientID,
-        sendable.version,
-        sendable.steps.map((s: any) => s.toJSON()),
-        this.editor!.getJSON(),
-      );
-
-      // Handle response
-      if ('resync' in result && result.resync) {
-        console.log('[Collab HTTP] Server requested resync - unlocking and reinitializing');
-        this.isSendingSteps = false;
-        this.handleCollabMessage({ type: 'resync' });
-      } else if (
-        'type' in result &&
-        result.type === 'steps' &&
-        result.steps.length > 0 &&
-        result.version !== sendable.version + sendable.steps.length
-      ) {
-        // Server sent catch-up steps (client was behind)
-        // Only apply if version indicates these are NOT our own steps
-        console.log('[Collab HTTP] Received catch-up steps from server');
-        this.isSendingSteps = false;
-        this.handleCollabMessage(result);
-      } else {
-        // Success ACK or our own steps echoed back - don't apply
-        this.isSendingSteps = false;
-
-        // Check for rebased steps
-        setTimeout(() => {
-          const newSendable = sendableSteps(this.editor!.state);
-          if (newSendable && newSendable.steps.length > 0) {
-            this.sendSteps();
-          }
-        }, 100);
-      }
-    } catch (error) {
-      console.error('[Collab HTTP] Error sending steps:', error);
-      // Queue steps for retry when back online
-      this.queueStepsOffline(noteId, Array.from(sendable.steps), sendable.version);
-      this.isSendingSteps = false;
-    }
-  }
-
-  private queueStepsOffline(noteId: string, steps: readonly Step[], version: number): void {
-    // Queue each step separately
-    steps.forEach((step) => {
-      this.offlineCollab.queueStep(noteId, step.toJSON(), version);
-    });
   }
 
   // Toolbar commands
