@@ -34,6 +34,7 @@ import type { Note, Tag, NoteContent } from '@maple/shared';
 import { environment } from '../../../../environments/environment';
 import { CollabAutomergeService } from '../../../services/collab-automerge.service';
 import { CollabSignalRService } from '../../../services/collab-signalr.service';
+import { AuthService } from '../../../services/auth.service';
 import { HttpClient } from '@angular/common/http';
 import type { CollabEvent } from '@maple/shared';
 
@@ -51,12 +52,14 @@ export class NoteEditorComponent implements OnDestroy {
   private readonly botService = inject(BotService);
   private readonly collabAutomerge = inject(CollabAutomergeService);
   private readonly collabSignalR = inject(CollabSignalRService);
+  private readonly authService = inject(AuthService);
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
 
   // Automerge collaboration state
   private isUpdatingFromAutomerge = false;
   private signalrSubscription: any = null;
+  private collabWS: WebSocket | null = null;
 
   readonly note = input<Note | null>(null);
   readonly tag = input<Tag | null>(null);
@@ -366,8 +369,9 @@ export class NoteEditorComponent implements OnDestroy {
         }
       }
 
-      // 4. Connect to SignalR and listen for automerge-sync events
+      // 4. Connect to real-time sync (SignalR in production, WebSocket in dev)
       if (environment.useSignalR) {
+        // Production: Use SignalR via AutumnBlaze
         await this.collabSignalR.connect();
 
         const destroy$ = new Subject<void>();
@@ -381,6 +385,9 @@ export class NoteEditorComponent implements OnDestroy {
               this.handleRemoteSync(note._id, event.syncMessage);
             }
           });
+      } else {
+        // Dev mode: Use direct WebSocket
+        this.initializeWebSocketCollab(note._id);
       }
 
       console.log('[Automerge Editor] Collaboration initialized successfully');
@@ -468,6 +475,50 @@ export class NoteEditorComponent implements OnDestroy {
     }
   }
 
+  private initializeWebSocketCollab(noteId: string): void {
+    const token = this.authService.accessToken();
+    if (!token) {
+      console.error('[Automerge WS] No access token available');
+      return;
+    }
+
+    // Determine WebSocket URL for dev mode
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = environment.production
+      ? window.location.host
+      : `${window.location.hostname}:7071`;
+    const wsUrl = `${wsProtocol}//${wsHost}/ws/collab/${noteId}?token=${token}`;
+
+    console.log('[Automerge WS] Connecting to WebSocket:', wsUrl);
+
+    this.collabWS = new WebSocket(wsUrl);
+
+    this.collabWS.onopen = () => {
+      console.log('[Automerge WS] WebSocket connected successfully');
+    };
+
+    this.collabWS.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data) as CollabEvent;
+        console.log('[Automerge WS] Received message:', data.type);
+
+        if (data.type === 'automerge-sync' && data.syncMessage) {
+          this.handleRemoteSync(noteId, data.syncMessage);
+        }
+      } catch (error) {
+        console.error('[Automerge WS] Error processing message:', error);
+      }
+    };
+
+    this.collabWS.onerror = (error) => {
+      console.error('[Automerge WS] WebSocket error:', error);
+    };
+
+    this.collabWS.onclose = (event) => {
+      console.log('[Automerge WS] WebSocket closed:', event.code, event.reason);
+    };
+  }
+
   private disconnectCollaboration(): void {
     const noteId = this.note()?._id;
 
@@ -480,6 +531,12 @@ export class NoteEditorComponent implements OnDestroy {
     if (this.signalrSubscription) {
       this.signalrSubscription.unsubscribe();
       this.signalrSubscription = null;
+    }
+
+    // Close WebSocket
+    if (this.collabWS) {
+      this.collabWS.close();
+      this.collabWS = null;
     }
   }
 
