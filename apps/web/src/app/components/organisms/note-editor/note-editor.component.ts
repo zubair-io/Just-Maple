@@ -414,34 +414,52 @@ export class NoteEditorComponent implements OnDestroy {
   }
 
   private updateAutomergeDocument(content: NoteContent): void {
-    if (this.isUpdatingFromAutomerge) return;
+    if (this.isUpdatingFromAutomerge) {
+      console.log('[Automerge Editor] Skipping update - currently applying remote changes');
+      return;
+    }
 
     const noteId = this.note()?._id;
-    if (!noteId) return;
+    if (!noteId) {
+      console.log('[Automerge Editor] No note ID - skipping update');
+      return;
+    }
 
     try {
+      console.log('[Automerge Editor] Updating Automerge document for note', noteId);
+
       // Update the Automerge document
       this.collabAutomerge.updateDocument(noteId, content);
 
       // Generate sync message
       const syncMessage = this.collabAutomerge.generateSyncMessage(noteId);
 
-      if (syncMessage && environment.useSignalR) {
-        // Send sync message to backend via HTTP
+      console.log(
+        '[Automerge Editor] Generated sync message:',
+        syncMessage ? `${syncMessage.length} bytes` : 'null',
+      );
+      console.log('[Automerge Editor] SignalR enabled:', environment.useSignalR);
+
+      if (syncMessage) {
+        // Always send via HTTP (works in both dev and production)
         const base64Message = btoa(String.fromCharCode(...syncMessage));
+
+        console.log('[Automerge Editor] Sending sync message to backend...');
 
         this.http
           .post<any>(`/api/collab/${noteId}/automerge-sync`, {
             syncMessage: base64Message,
           })
           .subscribe({
-            next: () => {
-              console.log('[Automerge Editor] Sync message sent successfully');
+            next: (response) => {
+              console.log('[Automerge Editor] Sync message sent successfully:', response);
             },
             error: (error) => {
               console.error('[Automerge Editor] Failed to send sync message:', error);
             },
           });
+      } else {
+        console.log('[Automerge Editor] No sync message generated - nothing to send');
       }
 
       console.log('[Automerge Editor] Updated document from editor changes');

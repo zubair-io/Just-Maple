@@ -45,9 +45,17 @@ export class CollabAutomergeService {
 
     let doc: Automerge.Doc<any>;
 
+    console.log('[Automerge] Loading document for note', noteId);
+    console.log('[Automerge] Has automergeDoc binary:', !!serverData.automergeDoc);
+    console.log('[Automerge] Has content:', !!serverData.content);
+
     if (serverData.automergeDoc) {
       // Load from binary (already migrated)
-      console.log('[Automerge] Loading existing Automerge document for note', noteId);
+      console.log(
+        '[Automerge] Loading existing Automerge document for note',
+        noteId,
+        `(${serverData.automergeDoc.length} bytes)`,
+      );
       doc = Automerge.load(serverData.automergeDoc);
     } else {
       // MIGRATE: Convert ProseMirror JSON to Automerge
@@ -62,6 +70,7 @@ export class CollabAutomergeService {
     this.syncStates.set(noteId, Automerge.initSyncState());
 
     console.log('[Automerge] Document ready for note', noteId);
+    console.log('[Automerge] Document content:', (doc as any)['content']);
 
     return doc;
   }
