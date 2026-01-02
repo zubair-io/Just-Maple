@@ -34,7 +34,6 @@ import type { Note, Tag, NoteContent } from '@maple/shared';
 import { environment } from '../../../../environments/environment';
 import { CollabAutomergeService } from '../../../services/collab-automerge.service';
 import type { DocHandle } from '@automerge/automerge-repo';
-import * as Automerge from '@automerge/automerge';
 
 @Component({
   selector: 'app-note-editor',

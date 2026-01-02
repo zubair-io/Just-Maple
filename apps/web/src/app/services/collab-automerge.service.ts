@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { Repo, DocHandle } from '@automerge/automerge-repo';
 import { BrowserWebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket';
 import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
-import * as Automerge from '@automerge/automerge';
+import * as Automerge from '@automerge/automerge/slim';
 
 /**
  * Automerge collaboration service for the frontend
