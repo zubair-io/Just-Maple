@@ -5,16 +5,12 @@
     "ng": "ng",
     "prestart": "bun run --cwd ../../packages/shared build",
     "start": "ng serve --host 0.0.0.0 --port 4200",
-    "dev": "bun run --cwd ../../packages/shared build && vite",
-    "start:vite": "bun run dev",
     "start:signalr": "ng serve --configuration signalr-local --host 0.0.0.0 --port 4200",
     "build": "bun run --cwd ../../packages/shared build && ng build",
-    "build:vite": "bun run --cwd ../../packages/shared build && vite build",
     "build:paperbark": "bun run --cwd ../../packages/shared build && ng build --configuration paperbark",
     "build:production": "bun run --cwd ../../packages/shared build && ng build --configuration production",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test",
-    "preview": "vite preview"
+    "test": "ng test"
   },
   "prettier": {
     "printWidth": 100,
@@ -38,11 +34,6 @@
     "@angular/platform-browser": "^21.0.0",
     "@angular/router": "^21.0.0",
     "@angular/service-worker": "^21.0.5",
-    "@automerge/automerge": "^3.2.1",
-    "@automerge/automerge-repo": "^2.5.1",
-    "@automerge/automerge-repo-network-websocket": "^2.5.1",
-    "@automerge/automerge-repo-storage-indexeddb": "^2.5.1",
-    "@automerge/prosemirror": "^0.1.0",
     "@maple/shared": "workspace:*",
     "@microsoft/signalr": "^10.0.0",
     "@ngneat/elf": "^2.5.1",
@@ -78,15 +69,12 @@
     "@angular/build": "^21.0.3",
     "@angular/cli": "^21.0.3",
     "@angular/compiler-cli": "^21.0.0",
-    "@tailwindcss/postcss": "^4.0.0",
-    "@tailwindcss/vite": "^4.0.0",
+    "@tailwindcss/postcss": "^4.1.18",
     "jsdom": "^27.3.0",
-    "sass": "^1.97.1",
-    "tailwindcss": "^4.0.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
     "typescript": "~5.9.2",
     "vite": "^7.2.7",
-    "vite-plugin-top-level-await": "^1.6.0",
-    "vite-plugin-wasm": "^3.5.0",
     "vitest": "^4.0.8"
   }
 }
