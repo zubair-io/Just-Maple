@@ -34,8 +34,12 @@ export const NoteSchema = Type.Object({
     userId: Type.String(),
     type: NoteTypeSchema,
     title: Type.String(),
-    content: NoteContentSchema, // ProseMirror JSON format
-    version: Type.Number(),
+    // DUAL STORAGE: content field kept for search/compatibility, automergeDoc is source of truth
+    content: NoteContentSchema, // ProseMirror JSON format (for search indexing)
+    automergeDoc: Type.Optional(Type.Any()), // Binary CRDT (source of truth)
+    // Automerge metadata
+    version: Type.Optional(Type.Number()), // Hash of Automerge heads (for cache validation)
+    lastSyncedHeads: Type.Optional(Type.Array(Type.String())), // Automerge heads (for sync optimization)
     tagId: Type.Optional(Type.String()), // Associated tag/folder
     isFavorite: Type.Optional(Type.Boolean()),
     isArchived: Type.Optional(Type.Boolean()),
@@ -59,11 +63,13 @@ export type CreateNoteInput = Static<typeof CreateNoteSchema>;
 export const UpdateNoteSchema = Type.Object({
     title: Type.Optional(Type.String({ maxLength: 500 })),
     content: Type.Optional(NoteContentSchema),
+    automergeDoc: Type.Optional(Type.Any()), // Binary CRDT
+    version: Type.Optional(Type.Number()), // Automerge heads hash
+    lastSyncedHeads: Type.Optional(Type.Array(Type.String())), // Automerge heads
     tagId: Type.Optional(Type.String()),
     isFavorite: Type.Optional(Type.Boolean()),
     isArchived: Type.Optional(Type.Boolean()),
     isTrashed: Type.Optional(Type.Boolean()),
-    version: Type.Optional(Type.Number()),
 });
 
 export type UpdateNoteInput = Static<typeof UpdateNoteSchema>;

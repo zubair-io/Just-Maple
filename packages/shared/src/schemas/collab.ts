@@ -2,9 +2,10 @@ import { Type, Static } from '@sinclair/typebox';
 
 // Collaboration event types
 export const CollabActionSchema = Type.Union([
-    Type.Literal('steps'), // OT steps received
+    Type.Literal('steps'), // OT steps received (will be removed later)
     Type.Literal('init'), // Session initialized
     Type.Literal('resync'), // Client needs to resync
+    Type.Literal('automerge-sync'), // Automerge sync message
 ]);
 
 export type CollabAction = Static<typeof CollabActionSchema>;
@@ -18,6 +19,7 @@ export const CollabEventSchema = Type.Object({
     clientIDs: Type.Optional(Type.Array(Type.String())),
     clientID: Type.Optional(Type.String()),
     doc: Type.Optional(Type.Any()), // ProseMirror document
+    syncMessage: Type.Optional(Type.String()), // Base64-encoded Automerge sync message
 });
 
 export type CollabEvent = Static<typeof CollabEventSchema>;

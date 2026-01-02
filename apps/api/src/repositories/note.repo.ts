@@ -15,8 +15,12 @@ interface NoteDocument {
     userId: ObjectId;
     type: NoteType;
     title: string;
+    // DUAL STORAGE: content for search, automergeDoc as source of truth
     content: NoteContent;
-    version: number;
+    automergeDoc?: Buffer; // Binary CRDT (source of truth)
+    // Automerge metadata
+    version?: number; // Hash of Automerge heads (for cache validation)
+    lastSyncedHeads?: string[]; // Automerge heads (for sync optimization)
     tagId?: ObjectId;
     isFavorite?: boolean;
     isArchived?: boolean;
@@ -37,7 +41,9 @@ function toNoteResponse(doc: NoteDocument): Note {
         type: doc.type || 'write', // Default for legacy notes
         title: doc.title,
         content: doc.content,
-        version: doc.version,
+        automergeDoc: doc.automergeDoc, // Binary CRDT
+        version: doc.version, // Hash of Automerge heads
+        lastSyncedHeads: doc.lastSyncedHeads, // Automerge heads
         tagId: doc.tagId?.toString(),
         isFavorite: doc.isFavorite,
         isArchived: doc.isArchived,
@@ -149,7 +155,9 @@ export async function createNote(userId: string, data: CreateNoteInput): Promise
         type: noteType,
         title: data.title || 'Untitled',
         content: data.content || defaultContent,
-        version: 1,
+        // No automergeDoc initially - will be created on first edit via lazy migration
+        version: undefined, // Will be set when Automerge doc is created
+        lastSyncedHeads: undefined,
         tagId: data.tagId ? new ObjectId(data.tagId) : undefined,
         isFavorite: false,
         isArchived: false,
@@ -166,7 +174,9 @@ export async function createNote(userId: string, data: CreateNoteInput): Promise
         type: noteType,
         title: doc.title,
         content: doc.content,
-        version: doc.version,
+        automergeDoc: undefined,
+        version: undefined,
+        lastSyncedHeads: undefined,
         tagId: data.tagId,
         isFavorite: doc.isFavorite,
         isArchived: doc.isArchived,
@@ -212,6 +222,15 @@ export async function updateNote(
         if (data.content !== undefined) {
             updateData.content = data.content;
         }
+        if (data.automergeDoc !== undefined) {
+            updateData.automergeDoc = data.automergeDoc as Buffer;
+        }
+        if (data.version !== undefined) {
+            updateData.version = data.version;
+        }
+        if (data.lastSyncedHeads !== undefined) {
+            updateData.lastSyncedHeads = data.lastSyncedHeads;
+        }
         if (data.tagId !== undefined) {
             updateData.tagId = data.tagId ? new ObjectId(data.tagId) : undefined;
         }
@@ -232,7 +251,7 @@ export async function updateNote(
 
         const result = await getCollection().findOneAndUpdate(
             { _id: new ObjectId(id) },
-            { $set: updateData, $inc: { version: 1 } },
+            { $set: updateData },
             { returnDocument: 'after' },
         );
 
@@ -385,7 +404,9 @@ export async function updateNoteInternal(
 
         if (data.title !== undefined) updateData.title = data.title;
         if (data.content !== undefined) updateData.content = data.content;
+        if (data.automergeDoc !== undefined) updateData.automergeDoc = data.automergeDoc;
         if (data.version !== undefined) updateData.version = data.version;
+        if (data.lastSyncedHeads !== undefined) updateData.lastSyncedHeads = data.lastSyncedHeads;
         if (data.tagId !== undefined) {
             updateData.tagId = data.tagId ? new ObjectId(data.tagId) : null;
         }

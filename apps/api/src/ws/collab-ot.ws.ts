@@ -4,6 +4,7 @@ import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
 import { findNoteById } from '../repositories/note.repo';
 import { otService } from '../services/ot.service';
+import { automergeService } from '../services/automerge.service';
 import { generateClientID } from '../utils/client-id';
 import type { JWTPayload } from '@maple/shared';
 
@@ -98,7 +99,35 @@ export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
 
                 const { noteId, clientID } = context;
 
-                if (data.type === 'steps') {
+                if (data.type === 'automerge-sync') {
+                    // Automerge sync protocol
+                    if (!data.syncMessage) {
+                        console.error('[Collab WS] Invalid Automerge sync message format');
+                        return;
+                    }
+
+                    console.log('[Collab WS] Processing Automerge sync message from client');
+
+                    // Convert base64 to binary
+                    const binaryMessage = Buffer.from(data.syncMessage, 'base64');
+
+                    // Process sync message
+                    const responseMessage = await automergeService.receiveSyncMessage(
+                        noteId,
+                        clientID,
+                        binaryMessage,
+                    );
+
+                    // Send response back to client
+                    ws.send(
+                        JSON.stringify({
+                            type: 'automerge-sync',
+                            noteId: noteId,
+                            syncMessage: Buffer.from(responseMessage).toString('base64'),
+                        }),
+                    );
+                } else if (data.type === 'steps') {
+                    // OT steps (legacy - will be removed after migration)
                     // Steps are already JSON objects, no need to deserialize
                     // We'll handle this as plain data since we don't have a schema on the backend
                     if (!data.steps || !Array.isArray(data.steps)) {
