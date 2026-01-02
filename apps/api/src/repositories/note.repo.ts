@@ -307,7 +307,7 @@ export async function emptyTrash(userId: string): Promise<number> {
 const INTERNAL_CAPABILITY = Symbol('note.repo.internal');
 
 // Allowed callers registry for audit logging
-const ALLOWED_INTERNAL_CALLERS = new Set(['OTService', 'MigrationService']);
+const ALLOWED_INTERNAL_CALLERS = new Set(['OTService', 'MigrationService', 'SignalRCollabService']);
 
 /**
  * Find note by ID without permission checks
@@ -405,5 +405,28 @@ export async function updateNoteInternal(
     }
 }
 
-// Export capability token for trusted services only
-export { INTERNAL_CAPABILITY };
+// Wrapper functions for trusted OT/collaboration services
+// These wrappers keep INTERNAL_CAPABILITY private while providing controlled access
+
+/**
+ * Find note by ID for OT service (bypasses permission checks)
+ * Only use from OTService or SignalRCollabService
+ */
+export async function findNoteByIdForCollab(
+    id: string,
+    caller: 'OTService' | 'SignalRCollabService' | 'MigrationService',
+): Promise<Note | null> {
+    return findNoteByIdInternal(id, INTERNAL_CAPABILITY, caller);
+}
+
+/**
+ * Update note for OT service (bypasses permission checks)
+ * Only use from OTService
+ */
+export async function updateNoteForCollab(
+    id: string,
+    data: Partial<UpdateNoteInput>,
+    caller: 'OTService' | 'MigrationService',
+): Promise<Note | null> {
+    return updateNoteInternal(id, data, INTERNAL_CAPABILITY, caller);
+}

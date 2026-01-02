@@ -1,11 +1,11 @@
-import { Elysia } from 'elysia';
+import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
 import { findNoteById } from '../repositories/note.repo';
 import { otService } from '../services/ot.service';
 import { generateClientID } from '../utils/client-id';
-import type { JWTPayload } from '@maple/shared';
+import type { JWTPayload, CollabStepsRequest, CollabBatchRequest } from '@maple/shared';
 
 export const collabRoutes = new Elysia({ prefix: '/api/collab' })
     .use(jwt({ name: 'jwt', secret: config.jwtSecret }))
@@ -48,8 +48,6 @@ export const collabRoutes = new Elysia({ prefix: '/api/collab' })
         // Register connection (for SignalR, we don't have WS connection)
         otService.addConnection(noteId, clientID, { userId: auth.user._id });
 
-        console.log(`[Collab Routes] User ${auth.user._id} joined note ${noteId}`);
-
         // Return init data (client will also receive via SignalR)
         return {
             type: 'init',
@@ -58,34 +56,94 @@ export const collabRoutes = new Elysia({ prefix: '/api/collab' })
             clientID,
         };
     })
-    .post('/:noteId/steps', async ({ auth, params, body, set }) => {
-        if (!auth) {
-            set.status = 401;
-            return { error: 'Unauthorized' };
-        }
+    .post(
+        '/:noteId/steps',
+        async ({ auth, params, body, set }) => {
+            if (!auth) {
+                set.status = 401;
+                return { error: 'Unauthorized' };
+            }
 
-        const { noteId } = params;
-        const { version, steps, doc } = body as any;
+            const { noteId } = params;
+            const { version, steps, doc, clientID: providedClientID } = body;
 
-        const note = await findNoteById(noteId, auth.user._id);
-        if (!note) {
-            set.status = 404;
-            return { error: 'Note not found' };
-        }
+            const note = await findNoteById(noteId, auth.user._id);
+            if (!note) {
+                set.status = 404;
+                return { error: 'Note not found' };
+            }
 
-        // Use temporary clientID based on userId
-        const clientID = generateClientID(auth.user._id, 'http');
+            // Use clientID from request (from join session) or generate fallback
+            const clientID = providedClientID || generateClientID(auth.user._id, 'http');
 
-        console.log(
-            `[Collab Routes] Received ${steps?.length || 0} steps from ${auth.user._id} for note ${noteId}`,
-        );
+            // Process steps
+            const result = await otService.receiveSteps(noteId, steps, version, clientID, doc);
 
-        // Process steps
-        const result = await otService.receiveSteps(noteId, steps, version, clientID, doc);
+            if (!result) {
+                return { success: true };
+            }
 
-        if (!result) {
+            return result;
+        },
+        {
+            body: t.Object({
+                version: t.Number({ minimum: 0 }),
+                steps: t.Array(t.Any(), { minItems: 1, maxItems: 50 }),
+                doc: t.Any(),
+                clientID: t.Optional(t.String()),
+            }),
+        },
+    )
+    .post(
+        '/:noteId/steps/batch',
+        async ({ auth, params, body, set }) => {
+            if (!auth) {
+                set.status = 401;
+                return { error: 'Unauthorized' };
+            }
+
+            const { noteId } = params;
+            const { stepsBatch, doc, clientID: providedClientID } = body;
+
+            const note = await findNoteById(noteId, auth.user._id);
+            if (!note) {
+                set.status = 404;
+                return { error: 'Note not found' };
+            }
+
+            // Use clientID from request (from join session) or generate fallback
+            const clientID = providedClientID || generateClientID(auth.user._id, 'http');
+
+            // Process each step group in order
+            for (const stepGroup of stepsBatch) {
+                const result = await otService.receiveSteps(
+                    noteId,
+                    stepGroup.steps,
+                    stepGroup.version,
+                    clientID,
+                    doc,
+                );
+
+                // If server requests resync, stop processing and return
+                if (result?.resync) {
+                    return { resync: true };
+                }
+            }
+
+            // All steps processed successfully
             return { success: true };
-        }
-
-        return result;
-    });
+        },
+        {
+            body: t.Object({
+                stepsBatch: t.Array(
+                    t.Object({
+                        version: t.Number({ minimum: 0 }),
+                        steps: t.Array(t.Any(), { minItems: 1 }),
+                    }),
+                    { minItems: 1, maxItems: 100 }, // Limit batch size to prevent DoS
+                ),
+                doc: t.Any(),
+                clientID: t.Optional(t.String()),
+            }),
+        },
+    );

@@ -1,5 +1,5 @@
 import { config } from '../config';
-import { findNoteByIdInternal } from '../repositories/note.repo';
+import { findNoteByIdForCollab } from '../repositories/note.repo';
 import type { CollabEvent } from '@maple/shared';
 
 /**
@@ -38,10 +38,12 @@ export class SignalRCollabService {
     ): Promise<void> {
         try {
             // Get note to determine which users should receive the update
-            const recipientUserIds = await this.getNoteCollaborators(noteId, excludeUserId);
+            // NOTE: We don't exclude the sender because SignalR broadcasts to userIds,
+            // not individual connections. If we exclude the user, ALL their tabs/windows
+            // will miss the update. Clients filter duplicates based on clientID.
+            const recipientUserIds = await this.getNoteCollaborators(noteId, undefined);
 
             if (recipientUserIds.length === 0) {
-                console.log(`[SignalR Collab] No recipients for note ${noteId}`);
                 return;
             }
 
@@ -61,8 +63,6 @@ export class SignalRCollabService {
                 console.error(
                     `[SignalR Collab] Broadcast failed: ${response.status} ${response.statusText}`,
                 );
-            } else {
-                console.log(`[SignalR Collab] Broadcasted to ${recipientUserIds.length} users`);
             }
         } catch (error) {
             console.error('[SignalR Collab] Broadcast error:', error);
@@ -77,7 +77,7 @@ export class SignalRCollabService {
      */
     private async getNoteCollaborators(noteId: string, excludeUserId?: string): Promise<string[]> {
         try {
-            const note = await findNoteByIdInternal(noteId);
+            const note = await findNoteByIdForCollab(noteId, 'SignalRCollabService');
             if (!note) {
                 console.error(`[SignalR Collab] Note not found: ${noteId}`);
                 return [];

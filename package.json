@@ -11,6 +11,7 @@
     "dev": "bun run build:shared && (bun run dev:api & bun run dev:web)",
     "dev:api": "bun run --cwd apps/api dev",
     "dev:web": "bun run --cwd apps/web start",
+    "dev:azure": "cd autumn-blaze && npm start",
     "dev:e2e": "bun run build:shared && (bun run --cwd apps/api dev:e2e & bun run dev:web)",
     "build": "bun run build:shared && bun run build:api && bun run build:web",
     "build:shared": "bun run --cwd packages/shared build",

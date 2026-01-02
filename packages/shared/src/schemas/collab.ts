@@ -21,3 +21,30 @@ export const CollabEventSchema = Type.Object({
 });
 
 export type CollabEvent = Static<typeof CollabEventSchema>;
+
+// Request schemas for HTTP endpoints
+
+// Send steps request (single step submission)
+export const CollabStepsRequestSchema = Type.Object({
+    version: Type.Number({ minimum: 0 }),
+    steps: Type.Array(Type.Any(), { minItems: 1, maxItems: 50 }), // Limit steps per request
+    doc: Type.Any(),
+    clientID: Type.Optional(Type.String()),
+});
+
+export type CollabStepsRequest = Static<typeof CollabStepsRequestSchema>;
+
+// Batch steps request (offline queue flush)
+export const CollabBatchRequestSchema = Type.Object({
+    stepsBatch: Type.Array(
+        Type.Object({
+            version: Type.Number({ minimum: 0 }),
+            steps: Type.Array(Type.Any(), { minItems: 1 }),
+        }),
+        { minItems: 1, maxItems: 100 }, // Limit batch size to prevent DoS
+    ),
+    doc: Type.Any(),
+    clientID: Type.Optional(Type.String()),
+});
+
+export type CollabBatchRequest = Static<typeof CollabBatchRequestSchema>;
