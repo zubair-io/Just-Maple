@@ -1,8 +1,9 @@
 import { Injectable } from '@angular/core';
-import { Repo, DocHandle } from '@automerge/automerge-repo';
+import { Repo, DocHandle } from '@automerge/automerge-repo/slim';
 import { BrowserWebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket';
 import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
 import * as Automerge from '@automerge/automerge/slim';
+import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64';
 
 /**
  * Automerge collaboration service for the frontend
@@ -12,12 +13,21 @@ import * as Automerge from '@automerge/automerge/slim';
 export class CollabAutomergeService {
   private repo: Repo | null = null;
   private handles = new Map<string, DocHandle<any>>();
+  private wasmInitialized = false;
 
   /**
    * Initialize Automerge Repo with WebSocket and IndexedDB storage
    */
   async initializeRepo(wsUrl: string): Promise<Repo> {
     if (this.repo) return this.repo;
+
+    // Initialize Wasm first (if not already done)
+    if (!this.wasmInitialized) {
+      console.log('[Automerge] Initializing Wasm with base64');
+      await Automerge.initializeBase64Wasm(automergeWasmBase64);
+      this.wasmInitialized = true;
+      console.log('[Automerge] Wasm initialized successfully');
+    }
 
     console.log('[Automerge] Initializing Automerge Repo with WebSocket:', wsUrl);
 

@@ -5,11 +5,130 @@
     <title>Just Maple</title>
     <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      document.addEventListener('gesturestart', (e) => e.preventDefault());
+    </script>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <link
+      rel="preload"
+      as="style"
+      onload="
+        this.onload = null;
+        this.rel = 'stylesheet';
+      "
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+    />
+    <link
+      rel="preload"
+      as="style"
+      onload="
+        this.onload = null;
+        this.rel = 'stylesheet';
+      "
+      href="https://fonts.googleapis.com/css?family=Lato:100,200,300|Merriweather:300,300italic,700,700italic&amp;display=swap"
+    />
+    <link
+      rel="apple-touch-icon"
+      type="image/png"
+      sizes="192x192"
+      href="https://hornbeam.justmaple.app/data/assets/icons/apple-touch.png"
+    />
+
+    <link
+      rel="apple-touch-icon"
+      sizes="57x57"
+      href="https://hornbeam.justmaple.app/data/assets/icons/apple-icon-57x57.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="60x60"
+      href="https://hornbeam.justmaple.app/data/assets/icons/apple-icon-60x60.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="72x72"
+      href="https://hornbeam.justmaple.app/data/assets/icons/apple-icon-72x72.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="76x76"
+      href="https://hornbeam.justmaple.app/data/assets/icons/apple-icon-76x76.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="114x114"
+      href="https://hornbeam.justmaple.app/data/assets/icons/apple-icon-114x114.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="120x120"
+      href="https://hornbeam.justmaple.app/data/assets/icons/apple-icon-120x120.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="144x144"
+      href="https://hornbeam.justmaple.app/data/assets/icons/apple-icon-144x144.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="152x152"
+      href="https://hornbeam.justmaple.app/data/assets/icons/apple-icon-152x152.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="https://hornbeam.justmaple.app/data/assets/icons/apple-icon-180x180.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="192x192"
+      href="https://hornbeam.justmaple.app/data/assets/icons/android-icon-192x192.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="https://hornbeam.justmaple.app/data/assets/icons/favicon-32x32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="96x96"
+      href="https://hornbeam.justmaple.app/data/assets/icons/favicon-96x96.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="https://hornbeam.justmaple.app/data/assets/icons/favicon-16x16.png"
+    />
+    <meta name="msapplication-TileColor" content="#fafafa" />
+    <meta
+      name="msapplication-TileImage"
+      content="https://hornbeam.justmaple.app/data/assets/icons/ms-icon-144x144.png"
+    />
+    <link
+      rel="icon"
+      type="image/x-icon"
+      href="https://hornbeam.justmaple.app/data/assets/icons/favicon.ico"
+    />
+
+    <link rel="manifest" href="https://hornbeam.justmaple.app/data/assets/manifest.webmanifest" />
+    <meta name="theme-color" content="#fafafa" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lato:wght@100;300;400;700&family=Merriweather:wght@300;400;700&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <app-root></app-root>
-    <script type="module" src="/src/vite-main.ts"></script>
+    <!-- <script type="module" src="/src/vite-main.ts"></script> -->
   </body>
 </html>

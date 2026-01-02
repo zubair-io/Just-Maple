@@ -20,12 +20,12 @@ export default defineConfig(({ mode }) => {
       },
     },
     plugins: [
-      tailwindcss(),
       angular({
         tsconfig: mode === 'test' ? './tsconfig.spec.json' : './tsconfig.app.json',
         workspaceRoot: '../../',
         inlineStylesExtension: 'scss',
       }),
+      tailwindcss(),
       wasm(),
       topLevelAwait({
         promiseExportName: '__tla',

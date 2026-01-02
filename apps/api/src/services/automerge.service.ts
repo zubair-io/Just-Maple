@@ -1,7 +1,11 @@
-import * as Automerge from '@automerge/automerge';
+import * as Automerge from '@automerge/automerge/slim';
+import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64';
 import { findNoteByIdForCollab, updateNoteForCollab } from '../repositories/note.repo';
 import type { NoteContent } from '@maple/shared';
 import { collabRealtimeService } from './collab-realtime.service';
+
+// Initialize Wasm once at module load
+await Automerge.initializeBase64Wasm(automergeWasmBase64);
 
 /**
  * Automerge service - handles CRDT-based collaboration for notes
