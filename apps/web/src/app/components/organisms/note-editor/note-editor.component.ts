@@ -33,7 +33,9 @@ import { Subject, takeUntil, combineLatest, switchMap, of } from 'rxjs';
 import type { Note, Tag, NoteContent } from '@maple/shared';
 import { environment } from '../../../../environments/environment';
 import { CollabAutomergeService } from '../../../services/collab-automerge.service';
-import type { DocHandle } from '@automerge/automerge-repo';
+import { CollabSignalRService } from '../../../services/collab-signalr.service';
+import { HttpClient } from '@angular/common/http';
+import type { CollabEvent } from '@maple/shared';
 
 @Component({
   selector: 'app-note-editor',
@@ -48,11 +50,13 @@ export class NoteEditorComponent implements OnDestroy {
 
   private readonly botService = inject(BotService);
   private readonly collabAutomerge = inject(CollabAutomergeService);
+  private readonly collabSignalR = inject(CollabSignalRService);
+  private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
 
   // Automerge collaboration state
-  private docHandle: DocHandle<any> | null = null;
   private isUpdatingFromAutomerge = false;
+  private signalrSubscription: any = null;
 
   readonly note = input<Note | null>(null);
   readonly tag = input<Tag | null>(null);
@@ -343,39 +347,41 @@ export class NoteEditorComponent implements OnDestroy {
     try {
       console.log('[Automerge Editor] Initializing collaboration for note', note._id);
 
-      // 1. Initialize Automerge Repo
-      const wsUrl = this.getWebSocketUrl();
-      const repo = await this.collabAutomerge.initializeRepo(wsUrl);
+      // 1. Initialize Automerge Wasm
+      await this.collabAutomerge.initialize();
 
       // 2. Load or migrate document
-      this.docHandle = await this.collabAutomerge.loadOrCreateDocument(note._id, {
+      const doc = this.collabAutomerge.loadOrCreateDocument(note._id, {
         automergeDoc: note.automergeDoc as Uint8Array | undefined,
         content: note.content,
       });
 
       // 3. Set initial content from Automerge document
-      const doc = await this.docHandle.doc();
-      if (doc && doc['content']) {
+      if (doc && (doc as any)['content']) {
         this.isUpdatingFromAutomerge = true;
         try {
-          this.editor?.commands.setContent(doc['content']);
+          this.editor?.commands.setContent((doc as any)['content']);
         } finally {
           this.isUpdatingFromAutomerge = false;
         }
       }
 
-      // 4. Listen for remote changes
-      this.docHandle.on('change', ({ doc }) => {
-        if (doc && doc['content'] && !this.isUpdatingFromAutomerge) {
-          console.log('[Automerge Editor] Received remote change');
-          this.isUpdatingFromAutomerge = true;
-          try {
-            this.editor?.commands.setContent(doc['content']);
-          } finally {
-            this.isUpdatingFromAutomerge = false;
-          }
-        }
-      });
+      // 4. Connect to SignalR and listen for automerge-sync events
+      if (environment.useSignalR) {
+        await this.collabSignalR.connect();
+
+        const destroy$ = new Subject<void>();
+        this.destroyRef.onDestroy(() => destroy$.next());
+
+        this.signalrSubscription = this.collabSignalR
+          .eventsForNote(note._id)
+          .pipe(takeUntil(destroy$))
+          .subscribe((event: CollabEvent) => {
+            if (event.type === 'automerge-sync' && event.syncMessage) {
+              this.handleRemoteSync(note._id, event.syncMessage);
+            }
+          });
+      }
 
       console.log('[Automerge Editor] Collaboration initialized successfully');
     } catch (error) {
@@ -383,14 +389,60 @@ export class NoteEditorComponent implements OnDestroy {
     }
   }
 
+  private handleRemoteSync(noteId: string, base64Message: string): void {
+    if (this.isUpdatingFromAutomerge) return;
+
+    try {
+      // Decode base64 sync message
+      const binaryMessage = Uint8Array.from(atob(base64Message), (c) => c.charCodeAt(0));
+
+      // Apply sync message to local document
+      const updatedDoc = this.collabAutomerge.receiveSyncMessage(noteId, binaryMessage);
+
+      if (updatedDoc && (updatedDoc as any)['content']) {
+        console.log('[Automerge Editor] Applying remote changes');
+        this.isUpdatingFromAutomerge = true;
+        try {
+          this.editor?.commands.setContent((updatedDoc as any)['content']);
+        } finally {
+          this.isUpdatingFromAutomerge = false;
+        }
+      }
+    } catch (error) {
+      console.error('[Automerge Editor] Error handling remote sync:', error);
+    }
+  }
+
   private updateAutomergeDocument(content: NoteContent): void {
-    if (!this.docHandle || this.isUpdatingFromAutomerge) return;
+    if (this.isUpdatingFromAutomerge) return;
+
+    const noteId = this.note()?._id;
+    if (!noteId) return;
 
     try {
       // Update the Automerge document
-      this.docHandle.change((doc: any) => {
-        doc.content = content;
-      });
+      this.collabAutomerge.updateDocument(noteId, content);
+
+      // Generate sync message
+      const syncMessage = this.collabAutomerge.generateSyncMessage(noteId);
+
+      if (syncMessage && environment.useSignalR) {
+        // Send sync message to backend via HTTP
+        const base64Message = btoa(String.fromCharCode(...syncMessage));
+
+        this.http
+          .post<any>(`/api/collab/${noteId}/automerge-sync`, {
+            syncMessage: base64Message,
+          })
+          .subscribe({
+            next: () => {
+              console.log('[Automerge Editor] Sync message sent successfully');
+            },
+            error: (error) => {
+              console.error('[Automerge Editor] Failed to send sync message:', error);
+            },
+          });
+      }
 
       console.log('[Automerge Editor] Updated document from editor changes');
     } catch (error) {
@@ -398,21 +450,18 @@ export class NoteEditorComponent implements OnDestroy {
     }
   }
 
-  private getWebSocketUrl(): string {
-    // Determine WebSocket URL from environment
-    // Automerge Repo handles its own protocol on top of WebSocket
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = window.location.host;
-    return `${wsProtocol}//${wsHost}/ws`;
-  }
-
   private disconnectCollaboration(): void {
     const noteId = this.note()?._id;
 
-    if (this.docHandle && noteId) {
-      // Clean up document handle
+    if (noteId) {
+      // Clean up document
       this.collabAutomerge.cleanupDocument(noteId);
-      this.docHandle = null;
+    }
+
+    // Unsubscribe from SignalR
+    if (this.signalrSubscription) {
+      this.signalrSubscription.unsubscribe();
+      this.signalrSubscription = null;
     }
   }
 
