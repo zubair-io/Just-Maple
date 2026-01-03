@@ -1,170 +1,238 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { Repo } from '@automerge/automerge-repo/slim';
+import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
+import type { DocHandle } from '@automerge/automerge-repo/slim';
 import * as Automerge from '@automerge/automerge/slim';
 import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64';
+import { HttpClient } from '@angular/common/http';
+import { AuthService } from './auth.service';
+import { JustMapleNetworkAdapter } from './automerge-network-adapter';
 import type { NoteContent } from '@maple/shared';
 
 /**
- * Automerge collaboration service using SignalR for sync
- * Does NOT use Automerge Repo - uses manual sync via SignalR instead
+ * Automerge collaboration service using Automerge Repo
+ * Uses IndexedDB storage and custom network adapter for sync
  */
 @Injectable({ providedIn: 'root' })
 export class CollabAutomergeService {
-  private documents = new Map<string, Automerge.Doc<any>>();
-  private syncStates = new Map<string, Automerge.SyncState>();
+  private readonly http = inject(HttpClient);
+  private readonly authService = inject(AuthService);
+
+  private repo: Repo | null = null;
+  private handles = new Map<string, DocHandle<any>>();
+  private networkAdapters = new Map<string, JustMapleNetworkAdapter>();
   private wasmInitialized = false;
 
   /**
-   * Initialize Wasm for Automerge
+   * Initialize Automerge Repo with IndexedDB storage
    */
   async initialize(): Promise<void> {
-    if (this.wasmInitialized) return;
+    if (this.repo) return;
 
-    console.log('[Automerge] Initializing Wasm with base64');
-    await Automerge.initializeBase64Wasm(automergeWasmBase64);
-    this.wasmInitialized = true;
-    console.log('[Automerge] Wasm initialized successfully');
+    // Initialize Wasm first
+    if (!this.wasmInitialized) {
+      await Automerge.initializeBase64Wasm(automergeWasmBase64);
+      this.wasmInitialized = true;
+    }
+
+    // Create repo with IndexedDB storage
+    // Network adapters are added per-note in getOrCreateHandle()
+    this.repo = new Repo({
+      storage: new IndexedDBStorageAdapter('just-maple-automerge'),
+      // Network will be added per-note
+      network: [],
+    });
   }
 
   /**
-   * Load or create Automerge document for a note
-   * Handles lazy migration from ProseMirror JSON if needed
+   * Get or create DocHandle for a note
+   * This will create a network adapter for syncing with the backend
+   *
+   * Migration strategy:
+   * - If automergeDoc exists: Load from binary (already in CRDT format)
+   * - If automergeDoc missing: Create empty doc, AutoMirror will populate from ProseMirror JSON
    */
-  loadOrCreateDocument(
+  async getOrCreateHandle(
     noteId: string,
     serverData: {
-      automergeDoc?: Uint8Array;
+      automergeDoc?: any;
+      automergeUrl?: string;
       content?: any;
     },
-  ): Automerge.Doc<any> {
-    // Check if we already have a document
-    const existingDoc = this.documents.get(noteId);
-    if (existingDoc) {
-      console.log('[Automerge] Using existing document for note', noteId);
-      return existingDoc;
+  ): Promise<{ handle: DocHandle<any>; shouldMigrate: boolean }> {
+    if (!this.repo) {
+      throw new Error('Repo not initialized');
     }
 
-    let doc: Automerge.Doc<any>;
+    // Check if we already have a handle
+    // const existingHandle = this.handles.get(noteId);
+    // if (existingHandle) {
+    //   return { handle: existingHandle, shouldMigrate: false };
+    // }
 
-    console.log('[Automerge] Loading document for note', noteId);
-    console.log('[Automerge] Has automergeDoc binary:', !!serverData.automergeDoc);
-    console.log('[Automerge] Has content:', !!serverData.content);
+    // Create and connect network adapter BEFORE creating document
+    // This is critical - the repo needs the adapter before the document exists
+    const networkAdapter = new JustMapleNetworkAdapter(noteId, this.http, this.authService);
+    this.networkAdapters.set(noteId, networkAdapter);
+    this.repo.networkSubsystem.addNetworkAdapter(networkAdapter);
 
-    if (serverData.automergeDoc) {
-      // Load from binary (already migrated)
-      console.log(
-        '[Automerge] Loading existing Automerge document for note',
-        noteId,
-        `(${serverData.automergeDoc.length} bytes)`,
-      );
-      doc = Automerge.load(serverData.automergeDoc);
+    // Wait for adapter to be ready
+    await networkAdapter.whenReady();
+
+    let handle: DocHandle<any>;
+    let shouldMigrate = false;
+
+    // STRATEGY: Use automergeUrl from database to ensure all clients get the same document
+    if (serverData.automergeUrl) {
+      // Use stored URL to find existing document
+      try {
+        handle = await this.repo.find(serverData.automergeUrl as any);
+        shouldMigrate = false;
+      } catch (error) {
+        console.error('[Automerge Repo] Failed to find document by URL:', error);
+        // Fallback: create new document
+        // Fallback: create new document
+        handle = this.repo.create({ text: '' });
+        handle.change((d) => {
+          // Initialize with a paragraph block
+          Automerge.splitBlock(d, ['text'], 0, { type: 'paragraph' });
+        });
+        shouldMigrate = true;
+      }
     } else {
-      // MIGRATE: Convert ProseMirror JSON to Automerge
-      console.log('[Automerge] Migrating note', noteId, 'from ProseMirror JSON to Automerge');
-      doc = this.migrateFromProseMirror(serverData.content);
+      // No URL stored yet - create new document and we'll save the URL to DB
+      // No URL stored yet - create new document and we'll save the URL to DB
+      handle = this.repo.create({ text: '' });
+      handle.change((d) => {
+        // Initialize with a paragraph block
+        Automerge.splitBlock(d, ['text'], 0, { type: 'paragraph' });
+      });
+
+      shouldMigrate = true;
     }
 
-    // Store document
-    this.documents.set(noteId, doc);
-
-    // Initialize sync state for this note
-    this.syncStates.set(noteId, Automerge.initSyncState());
-
-    console.log('[Automerge] Document ready for note', noteId);
-    console.log('[Automerge] Document content:', (doc as any)['content']);
-
-    return doc;
-  }
-
-  /**
-   * Update document with new content
-   */
-  updateDocument(noteId: string, content: NoteContent): Automerge.Doc<any> {
-    let doc = this.documents.get(noteId);
-    if (!doc) {
-      throw new Error(`Document not found for note ${noteId}`);
+    // Save document URL to database if it's a new document
+    if (shouldMigrate && !serverData.automergeUrl) {
+      try {
+        await this.http
+          .put(`/api/notes/${noteId}`, {
+            automergeUrl: handle.url,
+          })
+          .toPromise();
+      } catch (error) {
+        console.error('[Automerge Repo] Failed to save document URL:', error);
+      }
     }
 
-    // Create change in document
-    doc = Automerge.change(doc, (d: any) => {
-      d.content = content;
-    });
+    // Store handle
+    this.handles.set(noteId, handle);
 
-    this.documents.set(noteId, doc);
-    return doc;
+    return { handle, shouldMigrate };
   }
 
   /**
-   * Get current document
+   * Get handle for a note
    */
-  getDocument(noteId: string): Automerge.Doc<any> | undefined {
-    return this.documents.get(noteId);
+  getHandle(noteId: string): DocHandle<any> | undefined {
+    return this.handles.get(noteId);
   }
 
   /**
-   * Generate sync message to send to other clients
+   * Manually trigger sync for a document
+   * Tell the Repo to sync this document with all peers
    */
-  generateSyncMessage(noteId: string): Uint8Array | null {
-    const doc = this.documents.get(noteId);
-    const syncState = this.syncStates.get(noteId);
+  syncDocument(noteId: string): void {
+    const handle = this.handles.get(noteId);
 
-    if (!doc || !syncState) {
-      return null;
+    if (!handle || !this.repo) {
+      return;
     }
 
-    const [newSyncState, message] = Automerge.generateSyncMessage(doc, syncState);
+    // Request the repo to sync this specific document
+    // The repo will call our network adapter's send() method
+    try {
+      // Force the repo to sync by accessing the document
+      // This should trigger the sync protocol
+      const doc = handle.doc();
+      if (doc) {
+        // The repo should notice the document has changes and sync
+        // But we need to explicitly tell it to sync
 
-    // Update sync state
-    this.syncStates.set(noteId, newSyncState);
-
-    return message || null;
+        // Try using the repo's sync API
+        // @ts-ignore - accessing internal API
+        if (this.repo.syncProtocol) {
+          // @ts-ignore
+          this.repo.syncProtocol.beginSync(handle.url);
+        }
+      }
+    } catch (error) {
+      console.error('[Automerge Repo] Error requesting sync:', error);
+    }
   }
 
   /**
-   * Receive and apply sync message from another client
+   * Get empty ProseMirror content
    */
-  receiveSyncMessage(noteId: string, message: Uint8Array): Automerge.Doc<any> | null {
-    let doc = this.documents.get(noteId);
-    let syncState = this.syncStates.get(noteId);
+  private getEmptyContent(): NoteContent {
+    return {
+      type: 'doc',
+      content: [
+        {
+          type: 'heading',
+          attrs: { level: 1 },
+          content: [],
+        },
+      ],
+    };
+  }
 
-    if (!doc || !syncState) {
-      console.error('[Automerge] No document or sync state for note', noteId);
-      return null;
+  /**
+   * Convert various binary formats to Uint8Array
+   * Handles MongoDB Buffer serialization formats
+   */
+  private convertToUint8Array(data: any): Uint8Array {
+    // Already a Uint8Array
+    if (data instanceof Uint8Array) {
+      return data;
     }
 
-    // Apply sync message
-    const [newDoc, newSyncState] = Automerge.receiveSyncMessage(doc, syncState, message);
+    // MongoDB Buffer object format: { type: 'Buffer', data: [1, 2, 3, ...] }
+    if (data && typeof data === 'object' && data.type === 'Buffer' && Array.isArray(data.data)) {
+      return new Uint8Array(data.data);
+    }
 
-    // Update stored document and sync state
-    this.documents.set(noteId, newDoc);
-    this.syncStates.set(noteId, newSyncState);
+    // Base64 string
+    if (typeof data === 'string') {
+      const binaryString = atob(data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes;
+    }
 
-    return newDoc;
-  }
+    // Array of numbers
+    if (Array.isArray(data)) {
+      return new Uint8Array(data);
+    }
 
-  /**
-   * Migrate ProseMirror JSON to Automerge document
-   */
-  private migrateFromProseMirror(content: any): Automerge.Doc<any> {
-    const doc = Automerge.from({
-      content: this.convertProseMirrorToAutomerge(content),
-    });
-    return doc;
-  }
-
-  /**
-   * Convert ProseMirror JSON to Automerge-compatible format
-   */
-  private convertProseMirrorToAutomerge(prosemirrorContent: any): any {
-    // Deep clone to avoid mutation
-    return JSON.parse(JSON.stringify(prosemirrorContent));
+    console.error('[Automerge Repo] Unknown binary data format:', typeof data, data);
+    throw new Error('Unable to convert data to Uint8Array');
   }
 
   /**
    * Clean up document when note is closed
    */
   cleanupDocument(noteId: string): void {
-    this.documents.delete(noteId);
-    this.syncStates.delete(noteId);
-    console.log('[Automerge] Cleaned up document for note', noteId);
+    // Disconnect network adapter
+    const networkAdapter = this.networkAdapters.get(noteId);
+    if (networkAdapter && this.repo) {
+      this.repo.networkSubsystem.removeNetworkAdapter(networkAdapter);
+      networkAdapter.disconnect();
+      this.networkAdapters.delete(noteId);
+    }
+
+    // Remove handle
+    this.handles.delete(noteId);
   }
 }

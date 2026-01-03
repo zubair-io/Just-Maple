@@ -5,6 +5,7 @@ import { findUserById } from '../repositories/user.repo';
 import { findNoteById } from '../repositories/note.repo';
 import { otService } from '../services/ot.service';
 import { automergeService } from '../services/automerge.service';
+import { collabRealtimeService } from '../services/collab-realtime.service';
 import { generateClientID } from '../utils/client-id';
 import type { JWTPayload } from '@maple/shared';
 
@@ -60,6 +61,9 @@ export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
                 const doc = await otService.getDocument(noteId);
                 otService.addConnection(noteId, clientID, { ws, userId: user._id });
 
+                // Register with realtime service for Automerge broadcasts
+                collabRealtimeService.addConnection(noteId, clientID, { ws, userId: user._id });
+
                 // Send initial version, document state, and clientID
                 ws.send(
                     JSON.stringify({
@@ -107,25 +111,32 @@ export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
                     }
 
                     console.log('[Collab WS] Processing Automerge sync message from client');
+                    console.log('[Collab WS] documentId from client:', data.documentId);
 
                     // Convert base64 to binary
                     const binaryMessage = Buffer.from(data.syncMessage, 'base64');
 
-                    // Process sync message
+                    // Process sync message (pass documentId through)
                     const responseMessage = await automergeService.receiveSyncMessage(
                         noteId,
                         clientID,
                         binaryMessage,
+                        data.documentId, // Pass documentId from client
                     );
 
-                    // Send response back to client
-                    ws.send(
-                        JSON.stringify({
-                            type: 'automerge-sync',
-                            noteId: noteId,
-                            syncMessage: Buffer.from(responseMessage).toString('base64'),
-                        }),
-                    );
+                    // Send response back to client with documentId
+                    const response: any = {
+                        type: 'automerge-sync',
+                        noteId: noteId,
+                        syncMessage: Buffer.from(responseMessage).toString('base64'),
+                    };
+
+                    // Echo back documentId if provided
+                    if (data.documentId) {
+                        response.documentId = data.documentId;
+                    }
+
+                    ws.send(JSON.stringify(response));
                 } else if (data.type === 'steps') {
                     // OT steps (legacy - will be removed after migration)
                     // Steps are already JSON objects, no need to deserialize
@@ -171,6 +182,7 @@ export const collabOTWebSocket = new Elysia({ prefix: '/ws' })
             if (context) {
                 const { noteId, clientID } = context;
                 otService.removeConnection(noteId, clientID);
+                collabRealtimeService.removeConnection(noteId, clientID);
                 console.log(`[Collab OT] Client ${clientID} disconnected from note ${noteId}`);
             }
         },

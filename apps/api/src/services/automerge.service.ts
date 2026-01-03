@@ -17,37 +17,47 @@ class AutomergeService {
 
     /**
      * Load document from MongoDB, migrate if needed
+     * Returns the document and its URL
      */
-    async getDocument(noteId: string): Promise<Automerge.Doc<any>> {
+    async getDocumentWithUrl(noteId: string): Promise<{ doc: Automerge.Doc<any>; url: string }> {
         // Check in-memory cache
         let doc = this.documents.get(noteId);
-        if (doc) return doc;
 
         // Load from database
         const note = await findNoteByIdForCollab(noteId, 'AutomergeService');
         if (!note) throw new Error('Note not found');
 
-        if (note.automergeDoc) {
-            // Load from binary
-            console.log(`[Automerge Service] Loading existing document for note ${noteId}`);
-            doc = Automerge.load(note.automergeDoc as Uint8Array);
-        } else {
-            // MIGRATE: Convert ProseMirror JSON to Automerge
-            console.log(
-                `[Automerge Service] Migrating note ${noteId} from ProseMirror JSON to Automerge`,
-            );
-            doc = this.migrateFromProseMirror(note.content);
+        let automergeUrl = note.automergeUrl;
 
-            // Save migration to DB (background)
-            const binary = Automerge.save(doc);
-            updateNoteForCollab(
-                noteId,
-                { automergeDoc: binary as Buffer },
-                'AutomergeService',
-            ).catch(console.error);
+        if (!doc) {
+            if (note.automergeDoc) {
+                // Load from binary
+                doc = Automerge.load(note.automergeDoc as Uint8Array);
+            } else {
+                // MIGRATE: Convert ProseMirror JSON to Automerge
+                doc = this.migrateFromProseMirror(note.content);
+
+                // Save migration to DB immediately (not in background)
+                // This ensures all clients get the same document binary
+                const binary = Automerge.save(doc);
+                await updateNoteForCollab(
+                    noteId,
+                    { automergeDoc: binary as Buffer },
+                    'AutomergeService',
+                );
+            }
+
+            this.documents.set(noteId, doc);
         }
 
-        this.documents.set(noteId, doc);
+        return { doc, url: automergeUrl || '' };
+    }
+
+    /**
+     * Load document from MongoDB, migrate if needed
+     */
+    async getDocument(noteId: string): Promise<Automerge.Doc<any>> {
+        const { doc } = await this.getDocumentWithUrl(noteId);
         return doc;
     }
 
@@ -58,33 +68,54 @@ class AutomergeService {
         noteId: string,
         clientID: string,
         message: Uint8Array,
+        documentId?: string,
     ): Promise<Uint8Array> {
         const doc = await this.getDocument(noteId);
         const syncState = this.getSyncState(noteId, clientID);
 
-        console.log(
-            `[Automerge Service] Receiving sync message from client ${clientID} for note ${noteId}`,
-        );
-
         // Apply sync message (automatic CRDT merge)
         const [newDoc, newSyncState] = Automerge.receiveSyncMessage(doc, syncState, message);
+
+        // Check if document actually changed
+        const docChanged = !Automerge.equals(doc, newDoc);
 
         // Update in-memory state
         this.documents.set(noteId, newDoc);
         this.syncStates.get(noteId)!.set(clientID, newSyncState);
 
-        // Persist to MongoDB (background)
-        this.persistDocument(noteId, newDoc).catch(console.error);
-
-        // Generate response message
-        const responseMessage = Automerge.generateSyncMessage(newDoc, newSyncState);
-
-        // Broadcast to other clients
-        if (responseMessage) {
-            this.broadcastSyncMessage(noteId, clientID, responseMessage);
+        // Persist to MongoDB only if document changed (background)
+        if (docChanged) {
+            this.persistDocument(noteId, newDoc).catch(console.error);
         }
 
-        return responseMessage || new Uint8Array();
+        // Generate response message
+        const [updatedSyncState, responseMessage] = Automerge.generateSyncMessage(
+            newDoc,
+            newSyncState,
+        );
+
+        // Update sync state after generating message
+        this.syncStates.get(noteId)!.set(clientID, updatedSyncState);
+
+        // If document changed, broadcast the CHANGE (incoming message) to other clients
+        // We forward the operations so other clients can apply them
+        if (docChanged) {
+            this.broadcastSyncMessage(noteId, clientID, message, documentId);
+        }
+
+        // Return the response to the sender (Ack/Sync)
+        // We removed the early return so the sender gets the acknowledgement
+        if (responseMessage && responseMessage.length > 0) {
+            return responseMessage;
+        }
+
+        // If document didn't change, send response to sender for sync protocol
+        // (this is for initial sync or acknowledgments)
+        if (responseMessage && responseMessage.length > 0) {
+            return responseMessage;
+        }
+
+        return new Uint8Array();
     }
 
     /**
@@ -110,8 +141,6 @@ class AutomergeService {
             },
             'AutomergeService',
         );
-
-        console.log(`[Automerge Service] Persisted version ${version} for note ${noteId}`);
     }
 
     /**
@@ -188,21 +217,22 @@ class AutomergeService {
         noteId: string,
         senderClientID: string,
         message: Uint8Array,
+        documentId?: string,
     ): void {
-        console.log(
-            `[Automerge Service] Broadcasting sync message for note ${noteId} (sender: ${senderClientID})`,
-        );
+        const broadcastMessage: any = {
+            type: 'automerge-sync',
+            noteId,
+            syncMessage: Buffer.from(message).toString('base64'),
+            isBroadcast: true, // Flag to indicate this is a one-way broadcast
+        };
+
+        // Include documentId if provided
+        if (documentId) {
+            broadcastMessage.documentId = documentId;
+        }
 
         // Use existing collab realtime service (works with both WebSocket and SignalR)
-        collabRealtimeService.broadcast(
-            noteId,
-            {
-                type: 'automerge-sync',
-                noteId,
-                syncMessage: Buffer.from(message).toString('base64'),
-            },
-            senderClientID,
-        );
+        collabRealtimeService.broadcast(noteId, broadcastMessage, senderClientID);
     }
 
     /**
@@ -212,9 +242,6 @@ class AutomergeService {
         const clientStates = this.syncStates.get(noteId);
         if (clientStates) {
             clientStates.delete(clientID);
-            console.log(
-                `[Automerge Service] Cleaned up sync state for client ${clientID} on note ${noteId}`,
-            );
         }
     }
 
@@ -224,7 +251,6 @@ class AutomergeService {
     cleanupDocument(noteId: string): void {
         this.documents.delete(noteId);
         this.syncStates.delete(noteId);
-        console.log(`[Automerge Service] Cleaned up document ${noteId} from memory`);
     }
 }
 

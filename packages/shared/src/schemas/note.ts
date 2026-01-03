@@ -37,6 +37,7 @@ export const NoteSchema = Type.Object({
     // DUAL STORAGE: content field kept for search/compatibility, automergeDoc is source of truth
     content: NoteContentSchema, // ProseMirror JSON format (for search indexing)
     automergeDoc: Type.Optional(Type.Any()), // Binary CRDT (source of truth)
+    automergeUrl: Type.Optional(Type.String()), // Automerge document URL (for syncing)
     // Automerge metadata
     version: Type.Optional(Type.Number()), // Hash of Automerge heads (for cache validation)
     lastSyncedHeads: Type.Optional(Type.Array(Type.String())), // Automerge heads (for sync optimization)
@@ -64,6 +65,7 @@ export const UpdateNoteSchema = Type.Object({
     title: Type.Optional(Type.String({ maxLength: 500 })),
     content: Type.Optional(NoteContentSchema),
     automergeDoc: Type.Optional(Type.Any()), // Binary CRDT
+    automergeUrl: Type.Optional(Type.String()), // Automerge document URL
     version: Type.Optional(Type.Number()), // Automerge heads hash
     lastSyncedHeads: Type.Optional(Type.Array(Type.String())), // Automerge heads
     tagId: Type.Optional(Type.String()),

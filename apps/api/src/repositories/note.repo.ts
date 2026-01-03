@@ -18,6 +18,7 @@ interface NoteDocument {
     // DUAL STORAGE: content for search, automergeDoc as source of truth
     content: NoteContent;
     automergeDoc?: Buffer; // Binary CRDT (source of truth)
+    automergeUrl?: string; // Automerge document URL (for syncing)
     // Automerge metadata
     version?: number; // Hash of Automerge heads (for cache validation)
     lastSyncedHeads?: string[]; // Automerge heads (for sync optimization)
@@ -42,6 +43,7 @@ function toNoteResponse(doc: NoteDocument): Note {
         title: doc.title,
         content: doc.content,
         automergeDoc: doc.automergeDoc, // Binary CRDT
+        automergeUrl: doc.automergeUrl, // Automerge document URL
         version: doc.version, // Hash of Automerge heads
         lastSyncedHeads: doc.lastSyncedHeads, // Automerge heads
         tagId: doc.tagId?.toString(),
@@ -231,6 +233,9 @@ export async function updateNote(
         if (data.lastSyncedHeads !== undefined) {
             updateData.lastSyncedHeads = data.lastSyncedHeads;
         }
+        if (data.automergeUrl !== undefined) {
+            updateData.automergeUrl = data.automergeUrl;
+        }
         if (data.tagId !== undefined) {
             updateData.tagId = data.tagId ? new ObjectId(data.tagId) : undefined;
         }
@@ -326,7 +331,12 @@ export async function emptyTrash(userId: string): Promise<number> {
 const INTERNAL_CAPABILITY = Symbol('note.repo.internal');
 
 // Allowed callers registry for audit logging
-const ALLOWED_INTERNAL_CALLERS = new Set(['OTService', 'MigrationService', 'SignalRCollabService']);
+const ALLOWED_INTERNAL_CALLERS = new Set([
+    'OTService',
+    'MigrationService',
+    'SignalRCollabService',
+    'AutomergeService',
+]);
 
 /**
  * Find note by ID without permission checks
@@ -435,7 +445,7 @@ export async function updateNoteInternal(
  */
 export async function findNoteByIdForCollab(
     id: string,
-    caller: 'OTService' | 'SignalRCollabService' | 'MigrationService',
+    caller: 'OTService' | 'SignalRCollabService' | 'MigrationService' | 'AutomergeService',
 ): Promise<Note | null> {
     return findNoteByIdInternal(id, INTERNAL_CAPABILITY, caller);
 }
@@ -447,7 +457,7 @@ export async function findNoteByIdForCollab(
 export async function updateNoteForCollab(
     id: string,
     data: Partial<UpdateNoteInput>,
-    caller: 'OTService' | 'MigrationService',
+    caller: 'OTService' | 'MigrationService' | 'AutomergeService',
 ): Promise<Note | null> {
     return updateNoteInternal(id, data, INTERNAL_CAPABILITY, caller);
 }
