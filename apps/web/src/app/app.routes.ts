@@ -3,6 +3,12 @@ import { AuthGuard, PublicGuard } from './guards/auth.guard';
 import { WriteNoteGuard, LegoNoteGuard } from './guards/note-type.guard';
 
 export const routes: Routes = [
+  // Test route for Automerge collaboration
+  {
+    path: 'write',
+    loadComponent: () =>
+      import('./pages/write-test/write-test.component').then((m) => m.WriteTestComponent),
+  },
   // Settings route - must come before the home route
   {
     path: 'settings',

@@ -13,6 +13,7 @@ import { botRoutes } from './routes/bots';
 import { collabRoutes } from './routes/collab';
 import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
 import { collabOTWebSocket } from './ws/collab-ot.ws';
+import { testSyncWs } from './ws/test-sync.ws';
 import { SignalRRealtimeService } from './services/signalr.service';
 import { setRealtimeService } from './services/realtime.service';
 import { config } from './config';
@@ -63,7 +64,8 @@ async function main() {
         .use(collectibleRegistryRoutes)
         .use(notificationRoutes)
         .use(botRoutes)
-        .use(collabRoutes);
+        .use(collabRoutes)
+        .use(testSyncWs); // Test sync WebSocket (always enabled)
 
     // Conditionally enable WebSocket routes
     // - Dev/self-hosted: Direct WebSocket connections
@@ -155,6 +157,7 @@ async function main() {
     console.log(`🍁 PaperbarkMaple API running at http://localhost:${config.port}`);
     console.log(`   Environment: ${envName}`);
     console.log(`   MongoDB: ${config.mongodbUri}`);
+    console.log(`   Test Sync: ws://localhost:${config.port}/ws/test-sync (no auth)`);
     if (!config.useSignalR) {
         console.log(`   WebSocket Chat: ws://localhost:${config.port}/ws/chat`);
         console.log(`   WebSocket Collab: ws://localhost:${config.port}/ws/collab/:noteId`);
