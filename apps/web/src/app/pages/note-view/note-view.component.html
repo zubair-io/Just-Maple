@@ -68,12 +68,7 @@
 
 <!-- Note Editor -->
 @if (selectedNote()) {
-  <app-note-editor
-    [note]="selectedNote()"
-    [tag]="selectedTag()"
-    (contentChange)="onContentChange($event)"
-    (botInvoked)="onBotInvoked($event)"
-  />
+  <app-note-editor [note]="selectedNote()" />
 } @else {
   <div class="empty-state">
     <div class="empty-icon">

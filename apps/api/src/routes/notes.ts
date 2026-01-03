@@ -13,6 +13,7 @@ import {
     emptyTrash,
 } from '../repositories/note.repo';
 import { otService } from '../services/ot.service';
+import { automergeService } from '../services/automerge.service';
 
 export const noteRoutes = new Elysia({ prefix: '/api/notes' })
     .use(jwtPlugin)
@@ -70,6 +71,21 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             if (!note) {
                 set.status = 404;
                 return { error: 'Note not found' };
+            }
+
+            // Initialize Automerge document if it doesn't exist (write notes only)
+            // This ensures all clients get the same document URL
+            if (note.type === 'write' && !note.automergeDoc) {
+                console.log(`[Note Route] Initializing Automerge document for note ${params.id}`);
+                try {
+                    // This will create and save the document to DB
+                    await automergeService.getDocument(params.id);
+                    // Reload note to get the automergeDoc field
+                    const updatedNote = await findNoteById(params.id, auth.user._id);
+                    return { note: updatedNote };
+                } catch (error) {
+                    console.error('[Note Route] Failed to initialize Automerge document:', error);
+                }
             }
 
             return { note };
@@ -137,6 +153,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             body: t.Object({
                 title: t.Optional(t.String({ maxLength: 500 })),
                 content: t.Optional(t.Any()),
+                automergeUrl: t.Optional(t.String()),
                 tagId: t.Optional(t.String()),
                 isFavorite: t.Optional(t.Boolean()),
                 isArchived: t.Optional(t.Boolean()),
