@@ -195,7 +195,6 @@ export class WriteComponent implements OnDestroy {
   private authService = inject(AuthService);
   private docUrl: string | null = null;
   private docHandle: any = null;
-  private saveTimeout: any = null;
 
   // Get the note from the store based on docUrl
   readonly selectedNote = computed(() => {
@@ -326,9 +325,10 @@ export class WriteComponent implements OnDestroy {
         }
       });
 
-      // Set up auto-save when document changes
+      // Document changes are automatically synced via WebSocket
+      // and saved to database by the server (no need for HTTP save)
       handle.on('change', () => {
-        this.scheduleAutoSave();
+        console.log('[Write] Document changed, syncing via WebSocket');
       });
 
       // Use AutoMirror with rich text schema
@@ -563,62 +563,9 @@ export class WriteComponent implements OnDestroy {
     this.editorView.focus();
   }
 
-  /**
-   * Schedule an auto-save of the Automerge document to the database
-   * Debounced to avoid excessive API calls
-   */
-  private scheduleAutoSave() {
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-    }
-
-    this.saveTimeout = setTimeout(() => {
-      this.saveToDatabase();
-    }, 2000); // Save 2 seconds after last change
-  }
-
-  /**
-   * Save the current Automerge document to the database
-   */
-  private saveToDatabase() {
-    const note = this.selectedNote();
-    if (!note?._id || !this.docHandle) {
-      console.log('[Write] Cannot save: no note or document handle');
-      return;
-    }
-
-    try {
-      // Get the binary Automerge document
-      const automergeDoc = Automerge.save(this.docHandle.doc());
-      console.log('[Write] Saving document, size:', automergeDoc.length, 'bytes');
-
-      // Convert Uint8Array to regular array for JSON serialization
-      const automergeDocArray = Array.from(automergeDoc);
-
-      // Save to database
-      this.noteService
-        .updateNote(note._id, {
-          automergeDoc: automergeDocArray as any,
-        })
-        .subscribe({
-          next: () => {
-            console.log('[Write] Document saved to database');
-          },
-          error: (err) => {
-            console.error('[Write] Failed to save document:', err);
-          },
-        });
-    } catch (error) {
-      console.error('[Write] Error saving document:', error);
-    }
-  }
-
   cleanup() {
     if (this.titleSyncTimeout) {
       clearTimeout(this.titleSyncTimeout);
-    }
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
     }
     this.editorView?.destroy();
     if (this.networkAdapter && this.repo) {
