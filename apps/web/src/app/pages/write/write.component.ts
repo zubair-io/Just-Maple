@@ -281,7 +281,20 @@ export class WriteComponent implements OnDestroy {
             ) {
               // Buffer format from JSON: { type: 'Buffer', data: [1,2,3...] }
               bytes = new Uint8Array((note.automergeDoc as any).data);
+            } else if (
+              typeof note.automergeDoc === 'object' &&
+              (note.automergeDoc as any).$binary &&
+              (note.automergeDoc as any).$binary.base64
+            ) {
+              // MongoDB $binary format: { $binary: { base64: "...", subType: "00" } }
+              const base64 = (note.automergeDoc as any).$binary.base64;
+              const binaryString = atob(base64);
+              bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+              }
             } else {
+              console.error('[Write] Unknown automergeDoc format:', note.automergeDoc);
               throw new Error('Unknown automergeDoc format');
             }
 
