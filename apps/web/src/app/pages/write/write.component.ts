@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { NoteService } from '../../services/note.service';
+import { AuthService } from '../../services/auth.service';
 import { Repo } from '@automerge/automerge-repo/slim';
 import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
 import * as Automerge from '@automerge/automerge/slim';
@@ -65,60 +66,60 @@ const cursorPlugin = (handle: any) => {
     key: cursorPluginKey,
     state: {
       init(config, instance) {
-        return { 
-            cursors: {} as Record<string, { pos: number; color: string }>,
-            decorations: DecorationSet.empty 
+        return {
+          cursors: {} as Record<string, { pos: number; color: string }>,
+          decorations: DecorationSet.empty,
         };
       },
       apply(tr, value, oldState, newState) {
         const meta = tr.getMeta(cursorPluginKey);
-        
+
         // If there's a remote cursor update, re-compute decorations
         if (meta && meta.cursors) {
-            const cursors = meta.cursors;
-            const decorations: Decoration[] = [];
-            
-            Object.entries(cursors).forEach(([peerId, cursor]: [string, any]) => {
-                if (cursor && cursor.pos !== null) {
-                    const widget = document.createElement('span');
-                    widget.style.borderLeft = `2px solid ${cursor.color}`;
-                    widget.style.marginLeft = '-1px';
-                    widget.style.height = '1.2em';
-                    widget.style.position = 'relative';
-                    widget.style.display = 'inline-block';
-                    widget.style.verticalAlign = 'text-top';
-                    
-                    // Add name tag
-                    const label = document.createElement('div');
-                    label.textContent = peerId.slice(0, 4);
-                    label.style.position = 'absolute';
-                    label.style.top = '-1.2em';
-                    label.style.left = '-2px';
-                    label.style.backgroundColor = cursor.color;
-                    label.style.color = 'white';
-                    label.style.fontSize = '10px';
-                    label.style.padding = '1px 3px';
-                    label.style.borderRadius = '3px';
-                    label.style.whiteSpace = 'nowrap';
-                    label.style.pointerEvents = 'none';
-                    
-                    widget.appendChild(label);
-                    
-                    decorations.push(Decoration.widget(cursor.pos, widget, { key: peerId }));
-                }
-            });
-            
-            return {
-                cursors,
-                decorations: DecorationSet.create(newState.doc, decorations)
-            };
+          const cursors = meta.cursors;
+          const decorations: Decoration[] = [];
+
+          Object.entries(cursors).forEach(([peerId, cursor]: [string, any]) => {
+            if (cursor && cursor.pos !== null) {
+              const widget = document.createElement('span');
+              widget.style.borderLeft = `2px solid ${cursor.color}`;
+              widget.style.marginLeft = '-1px';
+              widget.style.height = '1.2em';
+              widget.style.position = 'relative';
+              widget.style.display = 'inline-block';
+              widget.style.verticalAlign = 'text-top';
+
+              // Add name tag
+              const label = document.createElement('div');
+              label.textContent = peerId.slice(0, 4);
+              label.style.position = 'absolute';
+              label.style.top = '-1.2em';
+              label.style.left = '-2px';
+              label.style.backgroundColor = cursor.color;
+              label.style.color = 'white';
+              label.style.fontSize = '10px';
+              label.style.padding = '1px 3px';
+              label.style.borderRadius = '3px';
+              label.style.whiteSpace = 'nowrap';
+              label.style.pointerEvents = 'none';
+
+              widget.appendChild(label);
+
+              decorations.push(Decoration.widget(cursor.pos, widget, { key: peerId }));
+            }
+          });
+
+          return {
+            cursors,
+            decorations: DecorationSet.create(newState.doc, decorations),
+          };
         }
-        
+
         // On local changes, we must map, but we CANNOT map a DecorationSet with widgets easily if they are stuck to positions?
         // Actually DecorationSet.map works well.
         return {
-            cursors: value.cursors,
-            decorations: value.decorations.map(tr.mapping, newState.doc)
+          cursors: value.cursors,
+          decorations: value.decorations.map(tr.mapping, newState.doc),
         };
       },
     },
@@ -156,13 +157,13 @@ const cursorPlugin = (handle: any) => {
           if (state.selection.from !== prevState.selection.from) {
             const now = Date.now();
             if (now - lastBroadcast > BROADCAST_THROTTLE) {
-                lastBroadcast = now;
-                const message = {
+              lastBroadcast = now;
+              const message = {
                 type: 'cursor',
                 pos: state.selection.from,
                 color: '#0000FF',
-                };
-                handle.broadcast(message);
+              };
+              handle.broadcast(message);
             }
           }
         },
@@ -191,7 +192,10 @@ export class WriteComponent implements OnDestroy {
   private networkAdapter: SimpleNetworkAdapter | null = null;
   private route = inject(ActivatedRoute);
   private noteService = inject(NoteService);
+  private authService = inject(AuthService);
   private docUrl: string | null = null;
+  private docHandle: any = null;
+  private saveTimeout: any = null;
 
   // Get the note from the store based on docUrl
   readonly selectedNote = computed(() => {
@@ -232,8 +236,9 @@ export class WriteComponent implements OnDestroy {
       // Initialize Wasm
       await Automerge.initializeBase64Wasm(automergeWasmBase64);
 
-      // Create network adapter
-      this.networkAdapter = new SimpleNetworkAdapter();
+      // Create network adapter with auth token
+      const token = this.authService.accessToken();
+      this.networkAdapter = new SimpleNetworkAdapter(token);
 
       // Create repo
       this.repo = new Repo({
@@ -247,11 +252,33 @@ export class WriteComponent implements OnDestroy {
         // Construct automergeUrl from docUrl (automerge:${docUrl})
         const automergeUrl = `automerge:${this.docUrl}`;
         console.log('[Write] Loading Automerge document:', automergeUrl);
-        try {
-          handle = await this.repo.find(automergeUrl as any);
-        } catch (error) {
-          console.error('[Write] Failed to load document, creating new one:', error);
-          handle = this.repo.create({ text: '' });
+
+        // Check if we have a saved document in the database
+        const note = this.selectedNote();
+        if (note?.automergeDoc) {
+          console.log('[Write] Loading document from database');
+          try {
+            // Load the saved binary document
+            const savedDoc = Automerge.load(new Uint8Array(note.automergeDoc as any));
+            // Import it into the repo
+            handle = this.repo.import(automergeUrl as any, savedDoc);
+          } catch (error) {
+            console.error('[Write] Failed to load saved document:', error);
+            // Fallback to finding/creating
+            try {
+              handle = await this.repo.find(automergeUrl as any);
+            } catch {
+              handle = this.repo.create({ text: '' });
+            }
+          }
+        } else {
+          // No saved document, try to find or create new
+          try {
+            handle = await this.repo.find(automergeUrl as any);
+          } catch (error) {
+            console.error('[Write] Failed to load document, creating new one:', error);
+            handle = this.repo.create({ text: '' });
+          }
         }
       } else {
         // Create a new Automerge document
@@ -259,12 +286,18 @@ export class WriteComponent implements OnDestroy {
       }
 
       await handle.whenReady();
+      this.docHandle = handle;
 
       // Initialize text field if needed
       handle.change((doc: any) => {
         if (!doc.text) {
           doc.text = '';
         }
+      });
+
+      // Set up auto-save when document changes
+      handle.on('change', () => {
+        this.scheduleAutoSave();
       });
 
       // Use AutoMirror with rich text schema
@@ -499,9 +532,58 @@ export class WriteComponent implements OnDestroy {
     this.editorView.focus();
   }
 
+  /**
+   * Schedule an auto-save of the Automerge document to the database
+   * Debounced to avoid excessive API calls
+   */
+  private scheduleAutoSave() {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+    }
+
+    this.saveTimeout = setTimeout(() => {
+      this.saveToDatabase();
+    }, 2000); // Save 2 seconds after last change
+  }
+
+  /**
+   * Save the current Automerge document to the database
+   */
+  private saveToDatabase() {
+    const note = this.selectedNote();
+    if (!note?._id || !this.docHandle) {
+      console.log('[Write] Cannot save: no note or document handle');
+      return;
+    }
+
+    try {
+      // Get the binary Automerge document
+      const automergeDoc = Automerge.save(this.docHandle.docSync());
+
+      // Save to database
+      this.noteService
+        .updateNote(note._id, {
+          automergeDoc: automergeDoc,
+        })
+        .subscribe({
+          next: () => {
+            console.log('[Write] Document saved to database');
+          },
+          error: (err) => {
+            console.error('[Write] Failed to save document:', err);
+          },
+        });
+    } catch (error) {
+      console.error('[Write] Error saving document:', error);
+    }
+  }
+
   cleanup() {
     if (this.titleSyncTimeout) {
       clearTimeout(this.titleSyncTimeout);
+    }
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
     }
     this.editorView?.destroy();
     if (this.networkAdapter && this.repo) {
