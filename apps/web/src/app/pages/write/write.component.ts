@@ -589,7 +589,7 @@ export class WriteComponent implements OnDestroy {
 
     try {
       // Get the binary Automerge document
-      const automergeDoc = Automerge.save(this.docHandle.docSync());
+      const automergeDoc = Automerge.save(this.docHandle.doc());
       console.log('[Write] Saving document, size:', automergeDoc.length, 'bytes');
 
       // Convert Uint8Array to regular array for JSON serialization
