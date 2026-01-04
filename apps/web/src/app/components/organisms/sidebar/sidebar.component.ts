@@ -1,7 +1,7 @@
 import { Component, inject, signal, computed, output, input, effect, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 import { TagService } from '../../../services/tag.service';
 import { NoteService } from '../../../services/note.service';
@@ -14,7 +14,7 @@ import type { Note } from '@maple/shared';
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [CommonModule, FormsModule, ProfileAvatarComponent],
+  imports: [CommonModule, FormsModule, RouterLink, ProfileAvatarComponent],
   templateUrl: './sidebar.component.html',
   styleUrl: './sidebar.component.scss',
 })
@@ -108,13 +108,19 @@ export class SidebarComponent implements OnInit {
     return this.noteService.notes().filter((n) => n.tagId === tagId);
   }
 
+  getNoteRouterLink(note: Note, tagId: string): string[] {
+    // Use docUrl if available, fallback to _id for backward compatibility
+    const urlParam = note.docUrl || note._id;
+    return ['/', tagId, urlParam];
+  }
+
   onNewNote(): void {
     this.newNote.emit();
   }
 
-  onSelectNote(noteId: string, tagId: string): void {
-    this.selectNote.emit(noteId);
-    this.router.navigate(['/', tagId, noteId]);
+  onSelectNote(note: Note, tagId: string): void {
+    // Emit noteId for backward compatibility
+    this.selectNote.emit(note._id);
   }
 
   onCreateTag(): void {

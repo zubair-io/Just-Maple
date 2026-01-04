@@ -1,28 +1,39 @@
 import { inject } from '@angular/core';
 import { CanMatchFn, Route, UrlSegment } from '@angular/router';
-import { map, take } from 'rxjs/operators';
+import { map, take, timeout, catchError } from 'rxjs/operators';
+import { of } from 'rxjs';
 import { NoteService } from '../services/note.service';
 import type { NoteType } from '@maple/shared';
-import { filterNil } from '@ngneat/elf';
 
 /**
  * Creates a guard that matches routes based on note type.
- * Returns an Observable that waits for the note to appear in the store.
+ * Returns an Observable that checks if the note exists in the store with a timeout.
  */
 function createNoteTypeGuard(expectedType: NoteType): CanMatchFn {
   return (route: Route, segments: UrlSegment[]) => {
     const noteService = inject(NoteService);
 
-    // Note ID is the second segment (/:tagId/:noteId)
-    const noteId = segments[1]?.path;
-    if (!noteId) return false;
+    // docUrl is the second segment (/:tagId/:docUrl)
+    const docUrl = segments[1]?.path;
+    if (!docUrl) return false;
 
-    // Subscribe to the store's selector for this specific note
-    return noteService.select(noteId).pipe(
-      // Wait until note is loaded
-      filterNil(),
+    // Check if note exists in store synchronously first
+    const note = noteService.notes().find((n) => n.docUrl === docUrl);
+
+    // If note is already in the store, check type immediately
+    if (note) {
+      return (note.type || 'write') === expectedType;
+    }
+
+    // If not in store, wait briefly for it to load (max 1 second)
+    return noteService.selectByDocUrl(docUrl).pipe(
+      timeout(1000),
       take(1),
-      map((note) => (note!.type || 'write') === expectedType),
+      map((note) => {
+        if (!note) return false;
+        return (note.type || 'write') === expectedType;
+      }),
+      catchError(() => of(false)), // If timeout or error, return false
     );
   };
 }

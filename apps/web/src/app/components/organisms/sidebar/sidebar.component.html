@@ -121,7 +121,8 @@
               @for (note of getNotesForTag(tag._id); track note._id) {
                 <li>
                   <a
-                    (click)="onSelectNote(note._id, tag._id)"
+                    [routerLink]="getNoteRouterLink(note, tag._id)"
+                    (click)="onSelectNote(note, tag._id)"
                     class="block px-2 py-1.5 text-sm cursor-pointer transition-colors"
                     [class.bg-stone-100]="selectedNoteId() === note._id"
                     [class.text-[var(--color-text-main)]]="selectedNoteId() === note._id"

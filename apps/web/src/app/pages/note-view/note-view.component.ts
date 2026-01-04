@@ -54,7 +54,16 @@ export class NoteViewComponent implements OnInit, OnDestroy {
     // Subscribe to route params and set IDs directly - let computed handle the rest
     this.routeSubscription = this.route.params.subscribe((params) => {
       this.selectedTagId.set(params['tagId'] || null);
-      this.selectedNoteId.set(params['noteId'] || null);
+
+      // Read docUrl from route params and find note by docUrl
+      const docUrl = params['docUrl'];
+      if (docUrl) {
+        // Find note by docUrl and set selectedNoteId to the note's _id
+        const note = this.noteService.notes().find((n) => n.docUrl === docUrl);
+        this.selectedNoteId.set(note?._id || null);
+      } else {
+        this.selectedNoteId.set(null);
+      }
     });
   }
 
@@ -74,8 +83,9 @@ export class NoteViewComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (note) => {
           this.selectedNoteId.set(note._id);
+          const urlParam = note.docUrl || note._id;
           if (tagId) {
-            this.router.navigate(['/', tagId, note._id]);
+            this.router.navigate(['/', tagId, urlParam]);
           }
         },
         error: (error) => {
