@@ -3,6 +3,10 @@ import { test, expect } from './fixtures';
 // Run tests serially to avoid shared backend state conflicts
 test.describe.serial('Automerge Collaboration Test (/write)', () => {
     test('should sync edits between two browser windows in real-time', async ({ browser }) => {
+        // Use unique database name for this test run
+        const testDbName = `test-${Date.now()}`;
+        const testUrl = `http://localhost:4200/write?db=${testDbName}`;
+
         // Create two separate browser contexts (like two different windows)
         const context1 = await browser.newContext();
         const context2 = await browser.newContext();
@@ -15,36 +19,32 @@ test.describe.serial('Automerge Collaboration Test (/write)', () => {
         page2.on('console', (msg) => console.log('Page2:', msg.text()));
 
         try {
-            // Clear storage first on page1
-            await page1.goto('http://localhost:4200/write');
-            await page1.evaluate(() => {
-                localStorage.clear();
-                indexedDB.deleteDatabase('automerge-test');
-            });
-            await page1.reload();
+            // Navigate to page with unique database
+            await page1.goto(testUrl);
 
             // Wait for page1 to create and store document URL
             await page1.waitForTimeout(2000);
 
             // Get the document URL from page1
-            const docUrl = await page1.evaluate(() => {
-                return localStorage.getItem('automerge-test-doc-url');
-            });
+            const docUrl = await page1.evaluate((dbName) => {
+                return localStorage.getItem(`${dbName}-doc-url`);
+            }, testDbName);
 
             console.log('Shared document URL:', docUrl);
 
             // Set the same document URL in page2 BEFORE navigating to /write
-            // Navigate to root first to set localStorage (can't use about:blank due to security)
             await page2.goto('http://localhost:4200');
-            await page2.evaluate((url) => {
-                localStorage.clear();
-                indexedDB.deleteDatabase('automerge-test');
-                if (url) {
-                    localStorage.setItem('automerge-test-doc-url', url);
-                }
-            }, docUrl);
-            // Now navigate to /write - it should find the stored URL
-            await page2.goto('http://localhost:4200/write');
+            await page2.evaluate(
+                ({ url, dbName }) => {
+                    if (url) {
+                        localStorage.setItem(`${dbName}-doc-url`, url);
+                    }
+                },
+                { url: docUrl, dbName: testDbName },
+            );
+
+            // Now navigate to /write with the same database name
+            await page2.goto(testUrl);
 
             // Wait for both editors to be ready and WebSocket to connect
             await page1.waitForTimeout(2000);
@@ -121,28 +121,19 @@ test.describe.serial('Automerge Collaboration Test (/write)', () => {
             await expect(editor2).toContainText('Second line from window 1');
             await expect(editor2).toContainText(text2);
         } finally {
-            // Clean up storage
-            await page1.evaluate(() => {
-                localStorage.clear();
-                indexedDB.deleteDatabase('automerge-test');
-            });
-            await page2.evaluate(() => {
-                localStorage.clear();
-                indexedDB.deleteDatabase('automerge-test');
-            });
-
             // Clean up pages and contexts
             await page1.close();
             await page2.close();
             await context1.close();
             await context2.close();
-
-            // Wait a bit for backend to clean up
-            await new Promise((resolve) => setTimeout(resolve, 500));
         }
     });
 
     test('should handle rapid typing from both windows', async ({ browser }) => {
+        // Use unique database name for this test run
+        const testDbName = `test-${Date.now()}`;
+        const testUrl = `http://localhost:4200/write?db=${testDbName}`;
+
         const context1 = await browser.newContext();
         const context2 = await browser.newContext();
 
@@ -150,31 +141,28 @@ test.describe.serial('Automerge Collaboration Test (/write)', () => {
         const page2 = await context2.newPage();
 
         try {
-            // Clear storage first on page1
-            await page1.goto('http://localhost:4200/write');
-            await page1.evaluate(() => {
-                localStorage.clear();
-                indexedDB.deleteDatabase('automerge-test');
-            });
-            await page1.reload();
+            // Navigate to page with unique database
+            await page1.goto(testUrl);
             await page1.waitForTimeout(2000);
 
             // Get the document URL from page1
-            const docUrl = await page1.evaluate(() => {
-                return localStorage.getItem('automerge-test-doc-url');
-            });
+            const docUrl = await page1.evaluate((dbName) => {
+                return localStorage.getItem(`${dbName}-doc-url`);
+            }, testDbName);
 
-            // Set the same document URL in page2 BEFORE navigating to /write
+            // Set the same document URL in page2
             await page2.goto('http://localhost:4200');
-            await page2.evaluate((url) => {
-                localStorage.clear();
-                indexedDB.deleteDatabase('automerge-test');
-                if (url) {
-                    localStorage.setItem('automerge-test-doc-url', url);
-                }
-            }, docUrl);
-            // Now navigate to /write - it should find the stored URL
-            await page2.goto('http://localhost:4200/write');
+            await page2.evaluate(
+                ({ url, dbName }) => {
+                    if (url) {
+                        localStorage.setItem(`${dbName}-doc-url`, url);
+                    }
+                },
+                { url: docUrl, dbName: testDbName },
+            );
+
+            // Now navigate to /write with the same database name
+            await page2.goto(testUrl);
 
             await page1.waitForTimeout(2000);
             await page2.waitForTimeout(2000);
@@ -223,24 +211,11 @@ test.describe.serial('Automerge Collaboration Test (/write)', () => {
             expect(text1).toContain('DEF');
             expect(text1).toContain('456');
         } finally {
-            // Clean up storage
-            await page1.evaluate(() => {
-                localStorage.clear();
-                indexedDB.deleteDatabase('automerge-test');
-            });
-            await page2.evaluate(() => {
-                localStorage.clear();
-                indexedDB.deleteDatabase('automerge-test');
-            });
-
             // Clean up pages and contexts
             await page1.close();
             await page2.close();
             await context1.close();
             await context2.close();
-
-            // Wait a bit for backend to clean up
-            await new Promise((resolve) => setTimeout(resolve, 500));
         }
     });
 });

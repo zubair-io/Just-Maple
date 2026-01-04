@@ -39,15 +39,22 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
   }
 
   send(message: Message): void {
-    console.log(
-      '[SimpleAdapter] send() called, isReady:',
-      this._isReady,
-      'wsState:',
-      this.ws?.readyState,
-    );
-
     if (!this._isReady || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.log('[SimpleAdapter] Not ready or WS not open, skipping send');
+      return;
+    }
+
+    if (message.type === 'ephemeral') {
+      const ephemeralMessage = message as any;
+      const data = ephemeralMessage.data;
+      // Convert Uint8Array to base64
+      const base64 = data instanceof Uint8Array 
+        ? btoa(String.fromCharCode(...data)) 
+        : data; // Should be Uint8Array but just in case
+
+      this.ws.send(JSON.stringify({
+        ...ephemeralMessage,
+        data: base64
+      }));
       return;
     }
 
@@ -60,11 +67,6 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
     const documentId = (message as any).documentId;
     const base64 = btoa(String.fromCharCode(...syncData));
 
-    console.log('[SimpleAdapter] Sending message:', {
-      documentId,
-      dataLength: base64.length,
-    });
-
     this.ws.send(
       JSON.stringify({
         type: 'sync',
@@ -72,8 +74,6 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
         documentId,
       }),
     );
-
-    console.log('[SimpleAdapter] Message sent');
   }
 
   private connectWebSocket(): void {
@@ -81,19 +81,14 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
     const wsHost = window.location.host;
     const wsUrl = `${wsProtocol}//${wsHost}/ws/test-sync`;
 
-    console.log('[SimpleAdapter] Connecting to:', wsUrl);
-
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log('[SimpleAdapter] Connected');
       this._isReady = true;
       this.resolveReady();
 
       // Announce server as peer - this triggers the Repo to start syncing
       this.emit('peer-candidate', { peerId: 'server' as PeerId, peerMetadata: {} });
-
-      // The Repo will automatically call send() to initiate sync
     };
 
     this.ws.onmessage = (event) => {
@@ -121,6 +116,28 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
           }
 
           this.emit('message', message);
+        } else if (data.type === 'ephemeral') {
+            // Convert base64 to Uint8Array
+            let bytes: Uint8Array;
+            if (typeof data.data === 'string') {
+                 const binaryString = atob(data.data);
+                 bytes = new Uint8Array(binaryString.length);
+                 for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                 }
+            } else {
+                // Fallback if somehow not base64?
+                bytes = data.data; 
+            }
+
+            const ephemeralMsg: any = {
+                type: 'ephemeral',
+                senderId: 'server' as PeerId, 
+                targetId: this.peerId!,
+                documentId: data.documentId,
+                data: bytes,
+            };
+            this.emit('message', ephemeralMsg);
         }
       } catch (error) {
         console.error('[SimpleAdapter] Error processing message:', error);
@@ -132,7 +149,6 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
     };
 
     this.ws.onclose = () => {
-      console.log('[SimpleAdapter] Disconnected');
       this._isReady = false;
       this.emit('peer-disconnected', { peerId: 'server' as PeerId });
     };

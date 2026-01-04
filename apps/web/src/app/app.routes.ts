@@ -6,8 +6,7 @@ export const routes: Routes = [
   // Test route for Automerge collaboration
   {
     path: 'write',
-    loadComponent: () =>
-      import('./pages/write-test/write-test.component').then((m) => m.WriteTestComponent),
+    loadComponent: () => import('./pages/write/write.component').then((m) => m.WriteComponent),
   },
   // Settings route - must come before the home route
   {
@@ -66,23 +65,22 @@ export const routes: Routes = [
       },
       // Lego-type note - shows lego view
       {
-        path: ':tagId/:noteId',
+        path: ':tagId/:docUrl',
         canMatch: [LegoNoteGuard],
         loadComponent: () =>
           import('./pages/lego-view/lego-view.component').then((m) => m.LegoViewComponent),
       },
       // Write-type note (default) - shows note editor
-      {
-        path: ':tagId/:noteId',
-        canMatch: [WriteNoteGuard],
-        loadComponent: () =>
-          import('./pages/note-view/note-view.component').then((m) => m.NoteViewComponent),
-      },
+      // {
+      //   path: ':tagId/:docUrl',
+      //   canMatch: [WriteNoteGuard],
+      //   loadComponent: () =>
+      //     import('./pages/note-view/note-view.component').then((m) => m.NoteViewComponent),
+      // },
       // Fallback for any note type - shows note view
       {
-        path: ':tagId/:noteId',
-        loadComponent: () =>
-          import('./pages/note-view/note-view.component').then((m) => m.NoteViewComponent),
+        path: ':tagId/:docUrl',
+        loadComponent: () => import('./pages/write/write.component').then((m) => m.WriteComponent),
       },
     ],
   },

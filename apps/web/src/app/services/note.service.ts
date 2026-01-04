@@ -3,7 +3,7 @@ import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, map, catchError, throwError, of, switchMap } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { createStore } from '@ngneat/elf';
+import { createStore, select } from '@ngneat/elf';
 import {
   withEntities,
   withActiveId,
@@ -120,6 +120,8 @@ export class NoteService {
 
     return this.http.get<{ notes: Note[] }>('/api/notes', { params }).pipe(
       tap((response) => {
+        console.log('Created note:', response.notes);
+
         this.store.update(setEntities(response.notes));
         this.persistToIndexedDB(response.notes);
         this._isLoading.set(false);
@@ -388,6 +390,16 @@ export class NoteService {
    */
   select(id: string): Observable<Note | undefined> {
     return this.store.pipe(selectEntity(id));
+  }
+
+  /**
+   * Select a single note by docUrl as observable
+   */
+  selectByDocUrl(docUrl: string): Observable<Note | undefined> {
+    return this.store.pipe(
+      selectAllEntities(),
+      map((notes) => notes.find((note) => note.docUrl === docUrl)),
+    );
   }
 
   /**

@@ -9,6 +9,21 @@ import type {
     DEFAULT_NOTE_CONTENT,
 } from '@maple/shared';
 import { findTagsByUserId, findTagByIdWithAccess } from './tag.repo';
+import { customAlphabet } from 'nanoid';
+
+/**
+ * Generate a unique docUrl for routing
+ * Uses base58 alphabet (compatible with Automerge URLs)
+ * Excludes: 0, O, I, l (to avoid confusion)
+ */
+const nanoidBase58 = customAlphabet(
+    '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
+    32,
+);
+
+function generateDocUrl(): string {
+    return nanoidBase58();
+}
 
 interface NoteDocument {
     _id: ObjectId;
@@ -19,6 +34,7 @@ interface NoteDocument {
     content: NoteContent;
     automergeDoc?: Buffer; // Binary CRDT (source of truth)
     automergeUrl?: string; // Automerge document URL (for syncing)
+    docUrl?: string; // URL-safe slug for routing (e.g., "my-note-abc123de")
     // Automerge metadata
     version?: number; // Hash of Automerge heads (for cache validation)
     lastSyncedHeads?: string[]; // Automerge heads (for sync optimization)
@@ -44,6 +60,7 @@ function toNoteResponse(doc: NoteDocument): Note {
         content: doc.content,
         automergeDoc: doc.automergeDoc, // Binary CRDT
         automergeUrl: doc.automergeUrl, // Automerge document URL
+        docUrl: doc.docUrl, // URL-safe slug for routing
         version: doc.version, // Hash of Automerge heads
         lastSyncedHeads: doc.lastSyncedHeads, // Automerge heads
         tagId: doc.tagId?.toString(),
@@ -152,11 +169,14 @@ export async function findNoteById(id: string, userId: string): Promise<Note | n
 export async function createNote(userId: string, data: CreateNoteInput): Promise<Note> {
     const now = new Date();
     const noteType = data.type || 'write';
+    const title = data.title || 'Untitled';
     const doc: Omit<NoteDocument, '_id'> = {
         userId: new ObjectId(userId),
         type: noteType,
-        title: data.title || 'Untitled',
+        title: title,
         content: data.content || defaultContent,
+        automergeUrl: data.automergeUrl,
+        docUrl: generateDocUrl(), // Generate unique docUrl for routing
         // No automergeDoc initially - will be created on first edit via lazy migration
         version: undefined, // Will be set when Automerge doc is created
         lastSyncedHeads: undefined,
@@ -177,6 +197,8 @@ export async function createNote(userId: string, data: CreateNoteInput): Promise
         title: doc.title,
         content: doc.content,
         automergeDoc: undefined,
+        automergeUrl: undefined,
+        docUrl: doc.docUrl, // Include generated slug in response
         version: undefined,
         lastSyncedHeads: undefined,
         tagId: data.tagId,
@@ -224,6 +246,9 @@ export async function updateNote(
         if (data.content !== undefined) {
             updateData.content = data.content;
         }
+        if (data.automergeUrl !== undefined) {
+            updateData.automergeUrl = data.automergeUrl;
+        }
         if (data.automergeDoc !== undefined) {
             updateData.automergeDoc = data.automergeDoc as Buffer;
         }
@@ -232,9 +257,6 @@ export async function updateNote(
         }
         if (data.lastSyncedHeads !== undefined) {
             updateData.lastSyncedHeads = data.lastSyncedHeads;
-        }
-        if (data.automergeUrl !== undefined) {
-            updateData.automergeUrl = data.automergeUrl;
         }
         if (data.tagId !== undefined) {
             updateData.tagId = data.tagId ? new ObjectId(data.tagId) : undefined;
