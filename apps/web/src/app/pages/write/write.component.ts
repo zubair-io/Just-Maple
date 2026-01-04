@@ -271,6 +271,13 @@ export class WriteComponent implements OnDestroy {
             if (note.automergeDoc instanceof Uint8Array) {
               // Already in correct format
               bytes = note.automergeDoc;
+            } else if (typeof note.automergeDoc === 'string') {
+              // Base64 string (MongoDB binary data deserialized as string)
+              const binaryString = atob(note.automergeDoc);
+              bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+              }
             } else if (Array.isArray(note.automergeDoc)) {
               // Array of numbers
               bytes = new Uint8Array(note.automergeDoc);
