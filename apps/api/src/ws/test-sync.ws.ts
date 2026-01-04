@@ -2,6 +2,11 @@ import { Elysia, type Context } from 'elysia';
 import * as Automerge from '@automerge/automerge/slim';
 import { jwtPlugin } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
+import {
+    updateNoteForCollab,
+    findNoteByIdForCollab,
+    findNoteByDocUrl,
+} from '../repositories/note.repo';
 import type { JWTPayload } from '@maple/shared';
 
 /**
@@ -15,6 +20,49 @@ const syncStates = new Map<string, Automerge.SyncState>();
 const connections = new Map<string, any>();
 const clientDocumentIds = new Map<string, string>();
 const clientUserIds = new Map<string, string>(); // Track which user owns each client
+const saveTimeouts = new Map<string, NodeJS.Timeout>(); // Debounce saves per documentId
+
+/**
+ * Save document to database (debounced)
+ */
+function scheduleSaveToDatabase(documentId: string, doc: Automerge.Doc<any>) {
+    // Clear existing timeout
+    const existingTimeout = saveTimeouts.get(documentId);
+    if (existingTimeout) {
+        clearTimeout(existingTimeout);
+    }
+
+    // Schedule save after 2 seconds of no changes
+    const timeout = setTimeout(async () => {
+        try {
+            // documentId is the note's docUrl (e.g., "abc123xyz")
+            // Find the note by docUrl to get the _id
+            const note = await findNoteByDocUrl(documentId);
+
+            if (!note) {
+                console.error(`[TestSync] Note not found for docUrl: ${documentId}`);
+                return;
+            }
+
+            const binaryDoc = Automerge.save(doc);
+            const docArray = Array.from(binaryDoc);
+
+            await updateNoteForCollab(
+                note._id,
+                { automergeDoc: docArray as any },
+                'AutomergeService',
+            );
+
+            console.log(`[TestSync] Saved document ${documentId} (note ${note._id}) to database`);
+        } catch (error) {
+            console.error(`[TestSync] Failed to save document ${documentId}:`, error);
+        } finally {
+            saveTimeouts.delete(documentId);
+        }
+    }, 2000);
+
+    saveTimeouts.set(documentId, timeout);
+}
 
 export const testSyncWs = new Elysia().use(jwtPlugin).ws('/ws/test-sync', {
     async open(ws) {
@@ -142,8 +190,12 @@ export const testSyncWs = new Elysia().use(jwtPlugin).ws('/ws/test-sync', {
                 );
                 syncStates.set(clientId, updatedSyncState);
 
-                // If document changed, broadcast to other clients with the SAME documentId
+                // If document changed, save to database and broadcast to other clients
                 if (docChanged) {
+                    // Schedule database save (debounced)
+                    scheduleSaveToDatabase(documentId, doc);
+
+                    // Broadcast to other clients with the SAME documentId
                     const sameDocClients = Array.from(clientDocumentIds.entries())
                         .filter(([id, docId]) => docId === documentId && id !== clientId)
                         .map(([id]) => id);

@@ -166,6 +166,16 @@ export async function findNoteById(id: string, userId: string): Promise<Note | n
     }
 }
 
+export async function findNoteByDocUrl(docUrl: string): Promise<Note | null> {
+    try {
+        const doc = await getCollection().findOne({ docUrl });
+        if (!doc) return null;
+        return toNoteResponse(doc);
+    } catch {
+        return null;
+    }
+}
+
 export async function createNote(userId: string, data: CreateNoteInput): Promise<Note> {
     const now = new Date();
     const noteType = data.type || 'write';
