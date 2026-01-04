@@ -1,9 +1,12 @@
-import { Elysia } from 'elysia';
+import { Elysia, type Context } from 'elysia';
 import * as Automerge from '@automerge/automerge/slim';
+import { jwtPlugin } from '../middleware/auth';
+import { findUserById } from '../repositories/user.repo';
+import type { JWTPayload } from '@maple/shared';
 
 /**
- * Simple test WebSocket for Automerge collaboration
- * Single shared document, no auth, for testing only
+ * WebSocket for Automerge collaboration
+ * Requires JWT authentication
  */
 
 // Documents per documentId, sync states per client, connections, and client->documentId mapping
@@ -11,15 +14,52 @@ const documents = new Map<string, Automerge.Doc<any>>();
 const syncStates = new Map<string, Automerge.SyncState>();
 const connections = new Map<string, any>();
 const clientDocumentIds = new Map<string, string>();
+const clientUserIds = new Map<string, string>(); // Track which user owns each client
 
-export const testSyncWs = new Elysia().ws('/ws/test-sync', {
-    open(ws) {
-        const clientId = Math.random().toString(36).substring(7);
-        ws.data.clientId = clientId;
-        connections.set(clientId, ws);
+export const testSyncWs = new Elysia().use(jwtPlugin).ws('/ws/test-sync', {
+    async open(ws) {
+        // Get token from query parameter
+        const url = new URL(ws.raw.url, 'http://localhost');
+        const token = url.searchParams.get('token');
 
-        // Initialize sync state
-        syncStates.set(clientId, Automerge.initSyncState());
+        if (!token) {
+            console.error('[TestSync] No token provided');
+            ws.close();
+            return;
+        }
+
+        try {
+            // Verify JWT token
+            const payload = (await (ws as any).jwt.verify(token)) as JWTPayload | false;
+
+            if (!payload) {
+                console.error('[TestSync] Invalid token');
+                ws.close();
+                return;
+            }
+
+            // Verify user exists
+            const user = await findUserById(payload.sub);
+            if (!user) {
+                console.error('[TestSync] User not found');
+                ws.close();
+                return;
+            }
+
+            const clientId = Math.random().toString(36).substring(7);
+            ws.data.clientId = clientId;
+            ws.data.userId = user._id;
+            connections.set(clientId, ws);
+            clientUserIds.set(clientId, user._id);
+
+            // Initialize sync state
+            syncStates.set(clientId, Automerge.initSyncState());
+
+            console.log(`[TestSync] Client ${clientId} connected (user: ${user.email})`);
+        } catch (error) {
+            console.error('[TestSync] Auth error:', error);
+            ws.close();
+        }
     },
 
     message(ws, message) {
@@ -152,6 +192,8 @@ export const testSyncWs = new Elysia().ws('/ws/test-sync', {
             connections.delete(clientId);
             syncStates.delete(clientId);
             clientDocumentIds.delete(clientId);
+            clientUserIds.delete(clientId);
+            console.log(`[TestSync] Client ${clientId} disconnected`);
         }
     },
 });

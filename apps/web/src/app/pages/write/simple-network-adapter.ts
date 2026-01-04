@@ -1,17 +1,18 @@
 import { NetworkAdapter, type PeerId, type Message } from '@automerge/automerge-repo/slim';
 
 /**
- * Simple WebSocket network adapter for testing
- * No auth, single shared document
+ * WebSocket network adapter with JWT authentication
  */
 export class SimpleNetworkAdapter extends NetworkAdapter {
   private ws: WebSocket | null = null;
   private _isReady = false;
   private readyPromise: Promise<void>;
   private resolveReady!: () => void;
+  private token: string | null;
 
-  constructor() {
+  constructor(token: string | null = null) {
     super();
+    this.token = token;
     this.readyPromise = new Promise((resolve) => {
       this.resolveReady = resolve;
     });
@@ -47,14 +48,14 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
       const ephemeralMessage = message as any;
       const data = ephemeralMessage.data;
       // Convert Uint8Array to base64
-      const base64 = data instanceof Uint8Array 
-        ? btoa(String.fromCharCode(...data)) 
-        : data; // Should be Uint8Array but just in case
+      const base64 = data instanceof Uint8Array ? btoa(String.fromCharCode(...data)) : data; // Should be Uint8Array but just in case
 
-      this.ws.send(JSON.stringify({
-        ...ephemeralMessage,
-        data: base64
-      }));
+      this.ws.send(
+        JSON.stringify({
+          ...ephemeralMessage,
+          data: base64,
+        }),
+      );
       return;
     }
 
@@ -79,7 +80,12 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
   private connectWebSocket(): void {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsHost = window.location.host;
-    const wsUrl = `${wsProtocol}//${wsHost}/ws/test-sync`;
+    let wsUrl = `${wsProtocol}//${wsHost}/ws/test-sync`;
+
+    // Add token as query parameter if available
+    if (this.token) {
+      wsUrl += `?token=${encodeURIComponent(this.token)}`;
+    }
 
     this.ws = new WebSocket(wsUrl);
 
@@ -117,27 +123,27 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
 
           this.emit('message', message);
         } else if (data.type === 'ephemeral') {
-            // Convert base64 to Uint8Array
-            let bytes: Uint8Array;
-            if (typeof data.data === 'string') {
-                 const binaryString = atob(data.data);
-                 bytes = new Uint8Array(binaryString.length);
-                 for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                 }
-            } else {
-                // Fallback if somehow not base64?
-                bytes = data.data; 
+          // Convert base64 to Uint8Array
+          let bytes: Uint8Array;
+          if (typeof data.data === 'string') {
+            const binaryString = atob(data.data);
+            bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
             }
+          } else {
+            // Fallback if somehow not base64?
+            bytes = data.data;
+          }
 
-            const ephemeralMsg: any = {
-                type: 'ephemeral',
-                senderId: 'server' as PeerId, 
-                targetId: this.peerId!,
-                documentId: data.documentId,
-                data: bytes,
-            };
-            this.emit('message', ephemeralMsg);
+          const ephemeralMsg: any = {
+            type: 'ephemeral',
+            senderId: 'server' as PeerId,
+            targetId: this.peerId!,
+            documentId: data.documentId,
+            data: bytes,
+          };
+          this.emit('message', ephemeralMsg);
         }
       } catch (error) {
         console.error('[SimpleAdapter] Error processing message:', error);
