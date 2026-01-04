@@ -257,11 +257,42 @@ export class WriteComponent implements OnDestroy {
         const note = this.selectedNote();
         if (note?.automergeDoc) {
           console.log('[Write] Loading document from database');
+          console.log('[Write] automergeDoc type:', typeof note.automergeDoc);
+          console.log(
+            '[Write] automergeDoc sample:',
+            note.automergeDoc instanceof Object
+              ? Object.keys(note.automergeDoc as any).slice(0, 5)
+              : 'not object',
+          );
+
           try {
+            // Convert to Uint8Array - handle different formats from HTTP/MongoDB
+            let bytes: Uint8Array;
+
+            if (note.automergeDoc instanceof Uint8Array) {
+              // Already in correct format
+              bytes = note.automergeDoc;
+            } else if (Array.isArray(note.automergeDoc)) {
+              // Array of numbers
+              bytes = new Uint8Array(note.automergeDoc);
+            } else if (
+              typeof note.automergeDoc === 'object' &&
+              (note.automergeDoc as any).type === 'Buffer' &&
+              Array.isArray((note.automergeDoc as any).data)
+            ) {
+              // Buffer format from JSON: { type: 'Buffer', data: [1,2,3...] }
+              bytes = new Uint8Array((note.automergeDoc as any).data);
+            } else {
+              throw new Error('Unknown automergeDoc format');
+            }
+
+            console.log('[Write] Converted to Uint8Array, length:', bytes.length);
+
             // Load the saved binary document
-            const savedDoc = Automerge.load(new Uint8Array(note.automergeDoc as any));
+            const savedDoc = Automerge.load(bytes);
             // Import it into the repo
             handle = this.repo.import(automergeUrl as any, savedDoc);
+            console.log('[Write] Successfully loaded document from database');
           } catch (error) {
             console.error('[Write] Failed to load saved document:', error);
             // Fallback to finding/creating
@@ -559,11 +590,15 @@ export class WriteComponent implements OnDestroy {
     try {
       // Get the binary Automerge document
       const automergeDoc = Automerge.save(this.docHandle.docSync());
+      console.log('[Write] Saving document, size:', automergeDoc.length, 'bytes');
+
+      // Convert Uint8Array to regular array for JSON serialization
+      const automergeDocArray = Array.from(automergeDoc);
 
       // Save to database
       this.noteService
         .updateNote(note._id, {
-          automergeDoc: automergeDoc,
+          automergeDoc: automergeDocArray as any,
         })
         .subscribe({
           next: () => {
