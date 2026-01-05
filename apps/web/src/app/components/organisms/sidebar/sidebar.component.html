@@ -108,7 +108,7 @@
                 </span>
               }
             </div>
-            @if (getNotesForTag(tag._id).length > 0) {
+            @if ((getNotesForTag()[tag._id || 'no_tag'] || []).length > 0) {
               <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">
                 {{ expandedTags().has(tag._id) ? 'expand_less' : 'expand_more' }}
               </span>
@@ -117,22 +117,24 @@
 
           <!-- Notes under tag -->
           @if (expandedTags().has(tag._id)) {
-            <ul class="ml-4 pl-3 border-l border-[var(--color-border)] mt-1 space-y-0.5">
-              @for (note of getNotesForTag(tag._id); track note._id) {
+            <ul class="ml-4 pl-3 border-l border-[var(--color-border)] mt-1 space-y-0.5 list-none">
+              @for (note of getNotesForTag()[tag._id || 'no_tag'] || []; track note._id) {
                 <li>
                   <a
                     [routerLink]="getNoteRouterLink(note, tag._id)"
                     (click)="onSelectNote(note, tag._id)"
                     class="block px-2 py-1.5 text-sm cursor-pointer transition-colors"
-                    [class.bg-stone-100]="selectedNoteId() === note._id"
-                    [class.text-[var(--color-text-main)]]="selectedNoteId() === note._id"
-                    [class.font-medium]="selectedNoteId() === note._id"
-                    [class.border-l-2]="selectedNoteId() === note._id"
-                    [class.border-[var(--color-primary)]]="selectedNoteId() === note._id"
-                    [class.-ml-[13px]]="selectedNoteId() === note._id"
-                    [class.pl-3]="selectedNoteId() === note._id"
-                    [class.text-[var(--color-text-muted)]]="selectedNoteId() !== note._id"
-                    [class.hover:text-[var(--color-text-main)]]="selectedNoteId() !== note._id"
+                    [class.bg-stone-100]="selectedNoteId() === note.documentId"
+                    [class.text-[var(--color-text-main)]]="selectedNoteId() === note.documentId"
+                    [class.font-medium]="selectedNoteId() === note.documentId"
+                    [class.border-l-2]="selectedNoteId() === note.documentId"
+                    [class.border-[var(--color-primary)]]="selectedNoteId() === note.documentId"
+                    [class.-ml-[13px]]="selectedNoteId() === note.documentId"
+                    [class.pl-3]="selectedNoteId() === note.documentId"
+                    [class.text-[var(--color-text-muted)]]="selectedNoteId() !== note.documentId"
+                    [class.hover:text-[var(--color-text-main)]]="
+                      selectedNoteId() !== note.documentId
+                    "
                   >
                     {{ note.title }}
                   </a>

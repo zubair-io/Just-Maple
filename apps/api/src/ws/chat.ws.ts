@@ -1,10 +1,10 @@
 import { Elysia } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { config } from '../config';
-import { findUserById } from '../repositories/user.repo';
 import { findTagsByUserId } from '../repositories/tag.repo';
 import type { RealtimeService } from '../services/realtime.service';
-import type { ChatEvent, JWTPayload, TypingEvent } from '@maple/shared';
+import type { ChatEvent, TypingEvent } from '@maple/shared';
+import { authenticateWebSocket } from './ws-auth';
 
 // Store connected clients by userId
 const userConnections = new Map<string, Set<WebSocket>>();
@@ -64,31 +64,14 @@ export const chatWebSocket = new Elysia({ prefix: '/ws' })
     )
     .ws('/chat', {
         async open(ws) {
-            // Get token from query string
-            const url = new URL(ws.data.request.url);
-            const token = url.searchParams.get('token');
-
-            if (!token) {
-                ws.close(4001, 'Missing authentication token');
-                return;
+            // Authenticate user
+            const auth = await authenticateWebSocket(ws);
+            if (!auth) {
+                return; // Connection already closed by authenticateWebSocket
             }
 
             try {
-                // Verify JWT token
-                const payload = (await ws.data.jwt.verify(token)) as JWTPayload | false;
-                if (!payload) {
-                    ws.close(4001, 'Invalid token');
-                    return;
-                }
-
-                // Verify user exists
-                const user = await findUserById(payload.sub);
-                if (!user) {
-                    ws.close(4001, 'User not found');
-                    return;
-                }
-
-                const userId = user._id;
+                const userId = auth.userId;
 
                 // Store connection context
                 (ws.data as unknown as { context: WSContext }).context = {

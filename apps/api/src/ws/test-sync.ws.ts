@@ -1,13 +1,12 @@
 import { Elysia, type Context } from 'elysia';
 import * as Automerge from '@automerge/automerge/slim';
 import { jwtPlugin } from '../middleware/auth';
-import { findUserById } from '../repositories/user.repo';
 import {
     updateNoteForCollab,
     findNoteByIdForCollab,
-    findNoteByDocUrl,
+    findNoteByAutomergeUrl,
 } from '../repositories/note.repo';
-import type { JWTPayload } from '@maple/shared';
+import { authenticateWebSocket } from './ws-auth';
 
 /**
  * WebSocket for Automerge collaboration
@@ -35,14 +34,25 @@ function scheduleSaveToDatabase(documentId: string, doc: Automerge.Doc<any>) {
     // Schedule save after 2 seconds of no changes
     const timeout = setTimeout(async () => {
         try {
-            // documentId is the note's docUrl (e.g., "abc123xyz")
-            // Find the note by docUrl to get the _id
-            const note = await findNoteByDocUrl(documentId);
+            // documentId is just the ID part (e.g., "2peGuhJ9NbjM1eDuuJThKpJTJQrV")
+            // Construct the full automergeUrl
+            const automergeUrl = `automerge:${documentId}`;
+            console.log(
+                `[TestSync] Attempting to save document with automergeUrl: ${automergeUrl}`,
+            );
+
+            // Find the note by automergeUrl to get the _id
+            const note = await findNoteByAutomergeUrl(automergeUrl);
 
             if (!note) {
-                console.error(`[TestSync] Note not found for docUrl: ${documentId}`);
+                console.error(`[TestSync] Note not found for automergeUrl: ${automergeUrl}`);
+                console.log(
+                    `[TestSync] This likely means the automergeUrl wasn't saved to the database yet`,
+                );
                 return;
             }
+
+            console.log(`[TestSync] Found note ${note._id} for automergeUrl: ${automergeUrl}`);
 
             const binaryDoc = Automerge.save(doc);
             const docArray = Array.from(binaryDoc);
@@ -53,7 +63,9 @@ function scheduleSaveToDatabase(documentId: string, doc: Automerge.Doc<any>) {
                 'AutomergeService',
             );
 
-            console.log(`[TestSync] Saved document ${documentId} (note ${note._id}) to database`);
+            console.log(
+                `[TestSync] Successfully saved document ${documentId} (note ${note._id}) to database`,
+            );
         } catch (error) {
             console.error(`[TestSync] Failed to save document ${documentId}:`, error);
         } finally {
@@ -66,57 +78,37 @@ function scheduleSaveToDatabase(documentId: string, doc: Automerge.Doc<any>) {
 
 export const testSyncWs = new Elysia().use(jwtPlugin).ws('/ws/test-sync', {
     async open(ws) {
-        // Get token from query parameter
-        const url = new URL(ws.raw.url, 'http://localhost');
-        const token = url.searchParams.get('token');
-
-        if (!token) {
-            console.error('[TestSync] No token provided');
-            ws.close();
-            return;
+        // Authenticate user
+        const auth = await authenticateWebSocket(ws);
+        if (!auth) {
+            return; // Connection already closed by authenticateWebSocket
         }
 
-        try {
-            // Verify JWT token
-            const payload = (await (ws as any).jwt.verify(token)) as JWTPayload | false;
+        const clientId = Math.random().toString(36).substring(7);
+        ws.data.clientId = clientId;
+        ws.data.userId = auth.userId;
+        connections.set(clientId, ws);
+        clientUserIds.set(clientId, auth.userId);
 
-            if (!payload) {
-                console.error('[TestSync] Invalid token');
-                ws.close();
-                return;
-            }
+        // Initialize sync state
+        syncStates.set(clientId, Automerge.initSyncState());
 
-            // Verify user exists
-            const user = await findUserById(payload.sub);
-            if (!user) {
-                console.error('[TestSync] User not found');
-                ws.close();
-                return;
-            }
-
-            const clientId = Math.random().toString(36).substring(7);
-            ws.data.clientId = clientId;
-            ws.data.userId = user._id;
-            connections.set(clientId, ws);
-            clientUserIds.set(clientId, user._id);
-
-            // Initialize sync state
-            syncStates.set(clientId, Automerge.initSyncState());
-
-            console.log(`[TestSync] Client ${clientId} connected (user: ${user.email})`);
-        } catch (error) {
-            console.error('[TestSync] Auth error:', error);
-            ws.close();
-        }
+        console.log(`[TestSync] Client ${clientId} connected (user: ${auth.email})`);
     },
 
     message(ws, message) {
         const clientId = ws.data.clientId;
+        console.log('Received message:', message, 'from clientId:', clientId);
 
         if (!clientId) {
             console.error('[TestSync] No clientId found for this connection');
             return;
         }
+
+        console.log(
+            `[TestSync] Received message from client ${clientId}, type:`,
+            (message as any)?.type,
+        );
 
         try {
             // Elysia already parsed JSON, use message directly
@@ -192,6 +184,9 @@ export const testSyncWs = new Elysia().use(jwtPlugin).ws('/ws/test-sync', {
 
                 // If document changed, save to database and broadcast to other clients
                 if (docChanged) {
+                    console.log(
+                        `[TestSync] Document ${documentId} changed, scheduling save to database`,
+                    );
                     // Schedule database save (debounced)
                     scheduleSaveToDatabase(documentId, doc);
 

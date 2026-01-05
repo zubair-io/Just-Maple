@@ -72,12 +72,12 @@ export class CollabAutomergeService {
 
     // Create and connect network adapter BEFORE creating document
     // This is critical - the repo needs the adapter before the document exists
-    const networkAdapter = new JustMapleNetworkAdapter(noteId, this.http, this.authService);
-    this.networkAdapters.set(noteId, networkAdapter);
-    this.repo.networkSubsystem.addNetworkAdapter(networkAdapter);
+    // const networkAdapter = new JustMapleNetworkAdapter(noteId, this.http, this.authService);
+    // this.networkAdapters.set(noteId, networkAdapter);
+    //this.repo.networkSubsystem.addNetworkAdapter(networkAdapter);
 
     // Wait for adapter to be ready
-    await networkAdapter.whenReady();
+    //await networkAdapter.whenReady();
 
     let handle: DocHandle<any>;
     let shouldMigrate = false;

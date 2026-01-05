@@ -1,9 +1,19 @@
 import { Injectable, inject, PLATFORM_ID, signal } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, map, catchError, throwError, of, switchMap } from 'rxjs';
+import {
+  Observable,
+  tap,
+  map,
+  catchError,
+  throwError,
+  of,
+  switchMap,
+  startWith,
+  concat,
+} from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { createStore, select } from '@ngneat/elf';
+import { createStore, filterNil, select } from '@ngneat/elf';
 import {
   withEntities,
   withActiveId,
@@ -21,6 +31,8 @@ import {
   getAllEntities,
   getEntitiesCount,
   getActiveEntity,
+  selectActiveId,
+  selectManyByPredicate,
 } from '@ngneat/elf-entities';
 import { IndexedDBService } from './indexed-db.service';
 import { NetworkService } from './network.service';
@@ -52,13 +64,14 @@ export class NoteService {
   // ELF Store
   private readonly store = createStore(
     { name: STORE_NAME },
-    withEntities<Note, '_id'>({ idKey: '_id' }),
+    withEntities<Note, 'documentId'>({ idKey: 'documentId' }),
     withActiveId(),
   );
 
   // Observable selectors
   readonly notes$ = this.store.pipe(selectAllEntities());
-  readonly activeNote$ = this.store.pipe(selectActiveEntity());
+  readonly activeNote$: Observable<Note> = this.store.pipe(selectActiveEntity(), filterNil());
+  readonly activeId$ = this.store.pipe(selectActiveId());
 
   // Signal wrappers for Angular reactivity
   private readonly _notesSignal = toSignal(this.notes$, { initialValue: [] as Note[] });
@@ -82,12 +95,18 @@ export class NoteService {
       this.store.update(setEntities(cached));
     }
   }
+  setActiveNoteId(id: string | null): void {
+    this.store.update(setActiveId(id));
+  }
 
   /**
    * Get all notes as a reactive signal
    */
   notes(): Note[] {
     return this._notesSignal() ?? [];
+  }
+  notesByTag$(tagId: string): Observable<Note[]> {
+    return this.store.pipe(selectManyByPredicate((entity) => entity.tagId === tagId));
   }
 
   /**
@@ -148,7 +167,7 @@ export class NoteService {
   /**
    * Create a new note with optimistic update
    */
-  createNote(data: CreateNoteInput = {}): Observable<Note> {
+  createNote(data: CreateNoteInput): Observable<Note> {
     this._isLoading.set(true);
     this._error.set(null);
 
@@ -165,6 +184,8 @@ export class NoteService {
       type: data.type || 'write',
       title: data.title || 'Untitled',
       content: data.content || defaultContent,
+      docUrl: data.docUrl || undefined,
+      documentId: data.documentId || tempId,
       version: 1,
       tagId: data.tagId,
       isFavorite: false,
@@ -176,21 +197,24 @@ export class NoteService {
 
     this.store.update(addEntities(tempNote));
 
-    return this.http.post<{ note: Note }>('/api/notes', data).pipe(
-      tap((response) => {
-        this.store.update(deleteEntities(tempId));
-        this.store.update(addEntities(response.note));
-        this.persistToIndexedDB([response.note]);
-        this._isLoading.set(false);
-      }),
-      map((response) => response.note),
-      catchError((err) => {
-        this.store.update(deleteEntities(tempId));
-        const message = err?.error?.error || 'Failed to create note';
-        this._error.set(message);
-        this._isLoading.set(false);
-        return throwError(() => new Error(message));
-      }),
+    return concat(
+      of(tempNote),
+      this.http.post<{ note: Note }>('/api/notes', data).pipe(
+        tap((response) => {
+          this.store.update(deleteEntities(tempId));
+          this.store.update(addEntities(response.note));
+          this.persistToIndexedDB([response.note]);
+          this._isLoading.set(false);
+        }),
+        map((response) => response.note),
+        catchError((err) => {
+          this.store.update(deleteEntities(tempId));
+          const message = err?.error?.error || 'Failed to create note';
+          this._error.set(message);
+          this._isLoading.set(false);
+          return throwError(() => new Error(message));
+        }),
+      ),
     );
   }
 

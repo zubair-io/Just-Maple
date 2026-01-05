@@ -41,6 +41,14 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
 
   send(message: Message): void {
     if (!this._isReady || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn(
+        '[SimpleAdapter] Cannot send - Ready:',
+        this._isReady,
+        'WS exists:',
+        !!this.ws,
+        'State:',
+        this.ws?.readyState,
+      );
       return;
     }
 
@@ -49,6 +57,11 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
       const data = ephemeralMessage.data;
       // Convert Uint8Array to base64
       const base64 = data instanceof Uint8Array ? btoa(String.fromCharCode(...data)) : data; // Should be Uint8Array but just in case
+
+      console.log(
+        '[SimpleAdapter] Sending ephemeral message for document:',
+        ephemeralMessage.documentId,
+      );
 
       this.ws.send(
         JSON.stringify({
@@ -67,6 +80,8 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
 
     const documentId = (message as any).documentId;
     const base64 = btoa(String.fromCharCode(...syncData));
+
+    console.log('[SimpleAdapter] Sending sync message for document:', documentId);
 
     this.ws.send(
       JSON.stringify({
@@ -87,14 +102,18 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
       wsUrl += `?token=${encodeURIComponent(this.token)}`;
     }
 
+    console.log('[SimpleAdapter] Connecting to WebSocket:', wsUrl);
+
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
+      console.log('[SimpleAdapter] WebSocket connected successfully');
       this._isReady = true;
       this.resolveReady();
 
       // Announce server as peer - this triggers the Repo to start syncing
       this.emit('peer-candidate', { peerId: 'server' as PeerId, peerMetadata: {} });
+      console.log('[SimpleAdapter] Announced server as peer');
     };
 
     this.ws.onmessage = (event) => {
@@ -154,7 +173,15 @@ export class SimpleNetworkAdapter extends NetworkAdapter {
       console.error('[SimpleAdapter] WebSocket error:', error);
     };
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event) => {
+      console.warn(
+        '[SimpleAdapter] WebSocket closed. Code:',
+        event.code,
+        'Reason:',
+        event.reason,
+        'Clean:',
+        event.wasClean,
+      );
       this._isReady = false;
       this.emit('peer-disconnected', { peerId: 'server' as PeerId });
     };

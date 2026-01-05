@@ -8,11 +8,14 @@ import {
   signal,
   computed,
   effect,
+  Signal,
 } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { NoteService } from '../../services/note.service';
 import { AuthService } from '../../services/auth.service';
-import { Repo } from '@automerge/automerge-repo/slim';
+import { TagService } from '../../services/tag.service';
+import { NoteHeaderComponent } from '../../components';
+import { DocumentId, isValidAutomergeUrl, Repo } from '@automerge/automerge-repo/slim';
 import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
 import * as Automerge from '@automerge/automerge/slim';
 import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64';
@@ -26,6 +29,10 @@ import { wrapInList, sinkListItem, liftListItem, splitListItem } from 'prosemirr
 import { SimpleNetworkAdapter } from './simple-network-adapter';
 import type { Node, Schema } from 'prosemirror-model';
 import { basicSchemaAdapter } from './basic-schema';
+import { DEFAULT_NOTE_CONTENT } from '@maple/shared';
+import { tap } from 'rxjs';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { WriteService } from './write.service';
 
 // Define the plugin to force the first node to be a header
 const forceHeaderPlugin = new Plugin({
@@ -180,27 +187,39 @@ const cursorPlugin = (handle: any) => {
 @Component({
   selector: 'app-write',
   standalone: true,
+  imports: [NoteHeaderComponent],
   templateUrl: './write.component.html',
   styleUrl: './write.component.scss',
 })
 export class WriteComponent implements OnDestroy {
   @ViewChild('editor', { static: false })
   private editorRef?: ElementRef<HTMLElement>;
+  private readonly router = inject(Router);
 
-  private repo: Repo | null = null;
+  private repo!: Repo;
   private editorView: EditorView | null = null;
   private networkAdapter: SimpleNetworkAdapter | null = null;
   private route = inject(ActivatedRoute);
   private noteService = inject(NoteService);
   private authService = inject(AuthService);
-  private docUrl: string | null = null;
+  private tagService = inject(TagService);
+  private writeService = inject(WriteService);
+  private docUrl = signal('');
   private docHandle: any = null;
+  private tagId: any = '';
+  private params = toSignal(this.route.paramMap, { initialValue: null });
+  private lastDocumentId = '';
 
   // Get the note from the store based on docUrl
-  readonly selectedNote = computed(() => {
-    const docUrl = this.docUrl;
-    if (!docUrl) return null;
-    return this.noteService.notes().find((n) => n.docUrl === docUrl);
+  readonly selectedNote = toSignal(this.noteService.activeNote$, { initialValue: null });
+
+  // Get the tag for the selected note
+  readonly selectedTag = computed(() => {
+    const note = this.selectedNote();
+    if (note?.tagId) {
+      return this.tagService.tags().find((t) => t._id === note.tagId) || null;
+    }
+    return null;
   });
 
   // Active state signals for toolbar
@@ -212,7 +231,11 @@ export class WriteComponent implements OnDestroy {
   readonly isBulletList = signal(false);
   readonly isOrderedList = signal(false);
 
+  timerReset = false;
+
   constructor() {
+    console.log('[Write] Component constructed');
+    console.time('[Write] Component init');
     // Get docUrl from route params (for integrated note routing)
     // or use query parameter/timestamp for standalone route (/write)
     // const routeDocUrl = this.route.snapshot.paramMap.get('docUrl');
@@ -221,122 +244,213 @@ export class WriteComponent implements OnDestroy {
     this.route.paramMap.subscribe((params) => {
       console.log('Route params changed:', params);
 
-      this.docUrl = params.get('docUrl');
+      // this.cleanup();
+      // setTimeout(() => {
+      //   this.initializeEditor();
+      // }, 1000);
+    });
 
-      this.cleanup();
-      setTimeout(() => {
-        this.initializeEditor();
-      }, 1000);
+    effect(() => {
+      if (this.timerReset) {
+        console.time('[Write] Component init');
+      }
+      const params = this.params();
+      const isReady = this.writeService.ready();
+      if (params && params.has('docUrl') && isReady) {
+        this.tagId = params.get('tagId') || '';
+        const documentId = params.get('docUrl') || '';
+        if (this.lastDocumentId !== documentId) {
+          this.repo = this.writeService.repo;
+          this.noteService.setActiveNoteId(documentId);
+
+          this.docUrl.set(documentId);
+          this.cleanup();
+          this.initializeEditor();
+        }
+      }
     });
   }
 
   private async initializeEditor() {
     try {
+      const docUrl = this.docUrl();
       // Initialize Wasm
-      await Automerge.initializeBase64Wasm(automergeWasmBase64);
 
       // Create network adapter with auth token
-      const token = this.authService.accessToken();
-      this.networkAdapter = new SimpleNetworkAdapter(token);
+      console.log('[Write] Created network adapter', docUrl);
 
       // Create repo
-      this.repo = new Repo({
-        storage: new IndexedDBStorageAdapter(this.docUrl || `automerge-test-${Date.now()}`),
-        network: [this.networkAdapter],
-      });
 
-      let handle;
-
-      if (this.docUrl) {
-        // Construct automergeUrl from docUrl (automerge:${docUrl})
-        const automergeUrl = `automerge:${this.docUrl}`;
-        console.log('[Write] Loading Automerge document:', automergeUrl);
-
-        // Check if we have a saved document in the database
-        const note = this.selectedNote();
-        if (note?.automergeDoc) {
-          console.log('[Write] Loading document from database');
-          console.log('[Write] automergeDoc type:', typeof note.automergeDoc);
-          console.log(
-            '[Write] automergeDoc sample:',
-            note.automergeDoc instanceof Object
-              ? Object.keys(note.automergeDoc as any).slice(0, 5)
-              : 'not object',
-          );
-
-          try {
-            // Convert to Uint8Array - handle different formats from HTTP/MongoDB
-            let bytes: Uint8Array;
-
-            if (note.automergeDoc instanceof Uint8Array) {
-              // Already in correct format
-              bytes = note.automergeDoc;
-            } else if (typeof note.automergeDoc === 'string') {
-              // Base64 string (MongoDB binary data deserialized as string)
-              const binaryString = atob(note.automergeDoc);
-              bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-            } else if (Array.isArray(note.automergeDoc)) {
-              // Array of numbers
-              bytes = new Uint8Array(note.automergeDoc);
-            } else if (
-              typeof note.automergeDoc === 'object' &&
-              (note.automergeDoc as any).type === 'Buffer' &&
-              Array.isArray((note.automergeDoc as any).data)
-            ) {
-              // Buffer format from JSON: { type: 'Buffer', data: [1,2,3...] }
-              bytes = new Uint8Array((note.automergeDoc as any).data);
-            } else if (
-              typeof note.automergeDoc === 'object' &&
-              (note.automergeDoc as any).$binary &&
-              (note.automergeDoc as any).$binary.base64
-            ) {
-              // MongoDB $binary format: { $binary: { base64: "...", subType: "00" } }
-              const base64 = (note.automergeDoc as any).$binary.base64;
-              const binaryString = atob(base64);
-              bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-            } else {
-              console.error('[Write] Unknown automergeDoc format:', note.automergeDoc);
-              throw new Error('Unknown automergeDoc format');
-            }
-
-            console.log('[Write] Converted to Uint8Array, length:', bytes.length);
-
-            // Load the saved binary document
-            const savedDoc = Automerge.load(bytes);
-            // Import it into the repo
-            handle = this.repo.import(automergeUrl as any, savedDoc);
-            console.log('[Write] Successfully loaded document from database');
-          } catch (error) {
-            console.error('[Write] Failed to load saved document:', error);
-            // Fallback to finding/creating
-            try {
-              handle = await this.repo.find(automergeUrl as any);
-            } catch {
-              handle = this.repo.create({ text: '' });
-            }
-          }
-        } else {
-          // No saved document, try to find or create new
-          try {
-            handle = await this.repo.find(automergeUrl as any);
-          } catch (error) {
-            console.error('[Write] Failed to load document, creating new one:', error);
-            handle = this.repo.create({ text: '' });
-          }
-        }
+      console.log(
+        '💚[Write] Looking for  Automerge Repo',
+        docUrl,
+        isValidAutomergeUrl(`automerge:${docUrl}`),
+      );
+      console.timeEnd('[Write] Component init');
+      this.timerReset = true;
+      const autoMergeUrl = `automerge:${docUrl}`;
+      let handle: any;
+      if (docUrl && isValidAutomergeUrl(autoMergeUrl)) {
+        handle = await this.repo.find(autoMergeUrl);
+        console.log('[Write] Finding document handle for URL:', autoMergeUrl);
       } else {
-        // Create a new Automerge document
         handle = this.repo.create({ text: '' });
       }
+      this.lastDocumentId = handle.documentId;
+      if (docUrl !== handle.documentId) {
+        this.router.navigate(['/', this.tagId, handle.documentId], {
+          replaceUrl: true,
+        });
+        this.noteService
+          .createNote({
+            title: 'Untitled',
+            content: DEFAULT_NOTE_CONTENT,
+            tagId: this.tagId,
+            docUrl: handle.documentId,
+            documentId: handle.documentId,
+          })
+          .pipe(
+            tap((note) => {
+              console.log('🛑 [Write] Created new note for document:', note);
+            }),
+          )
+          .subscribe();
+      }
+      console.log('[Write] Obtained document handle:', handle.documentId);
 
+      //if (this.docUrl) {
+      // Get note to check for existing automergeUrl
+      //        const note = this.selectedNote();
+
+      // Check if note has saved automergeDoc
+      //   if (note?.automergeDoc) {
+      //     console.log('[Write] Loading document from database');
+
+      //     try {
+      //       // Convert to Uint8Array - handle different formats from HTTP/MongoDB
+      //       let bytes: Uint8Array;
+
+      //       console.log('[Write] automergeDoc type:', typeof note.automergeDoc);
+      //       console.log('[Write] automergeDoc is array?', Array.isArray(note.automergeDoc));
+      //       if (Array.isArray(note.automergeDoc)) {
+      //         console.log('[Write] Array length:', note.automergeDoc.length);
+      //         console.log('[Write] First 10 elements:', note.automergeDoc.slice(0, 10));
+      //       }
+
+      //       if (note.automergeDoc instanceof Uint8Array) {
+      //         console.log('[Write] Format: Uint8Array');
+      //         bytes = note.automergeDoc;
+      //       } else if (typeof note.automergeDoc === 'string') {
+      //         console.log('[Write] Format: base64 string');
+      //         // Base64 string (MongoDB binary data deserialized as string)
+      //         const binaryString = atob(note.automergeDoc);
+      //         bytes = new Uint8Array(binaryString.length);
+      //         for (let i = 0; i < binaryString.length; i++) {
+      //           bytes[i] = binaryString.charCodeAt(i);
+      //         }
+      //       } else if (Array.isArray(note.automergeDoc)) {
+      //         console.log('[Write] Format: Array');
+      //         bytes = new Uint8Array(note.automergeDoc);
+      //       } else if (
+      //         typeof note.automergeDoc === 'object' &&
+      //         (note.automergeDoc as any).type === 'Buffer' &&
+      //         Array.isArray((note.automergeDoc as any).data)
+      //       ) {
+      //         console.log('[Write] Format: Buffer object');
+      //         bytes = new Uint8Array((note.automergeDoc as any).data);
+      //       } else if (
+      //         typeof note.automergeDoc === 'object' &&
+      //         (note.automergeDoc as any).$binary &&
+      //         (note.automergeDoc as any).$binary.base64
+      //       ) {
+      //         console.log('[Write] Format: $binary object');
+      //         const base64 = (note.automergeDoc as any).$binary.base64;
+      //         const binaryString = atob(base64);
+      //         bytes = new Uint8Array(binaryString.length);
+      //         for (let i = 0; i < binaryString.length; i++) {
+      //           bytes[i] = binaryString.charCodeAt(i);
+      //         }
+      //       } else {
+      //         console.error('[Write] Unknown automergeDoc format:', note.automergeDoc);
+      //         throw new Error('Unknown automergeDoc format');
+      //       }
+
+      //       console.log('[Write] Converted to Uint8Array, length:', bytes.length);
+      //       console.log('[Write] First 10 bytes:', Array.from(bytes.slice(0, 10)));
+
+      //       if (note.automergeUrl) {
+      //         console.log('[Write] Importing with stored URL:', note.automergeUrl);
+      //         // Load the document from binary first
+      //         const savedDoc = Automerge.load(bytes);
+      //         // Then import with the stored URL
+      //         handle = this.repo.import(note.automergeUrl as any, savedDoc);
+      //       } else {
+      //         // No automergeUrl stored - import binary and let repo generate URL
+      //         console.log('[Write] Importing binary, repo will generate URL');
+      //         handle = this.repo.import(bytes);
+      //         const generatedUrl = handle.url;
+      //         console.log('[Write] Generated new Automerge URL:', generatedUrl);
+
+      //         // Save the automergeUrl to database
+      //         if (note._id) {
+      //           console.log('[Write] Saving automergeUrl to database:', generatedUrl);
+      //           this.noteService.updateNote(note._id, { automergeUrl: generatedUrl }).subscribe({
+      //             next: () => console.log('[Write] Successfully saved automergeUrl'),
+      //             error: (err) => console.error('[Write] Failed to save automergeUrl:', err),
+      //           });
+      //         } else {
+      //           console.warn('[Write] No note._id, cannot save automergeUrl');
+      //         }
+      //       }
+      //       console.log('[Write] Successfully loaded document from database');
+      //     } catch (error) {
+      //       console.error('[Write] Failed to load saved document:', error);
+      //       // Create new document
+      //       handle = this.repo.create({ text: '' });
+      //       const generatedUrl = handle.url;
+      //       console.log('[Write] Created new document with URL:', generatedUrl);
+
+      //       // Save the automergeUrl to database
+      //       if (note?._id) {
+      //         console.log(
+      //           '[Write] Saving automergeUrl to database (error recovery):',
+      //           generatedUrl,
+      //         );
+      //         this.noteService.updateNote(note._id, { automergeUrl: generatedUrl }).subscribe({
+      //           next: () => console.log('[Write] Successfully saved automergeUrl'),
+      //           error: (err) => console.error('[Write] Failed to save automergeUrl:', err),
+      //         });
+      //       } else {
+      //         console.warn('[Write] No note._id, cannot save automergeUrl');
+      //       }
+      //     }
+      //   } else {
+      //     // No saved document - create new and save automergeUrl
+      //     console.log('[Write] Creating new Automerge document');
+      //     handle = this.repo.create({ text: '' });
+      //     const generatedUrl = handle.url;
+      //     console.log('[Write] Created new document with URL:', generatedUrl);
+
+      //     // Save the automergeUrl to database
+      //     if (note?._id) {
+      //       console.log('[Write] Saving automergeUrl to database (new doc):', generatedUrl);
+      //       this.noteService.updateNote(note._id, { automergeUrl: generatedUrl }).subscribe({
+      //         next: () => console.log('[Write] Successfully saved automergeUrl'),
+      //         error: (err) => console.error('[Write] Failed to save automergeUrl:', err),
+      //       });
+      //     } else {
+      //       console.warn('[Write] No note._id, cannot save automergeUrl');
+      //     }
+      //   }
+      // } else {
+      //   // Standalone mode - create a new Automerge document
+      //   handle = this.repo.create({ text: '' });
+      // }
       await handle.whenReady();
       this.docHandle = handle;
+
+      console.log('[Write] Document handle ready, URL:', handle.url);
+      console.log('[Write] Document handle documentId:', handle.documentId);
 
       // Initialize text field if needed
       handle.change((doc: any) => {
@@ -348,7 +462,8 @@ export class WriteComponent implements OnDestroy {
       // Document changes are automatically synced via WebSocket
       // and saved to database by the server (no need for HTTP save)
       handle.on('change', () => {
-        console.log('[Write] Document changed, syncing via WebSocket');
+        console.log('[Write] Document changed, URL:', handle.url);
+        console.log('[Write] Syncing via WebSocket');
       });
 
       // Use AutoMirror with rich text schema
@@ -461,30 +576,29 @@ export class WriteComponent implements OnDestroy {
    * Sync the title (first heading) to the note
    */
   private syncTitleToNote(state: EditorState) {
-    const note = this.selectedNote();
-    if (!note?._id) return;
-
-    // Get the first heading as the title
-    const firstNode = state.doc.firstChild;
-    if (!firstNode || firstNode.type.name !== 'heading') return;
-
-    const title = firstNode.textContent.trim() || 'Untitled';
-
-    // Only update if title changed (debounce)
-    if (title === this.lastSyncedTitle) return;
-    this.lastSyncedTitle = title;
-
-    // Debounce the update to avoid too many API calls
-    if (this.titleSyncTimeout) {
-      clearTimeout(this.titleSyncTimeout);
-    }
-
-    this.titleSyncTimeout = setTimeout(() => {
-      console.log('[Write] Syncing title to note:', title);
-      this.noteService.updateNote(note._id, { title }).subscribe({
-        error: (err) => console.error('[Write] Failed to sync title:', err),
-      });
-    }, 1000); // Wait 1 second after typing stops
+    // const note = this.selectedNote();
+    // if (!note?._id) return;
+    // // Get the first heading as the title
+    // const firstNode = state.doc.firstChild;
+    // if (!firstNode || firstNode.type.name !== 'heading') return;
+    // const title = firstNode.textContent.trim() || 'Untitled';
+    // // Only update if title changed (debounce)
+    // if (title === this.lastSyncedTitle) return;
+    // this.lastSyncedTitle = title;
+    // // Debounce the update to avoid too many API calls
+    // if (this.titleSyncTimeout) {
+    //   clearTimeout(this.titleSyncTimeout);
+    // }
+    // this.titleSyncTimeout = setTimeout(() => {
+    //   console.log('[Write] Syncing title to note:', title);
+    //   const selectedNote = this.selectedNote();
+    //   if (!selectedNote) {
+    //     return;
+    //   }
+    //   this.noteService.updateNote(selectedNote?._id, { title }).subscribe({
+    //     error: (err) => console.error('[Write] Failed to sync title:', err),
+    //   });
+    // }, 1000); // Wait 1 second after typing stops
   }
 
   /**
@@ -581,6 +695,17 @@ export class WriteComponent implements OnDestroy {
     const { state, dispatch } = this.editorView;
     wrapInList(state.schema.nodes['ordered_list'])(state, dispatch);
     this.editorView.focus();
+  }
+
+  toggleFavorite(): void {
+    const note = this.selectedNote();
+    if (!note?._id) return;
+
+    this.noteService.toggleFavorite(note._id).subscribe({
+      error: (error) => {
+        console.error('Failed to toggle favorite:', error);
+      },
+    });
   }
 
   cleanup() {

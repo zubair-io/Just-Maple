@@ -39,6 +39,7 @@ export const NoteSchema = Type.Object({
     automergeDoc: Type.Optional(Type.Any()), // Binary CRDT (source of truth)
     automergeUrl: Type.Optional(Type.String()), // Automerge document URL (for syncing)
     docUrl: Type.Optional(Type.String()), // URL-safe slug for routing (e.g., "my-note-abc123de")
+    documentId: Type.String(), // Document ID for routing
     // Automerge metadata
     version: Type.Optional(Type.Number()), // Hash of Automerge heads (for cache validation)
     lastSyncedHeads: Type.Optional(Type.Array(Type.String())), // Automerge heads (for sync optimization)
@@ -58,6 +59,8 @@ export const CreateNoteSchema = Type.Object({
     title: Type.Optional(Type.String({ maxLength: 500 })),
     content: Type.Optional(NoteContentSchema),
     tagId: Type.Optional(Type.String()),
+    docUrl: Type.Optional(Type.String()), // URL-safe slug for routing (e.g., "my-note-abc123de")
+    documentId: Type.Optional(Type.String()), // Document ID for routing
 });
 
 export type CreateNoteInput = Static<typeof CreateNoteSchema>;
@@ -68,6 +71,7 @@ export const UpdateNoteSchema = Type.Object({
     automergeDoc: Type.Optional(Type.Any()), // Binary CRDT
     automergeUrl: Type.Optional(Type.String()), // Automerge document URL
     docUrl: Type.Optional(Type.String()), // URL-safe slug for routing
+    documentId: Type.Optional(Type.String()), // Document ID for routing
     version: Type.Optional(Type.Number()), // Automerge heads hash
     lastSyncedHeads: Type.Optional(Type.Array(Type.String())), // Automerge heads
     tagId: Type.Optional(Type.String()),
