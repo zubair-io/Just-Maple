@@ -4,7 +4,7 @@ import { jwtPlugin } from '../middleware/auth';
 import {
     updateNoteForCollab,
     findNoteByIdForCollab,
-    findNoteByAutomergeUrl,
+    findNoteByDocumentId,
 } from '../repositories/note.repo';
 import { authenticateWebSocket } from './ws-auth';
 
@@ -19,6 +19,7 @@ const syncStates = new Map<string, Automerge.SyncState>();
 const connections = new Map<string, any>();
 const clientDocumentIds = new Map<string, string>();
 const clientUserIds = new Map<string, string>(); // Track which user owns each client
+const documentUserIds = new Map<string, string>(); // Track userId per documentId for saving
 const saveTimeouts = new Map<string, NodeJS.Timeout>(); // Debounce saves per documentId
 
 /**
@@ -34,25 +35,29 @@ function scheduleSaveToDatabase(documentId: string, doc: Automerge.Doc<any>) {
     // Schedule save after 2 seconds of no changes
     const timeout = setTimeout(async () => {
         try {
-            // documentId is just the ID part (e.g., "2peGuhJ9NbjM1eDuuJThKpJTJQrV")
-            // Construct the full automergeUrl
-            const automergeUrl = `automerge:${documentId}`;
-            console.log(
-                `[TestSync] Attempting to save document with automergeUrl: ${automergeUrl}`,
-            );
+            console.log(`[TestSync] Attempting to save document with documentId: ${documentId}`);
 
-            // Find the note by automergeUrl to get the _id
-            const note = await findNoteByAutomergeUrl(automergeUrl);
-
-            if (!note) {
-                console.error(`[TestSync] Note not found for automergeUrl: ${automergeUrl}`);
-                console.log(
-                    `[TestSync] This likely means the automergeUrl wasn't saved to the database yet`,
+            // Get the userId associated with this document
+            const userId = documentUserIds.get(documentId);
+            if (!userId) {
+                console.error(
+                    `[TestSync] No userId found for documentId: ${documentId}. Cannot save.`,
                 );
                 return;
             }
 
-            console.log(`[TestSync] Found note ${note._id} for automergeUrl: ${automergeUrl}`);
+            // Find the note by documentId
+            const note = await findNoteByDocumentId(documentId, userId);
+
+            if (!note) {
+                console.error(`[TestSync] Note not found for documentId: ${documentId}`);
+                console.log(
+                    `[TestSync] This likely means the document wasn't created in the database yet`,
+                );
+                return;
+            }
+
+            console.log(`[TestSync] Found note ${note._id} for documentId: ${documentId}`);
 
             const binaryDoc = Automerge.save(doc);
             const docArray = Array.from(binaryDoc);
@@ -134,6 +139,11 @@ export const testSyncWs = new Elysia().use(jwtPlugin).ws('/ws/test-sync', {
                 // Store documentId if this is the first message from this client
                 if (data.documentId && !clientDocumentIds.has(clientId)) {
                     clientDocumentIds.set(clientId, data.documentId);
+                    // Store userId for this documentId (for saving to database)
+                    const userId = clientUserIds.get(clientId);
+                    if (userId && !documentUserIds.has(data.documentId)) {
+                        documentUserIds.set(data.documentId, userId);
+                    }
                 }
 
                 // Get the documentId for this client

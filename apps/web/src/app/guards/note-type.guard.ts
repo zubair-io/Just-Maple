@@ -13,12 +13,12 @@ function createNoteTypeGuard(expectedType: NoteType): CanMatchFn {
   return (route: Route, segments: UrlSegment[]) => {
     const noteService = inject(NoteService);
 
-    // docUrl is the second segment (/:tagId/:docUrl)
-    const docUrl = segments[1]?.path;
-    if (!docUrl) return false;
+    // documentId is the second segment (/:tagId/:documentId)
+    const documentId = segments[1]?.path;
+    if (!documentId) return false;
 
     // Check if note exists in store synchronously first
-    const note = noteService.notes().find((n) => n.docUrl === docUrl);
+    const note = noteService.notes().find((n) => n.documentId === documentId);
 
     // If note is already in the store, check type immediately
     if (note) {
@@ -26,7 +26,7 @@ function createNoteTypeGuard(expectedType: NoteType): CanMatchFn {
     }
 
     // If not in store, wait briefly for it to load (max 1 second)
-    return noteService.selectByDocUrl(docUrl).pipe(
+    return noteService.select(documentId).pipe(
       timeout(1000),
       take(1),
       map((note) => {

@@ -96,7 +96,7 @@ export class NoteEditorComponent implements OnDestroy {
       // 2. Get or create DocHandle (if no Automerge doc exists, create empty one)
       const { handle } = await this.collabAutomerge.getOrCreateHandle(note._id, {
         automergeDoc: note.automergeDoc as Uint8Array | undefined,
-        automergeUrl: note.automergeUrl,
+        documentId: note.documentId,
         content: note.content,
       });
 

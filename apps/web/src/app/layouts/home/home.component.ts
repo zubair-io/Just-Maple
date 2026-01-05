@@ -72,9 +72,9 @@ export class HomeComponent implements OnInit, OnDestroy {
     }
 
     if (segments.length >= 2) {
-      // Second segment is docUrl - find note by docUrl and set selectedNoteId to _id
-      const docUrl = segments[1];
-      const note = this.noteService.notes().find((n) => n.docUrl === docUrl);
+      // Second segment is documentId - find note by documentId and set selectedNoteId to _id
+      const documentId = segments[1];
+      const note = this.noteService.notes().find((n) => n.documentId === documentId);
       this.selectedNoteId.set(note?._id || null);
     }
   }
@@ -108,7 +108,7 @@ export class HomeComponent implements OnInit, OnDestroy {
         (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       );
       const lastNote = sortedNotes[0];
-      const urlParam = lastNote.docUrl || lastNote._id;
+      const urlParam = lastNote.documentId;
       if (lastNote.tagId) {
         this.router.navigate(['/', lastNote.tagId, urlParam]);
       } else {
@@ -155,7 +155,7 @@ export class HomeComponent implements OnInit, OnDestroy {
       })
       .subscribe({
         next: (note) => {
-          const urlParam = note.docUrl || note._id;
+          const urlParam = note.documentId;
           if (tagId) {
             this.router.navigate(['/', tagId, urlParam]);
           } else {

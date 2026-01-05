@@ -12,7 +12,7 @@ import { findTagsByUserId, findTagByIdWithAccess } from './tag.repo';
 import { customAlphabet } from 'nanoid';
 
 /**
- * Generate a unique docUrl for routing
+ * Generate a unique documentId for routing
  * Uses base58 alphabet (compatible with Automerge URLs)
  * Excludes: 0, O, I, l (to avoid confusion)
  */
@@ -20,10 +20,6 @@ const nanoidBase58 = customAlphabet(
     '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
     32,
 );
-
-function generateDocUrl(): string {
-    return nanoidBase58();
-}
 
 interface NoteDocument {
     _id: ObjectId;
@@ -33,10 +29,8 @@ interface NoteDocument {
     // DUAL STORAGE: content for search, automergeDoc as source of truth
     content: NoteContent;
     automergeDoc?: Buffer; // Binary CRDT (source of truth)
-    automergeUrl?: string; // Automerge document URL (for syncing)
-    docUrl?: string; // URL-safe slug for routing (e.g., "my-note-abc123de")
+    documentId: string; // Document ID for routing and Automerge identification
     // Automerge metadata
-    documentId: string;
     version?: number; // Hash of Automerge heads (for cache validation)
     lastSyncedHeads?: string[]; // Automerge heads (for sync optimization)
     tagId?: ObjectId;
@@ -67,8 +61,6 @@ function toNoteResponse(doc: NoteDocument): Note {
         title: doc.title,
         content: doc.content,
         automergeDoc, // Binary CRDT (normalized to array)
-        automergeUrl: doc.automergeUrl, // Automerge document URL
-        docUrl: doc.docUrl, // URL-safe slug for routing
         version: doc.version, // Hash of Automerge heads
         lastSyncedHeads: doc.lastSyncedHeads, // Automerge heads
         tagId: doc.tagId?.toString(),
@@ -175,20 +167,24 @@ export async function findNoteById(id: string, userId: string): Promise<Note | n
     }
 }
 
-export async function findNoteByDocUrl(docUrl: string): Promise<Note | null> {
+export async function findNoteByDocumentId(
+    documentId: string,
+    userId: string,
+): Promise<Note | null> {
     try {
-        const doc = await getCollection().findOne({ docUrl });
+        const doc = await getCollection().findOne({ documentId });
         if (!doc) return null;
-        return toNoteResponse(doc);
-    } catch {
-        return null;
-    }
-}
 
-export async function findNoteByAutomergeUrl(automergeUrl: string): Promise<Note | null> {
-    try {
-        const doc = await getCollection().findOne({ automergeUrl });
-        if (!doc) return null;
+        // Check access based on tag or ownership
+        if (doc.tagId) {
+            // Note has a tag - check tag access
+            const tag = await findTagByIdWithAccess(doc.tagId.toString(), userId, 'read');
+            if (!tag) return null; // No access to the tag
+        } else {
+            // Note has no tag - only owner can access
+            if (doc.userId.toString() !== userId) return null;
+        }
+
         return toNoteResponse(doc);
     } catch {
         return null;
@@ -205,8 +201,6 @@ export async function createNote(userId: string, data: CreateNoteInput): Promise
         type: noteType,
         title: title,
         content: data.content || defaultContent,
-        automergeUrl: data.automergeUrl,
-        docUrl: data.docUrl,
         documentId: data.documentId || nanoidBase58(),
         version: undefined,
         lastSyncedHeads: undefined,
@@ -227,8 +221,6 @@ export async function createNote(userId: string, data: CreateNoteInput): Promise
         title: doc.title,
         content: doc.content,
         automergeDoc: undefined,
-        automergeUrl: undefined,
-        docUrl: doc.docUrl, // Include generated slug in response
         version: undefined,
         lastSyncedHeads: undefined,
         tagId: data.tagId,
@@ -278,9 +270,6 @@ export async function updateNote(
         }
         if (data.content !== undefined) {
             updateData.content = data.content;
-        }
-        if (data.automergeUrl !== undefined) {
-            updateData.automergeUrl = data.automergeUrl;
         }
         if (data.automergeDoc !== undefined) {
             updateData.automergeDoc = data.automergeDoc as Buffer;

@@ -56,7 +56,7 @@ export class CollabAutomergeService {
     noteId: string,
     serverData: {
       automergeDoc?: any;
-      automergeUrl?: string;
+      documentId?: string;
       content?: any;
     },
   ): Promise<{ handle: DocHandle<any>; shouldMigrate: boolean }> {
@@ -82,15 +82,15 @@ export class CollabAutomergeService {
     let handle: DocHandle<any>;
     let shouldMigrate = false;
 
-    // STRATEGY: Use automergeUrl from database to ensure all clients get the same document
-    if (serverData.automergeUrl) {
-      // Use stored URL to find existing document
+    // STRATEGY: Use documentId to derive automerge URL
+    if (serverData.documentId) {
+      // Construct automerge URL from documentId
+      const automergeUrl = `automerge:${serverData.documentId}`;
       try {
-        handle = await this.repo.find(serverData.automergeUrl as any);
+        handle = await this.repo.find(automergeUrl as any);
         shouldMigrate = false;
       } catch (error) {
         console.error('[Automerge Repo] Failed to find document by URL:', error);
-        // Fallback: create new document
         // Fallback: create new document
         handle = this.repo.create({ text: '' });
         handle.change((d) => {
@@ -100,8 +100,7 @@ export class CollabAutomergeService {
         shouldMigrate = true;
       }
     } else {
-      // No URL stored yet - create new document and we'll save the URL to DB
-      // No URL stored yet - create new document and we'll save the URL to DB
+      // No documentId - create new document
       handle = this.repo.create({ text: '' });
       handle.change((d) => {
         // Initialize with a paragraph block
@@ -109,19 +108,6 @@ export class CollabAutomergeService {
       });
 
       shouldMigrate = true;
-    }
-
-    // Save document URL to database if it's a new document
-    if (shouldMigrate && !serverData.automergeUrl) {
-      try {
-        await this.http
-          .put(`/api/notes/${noteId}`, {
-            automergeUrl: handle.url,
-          })
-          .toPromise();
-      } catch (error) {
-        console.error('[Automerge Repo] Failed to save document URL:', error);
-      }
     }
 
     // Store handle

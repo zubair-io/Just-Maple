@@ -142,8 +142,7 @@ export class SidebarComponent implements OnInit {
   // }
 
   getNoteRouterLink(note: Note, tagId: string): string[] {
-    // Use docUrl if available, fallback to _id for backward compatibility
-    const urlParam = note.docUrl || note._id;
+    const urlParam = note.documentId;
     return ['/', tagId, urlParam];
   }
 
