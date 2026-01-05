@@ -47,23 +47,6 @@ export class NoteHeaderComponent {
 
   createNote(): void {
     const tagId = this.tag()?._id;
-
-    this.noteService
-      .createNote({
-        title: 'Untitled',
-        content: DEFAULT_NOTE_CONTENT,
-        tagId: tagId || undefined,
-      })
-      .subscribe({
-        next: (note) => {
-          const urlParam = note.docUrl || note._id;
-          if (tagId) {
-            this.router.navigate(['/', tagId, urlParam]);
-          }
-        },
-        error: (error) => {
-          console.error('Failed to create note:', error);
-        },
-      });
+    this.router.navigate(['/', tagId, 'new']);
   }
 }

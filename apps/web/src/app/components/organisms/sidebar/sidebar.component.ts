@@ -54,13 +54,15 @@ export class SidebarComponent implements OnInit {
   getNotesForTag = toSignal(
     this.noteService.notes$.pipe(
       map((notes) => {
-        return notes.reduce(
-          (acc, note) => {
-            (acc[note.tagId || 'no_tag'] ??= []).push(note);
-            return acc;
-          },
-          {} as Record<string, Note[]>,
-        );
+        return notes
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+          .reduce(
+            (acc, note) => {
+              (acc[note.tagId || 'no_tag'] ??= []).push(note);
+              return acc;
+            },
+            {} as Record<string, Note[]>,
+          );
       }),
     ),
     { initialValue: {} as Record<string, Note[]> },
