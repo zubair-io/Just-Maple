@@ -3,7 +3,7 @@ import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, map, catchError, throwError, of } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { createStore } from '@ngneat/elf';
+import { createStore, filterNil } from '@ngneat/elf';
 import {
   withEntities,
   withActiveId,
@@ -54,7 +54,7 @@ export class TagService {
 
   // Observable selectors
   readonly tags$ = this.store.pipe(selectAllEntities());
-  readonly activeTag$ = this.store.pipe(selectActiveEntity());
+  readonly activeTag$ = this.store.pipe(selectActiveEntity()).pipe(filterNil());
 
   // Signal wrappers for Angular reactivity
   private readonly _tagsSignal = toSignal(this.tags$, { initialValue: [] as Tag[] });
@@ -85,7 +85,7 @@ export class TagService {
    * Get all tags as a reactive signal
    */
   tags(): Tag[] {
-    return this._tagsSignal() ?? [];
+    return this._tagsSignal();
   }
 
   /**

@@ -248,7 +248,8 @@ export async function updateNote(
 ): Promise<Note | null> {
     try {
         // First, find the note to check access
-        const doc = await getCollection().findOne({ _id: new ObjectId(id) });
+        const doc = await getCollection().findOne({ documentId: id });
+        console.log('Updating note:', id, 'with data:', data, doc);
         if (!doc) return null;
 
         // Check write access based on tag or ownership
@@ -266,6 +267,7 @@ export async function updateNote(
             const newTag = await findTagByIdWithAccess(data.tagId, userId, 'write');
             if (!newTag) return null; // No write access to the new tag
         }
+        console.log('Proceeding with update for note:', id);
 
         const updateData: Partial<NoteDocument> = {
             updatedAt: new Date(),
@@ -308,7 +310,7 @@ export async function updateNote(
         }
 
         const result = await getCollection().findOneAndUpdate(
-            { _id: new ObjectId(id) },
+            { _id: new ObjectId(doc._id) },
             { $set: updateData },
             { returnDocument: 'after' },
         );

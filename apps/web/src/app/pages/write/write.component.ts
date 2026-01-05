@@ -30,7 +30,7 @@ import { SimpleNetworkAdapter } from './simple-network-adapter';
 import type { Node, Schema } from 'prosemirror-model';
 import { basicSchemaAdapter } from './basic-schema';
 import { DEFAULT_NOTE_CONTENT } from '@maple/shared';
-import { tap } from 'rxjs';
+import { switchMap, tap } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { WriteService } from './write.service';
 
@@ -209,18 +209,13 @@ export class WriteComponent implements OnDestroy {
   private tagId: any = '';
   private params = toSignal(this.route.paramMap, { initialValue: null });
   private lastDocumentId = '';
+  private newState: EditorState | null = null;
 
   // Get the note from the store based on docUrl
   readonly selectedNote = toSignal(this.noteService.activeNote$, { initialValue: null });
 
   // Get the tag for the selected note
-  readonly selectedTag = computed(() => {
-    const note = this.selectedNote();
-    if (note?.tagId) {
-      return this.tagService.tags().find((t) => t._id === note.tagId) || null;
-    }
-    return null;
-  });
+  readonly selectedTag = toSignal(this.tagService.activeTag$, { initialValue: null });
 
   // Active state signals for toolbar
   readonly isBold = signal(false);
@@ -241,14 +236,14 @@ export class WriteComponent implements OnDestroy {
     // const routeDocUrl = this.route.snapshot.paramMap.get('docUrl');
     // const queryDbName = this.route.snapshot.queryParamMap.get('db');
 
-    this.route.paramMap.subscribe((params) => {
-      console.log('Route params changed:', params);
+    // this.route.paramMap.subscribe((params) => {
+    //   console.log('Route params changed:', params);
 
-      // this.cleanup();
-      // setTimeout(() => {
-      //   this.initializeEditor();
-      // }, 1000);
-    });
+    //   // this.cleanup();
+    //   // setTimeout(() => {
+    //   //   this.initializeEditor();
+    //   // }, 1000);
+    // });
 
     effect(() => {
       if (this.timerReset) {
@@ -259,9 +254,9 @@ export class WriteComponent implements OnDestroy {
       if (params && params.has('docUrl') && isReady) {
         this.tagId = params.get('tagId') || '';
         const documentId = params.get('docUrl') || '';
+        this.noteService.setActiveNoteId(documentId);
         if (this.lastDocumentId !== documentId) {
           this.repo = this.writeService.repo;
-          this.noteService.setActiveNoteId(documentId);
 
           this.docUrl.set(documentId);
           this.cleanup();
@@ -510,6 +505,7 @@ export class WriteComponent implements OnDestroy {
             // Sync title to note if the first heading changed
             if (tr.docChanged) {
               this.syncTitleToNote(newState);
+              this.newState = newState;
             }
           },
         });
@@ -517,6 +513,7 @@ export class WriteComponent implements OnDestroy {
         this.editorView.dispatch(this.editorView.state.tr);
         // Update initial active state
         this.updateActiveState(this.editorView.state);
+        this.editorView.focus();
       }
     } catch (error) {
       console.error('[Write] Failed to initialize:', error);
@@ -575,30 +572,31 @@ export class WriteComponent implements OnDestroy {
   /**
    * Sync the title (first heading) to the note
    */
-  private syncTitleToNote(state: EditorState) {
-    // const note = this.selectedNote();
-    // if (!note?._id) return;
-    // // Get the first heading as the title
-    // const firstNode = state.doc.firstChild;
-    // if (!firstNode || firstNode.type.name !== 'heading') return;
-    // const title = firstNode.textContent.trim() || 'Untitled';
-    // // Only update if title changed (debounce)
-    // if (title === this.lastSyncedTitle) return;
-    // this.lastSyncedTitle = title;
-    // // Debounce the update to avoid too many API calls
-    // if (this.titleSyncTimeout) {
-    //   clearTimeout(this.titleSyncTimeout);
-    // }
-    // this.titleSyncTimeout = setTimeout(() => {
-    //   console.log('[Write] Syncing title to note:', title);
-    //   const selectedNote = this.selectedNote();
-    //   if (!selectedNote) {
-    //     return;
-    //   }
-    //   this.noteService.updateNote(selectedNote?._id, { title }).subscribe({
-    //     error: (err) => console.error('[Write] Failed to sync title:', err),
-    //   });
-    // }, 1000); // Wait 1 second after typing stops
+  private syncTitleToNote(state: EditorState, timeoutMs = 1000) {
+    const note = this.selectedNote();
+    if (!note?._id) return;
+    // Get the first heading as the title
+    const firstNode = state.doc.firstChild;
+    if (!firstNode || firstNode.type.name !== 'heading') return;
+    const title = firstNode.textContent.trim() || 'Untitled';
+    // Only update if title changed (debounce)
+    if (title === this.lastSyncedTitle) return;
+    this.lastSyncedTitle = title;
+    // Debounce the update to avoid too many API calls
+    if (this.titleSyncTimeout) {
+      clearTimeout(this.titleSyncTimeout);
+    }
+    this.titleSyncTimeout = setTimeout(() => {
+      console.log('[Write] Syncing title to note:', title);
+      const selectedNote = this.selectedNote();
+      if (!selectedNote) {
+        return;
+      }
+      console.log('[Write] Updating note ID:', selectedNote, title);
+      this.noteService.updateNote(selectedNote?.documentId, { title }).subscribe({
+        error: (err) => console.error('[Write] Failed to sync title:', err),
+      });
+    }, timeoutMs); // Wait 1 second after typing stops
   }
 
   /**
@@ -709,6 +707,9 @@ export class WriteComponent implements OnDestroy {
   }
 
   cleanup() {
+    if (this.newState) {
+      this.syncTitleToNote(this.newState, 0);
+    }
     if (this.titleSyncTimeout) {
       clearTimeout(this.titleSyncTimeout);
     }

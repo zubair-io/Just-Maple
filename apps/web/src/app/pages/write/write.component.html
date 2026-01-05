@@ -1,9 +1,11 @@
 <!-- Header -->
-<app-note-header
-  [note]="selectedNote()"
-  [tag]="selectedTag()"
-  (toggleFavorite)="toggleFavorite()"
-/>
+@if (selectedTag()) {
+  <app-note-header
+    [note]="selectedNote()"
+    [tag]="selectedTag()"
+    (toggleFavorite)="toggleFavorite()"
+  />
+}
 
 <!-- Toolbar -->
 <div class="toolbar border rounded-t p-2 mx-auto my-2 bg-gray-50 flex gap-2 flex-wrap">

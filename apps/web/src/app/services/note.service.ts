@@ -201,19 +201,20 @@ export class NoteService {
       of(tempNote),
       this.http.post<{ note: Note }>('/api/notes', data).pipe(
         tap((response) => {
-          this.store.update(deleteEntities(tempId));
-          this.store.update(addEntities(response.note));
+          console.log('Created note:', response.note);
+
+          this.store.update(updateEntities(response.note.documentId, response.note));
           this.persistToIndexedDB([response.note]);
           this._isLoading.set(false);
         }),
         map((response) => response.note),
-        catchError((err) => {
-          this.store.update(deleteEntities(tempId));
-          const message = err?.error?.error || 'Failed to create note';
-          this._error.set(message);
-          this._isLoading.set(false);
-          return throwError(() => new Error(message));
-        }),
+        // catchError((err) => {
+        //   this.store.update(deleteEntities(tempId));
+        //   const message = err?.error?.error || 'Failed to create note';
+        //   this._error.set(message);
+        //   this._isLoading.set(false);
+        //   return throwError(() => new Error(message));
+        // }),
       ),
     );
   }
