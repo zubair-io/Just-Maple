@@ -1,0 +1,66 @@
+@if (note()) {
+  <header
+    class="h-14 flex items-center justify-between px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
+  >
+    <!-- Breadcrumb -->
+    <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+      @if (tag()) {
+        <div
+          class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-stone-100"
+        >
+          <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">tag</span>
+          <span>{{ tag()!.label }}</span>
+        </div>
+        <span class="text-stone-300">/</span>
+      }
+      <div
+        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100"
+      >
+        <span class="material-symbols-rounded text-sm">article</span>
+        <span>{{ note()!.title }}</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-1">
+      <span class="text-xs text-[var(--color-text-muted)] mr-2">
+        Edited {{ formattedDate() }}
+      </span>
+      <div class="flex items-center border-l border-[var(--color-border)] pl-2 gap-1">
+        <button
+          class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+          title="Note Info"
+        >
+          <span class="material-symbols-rounded text-lg">info</span>
+        </button>
+        <button
+          (click)="toggleFavorite.emit()"
+          class="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+          [class.text-[var(--color-primary)]]="note()?.isFavorite"
+          [class.text-[var(--color-text-muted)]]="!note()?.isFavorite"
+          [class.hover:text-[var(--color-text-main)]]="!note()?.isFavorite"
+          [class.hover:bg-stone-100]="true"
+          title="Favorite"
+        >
+          <span class="material-symbols-rounded text-lg">
+            {{ note()?.isFavorite ? 'star' : 'star_border' }}
+          </span>
+        </button>
+        <button
+          class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+          title="More"
+        >
+          <span class="material-symbols-rounded text-lg">more_horiz</span>
+        </button>
+      </div>
+      <button
+        (click)="createNote()"
+        class="ml-2 flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg transition-colors"
+        title="New Note"
+      >
+        <span class="material-symbols-rounded text-sm">add</span>
+        <span>New Note</span>
+      </button>
+    </div>
+  </header>
+}

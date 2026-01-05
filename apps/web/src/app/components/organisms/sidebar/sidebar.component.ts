@@ -1,7 +1,17 @@
-import { Component, inject, signal, computed, output, input, effect, OnInit } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  output,
+  input,
+  effect,
+  OnInit,
+  Signal,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 import { TagService } from '../../../services/tag.service';
 import { NoteService } from '../../../services/note.service';
@@ -10,6 +20,8 @@ import { NotificationService } from '../../../services/notification.service';
 import { NetworkService } from '../../../services/network.service';
 import { ProfileAvatarComponent } from '../../atoms';
 import type { Note } from '@maple/shared';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { filter, map, switchMap } from 'rxjs';
 
 @Component({
   selector: 'app-sidebar',
@@ -26,9 +38,10 @@ export class SidebarComponent implements OnInit {
   readonly messageService = inject(MessageService);
   readonly notificationService = inject(NotificationService);
   readonly networkService = inject(NetworkService);
+  readonly route = inject(ActivatedRoute);
 
   readonly selectedTagId = input<string | null>(null);
-  readonly selectedNoteId = input<string | null>(null);
+  readonly selectedNoteId = toSignal(this.noteService.activeId$, { initialValue: null });
 
   readonly newNote = output<void>();
   readonly selectNote = output<string>();
@@ -38,6 +51,24 @@ export class SidebarComponent implements OnInit {
 
   readonly searchQuery = signal('');
   readonly expandedTags = signal<Set<string>>(new Set());
+  getNotesForTag = toSignal(
+    this.noteService.notes$.pipe(
+      map((notes) => {
+        return notes.reduce(
+          (acc, note) => {
+            (acc[note.tagId || 'no_tag'] ??= []).push(note);
+            return acc;
+          },
+          {} as Record<string, Note[]>,
+        );
+      }),
+    ),
+    { initialValue: {} as Record<string, Note[]> },
+  );
+
+  // readonly selectedNoteId = toSignal(this.route.paramMap.pipe(switchMap(()=>{
+  //   this.this.noteService.activeId$(),
+  // })), { initialValue: null });
 
   constructor() {
     // Auto-expand tag when selectedTagId changes
@@ -104,9 +135,9 @@ export class SidebarComponent implements OnInit {
     this.router.navigate(['/', tagId]);
   }
 
-  getNotesForTag(tagId: string): Note[] {
-    return this.noteService.notes().filter((n) => n.tagId === tagId);
-  }
+  // getNotesForTag(tagId: string): Signal<Note[]> {
+  //   return toSignal(this.noteService.notesByTag$(tagId), { initialValue: [] });
+  // }
 
   getNoteRouterLink(note: Note, tagId: string): string[] {
     // Use docUrl if available, fallback to _id for backward compatibility

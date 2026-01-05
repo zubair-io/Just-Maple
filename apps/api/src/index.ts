@@ -147,7 +147,19 @@ async function main() {
                 message: 'Run `bun run build` in apps/web to build the frontend',
             };
         })
-        .listen(config.port);
+        .listen({
+            port: config.port,
+            error(error) {
+                if ((error as any).code === 'EADDRINUSE') {
+                    console.error(`\n❌ ERROR: Port ${config.port} is already in use!`);
+                    console.error(`   Another server is already running on this port.`);
+                    console.error(`   Please stop the other server or change the port.\n`);
+                    process.exit(1);
+                }
+                console.error('Failed to start server:', error);
+                process.exit(1);
+            },
+        });
 
     // Check if frontend is available
     const indexFile = Bun.file(join(STATIC_DIR, 'index.html'));

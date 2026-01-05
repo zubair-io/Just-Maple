@@ -31,8 +31,11 @@ class AutomergeService {
 
         if (!doc) {
             if (note.automergeDoc) {
-                // Load from binary
-                doc = Automerge.load(note.automergeDoc as Uint8Array);
+                // Load from binary - convert to Uint8Array if needed
+                const bytes = Array.isArray(note.automergeDoc)
+                    ? new Uint8Array(note.automergeDoc)
+                    : (note.automergeDoc as Uint8Array);
+                doc = Automerge.load(bytes);
             } else {
                 // MIGRATE: Convert ProseMirror JSON to Automerge
                 doc = this.migrateFromProseMirror(note.content);
@@ -42,7 +45,7 @@ class AutomergeService {
                 const binary = Automerge.save(doc);
                 await updateNoteForCollab(
                     noteId,
-                    { automergeDoc: binary as Buffer },
+                    { automergeDoc: Array.from(binary) as any },
                     'AutomergeService',
                 );
             }
@@ -134,7 +137,7 @@ class AutomergeService {
         await updateNoteForCollab(
             noteId,
             {
-                automergeDoc: binary as Buffer,
+                automergeDoc: Array.from(binary) as any,
                 content: prosemirrorJSON, // Keep in sync for search
                 lastSyncedHeads: heads,
                 version: version,

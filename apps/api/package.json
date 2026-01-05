@@ -6,7 +6,7 @@
     "predev": "bun run --cwd ../../packages/shared build",
     "dev": "bun run --watch src/index.ts",
     "dev:e2e": "bun run --watch src/index-e2e.ts",
-    "start": "bun run src/index.ts",
+    "start": "bun run --watch src/index.ts",
     "build": "bun run --cwd ../../packages/shared build && bun build src/index.ts --outdir dist --target bun",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

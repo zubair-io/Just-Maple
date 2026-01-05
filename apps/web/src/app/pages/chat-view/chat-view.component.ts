@@ -79,8 +79,9 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       })
       .subscribe({
         next: (note) => {
+          const urlParam = note.docUrl || note._id;
           if (tagId) {
-            this.router.navigate(['/', tagId, note._id]);
+            this.router.navigate(['/', tagId, urlParam]);
           }
         },
         error: (error) => {

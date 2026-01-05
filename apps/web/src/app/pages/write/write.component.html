@@ -1,110 +1,109 @@
-<div class="p-4">
-  <h1 class="text-2xl font-bold mb-4">Automerge Rich Text Collaboration</h1>
+<!-- Header -->
+<app-note-header
+  [note]="selectedNote()"
+  [tag]="selectedTag()"
+  (toggleFavorite)="toggleFavorite()"
+/>
 
-  <!-- Toolbar -->
-  <div class="border rounded-t p-2 bg-gray-50 flex gap-2 flex-wrap">
-    <div class="flex gap-1">
-      <button
-        (click)="toggleBold()"
-        [class.bg-blue-100]="isBold()"
-        [class.border-blue-400]="isBold()"
-        class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
-        title="Bold (Ctrl+B)"
-      >
-        <span class="material-symbols-rounded text-base">format_bold</span>
-      </button>
-      <button
-        (click)="toggleItalic()"
-        [class.bg-blue-100]="isItalic()"
-        [class.border-blue-400]="isItalic()"
-        class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
-        title="Italic (Ctrl+I)"
-      >
-        <span class="material-symbols-rounded text-base">format_italic</span>
-      </button>
-      <button
-        (click)="toggleCode()"
-        [class.bg-blue-100]="isCode()"
-        [class.border-blue-400]="isCode()"
-        class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
-        title="Code (Ctrl+`)"
-      >
-        <span class="material-symbols-rounded text-base">code</span>
-      </button>
-    </div>
-
-    <div class="border-l mx-1"></div>
-
-    <div class="flex gap-1">
-      <button
-        (click)="setHeading(1)"
-        [class.bg-blue-100]="currentHeadingLevel() === 1"
-        [class.border-blue-400]="currentHeadingLevel() === 1"
-        class="px-3 py-1 bg-white border rounded hover:bg-gray-100"
-        title="Heading 1"
-      >
-        H1
-      </button>
-      <button
-        (click)="setHeading(2)"
-        [class.bg-blue-100]="currentHeadingLevel() === 2"
-        [class.border-blue-400]="currentHeadingLevel() === 2"
-        class="px-3 py-1 bg-white border rounded hover:bg-gray-100"
-        title="Heading 2"
-      >
-        H2
-      </button>
-      <button
-        (click)="setHeading(3)"
-        [class.bg-blue-100]="currentHeadingLevel() === 3"
-        [class.border-blue-400]="currentHeadingLevel() === 3"
-        class="px-3 py-1 bg-white border rounded hover:bg-gray-100"
-        title="Heading 3"
-      >
-        H3
-      </button>
-      <button
-        (click)="setParagraph()"
-        [class.bg-blue-100]="isParagraph()"
-        [class.border-blue-400]="isParagraph()"
-        class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
-        title="Paragraph"
-      >
-        <span class="material-symbols-rounded text-base">notes</span>
-      </button>
-    </div>
-
-    <div class="border-l mx-1"></div>
-
-    <div class="flex gap-1">
-      <button
-        (click)="toggleBulletList()"
-        [class.bg-blue-100]="isBulletList()"
-        [class.border-blue-400]="isBulletList()"
-        class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
-        title="Bullet List"
-      >
-        <span class="material-symbols-rounded text-base">format_list_bulleted</span>
-      </button>
-      <button
-        (click)="toggleOrderedList()"
-        [class.bg-blue-100]="isOrderedList()"
-        [class.border-blue-400]="isOrderedList()"
-        class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
-        title="Numbered List"
-      >
-        <span class="material-symbols-rounded text-base">format_list_numbered</span>
-      </button>
-    </div>
+<!-- Toolbar -->
+<div class="toolbar border rounded-t p-2 mx-auto my-2 bg-gray-50 flex gap-2 flex-wrap">
+  <div class="flex gap-1">
+    <button
+      (click)="toggleBold()"
+      [class.bg-blue-100]="isBold()"
+      [class.border-blue-400]="isBold()"
+      class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
+      title="Bold (Ctrl+B)"
+    >
+      <span class="material-symbols-rounded text-base">format_bold</span>
+    </button>
+    <button
+      (click)="toggleItalic()"
+      [class.bg-blue-100]="isItalic()"
+      [class.border-blue-400]="isItalic()"
+      class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
+      title="Italic (Ctrl+I)"
+    >
+      <span class="material-symbols-rounded text-base">format_italic</span>
+    </button>
+    <button
+      (click)="toggleCode()"
+      [class.bg-blue-100]="isCode()"
+      [class.border-blue-400]="isCode()"
+      class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
+      title="Code (Ctrl+`)"
+    >
+      <span class="material-symbols-rounded text-base">code</span>
+    </button>
   </div>
 
-  <!-- Editor -->
-  <div class="border border-t-0 rounded-b p-4 bg-white">
-    <div #editor class="prose max-w-none min-h-[400px] focus:outline-none"></div>
+  <div class="border-l mx-1"></div>
+
+  <div class="flex gap-1">
+    <button
+      (click)="setHeading(1)"
+      [class.bg-blue-100]="currentHeadingLevel() === 1"
+      [class.border-blue-400]="currentHeadingLevel() === 1"
+      class="px-3 py-1 bg-white border rounded hover:bg-gray-100"
+      title="Heading 1"
+    >
+      H1
+    </button>
+    <button
+      (click)="setHeading(2)"
+      [class.bg-blue-100]="currentHeadingLevel() === 2"
+      [class.border-blue-400]="currentHeadingLevel() === 2"
+      class="px-3 py-1 bg-white border rounded hover:bg-gray-100"
+      title="Heading 2"
+    >
+      H2
+    </button>
+    <button
+      (click)="setHeading(3)"
+      [class.bg-blue-100]="currentHeadingLevel() === 3"
+      [class.border-blue-400]="currentHeadingLevel() === 3"
+      class="px-3 py-1 bg-white border rounded hover:bg-gray-100"
+      title="Heading 3"
+    >
+      H3
+    </button>
+    <button
+      (click)="setParagraph()"
+      [class.bg-blue-100]="isParagraph()"
+      [class.border-blue-400]="isParagraph()"
+      class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
+      title="Paragraph"
+    >
+      <span class="material-symbols-rounded text-base">notes</span>
+    </button>
   </div>
 
-  <p class="mt-2 text-sm text-gray-500">
-    Open this page in multiple tabs to test rich text collaboration. Try bold (Ctrl+B), italic
-    (Ctrl+I), headings, and lists!
-  </p>
+  <div class="border-l mx-1"></div>
+
+  <div class="flex gap-1">
+    <button
+      (click)="toggleBulletList()"
+      [class.bg-blue-100]="isBulletList()"
+      [class.border-blue-400]="isBulletList()"
+      class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
+      title="Bullet List"
+    >
+      <span class="material-symbols-rounded text-base">format_list_bulleted</span>
+    </button>
+    <button
+      (click)="toggleOrderedList()"
+      [class.bg-blue-100]="isOrderedList()"
+      [class.border-blue-400]="isOrderedList()"
+      class="px-3 py-1 bg-white border rounded hover:bg-gray-100 flex items-center gap-1"
+      title="Numbered List"
+    >
+      <span class="material-symbols-rounded text-base">format_list_numbered</span>
+    </button>
+  </div>
 </div>
+
+<!-- Editor -->
+<div
+  #editor
+  class="prose border rounded-t p-2 m-2 max-w-none min-h-[400px] flex-1 focus:outline-none"
+></div>

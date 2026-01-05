@@ -36,6 +36,7 @@ interface NoteDocument {
     automergeUrl?: string; // Automerge document URL (for syncing)
     docUrl?: string; // URL-safe slug for routing (e.g., "my-note-abc123de")
     // Automerge metadata
+    documentId: string;
     version?: number; // Hash of Automerge heads (for cache validation)
     lastSyncedHeads?: string[]; // Automerge heads (for sync optimization)
     tagId?: ObjectId;
@@ -52,13 +53,20 @@ function getCollection(): Collection<NoteDocument> {
 }
 
 function toNoteResponse(doc: NoteDocument): Note {
+    // Normalize automergeDoc to plain array for JSON serialization
+    let automergeDoc = doc.automergeDoc;
+    if (automergeDoc && Buffer.isBuffer(automergeDoc)) {
+        // Convert Buffer to plain array for consistent JSON serialization
+        automergeDoc = Array.from(automergeDoc) as any;
+    }
+
     return {
         _id: doc._id.toString(),
         userId: doc.userId.toString(),
         type: doc.type || 'write', // Default for legacy notes
         title: doc.title,
         content: doc.content,
-        automergeDoc: doc.automergeDoc, // Binary CRDT
+        automergeDoc, // Binary CRDT (normalized to array)
         automergeUrl: doc.automergeUrl, // Automerge document URL
         docUrl: doc.docUrl, // URL-safe slug for routing
         version: doc.version, // Hash of Automerge heads
@@ -70,6 +78,7 @@ function toNoteResponse(doc: NoteDocument): Note {
         trashedAt: doc.trashedAt?.toISOString(),
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
+        documentId: doc.documentId,
     };
 }
 
@@ -176,7 +185,18 @@ export async function findNoteByDocUrl(docUrl: string): Promise<Note | null> {
     }
 }
 
+export async function findNoteByAutomergeUrl(automergeUrl: string): Promise<Note | null> {
+    try {
+        const doc = await getCollection().findOne({ automergeUrl });
+        if (!doc) return null;
+        return toNoteResponse(doc);
+    } catch {
+        return null;
+    }
+}
+
 export async function createNote(userId: string, data: CreateNoteInput): Promise<Note> {
+    console.log('🤢Creating note with data:', data);
     const now = new Date();
     const noteType = data.type || 'write';
     const title = data.title || 'Untitled';
@@ -186,9 +206,9 @@ export async function createNote(userId: string, data: CreateNoteInput): Promise
         title: title,
         content: data.content || defaultContent,
         automergeUrl: data.automergeUrl,
-        docUrl: generateDocUrl(), // Generate unique docUrl for routing
-        // No automergeDoc initially - will be created on first edit via lazy migration
-        version: undefined, // Will be set when Automerge doc is created
+        docUrl: data.docUrl,
+        documentId: data.documentId || nanoidBase58(),
+        version: undefined,
         lastSyncedHeads: undefined,
         tagId: data.tagId ? new ObjectId(data.tagId) : undefined,
         isFavorite: false,
@@ -217,6 +237,7 @@ export async function createNote(userId: string, data: CreateNoteInput): Promise
         isTrashed: doc.isTrashed,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
+        documentId: doc.documentId,
     };
 }
 
