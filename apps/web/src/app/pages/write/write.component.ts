@@ -204,11 +204,11 @@ export class WriteComponent implements OnDestroy {
   private authService = inject(AuthService);
   private tagService = inject(TagService);
   private writeService = inject(WriteService);
-  private docUrl = signal('');
   private docHandle: any = null;
   private tagId: any = '';
   private params = toSignal(this.route.paramMap, { initialValue: null });
   private lastDocumentId = '';
+  private currentDocumentId = '';
   private newState: EditorState | null = null;
 
   // Get the note from the store based on docUrl
@@ -251,14 +251,14 @@ export class WriteComponent implements OnDestroy {
       }
       const params = this.params();
       const isReady = this.writeService.ready();
-      if (params && params.has('docUrl') && isReady) {
+      if (params && params.has('documentId') && isReady) {
         this.tagId = params.get('tagId') || '';
-        const documentId = params.get('docUrl') || '';
+        const documentId = params.get('documentId') || '';
+        this.currentDocumentId = documentId;
         this.noteService.setActiveNoteId(documentId);
         if (this.lastDocumentId !== documentId) {
           this.repo = this.writeService.repo;
 
-          this.docUrl.set(documentId);
           this.cleanup();
           this.initializeEditor();
         }
@@ -268,31 +268,31 @@ export class WriteComponent implements OnDestroy {
 
   private async initializeEditor() {
     try {
-      const docUrl = this.docUrl();
+      const documentId = this.currentDocumentId;
       // Initialize Wasm
 
       // Create network adapter with auth token
-      console.log('[Write] Created network adapter', docUrl);
+      console.log('[Write] Created network adapter', documentId);
 
       // Create repo
 
       console.log(
         '💚[Write] Looking for  Automerge Repo',
-        docUrl,
-        isValidAutomergeUrl(`automerge:${docUrl}`),
+        documentId,
+        isValidAutomergeUrl(`automerge:${documentId}`),
       );
       console.timeEnd('[Write] Component init');
       this.timerReset = true;
-      const autoMergeUrl = `automerge:${docUrl}`;
+      const autoMergeUrl = `automerge:${documentId}`;
       let handle: any;
-      if (docUrl && isValidAutomergeUrl(autoMergeUrl)) {
+      if (documentId && isValidAutomergeUrl(autoMergeUrl)) {
         handle = await this.repo.find(autoMergeUrl);
         console.log('[Write] Finding document handle for URL:', autoMergeUrl);
       } else {
         handle = this.repo.create({ text: '' });
       }
       this.lastDocumentId = handle.documentId;
-      if (docUrl !== handle.documentId) {
+      if (documentId !== handle.documentId) {
         this.router.navigate(['/', this.tagId, handle.documentId], {
           replaceUrl: true,
         });
@@ -301,7 +301,6 @@ export class WriteComponent implements OnDestroy {
             title: 'Untitled',
             content: DEFAULT_NOTE_CONTENT,
             tagId: this.tagId,
-            docUrl: handle.documentId,
             documentId: handle.documentId,
           })
           .pipe(

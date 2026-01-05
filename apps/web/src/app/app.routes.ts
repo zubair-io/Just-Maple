@@ -59,14 +59,14 @@ export const routes: Routes = [
           },
           // Lego-type note - shows lego view
           {
-            path: ':docUrl',
+            path: ':documentId',
             canMatch: [LegoNoteGuard],
             loadComponent: () =>
               import('./pages/lego-view/lego-view.component').then((m) => m.LegoViewComponent),
           },
           // Write-type note (default) - shows note editor
           {
-            path: ':docUrl',
+            path: ':documentId',
             loadComponent: () =>
               import('./pages/write/write.component').then((m) => m.WriteComponent),
           },

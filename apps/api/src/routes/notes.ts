@@ -126,7 +126,6 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
                 title: t.Optional(t.String({ maxLength: 500 })),
                 content: t.Optional(t.Any()),
                 tagId: t.Optional(t.String()),
-                docUrl: t.Optional(t.String()),
                 documentId: t.Optional(t.String()),
             }),
         },
@@ -155,7 +154,6 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             body: t.Object({
                 title: t.Optional(t.String({ maxLength: 500 })),
                 content: t.Optional(t.Any()),
-                automergeUrl: t.Optional(t.String()),
                 tagId: t.Optional(t.String()),
                 isFavorite: t.Optional(t.Boolean()),
                 isArchived: t.Optional(t.Boolean()),

@@ -184,7 +184,6 @@ export class NoteService {
       type: data.type || 'write',
       title: data.title || 'Untitled',
       content: data.content || defaultContent,
-      docUrl: data.docUrl || undefined,
       documentId: data.documentId || tempId,
       version: 1,
       tagId: data.tagId,
@@ -415,16 +414,6 @@ export class NoteService {
    */
   select(id: string): Observable<Note | undefined> {
     return this.store.pipe(selectEntity(id));
-  }
-
-  /**
-   * Select a single note by docUrl as observable
-   */
-  selectByDocUrl(docUrl: string): Observable<Note | undefined> {
-    return this.store.pipe(
-      selectAllEntities(),
-      map((notes) => notes.find((note) => note.docUrl === docUrl)),
-    );
   }
 
   /**
