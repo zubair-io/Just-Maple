@@ -158,6 +158,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
                 isFavorite: t.Optional(t.Boolean()),
                 isArchived: t.Optional(t.Boolean()),
                 isTrashed: t.Optional(t.Boolean()),
+                automergeDoc: t.Optional(t.String()),
             }),
         },
     )

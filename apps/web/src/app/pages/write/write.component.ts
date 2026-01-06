@@ -26,7 +26,6 @@ import { keymap } from 'prosemirror-keymap';
 import { baseKeymap, toggleMark, setBlockType } from 'prosemirror-commands';
 import { history, undo, redo } from 'prosemirror-history';
 import { wrapInList, sinkListItem, liftListItem, splitListItem } from 'prosemirror-schema-list';
-import { SimpleNetworkAdapter } from './simple-network-adapter';
 import type { Node, Schema } from 'prosemirror-model';
 import { basicSchemaAdapter } from './basic-schema';
 import { DEFAULT_NOTE_CONTENT } from '@maple/shared';
@@ -198,7 +197,6 @@ export class WriteComponent implements OnDestroy {
 
   private repo!: Repo;
   private editorView: EditorView | null = null;
-  private networkAdapter: SimpleNetworkAdapter | null = null;
   private route = inject(ActivatedRoute);
   private noteService = inject(NoteService);
   private authService = inject(AuthService);
@@ -229,22 +227,6 @@ export class WriteComponent implements OnDestroy {
   timerReset = false;
 
   constructor() {
-    console.log('[Write] Component constructed');
-    console.time('[Write] Component init');
-    // Get docUrl from route params (for integrated note routing)
-    // or use query parameter/timestamp for standalone route (/write)
-    // const routeDocUrl = this.route.snapshot.paramMap.get('docUrl');
-    // const queryDbName = this.route.snapshot.queryParamMap.get('db');
-
-    // this.route.paramMap.subscribe((params) => {
-    //   console.log('Route params changed:', params);
-
-    //   // this.cleanup();
-    //   // setTimeout(() => {
-    //   //   this.initializeEditor();
-    //   // }, 1000);
-    // });
-
     effect(() => {
       if (this.timerReset) {
         console.time('[Write] Component init');
@@ -269,25 +251,30 @@ export class WriteComponent implements OnDestroy {
   private async initializeEditor() {
     try {
       const documentId = this.currentDocumentId;
-      // Initialize Wasm
+      const userId = this.authService.user()?._id;
 
-      // Create network adapter with auth token
-      console.log('[Write] Created network adapter', documentId);
+      if (!userId) {
+        console.error('[Write] Cannot initialize - user not authenticated');
+        return;
+      }
 
-      // Create repo
+      // Enable HTTP + WebRTC adapters for this document
+      // Get noteId from selected note
+      const note = this.selectedNote();
+      const noteId = note?._id || documentId; // Fallback to documentId if no note yet
 
-      console.log(
-        '💚[Write] Looking for  Automerge Repo',
-        documentId,
-        isValidAutomergeUrl(`automerge:${documentId}`),
-      );
+      this.writeService.enableNetworkAdapters(documentId, noteId, userId, {
+        onAllPeersDisconnected: (noteId, docHandle) => {
+          console.warn('[Write] All WebRTC peers disconnected - HTTP adapter continues syncing');
+        },
+      });
+
       console.timeEnd('[Write] Component init');
       this.timerReset = true;
       const autoMergeUrl = `automerge:${documentId}`;
       let handle: any;
       if (documentId && isValidAutomergeUrl(autoMergeUrl)) {
         handle = await this.repo.find(autoMergeUrl);
-        console.log('[Write] Finding document handle for URL:', autoMergeUrl);
       } else {
         handle = this.repo.create({ text: '' });
       }
@@ -303,14 +290,8 @@ export class WriteComponent implements OnDestroy {
             tagId: this.tagId,
             documentId: handle.documentId,
           })
-          .pipe(
-            tap((note) => {
-              console.log('🛑 [Write] Created new note for document:', note);
-            }),
-          )
           .subscribe();
       }
-      console.log('[Write] Obtained document handle:', handle.documentId);
 
       //if (this.docUrl) {
       // Get note to check for existing automergeUrl
@@ -443,21 +424,11 @@ export class WriteComponent implements OnDestroy {
       await handle.whenReady();
       this.docHandle = handle;
 
-      console.log('[Write] Document handle ready, URL:', handle.url);
-      console.log('[Write] Document handle documentId:', handle.documentId);
-
       // Initialize text field if needed
       handle.change((doc: any) => {
         if (!doc.text) {
           doc.text = '';
         }
-      });
-
-      // Document changes are automatically synced via WebSocket
-      // and saved to database by the server (no need for HTTP save)
-      handle.on('change', () => {
-        console.log('[Write] Document changed, URL:', handle.url);
-        console.log('[Write] Syncing via WebSocket');
       });
 
       // Use AutoMirror with rich text schema
@@ -586,12 +557,10 @@ export class WriteComponent implements OnDestroy {
       clearTimeout(this.titleSyncTimeout);
     }
     this.titleSyncTimeout = setTimeout(() => {
-      console.log('[Write] Syncing title to note:', title);
       const selectedNote = this.selectedNote();
       if (!selectedNote) {
         return;
       }
-      console.log('[Write] Updating note ID:', selectedNote, title);
       this.noteService.updateNote(selectedNote?.documentId, { title }).subscribe({
         error: (err) => console.error('[Write] Failed to sync title:', err),
       });
@@ -713,10 +682,8 @@ export class WriteComponent implements OnDestroy {
       clearTimeout(this.titleSyncTimeout);
     }
     this.editorView?.destroy();
-    if (this.networkAdapter && this.repo) {
-      this.repo.networkSubsystem.removeNetworkAdapter(this.networkAdapter);
-      this.networkAdapter.disconnect();
-    }
+    // Cleanup is now handled by WriteService
+    this.writeService.cleanup();
   }
 
   ngOnDestroy() {

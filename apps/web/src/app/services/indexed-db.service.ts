@@ -22,12 +22,12 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 3,
+    dbVersion: 4,
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.PAPER, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.TAG, keyPath: '_id', autoIncrement: false },
-      { name: DB_STORES.NOTE, keyPath: '_id', autoIncrement: false },
+      { name: DB_STORES.NOTE, keyPath: 'documentId', autoIncrement: false },
       { name: DB_STORES.SYNC_METADATA, keyPath: 'key', autoIncrement: false },
       { name: DB_STORES.MESSAGE, keyPath: '_id', autoIncrement: false },
     ],

@@ -11,6 +11,7 @@ import { collectibleRegistryRoutes } from './routes/collectible-registry';
 import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
 import { collabRoutes } from './routes/collab';
+import { webrtcSignalingRoutes } from './routes/webrtc-signaling';
 import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
 import { collabOTWebSocket } from './ws/collab-ot.ws';
 import { testSyncWs } from './ws/test-sync.ws';
@@ -65,6 +66,7 @@ async function main() {
         .use(notificationRoutes)
         .use(botRoutes)
         .use(collabRoutes)
+        .use(webrtcSignalingRoutes) // WebRTC signaling for P2P collaboration
         .use(testSyncWs); // Test sync WebSocket (always enabled)
 
     // Conditionally enable WebSocket routes

@@ -1,13 +1,7 @@
 import { ObjectId, Collection } from 'mongodb';
+import * as Automerge from '@automerge/automerge';
 import { getDb } from '../db/client';
-import type {
-    Note,
-    NoteContent,
-    NoteType,
-    CreateNoteInput,
-    UpdateNoteInput,
-    DEFAULT_NOTE_CONTENT,
-} from '@maple/shared';
+import type { Note, NoteContent, NoteType, CreateNoteInput, UpdateNoteInput } from '@maple/shared';
 import { findTagsByUserId, findTagByIdWithAccess } from './tag.repo';
 import { customAlphabet } from 'nanoid';
 
@@ -271,9 +265,40 @@ export async function updateNote(
         if (data.content !== undefined) {
             updateData.content = data.content;
         }
+
+        // Automerge Merge Logic
         if (data.automergeDoc !== undefined) {
-            updateData.automergeDoc = data.automergeDoc as Buffer;
+            let incomingBinary: Uint8Array;
+            if (typeof data.automergeDoc === 'string') {
+                incomingBinary = Buffer.from(data.automergeDoc, 'base64');
+            } else {
+                incomingBinary = data.automergeDoc as unknown as Uint8Array;
+            }
+
+            const incomingDoc = Automerge.load(incomingBinary);
+            let finalDoc = incomingDoc;
+
+            if (doc.automergeDoc) {
+                let existingBinary: Uint8Array;
+                if (Buffer.isBuffer(doc.automergeDoc)) {
+                    existingBinary = doc.automergeDoc;
+                } else if (Array.isArray(doc.automergeDoc)) {
+                    // Handle case where it might be stored as an array (e.g. from a past save)
+                    existingBinary = new Uint8Array(doc.automergeDoc);
+                } else if ((doc.automergeDoc as any).buffer) {
+                    // Handle binary object from Mongo driver sometimes
+                    existingBinary = new Uint8Array((doc.automergeDoc as any).buffer);
+                } else {
+                    existingBinary = new Uint8Array(doc.automergeDoc as any);
+                }
+
+                const existingDoc = Automerge.load(existingBinary);
+                finalDoc = Automerge.merge(existingDoc, incomingDoc);
+            }
+
+            updateData.automergeDoc = Buffer.from(Automerge.save(finalDoc));
         }
+
         if (data.version !== undefined) {
             updateData.version = data.version;
         }
@@ -305,7 +330,8 @@ export async function updateNote(
         );
 
         return result ? toNoteResponse(result) : null;
-    } catch {
+    } catch (e) {
+        console.error('Error updating note:', e);
         return null;
     }
 }
@@ -359,7 +385,9 @@ export async function emptyTrash(userId: string): Promise<number> {
             $or: [
                 { tagId: { $in: tagIds } },
                 { tagId: { $exists: false }, userId: new ObjectId(userId) },
-                { tagId: null, userId: new ObjectId(userId) },
+                // Use $or for tagId null check if needed, or rely on $exists: false which covers undefined/missing.
+                // Using explicit null comparison if field exists but is null:
+                { tagId: null as any, userId: new ObjectId(userId) },
             ],
         });
         return result.deletedCount;
