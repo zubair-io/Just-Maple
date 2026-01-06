@@ -11,6 +11,10 @@ import {
   switchMap,
   startWith,
   concat,
+  groupBy,
+  mergeMap,
+  debounceTime,
+  Subject,
 } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { createStore, filterNil, select } from '@ngneat/elf';
@@ -83,14 +87,47 @@ export class NoteService {
   readonly isLoading = this._isLoading.asReadonly();
   readonly error = this._error.asReadonly();
 
+  // Subject to queue save requests
+  private readonly saveSubject = new Subject<{ id: string; base64Data: string }>();
+
   constructor() {
+    console.log('[NoteService] Initialized');
     if (isPlatformBrowser(this.platformId)) {
       this.hydrateFromIndexedDB();
     }
+    this.setupSaveSubscription();
+  }
+
+  private setupSaveSubscription() {
+    this.saveSubject
+      .pipe(
+        // Group saves by note ID so one note doesn't block another
+        groupBy((req) => req.id),
+        // For each group (each note ID), debounce
+        mergeMap((group) =>
+          group.pipe(
+            debounceTime(1000), // Wait 1 second of silence
+            switchMap((req) => {
+              console.log('[NoteService] Processing debounced save for', req.id);
+              return this.http
+                .put<{ note: Note }>(`/api/notes/${req.id}`, { automergeDoc: req.base64Data })
+                .pipe(
+                  tap(() => console.log('[NoteService] Synced automerge doc to server', req.id)),
+                  catchError((err) => {
+                    console.error('[NoteService] Failed to sync automerge doc', err);
+                    return of(null);
+                  }),
+                );
+            }),
+          ),
+        ),
+      )
+      .subscribe();
   }
 
   private async hydrateFromIndexedDB(): Promise<void> {
     const cached = await this.indexedDB.getAll<Note>(STORE_NAME);
+    // console.log(cached);
     if (cached.length > 0 && this.store.query(getEntitiesCount()) === 0) {
       this.store.update(setEntities(cached));
     }
@@ -139,8 +176,7 @@ export class NoteService {
 
     return this.http.get<{ notes: Note[] }>('/api/notes', { params }).pipe(
       tap((response) => {
-        console.log('Created note:', response.notes);
-
+        // console.log('[NoteService] Loaded notes from server:', response.notes);
         this.store.update(setEntities(response.notes));
         this.persistToIndexedDB(response.notes);
         this._isLoading.set(false);
@@ -160,6 +196,29 @@ export class NoteService {
         // Return cached data instead of empty array
         const cached = this.store.query(getAllEntities());
         return of(cached);
+      }),
+    );
+  }
+
+  /**
+   * Get a single note by ID from server
+   */
+  getNote(noteId: string): Observable<Note> {
+    this._isLoading.set(true);
+    this._error.set(null);
+
+    return this.http.get<{ note: Note }>(`/api/notes/${noteId}`).pipe(
+      tap((response) => {
+        this.store.update(upsertEntities(response.note));
+        this.persistToIndexedDB([response.note]);
+        this._isLoading.set(false);
+      }),
+      map((response) => response.note),
+      catchError((err) => {
+        const message = err?.error?.error || 'Failed to fetch note';
+        this._error.set(message);
+        this._isLoading.set(false);
+        return throwError(() => err);
       }),
     );
   }
@@ -207,13 +266,6 @@ export class NoteService {
           this._isLoading.set(false);
         }),
         map((response) => response.note),
-        // catchError((err) => {
-        //   this.store.update(deleteEntities(tempId));
-        //   const message = err?.error?.error || 'Failed to create note';
-        //   this._error.set(message);
-        //   this._isLoading.set(false);
-        //   return throwError(() => new Error(message));
-        // }),
       ),
     );
   }
@@ -223,7 +275,7 @@ export class NoteService {
    */
   updateNote(id: string, data: UpdateNoteInput): Observable<Note> {
     this._error.set(null);
-
+    // console.log('[NoteService] Updating note', id, data);
     const original = this.store.query(getEntity(id));
     if (!original) {
       return throwError(() => new Error('Note not found'));
@@ -252,6 +304,30 @@ export class NoteService {
         return throwError(() => new Error(message));
       }),
     );
+  }
+
+  /**
+   * Save Automerge document
+   * - Updates local store/IndexedDB immediately
+   * - Triggers debounced background API sync
+   */
+  async saveAutomergeDoc(id: string, base64Data: string): Promise<void> {
+    const original = this.store.query(getEntity(id));
+    if (!original) return;
+
+    // 1. Optimistic local update (this happens immediately on every keystroke/save)
+    const updatedNote: Note = {
+      ...original,
+      automergeDoc: base64Data, // Store as base64 string locally
+      updatedAt: new Date().toISOString(),
+    };
+
+    // console.log('[NoteService] Saving automerge doc locally', id);
+    this.store.update(updateEntities(id, updatedNote));
+    await this.persistToIndexedDB([updatedNote]);
+
+    // 2. Queue sync to server via Subject
+    this.saveSubject.next({ id, base64Data });
   }
 
   /**

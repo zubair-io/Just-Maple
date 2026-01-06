@@ -47,11 +47,11 @@ export class NoteViewComponent implements OnInit, OnDestroy {
     this.routeSubscription = this.route.params.subscribe((params) => {
       this.selectedTagId.set(params['tagId'] || null);
 
-      // Read docUrl from route params and find note by docUrl
-      const docUrl = params['docUrl'];
-      if (docUrl) {
-        // Find note by docUrl and set selectedNoteId to the note's _id
-        const note = this.noteService.notes().find((n) => n.docUrl === docUrl);
+      // Read documentId from route params and find note by documentId
+      const documentId = params['documentId'];
+      if (documentId) {
+        // Find note by documentId and set selectedNoteId to the note's _id
+        const note = this.noteService.notes().find((n) => n.documentId === documentId);
         this.selectedNoteId.set(note?._id || null);
       } else {
         this.selectedNoteId.set(null);
