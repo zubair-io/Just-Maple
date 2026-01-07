@@ -17,9 +17,9 @@ import { firstValueFrom } from 'rxjs';
  * Syncs documents with server using Automerge sync protocol over HTTP
  */
 export class HTTPNetworkAdapter extends NetworkAdapter {
-  // private documentId: string;
-  // private noteId: string;
-  //private userId: string;
+  private documentId: string = '';
+  private noteId: string = '';
+  private userId: string = '';
   private http: HttpClient;
   private authService: AuthService;
 
@@ -94,9 +94,9 @@ export class HTTPNetworkAdapter extends NetworkAdapter {
         : new Uint8Array(message.data as ArrayBuffer);
 
     // Send sync message to server via HTTP
-    // this.sendSyncMessageToServer(messageData, message.targetId as string).catch((error) => {
-    //   console.error('[HTTP Adapter] Failed to send message to server:', error);
-    // });
+    this.sendSyncMessageToServer(messageData, message.targetId as string).catch((error) => {
+      console.error('[HTTP Adapter] Failed to send message to server:', error);
+    });
   }
 
   /**
@@ -135,60 +135,60 @@ export class HTTPNetworkAdapter extends NetworkAdapter {
   /**
    * Send sync message to server via HTTP
    */
-  // private async sendSyncMessageToServer(syncMessage: Uint8Array, targetId: string): Promise<void> {
-  //   try {
-  //     const token = this.authService.accessToken();
+  private async sendSyncMessageToServer(syncMessage: Uint8Array, targetId: string): Promise<void> {
+    try {
+      const token = this.authService.accessToken();
 
-  //     // Convert to base64
-  //     const base64Message = this.uint8ArrayToBase64(syncMessage);
+      // Convert to base64
+      const base64Message = this.uint8ArrayToBase64(syncMessage);
 
-  //     console.log(
-  //       '[HTTP Adapter] Sending sync message to server, size:',
-  //       syncMessage.length,
-  //       'bytes',
-  //     );
+      console.log(
+        '[HTTP Adapter] Sending sync message to server, size:',
+        syncMessage.length,
+        'bytes',
+      );
 
-  //     // Use the noteId passed to constructor
-  //     const response = await firstValueFrom(
-  //       this.http.post<{ syncMessage: string }>(
-  //         `${this.API_BASE}/${this.noteId}/automerge-sync`,
-  //         {
-  //           syncMessage: base64Message,
-  //           clientID: this.peerId,
-  //         },
-  //         {
-  //           headers: {
-  //             Authorization: `Bearer ${token}`,
-  //           },
-  //         },
-  //       ),
-  //     );
+      // Use the noteId passed to constructor
+      const response = await firstValueFrom(
+        this.http.post<{ syncMessage: string }>(
+          `${this.API_BASE}/${this.noteId}/automerge-sync`,
+          {
+            syncMessage: base64Message,
+            clientID: this.peerId,
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        ),
+      );
 
-  //     console.log('[HTTP Adapter] Received response from server');
+      console.log('[HTTP Adapter] Received response from server');
 
-  //     // Decode response
-  //     const serverSyncMessage = this.base64ToUint8Array(response.syncMessage);
+      // Decode response
+      const serverSyncMessage = this.base64ToUint8Array(response.syncMessage);
 
-  //     if (serverSyncMessage.length > 0) {
-  //       // Emit server's response back to Automerge Repo
-  //       this.emit('message', {
-  //         type: 'sync',
-  //         senderId: 'server' as PeerId,
-  //         targetId: this.peerId!,
-  //         data: serverSyncMessage,
-  //         documentId: this.documentId,
-  //       } as any);
+      if (serverSyncMessage.length > 0) {
+        // Emit server's response back to Automerge Repo
+        this.emit('message', {
+          type: 'sync',
+          senderId: 'server' as PeerId,
+          targetId: this.peerId!,
+          data: serverSyncMessage,
+          documentId: this.documentId,
+        } as any);
 
-  //       console.log(
-  //         '[HTTP Adapter] Received sync message from server, size:',
-  //         serverSyncMessage.length,
-  //         'bytes',
-  //       );
-  //     }
-  //   } catch (error) {
-  //     console.error('[HTTP Adapter] Failed to send sync message:', error);
-  //   }
-  // }
+        console.log(
+          '[HTTP Adapter] Received sync message from server, size:',
+          serverSyncMessage.length,
+          'bytes',
+        );
+      }
+    } catch (error) {
+      console.error('[HTTP Adapter] Failed to send sync message:', error);
+    }
+  }
 
   /**
    * Convert Uint8Array to base64
