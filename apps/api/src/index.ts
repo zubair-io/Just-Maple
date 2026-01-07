@@ -12,6 +12,7 @@ import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
 import { collabRoutes } from './routes/collab';
 import { webrtcSignalingRoutes } from './routes/webrtc-signaling';
+import { eventRoutes } from './routes/events';
 import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
 import { collabOTWebSocket } from './ws/collab-ot.ws';
 import { testSyncWs } from './ws/test-sync.ws';
@@ -67,6 +68,7 @@ async function main() {
         .use(botRoutes)
         .use(collabRoutes)
         .use(webrtcSignalingRoutes) // WebRTC signaling for P2P collaboration
+        .use(eventRoutes) // SSE event stream for real-time app updates
         .use(testSyncWs); // Test sync WebSocket (always enabled)
 
     // Conditionally enable WebSocket routes

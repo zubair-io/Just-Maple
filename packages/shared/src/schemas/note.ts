@@ -58,6 +58,7 @@ export const CreateNoteSchema = Type.Object({
     content: Type.Optional(NoteContentSchema),
     tagId: Type.Optional(Type.String()),
     documentId: Type.Optional(Type.String()), // Document ID for routing
+    automergeDoc: Type.Optional(Type.Any()), // Binary CRDT
 });
 
 export type CreateNoteInput = Static<typeof CreateNoteSchema>;

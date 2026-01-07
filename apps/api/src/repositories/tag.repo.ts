@@ -192,6 +192,18 @@ export async function findTagByIdWithAccess(
 }
 
 /**
+ * Get all user IDs who have access to a tag (for event broadcasting)
+ * Returns all users in the sharedWith list (owner + collaborators)
+ */
+export async function getUsersWithTagAccess(tagId: string): Promise<string[]> {
+    const tag = await findTagByIdUnsafe(tagId);
+    if (!tag) return [];
+
+    // Return all users in the sharing list
+    return tag.sharing.sharedWith.map((entry) => entry.userId);
+}
+
+/**
  * Create a new tag with the user as owner
  */
 export async function createTag(userId: string, data: CreateTagInput): Promise<Tag> {

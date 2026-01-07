@@ -22,7 +22,7 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 4,
+    dbVersion: 5,
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.PAPER, keyPath: '_id', autoIncrement: false },
@@ -30,10 +30,12 @@ export class IndexedDBService {
       { name: DB_STORES.NOTE, keyPath: 'documentId', autoIncrement: false },
       { name: DB_STORES.SYNC_METADATA, keyPath: 'key', autoIncrement: false },
       { name: DB_STORES.MESSAGE, keyPath: '_id', autoIncrement: false },
+      { name: DB_STORES.AUTOMERGE, keyPath: 'key', autoIncrement: false },
     ],
   };
 
   private async initializeDB(): Promise<IDBDatabase> {
+    console.log('Initializing IndexedDB');
     if (!isPlatformBrowser(this.platformId)) {
       throw new Error('IndexedDB is not available in this environment');
     }
@@ -70,7 +72,7 @@ export class IndexedDBService {
   }
 
   async get<T>(key: string, storeName: string): Promise<T | undefined> {
-    if (!isPlatformBrowser(this.platformId)) return undefined;
+    // if (!isPlatformBrowser(this.platformId)) return undefined;
 
     const db = await this.initializeDB();
     return new Promise((resolve, reject) => {

@@ -11,9 +11,12 @@ import {
     moveNoteToTrash,
     restoreNoteFromTrash,
     emptyTrash,
+    findNoteByDocumentId,
 } from '../repositories/note.repo';
 import { otService } from '../services/ot.service';
 import { automergeService } from '../services/automerge.service';
+import { eventStreamService } from '../services/event-stream.service';
+import { getUsersWithTagAccess } from '../repositories/tag.repo';
 
 export const noteRoutes = new Elysia({ prefix: '/api/notes' })
     .use(jwtPlugin)
@@ -66,7 +69,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const note = await findNoteById(params.id, auth.user._id);
+            const note = await findNoteByDocumentId(params.id, auth.user._id);
 
             if (!note) {
                 set.status = 404;
@@ -81,7 +84,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
                     // This will create and save the document to DB
                     await automergeService.getDocument(params.id);
                     // Reload note to get the automergeDoc field
-                    const updatedNote = await findNoteById(params.id, auth.user._id);
+                    const updatedNote = await findNoteByDocumentId(params.id, auth.user._id);
                     return { note: updatedNote };
                 } catch (error) {
                     console.error('[Note Route] Failed to initialize Automerge document:', error);
@@ -109,6 +112,14 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             // Broadcast new note creation to all clients viewing this tag
             if (note.tagId) {
                 await otService.broadcastNoteCreated(note.tagId, note);
+
+                // Send SSE event to all users with access to this tag
+                const recipientUserIds = await getUsersWithTagAccess(note.tagId);
+                eventStreamService.sendToUsers(recipientUserIds, {
+                    type: 'note.created',
+                    note,
+                    tagId: note.tagId,
+                });
             }
 
             return { note };
@@ -145,6 +156,18 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
                 return { error: 'Note not found' };
             }
 
+            // Send SSE event for title updates (real-time sidebar updates)
+            if (note.tagId && body.title !== undefined) {
+                const recipientUserIds = await getUsersWithTagAccess(note.tagId);
+                eventStreamService.sendToUsers(recipientUserIds, {
+                    type: 'note.updated',
+                    noteId: note.documentId,
+                    title: body.title,
+                    updatedAt: note.updatedAt,
+                    tagId: note.tagId,
+                });
+            }
+
             return { note };
         },
         {
@@ -158,7 +181,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
                 isFavorite: t.Optional(t.Boolean()),
                 isArchived: t.Optional(t.Boolean()),
                 isTrashed: t.Optional(t.Boolean()),
-                automergeDoc: t.Optional(t.String()),
+                automergeDoc: t.Optional(t.Any()),
             }),
         },
     )
@@ -175,6 +198,16 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             if (!note) {
                 set.status = 404;
                 return { error: 'Note not found' };
+            }
+
+            // Send SSE event for note trashed
+            if (note.tagId) {
+                const recipientUserIds = await getUsersWithTagAccess(note.tagId);
+                eventStreamService.sendToUsers(recipientUserIds, {
+                    type: 'note.trashed',
+                    noteId: note.documentId,
+                    tagId: note.tagId,
+                });
             }
 
             return { note };
@@ -200,6 +233,16 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
                 return { error: 'Note not found' };
             }
 
+            // Send SSE event for note restored
+            if (note.tagId) {
+                const recipientUserIds = await getUsersWithTagAccess(note.tagId);
+                eventStreamService.sendToUsers(recipientUserIds, {
+                    type: 'note.restored',
+                    note,
+                    tagId: note.tagId,
+                });
+            }
+
             return { note };
         },
         {
@@ -216,11 +259,29 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
+
+            // Get note first to retrieve tagId before deletion
+            const note = await findNoteById(params.id, auth.user._id);
+            if (!note) {
+                set.status = 404;
+                return { error: 'Note not found' };
+            }
+
             const deleted = await deleteNote(params.id, auth.user._id);
 
             if (!deleted) {
                 set.status = 404;
                 return { error: 'Note not found' };
+            }
+
+            // Send SSE event for note deleted
+            if (note.tagId) {
+                const recipientUserIds = await getUsersWithTagAccess(note.tagId);
+                eventStreamService.sendToUsers(recipientUserIds, {
+                    type: 'note.deleted',
+                    noteId: note.documentId,
+                    tagId: note.tagId,
+                });
             }
 
             return { message: 'Note deleted permanently' };

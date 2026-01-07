@@ -134,6 +134,94 @@ export const webrtcSignalingRoutes = new Elysia({ prefix: '/api/webrtc' })
         },
     )
 
+    // SSE stream endpoint for real-time signal delivery
+    .get(
+        '/stream/:peerId',
+        async ({ jwt, params, query, set, request }) => {
+            const { peerId } = params;
+            const token = query.token;
+
+            // Verify JWT token (from query param since EventSource doesn't support headers)
+            if (!token) {
+                set.status = 401;
+                return { error: 'Missing token' };
+            }
+
+            try {
+                const payload = (await jwt.verify(token)) as JWTPayload | false;
+                if (!payload) {
+                    set.status = 401;
+                    return { error: 'Invalid token' };
+                }
+
+                // Optional: verify peer is registered
+                // Could check webrtcSignalingService for the peer session
+
+                // Create SSE stream
+                const stream = new ReadableStream({
+                    start(controller) {
+                        // Register this SSE connection
+                        webrtcSignalingService.registerSSEConnection(peerId, controller);
+
+                        // Send initial connection event
+                        const welcome = `data: ${JSON.stringify({ type: 'connected', peerId })}\n\n`;
+                        controller.enqueue(new TextEncoder().encode(welcome));
+
+                        // Send any queued signals immediately
+                        const queuedSignals = webrtcSignalingService.pollSignals(peerId);
+                        if (queuedSignals.length > 0) {
+                            const data = JSON.stringify({ signals: queuedSignals });
+                            const message = `data: ${data}\n\n`;
+                            controller.enqueue(new TextEncoder().encode(message));
+                        }
+
+                        // Keep-alive ping every 30 seconds
+                        const keepAlive = setInterval(() => {
+                            try {
+                                controller.enqueue(new TextEncoder().encode(': keep-alive\n\n'));
+                            } catch {
+                                clearInterval(keepAlive);
+                            }
+                        }, 30000);
+
+                        // Clean up on client disconnect
+                        request.signal.addEventListener('abort', () => {
+                            clearInterval(keepAlive);
+                            webrtcSignalingService.unregisterSSEConnection(peerId);
+                            try {
+                                controller.close();
+                            } catch {}
+                        });
+                    },
+
+                    cancel() {
+                        // Client closed connection
+                        webrtcSignalingService.unregisterSSEConnection(peerId);
+                    },
+                });
+
+                return new Response(stream, {
+                    headers: {
+                        'Content-Type': 'text/event-stream',
+                        'Cache-Control': 'no-cache',
+                        Connection: 'keep-alive',
+                    },
+                });
+            } catch (error) {
+                set.status = 401;
+                return { error: 'Invalid token' };
+            }
+        },
+        {
+            params: t.Object({
+                peerId: t.String(),
+            }),
+            query: t.Object({
+                token: t.Optional(t.String()),
+            }),
+        },
+    )
+
     // Update heartbeat for a peer
     .post(
         '/heartbeat',

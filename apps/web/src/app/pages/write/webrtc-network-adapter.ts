@@ -29,7 +29,7 @@ interface PeerInfo {
 /**
  * WebRTC Network Adapter for Automerge
  * Enables peer-to-peer collaboration using WebRTC DataChannels
- * Uses HTTP polling for signaling instead of WebSocket
+ * Uses Server-Sent Events (SSE) for signaling
  */
 export class WebRTCNetworkAdapter extends NetworkAdapter {
   // Note: peerId is inherited from NetworkAdapter base class
@@ -39,11 +39,15 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
   // WebRTC connections to other peers
   private peerConnections = new Map<string, RTCPeerConnection>();
   private dataChannels = new Map<string, RTCDataChannel>();
+  private pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
 
-  // Signaling via HTTP
+  // Signaling via SSE
   private http: HttpClient;
   private authService: AuthService;
-  private pollingActive = false;
+  private eventSource: EventSource | null = null;
+  private reconnectAttempts = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS = 5;
+  private readonly RECONNECT_DELAY = 2000; // 2 seconds
   private heartbeatInterval: any;
 
   // Connection state
@@ -87,8 +91,8 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
     // Register with signaling server and discover peers
     this.registerWithSignalingServer()
       .then(() => {
-        // Start polling for signals
-        this.startSignalPolling();
+        // Start SSE connection for signals (replaces polling)
+        this.startSSEConnection();
 
         // Start heartbeat to keep session alive
         this.startHeartbeat();
@@ -106,8 +110,13 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
    * Disconnect from all peers and clean up
    */
   disconnect(): void {
-    // Stop polling and heartbeat
-    this.pollingActive = false;
+    // Stop SSE connection
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
+
+    // Stop heartbeat
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
     }
@@ -131,6 +140,7 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
    * Send a message to all connected peers
    */
   send(message: Message): void {
+    console.log('[WebRTC Adapter] Sending message to peers:', message);
     const openChannels = Array.from(this.dataChannels.values()).filter(
       (dc) => dc.readyState === 'open',
     );
@@ -182,6 +192,7 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
    */
   private async registerWithSignalingServer(): Promise<void> {
     try {
+      console.log('[WebRTC Adapter] Registering with signaling server...');
       const token = this.authService.accessToken();
       const response = await firstValueFrom(
         this.http.post<{ success: boolean; peers: PeerInfo[] }>(
@@ -198,8 +209,14 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
         ),
       );
 
+      console.log(
+        `[WebRTC Adapter] Registered with ${response.peers.length} other peer(s)`,
+        response.peers,
+      );
+
       // Create connections to existing peers
       for (const peer of response.peers) {
+        console.log(`[WebRTC Adapter] Creating offer for peer: ${peer.peerId}`);
         await this.createOfferForPeer(peer.peerId);
       }
     } catch (error) {
@@ -234,45 +251,79 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
   }
 
   /**
-   * Start polling for signals from the signaling server
-   * Uses continuous long-polling (not setInterval) to avoid request buildup
+   * Start SSE connection for real-time signal delivery
    */
-  private startSignalPolling(): void {
-    this.pollingActive = true;
+  private startSSEConnection(): void {
+    if (this.eventSource) {
+      this.eventSource.close();
+    }
 
-    const poll = async () => {
-      // Exit if polling was stopped
-      if (!this.pollingActive) return;
+    const token = this.authService.accessToken();
 
+    // EventSource doesn't support custom headers, so pass token in query param
+    const url = `${this.API_BASE}/stream/${this.peerId}?token=${token}`;
+
+    console.log('[WebRTC Adapter] Opening SSE connection...');
+    this.eventSource = new EventSource(url);
+
+    // Handle incoming messages
+    this.eventSource.onmessage = (event) => {
       try {
-        const token = this.authService.accessToken();
-        const response = await firstValueFrom(
-          this.http.get<{ signals: SignalMessage[] }>(
-            `${this.API_BASE}/poll/${this.peerId}?timeout=15000`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            },
-          ),
-        );
+        const data = JSON.parse(event.data);
 
-        // Process incoming signals
-        for (const signal of response.signals) {
-          await this.handleIncomingSignal(signal);
+        if (data.type === 'connected') {
+          console.log('[WebRTC Adapter] SSE connected:', data.peerId);
+          this.reconnectAttempts = 0; // Reset on successful connection
+          return;
+        }
+
+        if (data.signals && Array.isArray(data.signals)) {
+          // Process all signals
+          for (const signal of data.signals) {
+            this.handleIncomingSignal(signal);
+          }
         }
       } catch (error) {
-        console.error('[WebRTC Adapter] Polling error:', error);
-      }
-
-      // Continue polling if still active
-      if (this.pollingActive) {
-        poll();
+        console.error('[WebRTC Adapter] Failed to parse SSE message:', error);
       }
     };
 
-    // Start the continuous polling loop
-    poll();
+    // Handle connection open
+    this.eventSource.onopen = () => {
+      console.log('[WebRTC Adapter] SSE connection established');
+      this.reconnectAttempts = 0;
+    };
+
+    // Handle errors and reconnection
+    this.eventSource.onerror = (error) => {
+      console.error('[WebRTC Adapter] SSE error:', error);
+
+      // Close the failed connection
+      if (this.eventSource) {
+        this.eventSource.close();
+        this.eventSource = null;
+      }
+
+      // Attempt reconnection with exponential backoff
+      if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+        this.reconnectAttempts++;
+        const delay = this.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts - 1);
+
+        console.log(
+          `[WebRTC Adapter] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})...`,
+        );
+
+        setTimeout(() => {
+          if (this._isReady) {
+            // Only reconnect if adapter still active
+            this.startSSEConnection();
+          }
+        }, delay);
+      } else {
+        console.error('[WebRTC Adapter] Max reconnection attempts reached');
+        // Could emit an event here to notify WriteService
+      }
+    };
   }
 
   /**
@@ -308,6 +359,8 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
    * Handle incoming signal from another peer
    */
   private async handleIncomingSignal(signal: SignalMessage): Promise<void> {
+    console.log(`[WebRTC Adapter] Received signal: ${signal.type} from ${signal.from}`);
+
     switch (signal.type) {
       case 'offer':
         await this.handleOffer(signal.from, signal.payload);
@@ -325,6 +378,8 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
    * Handle incoming offer from a peer
    */
   private async handleOffer(remotePeerId: string, offer: RTCSessionDescriptionInit): Promise<void> {
+    console.log(`[WebRTC Adapter] Handling offer from ${remotePeerId}`);
+
     // Create peer connection if it doesn't exist
     let pc = this.peerConnections.get(remotePeerId);
     if (!pc) {
@@ -333,12 +388,17 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
 
     // Set remote description
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    console.log(`[WebRTC Adapter] Set remote description (offer) for ${remotePeerId}`);
+
+    // Process any queued ICE candidates
+    await this.processPendingIceCandidates(remotePeerId);
 
     // Create and send answer
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
     await this.sendSignal(remotePeerId, 'answer', answer);
+    console.log(`[WebRTC Adapter] Sent answer to ${remotePeerId}`);
   }
 
   /**
@@ -348,6 +408,8 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
     remotePeerId: string,
     answer: RTCSessionDescriptionInit,
   ): Promise<void> {
+    console.log(`[WebRTC Adapter] Handling answer from ${remotePeerId}`);
+
     const pc = this.peerConnections.get(remotePeerId);
     if (!pc) {
       console.warn('[WebRTC Adapter] Received answer but no peer connection exists');
@@ -355,6 +417,10 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
     }
 
     await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    console.log(`[WebRTC Adapter] Set remote description (answer) for ${remotePeerId}`);
+
+    // Process any queued ICE candidates
+    await this.processPendingIceCandidates(remotePeerId);
   }
 
   /**
@@ -370,7 +436,51 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
       return;
     }
 
-    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    // If remote description isn't set yet, queue the candidate
+    if (!pc.remoteDescription) {
+      console.log(
+        `[WebRTC Adapter] Queueing ICE candidate for ${remotePeerId} (remote description not set yet)`,
+      );
+      if (!this.pendingIceCandidates.has(remotePeerId)) {
+        this.pendingIceCandidates.set(remotePeerId, []);
+      }
+      this.pendingIceCandidates.get(remotePeerId)!.push(candidate);
+      return;
+    }
+
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      console.log(`[WebRTC Adapter] Added ICE candidate for ${remotePeerId}`);
+    } catch (error) {
+      console.error(`[WebRTC Adapter] Failed to add ICE candidate for ${remotePeerId}:`, error);
+    }
+  }
+
+  /**
+   * Process any queued ICE candidates for a peer (after remote description is set)
+   */
+  private async processPendingIceCandidates(remotePeerId: string): Promise<void> {
+    const pendingCandidates = this.pendingIceCandidates.get(remotePeerId);
+    if (!pendingCandidates || pendingCandidates.length === 0) {
+      return;
+    }
+
+    console.log(
+      `[WebRTC Adapter] Processing ${pendingCandidates.length} queued ICE candidates for ${remotePeerId}`,
+    );
+    const pc = this.peerConnections.get(remotePeerId);
+    if (!pc) return;
+
+    for (const candidate of pendingCandidates) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (error) {
+        console.error(`[WebRTC Adapter] Failed to add queued ICE candidate:`, error);
+      }
+    }
+
+    // Clear the queue
+    this.pendingIceCandidates.delete(remotePeerId);
   }
 
   /**
@@ -401,8 +511,8 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
       iceCandidatePoolSize: 10,
       // Disable mDNS candidates for better localhost testing
       // This forces the browser to use IP addresses instead of .local addresses
-      bundlePolicy: 'max-bundle',
-      rtcpMuxPolicy: 'require',
+      //bundlePolicy: 'max-bundle',
+      //rtcpMuxPolicy: 'require',
     });
 
     this.peerConnections.set(remotePeerId, pc);
@@ -410,18 +520,43 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
     // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log(
+          `[WebRTC Adapter] Generated ICE candidate for ${remotePeerId}:`,
+          event.candidate.type,
+          event.candidate.candidate,
+        );
         this.sendSignal(remotePeerId, 'ice-candidate', event.candidate.toJSON());
+      } else {
+        console.log(`[WebRTC Adapter] ICE gathering complete for ${remotePeerId}`);
       }
+    };
+
+    // Handle ICE gathering state
+    pc.onicegatheringstatechange = () => {
+      console.log(
+        `[WebRTC Adapter] ICE gathering state for ${remotePeerId}: ${pc.iceGatheringState}`,
+      );
     };
 
     // Handle connection state changes
     pc.onconnectionstatechange = () => {
+      console.log(
+        `[WebRTC Adapter] Connection state changed for ${remotePeerId}: ${pc.connectionState}`,
+      );
+
       if (pc.connectionState === 'connected') {
         console.log('[WebRTC Adapter] P2P connection established with', remotePeerId);
       } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
         console.warn('[WebRTC Adapter] Connection failed/disconnected with', remotePeerId);
         this.handlePeerDisconnect(remotePeerId);
       }
+    };
+
+    // Log ICE connection state changes
+    pc.oniceconnectionstatechange = () => {
+      console.log(
+        `[WebRTC Adapter] ICE connection state for ${remotePeerId}: ${pc.iceConnectionState}`,
+      );
     };
 
     // Handle incoming data channel (as responder)
@@ -439,6 +574,7 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
     dataChannel.binaryType = 'arraybuffer';
 
     dataChannel.onopen = () => {
+      console.log(`[WebRTC Adapter] Data channel opened with peer: ${remotePeerId}`);
       this.dataChannels.set(remotePeerId, dataChannel);
 
       // Notify Automerge Repo about the new peer
@@ -449,6 +585,11 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
     };
 
     dataChannel.onmessage = (event) => {
+      console.log(
+        `[WebRTC Adapter] Received data channel message from ${remotePeerId}`,
+        event.data.byteLength,
+        'bytes',
+      );
       const data = new Uint8Array(event.data);
 
       // Emit message to Automerge Repo with documentId
@@ -462,6 +603,7 @@ export class WebRTCNetworkAdapter extends NetworkAdapter {
     };
 
     dataChannel.onclose = () => {
+      console.log(`[WebRTC Adapter] Data channel closed with peer: ${remotePeerId}`);
       this.dataChannels.delete(remotePeerId);
 
       // Notify Automerge Repo about peer disconnect

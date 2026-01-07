@@ -11,6 +11,9 @@ export class WebRTCSignalingService {
     // Peer ID -> Queue of pending signals
     private signalQueue = new Map<string, SignalMessage[]>();
 
+    // Peer ID -> SSE stream controller
+    private sseConnections = new Map<string, ReadableStreamDefaultController>();
+
     // Cleanup interval (30 seconds)
     private readonly STALE_PEER_TIMEOUT = 30000;
     private cleanupInterval: Timer;
@@ -72,6 +75,9 @@ export class WebRTCSignalingService {
         // Clean up signal queue
         this.signalQueue.delete(peerId);
 
+        // Close SSE connection if exists
+        this.unregisterSSEConnection(peerId);
+
         console.log(`[WebRTC Signaling] Peer unregistered: ${peerId} from document ${documentId}`);
     }
 
@@ -91,18 +97,45 @@ export class WebRTCSignalingService {
 
     /**
      * Queue a signal message for a peer
+     * If peer has an active SSE connection, push immediately
      */
     queueSignal(message: SignalMessage): void {
-        const queue = this.signalQueue.get(message.to);
-        if (!queue) {
-            console.warn(`[WebRTC Signaling] Cannot queue signal - peer not found: ${message.to}`);
+        const { to } = message;
+
+        // Get or create queue for target peer
+        if (!this.signalQueue.has(to)) {
+            console.warn(`[WebRTC Signaling] Cannot queue signal - peer not found: ${to}`);
             return;
         }
 
+        const queue = this.signalQueue.get(to)!;
         queue.push(message);
-        console.log(
-            `[WebRTC Signaling] Signal queued: ${message.type} from ${message.from} to ${message.to}`,
-        );
+
+        // If peer has active SSE connection, push signal immediately
+        const controller = this.sseConnections.get(to);
+        if (controller) {
+            try {
+                // Format as SSE message
+                const data = JSON.stringify({ signals: [message] });
+                const sseMessage = `data: ${data}\n\n`;
+
+                controller.enqueue(new TextEncoder().encode(sseMessage));
+
+                // Clear the queue since we just delivered it
+                this.signalQueue.set(to, []);
+
+                console.log(
+                    `[WebRTC SSE] Signal pushed via SSE: ${message.type} from ${message.from} to ${to}`,
+                );
+            } catch (error) {
+                console.error(`[WebRTC SSE] Failed to push signal to ${to}:`, error);
+                // Leave in queue for polling fallback
+            }
+        } else {
+            console.log(
+                `[WebRTC Signaling] Signal queued: ${message.type} from ${message.from} to ${to}`,
+            );
+        }
     }
 
     /**
@@ -138,6 +171,36 @@ export class WebRTCSignalingService {
     }
 
     /**
+     * Register an SSE connection for a peer
+     */
+    registerSSEConnection(peerId: string, controller: ReadableStreamDefaultController): void {
+        // Close existing connection if any
+        const existing = this.sseConnections.get(peerId);
+        if (existing) {
+            try {
+                existing.close();
+            } catch {}
+        }
+
+        this.sseConnections.set(peerId, controller);
+        console.log(`[WebRTC SSE] Registered SSE connection for peer: ${peerId}`);
+    }
+
+    /**
+     * Unregister SSE connection for a peer
+     */
+    unregisterSSEConnection(peerId: string): void {
+        const controller = this.sseConnections.get(peerId);
+        if (controller) {
+            try {
+                controller.close();
+            } catch {}
+            this.sseConnections.delete(peerId);
+            console.log(`[WebRTC SSE] Unregistered SSE connection for peer: ${peerId}`);
+        }
+    }
+
+    /**
      * Clean up peers that haven't sent a heartbeat in > 30 seconds
      */
     cleanupStalePeers(): void {
@@ -156,6 +219,10 @@ export class WebRTCSignalingService {
 
             // Remove stale peers
             for (const peerId of stalePeers) {
+                // Close SSE connection if exists
+                this.unregisterSSEConnection(peerId);
+
+                // Unregister peer from session
                 this.unregisterPeer(documentId, peerId);
                 cleanupCount++;
             }

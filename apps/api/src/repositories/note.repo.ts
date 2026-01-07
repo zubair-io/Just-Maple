@@ -42,11 +42,11 @@ function getCollection(): Collection<NoteDocument> {
 
 function toNoteResponse(doc: NoteDocument): Note {
     // Normalize automergeDoc to plain array for JSON serialization
-    let automergeDoc = doc.automergeDoc;
-    if (automergeDoc && Buffer.isBuffer(automergeDoc)) {
-        // Convert Buffer to plain array for consistent JSON serialization
-        automergeDoc = Array.from(automergeDoc) as any;
-    }
+    // let automergeDoc = doc.automergeDoc;
+    // if (automergeDoc && Buffer.isBuffer(automergeDoc)) {
+    //     // Convert Buffer to plain array for consistent JSON serialization
+    //     automergeDoc = Array.from(automergeDoc) as any;
+    // }
 
     return {
         _id: doc._id.toString(),
@@ -54,7 +54,7 @@ function toNoteResponse(doc: NoteDocument): Note {
         type: doc.type || 'write', // Default for legacy notes
         title: doc.title,
         content: doc.content,
-        automergeDoc, // Binary CRDT (normalized to array)
+        automergeDoc: doc.automergeDoc, // Binary CRDT (normalized to array)
         version: doc.version, // Hash of Automerge heads
         lastSyncedHeads: doc.lastSyncedHeads, // Automerge heads
         tagId: doc.tagId?.toString(),
@@ -265,39 +265,42 @@ export async function updateNote(
         if (data.content !== undefined) {
             updateData.content = data.content;
         }
-
-        // Automerge Merge Logic
         if (data.automergeDoc !== undefined) {
-            let incomingBinary: Uint8Array;
-            if (typeof data.automergeDoc === 'string') {
-                incomingBinary = Buffer.from(data.automergeDoc, 'base64');
-            } else {
-                incomingBinary = data.automergeDoc as unknown as Uint8Array;
-            }
-
-            const incomingDoc = Automerge.load(incomingBinary);
-            let finalDoc = incomingDoc;
-
-            if (doc.automergeDoc) {
-                let existingBinary: Uint8Array;
-                if (Buffer.isBuffer(doc.automergeDoc)) {
-                    existingBinary = doc.automergeDoc;
-                } else if (Array.isArray(doc.automergeDoc)) {
-                    // Handle case where it might be stored as an array (e.g. from a past save)
-                    existingBinary = new Uint8Array(doc.automergeDoc);
-                } else if ((doc.automergeDoc as any).buffer) {
-                    // Handle binary object from Mongo driver sometimes
-                    existingBinary = new Uint8Array((doc.automergeDoc as any).buffer);
-                } else {
-                    existingBinary = new Uint8Array(doc.automergeDoc as any);
-                }
-
-                const existingDoc = Automerge.load(existingBinary);
-                finalDoc = Automerge.merge(existingDoc, incomingDoc);
-            }
-
-            updateData.automergeDoc = Buffer.from(Automerge.save(finalDoc));
+            updateData.automergeDoc = data.automergeDoc;
         }
+
+        // // Automerge Merge Logic
+        // if (data.automergeDoc !== undefined) {
+        //     let incomingBinary: Uint8Array;
+        //     if (typeof data.automergeDoc === 'string') {
+        //         incomingBinary = Buffer.from(data.automergeDoc, 'base64');
+        //     } else {
+        //         incomingBinary = data.automergeDoc as unknown as Uint8Array;
+        //     }
+
+        //     const incomingDoc = Automerge.load(incomingBinary);
+        //     let finalDoc = incomingDoc;
+
+        //     if (doc.automergeDoc) {
+        //         let existingBinary: Uint8Array;
+        //         if (Buffer.isBuffer(doc.automergeDoc)) {
+        //             existingBinary = doc.automergeDoc;
+        //         } else if (Array.isArray(doc.automergeDoc)) {
+        //             // Handle case where it might be stored as an array (e.g. from a past save)
+        //             existingBinary = new Uint8Array(doc.automergeDoc);
+        //         } else if ((doc.automergeDoc as any).buffer) {
+        //             // Handle binary object from Mongo driver sometimes
+        //             existingBinary = new Uint8Array((doc.automergeDoc as any).buffer);
+        //         } else {
+        //             existingBinary = new Uint8Array(doc.automergeDoc as any);
+        //         }
+
+        //         const existingDoc = Automerge.load(existingBinary);
+        //         finalDoc = Automerge.merge(existingDoc, incomingDoc);
+        //     }
+
+        //     updateData.automergeDoc = Buffer.from(Automerge.save(finalDoc));
+        // }
 
         if (data.version !== undefined) {
             updateData.version = data.version;
