@@ -11,6 +11,9 @@ import { NoteServiceStorageAdapter } from './note-service-storage-adapter';
 import * as AutomergeCore from '@automerge/automerge/slim';
 import { firstValueFrom } from 'rxjs';
 import { IndexedDBService } from '../../services/indexed-db.service';
+import { SimpleNetworkAdapter } from './simple-network-adapter';
+import { JustMapleNetworkAdapter } from '../../services/automerge-network-adapter';
+import { WebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket';
 
 function base64ToBytes(base64: string): Uint8Array {
   const binaryString = atob(base64);
@@ -30,130 +33,29 @@ export class WriteService {
   private noteService = inject(NoteService);
   private indexedDBService = inject(IndexedDBService);
 
-  // Store active adapters for cleanup
-  private activeWebRTCAdapters: WebRTCNetworkAdapter[] = [];
-  private activeHTTPAdapters: HTTPNetworkAdapter[] = [];
-
   constructor() {
     this.init();
   }
 
   private async init() {
     await Automerge.initializeBase64Wasm(automergeWasmBase64);
+    const token = this.authService.accessToken();
+
+    //  const networkAdapter = new SimpleNetworkAdapter(token);
+    //const networkAdapter = new JustMapleNetworkAdapter(noteId, this.http, this.authService);
 
     // Initialize repo with storage only, no network adapters yet
     // WebRTC adapters will be added per-document
 
     //const storage = new IndexedDBStorageAdapter('just-maple-automerge');
+    //const network = new WebSocketClientAdapter("ws://localhost:3030");
     const storage = new NoteServiceStorageAdapter(this.noteService, this.indexedDBService);
     this.repo = new Repo({
       storage,
-      network: [],
+      network: [new WebSocketClientAdapter('wss://sync.automerge.org')],
     });
 
     storage.setRepo(this.repo);
     this.ready.set(true);
-
-    // Subscribe to note updates to merge server changes
-    // This handles the "background sync" part where server data comes in
-    // and we need to merge it into the local Automerge doc
-    // Note: This relies on NoteService emitting updates via notes$ or activeNote$
-    // We might need a more targeted subscription if performance becomes an issue
-    // but for now, we'll listen to specific note updates if we have a handle open.
-    // TODO: Ideally we only subscribe when we have an open handle.
-    // For now, let's add a method to sync a specific note when requested.
-  }
-
-  /**
-   * Sync a document with the server
-   * - Fetches latest from server
-   * - Merges into local repo
-   */
-  async syncDocument(documentId: string): Promise<void> {
-    try {
-      if (!this.repo) return;
-      const handle = await this.repo.find(documentId as any);
-      if (!handle) return;
-
-      console.log('[WriteService] Syncing document...', documentId);
-      // Fetch latest note from server
-      const note = await firstValueFrom(this.noteService.getNote(documentId));
-
-      if (note.automergeDoc) {
-        const serverBinary = base64ToBytes(note.automergeDoc as string);
-        const serverDoc = AutomergeCore.load(serverBinary);
-
-        handle.change((doc: any) => {
-          AutomergeCore.merge(doc, serverDoc);
-        });
-        console.log('[WriteService] Merged server changes for', documentId);
-      }
-    } catch (err) {
-      console.error('[WriteService] Error syncing document:', err);
-    }
-  }
-
-  /**
-   * Enable both HTTP and WebRTC adapters for a specific document
-   * Creates HTTP sync + P2P connections to other peers
-   */
-  enableNetworkAdapters(
-    documentId: string,
-    noteId: string,
-    userId: string,
-    options?: {
-      onAllPeersDisconnected?: (noteId: string, docHandle: any) => void;
-    },
-  ): { webrtc: WebRTCNetworkAdapter } {
-    if (!this.repo) {
-      throw new Error('[WriteService] Cannot enable adapters - repo not initialized');
-    }
-
-    // Create WebRTC adapter for P2P sync
-    const webrtcAdapter = new WebRTCNetworkAdapter(documentId, userId, this.http, this.authService);
-
-    // Listen for all peers disconnecting
-    if (options?.onAllPeersDisconnected) {
-      (webrtcAdapter as any).on('all-peers-disconnected', async () => {
-        console.warn('[WriteService] All WebRTC peers disconnected');
-        // Get the doc handle from repo
-        const handle = this.repo.find(documentId as any);
-        if (handle && options.onAllPeersDisconnected) {
-          options.onAllPeersDisconnected(documentId, handle);
-        }
-      });
-    }
-
-    this.repo.networkSubsystem.addNetworkAdapter(webrtcAdapter);
-    this.activeWebRTCAdapters.push(webrtcAdapter);
-
-    console.log('[WriteService] Added WebRTC adapter for document', documentId);
-
-    return { webrtc: webrtcAdapter };
-  }
-
-  /**
-   * Clean up all network adapters
-   */
-  cleanup(): void {
-    // Clean up WebRTC adapters
-    for (const adapter of this.activeWebRTCAdapters) {
-      try {
-        adapter.disconnect();
-      } catch (error) {
-        console.error('[WriteService] Error disconnecting WebRTC adapter:', error);
-      }
-    }
-    this.activeWebRTCAdapters = [];
-
-    // Clean up HTTP adapters
-    for (const adapter of this.activeHTTPAdapters) {
-      try {
-        adapter.disconnect();
-      } catch (error) {
-        console.error('[WriteService] Error disconnecting HTTP adapter:', error);
-      }
-    }
-    this.activeHTTPAdapters = [];
   }
 }

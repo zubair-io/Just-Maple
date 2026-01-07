@@ -51,7 +51,7 @@ export class JustMapleNetworkAdapter extends NetworkAdapter {
    */
   connect(peerId: PeerId): void {
     console.log('[AutomergeNetworkAdapter] ⭐ connect() called with peerId:', peerId);
-    console.log('[AutomergeNetworkAdapter] Note ID:', this.noteId);
+    //console.log('[AutomergeNetworkAdapter] Note ID:', this.noteId);
     this.peerId = peerId;
 
     // Only use WebSocket in dev mode (non-SignalR mode)

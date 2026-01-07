@@ -260,12 +260,6 @@ export class WriteComponent implements OnDestroy {
       const note = this.selectedNote();
       const noteId = note?._id || documentId; // Fallback to documentId if no note yet
 
-      this.writeService.enableNetworkAdapters(documentId, noteId, userId, {
-        onAllPeersDisconnected: (noteId, docHandle) => {
-          console.warn('[Write] All WebRTC peers disconnected - HTTP adapter continues syncing');
-        },
-      });
-
       const autoMergeUrl = `automerge:${documentId}`;
       let handle;
 
@@ -562,8 +556,6 @@ export class WriteComponent implements OnDestroy {
       clearTimeout(this.titleSyncTimeout);
     }
     this.editorView?.destroy();
-    // Cleanup is now handled by WriteService
-    this.writeService.cleanup();
   }
 
   ngOnDestroy() {
