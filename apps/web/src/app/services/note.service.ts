@@ -15,6 +15,8 @@ import {
   mergeMap,
   debounceTime,
   Subject,
+  merge,
+  takeWhile,
 } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { createStore, filterNil, select } from '@ngneat/elf';
@@ -41,6 +43,7 @@ import {
 import { IndexedDBService } from './indexed-db.service';
 import { NetworkService } from './network.service';
 import { DB_STORES } from './db-stores';
+import { EventStreamService } from './event-stream.service';
 import type {
   Note,
   CreateNoteInput,
@@ -64,6 +67,7 @@ export class NoteService {
   private readonly indexedDB = inject(IndexedDBService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly network = inject(NetworkService);
+  private readonly eventStream = inject(EventStreamService);
 
   // ELF Store
   private readonly store = createStore(
@@ -95,34 +99,84 @@ export class NoteService {
     if (isPlatformBrowser(this.platformId)) {
       this.hydrateFromIndexedDB();
     }
-    this.setupSaveSubscription();
+
+    this.setupEventStreamListeners();
   }
 
-  private setupSaveSubscription() {
-    this.saveSubject
+  // private setupSaveSubscription() {
+  //   this.saveSubject
+  //     .pipe(
+  //       // Group saves by note ID so one note doesn't block another
+  //       groupBy((req) => req.id),
+  //       // For each group (each note ID), debounce
+  //       mergeMap((group) =>
+  //         group.pipe(
+  //           debounceTime(1000), // Wait 1 second of silence
+  //           switchMap((req) => {
+  //             console.log('[NoteService] Processing debounced save for', req.id);
+  //             return this.http
+  //               .put<{ note: Note }>(`/api/notes/${req.id}`, { automergeDoc: req.base64Data })
+  //               .pipe(
+  //                 tap(() => console.log('[NoteService] Synced automerge doc to server', req.id)),
+  //                 catchError((err) => {
+  //                   console.error('[NoteService] Failed to sync automerge doc', err);
+  //                   return of(null);
+  //                 }),
+  //               );
+  //           }),
+  //         ),
+  //       ),
+  //     )
+  //     .subscribe();
+  // }
+
+  private setupEventStreamListeners() {
+    //  Listen for note.created events
+    this.eventStream
+      .on('note.created')
       .pipe(
-        // Group saves by note ID so one note doesn't block another
-        groupBy((req) => req.id),
-        // For each group (each note ID), debounce
-        mergeMap((group) =>
-          group.pipe(
-            debounceTime(1000), // Wait 1 second of silence
-            switchMap((req) => {
-              console.log('[NoteService] Processing debounced save for', req.id);
-              return this.http
-                .put<{ note: Note }>(`/api/notes/${req.id}`, { automergeDoc: req.base64Data })
-                .pipe(
-                  tap(() => console.log('[NoteService] Synced automerge doc to server', req.id)),
-                  catchError((err) => {
-                    console.error('[NoteService] Failed to sync automerge doc', err);
-                    return of(null);
-                  }),
-                );
-            }),
-          ),
-        ),
+        tap((event) => {
+          console.log('[NoteService] Received note.created event', event.note);
+          this.store.update(addEntities(event.note));
+          this.persistToIndexedDB([event.note]);
+        }),
+        debounceTime(1000),
+        switchMap((event) => {
+          return this.getNote(event.note.documentId);
+        }),
       )
       .subscribe();
+    // Listen for note.updated events
+    this.eventStream.on('note.updated').subscribe((event) => {
+      console.log('[NoteService] Received note.updated event', event.noteId);
+      this.store.update(
+        updateEntities(event.noteId, (note) => ({
+          ...note,
+          title: event.title ?? note.title,
+          updatedAt: event.updatedAt,
+        })),
+      );
+    });
+    // Listen for note.deleted events
+    this.eventStream.on('note.deleted').subscribe((event) => {
+      console.log('[NoteService] Received note.deleted event', event.noteId);
+      this.store.update(deleteEntities(event.noteId));
+      if (isPlatformBrowser(this.platformId)) {
+        this.indexedDB.delete(event.noteId, STORE_NAME);
+      }
+    });
+    // Listen for note.trashed events
+    this.eventStream.on('note.trashed').subscribe((event) => {
+      console.log('[NoteService] Received note.trashed event', event.noteId);
+      // Remove from visible list (user can view trash separately)
+      this.store.update(deleteEntities(event.noteId));
+    });
+    // Listen for note.restored events
+    this.eventStream.on('note.restored').subscribe((event) => {
+      console.log('[NoteService] Received note.restored event', event.note);
+      this.store.update(upsertEntities([event.note]));
+      this.persistToIndexedDB([event.note]);
+    });
   }
 
   private async hydrateFromIndexedDB(): Promise<void> {
@@ -176,7 +230,6 @@ export class NoteService {
 
     return this.http.get<{ notes: Note[] }>('/api/notes', { params }).pipe(
       tap((response) => {
-        // console.log('[NoteService] Loaded notes from server:', response.notes);
         this.store.update(setEntities(response.notes));
         this.persistToIndexedDB(response.notes);
         this._isLoading.set(false);
@@ -207,19 +260,31 @@ export class NoteService {
     this._isLoading.set(true);
     this._error.set(null);
 
-    return this.http.get<{ note: Note }>(`/api/notes/${noteId}`).pipe(
+    const httpCall = this.http.get<{ note: Note }>(`/api/notes/${noteId}`).pipe(
       tap((response) => {
         this.store.update(upsertEntities(response.note));
         this.persistToIndexedDB([response.note]);
         this._isLoading.set(false);
       }),
       map((response) => response.note),
+      map((data) => ({ source: 'server', data })),
       catchError((err) => {
         const message = err?.error?.error || 'Failed to fetch note';
         this._error.set(message);
         this._isLoading.set(false);
         return throwError(() => err);
       }),
+    );
+
+    const localData = this.store.pipe(
+      selectEntity(noteId),
+      map((data) => ({ source: 'local', data })),
+    );
+
+    return merge(localData, httpCall).pipe(
+      takeWhile(({ source }) => source !== 'server', true),
+      map(({ data }) => data),
+      filterNil(),
     );
   }
 
@@ -270,6 +335,18 @@ export class NoteService {
     );
   }
 
+  updateAutoMerge(id: string, data: any) {
+    const original = this.store.query(getEntity(id)) as Note;
+    // if (!original) {
+    //   return throwError(() => new Error('Note not found'));
+    // }
+
+    const snapshot = data.key[1] === 'snapshot';
+    const automergeDoc = snapshot ? [] : (original.automergeDoc ?? []);
+    automergeDoc.push(data);
+    return this.updateNote(id, { automergeDoc });
+  }
+
   /**
    * Update a note with optimistic update
    */
@@ -281,7 +358,7 @@ export class NoteService {
       return throwError(() => new Error('Note not found'));
     }
 
-    // Optimistic update
+    // // Optimistic update
     this.store.update(
       updateEntities(id, (entity) => ({
         ...entity,
@@ -307,28 +384,67 @@ export class NoteService {
   }
 
   /**
-   * Save Automerge document
-   * - Updates local store/IndexedDB immediately
-   * - Triggers debounced background API sync
+   * Save sync metadata
    */
-  async saveAutomergeDoc(id: string, base64Data: string): Promise<void> {
-    const original = this.store.query(getEntity(id));
-    if (!original) return;
-
-    // 1. Optimistic local update (this happens immediately on every keystroke/save)
-    const updatedNote: Note = {
-      ...original,
-      automergeDoc: base64Data, // Store as base64 string locally
-      updatedAt: new Date().toISOString(),
-    };
-
-    // console.log('[NoteService] Saving automerge doc locally', id);
-    this.store.update(updateEntities(id, updatedNote));
-    await this.persistToIndexedDB([updatedNote]);
-
-    // 2. Queue sync to server via Subject
-    this.saveSubject.next({ id, base64Data });
+  async saveSyncMetadata(key: string, data: Uint8Array): Promise<void> {
+    if (!isPlatformBrowser(this.platformId)) return;
+    await this.indexedDB.put({ key, value: data }, DB_STORES.SYNC_METADATA);
   }
+
+  /**
+   * Get note directly from storage (bypassing in-memory store)
+   */
+  async getNoteFromStorage(id: string): Promise<Note | undefined> {
+    if (!isPlatformBrowser(this.platformId)) return undefined;
+    return this.indexedDB.get<Note>(id, STORE_NAME);
+  }
+
+  /**
+   * Get all notes directly from storage
+   */
+  async getAllNotesFromStorage(): Promise<Note[]> {
+    if (!isPlatformBrowser(this.platformId)) return [];
+    return this.indexedDB.getAll<Note>(STORE_NAME);
+  }
+
+  // /**
+  //  * Save Automerge document
+  //  * - Updates local store/IndexedDB immediately
+  //  * - Triggers debounced background API sync
+  //  */
+  // async saveAutomergeDoc(id: string, base64Data: string): Promise<void> {
+  //   let original = this.store.query(getEntity(id));
+
+  //   // If not in memory, try fetching from storage
+  //   if (!original) {
+  //     original = await this.getNoteFromStorage(id);
+  //   }
+
+  //   if (!original) {
+  //     console.warn('[NoteService] Cannot save Automerge doc, note not found locally:', id);
+  //     return;
+  //   }
+
+  //   // 1. Optimistic local update (this happens immediately on every keystroke/save)
+  //   const updatedNote: Note = {
+  //     ...original,
+  //     automergeDoc: base64Data, // Store as base64 string locally
+  //     updatedAt: new Date().toISOString(),
+  //   };
+
+  //   // console.log('[NoteService] Saving automerge doc locally', id);
+
+  //   // Update memory if present
+  //   if (this.store.query(getEntity(id))) {
+  //     this.store.update(updateEntities(id, updatedNote));
+  //   }
+
+  //   // Always persist to DB
+  //   await this.persistToIndexedDB([updatedNote]);
+
+  //   // 2. Queue sync to server via Subject
+  //   this.saveSubject.next({ id, base64Data });
+  // }
 
   /**
    * Move note to trash
@@ -470,6 +586,9 @@ export class NoteService {
       this.store.update(resetActiveId());
     }
   }
+  queryNote(id: string): Note | undefined {
+    return this.store.query(getEntity(id));
+  }
 
   /**
    * Get note by ID synchronously
@@ -504,8 +623,20 @@ export class NoteService {
     }
   }
 
-  private async persistToIndexedDB(notes: Note[]): Promise<void> {
+  async persistToIndexedDB(notes: Note[]): Promise<void> {
     if (!isPlatformBrowser(this.platformId) || notes.length === 0) return;
     await this.indexedDB.putMany(notes, STORE_NAME);
+  }
+
+  /**
+   * Get sync metadata (e.g. storage-adapter-id)
+   */
+  async getSyncMetadata(key: string): Promise<Uint8Array | undefined> {
+    if (!isPlatformBrowser(this.platformId)) return undefined;
+    const result = await this.indexedDB.get<{ key: string; value: Uint8Array }>(
+      key,
+      DB_STORES.SYNC_METADATA,
+    );
+    return result?.value;
   }
 }

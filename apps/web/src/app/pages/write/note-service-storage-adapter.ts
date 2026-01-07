@@ -1,118 +1,124 @@
-import { StorageAdapter, StorageKey } from '@automerge/automerge-repo/slim';
+import {
+  Automerge,
+  isValidAutomergeUrl,
+  Repo,
+  StorageAdapter,
+  StorageAdapterInterface,
+  StorageKey,
+} from '@automerge/automerge-repo/slim';
 import { NoteService } from '../../services/note.service';
+import { firstValueFrom, tap, last } from 'rxjs';
+import { IndexedDBService } from '../../services/indexed-db.service';
+import { DB_STORES } from '../../services/db-stores';
 
-function base64ToBytes(base64: string): Uint8Array {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+export class NoteServiceStorageAdapter implements StorageAdapterInterface {
+  private repo: Repo | null = null;
+  private keyPrefixId = '';
+  private store: any[] = [];
+
+  constructor(
+    private readonly noteService: NoteService,
+    private readonly indexedDBService: IndexedDBService,
+  ) {}
+
+  // Call this after creating the Repo
+  setRepo(repo: Repo) {
+    this.repo = repo;
   }
-  return bytes;
-}
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  load(key: StorageKey): Promise<Uint8Array | undefined> {
+    this.keyPrefixId = key[0];
+    return this.indexedDBService
+      .get<{ data: Uint8Array }>(this.keyPrefixId, DB_STORES.AUTOMERGE)
+      .then((result) => {
+        return result?.data;
+      });
   }
-  return btoa(binary);
-}
 
-export class NoteServiceStorageAdapter implements StorageAdapter {
-  constructor(private readonly noteService: NoteService) {}
-
-  async load(key: StorageKey): Promise<Uint8Array | undefined> {
-    const noteId = key[0];
-    console.log('[StorageAdapter] load', key);
-    // 1. Try to get immediately from synchronous store
-    const localNote = this.noteService.getNoteById(noteId);
-    if (localNote?.automergeDoc) {
-      if (typeof localNote.automergeDoc === 'string') {
-        return base64ToBytes(localNote.automergeDoc);
-      }
-      return localNote.automergeDoc as unknown as Uint8Array;
+  save(key: StorageKey, data: Uint8Array): Promise<void> {
+    if (key.length === 1 && typeof key[0] === 'string' && key[0].startsWith('storage-')) {
+      this.indexedDBService.put(
+        {
+          key: key[0],
+          data,
+        },
+        DB_STORES.AUTOMERGE,
+      );
+      return Promise.resolve();
     }
-    return undefined;
-  }
 
-  async save(key: StorageKey, data: Uint8Array): Promise<void> {
-    const noteId = key[0];
-
-    // Safety check: Don't overwrite full doc with incremental changes if we can help it.
-    // Ideally we'd merge them, but for now let's only save FULL snapshots to the NoteService.
-    // Automerge Repo works by saving Incremental changes often, and Snapshots occasionally.
-    // If we only save Snapshots, we might lose some recent typing if a snapshot hasn't happened.
-    // However, saving metadata/increments as the *entire* note content is destructive.
-
-    // Keys usually look like: [docId] (root), [docId, 'snapshot', hash], [docId, 'incremental', hash]
-
-    // Strategy:
-    // 1. If it's a snapshot, it's the full doc. Save it.
-    // 2. If it's the root key (metadata?), maybe save it?
-    // 3. If it's incremental, we SHOULD merge it, but for now let's log and see.
-
-    const isSnapshot = key.includes('snapshot');
-    const isIncremental = key.includes('incremental');
-
-    console.log('[StorageAdapter] save called:', key, 'Size:', data.length);
-
-    if (key.length === 1 || isSnapshot) {
-      const base64 = bytesToBase64(data);
-      await this.noteService.saveAutomergeDoc(noteId, base64);
-    } else if (isIncremental) {
-      console.warn('[StorageAdapter] Ignoring incremental save for now to prevent overwrite:', key);
-      // TODO: Implement merging of incremental changes into the existing Note
-      // OR store increments separately in the Note entity (requires schema change).
-      // For local-first robustness, we probably want to trigger a compaction/snapshot more often?
+    if (key[0] === this.keyPrefixId) {
+      this.store.push({ key, data });
     }
+    this.noteService.updateAutoMerge(key[0], { key, data }).subscribe();
+    return Promise.resolve();
   }
 
-  async remove(key: StorageKey): Promise<void> {
-    console.log('[StorageAdapter] remove called for key:', key);
-
-    // Only delete the note if the ROOT document is being removed.
-    // Ignore deletion of implementation details like old snapshots.
-    // if (key.length === 1) {
-    //     const noteId = key[0];
-    //     this.noteService.deleteNote(noteId);
-    // } else {
-    //     console.log('[StorageAdapter] Ignoring removal of sub-key:', key);
-    // }
+  remove(key: StorageKey): Promise<void> {
+    return Promise.resolve();
   }
 
   async loadRange(keyPrefix: StorageKey): Promise<{ key: StorageKey; data: Uint8Array }[]> {
-    const allNotes = this.noteService.notes();
-    const result: { key: StorageKey; data: Uint8Array }[] = [];
+    console.log('loadRange called for prefix:', keyPrefix);
+    const id = keyPrefix[0];
 
-    for (const note of allNotes) {
-      if (note.automergeDoc && note.documentId) {
-        const noteKey = [note.documentId];
-        // Simple prefix match
-        if (keyPrefix.length === 0 || noteKey[0] === keyPrefix[0]) {
-          const data =
-            typeof note.automergeDoc === 'string'
-              ? base64ToBytes(note.automergeDoc)
-              : (note.automergeDoc as unknown as Uint8Array);
-          result.push({ key: noteKey, data });
-        }
-      }
+    if (id === this.keyPrefixId) {
+      console.log('Returning stored data for prefix:', keyPrefix, 'data:', this.store);
+      //return this.store;
     }
-    return result;
+
+    const note = this.noteService.queryNote(id);
+    console.log('note:', note);
+    let document = [{ key: keyPrefix, data: new Uint8Array(0) }];
+    if (note?.automergeDoc) {
+      const castedDocs = note.automergeDoc.map((chunk: any) => ({
+        key: chunk.key,
+        data:
+          chunk.data instanceof Uint8Array ? chunk.data : new Uint8Array(Object.values(chunk.data)),
+      }));
+
+      document = castedDocs;
+    }
+    this.updateFromServer(keyPrefix);
+
+    return Promise.resolve(document);
   }
 
-  async removeRange(keyPrefix: StorageKey): Promise<void> {
-    console.log('[StorageAdapter] removeRange called for prefix:', keyPrefix);
-    // Not implemented for now, but required by interface
-    // Only used if we want to clear a specific range of documents
-    const allNotes = this.noteService.notes();
-    for (const note of allNotes) {
-      if (note.documentId) {
-        const noteKey = [note.documentId];
-        if (keyPrefix.length === 0 || noteKey[0] === keyPrefix[0]) {
-          this.noteService.deleteNote(note.documentId);
-        }
-      }
+  removeRange(keyPrefix: StorageKey): Promise<void> {
+    return Promise.resolve();
+  }
+
+  updateFromServer(keyPrefix: StorageKey) {
+    const id = keyPrefix[0];
+
+    if (keyPrefix[1] === 'snapshot') {
+      this.noteService
+        .getNote(id)
+        .pipe(
+          last(),
+          tap(async (data) => {
+            const autoMergeUrl = `automerge:${id}`;
+
+            if (data?.automergeDoc && this.repo && isValidAutomergeUrl(autoMergeUrl)) {
+              const handle = await this.repo.find(autoMergeUrl);
+              if (handle) {
+                await handle.whenReady();
+
+                for (const chunk of data.automergeDoc) {
+                  const chunkData =
+                    chunk.data instanceof Uint8Array
+                      ? chunk.data
+                      : new Uint8Array(Object.values(chunk.data));
+
+                  handle.update((doc) => {
+                    return Automerge.loadIncremental(doc, chunkData);
+                  });
+                }
+              }
+            }
+          }),
+        )
+        .subscribe();
     }
   }
 }

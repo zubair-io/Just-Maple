@@ -10,6 +10,7 @@ import { NoteService } from '../../services/note.service';
 import { NoteServiceStorageAdapter } from './note-service-storage-adapter';
 import * as AutomergeCore from '@automerge/automerge/slim';
 import { firstValueFrom } from 'rxjs';
+import { IndexedDBService } from '../../services/indexed-db.service';
 
 function base64ToBytes(base64: string): Uint8Array {
   const binaryString = atob(base64);
@@ -27,6 +28,7 @@ export class WriteService {
   private authService = inject(AuthService);
   private http = inject(HttpClient);
   private noteService = inject(NoteService);
+  private indexedDBService = inject(IndexedDBService);
 
   // Store active adapters for cleanup
   private activeWebRTCAdapters: WebRTCNetworkAdapter[] = [];
@@ -42,12 +44,14 @@ export class WriteService {
     // Initialize repo with storage only, no network adapters yet
     // WebRTC adapters will be added per-document
 
-    // const httpAdapter = new HTTPNetworkAdapter(this.http, this.authService);
-
+    //const storage = new IndexedDBStorageAdapter('just-maple-automerge');
+    const storage = new NoteServiceStorageAdapter(this.noteService, this.indexedDBService);
     this.repo = new Repo({
-      storage: new NoteServiceStorageAdapter(this.noteService),
+      storage,
       network: [],
     });
+
+    storage.setRepo(this.repo);
     this.ready.set(true);
 
     // Subscribe to note updates to merge server changes
@@ -122,6 +126,8 @@ export class WriteService {
 
     this.repo.networkSubsystem.addNetworkAdapter(webrtcAdapter);
     this.activeWebRTCAdapters.push(webrtcAdapter);
+
+    console.log('[WriteService] Added WebRTC adapter for document', documentId);
 
     return { webrtc: webrtcAdapter };
   }

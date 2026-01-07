@@ -7,6 +7,7 @@ import { TagService } from '../../services/tag.service';
 import { NoteService } from '../../services/note.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { UiStateService } from '../../services/ui-state.service';
+import { EventStreamService } from '../../services/event-stream.service';
 import { SidebarComponent } from '../../components';
 
 @Component({
@@ -23,6 +24,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly noteService = inject(NoteService);
   private readonly realtimeService = inject(RealtimeService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly eventStream = inject(EventStreamService);
 
   readonly selectedNoteId = signal<string | null>(null);
   readonly selectedTagId = signal<string | null>(null);
@@ -44,6 +46,9 @@ export class HomeComponent implements OnInit, OnDestroy {
     // Connect to realtime service
     this.realtimeService.connect();
 
+    // Connect to SSE event stream for real-time updates
+    this.eventStream.connect();
+
     // Sync selected IDs from route
     this.syncFromRoute();
 
@@ -57,6 +62,7 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.routerSubscription?.unsubscribe();
+    this.eventStream.disconnect();
   }
 
   private syncFromRoute(): void {

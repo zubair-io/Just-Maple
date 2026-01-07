@@ -228,9 +228,6 @@ export class WriteComponent implements OnDestroy {
 
   constructor() {
     effect(() => {
-      if (this.timerReset) {
-        console.time('[Write] Component init');
-      }
       const params = this.params();
       const isReady = this.writeService.ready();
       if (params && params.has('documentId') && isReady) {
@@ -269,20 +266,13 @@ export class WriteComponent implements OnDestroy {
         },
       });
 
-      console.timeEnd('[Write] Component init');
-      this.timerReset = true;
       const autoMergeUrl = `automerge:${documentId}`;
-      let handle: any;
+      let handle;
+
       if (documentId && isValidAutomergeUrl(autoMergeUrl)) {
         handle = await this.repo.find(autoMergeUrl);
       } else {
         handle = this.repo.create({ text: '' });
-      }
-      this.lastDocumentId = handle.documentId;
-      if (documentId !== handle.documentId) {
-        this.router.navigate(['/', this.tagId, handle.documentId], {
-          replaceUrl: true,
-        });
         this.noteService
           .createNote({
             title: 'Untitled',
@@ -292,137 +282,27 @@ export class WriteComponent implements OnDestroy {
           })
           .subscribe();
       }
+      this.lastDocumentId = handle.documentId;
+      if (documentId !== handle.documentId) {
+        this.router.navigate(['/', this.tagId, handle.documentId], {
+          replaceUrl: true,
+        });
 
-      //if (this.docUrl) {
-      // Get note to check for existing automergeUrl
-      //        const note = this.selectedNote();
+        await handle.whenReady();
+        this.docHandle = handle;
+        // const binaryData = Automerge.save(handle.doc);
+        // const base64Data = btoa(String.fromCharCode(...new Uint8Array([])));
 
-      // Check if note has saved automergeDoc
-      //   if (note?.automergeDoc) {
-      //     console.log('[Write] Loading document from database');
-
-      //     try {
-      //       // Convert to Uint8Array - handle different formats from HTTP/MongoDB
-      //       let bytes: Uint8Array;
-
-      //       console.log('[Write] automergeDoc type:', typeof note.automergeDoc);
-      //       console.log('[Write] automergeDoc is array?', Array.isArray(note.automergeDoc));
-      //       if (Array.isArray(note.automergeDoc)) {
-      //         console.log('[Write] Array length:', note.automergeDoc.length);
-      //         console.log('[Write] First 10 elements:', note.automergeDoc.slice(0, 10));
-      //       }
-
-      //       if (note.automergeDoc instanceof Uint8Array) {
-      //         console.log('[Write] Format: Uint8Array');
-      //         bytes = note.automergeDoc;
-      //       } else if (typeof note.automergeDoc === 'string') {
-      //         console.log('[Write] Format: base64 string');
-      //         // Base64 string (MongoDB binary data deserialized as string)
-      //         const binaryString = atob(note.automergeDoc);
-      //         bytes = new Uint8Array(binaryString.length);
-      //         for (let i = 0; i < binaryString.length; i++) {
-      //           bytes[i] = binaryString.charCodeAt(i);
-      //         }
-      //       } else if (Array.isArray(note.automergeDoc)) {
-      //         console.log('[Write] Format: Array');
-      //         bytes = new Uint8Array(note.automergeDoc);
-      //       } else if (
-      //         typeof note.automergeDoc === 'object' &&
-      //         (note.automergeDoc as any).type === 'Buffer' &&
-      //         Array.isArray((note.automergeDoc as any).data)
-      //       ) {
-      //         console.log('[Write] Format: Buffer object');
-      //         bytes = new Uint8Array((note.automergeDoc as any).data);
-      //       } else if (
-      //         typeof note.automergeDoc === 'object' &&
-      //         (note.automergeDoc as any).$binary &&
-      //         (note.automergeDoc as any).$binary.base64
-      //       ) {
-      //         console.log('[Write] Format: $binary object');
-      //         const base64 = (note.automergeDoc as any).$binary.base64;
-      //         const binaryString = atob(base64);
-      //         bytes = new Uint8Array(binaryString.length);
-      //         for (let i = 0; i < binaryString.length; i++) {
-      //           bytes[i] = binaryString.charCodeAt(i);
-      //         }
-      //       } else {
-      //         console.error('[Write] Unknown automergeDoc format:', note.automergeDoc);
-      //         throw new Error('Unknown automergeDoc format');
-      //       }
-
-      //       console.log('[Write] Converted to Uint8Array, length:', bytes.length);
-      //       console.log('[Write] First 10 bytes:', Array.from(bytes.slice(0, 10)));
-
-      //       if (note.automergeUrl) {
-      //         console.log('[Write] Importing with stored URL:', note.automergeUrl);
-      //         // Load the document from binary first
-      //         const savedDoc = Automerge.load(bytes);
-      //         // Then import with the stored URL
-      //         handle = this.repo.import(note.automergeUrl as any, savedDoc);
-      //       } else {
-      //         // No automergeUrl stored - import binary and let repo generate URL
-      //         console.log('[Write] Importing binary, repo will generate URL');
-      //         handle = this.repo.import(bytes);
-      //         const generatedUrl = handle.url;
-      //         console.log('[Write] Generated new Automerge URL:', generatedUrl);
-
-      //         // Save the automergeUrl to database
-      //         if (note._id) {
-      //           console.log('[Write] Saving automergeUrl to database:', generatedUrl);
-      //           this.noteService.updateNote(note._id, { automergeUrl: generatedUrl }).subscribe({
-      //             next: () => console.log('[Write] Successfully saved automergeUrl'),
-      //             error: (err) => console.error('[Write] Failed to save automergeUrl:', err),
-      //           });
-      //         } else {
-      //           console.warn('[Write] No note._id, cannot save automergeUrl');
-      //         }
-      //       }
-      //       console.log('[Write] Successfully loaded document from database');
-      //     } catch (error) {
-      //       console.error('[Write] Failed to load saved document:', error);
-      //       // Create new document
-      //       handle = this.repo.create({ text: '' });
-      //       const generatedUrl = handle.url;
-      //       console.log('[Write] Created new document with URL:', generatedUrl);
-
-      //       // Save the automergeUrl to database
-      //       if (note?._id) {
-      //         console.log(
-      //           '[Write] Saving automergeUrl to database (error recovery):',
-      //           generatedUrl,
-      //         );
-      //         this.noteService.updateNote(note._id, { automergeUrl: generatedUrl }).subscribe({
-      //           next: () => console.log('[Write] Successfully saved automergeUrl'),
-      //           error: (err) => console.error('[Write] Failed to save automergeUrl:', err),
-      //         });
-      //       } else {
-      //         console.warn('[Write] No note._id, cannot save automergeUrl');
-      //       }
-      //     }
-      //   } else {
-      //     // No saved document - create new and save automergeUrl
-      //     console.log('[Write] Creating new Automerge document');
-      //     handle = this.repo.create({ text: '' });
-      //     const generatedUrl = handle.url;
-      //     console.log('[Write] Created new document with URL:', generatedUrl);
-
-      //     // Save the automergeUrl to database
-      //     if (note?._id) {
-      //       console.log('[Write] Saving automergeUrl to database (new doc):', generatedUrl);
-      //       this.noteService.updateNote(note._id, { automergeUrl: generatedUrl }).subscribe({
-      //         next: () => console.log('[Write] Successfully saved automergeUrl'),
-      //         error: (err) => console.error('[Write] Failed to save automergeUrl:', err),
-      //       });
-      //     } else {
-      //       console.warn('[Write] No note._id, cannot save automergeUrl');
-      //     }
-      //   }
-      // } else {
-      //   // Standalone mode - create a new Automerge document
-      //   handle = this.repo.create({ text: '' });
-      // }
-      await handle.whenReady();
-      this.docHandle = handle;
+        // this.noteService
+        //   .createNote({
+        //     title: 'Untitled',
+        //     content: DEFAULT_NOTE_CONTENT,
+        //     tagId: this.tagId,
+        //     documentId: handle.documentId,
+        //     automergeDoc: base64Data,
+        //   })
+        //   .subscribe();
+      }
 
       // Initialize text field if needed
       handle.change((doc: any) => {
