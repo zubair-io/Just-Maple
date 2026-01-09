@@ -178,26 +178,31 @@ class PushNotificationService: NSObject {
 
     /// Unregister device from push notifications (all servers)
     func unregister() async throws {
-        let registeredServers = getRegisteredServers()
-        guard !registeredServers.isEmpty else {
-            print("[PushNotificationService] No registrations found")
-            return
-        }
+        // Get all configured servers and try to unregister from each
+        let allServers = ServerConfigService.shared.getServers()
+        var unregisteredAny = false
 
-        // Unregister from all servers
-        for serverId in registeredServers {
+        for server in allServers {
             do {
-                try await unregisterFromMapleAPI(serverId: serverId)
-                print("[PushNotificationService] Unregistered from server: \(serverId)")
+                try await unregisterFromMapleAPI(serverId: server.id)
+                print("[PushNotificationService] Unregistered from server: \(server.id)")
+                unregisteredAny = true
+            } catch PushError.notAuthenticated {
+                // No token for this server, skip it
+                print("[PushNotificationService] No auth token for server \(server.id), skipping")
             } catch {
-                print("[PushNotificationService] Failed to unregister from server \(serverId): \(error)")
+                print("[PushNotificationService] Failed to unregister from server \(server.id): \(error)")
             }
         }
 
-        // Clear all local data
+        // Clear all local registration data (including any stale UUID-based IDs)
         UserDefaults.standard.removeObject(forKey: registeredServersKey)
 
-        print("[PushNotificationService] Successfully unregistered from all servers")
+        if unregisteredAny {
+            print("[PushNotificationService] Successfully unregistered from servers")
+        } else {
+            print("[PushNotificationService] No servers to unregister from")
+        }
     }
 
     /// Check if a server is registered for push notifications

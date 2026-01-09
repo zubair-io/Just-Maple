@@ -149,12 +149,6 @@ export class NotificationService {
       return;
     }
 
-    const currentServerId = this.serverId();
-    if (!currentServerId) {
-      console.log('[NotificationService] No server ID found, nothing to unregister');
-      return;
-    }
-
     try {
       // Tell native app to unregister (it will call the API and clear local state)
       this.nativeBridge.unregisterPushNotifications();
