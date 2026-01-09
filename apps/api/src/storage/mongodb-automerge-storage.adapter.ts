@@ -1,0 +1,148 @@
+import { StorageAdapter, StorageKey, Chunk } from '@automerge/automerge-repo';
+import { getDb } from '../db/client';
+import { Collection, Document } from 'mongodb';
+
+/**
+ * MongoDB Storage Adapter for Automerge Repo
+ *
+ * Persists Automerge document chunks to MongoDB to prevent data loss on server restart.
+ * Each chunk is stored separately for efficient incremental loading.
+ */
+
+interface AutomergeChunkDocument extends Document {
+    documentId: string;
+    storageKey: string[];
+    data: Buffer;
+    createdAt: Date;
+    updatedAt: Date;
+    expiresAt?: Date;
+}
+
+export class MongoDBAutomergeStorageAdapter extends StorageAdapter {
+    private collection: Collection<AutomergeChunkDocument>;
+    private ready: Promise<void>;
+
+    constructor() {
+        super();
+        this.ready = this.initialize();
+    }
+
+    private async initialize(): Promise<void> {
+        const db = getDb();
+        this.collection = db.collection<AutomergeChunkDocument>('automerge_chunks');
+
+        // Create indexes for efficient lookups
+        await this.collection.createIndex(
+            { documentId: 1, storageKey: 1 },
+            { unique: true, name: 'documentId_storageKey_unique' },
+        );
+
+        // TTL index for automatic cleanup of orphaned chunks (30 days)
+        await this.collection.createIndex(
+            { expiresAt: 1 },
+            { expireAfterSeconds: 0, name: 'expiresAt_ttl' },
+        );
+
+        console.log('[MongoDB Storage] Automerge storage adapter initialized');
+    }
+
+    /**
+     * Load a single chunk from storage
+     */
+    async load(key: StorageKey): Promise<Uint8Array | undefined> {
+        await this.ready;
+
+        const [documentId, ...rest] = key;
+        const storageKey = rest;
+
+        const doc = await this.collection.findOne({
+            documentId: documentId as string,
+            storageKey: storageKey as string[],
+        });
+
+        if (!doc) {
+            return undefined;
+        }
+
+        return new Uint8Array(doc.data);
+    }
+
+    /**
+     * Save a chunk to storage
+     */
+    async save(key: StorageKey, data: Uint8Array): Promise<void> {
+        await this.ready;
+
+        const [documentId, ...rest] = key;
+        // Always use rest as storageKey, even if empty
+        // This ensures consistency: documentId is separate from storageKey path
+        const storageKey = rest;
+
+        const now = new Date();
+
+        await this.collection.updateOne(
+            {
+                documentId: documentId as string,
+                storageKey: storageKey as string[],
+            },
+            {
+                $set: {
+                    data: Buffer.from(data),
+                    updatedAt: now,
+                },
+                $setOnInsert: {
+                    createdAt: now,
+                },
+            },
+            { upsert: true },
+        );
+    }
+
+    /**
+     * Load all chunks matching a key prefix (for loading entire documents)
+     */
+    async loadRange(keyPrefix: StorageKey): Promise<Chunk[]> {
+        await this.ready;
+
+        const documentId = keyPrefix[0] as string;
+
+        const docs = await this.collection
+            .find({
+                documentId,
+            })
+            .toArray();
+
+        return docs.map((doc) => ({
+            key: [documentId, ...doc.storageKey] as StorageKey,
+            data: new Uint8Array(doc.data),
+        }));
+    }
+
+    /**
+     * Remove a single chunk from storage
+     */
+    async remove(key: StorageKey): Promise<void> {
+        await this.ready;
+
+        const [documentId, ...rest] = key;
+        const storageKey = rest;
+
+        await this.collection.deleteOne({
+            documentId: documentId as string,
+            storageKey: storageKey as string[],
+        });
+    }
+
+    /**
+     * Remove all chunks matching a key prefix (for deleting entire documents)
+     */
+    async removeRange(keyPrefix: StorageKey): Promise<void> {
+        await this.ready;
+
+        const documentId = keyPrefix[0] as string;
+
+        await this.collection.deleteMany({
+            documentId,
+        });
+    }
+}

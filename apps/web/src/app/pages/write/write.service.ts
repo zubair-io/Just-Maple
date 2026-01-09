@@ -13,7 +13,7 @@ import { firstValueFrom } from 'rxjs';
 import { IndexedDBService } from '../../services/indexed-db.service';
 import { SimpleNetworkAdapter } from './simple-network-adapter';
 import { JustMapleNetworkAdapter } from '../../services/automerge-network-adapter';
-import { WebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket';
+import { SecureWebSocketAdapter } from './secure-websocket-adapter';
 
 function base64ToBytes(base64: string): Uint8Array {
   const binaryString = atob(base64);
@@ -39,23 +39,46 @@ export class WriteService {
 
   private async init() {
     await Automerge.initializeBase64Wasm(automergeWasmBase64);
-    const token = this.authService.accessToken();
 
-    //  const networkAdapter = new SimpleNetworkAdapter(token);
-    //const networkAdapter = new JustMapleNetworkAdapter(noteId, this.http, this.authService);
+    // Get authentication token
+    const token = this.authService.accessToken() as string;
 
-    // Initialize repo with storage only, no network adapters yet
-    // WebRTC adapters will be added per-document
+    // Build WebSocket URL (no token in query params)
+    const wsUrl = this.buildWebSocketUrl();
 
-    //const storage = new IndexedDBStorageAdapter('just-maple-automerge');
-    //const network = new WebSocketClientAdapter("ws://localhost:3030");
+    // Generate unique peer ID for this client
+    const peerId = `client-${Math.random().toString(36).substring(2, 15)}`;
+    console.log('[WriteService] Initializing Automerge Repo with peerId:', peerId);
+
+    const networkAdapter = new SecureWebSocketAdapter(wsUrl, token);
     const storage = new NoteServiceStorageAdapter(this.noteService, this.indexedDBService);
     this.repo = new Repo({
       storage,
-      network: [new WebSocketClientAdapter('wss://sync.automerge.org')],
+      network: [networkAdapter],
+      peerId: peerId as any,
     });
 
     storage.setRepo(this.repo);
+
+    // IMPORTANT: Wait for network to connect before marking ready
+    // This ensures documents will sync with server when opened
+    console.log('[WriteService] Waiting for network connection...');
+    await networkAdapter.whenReady();
+    console.log('[WriteService] Network connected!');
+
     this.ready.set(true);
+    console.log('[WriteService] Repo initialized and ready');
+  }
+
+  private buildWebSocketUrl(): string {
+    // Development: proxy to backend via Angular dev server
+    // Production: direct connection to backend
+    if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      return `${protocol}//${host}/ws/automerge-sync`;
+    }
+    // SSR fallback (shouldn't happen but be safe)
+    return 'ws://localhost:4200/ws/automerge-sync';
   }
 }

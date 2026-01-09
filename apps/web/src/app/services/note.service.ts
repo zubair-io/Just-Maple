@@ -95,7 +95,6 @@ export class NoteService {
   private readonly saveSubject = new Subject<{ id: string; base64Data: string }>();
 
   constructor() {
-    console.log('[NoteService] Initialized');
     if (isPlatformBrowser(this.platformId)) {
       this.hydrateFromIndexedDB();
     }
@@ -352,7 +351,6 @@ export class NoteService {
    */
   updateNote(id: string, data: UpdateNoteInput): Observable<Note> {
     this._error.set(null);
-    // console.log('[NoteService] Updating note', id, data);
     const original = this.store.query(getEntity(id));
     if (!original) {
       return throwError(() => new Error('Note not found'));

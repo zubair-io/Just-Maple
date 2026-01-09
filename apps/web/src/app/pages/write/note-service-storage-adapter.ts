@@ -50,7 +50,12 @@ export class NoteServiceStorageAdapter implements StorageAdapterInterface {
     if (key[0] === this.keyPrefixId) {
       this.store.push({ key, data });
     }
-    this.noteService.updateAutoMerge(key[0], { key, data }).subscribe();
+
+    // Note: We no longer send automerge chunks via HTTP PUT
+    // The server-side MongoDBAutomergeStorageAdapter now handles persistence
+    // automatically when documents sync via WebSocket
+    // this.noteService.updateAutoMerge(key[0], { key, data }).subscribe();
+
     return Promise.resolve();
   }
 
@@ -59,16 +64,13 @@ export class NoteServiceStorageAdapter implements StorageAdapterInterface {
   }
 
   async loadRange(keyPrefix: StorageKey): Promise<{ key: StorageKey; data: Uint8Array }[]> {
-    console.log('loadRange called for prefix:', keyPrefix);
     const id = keyPrefix[0];
 
     if (id === this.keyPrefixId) {
-      console.log('Returning stored data for prefix:', keyPrefix, 'data:', this.store);
       //return this.store;
     }
 
     const note = this.noteService.queryNote(id);
-    console.log('note:', note);
     let document = [{ key: keyPrefix, data: new Uint8Array(0) }];
     if (note?.automergeDoc) {
       const castedDocs = note.automergeDoc.map((chunk: any) => ({

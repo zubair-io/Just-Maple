@@ -235,7 +235,6 @@ export async function updateNote(
     try {
         // First, find the note to check access
         const doc = await getCollection().findOne({ documentId: id });
-        console.log('Updating note:', id, 'with data:', data, doc);
         if (!doc) return null;
 
         // Check write access based on tag or ownership

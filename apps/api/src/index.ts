@@ -15,7 +15,7 @@ import { webrtcSignalingRoutes } from './routes/webrtc-signaling';
 import { eventRoutes } from './routes/events';
 import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
 import { collabOTWebSocket } from './ws/collab-ot.ws';
-import { testSyncWs } from './ws/test-sync.ws';
+import { automergeSyncWs, initializeAutomergeRepo } from './ws/automerge-sync.ws';
 import { SignalRRealtimeService } from './services/signalr.service';
 import { setRealtimeService } from './services/realtime.service';
 import { config } from './config';
@@ -40,6 +40,9 @@ async function main() {
 
     // Connect to MongoDB
     await connectToDatabase();
+
+    // Initialize Automerge Repo (requires DB connection)
+    initializeAutomergeRepo();
 
     // Initialize realtime service
     // - WebSocket: dev/self-hosted (direct connections)
@@ -69,7 +72,7 @@ async function main() {
         .use(collabRoutes)
         .use(webrtcSignalingRoutes) // WebRTC signaling for P2P collaboration
         .use(eventRoutes) // SSE event stream for real-time app updates
-        .use(testSyncWs); // Test sync WebSocket (always enabled)
+        .use(automergeSyncWs); // Automerge sync WebSocket (always enabled)
 
     // Conditionally enable WebSocket routes
     // - Dev/self-hosted: Direct WebSocket connections
@@ -173,7 +176,7 @@ async function main() {
     console.log(`🍁 PaperbarkMaple API running at http://localhost:${config.port}`);
     console.log(`   Environment: ${envName}`);
     console.log(`   MongoDB: ${config.mongodbUri}`);
-    console.log(`   Test Sync: ws://localhost:${config.port}/ws/test-sync (no auth)`);
+    console.log(`   Automerge Sync: ws://localhost:${config.port}/ws/automerge-sync`);
     if (!config.useSignalR) {
         console.log(`   WebSocket Chat: ws://localhost:${config.port}/ws/chat`);
         console.log(`   WebSocket Collab: ws://localhost:${config.port}/ws/collab/:noteId`);

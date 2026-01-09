@@ -35,7 +35,6 @@ export class IndexedDBService {
   };
 
   private async initializeDB(): Promise<IDBDatabase> {
-    console.log('Initializing IndexedDB');
     if (!isPlatformBrowser(this.platformId)) {
       throw new Error('IndexedDB is not available in this environment');
     }
