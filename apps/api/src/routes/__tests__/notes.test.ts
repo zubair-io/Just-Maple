@@ -170,7 +170,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note._id.toString()}`, {
+                new Request(`http://localhost/api/notes/${note.documentId}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -201,7 +201,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note._id.toString()}`, {
+                new Request(`http://localhost/api/notes/${note.documentId}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -315,7 +315,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note._id.toString()}`, {
+                new Request(`http://localhost/api/notes/${note.documentId}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -338,7 +338,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const newContent = { type: 'doc', content: [{ type: 'text', text: 'New content' }] };
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note._id.toString()}`, {
+                new Request(`http://localhost/api/notes/${note.documentId}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -362,7 +362,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note._id.toString()}`, {
+                new Request(`http://localhost/api/notes/${note.documentId}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -388,7 +388,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note._id.toString()}`, {
+                new Request(`http://localhost/api/notes/${note.documentId}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -410,7 +410,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note._id.toString()}`, {
+                new Request(`http://localhost/api/notes/${note.documentId}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -434,7 +434,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note._id.toString()}/trash`, {
+                new Request(`http://localhost/api/notes/${note.documentId}/trash`, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -472,7 +472,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note._id.toString()}/restore`, {
+                new Request(`http://localhost/api/notes/${note.documentId}/restore`, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -506,7 +506,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note._id.toString()}`, {
+                new Request(`http://localhost/api/notes/${note.documentId}`, {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -538,7 +538,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note._id.toString()}`, {
+                new Request(`http://localhost/api/notes/${note.documentId}`, {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),

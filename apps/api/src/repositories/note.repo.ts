@@ -341,7 +341,7 @@ export async function updateNote(
 export async function deleteNote(id: string, userId: string): Promise<boolean> {
     try {
         // First, find the note to check access
-        const doc = await getCollection().findOne({ _id: new ObjectId(id) });
+        const doc = await getCollection().findOne({ documentId: id });
         if (!doc) return false;
 
         // Check write access based on tag or ownership
@@ -354,7 +354,7 @@ export async function deleteNote(id: string, userId: string): Promise<boolean> {
             if (doc.userId.toString() !== userId) return false;
         }
 
-        const result = await getCollection().deleteOne({ _id: new ObjectId(id) });
+        const result = await getCollection().deleteOne({ documentId: id });
         return result.deletedCount === 1;
     } catch {
         return false;

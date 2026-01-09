@@ -1,6 +1,13 @@
 import { ObjectId } from 'mongodb';
 import { randomBytes } from 'crypto';
+import { customAlphabet } from 'nanoid';
 import { testDb } from '../setup';
+
+// Same documentId generator as in note.repo.ts
+const nanoidBase58 = customAlphabet(
+    '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
+    32,
+);
 
 export interface UserDoc {
     _id: ObjectId;
@@ -369,6 +376,7 @@ export interface NoteDoc {
     type: 'write' | 'lego';
     title: string;
     content: any;
+    documentId: string;
     version: number;
     tagId?: ObjectId;
     isFavorite?: boolean;
@@ -384,6 +392,7 @@ export interface CreateNoteOptions {
     type?: 'write' | 'lego';
     title?: string;
     content?: any;
+    documentId?: string;
     version?: number;
     tagId?: string;
     isFavorite?: boolean;
@@ -401,6 +410,7 @@ export async function createNoteFixture(options: CreateNoteOptions = {}): Promis
         type: options.type || 'write',
         title: options.title || 'Test Note',
         content: options.content || { type: 'doc', content: [] },
+        documentId: options.documentId || nanoidBase58(),
         version: options.version ?? 1,
         tagId: options.tagId ? new ObjectId(options.tagId) : undefined,
         isFavorite: options.isFavorite ?? false,

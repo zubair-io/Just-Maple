@@ -261,7 +261,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             }
 
             // Get note first to retrieve tagId before deletion
-            const note = await findNoteById(params.id, auth.user._id);
+            const note = await findNoteByDocumentId(params.id, auth.user._id);
             if (!note) {
                 set.status = 404;
                 return { error: 'Note not found' };
