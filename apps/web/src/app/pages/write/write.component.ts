@@ -64,7 +64,56 @@ const ZERO_WIDTH_SPACE = '\u200B';
 
 const cursorPluginKey = new PluginKey('cursor');
 
-const cursorPlugin = (handle: any) => {
+// Helper to generate a consistent color from a string (like a username)
+function stringToColor(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const c = (hash & 0x00ffffff).toString(16).toUpperCase();
+  return '#' + '00000'.substring(0, 6 - c.length) + c;
+}
+
+const createCursorWidget = (text: string, color: string) => {
+  const widget = document.createElement('span');
+  widget.style.position = 'relative';
+  widget.style.userSelect = 'none';
+
+  // Visual cursor bar
+  const cursorBar = document.createElement('span');
+  cursorBar.style.position = 'absolute';
+  cursorBar.style.top = '-0.2em';
+  cursorBar.style.height = '1.4em';
+  cursorBar.style.width = '2px';
+  cursorBar.style.backgroundColor = color;
+  cursorBar.style.left = '0';
+  cursorBar.style.pointerEvents = 'none';
+
+  widget.appendChild(cursorBar);
+
+  // Add name tag
+  const label = document.createElement('div');
+  label.textContent = text; //|| peerId.slice(0, 4); // Use label if available
+  label.style.position = 'absolute';
+  label.style.top = '-2em';
+  label.style.left = '0';
+  label.style.backgroundColor = color;
+  label.style.color = 'white';
+  label.style.fontSize = '10px';
+  label.style.padding = '1px 8px';
+  label.style.borderRadius = '3px';
+  label.style.whiteSpace = 'nowrap';
+  label.style.pointerEvents = 'none';
+
+  widget.appendChild(label);
+
+  return widget;
+};
+
+const cursorPlugin = (
+  handle: any,
+  getCurrentUser: () => { name?: string; email?: string } | null,
+) => {
   let lastBroadcast = 0;
   const BROADCAST_THROTTLE = 100; // ms
 
@@ -73,12 +122,13 @@ const cursorPlugin = (handle: any) => {
     state: {
       init(config, instance) {
         return {
-          cursors: {} as Record<string, { pos: number; color: string }>,
+          cursors: {} as Record<string, { pos: number; color: string; label: string }>,
           decorations: DecorationSet.empty,
         };
       },
       apply(tr, value, oldState, newState) {
         const meta = tr.getMeta(cursorPluginKey);
+        console.log(meta?.cursors);
 
         // If there's a remote cursor update, re-compute decorations
         if (meta && meta.cursors) {
@@ -87,31 +137,12 @@ const cursorPlugin = (handle: any) => {
 
           Object.entries(cursors).forEach(([peerId, cursor]: [string, any]) => {
             if (cursor && cursor.pos !== null) {
-              const widget = document.createElement('span');
-              widget.style.borderLeft = `2px solid ${cursor.color}`;
-              widget.style.marginLeft = '-1px';
-              widget.style.height = '1.2em';
-              widget.style.position = 'relative';
-              widget.style.display = 'inline-block';
-              widget.style.verticalAlign = 'text-top';
-
-              // Add name tag
-              const label = document.createElement('div');
-              label.textContent = peerId.slice(0, 4);
-              label.style.position = 'absolute';
-              label.style.top = '-1.2em';
-              label.style.left = '-2px';
-              label.style.backgroundColor = cursor.color;
-              label.style.color = 'white';
-              label.style.fontSize = '10px';
-              label.style.padding = '1px 3px';
-              label.style.borderRadius = '3px';
-              label.style.whiteSpace = 'nowrap';
-              label.style.pointerEvents = 'none';
-
-              widget.appendChild(label);
-
-              decorations.push(Decoration.widget(cursor.pos, widget, { key: peerId }));
+              decorations.push(
+                Decoration.widget(cursor.pos, createCursorWidget(cursor.label, cursor.color), {
+                  key: peerId,
+                  side: 0,
+                }),
+              );
             }
           });
 
@@ -121,11 +152,35 @@ const cursorPlugin = (handle: any) => {
           };
         }
 
-        // On local changes, we must map, but we CANNOT map a DecorationSet with widgets easily if they are stuck to positions?
-        // Actually DecorationSet.map works well.
+        // On local changes, map the cursor positions
+        const mappedCursors: Record<string, { pos: number; color: string; label: string }> = {};
+        for (const [peerId, cursor] of Object.entries(
+          value.cursors as Record<string, { pos: number; color: string; label: string }>,
+        )) {
+          if (cursor.pos !== null) {
+            const newPos = tr.mapping.map(cursor.pos);
+            mappedCursors[peerId] = { ...cursor, pos: newPos };
+          } else {
+            mappedCursors[peerId] = cursor;
+          }
+        }
+
+        //     top: -1.6em;
+        // left: 0px;
+
+        // Regenerate decorations
+        const newDecorations: Decoration[] = [];
+        Object.entries(mappedCursors).forEach(([peerId, cursor]: [string, any]) => {
+          if (cursor && cursor.pos !== null) {
+            const widget = createCursorWidget(cursor.label, cursor.color);
+            // key is important for ProseMirror to track widget identity
+            newDecorations.push(Decoration.widget(cursor.pos, widget, { key: peerId, side: 0 }));
+          }
+        });
+
         return {
-          cursors: value.cursors,
-          decorations: value.decorations.map(tr.mapping, newState.doc),
+          cursors: mappedCursors,
+          decorations: DecorationSet.create(newState.doc, newDecorations),
         };
       },
     },
@@ -147,7 +202,11 @@ const cursorPlugin = (handle: any) => {
           if (currentPluginState) {
             const newCursors = {
               ...currentPluginState.cursors,
-              [senderId]: { pos: message.pos, color: message.color },
+              [senderId]: {
+                pos: message.pos,
+                color: message.color,
+                label: message.label,
+              },
             };
             tr.setMeta(cursorPluginKey, { cursors: newCursors });
             view.dispatch(tr);
@@ -160,14 +219,27 @@ const cursorPlugin = (handle: any) => {
       return {
         update(view, prevState) {
           const state = view.state;
-          if (state.selection.from !== prevState.selection.from) {
+          // Broadcast if selection changed
+          if (
+            state.selection.from !== prevState.selection.from ||
+            state.selection.to !== prevState.selection.to
+          ) {
             const now = Date.now();
             if (now - lastBroadcast > BROADCAST_THROTTLE) {
               lastBroadcast = now;
+              const user = getCurrentUser?.();
+              // Prefer name, fallback to email slice, fallback to 'Unknown'
+              const label = (user?.name || user?.email?.split('@')[0])?.toUpperCase();
+              // Use hash of label for color to represent user consistently
+              const color = stringToColor(label + (user?.email || ''));
+
+              console.log(state.selection);
+
               const message = {
                 type: 'cursor',
-                pos: state.selection.from,
-                color: '#0000FF',
+                pos: state.selection.to - 1,
+                color: color,
+                label: label,
               };
               handle.broadcast(message);
             }
@@ -264,9 +336,13 @@ export class WriteComponent implements OnDestroy {
       let handle;
 
       if (documentId && isValidAutomergeUrl(autoMergeUrl)) {
+        console.log('[Write] Finding existing document:', autoMergeUrl);
         handle = await this.repo.find(autoMergeUrl);
+        console.log('[Write] Handle found:', handle.documentId, 'state:', handle.state);
       } else {
+        console.log('[Write] Creating new document');
         handle = this.repo.create({ text: '' });
+        console.log('[Write] Handle created:', handle.documentId);
         this.noteService
           .createNote({
             title: 'Untitled',
@@ -282,7 +358,15 @@ export class WriteComponent implements OnDestroy {
           replaceUrl: true,
         });
 
+        console.log('[Write] Waiting for handle to be ready...');
         await handle.whenReady();
+        console.log('[Write] Handle ready! Doc:', handle.doc);
+
+        // Listen for document changes to verify sync is working
+        handle.on('change', ({ handle: h, doc, patches }) => {
+          console.log('[Write] Document changed! Patches:', patches);
+        });
+
         this.docHandle = handle;
         // const binaryData = Automerge.save(handle.doc);
         // const base64Data = btoa(String.fromCharCode(...new Uint8Array([])));
@@ -316,7 +400,7 @@ export class WriteComponent implements OnDestroy {
         doc: pmDoc,
         plugins: [
           forceHeaderPlugin,
-          cursorPlugin(handle),
+          cursorPlugin(handle, () => this.authService.user()),
           plugin, // AutoMirror plugin first
           history(),
           keymap({

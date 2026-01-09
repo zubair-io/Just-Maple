@@ -19,7 +19,6 @@ export class TagComponent implements OnInit, OnDestroy {
     // Subscribe to route params and set active tag
     this.routeSubscription = this.route.params.subscribe((params) => {
       const tagId = params['tagId'];
-      console.log('TagComponent: route params changed, tagId =', tagId);
       if (tagId) {
         this.tagService.setActiveTag(tagId);
       }

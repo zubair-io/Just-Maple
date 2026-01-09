@@ -57,7 +57,6 @@ export class EventStreamService {
     // EventSource doesn't support custom headers, so pass token in query param
     const url = `${this.API_BASE}/stream?token=${token}`;
 
-    console.log('[Event Stream] Opening SSE connection...');
     this.eventSource = new EventSource(url);
 
     // Handle incoming messages
@@ -66,7 +65,6 @@ export class EventStreamService {
         const data = JSON.parse(event.data);
 
         if (data.type === 'connected') {
-          console.log('[Event Stream] SSE connected:', data.userId);
           this.reconnectAttempts = 0;
           this._isConnected = true;
           return;
@@ -83,7 +81,6 @@ export class EventStreamService {
 
     // Handle connection open
     this.eventSource.onopen = () => {
-      console.log('[Event Stream] SSE connection established');
       this.reconnectAttempts = 0;
       this._isConnected = true;
     };
