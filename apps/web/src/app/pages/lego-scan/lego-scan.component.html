@@ -189,7 +189,9 @@
             <!-- Dropdown Menu -->
             @if (openDropdown() === registry._id) {
               <div
-                class="absolute right-0 bottom-12 w-36 bg-white rounded-lg shadow-lg border border-[var(--color-border)] z-20 overflow-hidden"
+                class="absolute right-0 w-36 bg-white rounded-lg shadow-lg border border-[var(--color-border)] z-20 overflow-hidden"
+                [class.bottom-12]="dropdownPosition() === 'above'"
+                [class.top-12]="dropdownPosition() === 'below'"
               >
                 <button
                   (click)="setStatus($event, registry, 'have')"
