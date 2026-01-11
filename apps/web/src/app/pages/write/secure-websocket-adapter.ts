@@ -35,23 +35,19 @@ export class SecureWebSocketAdapter extends NetworkAdapter {
   }
 
   connect(peerId: PeerId, peerMetadata?: PeerMetadata) {
-    console.log('[SecureWS] connect() called with peerId:', peerId);
     this.peerId = peerId;
     this.peerMetadata = peerMetadata;
     this.connectWebSocket();
   }
 
   private connectWebSocket() {
-    console.log('[SecureWS] Attempting to connect to:', this.url);
     try {
       // Pass JWT via Sec-WebSocket-Protocol header for security
       // Format: "automerge-v1.${token}"
       this.socket = new WebSocket(this.url, [`automerge-v1.${this.token}`]);
       this.socket.binaryType = 'arraybuffer';
-      console.log('[SecureWS] WebSocket created, waiting for connection...');
 
       this.socket.onopen = () => {
-        console.log('[SecureWS] Connected to Automerge sync server');
         this.reconnectAttempts = 0;
         this.ready = true;
         this.readyResolver?.();
@@ -63,7 +59,6 @@ export class SecureWebSocketAdapter extends NetworkAdapter {
             senderId: this.peerId,
             peerMetadata: this.peerMetadata || {},
           };
-          console.log('[SecureWS] Sending join message:', joinMessage);
           this.socket.send(encode(joinMessage));
         }
       };
@@ -72,12 +67,10 @@ export class SecureWebSocketAdapter extends NetworkAdapter {
         try {
           const bytes = new Uint8Array(event.data);
           const message = decode(bytes) as any;
-          console.log('[SecureWS] Received message:', message.type, 'from:', message.senderId);
 
           // When we receive 'peer' response from server, announce it to the Repo
           // This triggers the Repo to start syncing documents with this peer
           if (message.type === 'peer') {
-            console.log('[SecureWS] Announcing server as peer candidate');
             this.emit('peer-candidate', {
               peerId: message.senderId,
               peerMetadata: message.peerMetadata || {},
@@ -96,7 +89,6 @@ export class SecureWebSocketAdapter extends NetworkAdapter {
       };
 
       this.socket.onclose = (event) => {
-        console.log(`[SecureWS] Disconnected (code: ${event.code}, reason: ${event.reason})`);
         this.socket = null;
         this.ready = false;
 
@@ -113,17 +105,13 @@ export class SecureWebSocketAdapter extends NetworkAdapter {
           );
           this.reconnectAttempts++;
 
-          console.log(
-            `[SecureWS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
-          );
-
           setTimeout(() => {
             if (this.shouldReconnect) {
               this.connectWebSocket();
             }
           }, delay);
         } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-          console.error('[SecureWS] Max reconnection attempts reached');
+          console.error('[Automerge] Connection failed after max retry attempts');
         }
       };
     } catch (error) {
@@ -133,16 +121,14 @@ export class SecureWebSocketAdapter extends NetworkAdapter {
 
   send(message: any) {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      console.warn('[SecureWS] Cannot send - socket not open');
       return;
     }
 
     try {
       const encoded = encode(message);
-      console.log('[SecureWS] Sending message:', message.type, 'documentId:', message.documentId);
       this.socket.send(encoded);
     } catch (error) {
-      console.error('[SecureWS] Failed to send message:', error);
+      console.error('[Automerge] Failed to send message:', error);
     }
   }
 

@@ -223,8 +223,6 @@ export const automergeSyncWs = new Elysia().use(jwtPlugin).ws('/ws/automerge-syn
             const message = decode(bytes as Uint8Array);
             const { type, senderId } = message;
 
-            console.log(`[Automerge] Received ${type} from ${senderId}`);
-
             // Handle join message - this can arrive before open() completes
             if (type === 'join') {
                 const { peerMetadata } = message;
@@ -306,10 +304,6 @@ export const automergeSyncWs = new Elysia().use(jwtPlugin).ws('/ws/automerge-syn
                         }
                         return;
                     }
-
-                    console.log(
-                        `[Automerge] Access granted: user ${userId} can access document ${docId}`,
-                    );
                 }
 
                 // Forward other messages to the repo

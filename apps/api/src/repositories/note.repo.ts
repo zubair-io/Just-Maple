@@ -252,7 +252,6 @@ export async function updateNote(
             const newTag = await findTagByIdWithAccess(data.tagId, userId, 'write');
             if (!newTag) return null; // No write access to the new tag
         }
-        console.log('Proceeding with update for note:', id);
 
         const updateData: Partial<NoteDocument> = {
             updatedAt: new Date(),

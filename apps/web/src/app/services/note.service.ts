@@ -147,7 +147,6 @@ export class NoteService {
       .subscribe();
     // Listen for note.updated events
     this.eventStream.on('note.updated').subscribe((event) => {
-      console.log('[NoteService] Received note.updated event', event.noteId);
       this.store.update(
         updateEntities(event.noteId, (note) => ({
           ...note,
@@ -158,7 +157,6 @@ export class NoteService {
     });
     // Listen for note.deleted events
     this.eventStream.on('note.deleted').subscribe((event) => {
-      console.log('[NoteService] Received note.deleted event', event.noteId);
       this.store.update(deleteEntities(event.noteId));
       if (isPlatformBrowser(this.platformId)) {
         this.indexedDB.delete(event.noteId, STORE_NAME);
