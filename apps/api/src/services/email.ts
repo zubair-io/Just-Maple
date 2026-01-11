@@ -202,18 +202,19 @@ export async function sendMagicLinkEmail(options: SendMagicLinkOptions): Promise
             console.error('Azure email failed:', error);
             throw error; // Don't silently fall back - surface the error
         }
-    } else {
-        //   console.warn('AZURE_COMMUNICATION_CONNECTION_STRING not configured');
     }
 
-    // Fallback to local mail
+    // In dev/e2e mode without Azure configured, just log the URL (don't try to send via local mail)
+    if (config.isDev) {
+        // Magic link URL already logged above - e2e tests can extract from logs if needed
+        return;
+    }
+
+    // Production mode without Azure - try local mail as fallback
     try {
         await sendWithLocalMail(options, verifyUrl);
     } catch (error) {
         console.error('Local mail failed:', error);
-        // In dev mode, we already logged the URL so don't throw
-        if (!config.isDev) {
-            throw new Error('Failed to send email');
-        }
+        throw new Error('Failed to send email');
     }
 }
