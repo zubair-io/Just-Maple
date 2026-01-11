@@ -47,6 +47,7 @@ export class LegoScanComponent implements OnInit, OnDestroy {
   readonly isScanning = signal(false);
   readonly isSaving = signal<string | null>(null); // registryId being saved
   readonly openDropdown = signal<string | null>(null); // registryId with open dropdown
+  readonly dropdownPosition = signal<'above' | 'below'>('above'); // dropdown position
 
   // Computed signals reactively derive from store - no validation needed
   readonly selectedTag = computed(() => {
@@ -232,6 +233,19 @@ export class LegoScanComponent implements OnInit, OnDestroy {
     if (this.openDropdown() === registryId) {
       this.openDropdown.set(null);
     } else {
+      // Determine dropdown position based on button location
+      const button = event.currentTarget as HTMLElement;
+      const rect = button.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const dropdownHeight = 180; // approximate height of dropdown
+
+      // If there's not enough space below, open above
+      if (rect.bottom + dropdownHeight > viewportHeight) {
+        this.dropdownPosition.set('above');
+      } else {
+        this.dropdownPosition.set('below');
+      }
+
       this.openDropdown.set(registryId);
     }
   }
