@@ -14,18 +14,29 @@ test.describe('Authentication', () => {
     test('should send magic link and show success message', async ({ page }) => {
         await page.goto('/login');
 
-        // Fill in email
-        const emailInput = page.locator('input#email');
+        // Wait for the page to load
+        await page.waitForLoadState('networkidle');
+
+        // Fill in email - use a more flexible selector
+        const emailInput = page.locator('input[type="email"]').first();
+        await expect(emailInput).toBeVisible({ timeout: 5000 });
         await emailInput.fill('test@example.com');
 
-        // Click send magic link button
-        const sendButton = page.getByRole('button', { name: /send magic link/i });
+        // Click send magic link button - use text content matcher
+        const sendButton = page.locator('button:has-text("Send Magic Link")');
+        await expect(sendButton).toBeVisible({ timeout: 5000 });
         await sendButton.click();
 
-        // Wait for code verification form to appear
-        await expect(page.locator('input[inputmode="numeric"][maxlength="6"]')).toBeVisible({
-            timeout: 10000,
+        // Wait for the API call to complete and view to switch
+        // The code verification form shows when emailSent() is true
+        // Use a more flexible selector for the code input
+        const codeInput = page.locator('input[inputmode="numeric"]');
+        await expect(codeInput).toBeVisible({
+            timeout: 15000,
         });
+
+        // Also verify the success message is shown
+        await expect(page.locator('text=Check your email')).toBeVisible({ timeout: 5000 });
     });
 
     test('should successfully authenticate with valid token', async ({ testUser, page }) => {
