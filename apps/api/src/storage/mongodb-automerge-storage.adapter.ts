@@ -80,22 +80,36 @@ export class MongoDBAutomergeStorageAdapter extends StorageAdapter {
 
         const now = new Date();
 
-        await this.collection.updateOne(
-            {
-                documentId: documentId as string,
-                storageKey: storageKey as string[],
-            },
-            {
-                $set: {
-                    data: Buffer.from(data),
-                    updatedAt: now,
+        try {
+            await this.collection.updateOne(
+                {
+                    documentId: documentId as string,
+                    storageKey: storageKey as string[],
                 },
-                $setOnInsert: {
-                    createdAt: now,
+                {
+                    $set: {
+                        data: Buffer.from(data),
+                        updatedAt: now,
+                    },
+                    $setOnInsert: {
+                        createdAt: now,
+                    },
                 },
-            },
-            { upsert: true },
-        );
+                { upsert: true },
+            );
+        } catch (error: any) {
+            // Handle duplicate key errors gracefully (race condition on upsert)
+            // If another process already saved this exact key, that's fine - the data is persisted
+            if (error.code === 11000) {
+                // Duplicate key - document already exists with this key, treat as success
+                console.log(
+                    `[MongoDB Storage] Duplicate key on save (race condition) - document already saved: ${documentId}/${storageKey.join('/')}`,
+                );
+                return;
+            }
+            // Re-throw other errors
+            throw error;
+        }
     }
 
     /**

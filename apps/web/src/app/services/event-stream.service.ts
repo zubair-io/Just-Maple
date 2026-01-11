@@ -72,8 +72,6 @@ export class EventStreamService {
 
         // Emit event to subscribers
         this.events$.next(data);
-
-        console.log('[Event Stream] Received event:', data.type);
       } catch (error) {
         console.error('[Event Stream] Failed to parse SSE message:', error);
       }

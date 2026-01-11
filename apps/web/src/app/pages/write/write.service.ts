@@ -48,7 +48,6 @@ export class WriteService {
 
     // Generate unique peer ID for this client
     const peerId = `client-${Math.random().toString(36).substring(2, 15)}`;
-    console.log('[WriteService] Initializing Automerge Repo with peerId:', peerId);
 
     const networkAdapter = new SecureWebSocketAdapter(wsUrl, token);
     const storage = new NoteServiceStorageAdapter(this.noteService, this.indexedDBService);
@@ -60,14 +59,10 @@ export class WriteService {
 
     storage.setRepo(this.repo);
 
-    // IMPORTANT: Wait for network to connect before marking ready
-    // This ensures documents will sync with server when opened
-    console.log('[WriteService] Waiting for network connection...');
+    // Wait for network to connect before marking ready
     await networkAdapter.whenReady();
-    console.log('[WriteService] Network connected!');
 
     this.ready.set(true);
-    console.log('[WriteService] Repo initialized and ready');
   }
 
   private buildWebSocketUrl(): string {

@@ -128,7 +128,6 @@ const cursorPlugin = (
       },
       apply(tr, value, oldState, newState) {
         const meta = tr.getMeta(cursorPluginKey);
-        console.log(meta?.cursors);
 
         // If there's a remote cursor update, re-compute decorations
         if (meta && meta.cursors) {
@@ -233,8 +232,6 @@ const cursorPlugin = (
               // Use hash of label for color to represent user consistently
               const color = stringToColor(label + (user?.email || ''));
 
-              console.log(state.selection);
-
               const message = {
                 type: 'cursor',
                 pos: state.selection.to - 1,
@@ -336,13 +333,9 @@ export class WriteComponent implements OnDestroy {
       let handle;
 
       if (documentId && isValidAutomergeUrl(autoMergeUrl)) {
-        console.log('[Write] Finding existing document:', autoMergeUrl);
         handle = await this.repo.find(autoMergeUrl);
-        console.log('[Write] Handle found:', handle.documentId, 'state:', handle.state);
       } else {
-        console.log('[Write] Creating new document');
         handle = this.repo.create({ text: '' });
-        console.log('[Write] Handle created:', handle.documentId);
         this.noteService
           .createNote({
             title: 'Untitled',
@@ -353,34 +346,23 @@ export class WriteComponent implements OnDestroy {
           .subscribe();
       }
       this.lastDocumentId = handle.documentId;
+
+      // Navigate to correct route if documentId changed (new documents only)
       if (documentId !== handle.documentId) {
         this.router.navigate(['/', this.tagId, handle.documentId], {
           replaceUrl: true,
         });
-
-        console.log('[Write] Waiting for handle to be ready...');
-        await handle.whenReady();
-        console.log('[Write] Handle ready! Doc:', handle.doc);
-
-        // Listen for document changes to verify sync is working
-        handle.on('change', ({ handle: h, doc, patches }) => {
-          console.log('[Write] Document changed! Patches:', patches);
-        });
-
-        this.docHandle = handle;
-        // const binaryData = Automerge.save(handle.doc);
-        // const base64Data = btoa(String.fromCharCode(...new Uint8Array([])));
-
-        // this.noteService
-        //   .createNote({
-        //     title: 'Untitled',
-        //     content: DEFAULT_NOTE_CONTENT,
-        //     tagId: this.tagId,
-        //     documentId: handle.documentId,
-        //     automergeDoc: base64Data,
-        //   })
-        //   .subscribe();
       }
+
+      // Always wait for handle and set up listeners (for BOTH new AND existing documents)
+      await handle.whenReady();
+
+      // Listen for document changes
+      handle.on('change', ({ handle: h, doc, patches }) => {
+        // Document synced
+      });
+
+      this.docHandle = handle;
 
       // Initialize text field if needed
       handle.change((doc: any) => {
