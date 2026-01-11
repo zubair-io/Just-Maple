@@ -52,8 +52,10 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
 
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
+        #if os(iOS)
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
+        #endif
 
         // Setup user content controller for bridge
         let contentController = WKUserContentController()
