@@ -100,9 +100,13 @@
         *cdkVirtualFor="let registry of filteredRegistries(); trackBy: trackByRegistryId"
         (click)="onSelectRegistry(registry)"
         class="flex items-center p-3 cursor-pointer transition-colors border-b border-[var(--color-border)]"
-        [class.bg-green-50]="isInCollection(registry._id)"
+        [class.bg-green-50]="getCollectionStatus(registry._id) === 'have'"
+        [class.bg-yellow-50]="getCollectionStatus(registry._id) === 'want'"
+        [class.bg-gray-100]="getCollectionStatus(registry._id) === 'sold'"
         [class.hover:bg-stone-50]="!isInCollection(registry._id)"
-        [class.hover:bg-green-100]="isInCollection(registry._id)"
+        [class.hover:bg-green-100]="getCollectionStatus(registry._id) === 'have'"
+        [class.hover:bg-yellow-100]="getCollectionStatus(registry._id) === 'want'"
+        [class.hover:bg-gray-200]="getCollectionStatus(registry._id) === 'sold'"
       >
         <!-- Image -->
         <div class="flex-shrink-0 mr-3">
@@ -145,29 +149,99 @@
           }
         </div>
 
-        <!-- Check Button -->
-        <button
-          (click)="toggleCollection($event, registry)"
-          [disabled]="isSaving() === registry._id"
-          class="ml-2 w-10 h-10 flex items-center justify-center rounded-full transition-colors"
-          [class.bg-green-500]="isInCollection(registry._id)"
-          [class.text-white]="isInCollection(registry._id)"
-          [class.hover:bg-green-600]="isInCollection(registry._id)"
-          [class.bg-stone-100]="!isInCollection(registry._id)"
-          [class.text-[var(--color-text-muted)]]="!isInCollection(registry._id)"
-          [class.hover:bg-stone-200]="!isInCollection(registry._id)"
-          [class.hover:text-[var(--color-text-main)]]="!isInCollection(registry._id)"
-        >
-          @if (isSaving() === registry._id) {
-            <div
-              class="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
-            ></div>
-          } @else if (isInCollection(registry._id)) {
-            <span class="material-symbols-rounded">check</span>
+        <!-- Action Button -->
+        <div class="ml-2 relative">
+          @if (isInCollection(registry._id)) {
+            <!-- Dropdown for items in collection -->
+            <button
+              (click)="toggleDropdown($event, registry._id)"
+              [disabled]="isSaving() === registry._id"
+              class="w-10 h-10 flex items-center justify-center rounded-full transition-colors"
+              [class.bg-green-500]="getCollectionStatus(registry._id) === 'have'"
+              [class.bg-yellow-500]="getCollectionStatus(registry._id) === 'want'"
+              [class.bg-gray-400]="getCollectionStatus(registry._id) === 'sold'"
+              [class.text-white]="true"
+            >
+              @if (isSaving() === registry._id) {
+                <div
+                  class="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
+                ></div>
+              } @else {
+                <span class="material-symbols-rounded text-lg">
+                  @switch (getCollectionStatus(registry._id)) {
+                    @case ('have') {
+                      check_circle
+                    }
+                    @case ('want') {
+                      favorite
+                    }
+                    @case ('sold') {
+                      sell
+                    }
+                    @default {
+                      check
+                    }
+                  }
+                </span>
+              }
+            </button>
+
+            <!-- Dropdown Menu -->
+            @if (openDropdown() === registry._id) {
+              <div
+                class="absolute right-0 bottom-12 w-36 bg-white rounded-lg shadow-lg border border-[var(--color-border)] z-20 overflow-hidden"
+              >
+                <button
+                  (click)="setStatus($event, registry, 'have')"
+                  class="w-full px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-stone-50 transition-colors"
+                  [class.bg-green-50]="getCollectionStatus(registry._id) === 'have'"
+                >
+                  <span class="material-symbols-rounded text-green-500 text-lg">check_circle</span>
+                  <span>Have</span>
+                </button>
+                <button
+                  (click)="setStatus($event, registry, 'want')"
+                  class="w-full px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-stone-50 transition-colors"
+                  [class.bg-yellow-50]="getCollectionStatus(registry._id) === 'want'"
+                >
+                  <span class="material-symbols-rounded text-yellow-500 text-lg">favorite</span>
+                  <span>Want</span>
+                </button>
+                <button
+                  (click)="setStatus($event, registry, 'sold')"
+                  class="w-full px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-stone-50 transition-colors"
+                  [class.bg-gray-100]="getCollectionStatus(registry._id) === 'sold'"
+                >
+                  <span class="material-symbols-rounded text-gray-500 text-lg">sell</span>
+                  <span>Sold</span>
+                </button>
+                <div class="border-t border-[var(--color-border)]"></div>
+                <button
+                  (click)="setStatus($event, registry, 'none')"
+                  class="w-full px-3 py-2.5 flex items-center gap-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <span class="material-symbols-rounded text-lg">remove_circle</span>
+                  <span>Remove</span>
+                </button>
+              </div>
+            }
           } @else {
-            <span class="material-symbols-rounded">add</span>
+            <!-- Add button for items not in collection -->
+            <button
+              (click)="toggleCollection($event, registry)"
+              [disabled]="isSaving() === registry._id"
+              class="w-10 h-10 flex items-center justify-center rounded-full bg-stone-100 text-[var(--color-text-muted)] hover:bg-stone-200 hover:text-[var(--color-text-main)] transition-colors"
+            >
+              @if (isSaving() === registry._id) {
+                <div
+                  class="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
+                ></div>
+              } @else {
+                <span class="material-symbols-rounded">add</span>
+              }
+            </button>
           }
-        </button>
+        </div>
       </div>
     </cdk-virtual-scroll-viewport>
   }

@@ -20,7 +20,7 @@ import { DecodeHintType } from '@zxing/library';
 import { TagService } from '../../services/tag.service';
 import { PaperService } from '../../services/paper.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
-import type { Paper, CollectibleRegistry } from '@maple/shared';
+import type { Paper, CollectibleRegistry, PaperStatus } from '@maple/shared';
 
 @Component({
   selector: 'app-lego-scan',
@@ -46,6 +46,7 @@ export class LegoScanComponent implements OnInit, OnDestroy {
   readonly cameraEnabled = signal(false);
   readonly isScanning = signal(false);
   readonly isSaving = signal<string | null>(null); // registryId being saved
+  readonly openDropdown = signal<string | null>(null); // registryId with open dropdown
 
   // Computed signals reactively derive from store - no validation needed
   readonly selectedTag = computed(() => {
@@ -219,6 +220,58 @@ export class LegoScanComponent implements OnInit, OnDestroy {
   isInCollection(registryId: string): boolean {
     const paper = this.papersMap().get(registryId);
     return paper !== undefined && paper.data.status !== 'none';
+  }
+
+  getCollectionStatus(registryId: string): PaperStatus | null {
+    const paper = this.papersMap().get(registryId);
+    return paper?.data.status ?? null;
+  }
+
+  toggleDropdown(event: Event, registryId: string): void {
+    event.stopPropagation();
+    if (this.openDropdown() === registryId) {
+      this.openDropdown.set(null);
+    } else {
+      this.openDropdown.set(registryId);
+    }
+  }
+
+  closeDropdown(): void {
+    this.openDropdown.set(null);
+  }
+
+  setStatus(event: Event, registry: CollectibleRegistry, status: PaperStatus): void {
+    event.stopPropagation();
+    this.openDropdown.set(null);
+
+    const tagId = this.tagId();
+    if (!tagId) return;
+
+    const existingPaper = this.papersMap().get(registry._id);
+    this.isSaving.set(registry._id);
+
+    if (existingPaper) {
+      this.paperService.updatePaper(existingPaper._id, { data: { status } }).subscribe({
+        next: () => this.isSaving.set(null),
+        error: () => this.isSaving.set(null),
+      });
+    } else {
+      this.paperService
+        .createPaper({
+          tags: [tagId],
+          data: {
+            itemId: registry.providerId,
+            provider: registry.provider,
+            registryData: registry._id,
+            status,
+            quantity: 1,
+          },
+        })
+        .subscribe({
+          next: () => this.isSaving.set(null),
+          error: () => this.isSaving.set(null),
+        });
+    }
   }
 
   trackByRegistryId(_index: number, registry: CollectibleRegistry): string {
