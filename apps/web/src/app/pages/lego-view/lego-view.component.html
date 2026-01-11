@@ -113,13 +113,13 @@
 }
 
 <!-- Paper List -->
-<div class="flex-1 overflow-hidden">
-  <app-paper-list
-    [papers]="papersForTag()"
-    [selectedPaperId]="null"
-    (selectPaper)="onSelectPaper($event)"
-  />
-</div>
+
+<app-paper-list
+  class="flex-1 overflow-hidden"
+  [papers]="papersForTag()"
+  [selectedPaperId]="null"
+  (selectPaper)="onSelectPaper($event)"
+/>
 
 <!-- FAB for scanning (hidden on mobile) -->
 <div class="hidden md:block absolute bottom-12 right-12 z-20">

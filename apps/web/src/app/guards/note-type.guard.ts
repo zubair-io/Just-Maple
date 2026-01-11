@@ -1,6 +1,6 @@
 import { inject } from '@angular/core';
 import { CanMatchFn, Route, UrlSegment } from '@angular/router';
-import { map, take, timeout, catchError } from 'rxjs/operators';
+import { map, take, timeout, catchError, tap } from 'rxjs/operators';
 import { of } from 'rxjs';
 import { NoteService } from '../services/note.service';
 import type { NoteType } from '@maple/shared';
@@ -14,24 +14,20 @@ function createNoteTypeGuard(expectedType: NoteType): CanMatchFn {
     const noteService = inject(NoteService);
 
     // documentId is the second segment (/:tagId/:documentId)
-    const documentId = segments[1]?.path;
+    const documentId = segments[0]?.path;
     if (!documentId) return false;
-
-    // Check if note exists in store synchronously first
-    const note = noteService.notes().find((n) => n.documentId === documentId);
-
-    // If note is already in the store, check type immediately
-    if (note) {
-      return (note.type || 'write') === expectedType;
-    }
-
     // If not in store, wait briefly for it to load (max 1 second)
     return noteService.select(documentId).pipe(
-      timeout(1000),
+      timeout(5000),
       take(1),
       map((note) => {
         if (!note) return false;
         return (note.type || 'write') === expectedType;
+      }),
+      tap((matches) => {
+        if (matches) {
+          noteService.setActiveNoteId(documentId);
+        }
       }),
       catchError(() => of(false)), // If timeout or error, return false
     );

@@ -67,6 +67,7 @@ export const routes: Routes = [
           // Write-type note (default) - shows note editor
           {
             path: ':documentId',
+            canMatch: [WriteNoteGuard],
             loadComponent: () =>
               import('./pages/write/write.component').then((m) => m.WriteComponent),
           },

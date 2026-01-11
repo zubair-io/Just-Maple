@@ -43,7 +43,17 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
     override init() {
         // Configure WKWebView
         let config = WKWebViewConfiguration()
+
+        let prefs = WKWebpagePreferences()
+        prefs.allowsContentJavaScript = true
+        config.defaultWebpagePreferences = prefs
+        config.websiteDataStore = WKWebsiteDataStore.default()
+
+
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
 
         // Setup user content controller for bridge
         let contentController = WKUserContentController()
@@ -56,6 +66,7 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
         #if DEBUG
         // Enable Web Inspector immediately in debug mode
         if #available(macOS 13.3, *) {
+            webView.layer?.borderWidth = 0
             webView.isInspectable = true
         }
         #endif

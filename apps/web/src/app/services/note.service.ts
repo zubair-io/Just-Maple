@@ -68,6 +68,7 @@ export class NoteService {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly network = inject(NetworkService);
   private readonly eventStream = inject(EventStreamService);
+  private init = false;
 
   // ELF Store
   private readonly store = createStore(
@@ -100,6 +101,7 @@ export class NoteService {
     }
 
     this.setupEventStreamListeners();
+    this.loadNotes().subscribe();
   }
 
   // private setupSaveSubscription() {
@@ -216,6 +218,7 @@ export class NoteService {
    * Load notes from API with optional filters
    */
   loadNotes(filters?: NoteFilters): Observable<Note[]> {
+    this.init = true;
     this._isLoading.set(true);
     this._error.set(null);
 
@@ -603,8 +606,8 @@ export class NoteService {
   /**
    * Select a single note as observable
    */
-  select(id: string): Observable<Note | undefined> {
-    return this.store.pipe(selectEntity(id));
+  select(id: string): Observable<Note> {
+    return this.store.pipe(selectEntity(id)).pipe(filterNil());
   }
 
   /**

@@ -59,7 +59,9 @@ export class LegoViewComponent implements OnInit, OnDestroy {
     { initialValue: null },
   );
 
-  constructor() {}
+  constructor() {
+    console.log('LegoViewComponent initialized');
+  }
 
   /** Get all papers for the tag (excluding 'none' status) */
   private readonly allPapersForTag = computed(() => {

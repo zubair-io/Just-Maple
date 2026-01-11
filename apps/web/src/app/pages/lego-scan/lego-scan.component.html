@@ -68,7 +68,14 @@
   <!-- Camera Preview -->
   @if (cameraEnabled()) {
     <div class="bg-black relative">
-      <video #videoElement class="w-full h-48 object-contain" autoplay playsinline muted></video>
+      <video
+        #videoElement
+        class="w-full h-48 object-contain"
+        autoplay
+        playsinline
+        webkit-playsinline
+        muted
+      ></video>
       @if (isScanning()) {
         <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div class="w-48 h-24 border-2 border-white/50 rounded-lg"></div>
