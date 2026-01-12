@@ -65,4 +65,10 @@ export const config = {
     // Azure Blob Storage config (Hornbeam - for profile pictures)
     hornbeamConnectionString: process.env.HORNBEAM,
     profilePictureContainer: 'profile-picture',
+
+    // Lego service config
+    rebrickableApiKey: process.env.REBRICKABLE_API_KEY,
+    brightDataApiKey: process.env.BRIGHT_DATA_API_KEY,
+    claudeApiKey: process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY,
+    hornbeamBlobUrl: process.env.HORNBEAM_BLOB_URL || 'https://hornbeam.justmaple.app/data',
 };

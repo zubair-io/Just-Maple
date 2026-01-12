@@ -10,6 +10,7 @@ import { paperRoutes } from './routes/papers';
 import { collectibleRegistryRoutes } from './routes/collectible-registry';
 import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
+import { legoRoutes } from './routes/lego';
 import { collabRoutes } from './routes/collab';
 import { webrtcSignalingRoutes } from './routes/webrtc-signaling';
 import { eventRoutes } from './routes/events';
@@ -69,6 +70,7 @@ async function main() {
         .use(collectibleRegistryRoutes)
         .use(notificationRoutes)
         .use(botRoutes)
+        .use(legoRoutes)
         .use(collabRoutes)
         .use(webrtcSignalingRoutes) // WebRTC signaling for P2P collaboration
         .use(eventRoutes) // SSE event stream for real-time app updates

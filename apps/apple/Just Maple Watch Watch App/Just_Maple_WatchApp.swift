@@ -12,7 +12,7 @@ import UserNotifications
 struct Just_Maple_Watch_Watch_AppApp: App {
     @WKExtensionDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var notificationManager = NotificationManager.shared
-    @StateObject private var signalRManager = SignalRManager.shared
+    @StateObject private var webSocketManager = WebSocketManager.shared
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -41,10 +41,10 @@ struct Just_Maple_Watch_Watch_AppApp: App {
     private func handleScenePhaseChange(_ phase: ScenePhase) {
         switch phase {
         case .active:
-            // App is active - connect to SignalR for real-time updates
-            print("[WatchApp] ▶️ App became active - connecting to SignalR")
+            // App is active - connect to WebSocket for real-time updates
+            print("[WatchApp] ▶️ App became active - connecting to WebSocket")
             Task { @MainActor in
-                await signalRManager.connect()
+                await webSocketManager.connect()
             }
 
         case .inactive:
@@ -52,11 +52,11 @@ struct Just_Maple_Watch_Watch_AppApp: App {
             print("[WatchApp] ⏸️ App became inactive")
 
         case .background:
-            // App is in background - disconnect SignalR to save battery
+            // App is in background - disconnect WebSocket to save battery
             // Push notifications will handle updates
-            print("[WatchApp] ⏹️ App moved to background - disconnecting SignalR")
+            print("[WatchApp] ⏹️ App moved to background - disconnecting WebSocket")
             Task { @MainActor in
-                signalRManager.disconnect()
+                webSocketManager.disconnect()
             }
 
         @unknown default:

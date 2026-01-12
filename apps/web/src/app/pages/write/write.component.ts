@@ -357,11 +357,6 @@ export class WriteComponent implements OnDestroy {
       // Always wait for handle and set up listeners (for BOTH new AND existing documents)
       await handle.whenReady();
 
-      // Listen for document changes
-      handle.on('change', ({ handle: h, doc, patches }) => {
-        // Document synced
-      });
-
       this.docHandle = handle;
 
       // Initialize text field if needed

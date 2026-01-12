@@ -10,7 +10,7 @@ import SwiftUI
 struct TagListView: View {
     @StateObject private var viewModel = TagListViewModel()
     @StateObject private var authManager = AuthenticationManager.shared
-    @StateObject private var signalRManager = SignalRManager.shared
+    @StateObject private var webSocketManager = WebSocketManager.shared
     @EnvironmentObject var notificationManager: NotificationManager
     @State private var navigationPath = NavigationPath()
     @State private var showDebugInfo = false
@@ -192,9 +192,9 @@ struct TagListView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    // SignalR Status
+                    // WebSocket Status
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("SignalR Connection")
+                        Text("WebSocket Connection")
                             .font(.headline)
 
                         HStack {
@@ -202,17 +202,17 @@ struct TagListView: View {
                                 .fill(statusColor)
                                 .frame(width: 8, height: 8)
 
-                            Text(signalRManager.connectionStatus.rawValue.capitalized)
+                            Text(webSocketManager.connectionStatus.rawValue.capitalized)
                                 .font(.caption)
                                 .foregroundColor(statusColor)
                         }
 
-                        if !signalRManager.subscribedTags.isEmpty {
+                        if !webSocketManager.subscribedTags.isEmpty {
                             Text("Subscribed Tags:")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
 
-                            ForEach(signalRManager.subscribedTags, id: \.self) { tagId in
+                            ForEach(webSocketManager.subscribedTags, id: \.self) { tagId in
                                 Text("• \(tagId)")
                                     .font(.system(size: 10, design: .monospaced))
                                     .foregroundColor(.secondary)
@@ -222,7 +222,7 @@ struct TagListView: View {
 
                     Divider()
 
-                    // SignalR Logs
+                    // WebSocket Logs
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Connection Logs")
@@ -230,9 +230,9 @@ struct TagListView: View {
 
                             Spacer()
 
-                            if !signalRManager.debugLogs.isEmpty {
+                            if !webSocketManager.debugLogs.isEmpty {
                                 Button {
-                                    signalRManager.debugLogs.removeAll()
+                                    webSocketManager.debugLogs.removeAll()
                                 } label: {
                                     Text("Clear")
                                         .font(.caption2)
@@ -241,13 +241,13 @@ struct TagListView: View {
                             }
                         }
 
-                        if signalRManager.debugLogs.isEmpty {
+                        if webSocketManager.debugLogs.isEmpty {
                             Text("No logs yet")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         } else {
                             VStack(alignment: .leading, spacing: 4) {
-                                ForEach(Array(signalRManager.debugLogs.enumerated()), id: \.offset) { _, log in
+                                ForEach(Array(webSocketManager.debugLogs.enumerated()), id: \.offset) { _, log in
                                     Text(log)
                                         .font(.system(size: 9, design: .monospaced))
                                         .foregroundColor(
@@ -268,21 +268,21 @@ struct TagListView: View {
                     VStack(spacing: 12) {
                         Button {
                             Task {
-                                await signalRManager.connect()
+                                await webSocketManager.connect()
                             }
                         } label: {
-                            Label("Connect SignalR", systemImage: "bolt.fill")
+                            Label("Connect WebSocket", systemImage: "bolt.fill")
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(signalRManager.connectionStatus == .connected)
+                        .disabled(webSocketManager.connectionStatus == .connected)
 
                         Button {
-                            signalRManager.disconnect()
+                            webSocketManager.disconnect()
                         } label: {
-                            Label("Disconnect SignalR", systemImage: "bolt.slash.fill")
+                            Label("Disconnect WebSocket", systemImage: "bolt.slash.fill")
                         }
                         .buttonStyle(.bordered)
-                        .disabled(signalRManager.connectionStatus == .disconnected)
+                        .disabled(webSocketManager.connectionStatus == .disconnected)
                     }
 
                     Divider()
@@ -317,7 +317,7 @@ struct TagListView: View {
     }
 
     private var statusColor: Color {
-        switch signalRManager.connectionStatus {
+        switch webSocketManager.connectionStatus {
         case .connected:
             return .green
         case .connecting, .reconnecting:

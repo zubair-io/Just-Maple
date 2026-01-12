@@ -17,24 +17,24 @@ class MessageListViewModel: ObservableObject {
 
     let tag: Tag
     private let apiClient = APIClient.shared
-    private let signalR = SignalRManager.shared
+    private let webSocket = WebSocketManager.shared
     private var notificationObserver: AnyCancellable?
-    private var signalRSubscription: AnyCancellable?
+    private var webSocketSubscription: AnyCancellable?
 
     init(tag: Tag) {
         self.tag = tag
         setupNotificationObserver()
-        setupSignalRObserver()
+        setupWebSocketObserver()
     }
 
     deinit {
         notificationObserver?.cancel()
-        signalRSubscription?.cancel()
+        webSocketSubscription?.cancel()
 
-        // Unsubscribe from SignalR on background thread
+        // Unsubscribe from WebSocket on background thread
         let tagId = tag.id
         Task { @MainActor in
-            SignalRManager.shared.unsubscribe(from: tagId)
+            WebSocketManager.shared.unsubscribe(from: tagId)
         }
     }
 
@@ -59,15 +59,15 @@ class MessageListViewModel: ObservableObject {
         }
     }
 
-    /// Setup SignalR observer for instant real-time updates (when app is open)
-    private func setupSignalRObserver() {
-        print("[MessageList] 🎧 Setting up SignalR observer for tag: \(tag.id)")
-        signalRSubscription = signalR.eventsForTag(tag.id)
+    /// Setup WebSocket observer for instant real-time updates (when app is open)
+    private func setupWebSocketObserver() {
+        print("[MessageList] 🎧 Setting up WebSocket observer for tag: \(tag.id)")
+        webSocketSubscription = webSocket.eventsForTag(tag.id)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
                 guard let self = self else { return }
 
-                print("[MessageList] ⚡⚡⚡ SignalR event received! Action: \(event.action), Tag: \(event.tagId), User: \(event.userId)")
+                print("[MessageList] ⚡⚡⚡ WebSocket event received! Action: \(event.action), Tag: \(event.tagId), User: \(event.userId)")
 
                 switch event.action {
                 case "message":
@@ -89,31 +89,31 @@ class MessageListViewModel: ObservableObject {
                     break
                 }
             }
-        print("[MessageList] ✅ SignalR observer setup complete")
+        print("[MessageList] ✅ WebSocket observer setup complete")
     }
 
-    /// Connect to SignalR and subscribe to this tag
-    func connectSignalR() async {
-        print("[MessageList] 🔌 Connecting to SignalR for tag: \(tag.id)")
+    /// Connect to WebSocket and subscribe to this tag
+    func connectWebSocket() async {
+        print("[MessageList] 🔌 Connecting to WebSocket for tag: \(tag.id)")
 
-        // Connect to SignalR if not already connected
-        if signalR.connectionStatus == .disconnected {
-            print("[MessageList] 📡 SignalR is disconnected, connecting...")
-            await signalR.connect()
-            print("[MessageList] ✅ SignalR connection attempt complete, status: \(signalR.connectionStatus)")
+        // Connect to WebSocket if not already connected
+        if webSocket.connectionStatus == .disconnected {
+            print("[MessageList] 📡 WebSocket is disconnected, connecting...")
+            await webSocket.connect()
+            print("[MessageList] ✅ WebSocket connection attempt complete, status: \(webSocket.connectionStatus)")
         } else {
-            print("[MessageList] ℹ️ SignalR already connected, status: \(signalR.connectionStatus)")
+            print("[MessageList] ℹ️ WebSocket already connected, status: \(webSocket.connectionStatus)")
         }
 
         // Subscribe to this tag
         print("[MessageList] 📥 Subscribing to tag: \(tag.id)")
-        signalR.subscribe(to: tag.id)
+        webSocket.subscribe(to: tag.id)
         print("[MessageList] ✅ Subscribe request sent")
     }
 
-    /// Disconnect from SignalR when leaving
-    func disconnectSignalR() {
-        signalR.unsubscribe(from: tag.id)
+    /// Disconnect from WebSocket when leaving
+    func disconnectWebSocket() {
+        webSocket.unsubscribe(from: tag.id)
     }
 
     /// Load messages for the tag

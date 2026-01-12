@@ -6,9 +6,85 @@ import {
     findRegistryByProviderId,
     searchRegistries,
 } from '../repositories/collectible-registry.repo';
+import { syncLegoSets, getOrCreateLegoRegistry } from '../services/collectible-registry.service';
+import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
+import { findUserById } from '../repositories/user.repo';
+import type { JWTPayload } from '@maple/shared';
 
 // Public routes - no auth required
 export const collectibleRegistryRoutes = new Elysia({ prefix: '/api/collectible-registry' })
+    .use(jwtPlugin)
+    .derive(async ({ jwt, request }) => {
+        const authHeader = request.headers.get('authorization');
+        if (!authHeader?.startsWith('Bearer ')) {
+            return { auth: null as AuthContext | null };
+        }
+        const token = authHeader.slice(7);
+        try {
+            const payload = (await jwt.verify(token)) as JWTPayload | false;
+            if (!payload) return { auth: null as AuthContext | null };
+            const user = await findUserById(payload.sub);
+            if (!user) return { auth: null as AuthContext | null };
+            return { auth: { user, payload } as AuthContext };
+        } catch {
+            return { auth: null as AuthContext | null };
+        }
+    })
+
+    // Sync LEGO sets from Rebrickable to CollectibleRegistry
+    .post(
+        '/sync-lego',
+        async ({ query, set }) => {
+            try {
+                const result = await syncLegoSets({
+                    year: query.year,
+                    fillMissing: query.fillMissing === 'true',
+                    specificId: query.id,
+                });
+
+                return result;
+            } catch (error: any) {
+                console.error('[Collectible Registry Route] Sync failed:', error);
+                set.status = error.statusCode === 429 ? 429 : 500;
+                return { error: 'Sync failed', message: error.message };
+            }
+        },
+        {
+            query: t.Object({
+                year: t.Optional(t.String()),
+                fillMissing: t.Optional(t.String()),
+                id: t.Optional(t.String()),
+            }),
+        },
+    )
+
+    // Get or create a single LEGO registry entry
+    .get(
+        '/lego/id/:id',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            try {
+                const registry = await getOrCreateLegoRegistry(params.id);
+                return { registry };
+            } catch (error: any) {
+                console.error(
+                    '[Collectible Registry Route] Failed to get/create lego registry:',
+                    error,
+                );
+                set.status = 500;
+                return { error: 'Failed to get LEGO registry', message: error.message };
+            }
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+        },
+    )
+
     // List all registries (supports incremental sync via updatedAt param)
     .get(
         '/',

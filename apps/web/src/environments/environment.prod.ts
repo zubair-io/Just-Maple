@@ -1,10 +1,10 @@
 export const environment = {
   production: true,
   apiUrl: 'https://paperbark.justmaple.app',
-  wsUrl: '', // Not used when useSignalR is true
-  // SignalR config (production uses Azure SignalR via AutumnBlaze)
-  useSignalR: true,
-  signalrNegotiateUrl: 'https://autumn-blaze.justmaple.app/api/signalr',
+  wsUrl: 'wss://paperbark.justmaple.app',
+  // SignalR removed - using WebSocket
+  useSignalR: false,
+  signalrNegotiateUrl: '', // Deprecated - SignalR removed
   // LogRocket (only enabled in production)
-  logRocketAppId: 'd4ksdx/just-maple', // Replace with your actual LogRocket app ID
+  logRocketAppId: 'd4ksdx/just-maple',
 };

@@ -49,10 +49,10 @@ struct MessageListView: View {
         }
         .task {
             await viewModel.loadMessages()
-            await viewModel.connectSignalR()
+            await viewModel.connectWebSocket()
         }
         .onDisappear {
-            viewModel.disconnectSignalR()
+            viewModel.disconnectWebSocket()
         }
     }
 

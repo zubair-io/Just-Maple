@@ -116,3 +116,42 @@ export async function searchRegistries(
     const docs = await cursor.toArray();
     return docs.map(toRegistryResponse);
 }
+
+export async function createRegistry(
+    data: Omit<CollectibleRegistry, '_id'> & { _id: string },
+): Promise<CollectibleRegistry> {
+    const doc: CollectibleRegistryDocument = {
+        _id: new ObjectId(data._id),
+        title: data.title,
+        description: data.description,
+        images: data.images,
+        providerId: data.providerId,
+        provider: data.provider,
+        tags: data.tags,
+        providerData: data.providerData,
+        upc: data.upc,
+        createdAt: new Date(data.createdAt),
+        updatedAt: new Date(data.updatedAt),
+    };
+
+    await getCollection().insertOne(doc);
+    return toRegistryResponse(doc);
+}
+
+export async function updateRegistry(
+    id: string,
+    data: Partial<Omit<CollectibleRegistry, '_id' | 'createdAt' | 'updatedAt'>>,
+): Promise<CollectibleRegistry | null> {
+    const updateDoc: Partial<CollectibleRegistryDocument> = {
+        ...data,
+        updatedAt: new Date(),
+    };
+
+    const result = await getCollection().findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        { $set: updateDoc },
+        { returnDocument: 'after' },
+    );
+
+    return result ? toRegistryResponse(result) : null;
+}
