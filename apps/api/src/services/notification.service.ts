@@ -1,5 +1,6 @@
 import type { NotificationType } from '@maple/shared';
 import * as notificationRepo from '../repositories/notification.repo';
+import { countUnreadNotifications } from '../repositories/notification.repo';
 import { config } from '../config';
 import { sendApnsPush } from './apns.service';
 
@@ -152,6 +153,10 @@ export async function sendNotification(
     const title = customTitle || fallback.title;
     const body = customBody || fallback.body;
 
+    // Get the current unread count for badge (includes the notification we just created)
+    const badgeCount = await countUnreadNotifications(userId);
+    console.log(`[Notification] Badge count for user ${userId}: ${badgeCount}`);
+
     // Send push to each registered device
     const results = await Promise.allSettled(
         devices.map(async (device) => {
@@ -171,6 +176,7 @@ export async function sendNotification(
                     device.production,
                     device.serverUrl, // Pass serverUrl for multi-server support
                     payloadData, // Pass notification data with senderProfilePictureUrl
+                    badgeCount, // Pass badge count for app icon
                 );
             } else {
                 // Use Paperbark relay in dev/test

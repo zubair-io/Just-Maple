@@ -125,11 +125,23 @@ export async function markNotificationAsRead(id: string, userId: string): Promis
     }
 }
 
+export async function markAllNotificationsAsRead(userId: string): Promise<number> {
+    const result = await getNotificationCollection().updateMany(
+        { userId, read: false },
+        { $set: { read: true } },
+    );
+    return result.modifiedCount;
+}
+
 export async function deleteExpiredNotifications(): Promise<number> {
     const result = await getNotificationCollection().deleteMany({
         expiresAt: { $lt: new Date() },
     });
     return result.deletedCount;
+}
+
+export async function countUnreadNotifications(userId: string): Promise<number> {
+    return await getNotificationCollection().countDocuments({ userId, read: false });
 }
 
 // Device registration operations

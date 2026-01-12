@@ -27,6 +27,7 @@ enum WebToNativeMessage: Codable {
     case requestPushPermission
     case unregisterPushNotifications
     case getPushStatus
+    case setBadge(SetBadgePayload)
     case unknown
 
     struct TestPayload: Codable {
@@ -63,6 +64,10 @@ enum WebToNativeMessage: Codable {
 
     struct ClearTokenPayload: Codable {
         let serverId: String?
+    }
+
+    struct SetBadgePayload: Codable {
+        let count: Int
     }
 
     enum CodingKeys: String, CodingKey {
@@ -115,6 +120,9 @@ enum WebToNativeMessage: Codable {
             self = .unregisterPushNotifications
         case "getPushStatus":
             self = .getPushStatus
+        case "setBadge":
+            let payload = try container.decode(SetBadgePayload.self, forKey: .payload)
+            self = .setBadge(payload)
         default:
             self = .unknown
         }
@@ -168,6 +176,9 @@ enum WebToNativeMessage: Codable {
             try container.encode("unregisterPushNotifications", forKey: .type)
         case .getPushStatus:
             try container.encode("getPushStatus", forKey: .type)
+        case .setBadge(let payload):
+            try container.encode("setBadge", forKey: .type)
+            try container.encode(payload, forKey: .payload)
         case .unknown:
             try container.encode("unknown", forKey: .type)
         }
@@ -732,6 +743,10 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 serverId: isRegistered ? activeServer.id : nil
             )))
 
+        case .setBadge(let payload):
+            // macOS doesn't have app icon badges like iOS
+            print("[Bridge] Badge not supported on macOS (requested: \(payload.count))")
+
         case .unknown:
             print("[Bridge] Unknown message type")
         }
@@ -1000,9 +1015,18 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 isRegistered: isRegistered,
                 serverId: isRegistered ? activeServer.id : nil
             )))
+
+        case .setBadge(let payload):
+            Task { @MainActor in
+                UIApplication.shared.applicationIconBadgeNumber = payload.count
+                print("[Bridge] Set app badge to \(payload.count)")
+            }
         #else
         case .requestPushPermission, .unregisterPushNotifications, .getPushStatus:
             print("[Bridge] Push notifications not supported on macOS")
+
+        case .setBadge(let payload):
+            print("[Bridge] Badge not supported on macOS (requested: \(payload.count))")
         #endif
 
         case .unknown:

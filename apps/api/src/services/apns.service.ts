@@ -62,6 +62,7 @@ function getApnProvider(production: boolean): apn.Provider {
  * @param production - true for production APNs, false for sandbox
  * @param serverUrl - Optional server URL for multi-server support
  * @param additionalData - Optional additional data to include in payload
+ * @param badgeCount - Optional badge count to display on app icon
  */
 export async function sendApnsPush(
     deviceToken: string,
@@ -72,6 +73,7 @@ export async function sendApnsPush(
     production: boolean = false,
     serverUrl?: string,
     additionalData?: Record<string, any>,
+    badgeCount?: number,
 ): Promise<void> {
     try {
         const provider = getApnProvider(production);
@@ -95,7 +97,7 @@ export async function sendApnsPush(
             topic: config.apnsBundleId,
             payload,
             sound: 'default',
-            badge: 1,
+            badge: badgeCount ?? 1,
             mutableContent: 1, // Enable notification service extension
         });
 

@@ -307,6 +307,17 @@ export class NativeBridgeService {
     this.sendMessage({ type: 'getPushStatus' });
   }
 
+  /**
+   * Set the app icon badge count
+   * @param count - The badge count to display (0 to clear)
+   */
+  setBadge(count: number): void {
+    this.sendMessage({
+      type: 'setBadge',
+      payload: { count },
+    });
+  }
+
   // MARK: - Audio Recording
 
   startRecording(): void {
