@@ -11,7 +11,7 @@ import { Collection, Document } from 'mongodb';
 
 interface AutomergeChunkDocument extends Document {
     documentId: string;
-    storageKey: string[];
+    storageKey: string; // Joined with '/' - Cosmos DB doesn't support arrays in unique keys
     data: Buffer;
     createdAt: Date;
     updatedAt: Date;
@@ -53,11 +53,12 @@ export class MongoDBAutomergeStorageAdapter extends StorageAdapter {
         await this.ready;
 
         const [documentId, ...rest] = key;
-        const storageKey = rest;
+        // Join the storage key path with '/' - Cosmos DB doesn't support arrays in unique keys
+        const storageKey = rest.join('/');
 
         const doc = await this.collection.findOne({
             documentId: documentId as string,
-            storageKey: storageKey as string[],
+            storageKey,
         });
 
         if (!doc) {
@@ -74,9 +75,8 @@ export class MongoDBAutomergeStorageAdapter extends StorageAdapter {
         await this.ready;
 
         const [documentId, ...rest] = key;
-        // Always use rest as storageKey, even if empty
-        // This ensures consistency: documentId is separate from storageKey path
-        const storageKey = rest;
+        // Join the storage key path with '/' - Cosmos DB doesn't support arrays in unique keys
+        const storageKey = rest.join('/');
 
         const now = new Date();
 
@@ -84,7 +84,7 @@ export class MongoDBAutomergeStorageAdapter extends StorageAdapter {
             await this.collection.updateOne(
                 {
                     documentId: documentId as string,
-                    storageKey: storageKey as string[],
+                    storageKey,
                 },
                 {
                     $set: {
@@ -103,7 +103,7 @@ export class MongoDBAutomergeStorageAdapter extends StorageAdapter {
             if (error.code === 11000) {
                 // Duplicate key - document already exists with this key, treat as success
                 console.log(
-                    `[MongoDB Storage] Duplicate key on save (race condition) - document already saved: ${documentId}/${storageKey.join('/')}`,
+                    `[MongoDB Storage] Duplicate key on save (race condition) - document already saved: ${documentId}/${storageKey}`,
                 );
                 return;
             }
@@ -126,10 +126,14 @@ export class MongoDBAutomergeStorageAdapter extends StorageAdapter {
             })
             .toArray();
 
-        return docs.map((doc) => ({
-            key: [documentId, ...doc.storageKey] as StorageKey,
-            data: new Uint8Array(doc.data),
-        }));
+        return docs.map((doc) => {
+            // Split storageKey back to array (it was joined with '/')
+            const keyParts = doc.storageKey ? doc.storageKey.split('/') : [];
+            return {
+                key: [documentId, ...keyParts] as StorageKey,
+                data: new Uint8Array(doc.data),
+            };
+        });
     }
 
     /**
@@ -139,11 +143,12 @@ export class MongoDBAutomergeStorageAdapter extends StorageAdapter {
         await this.ready;
 
         const [documentId, ...rest] = key;
-        const storageKey = rest;
+        // Join the storage key path with '/' - Cosmos DB doesn't support arrays in unique keys
+        const storageKey = rest.join('/');
 
         await this.collection.deleteOne({
             documentId: documentId as string,
-            storageKey: storageKey as string[],
+            storageKey,
         });
     }
 
