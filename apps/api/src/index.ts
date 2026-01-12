@@ -85,21 +85,30 @@ async function main() {
     }
 
     app.get('/api/health', async ({ set }) => {
+        const startTime = Date.now();
         try {
             // Check database connection
             const database = getDb();
             await database.command({ ping: 1 });
+            const dbLatency = Date.now() - startTime;
+
             return {
                 status: 'healthy',
                 timestamp: new Date().toISOString(),
                 database: 'connected',
+                latency: {
+                    db: dbLatency,
+                },
+                uptime: process.uptime(),
             };
-        } catch {
+        } catch (error) {
             set.status = 503;
             return {
                 status: 'unhealthy',
                 timestamp: new Date().toISOString(),
                 database: 'disconnected',
+                error: error instanceof Error ? error.message : 'Database connection failed',
+                uptime: process.uptime(),
             };
         }
     })
