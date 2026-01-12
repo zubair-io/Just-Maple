@@ -46,13 +46,29 @@ async function createTestUserAndGetToken(page: Page): Promise<{
 }
 
 /**
- * Helper to authenticate a page with a token
+ * Helper to authenticate a page with a token and user data
  */
-async function authenticatePage(page: Page, token: string): Promise<void> {
+async function authenticatePage(
+    page: Page,
+    token: string,
+    userId: string,
+    email: string,
+): Promise<void> {
     await page.goto('http://localhost:4200');
-    await page.evaluate((t) => {
-        localStorage.setItem('auth_token', t);
-    }, token);
+    await page.evaluate(
+        ({ t, uid, e }) => {
+            const storageKey = `auth:${window.location.origin}`;
+            const authData = {
+                accessToken: t,
+                user: {
+                    _id: uid,
+                    email: e,
+                },
+            };
+            localStorage.setItem(storageKey, JSON.stringify(authData));
+        },
+        { t: token, uid: userId, e: email },
+    );
     await page.reload();
     await page.waitForLoadState('networkidle');
 }
@@ -129,8 +145,8 @@ test.describe.serial('Automerge Collaboration Test (/write)', () => {
             console.log('Test user created:', testUser.email);
 
             // Authenticate both pages with the same user
-            await authenticatePage(page1, testUser.token);
-            await authenticatePage(page2, testUser.token);
+            await authenticatePage(page1, testUser.token, testUser.userId, testUser.email);
+            await authenticatePage(page2, testUser.token, testUser.userId, testUser.email);
 
             // Create a tag and note for testing
             const tag = await createTag(page1, testUser.token, `Collab Test ${Date.now()}`);
@@ -240,8 +256,8 @@ test.describe.serial('Automerge Collaboration Test (/write)', () => {
             const testUser = await createTestUserAndGetToken(page1);
 
             // Authenticate both pages
-            await authenticatePage(page1, testUser.token);
-            await authenticatePage(page2, testUser.token);
+            await authenticatePage(page1, testUser.token, testUser.userId, testUser.email);
+            await authenticatePage(page2, testUser.token, testUser.userId, testUser.email);
 
             // Create a tag and note for testing
             const tag = await createTag(page1, testUser.token, `Rapid Test ${Date.now()}`);
