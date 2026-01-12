@@ -26,13 +26,16 @@ import {
     updatePasskeyCounter,
     getAllCredentialIdsForUser,
 } from '../repositories/passkey.repo';
+import {
+    storeChallenge,
+    consumeChallenge,
+    hasChallenge,
+    deleteChallenge,
+} from '../repositories/challenge.repo';
 import { sendMagicLinkEmail } from '../services/email';
 import { config } from '../config';
 import type { JWTPayload, UserResponse } from '@maple/shared';
 import { uploadProfilePicture } from '../services/storage.service';
-
-// Store challenges temporarily (in production, use Redis or DB)
-const challengeStore = new Map<string, string>();
 
 // Helper to verify JWT and get user
 async function verifyAndGetUser(
@@ -303,8 +306,8 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 },
             });
 
-            // Store challenge for verification
-            challengeStore.set(user._id, options.challenge);
+            // Store challenge for verification (persisted in MongoDB with TTL)
+            await storeChallenge(`register:${user._id}`, options.challenge);
 
             return options;
         } catch (error) {
@@ -328,7 +331,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 return { error: 'Unauthorized' };
             }
 
-            const expectedChallenge = challengeStore.get(user._id);
+            const expectedChallenge = await consumeChallenge(`register:${user._id}`);
             if (!expectedChallenge) {
                 set.status = 400;
                 return { error: 'No challenge found. Start registration first.' };
@@ -367,9 +370,6 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                     deviceType: credentialDeviceType,
                     backedUp: credentialBackedUp,
                 });
-
-                // Clean up challenge
-                challengeStore.delete(user._id);
 
                 return {
                     verified: true,
@@ -415,8 +415,8 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                     allowCredentials,
                 });
 
-                // Store challenge with a temporary ID (use challenge itself)
-                challengeStore.set(`login:${options.challenge}`, options.challenge);
+                // Store challenge (persisted in MongoDB with TTL)
+                await storeChallenge(`login:${options.challenge}`, options.challenge);
 
                 return options;
             } catch (error) {
@@ -466,7 +466,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 );
                 const expectedChallenge = clientDataJSON.challenge;
 
-                if (!challengeStore.has(`login:${expectedChallenge}`)) {
+                if (!(await hasChallenge(`login:${expectedChallenge}`))) {
                     set.status = 400;
                     return { error: 'Invalid or expired challenge' };
                 }
@@ -498,7 +498,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 );
 
                 // Clean up challenge
-                challengeStore.delete(`login:${expectedChallenge}`);
+                await deleteChallenge(`login:${expectedChallenge}`);
 
                 // Get user and generate JWT
                 const user = await findUserById(passkey.userId);

@@ -86,6 +86,12 @@ async function createIndexes(database: Db): Promise<void> {
     // Messages - add thread index
     await database.collection('messages').createIndex({ threadId: 1, createdAt: 1 });
 
+    // Passkey challenges collection with TTL
+    await database.collection('passkey_challenges').createIndex({ key: 1 }, { unique: true });
+    await database
+        .collection('passkey_challenges')
+        .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
     console.log('Database indexes created');
 }
 

@@ -4,6 +4,7 @@ export const config = {
     jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
     jwtExpiresIn: '14d', // 14 days - refreshes on each app open
     magicLinkExpiresIn: 15 * 60 * 1000, // 15 minutes
+    challengeExpiresIn: 5 * 60 * 1000, // 5 minutes for WebAuthn challenges
     get isDev() {
         return process.env.NODE_ENV !== 'production';
     },
