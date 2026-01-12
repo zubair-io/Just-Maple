@@ -7,7 +7,7 @@ test.describe('Collaboration & Sharing', () => {
         const user2 = await createTestUser(page);
 
         // Login as user1
-        await authenticateWithToken(page, user1.token);
+        await authenticateWithToken(page, user1.token, user1.userId, user1.email);
         await page.waitForTimeout(1000);
 
         // Look for an existing tag or skip if none exists
@@ -66,8 +66,8 @@ test.describe('Collaboration & Sharing', () => {
         const user1 = await createTestUser(page1);
         const user2 = await createTestUser(page2);
 
-        await authenticateWithToken(page1, user1.token);
-        await authenticateWithToken(page2, user2.token);
+        await authenticateWithToken(page1, user1.token, user1.userId, user1.email);
+        await authenticateWithToken(page2, user2.token, user2.userId, user2.email);
 
         // User1: Look for an existing tag
         const tagItem = page1.locator('[class*="tag"]').first();
@@ -150,7 +150,7 @@ test.describe('Collaboration & Sharing', () => {
         const user1 = await createTestUser(page);
         const user2 = await createTestUser(page);
 
-        await authenticateWithToken(page, user1.token);
+        await authenticateWithToken(page, user1.token, user1.userId, user1.email);
         await page.waitForTimeout(1000);
 
         // Look for an existing tag or create one
@@ -232,8 +232,8 @@ test.describe('Collaboration & Sharing', () => {
         const user1 = await createTestUser(page1);
         const user2 = await createTestUser(page2);
 
-        await authenticateWithToken(page1, user1.token);
-        await authenticateWithToken(page2, user2.token);
+        await authenticateWithToken(page1, user1.token, user1.userId, user1.email);
+        await authenticateWithToken(page2, user2.token, user2.userId, user2.email);
 
         // User1: Look for an existing tag
         const tagItem = page1.locator('[class*="tag"]').first();
@@ -310,7 +310,7 @@ test.describe('Collaboration & Sharing', () => {
     test('should make tag public and allow read access', async ({ page }) => {
         const user1 = await createTestUser(page);
 
-        await authenticateWithToken(page, user1.token);
+        await authenticateWithToken(page, user1.token, user1.userId, user1.email);
         await page.waitForTimeout(1000);
 
         // Look for an existing tag

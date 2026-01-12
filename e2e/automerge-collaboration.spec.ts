@@ -12,8 +12,8 @@ test.describe('Automerge Note Collaboration', () => {
         const user1 = await createTestUser(page1);
         const user2 = await createTestUser(page2);
 
-        await authenticateWithToken(page1, user1.token);
-        await authenticateWithToken(page2, user2.token);
+        await authenticateWithToken(page1, user1.token, user1.userId, user1.email);
+        await authenticateWithToken(page2, user2.token, user2.userId, user2.email);
 
         // User1: Create a new note
         await page1.goto('/');
@@ -156,8 +156,8 @@ test.describe('Automerge Note Collaboration', () => {
         const user1 = await createTestUser(page1);
         const user2 = await createTestUser(page2);
 
-        await authenticateWithToken(page1, user1.token);
-        await authenticateWithToken(page2, user2.token);
+        await authenticateWithToken(page1, user1.token, user1.userId, user1.email);
+        await authenticateWithToken(page2, user2.token, user2.userId, user2.email);
 
         // User1: Create a note
         await page1.goto('/');
@@ -391,8 +391,8 @@ test.describe('Automerge Note Collaboration', () => {
         const user1 = await createTestUser(page1);
         const user2 = await createTestUser(page2);
 
-        await authenticateWithToken(page1, user1.token);
-        await authenticateWithToken(page2, user2.token);
+        await authenticateWithToken(page1, user1.token, user1.userId, user1.email);
+        await authenticateWithToken(page2, user2.token, user2.userId, user2.email);
 
         // User1: Create a note
         await page1.goto('/');
