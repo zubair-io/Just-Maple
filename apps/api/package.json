@@ -7,7 +7,7 @@
     "dev": "bun run --watch src/index.ts",
     "dev:e2e": "bun run --watch src/index-e2e.ts",
     "start": "bun run --watch src/index.ts",
-    "build": "bun run --cwd ../../packages/shared build && bun build src/index.ts --outdir dist --target bun",
+    "build": "bun run --cwd ../../packages/shared build && bun build src/index.ts --outdir dist --target bun --external @automerge/automerge",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "migrate:gravatar": "bun run scripts/migrate-gravatar-profiles.ts"

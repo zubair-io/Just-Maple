@@ -21,9 +21,9 @@ COPY apps/web ./apps/web
 WORKDIR /app/packages/shared
 RUN bun run build
 
-# Build API
+# Build API (mark automerge as external since it requires WASM files at runtime)
 WORKDIR /app/apps/api
-RUN bun build src/index.ts --outdir dist --target bun --minify
+RUN bun build src/index.ts --outdir dist --target bun --minify --external @automerge/automerge
 
 # Build Web (paperbark config outputs to apps/api/dist/web/paperbark)
 WORKDIR /app/apps/web
@@ -40,6 +40,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf 
 # Copy built API and frontend files
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/package.json ./
+
+# Install automerge (requires WASM files that can't be bundled)
+RUN bun add @automerge/automerge@3.2.1
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
