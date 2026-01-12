@@ -14,6 +14,7 @@ import { IndexedDBService } from '../../services/indexed-db.service';
 import { SimpleNetworkAdapter } from './simple-network-adapter';
 import { JustMapleNetworkAdapter } from '../../services/automerge-network-adapter';
 import { SecureWebSocketAdapter } from './secure-websocket-adapter';
+import { environment } from '../../../environments/environment';
 
 function base64ToBytes(base64: string): Uint8Array {
   const binaryString = atob(base64);
@@ -66,13 +67,24 @@ export class WriteService {
   }
 
   private buildWebSocketUrl(): string {
+    // If wsUrl is configured, use it directly
+    if (environment.wsUrl) {
+      return `${environment.wsUrl}/ws/automerge-sync`;
+    }
+
+    // If apiUrl is configured, derive WebSocket URL from it
+    if (environment.apiUrl) {
+      const wsUrl = environment.apiUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+      return `${wsUrl}/ws/automerge-sync`;
+    }
+
     // Development: proxy to backend via Angular dev server
-    // Production: direct connection to backend
     if (typeof window !== 'undefined') {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
       return `${protocol}//${host}/ws/automerge-sync`;
     }
+
     // SSR fallback (shouldn't happen but be safe)
     return 'ws://localhost:4200/ws/automerge-sync';
   }

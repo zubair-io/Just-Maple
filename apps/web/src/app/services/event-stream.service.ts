@@ -3,6 +3,7 @@ import { Subject, Observable } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import type { Note, Tag } from '@maple/shared';
+import { environment } from '../../environments/environment';
 
 // Event types that can be received via SSE
 export type AppEvent =
@@ -37,7 +38,7 @@ export class EventStreamService {
   private _isConnected = false;
 
   // API configuration
-  private readonly API_BASE = '/api/events';
+  private readonly API_BASE = `${environment.apiUrl || ''}/api/events`;
 
   /**
    * Connect to the SSE event stream
