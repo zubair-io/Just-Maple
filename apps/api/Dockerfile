@@ -39,7 +39,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf 
 
 # Copy built API and frontend files
 COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/apps/api/package.json ./
+
+# Copy automerge from builder (requires WASM files that can't be bundled)
+COPY --from=builder /app/node_modules/@automerge ./node_modules/@automerge
 
 # Install automerge (requires WASM files that can't be bundled)
 RUN bun add @automerge/automerge@3.2.1
