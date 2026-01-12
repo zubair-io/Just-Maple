@@ -145,7 +145,12 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                     provider: t.String(),
                     registryData: t.Optional(t.String()),
                     status: t.Optional(
-                        t.Union([t.Literal('have'), t.Literal('want'), t.Literal('sold')]),
+                        t.Union([
+                            t.Literal('have'),
+                            t.Literal('want'),
+                            t.Literal('sold'),
+                            t.Literal('none'),
+                        ]),
                     ),
                     quantity: t.Optional(t.Number({ minimum: 0 })),
                 }),
@@ -198,7 +203,12 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                         provider: t.Optional(t.String()),
                         registryData: t.Optional(t.String()),
                         status: t.Optional(
-                            t.Union([t.Literal('have'), t.Literal('want'), t.Literal('sold')]),
+                            t.Union([
+                                t.Literal('have'),
+                                t.Literal('want'),
+                                t.Literal('sold'),
+                                t.Literal('none'),
+                            ]),
                         ),
                         quantity: t.Optional(t.Number({ minimum: 0 })),
                     }),
