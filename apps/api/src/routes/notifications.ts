@@ -6,6 +6,7 @@ import {
     findNotificationById,
     findNotificationsByUserId,
     markNotificationAsRead,
+    markAllNotificationsAsRead,
     registerDevice,
     unregisterDevice,
     findDeviceRegistrationsByUserId,
@@ -148,6 +149,17 @@ export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
             }),
         },
     )
+
+    // Mark all notifications as read
+    .patch('/read-all', async ({ auth, set }) => {
+        if (!checkAuth(auth, set)) {
+            return { error: 'Unauthorized', message: 'Valid authentication required' };
+        }
+
+        const count = await markAllNotificationsAsRead(auth.user._id);
+
+        return { message: `Marked ${count} notifications as read`, count };
+    })
 
     // Mark notification as read
     .patch(

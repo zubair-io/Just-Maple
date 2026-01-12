@@ -181,7 +181,11 @@ export class NotificationService {
         params: { limit: limit.toString(), skip: skip.toString() },
       })
       .pipe(
-        tap((response) => this.notifications.set(response.notifications)),
+        tap((response) => {
+          this.notifications.set(response.notifications);
+          // Sync badge count with native app
+          this.syncBadgeCount();
+        }),
         map(() => void 0),
         catchError((error) => {
           console.error('[NotificationService] Failed to fetch notifications:', error);
@@ -226,6 +230,8 @@ export class NotificationService {
         // Update local state
         const updated = this.notifications().map((n) => (n._id === id ? { ...n, read: true } : n));
         this.notifications.set(updated);
+        // Sync badge count with native app
+        this.syncBadgeCount();
       }),
       map(() => void 0),
       catchError((error) => {
@@ -233,6 +239,50 @@ export class NotificationService {
         return throwError(() => error);
       }),
     );
+  }
+
+  /**
+   * Sync the badge count with the native app
+   * This updates the app icon badge to reflect the current unread count
+   */
+  syncBadgeCount(): void {
+    if (this.nativeBridge.isNativeApp()) {
+      const count = this.unreadCount();
+      console.log(`[NotificationService] Syncing badge count: ${count}`);
+      this.nativeBridge.setBadge(count);
+    }
+  }
+
+  /**
+   * Clear the badge (set to 0)
+   */
+  clearBadge(): void {
+    if (this.nativeBridge.isNativeApp()) {
+      console.log('[NotificationService] Clearing badge');
+      this.nativeBridge.setBadge(0);
+    }
+  }
+
+  /**
+   * Mark all notifications as read
+   */
+  markAllAsRead(): Observable<void> {
+    return this.http
+      .patch<{ message: string; count: number }>('/api/notifications/read-all', {})
+      .pipe(
+        tap(() => {
+          // Update local state
+          const updated = this.notifications().map((n) => ({ ...n, read: true }));
+          this.notifications.set(updated);
+          // Clear the badge since all are read
+          this.clearBadge();
+        }),
+        map(() => void 0),
+        catchError((error) => {
+          console.error('[NotificationService] Failed to mark all notifications as read:', error);
+          return throwError(() => error);
+        }),
+      );
   }
 
   /**
@@ -403,7 +453,7 @@ export class NotificationService {
         if (notification.data['tagId']) {
           const tagId = notification.data['tagId'];
           console.log(`[NotificationService] 🧭 Navigating to shared tag: ${tagId}`);
-          window.location.hash = `/${tagId}`;
+          this.router.navigate(['/', tagId]);
         } else {
           console.warn('[NotificationService] ⚠️ share_received notification missing tagId');
         }
@@ -412,8 +462,16 @@ export class NotificationService {
       case 'message_received':
         if (notification.data['tagId']) {
           const tagId = notification.data['tagId'];
-          console.log(`[NotificationService] 🧭 Navigating to tag with new message: ${tagId}`);
-          window.location.hash = `/${tagId}`;
+          const messageId = notification.data['messageId'];
+          console.log(
+            `[NotificationService] 🧭 Navigating to tag with new message: ${tagId}, messageId: ${messageId}`,
+          );
+          // Navigate to tag with optional message ID as query param for scrolling
+          if (messageId) {
+            this.router.navigate(['/', tagId], { queryParams: { messageId } });
+          } else {
+            this.router.navigate(['/', tagId]);
+          }
         } else {
           console.warn('[NotificationService] ⚠️ message_received notification missing tagId');
         }
@@ -423,7 +481,7 @@ export class NotificationService {
         if (notification.data['memoId']) {
           const memoId = notification.data['memoId'];
           console.log(`[NotificationService] 🧭 Navigating to memo: ${memoId}`);
-          window.location.hash = `/${memoId}`;
+          this.router.navigate(['/', memoId]);
         } else {
           console.warn(
             '[NotificationService] ⚠️ transcription_complete notification missing memoId',
@@ -435,7 +493,7 @@ export class NotificationService {
         if (notification.data['memoId']) {
           const memoId = notification.data['memoId'];
           console.log(`[NotificationService] 🧭 Navigating to memo (reminder): ${memoId}`);
-          window.location.hash = `/${memoId}`;
+          this.router.navigate(['/', memoId]);
         } else {
           console.warn('[NotificationService] ⚠️ reminder notification missing memoId');
         }

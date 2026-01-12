@@ -44,6 +44,10 @@ export interface ClearTokenPayload {
   serverId?: string;
 }
 
+export interface SetBadgePayload {
+  count: number;
+}
+
 export type WebToNativeMessageType =
   | { type: 'test'; payload: TestPayload }
   | { type: 'startRecording' }
@@ -60,7 +64,8 @@ export type WebToNativeMessageType =
   | { type: 'clearToken'; payload?: ClearTokenPayload }
   | { type: 'requestPushPermission' }
   | { type: 'getPushStatus' }
-  | { type: 'unregisterPushNotifications' };
+  | { type: 'unregisterPushNotifications' }
+  | { type: 'setBadge'; payload: SetBadgePayload };
 
 // MARK: - Native to Web Messages
 
