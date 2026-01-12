@@ -42,9 +42,21 @@ test.describe('Authentication', () => {
     test('should successfully authenticate with valid token', async ({ testUser, page }) => {
         // testUser fixture already handles authentication
         await page.goto('/');
-        await page.evaluate((token) => {
-            localStorage.setItem('auth_token', token);
-        }, testUser.token);
+        // Set the auth data in localStorage using the correct key format
+        await page.evaluate(
+            ({ token, userId, email }) => {
+                const storageKey = `auth:${window.location.origin}`;
+                const authData = {
+                    accessToken: token,
+                    user: {
+                        _id: userId,
+                        email: email,
+                    },
+                };
+                localStorage.setItem(storageKey, JSON.stringify(authData));
+            },
+            { token: testUser.token, userId: testUser.userId, email: testUser.email },
+        );
         await page.reload();
 
         // Should not be on login page
@@ -76,10 +88,18 @@ test.describe('Authentication', () => {
     });
 
     test('should handle invalid token gracefully', async ({ page }) => {
-        // Set invalid token
+        // Set invalid token using correct key format
         await page.goto('/');
         await page.evaluate(() => {
-            localStorage.setItem('auth_token', 'invalid-token-12345');
+            const storageKey = `auth:${window.location.origin}`;
+            const authData = {
+                accessToken: 'invalid-token-12345',
+                user: {
+                    _id: 'invalid-user-id',
+                    email: 'invalid@example.com',
+                },
+            };
+            localStorage.setItem(storageKey, JSON.stringify(authData));
         });
 
         // Try to access protected route - should redirect to login or show error

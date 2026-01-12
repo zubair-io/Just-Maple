@@ -49,10 +49,22 @@ export const test = base.extend<TestFixtures>({
         // Navigate to the app
         await page.goto('/');
 
-        // Set the auth token in localStorage
-        await page.evaluate((token) => {
-            localStorage.setItem('auth_token', token);
-        }, testUser.token);
+        // Set the auth data in localStorage using the correct key format
+        // AuthService uses `auth:${origin}` as the key and stores { accessToken, user }
+        await page.evaluate(
+            ({ token, userId, email }) => {
+                const storageKey = `auth:${window.location.origin}`;
+                const authData = {
+                    accessToken: token,
+                    user: {
+                        _id: userId,
+                        email: email,
+                    },
+                };
+                localStorage.setItem(storageKey, JSON.stringify(authData));
+            },
+            { token: testUser.token, userId: testUser.userId, email: testUser.email },
+        );
 
         // Reload to apply the auth state
         await page.reload();
@@ -91,13 +103,29 @@ export async function createTestUser(page: Page) {
 }
 
 /**
- * Helper to authenticate a page with a given token
+ * Helper to authenticate a page with a given token and user data
  */
-export async function authenticateWithToken(page: Page, token: string) {
+export async function authenticateWithToken(
+    page: Page,
+    token: string,
+    userId?: string,
+    email?: string,
+) {
     await page.goto('/');
-    await page.evaluate((t) => {
-        localStorage.setItem('auth_token', t);
-    }, token);
+    await page.evaluate(
+        ({ t, uid, e }) => {
+            const storageKey = `auth:${window.location.origin}`;
+            const authData = {
+                accessToken: t,
+                user: {
+                    _id: uid || 'test-user-id',
+                    email: e || 'test@example.com',
+                },
+            };
+            localStorage.setItem(storageKey, JSON.stringify(authData));
+        },
+        { t: token, uid: userId, e: email },
+    );
     await page.reload();
     await page.waitForLoadState('networkidle');
 }
