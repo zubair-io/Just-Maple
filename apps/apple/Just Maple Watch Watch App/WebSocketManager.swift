@@ -144,8 +144,8 @@ class WebSocketManager: NSObject, ObservableObject {
                 throw WebSocketError.noToken
             }
 
-            // Build WebSocket URL with token
-            let wsURLString = "\(wsBaseURL)/ws/chat?token=\(token)"
+            // Build WebSocket URL (without token in URL for security)
+            let wsURLString = "\(wsBaseURL)/ws/chat"
             guard let url = URL(string: wsURLString) else {
                 log("[WebSocket] ❌ Invalid WebSocket URL")
                 throw WebSocketError.invalidURL
@@ -153,12 +153,16 @@ class WebSocketManager: NSObject, ObservableObject {
 
             log("[WebSocket] 📡 Connecting to: \(wsBaseURL)/ws/chat")
 
-            // Create WebSocket task
+            // Create WebSocket task with token in Sec-WebSocket-Protocol header
             guard let session = urlSession else {
                 throw WebSocketError.sessionUnavailable
             }
 
-            webSocketTask = session.webSocketTask(with: url)
+            var request = URLRequest(url: url)
+            // Pass JWT token via Sec-WebSocket-Protocol header (secure method)
+            request.setValue(token, forHTTPHeaderField: "Sec-WebSocket-Protocol")
+
+            webSocketTask = session.webSocketTask(with: request)
             webSocketTask?.resume()
 
             // Start receiving messages

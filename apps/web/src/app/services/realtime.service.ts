@@ -116,8 +116,9 @@ export class RealtimeService {
     this._status.set('connecting');
 
     try {
-      const wsUrl = this.getWebSocketUrl(token);
-      this.ws = new WebSocket(wsUrl);
+      const wsUrl = this.getWebSocketUrl();
+      // Pass token via Sec-WebSocket-Protocol header (secure, not in URL)
+      this.ws = new WebSocket(wsUrl, [token]);
 
       this.ws.onopen = () => {
         this.ngZone.run(() => {
@@ -174,16 +175,16 @@ export class RealtimeService {
     this._subscribedTags.set([]);
   }
 
-  private getWebSocketUrl(token: string): string {
+  private getWebSocketUrl(): string {
     // Use environment.wsUrl if configured, otherwise use relative URL (same origin)
     if (environment.wsUrl) {
-      return `${environment.wsUrl}/ws/chat?token=${encodeURIComponent(token)}`;
+      return `${environment.wsUrl}/ws/chat`;
     }
 
     // Fallback: construct from window.location (dev/self-hosted)
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    return `${protocol}//${host}/ws/chat?token=${encodeURIComponent(token)}`;
+    return `${protocol}//${host}/ws/chat`;
   }
 
   private handleWsMessage(data: unknown): void {

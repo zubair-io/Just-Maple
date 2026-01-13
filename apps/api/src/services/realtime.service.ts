@@ -7,9 +7,6 @@ export interface RealtimeService {
 
     // Send event to a specific user
     sendToUser(userId: string, event: ChatEvent): Promise<void>;
-
-    // For SignalR: get connection info for client negotiation
-    getConnectionInfo?(userId: string): Promise<{ url: string; accessToken: string }>;
 }
 
 // Singleton instance

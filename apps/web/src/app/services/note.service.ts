@@ -138,8 +138,11 @@ export class NoteService {
       .pipe(
         tap((event) => {
           console.log('[NoteService] Received note.created event', event.note);
-          this.store.update(addEntities(event.note));
-          this.persistToIndexedDB([event.note]);
+          const documentId = event.note.documentId;
+          if (!this.store.query(getEntity(documentId))) {
+            this.store.update(addEntities(event.note));
+            this.persistToIndexedDB([event.note]);
+          }
         }),
         debounceTime(1000),
         switchMap((event) => {

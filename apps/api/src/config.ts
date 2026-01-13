@@ -26,11 +26,6 @@ export const config = {
     rpID: process.env.RP_ID || 'justmaple.app',
     origin: process.env.ORIGIN || 'https://justmaple.app',
 
-    // SignalR config (for production mode using Azure SignalR via AutumnBlaze)
-    useSignalR: process.env.USE_SIGNALR === 'true',
-    signalrServiceUrl: process.env.SIGNALR_SERVICE_URL,
-    signalrServiceKey: process.env.SIGNALR_SERVICE_KEY,
-
     // Paperbark config (push notification relay service)
     // Supports both PAPERBARK_API_KEY and paperbark-api-key formats for Azure compatibility
     paperbarkUrl:

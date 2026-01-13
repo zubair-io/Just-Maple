@@ -234,7 +234,7 @@ class AutomergeService {
             broadcastMessage.documentId = documentId;
         }
 
-        // Use existing collab realtime service (works with both WebSocket and SignalR)
+        // Use existing collab realtime service (WebSocket)
         collabRealtimeService.broadcast(noteId, broadcastMessage, senderClientID);
     }
 

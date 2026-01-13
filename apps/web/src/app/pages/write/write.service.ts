@@ -4,15 +4,9 @@ import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64'
 import { AuthService } from '../../services/auth.service';
 import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
 import { HttpClient } from '@angular/common/http';
-import { WebRTCNetworkAdapter } from './webrtc-network-adapter';
-import { HTTPNetworkAdapter } from './http-network-adapter';
 import { NoteService } from '../../services/note.service';
 import { NoteServiceStorageAdapter } from './note-service-storage-adapter';
-import * as AutomergeCore from '@automerge/automerge/slim';
-import { firstValueFrom } from 'rxjs';
 import { IndexedDBService } from '../../services/indexed-db.service';
-import { SimpleNetworkAdapter } from './simple-network-adapter';
-import { JustMapleNetworkAdapter } from '../../services/automerge-network-adapter';
 import { SecureWebSocketAdapter } from './secure-websocket-adapter';
 import { environment } from '../../../environments/environment';
 

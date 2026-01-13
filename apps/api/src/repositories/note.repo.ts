@@ -404,12 +404,7 @@ export async function emptyTrash(userId: string): Promise<number> {
 const INTERNAL_CAPABILITY = Symbol('note.repo.internal');
 
 // Allowed callers registry for audit logging
-const ALLOWED_INTERNAL_CALLERS = new Set([
-    'OTService',
-    'MigrationService',
-    'SignalRCollabService',
-    'AutomergeService',
-]);
+const ALLOWED_INTERNAL_CALLERS = new Set(['OTService', 'MigrationService', 'AutomergeService']);
 
 /**
  * Find note by ID without permission checks
@@ -513,12 +508,12 @@ export async function updateNoteInternal(
 // These wrappers keep INTERNAL_CAPABILITY private while providing controlled access
 
 /**
- * Find note by ID for OT service (bypasses permission checks)
- * Only use from OTService or SignalRCollabService
+ * Find note by ID for collaboration services (bypasses permission checks)
+ * Only use from OTService or AutomergeService
  */
 export async function findNoteByIdForCollab(
     id: string,
-    caller: 'OTService' | 'SignalRCollabService' | 'MigrationService' | 'AutomergeService',
+    caller: 'OTService' | 'MigrationService' | 'AutomergeService',
 ): Promise<Note | null> {
     return findNoteByIdInternal(id, INTERNAL_CAPABILITY, caller);
 }

@@ -40,16 +40,16 @@ export const collabRoutes = new Elysia({ prefix: '/api/collab' })
             return { error: 'Note not found' };
         }
 
-        // Generate client ID
-        const clientID = generateClientID(auth.user._id, 'signalr');
+        // Generate client ID for HTTP session
+        const clientID = generateClientID(auth.user._id, 'http');
 
         // Get document state
         const doc = await otService.getDocument(noteId);
 
-        // Register connection (for SignalR, we don't have WS connection)
+        // Register connection (HTTP session, no WebSocket)
         otService.addConnection(noteId, clientID, { userId: auth.user._id });
 
-        // Return init data (client will also receive via SignalR)
+        // Return init data
         return {
             type: 'init',
             version: doc.version,

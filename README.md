@@ -32,6 +32,10 @@ A self-hosted platform where documents and conversations live together, organize
 | Testing & QA                         | ✅ Basic     | MVP        |
 | Documentation                        | ✅ Core Docs | MVP        |
 
+**Recent Updates:**
+
+- ✅ **AutumnBlaze Migration Complete (Jan 2026)** - Migrated lego service and removed Azure SignalR dependency. See [migration docs](docs/autumnblaze-migration.md) for details.
+
 ---
 
 ## Goals
@@ -326,6 +330,8 @@ just-maple/
 │       └── ...
 │
 └── docs/
+    ├── autumnblaze-migration.md  # AutumnBlaze → PaperbarkMaple migration docs
+    ├── bot-system-integration-plan.md
     ├── user-guide/
     ├── developer-guide/
     └── api/
@@ -969,6 +975,12 @@ RESEND_API_KEY=<from-key-vault>
 RP_NAME=Just Maple
 RP_ID=maple.example.com
 ORIGIN=https://maple.example.com
+
+# Lego Service (see docs/autumnblaze-migration.md)
+REBRICKABLE_API_KEY=<from-key-vault>
+BRIGHT_DATA_API_KEY=<from-key-vault>
+CLAUDE_API_KEY=<from-key-vault>
+HORNBEAM_BLOB_URL=https://hornbeam.justmaple.app/data  # Optional, has default
 ```
 
 **Scaling:**
@@ -1026,6 +1038,10 @@ Environment=RESEND_API_KEY=<key>
 Environment=RP_NAME=Just Maple
 Environment=RP_ID=maple.local
 Environment=ORIGIN=https://maple.local
+# Lego Service
+Environment=REBRICKABLE_API_KEY=<key>
+Environment=BRIGHT_DATA_API_KEY=<key>
+Environment=CLAUDE_API_KEY=<key>
 
 [Install]
 WantedBy=multi-user.target

@@ -315,7 +315,7 @@ class OTService {
             collabRealtimeService.getConnectedClients(noteId),
         );
 
-        // Use abstract realtime service (works with both WebSocket and SignalR)
+        // Use realtime service (WebSocket)
         collabRealtimeService.broadcast(noteId, message, sender);
     }
 

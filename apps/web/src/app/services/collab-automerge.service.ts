@@ -1,12 +1,9 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { Repo } from '@automerge/automerge-repo/slim';
 import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
 import type { DocHandle } from '@automerge/automerge-repo/slim';
 import * as Automerge from '@automerge/automerge/slim';
 import { automergeWasmBase64 } from '@automerge/automerge/automerge.wasm.base64';
-import { HttpClient } from '@angular/common/http';
-import { AuthService } from './auth.service';
-import { JustMapleNetworkAdapter } from './automerge-network-adapter';
 import type { NoteContent } from '@maple/shared';
 
 /**
@@ -15,12 +12,8 @@ import type { NoteContent } from '@maple/shared';
  */
 @Injectable({ providedIn: 'root' })
 export class CollabAutomergeService {
-  private readonly http = inject(HttpClient);
-  private readonly authService = inject(AuthService);
-
   private repo: Repo | null = null;
   private handles = new Map<string, DocHandle<any>>();
-  private networkAdapters = new Map<string, JustMapleNetworkAdapter>();
   private wasmInitialized = false;
 
   /**
@@ -210,14 +203,6 @@ export class CollabAutomergeService {
    * Clean up document when note is closed
    */
   cleanupDocument(noteId: string): void {
-    // Disconnect network adapter
-    const networkAdapter = this.networkAdapters.get(noteId);
-    if (networkAdapter && this.repo) {
-      this.repo.networkSubsystem.removeNetworkAdapter(networkAdapter);
-      networkAdapter.disconnect();
-      this.networkAdapters.delete(noteId);
-    }
-
     // Remove handle
     this.handles.delete(noteId);
   }

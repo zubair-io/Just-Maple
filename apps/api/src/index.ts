@@ -15,9 +15,7 @@ import { collabRoutes } from './routes/collab';
 import { webrtcSignalingRoutes } from './routes/webrtc-signaling';
 import { eventRoutes } from './routes/events';
 import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
-import { collabOTWebSocket } from './ws/collab-ot.ws';
 import { automergeSyncWs, initializeAutomergeRepo } from './ws/automerge-sync.ws';
-import { SignalRRealtimeService } from './services/signalr.service';
 import { setRealtimeService } from './services/realtime.service';
 import { config } from './config';
 
@@ -45,15 +43,8 @@ async function main() {
     // Initialize Automerge Repo (requires DB connection)
     initializeAutomergeRepo();
 
-    // Initialize realtime service
-    // - WebSocket: dev/self-hosted (direct connections)
-    // - SignalR: production (via AutumnBlaze Azure Functions)
-    if (config.useSignalR) {
-        console.log('   Using SignalR realtime service');
-        setRealtimeService(new SignalRRealtimeService());
-    } else {
-        setRealtimeService(new WebSocketRealtimeService());
-    }
+    // Initialize realtime service (WebSocket)
+    setRealtimeService(new WebSocketRealtimeService());
 
     const app = new Elysia()
         .use(
@@ -74,17 +65,8 @@ async function main() {
         .use(collabRoutes)
         .use(webrtcSignalingRoutes) // WebRTC signaling for P2P collaboration
         .use(eventRoutes) // SSE event stream for real-time app updates
-        .use(automergeSyncWs); // Automerge sync WebSocket (always enabled)
-
-    // Conditionally enable WebSocket routes
-    // - Dev/self-hosted: Direct WebSocket connections
-    // - Production (USE_SIGNALR=true): HTTP routes + SignalR via AutumnBlaze
-    if (!config.useSignalR) {
-        app.use(chatWebSocket).use(collabOTWebSocket);
-        console.log('   WebSocket routes enabled');
-    } else {
-        console.log('   WebSocket routes disabled (using SignalR)');
-    }
+        .use(automergeSyncWs) // Automerge sync WebSocket
+        .use(chatWebSocket); // WebSocket chat
 
     app.get('/api/health', async ({ set }) => {
         try {
@@ -179,13 +161,7 @@ async function main() {
     console.log(`   Environment: ${envName}`);
     console.log(`   MongoDB: ${config.mongodbUri}`);
     console.log(`   Automerge Sync: ws://localhost:${config.port}/ws/automerge-sync`);
-    if (!config.useSignalR) {
-        console.log(`   WebSocket Chat: ws://localhost:${config.port}/ws/chat`);
-        console.log(`   WebSocket Collab: ws://localhost:${config.port}/ws/collab/:noteId`);
-    } else {
-        console.log(`   SignalR Service: ${config.signalrServiceUrl}`);
-        console.log(`   Collab HTTP: http://localhost:${config.port}/api/collab`);
-    }
+    console.log(`   WebSocket Chat: ws://localhost:${config.port}/ws/chat`);
     console.log(`   Frontend: ${frontendAvailable ? 'serving from ' + STATIC_DIR : 'not built'}`);
 }
 
