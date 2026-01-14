@@ -22,9 +22,10 @@
 
   <!-- Main Content Area -->
   <main
-    class="flex-1 h-full overflow-y-auto flex flex-col relative bg-[var(--color-bg)] md:pb-0"
-    [class.pb-16]="!chatInputFocused()"
-    [class.pb-0]="chatInputFocused()"
+    class="flex-1 flex flex-col overflow-y-auto relative bg-[var(--color-bg)]"
+    [style.padding-bottom]="
+      shouldShowFooterPadding() ? 'max(env(safe-area-inset-bottom), 4rem)' : '0'
+    "
   >
     <router-outlet />
   </main>

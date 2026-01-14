@@ -1,7 +1,7 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
-import { Subscription, filter } from 'rxjs';
+import { Subscription, filter, fromEvent } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { TagService } from '../../services/tag.service';
 import { NoteService } from '../../services/note.service';
@@ -30,8 +30,15 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly selectedTagId = signal<string | null>(null);
   readonly sidebarOpen = signal(false);
   readonly chatInputFocused = this.uiStateService.chatInputFocused;
+  private readonly isMobile = signal(false);
+
+  // Computed: should show mobile footer padding
+  readonly shouldShowFooterPadding = computed(() => {
+    return this.isMobile() && !this.chatInputFocused();
+  });
 
   private routerSubscription?: Subscription;
+  private resizeSubscription?: Subscription;
 
   ngOnInit(): void {
     // Load tags and notes
@@ -58,11 +65,28 @@ export class HomeComponent implements OnInit, OnDestroy {
       .subscribe(() => {
         this.syncFromRoute();
       });
+
+    // Check if mobile on init
+    this.checkIsMobile();
+
+    // Listen for window resize
+    if (typeof window !== 'undefined') {
+      this.resizeSubscription = fromEvent(window, 'resize').subscribe(() => {
+        this.checkIsMobile();
+      });
+    }
   }
 
   ngOnDestroy(): void {
     this.routerSubscription?.unsubscribe();
+    this.resizeSubscription?.unsubscribe();
     this.eventStream.disconnect();
+  }
+
+  private checkIsMobile(): void {
+    if (typeof window !== 'undefined') {
+      this.isMobile.set(window.innerWidth < 768);
+    }
   }
 
   private syncFromRoute(): void {

@@ -2,7 +2,8 @@
 :host {
   display: flex;
   flex-direction: column;
-  height: 100svh;
+  height: 100%;
+  min-height: 0;
 }
 .prose {
   background-color: var(--color-surface);
