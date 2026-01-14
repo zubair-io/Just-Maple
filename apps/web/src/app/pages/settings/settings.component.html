@@ -181,6 +181,38 @@
       </div>
     </section>
 
+    <!-- Admin Section (Admin Users Only) -->
+    @if (isAdmin()) {
+      <section>
+        <h2
+          class="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-4"
+        >
+          Admin
+        </h2>
+        <div class="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+          <div class="flex items-center gap-4">
+            <div
+              class="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0"
+            >
+              <span class="material-symbols-rounded text-purple-600">admin_panel_settings</span>
+            </div>
+            <div class="flex-1">
+              <p class="font-medium text-[var(--color-text-main)]">Service Worker</p>
+              <p class="text-sm text-[var(--color-text-muted)]">
+                Manage Angular service worker and cache
+              </p>
+            </div>
+            <a
+              href="/ngsw/state"
+              class="px-4 py-2 text-sm font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] rounded-lg transition-colors"
+            >
+              Open
+            </a>
+          </div>
+        </div>
+      </section>
+    }
+
     <!-- Passkeys Section -->
     <section>
       <div class="flex items-center justify-between mb-4">

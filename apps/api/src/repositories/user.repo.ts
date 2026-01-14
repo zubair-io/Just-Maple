@@ -9,6 +9,7 @@ interface UserDocument {
     email: string;
     displayName?: string;
     profilePictureUrl?: string;
+    admin?: boolean;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -23,6 +24,7 @@ function toUserResponse(doc: UserDocument): UserResponse {
         email: doc.email,
         displayName: doc.displayName,
         profilePictureUrl: doc.profilePictureUrl,
+        admin: doc.admin,
     };
 }
 

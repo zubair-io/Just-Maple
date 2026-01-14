@@ -152,6 +152,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                         _id: user._id,
                         email: user.email,
                         displayName: user.displayName,
+                        admin: user.admin,
                     },
                 };
             } catch (error) {
@@ -202,6 +203,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                         _id: user._id,
                         email: user.email,
                         displayName: user.displayName,
+                        admin: user.admin,
                     },
                 };
             } catch (error) {
@@ -258,6 +260,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 email: user.email,
                 displayName: user.displayName,
                 profilePictureUrl: user.profilePictureUrl,
+                admin: user.admin,
             },
         };
     })
@@ -519,6 +522,7 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                         _id: user._id,
                         email: user.email,
                         displayName: user.displayName,
+                        admin: user.admin,
                     },
                 };
             } catch (error) {

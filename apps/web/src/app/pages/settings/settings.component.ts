@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -27,6 +27,9 @@ export class SettingsComponent implements OnInit {
   readonly authService = inject(AuthService);
   readonly preferences = inject(PreferencesService);
   readonly notifications = inject(NotificationService);
+
+  // Check if current user is an admin
+  readonly isAdmin = computed(() => this.authService.user()?.admin === true);
 
   readonly passkeys = signal<PasskeyInfo[]>([]);
   readonly isLoadingPasskeys = signal(false);
