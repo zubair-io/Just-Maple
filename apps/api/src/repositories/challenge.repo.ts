@@ -33,6 +33,8 @@ export async function storeChallenge(key: string, challenge: string): Promise<vo
         expiresAt,
         createdAt: now,
     });
+
+    console.log('Challenge stored:', { key, expiresAt: expiresAt.toISOString() });
 }
 
 /**
@@ -53,10 +55,29 @@ export async function consumeChallenge(key: string): Promise<string | null> {
  * Used for validation before verification.
  */
 export async function hasChallenge(key: string): Promise<boolean> {
+    const now = new Date();
     const doc = await getCollection().findOne({
         key,
-        expiresAt: { $gt: new Date() },
+        expiresAt: { $gt: now },
     });
+
+    if (!doc) {
+        // Debug: list all challenges to see what's stored
+        const allChallenges = await getCollection()
+            .find({})
+            .project({ key: 1, expiresAt: 1 })
+            .limit(10)
+            .toArray();
+        console.log('Challenge lookup failed:', {
+            searchKey: key,
+            now: now.toISOString(),
+            storedChallenges: allChallenges.map((c) => ({
+                key: c.key,
+                expired: c.expiresAt < now,
+                expiresAt: c.expiresAt?.toISOString(),
+            })),
+        });
+    }
 
     return doc !== null;
 }

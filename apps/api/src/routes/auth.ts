@@ -416,7 +416,12 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 });
 
                 // Store challenge (persisted in MongoDB with TTL)
-                await storeChallenge(`login:${options.challenge}`, options.challenge);
+                const challengeKey = `login:${options.challenge}`;
+                console.log('Passkey login start - storing challenge:', {
+                    challengeKey,
+                    challengeLength: options.challenge?.length,
+                });
+                await storeChallenge(challengeKey, options.challenge);
 
                 return options;
             } catch (error) {
@@ -465,8 +470,16 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                     Buffer.from(body.response.clientDataJSON, 'base64url').toString(),
                 );
                 const expectedChallenge = clientDataJSON.challenge;
+                const challengeKey = `login:${expectedChallenge}`;
 
-                if (!(await hasChallenge(`login:${expectedChallenge}`))) {
+                console.log('Passkey login finish - checking challenge:', {
+                    challengeKey,
+                    challengeLength: expectedChallenge?.length,
+                    origin: clientDataJSON.origin,
+                });
+
+                if (!(await hasChallenge(challengeKey))) {
+                    console.log('Challenge not found in store:', challengeKey);
                     set.status = 400;
                     return { error: 'Invalid or expired challenge' };
                 }
