@@ -1,6 +1,7 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
+import { take } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 
 @Component({
@@ -103,15 +104,19 @@ export class VerifyComponent implements OnInit {
   private readonly router = inject(Router);
 
   ngOnInit(): void {
-    const token = this.route.snapshot.queryParamMap.get('token');
+    // Use the observable queryParamMap instead of snapshot to ensure
+    // the token is properly read even when the app opens fresh from an email link
+    this.route.queryParamMap.pipe(take(1)).subscribe((params) => {
+      const token = params.get('token');
 
-    if (!token) {
-      this.router.navigate(['/login']);
-      return;
-    }
+      if (!token) {
+        this.router.navigate(['/login']);
+        return;
+      }
 
-    this.authService.verifyToken(token).catch(() => {
-      // Error is handled by auth service
+      this.authService.verifyToken(token).catch(() => {
+        // Error is handled by auth service
+      });
     });
   }
 
