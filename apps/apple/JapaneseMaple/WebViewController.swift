@@ -61,6 +61,12 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
         let contentController = WKUserContentController()
         config.userContentController = contentController
 
+        // Enable App-Bound Domains for service worker support in WKWebView (iOS 14+)
+        // Requires WKAppBoundDomains in Info.plist
+        #if os(iOS)
+        config.limitsNavigationsToAppBoundDomains = true
+        #endif
+
         print("[WebViewController] Initializing WebView (service worker will handle offline)")
 
         webView = WKWebView(frame: .zero, configuration: config)
