@@ -80,6 +80,8 @@ export interface InitialState {
   timestamp: string;
   serverUrl: string;
   serverName: string;
+  /** Deep link URL if the app was opened via a universal link (e.g., email sign-in) */
+  initialDeepLink?: string;
 }
 
 export interface TestResponse {
