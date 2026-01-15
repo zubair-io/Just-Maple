@@ -105,18 +105,22 @@ export class RealtimeService {
 
   private async connectWebSocket(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) {
+      console.log('[RealtimeService] WebSocket already connected, skipping');
       return;
     }
 
     const token = this.authService.accessToken();
     if (!token) {
+      console.warn('[RealtimeService] No auth token available, cannot connect WebSocket');
       return;
     }
 
+    console.log('[RealtimeService] Connecting WebSocket with token...');
     this._status.set('connecting');
 
     try {
       const wsUrl = this.getWebSocketUrl();
+      console.log('[RealtimeService] WebSocket URL:', wsUrl);
       // Pass token via Sec-WebSocket-Protocol header (secure, not in URL)
       this.ws = new WebSocket(wsUrl, [token]);
 
