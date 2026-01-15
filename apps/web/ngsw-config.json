@@ -26,13 +26,23 @@
   ],
   "dataGroups": [
     {
-      "name": "api",
-      "urls": ["/api/*"],
+      "name": "api-static",
+      "urls": ["/api/auth/me", "/api/tags", "/api/lego"],
       "cacheConfig": {
-        "maxSize": 1000,
-        "maxAge": "1d",
+        "maxSize": 100,
+        "maxAge": "1h",
         "strategy": "freshness",
-        "timeout": "90s"
+        "timeout": "10s"
+      }
+    },
+    {
+      "name": "api-dynamic",
+      "urls": ["/api/papers*", "/api/messages*", "/api/notes*"],
+      "cacheConfig": {
+        "maxSize": 500,
+        "maxAge": "5m",
+        "strategy": "freshness",
+        "timeout": "5s"
       }
     }
   ]
