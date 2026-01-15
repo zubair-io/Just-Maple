@@ -67,6 +67,9 @@ export class PaperService {
   // Signal wrappers for Angular reactivity
   private readonly _papersSignal = toSignal(this.papers$, { initialValue: [] as Paper[] });
 
+  // Public signal for direct reactive access in components
+  readonly papersSignal = this._papersSignal;
+
   // UI state signals (not persisted)
   private readonly _isLoading = signal(false);
   private readonly _error = signal<string | null>(null);
