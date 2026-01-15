@@ -26,6 +26,9 @@ export function getRealtimeService(): RealtimeService {
 // Helper to broadcast a chat event
 export async function broadcastChatEvent(tagId: string, event: ChatEvent): Promise<void> {
     if (realtimeService) {
+        console.log(`[Realtime] Broadcasting ${event.action} to tag ${tagId}`);
         await realtimeService.broadcast(tagId, event);
+    } else {
+        console.warn(`[Realtime] Service not initialized, cannot broadcast ${event.action}`);
     }
 }
