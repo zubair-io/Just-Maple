@@ -121,6 +121,10 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
             // Broadcast to all tags this paper belongs to
             try {
                 const realtime = getRealtimeService();
+                console.log(
+                    `[Papers] Broadcasting paper_created to ${paper.tags.length} tags:`,
+                    paper.tags,
+                );
                 for (const tagId of paper.tags) {
                     const event: ChatEvent = {
                         action: 'paper_created',
@@ -130,9 +134,10 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                         timestamp: new Date().toISOString(),
                     };
                     await realtime.broadcast(tagId, event);
+                    console.log(`[Papers] Broadcast paper_created to tag ${tagId}`);
                 }
-            } catch {
-                // Realtime not initialized, skip broadcasting
+            } catch (err) {
+                console.error('[Papers] Failed to broadcast paper_created:', err);
             }
 
             return { paper };
@@ -175,6 +180,10 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
             // Broadcast to all tags this paper belongs to
             try {
                 const realtime = getRealtimeService();
+                console.log(
+                    `[Papers] Broadcasting paper_updated to ${paper.tags.length} tags:`,
+                    paper.tags,
+                );
                 for (const tagId of paper.tags) {
                     const event: ChatEvent = {
                         action: 'paper_updated',
@@ -184,9 +193,10 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                         timestamp: new Date().toISOString(),
                     };
                     await realtime.broadcast(tagId, event);
+                    console.log(`[Papers] Broadcast paper_updated to tag ${tagId}`);
                 }
-            } catch {
-                // Realtime not initialized, skip broadcasting
+            } catch (err) {
+                console.error('[Papers] Failed to broadcast paper_updated:', err);
             }
 
             return { paper };

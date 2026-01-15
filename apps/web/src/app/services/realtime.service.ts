@@ -207,6 +207,7 @@ export class RealtimeService {
     // Handle chat events
     if (msg['action']) {
       const event = msg as unknown as ChatEvent;
+      console.log('[RealtimeService] Received event:', event.action, 'for tag:', event.tagId);
 
       // Handle typing events separately
       if (event.action === 'typing' && event.data) {

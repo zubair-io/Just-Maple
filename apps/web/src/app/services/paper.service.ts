@@ -89,6 +89,7 @@ export class PaperService {
    * Subscribe to paper events from websocket
    */
   private subscribeToRealtimeEvents(): void {
+    console.log('[PaperService] Subscribing to realtime paper events');
     this.realtime.events$
       .pipe(
         filter(
@@ -100,6 +101,7 @@ export class PaperService {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((event) => {
+        console.log('[PaperService] Received realtime event:', event.action, event.data);
         this.handleRealtimeEvent(event);
       });
   }
