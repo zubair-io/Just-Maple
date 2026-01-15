@@ -10,20 +10,43 @@ export async function authenticateWebSocket(
     ws: any,
 ): Promise<{ userId: string; email: string } | null> {
     console.log('[WSAuth] New connection opened');
+    console.log('[WSAuth] ws.data:', JSON.stringify(Object.keys(ws.data || {})));
 
     // Try to get token from Sec-WebSocket-Protocol header first (recommended)
-    const headers = ws.data.request.headers;
-    const protocols = headers?.['sec-websocket-protocol'];
+    const request = ws.data?.request;
+    const headers = request?.headers;
+
+    // Debug: log all available header access methods
+    console.log('[WSAuth] request exists:', !!request);
+    console.log('[WSAuth] headers type:', typeof headers);
+
     let token: string | null = null;
 
-    if (protocols) {
-        // Protocol can be comma-separated if multiple subprotocols are specified
-        // The token should be the first one
-        token = protocols.split(',')[0]?.trim();
-        console.log(
-            '[WSAuth] Token from Sec-WebSocket-Protocol header:',
-            token ? 'present' : 'missing',
-        );
+    // Try different ways to access the header
+    if (headers) {
+        // Try as Headers object (fetch API style)
+        if (typeof headers.get === 'function') {
+            const protocol = headers.get('sec-websocket-protocol');
+            console.log(
+                '[WSAuth] headers.get("sec-websocket-protocol"):',
+                protocol ? 'present' : 'missing',
+            );
+            if (protocol) {
+                token = protocol.split(',')[0]?.trim();
+            }
+        }
+
+        // Try as plain object
+        if (!token && headers['sec-websocket-protocol']) {
+            console.log('[WSAuth] headers["sec-websocket-protocol"]:', 'present');
+            token = headers['sec-websocket-protocol'].split(',')[0]?.trim();
+        }
+
+        // Try lowercase
+        if (!token && headers['Sec-WebSocket-Protocol']) {
+            console.log('[WSAuth] headers["Sec-WebSocket-Protocol"]:', 'present');
+            token = headers['Sec-WebSocket-Protocol'].split(',')[0]?.trim();
+        }
     }
 
     // Fallback: get token from query parameter (backward compatibility)
