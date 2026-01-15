@@ -50,11 +50,16 @@ export class HomeComponent implements OnInit, OnDestroy {
     });
     this.noteService.loadNotes().subscribe();
 
-    // Connect to realtime service
-    this.realtimeService.connect();
+    // Wait for auth to be ready before connecting to realtime services
+    // This ensures the access token is available
+    this.authService.initReady$.subscribe(() => {
+      console.log('[HomeComponent] Auth ready, connecting realtime services');
+      // Connect to realtime service
+      this.realtimeService.connect();
 
-    // Connect to SSE event stream for real-time updates
-    this.eventStream.connect();
+      // Connect to SSE event stream for real-time updates
+      this.eventStream.connect();
+    });
 
     // Sync selected IDs from route
     this.syncFromRoute();
