@@ -15,18 +15,25 @@ const tagSubscriptions = new Map<string, Set<string>>(); // tagId -> Set of user
 export class WebSocketRealtimeService implements RealtimeService {
     async broadcast(tagId: string, event: ChatEvent): Promise<void> {
         const subscribedUsers = tagSubscriptions.get(tagId);
-        if (!subscribedUsers) return;
+        if (!subscribedUsers) {
+            console.log(`[WS] No subscribers for tag ${tagId}, skipping broadcast`);
+            return;
+        }
 
+        console.log(
+            `[WS] Broadcasting ${event.action} to ${subscribedUsers.size} users in tag ${tagId}`,
+        );
         const message = JSON.stringify(event);
 
         for (const userId of subscribedUsers) {
             const connections = userConnections.get(userId);
             if (connections) {
+                console.log(`[WS] Sending to user ${userId} with ${connections.size} connections`);
                 for (const ws of connections) {
                     try {
                         ws.send(message);
-                    } catch {
-                        // Connection might be closed
+                    } catch (err) {
+                        console.error(`[WS] Failed to send to user ${userId}:`, err);
                     }
                 }
             }
