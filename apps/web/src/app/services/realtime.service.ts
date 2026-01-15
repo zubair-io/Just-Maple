@@ -122,6 +122,7 @@ export class RealtimeService {
 
       this.ws.onopen = () => {
         this.ngZone.run(() => {
+          console.log('[RealtimeService] WebSocket connected');
           this._status.set('connected');
           this.reconnectAttempts = 0;
           this.startPingInterval();
@@ -141,6 +142,13 @@ export class RealtimeService {
 
       this.ws.onclose = (event) => {
         this.ngZone.run(() => {
+          console.log(
+            '[RealtimeService] WebSocket closed:',
+            event.code,
+            event.reason,
+            'wasClean:',
+            event.wasClean,
+          );
           this.stopPingInterval();
           this._status.set('disconnected');
 
@@ -150,7 +158,8 @@ export class RealtimeService {
         });
       };
 
-      this.ws.onerror = () => {
+      this.ws.onerror = (err) => {
+        console.error('[RealtimeService] WebSocket error:', err);
         // Error handled by onclose
       };
     } catch {
@@ -195,6 +204,7 @@ export class RealtimeService {
     // Handle connection confirmation
     if (msg['type'] === 'connected') {
       const subscribedTags = (msg['subscribedTags'] as string[]) || [];
+      console.log('[RealtimeService] Connected, subscribed to tags:', subscribedTags);
       this._subscribedTags.set(subscribedTags);
       return;
     }
