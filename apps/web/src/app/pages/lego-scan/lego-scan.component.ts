@@ -71,7 +71,9 @@ export class LegoScanComponent implements OnInit, OnDestroy {
     const tagId = this.tagId();
     if (!tagId) return new Map<string, Paper>();
 
-    const papers = this.paperService.papers().filter((p) => p.tags.includes(tagId));
+    // Use papersSignal directly for proper reactive tracking
+    const allPapers = this.paperService.papersSignal() ?? [];
+    const papers = allPapers.filter((p) => p.tags.includes(tagId));
     const map = new Map<string, Paper>();
 
     for (const paper of papers) {

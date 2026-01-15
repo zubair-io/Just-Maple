@@ -67,9 +67,9 @@ export class LegoViewComponent implements OnInit, OnDestroy {
   private readonly allPapersForTag = computed(() => {
     const tagId = this.selectedTagId();
     if (!tagId) return [];
-    return this.paperService
-      .papers()
-      .filter((p) => p.tags.includes(tagId) && p.data.status !== 'none');
+    // Use papersSignal directly for proper reactive tracking
+    const papers = this.paperService.papersSignal() ?? [];
+    return papers.filter((p) => p.tags.includes(tagId) && p.data.status !== 'none');
   });
 
   /** Get unique registry tags from all papers for filter options */
