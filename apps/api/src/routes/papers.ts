@@ -1,7 +1,8 @@
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
-import type { JWTPayload, ChatEvent } from '@maple/shared';
+import { getUsersWithTagAccess } from '../repositories/tag.repo';
+import type { JWTPayload } from '@maple/shared';
 import {
     findPapersByUserId,
     findPaperById,
@@ -10,7 +11,7 @@ import {
     updatePaper,
     deletePaper,
 } from '../repositories/paper.repo';
-import { getRealtimeService } from '../services/realtime.service';
+import { eventStreamService } from '../services/event-stream.service';
 
 export const paperRoutes = new Elysia({ prefix: '/api/papers' })
     .use(jwtPlugin)
@@ -118,26 +119,17 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
             }
             const paper = await createPaper(auth.user._id, body);
 
-            // Broadcast to all tags this paper belongs to
-            try {
-                const realtime = getRealtimeService();
+            // Send SSE event to all users with access to each tag
+            for (const tagId of paper.tags) {
+                const recipientUserIds = await getUsersWithTagAccess(tagId);
                 console.log(
-                    `[Papers] Broadcasting paper_created to ${paper.tags.length} tags:`,
-                    paper.tags,
+                    `[Papers] Sending paper.created SSE to ${recipientUserIds.length} users for tag ${tagId}`,
                 );
-                for (const tagId of paper.tags) {
-                    const event: ChatEvent = {
-                        action: 'paper_created',
-                        data: paper,
-                        tagId,
-                        userId: auth.user._id,
-                        timestamp: new Date().toISOString(),
-                    };
-                    await realtime.broadcast(tagId, event);
-                    console.log(`[Papers] Broadcast paper_created to tag ${tagId}`);
-                }
-            } catch (err) {
-                console.error('[Papers] Failed to broadcast paper_created:', err);
+                eventStreamService.sendToUsers(recipientUserIds, {
+                    type: 'paper.created',
+                    paper,
+                    tagId,
+                });
             }
 
             return { paper };
@@ -177,26 +169,17 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                 return { error: 'Paper not found' };
             }
 
-            // Broadcast to all tags this paper belongs to
-            try {
-                const realtime = getRealtimeService();
+            // Send SSE event to all users with access to each tag
+            for (const tagId of paper.tags) {
+                const recipientUserIds = await getUsersWithTagAccess(tagId);
                 console.log(
-                    `[Papers] Broadcasting paper_updated to ${paper.tags.length} tags:`,
-                    paper.tags,
+                    `[Papers] Sending paper.updated SSE to ${recipientUserIds.length} users for tag ${tagId}`,
                 );
-                for (const tagId of paper.tags) {
-                    const event: ChatEvent = {
-                        action: 'paper_updated',
-                        data: paper,
-                        tagId,
-                        userId: auth.user._id,
-                        timestamp: new Date().toISOString(),
-                    };
-                    await realtime.broadcast(tagId, event);
-                    console.log(`[Papers] Broadcast paper_updated to tag ${tagId}`);
-                }
-            } catch (err) {
-                console.error('[Papers] Failed to broadcast paper_updated:', err);
+                eventStreamService.sendToUsers(recipientUserIds, {
+                    type: 'paper.updated',
+                    paper,
+                    tagId,
+                });
             }
 
             return { paper };
@@ -249,21 +232,17 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                 return { error: 'Paper not found' };
             }
 
-            // Broadcast deletion to all tags this paper belonged to
-            try {
-                const realtime = getRealtimeService();
-                for (const tagId of paper.tags) {
-                    const event: ChatEvent = {
-                        action: 'paper_deleted',
-                        data: { _id: params.id },
-                        tagId,
-                        userId: auth.user._id,
-                        timestamp: new Date().toISOString(),
-                    };
-                    await realtime.broadcast(tagId, event);
-                }
-            } catch {
-                // Realtime not initialized, skip broadcasting
+            // Send SSE event to all users with access to each tag
+            for (const tagId of paper.tags) {
+                const recipientUserIds = await getUsersWithTagAccess(tagId);
+                console.log(
+                    `[Papers] Sending paper.deleted SSE to ${recipientUserIds.length} users for tag ${tagId}`,
+                );
+                eventStreamService.sendToUsers(recipientUserIds, {
+                    type: 'paper.deleted',
+                    paperId: params.id,
+                    tagId,
+                });
             }
 
             return { message: 'Paper deleted' };

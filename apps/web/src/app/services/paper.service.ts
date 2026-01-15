@@ -2,7 +2,7 @@ import { Injectable, inject, PLATFORM_ID, signal, DestroyRef } from '@angular/co
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, map, catchError, throwError, of, filter } from 'rxjs';
+import { Observable, tap, map, catchError, throwError, of } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { createStore } from '@ngneat/elf';
 import {
@@ -24,15 +24,9 @@ import {
   getActiveEntity,
 } from '@ngneat/elf-entities';
 import { IndexedDBService } from './indexed-db.service';
-import { RealtimeService } from './realtime.service';
+import { EventStreamService, type AppEvent } from './event-stream.service';
 import { DB_STORES } from './db-stores';
-import type {
-  Paper,
-  CreatePaperInput,
-  UpdatePaperInput,
-  PaperStatus,
-  ChatEvent,
-} from '@maple/shared';
+import type { Paper, CreatePaperInput, UpdatePaperInput, PaperStatus } from '@maple/shared';
 
 const STORE_NAME = DB_STORES.PAPER;
 const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
@@ -47,7 +41,7 @@ export class PaperService {
   private readonly http = inject(HttpClient);
   private readonly indexedDB = inject(IndexedDBService);
   private readonly platformId = inject(PLATFORM_ID);
-  private readonly realtime = inject(RealtimeService);
+  private readonly eventStream = inject(EventStreamService);
   private readonly destroyRef = inject(DestroyRef);
 
   // Track last fetch time per tagId for caching
@@ -86,47 +80,42 @@ export class PaperService {
   }
 
   /**
-   * Subscribe to paper events from websocket
+   * Subscribe to paper events from SSE event stream
    */
   private subscribeToRealtimeEvents(): void {
-    console.log('[PaperService] Subscribing to realtime paper events');
-    this.realtime.events$
-      .pipe(
-        filter(
-          (event): event is ChatEvent =>
-            event.action === 'paper_created' ||
-            event.action === 'paper_updated' ||
-            event.action === 'paper_deleted',
-        ),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe((event) => {
-        console.log('[PaperService] Received realtime event:', event.action, event.data);
-        this.handleRealtimeEvent(event);
-      });
-  }
+    console.log('[PaperService] Subscribing to SSE paper events');
 
-  /**
-   * Handle incoming paper events from websocket
-   */
-  private handleRealtimeEvent(event: ChatEvent): void {
-    switch (event.action) {
-      case 'paper_created':
-      case 'paper_updated': {
-        const paper = event.data as Paper;
-        this.store.update(upsertEntities([paper]));
-        this.persistToIndexedDB([paper]);
-        break;
-      }
-      case 'paper_deleted': {
-        const { _id } = event.data as { _id: string };
-        this.store.update(deleteEntities(_id));
+    // Subscribe to paper.created events
+    this.eventStream
+      .on('paper.created')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((event) => {
+        console.log('[PaperService] Received paper.created SSE:', event.paper._id);
+        this.store.update(upsertEntities([event.paper]));
+        this.persistToIndexedDB([event.paper]);
+      });
+
+    // Subscribe to paper.updated events
+    this.eventStream
+      .on('paper.updated')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((event) => {
+        console.log('[PaperService] Received paper.updated SSE:', event.paper._id);
+        this.store.update(upsertEntities([event.paper]));
+        this.persistToIndexedDB([event.paper]);
+      });
+
+    // Subscribe to paper.deleted events
+    this.eventStream
+      .on('paper.deleted')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((event) => {
+        console.log('[PaperService] Received paper.deleted SSE:', event.paperId);
+        this.store.update(deleteEntities(event.paperId));
         if (isPlatformBrowser(this.platformId)) {
-          this.indexedDB.delete(_id, STORE_NAME);
+          this.indexedDB.delete(event.paperId, STORE_NAME);
         }
-        break;
-      }
-    }
+      });
   }
 
   /**

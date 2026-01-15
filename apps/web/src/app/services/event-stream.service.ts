@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { AuthService } from './auth.service';
-import type { Note, Tag } from '@maple/shared';
+import type { Note, Tag, Paper } from '@maple/shared';
 import { environment } from '../../environments/environment';
 
 // Event types that can be received via SSE
@@ -15,7 +15,10 @@ export type AppEvent =
   | { type: 'note.restored'; note: Note; tagId?: string }
   | { type: 'tag.created'; tag: Tag }
   | { type: 'tag.updated'; tagId: string; label?: string }
-  | { type: 'tag.deleted'; tagId: string };
+  | { type: 'tag.deleted'; tagId: string }
+  | { type: 'paper.created'; paper: Paper; tagId: string }
+  | { type: 'paper.updated'; paper: Paper; tagId: string }
+  | { type: 'paper.deleted'; paperId: string; tagId: string };
 
 /**
  * Event Stream Service
