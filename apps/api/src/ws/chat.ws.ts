@@ -209,14 +209,17 @@ export const chatWebSocket = new Elysia({ prefix: '/ws' })
                 connections.delete(ws.raw as unknown as WebSocket);
                 if (connections.size === 0) {
                     userConnections.delete(userId);
+
+                    // Only remove from tag subscriptions if this was the last connection
+                    // This fixes the bug where closing one tab would unsubscribe all tabs
+                    for (const tagId of subscribedTags) {
+                        tagSubscriptions.get(tagId)?.delete(userId);
+                    }
                 }
             }
 
-            // Remove from tag subscriptions
-            for (const tagId of subscribedTags) {
-                tagSubscriptions.get(tagId)?.delete(userId);
-            }
-
-            console.log(`[WS] User ${userId} disconnected`);
+            console.log(
+                `[WS] User ${userId} disconnected (${connections?.size ?? 0} connections remaining)`,
+            );
         },
     });
