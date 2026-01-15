@@ -4,7 +4,7 @@
  * Handles permission-aware event broadcasting to users
  */
 
-import type { Note, Tag } from '@maple/shared';
+import type { Note, Tag, Paper } from '@maple/shared';
 
 // Event types that can be sent via SSE
 export type AppEvent =
@@ -15,7 +15,10 @@ export type AppEvent =
     | { type: 'note.restored'; note: Note; tagId?: string }
     | { type: 'tag.created'; tag: Tag }
     | { type: 'tag.updated'; tagId: string; label?: string }
-    | { type: 'tag.deleted'; tagId: string };
+    | { type: 'tag.deleted'; tagId: string }
+    | { type: 'paper.created'; paper: Paper; tagId: string }
+    | { type: 'paper.updated'; paper: Paper; tagId: string }
+    | { type: 'paper.deleted'; paperId: string; tagId: string };
 
 // Connection tracking
 interface ConnectionInfo {
