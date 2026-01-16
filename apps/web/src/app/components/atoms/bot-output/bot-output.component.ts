@@ -76,7 +76,7 @@ export class BotOutputComponent implements OnDestroy {
           // Disable features not needed for read-only display
           dropcursor: false,
           gapcursor: false,
-        }),
+        }) as any,
       ],
       editable: false,
       content: '',

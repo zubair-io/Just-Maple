@@ -72,17 +72,17 @@ export class ContentRendererComponent implements AfterViewInit, OnDestroy {
       element: this.editorRef.nativeElement,
       editable: false,
       extensions: [
-        StarterKit,
+        StarterKit as any,
         TaskItem.configure({
           nested: true,
-        }),
-        TaskList,
-        Highlight,
+        }) as any,
+        TaskList as any,
+        Highlight as any,
         Mention.configure({
           HTMLAttributes: {
             class: 'mention',
           },
-        }),
+        }) as any,
       ],
       content: '',
     });
