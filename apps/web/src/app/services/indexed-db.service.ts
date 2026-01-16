@@ -22,7 +22,7 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 5,
+    dbVersion: 6,
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.PAPER, keyPath: '_id', autoIncrement: false },
@@ -31,6 +31,7 @@ export class IndexedDBService {
       { name: DB_STORES.SYNC_METADATA, keyPath: 'key', autoIncrement: false },
       { name: DB_STORES.MESSAGE, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.AUTOMERGE, keyPath: 'key', autoIncrement: false },
+      { name: DB_STORES.OFFLINE_QUEUE, keyPath: 'id', autoIncrement: false },
     ],
   };
 

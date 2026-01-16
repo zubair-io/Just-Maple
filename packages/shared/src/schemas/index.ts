@@ -9,3 +9,6 @@ export * from './paper';
 export * from './collectible-registry';
 export * from './notification';
 export * from './collab';
+export * from './notebook';
+export * from './offline-queue';
+export * from './signaling';

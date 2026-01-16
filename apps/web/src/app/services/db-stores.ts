@@ -10,6 +10,7 @@ export const DB_STORES = {
   SYNC_METADATA: 'sync-metadata',
   MESSAGE: 'message',
   AUTOMERGE: 'automerge',
+  OFFLINE_QUEUE: 'offline-queue',
 } as const;
 
 export type DBStoreName = (typeof DB_STORES)[keyof typeof DB_STORES];

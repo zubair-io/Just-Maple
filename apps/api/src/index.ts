@@ -14,6 +14,8 @@ import { legoRoutes } from './routes/lego';
 import { collabRoutes } from './routes/collab';
 import { webrtcSignalingRoutes } from './routes/webrtc-signaling';
 import { eventRoutes } from './routes/events';
+import { notebookEventsRoutes } from './routes/notebook-events';
+import { notebookSignalRoutes } from './routes/notebook-signal';
 import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
 import { automergeSyncWs, initializeAutomergeRepo } from './ws/automerge-sync.ws';
 import { setRealtimeService } from './services/realtime.service';
@@ -65,6 +67,8 @@ async function main() {
         .use(collabRoutes)
         .use(webrtcSignalingRoutes) // WebRTC signaling for P2P collaboration
         .use(eventRoutes) // SSE event stream for real-time app updates
+        .use(notebookEventsRoutes) // SSE for notebook Y.Doc collaboration
+        .use(notebookSignalRoutes) // WebRTC signaling for notebook P2P
         .use(automergeSyncWs) // Automerge sync WebSocket
         .use(chatWebSocket); // WebSocket chat
 

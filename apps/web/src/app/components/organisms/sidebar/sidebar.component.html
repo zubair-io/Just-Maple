@@ -123,7 +123,7 @@
                   <a
                     [routerLink]="getNoteRouterLink(note, tag._id)"
                     (click)="onSelectNote(note, tag._id)"
-                    class="block px-2 py-1.5 text-sm cursor-pointer transition-colors"
+                    class="flex items-center gap-1.5 px-2 py-1.5 text-sm cursor-pointer transition-colors"
                     [class.bg-stone-100]="selectedNoteId() === note.documentId"
                     [class.text-[var(--color-text-main)]]="selectedNoteId() === note.documentId"
                     [class.font-medium]="selectedNoteId() === note.documentId"
@@ -136,7 +136,10 @@
                       selectedNoteId() !== note.documentId
                     "
                   >
-                    {{ note.title }}
+                    <span class="material-symbols-rounded text-xs opacity-60">{{
+                      note.type === 'notebook' ? 'book' : note.type === 'lego' ? 'toys' : 'article'
+                    }}</span>
+                    <span class="truncate">{{ note.title }}</span>
                   </a>
                 </li>
               }
