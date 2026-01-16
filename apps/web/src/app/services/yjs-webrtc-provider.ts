@@ -2,6 +2,8 @@ import * as Y from 'yjs';
 import { signal } from '@angular/core';
 import type { SignalMessage } from '@maple/shared';
 import { YJSSSEProvider } from './yjs-sse-provider';
+import { Awareness } from 'y-protocols/awareness';
+import * as awarenessProtocol from 'y-protocols/awareness';
 
 // SimplePeer types (imported dynamically to avoid SSR issues)
 type SimplePeerInstance = {
@@ -22,9 +24,16 @@ type SimplePeerConstructor = new (opts?: {
  * Enables P2P sync between clients via WebRTC
  * Uses SSE provider for signaling
  */
+// Message type prefixes for distinguishing doc vs awareness updates
+const MSG_DOC = 0;
+const MSG_AWARENESS = 1;
+
 export class YJSWebRTCProvider {
   private peers = new Map<string, SimplePeerInstance>();
   private SimplePeer: SimplePeerConstructor | null = null;
+
+  // Bound handlers for cleanup
+  private readonly boundAwarenessChangeHandler: () => void;
 
   // Reactive state
   readonly peersConnected = signal(0);
@@ -34,6 +43,7 @@ export class YJSWebRTCProvider {
     private readonly noteId: string,
     private readonly ydoc: Y.Doc,
     private readonly sseProvider: YJSSSEProvider,
+    private readonly awareness: Awareness,
   ) {
     // Polyfill Node.js globals for browser BEFORE loading SimplePeer
     this.applyNodePolyfills();
@@ -43,6 +53,10 @@ export class YJSWebRTCProvider {
 
     // Listen for local Y.Doc changes to broadcast to peers
     this.ydoc.on('update', this.handleLocalUpdate.bind(this));
+
+    // Listen for local awareness changes to broadcast to peers
+    this.boundAwarenessChangeHandler = this.handleAwarenessChange.bind(this);
+    this.awareness.on('change', this.boundAwarenessChangeHandler);
 
     // Load SimplePeer dynamically (for SSR compatibility)
     this.loadSimplePeer();
@@ -210,15 +224,38 @@ export class YJSWebRTCProvider {
       this.peers.set(peerId, peer);
       this.updatePeerState();
 
-      // Send current document state to new peer
-      const state = Y.encodeStateAsUpdate(this.ydoc);
-      peer.send(state);
+      // Send current document state to new peer (with message type prefix)
+      const docState = Y.encodeStateAsUpdate(this.ydoc);
+      const docMessage = new Uint8Array(docState.length + 1);
+      docMessage[0] = MSG_DOC;
+      docMessage.set(docState, 1);
+      peer.send(docMessage);
+
+      // Send full awareness state to new peer (all clients)
+      const awarenessState = awarenessProtocol.encodeAwarenessUpdate(
+        this.awareness,
+        Array.from(this.awareness.getStates().keys()),
+      );
+      const awarenessMessage = new Uint8Array(awarenessState.length + 1);
+      awarenessMessage[0] = MSG_AWARENESS;
+      awarenessMessage.set(awarenessState, 1);
+      peer.send(awarenessMessage);
     });
 
     // Data received from peer
     peer.on('data', (data: Uint8Array) => {
       try {
-        Y.applyUpdate(this.ydoc, new Uint8Array(data), 'remote');
+        const dataArray = new Uint8Array(data);
+        const messageType = dataArray[0];
+        const payload = dataArray.slice(1);
+
+        if (messageType === MSG_DOC) {
+          // Document update
+          Y.applyUpdate(this.ydoc, payload, 'remote');
+        } else if (messageType === MSG_AWARENESS) {
+          // Awareness update
+          awarenessProtocol.applyAwarenessUpdate(this.awareness, payload, 'remote');
+        }
       } catch (err) {
         console.error('[YJS-WebRTC] Failed to apply peer update:', err);
       }
@@ -273,13 +310,44 @@ export class YJSWebRTCProvider {
     // Don't echo back remote updates
     if (origin === 'remote') return;
 
+    // Prefix with message type (doc update)
+    const message = new Uint8Array(update.length + 1);
+    message[0] = MSG_DOC;
+    message.set(update, 1);
+
     // Send to all connected peers
     for (const [peerId, peer] of this.peers) {
       if (peer.connected) {
         try {
-          peer.send(update);
+          peer.send(message);
         } catch (err) {
           console.error(`[YJS-WebRTC] Failed to send to ${peerId}:`, err);
+        }
+      }
+    }
+  }
+
+  /**
+   * Handle local awareness change - broadcast to all connected peers
+   */
+  private handleAwarenessChange(): void {
+    // Encode only this client's awareness state
+    const awarenessState = awarenessProtocol.encodeAwarenessUpdate(this.awareness, [
+      this.awareness.clientID,
+    ]);
+
+    // Prefix with message type (awareness update)
+    const message = new Uint8Array(awarenessState.length + 1);
+    message[0] = MSG_AWARENESS;
+    message.set(awarenessState, 1);
+
+    // Send to all connected peers
+    for (const [peerId, peer] of this.peers) {
+      if (peer.connected) {
+        try {
+          peer.send(message);
+        } catch (err) {
+          console.error(`[YJS-WebRTC] Failed to send awareness to ${peerId}:`, err);
         }
       }
     }
@@ -312,5 +380,8 @@ export class YJSWebRTCProvider {
 
     // Remove Y.Doc listener
     this.ydoc.off('update', this.handleLocalUpdate.bind(this));
+
+    // Remove awareness listener
+    this.awareness.off('change', this.boundAwarenessChangeHandler);
   }
 }

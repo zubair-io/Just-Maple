@@ -17,6 +17,7 @@ import { CommonModule } from '@angular/common';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
@@ -124,6 +125,12 @@ export class NotebookEditorComponent implements OnDestroy {
         return;
       }
 
+      // Get user info for collaboration cursor
+      const userInfo = (awareness.getLocalState() as any)?.user || {
+        name: 'Anonymous',
+        color: '#888888',
+      };
+
       // Create TipTap editor with YJS collaboration and Notion-like features
       this._editor = new Editor({
         element: this.editorRef.nativeElement,
@@ -149,6 +156,25 @@ export class NotebookEditorComponent implements OnDestroy {
             document: ydoc,
             field: 'prosemirror',
           }) as any,
+          // Collaboration cursors (show other users)
+          // Provider wrapper that forwards awareness events to CollaborationCursor
+          CollaborationCursor.configure({
+            provider: {
+              awareness,
+              doc: ydoc,
+              on: (event: string, callback: (...args: any[]) => void) => {
+                if (event === 'awarenessUpdate') {
+                  awareness.on('update', callback);
+                }
+              },
+              off: (event: string, callback: (...args: any[]) => void) => {
+                if (event === 'awarenessUpdate') {
+                  awareness.off('update', callback);
+                }
+              },
+            },
+            user: userInfo,
+          }),
           // Emoji replacer (e.g., :) -> emoji)
           EmojiReplacer,
           // Task lists
