@@ -83,20 +83,26 @@ export class NotebookDocumentService {
     ydoc: Y.Doc;
     awareness: Awareness;
   }> {
+    console.log(`[NotebookDoc] Opening document: ${noteId}`);
+
     // Check if already open
     if (this.openDocs.has(noteId)) {
+      console.log(`[NotebookDoc] Document already open: ${noteId}`);
       const doc = this.openDocs.get(noteId)!;
       return { ydoc: doc.ydoc, awareness: doc.awareness };
     }
 
     // Create Y.Doc
     const ydoc = new Y.Doc();
+    console.log(`[NotebookDoc] Created Y.Doc for: ${noteId}`);
 
     // Create awareness for cursor sync
     const awareness = new Awareness(ydoc);
     this.setupAwareness(awareness);
+    console.log(`[NotebookDoc] Created Awareness for: ${noteId}`);
 
     // Setup local persistence FIRST (offline-first)
+    console.log(`[NotebookDoc] Setting up IndexedDB persistence for: ${noteId}`);
     const persistence = new IndexeddbPersistence(`ydoc-${noteId}`, ydoc);
     await persistence.whenSynced;
     console.log(`[NotebookDoc] Loaded from IndexedDB: ${noteId}`);
@@ -111,12 +117,81 @@ export class NotebookDocumentService {
     };
     this.openDocs.set(noteId, doc);
 
-    // Connect to server if online
+    // Check if document is empty (no content from IndexedDB)
+    const prosemirror = ydoc.getXmlFragment('prosemirror');
+    const isDocEmpty = prosemirror.length === 0;
+
+    // Connect to server if online (don't block on this - can work offline)
     if (this.connectivity.canSync()) {
-      await this.connectProviders(noteId, doc);
+      // Connect providers in background - don't fail document loading if SSE fails
+      this.connectProviders(noteId, doc).catch(async (err) => {
+        console.warn(`[NotebookDoc] Failed to connect providers (will work offline):`, err);
+
+        // If document is empty and SSE failed, try to fetch initial state via REST API
+        if (isDocEmpty) {
+          await this.fetchInitialState(noteId, ydoc);
+        }
+      });
+
+      // Also fetch initial state if doc is empty (in case SSE takes too long)
+      if (isDocEmpty) {
+        // Give SSE a short time to connect, then fallback to REST
+        setTimeout(async () => {
+          const docState = this.openDocs.get(noteId);
+          if (docState && !docState.sseProvider?.synced()) {
+            await this.fetchInitialState(noteId, ydoc);
+          }
+        }, 2000);
+      }
+    } else if (isDocEmpty) {
+      // Offline and empty - nothing we can do, will sync when online
+      console.warn(`[NotebookDoc] Document is empty and offline, will sync when connected`);
     }
 
     return { ydoc, awareness };
+  }
+
+  /**
+   * Fetch initial document state from REST API (fallback when SSE fails)
+   */
+  private async fetchInitialState(noteId: string, ydoc: Y.Doc): Promise<void> {
+    const token = this.authService.accessToken();
+    if (!token) return;
+
+    try {
+      console.log(`[NotebookDoc] Fetching initial state via REST API for: ${noteId}`);
+
+      const response = await fetch(`/api/notebook/${noteId}/state`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (data.state) {
+        const state = this.base64ToUint8Array(data.state);
+        Y.applyUpdate(ydoc, state, 'remote');
+        console.log(`[NotebookDoc] Applied initial state from REST API for: ${noteId}`);
+      }
+    } catch (err) {
+      console.error(`[NotebookDoc] Failed to fetch initial state:`, err);
+    }
+  }
+
+  /**
+   * Convert base64 string to Uint8Array
+   */
+  private base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
   }
 
   /**
@@ -145,17 +220,18 @@ export class NotebookDocumentService {
     // Create WebRTC provider
     doc.webrtcProvider = new YJSWebRTCProvider(noteId, doc.ydoc, doc.sseProvider);
 
+    // Setup connection handler - announce WebRTC presence once SSE connects
+    doc.sseProvider.onConnected = () => {
+      doc.webrtcProvider?.announcePresence();
+    };
+
+    // Track sync status via callback
+    doc.sseProvider.onSynced = (synced: boolean) => {
+      this.updateSyncStatus(noteId, synced ? 'synced' : 'syncing');
+    };
+
     // Connect SSE
     doc.sseProvider.connect();
-
-    // Announce presence for WebRTC
-    doc.webrtcProvider.announcePresence();
-
-    // Track sync status
-    effect(() => {
-      const synced = doc.sseProvider?.synced() ?? false;
-      this.updateSyncStatus(noteId, synced ? 'synced' : 'syncing');
-    });
   }
 
   /**
@@ -195,8 +271,8 @@ export class NotebookDocumentService {
     // Create Y.Doc
     const ydoc = new Y.Doc();
 
-    // Initialize with empty prosemirror content
-    const content = ydoc.getXmlFragment('prosemirror');
+    // Initialize with empty prosemirror content (creates the fragment)
+    ydoc.getXmlFragment('prosemirror');
 
     // Create awareness
     const awareness = new Awareness(ydoc);
@@ -236,9 +312,10 @@ export class NotebookDocumentService {
     });
 
     // Queue notebook Y.Doc sync
+    // Store as Array for IndexedDB serialization, convert back when processing
     const state = Y.encodeStateAsUpdate(ydoc);
     await this.offlineQueue.enqueue('sync-notebook', documentId, documentId, {
-      state,
+      state: Array.from(state),
     });
 
     // Store open document

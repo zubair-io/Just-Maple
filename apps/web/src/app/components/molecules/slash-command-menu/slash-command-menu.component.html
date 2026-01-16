@@ -1,0 +1,22 @@
+<div class="slash-command-menu">
+  @if (filteredItems().length === 0) {
+    <div class="no-results">No results</div>
+  } @else {
+    @for (item of filteredItems(); track item.title; let i = $index) {
+      <button
+        #commandItem
+        class="command-item"
+        [class.selected]="i === selectedIndex()"
+        (click)="selectItem(item)"
+        (mouseenter)="selectedIndex.set(i)"
+        type="button"
+      >
+        <span class="command-icon">{{ item.icon }}</span>
+        <div class="command-content">
+          <span class="command-title">{{ item.title }}</span>
+          <span class="command-description">{{ item.description }}</span>
+        </div>
+      </button>
+    }
+  }
+</div>

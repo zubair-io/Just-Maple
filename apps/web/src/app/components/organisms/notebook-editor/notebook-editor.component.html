@@ -5,16 +5,46 @@
       <span class="error-text">{{ error() }}</span>
     </div>
   } @else {
+    <!-- Toolbar -->
     <div class="editor-header">
-      <app-sync-status [noteId]="noteId()" />
+      <app-editor-toolbar [editor]="getEditor()" />
+
+      <div class="header-actions">
+        <button
+          type="button"
+          class="width-toggle"
+          [class.active]="isFullWidth()"
+          title="{{ isFullWidth() ? 'Narrow width' : 'Full width' }}"
+          (click)="toggleFullWidth()"
+        >
+          @if (isFullWidth()) {
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2 4h12v1H2V4zm2 3h8v1H4V7zm2 3h4v1H6v-1z" />
+            </svg>
+          } @else {
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M1 4h14v1H1V4zm0 3h14v1H1V7zm0 3h14v1H1v-1z" />
+            </svg>
+          }
+        </button>
+        <app-sync-status [noteId]="noteId()" />
+      </div>
     </div>
 
+    <!-- Editor wrapper for centering and max-width -->
     <div
-      #editorElement
-      class="editor-content"
-      [class.loading]="!isReady()"
-      [class.focused]="isFocused()"
-    ></div>
+      #editorWrapper
+      class="editor-wrapper"
+      [class.full-width]="isFullWidth()"
+      (click)="onEditorWrapperClick($event)"
+    >
+      <div
+        #editorElement
+        class="editor-content"
+        [class.loading]="!isReady()"
+        [class.focused]="isFocused()"
+      ></div>
+    </div>
 
     @if (!isReady()) {
       <div class="loading-overlay">

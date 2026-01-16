@@ -35,6 +35,9 @@ export class YJSWebRTCProvider {
     private readonly ydoc: Y.Doc,
     private readonly sseProvider: YJSSSEProvider,
   ) {
+    // Polyfill Node.js globals for browser BEFORE loading SimplePeer
+    this.applyNodePolyfills();
+
     // Setup signaling message handler
     this.sseProvider.onSignal = this.handleSignal.bind(this);
 
@@ -43,6 +46,28 @@ export class YJSWebRTCProvider {
 
     // Load SimplePeer dynamically (for SSR compatibility)
     this.loadSimplePeer();
+  }
+
+  /**
+   * Apply Node.js polyfills for browser environment
+   */
+  private applyNodePolyfills(): void {
+    if (typeof window !== 'undefined') {
+      if (typeof (window as any).global === 'undefined') {
+        (window as any).global = window;
+      }
+      if (typeof (window as any).process === 'undefined') {
+        (window as any).process = {
+          env: {},
+          nextTick: (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0),
+          browser: true,
+        };
+      }
+      if (typeof (window as any).Buffer === 'undefined') {
+        // SimplePeer also needs Buffer - we'll let it fail gracefully if Buffer isn't available
+        // The Buffer polyfill is usually provided by bundlers
+      }
+    }
   }
 
   get clientId(): string {
@@ -56,6 +81,7 @@ export class YJSWebRTCProvider {
     try {
       const module = await import('simple-peer');
       this.SimplePeer = module.default || module;
+      console.log('[YJS-WebRTC] SimplePeer loaded successfully');
     } catch (err) {
       console.warn('[YJS-WebRTC] SimplePeer not available:', err);
     }
@@ -263,14 +289,20 @@ export class YJSWebRTCProvider {
    * Destroy provider and all connections
    */
   destroy(): void {
-    // Announce leave
-    this.sseProvider.sendSignal({
-      type: 'leave',
-      payload: {},
-    });
+    // Announce leave (only if still connected)
+    if (this.sseProvider.connected()) {
+      this.sseProvider
+        .sendSignal({
+          type: 'leave',
+          payload: {},
+        })
+        .catch(() => {
+          // Ignore errors when sending leave signal
+        });
+    }
 
     // Destroy all peer connections
-    for (const [peerId, peer] of this.peers) {
+    for (const [, peer] of this.peers) {
       try {
         peer.destroy();
       } catch {}
