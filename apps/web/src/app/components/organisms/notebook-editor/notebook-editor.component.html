@@ -1,0 +1,26 @@
+<div class="notebook-editor">
+  @if (error()) {
+    <div class="error-container">
+      <span class="error-icon">!</span>
+      <span class="error-text">{{ error() }}</span>
+    </div>
+  } @else {
+    <div class="editor-header">
+      <app-sync-status [noteId]="noteId()" />
+    </div>
+
+    <div
+      #editorElement
+      class="editor-content"
+      [class.loading]="!isReady()"
+      [class.focused]="isFocused()"
+    ></div>
+
+    @if (!isReady()) {
+      <div class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <span>Loading notebook...</span>
+      </div>
+    }
+  }
+</div>

@@ -25,6 +25,7 @@ export const NoteTypeSchema = Type.Union([
     Type.Literal('lego'),
     Type.Literal('draw'),
     Type.Literal('kanban'),
+    Type.Literal('notebook'),
 ]);
 
 export type NoteType = Static<typeof NoteTypeSchema>;

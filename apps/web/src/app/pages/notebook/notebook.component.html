@@ -1,0 +1,16 @@
+<div class="notebook-page">
+  @if (selectedNote(); as note) {
+    <app-note-header [note]="note" [tag]="selectedTag()" (favoriteClicked)="toggleFavorite()" />
+
+    <div class="notebook-content">
+      @if (documentId(); as docId) {
+        <app-notebook-editor [noteId]="docId" />
+      }
+    </div>
+  } @else {
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+      <span>Loading notebook...</span>
+    </div>
+  }
+</div>

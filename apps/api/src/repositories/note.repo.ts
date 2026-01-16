@@ -3,6 +3,7 @@ import * as Automerge from '@automerge/automerge';
 import { getDb } from '../db/client';
 import type { Note, NoteContent, NoteType, CreateNoteInput, UpdateNoteInput } from '@maple/shared';
 import { findTagsByUserId, findTagByIdWithAccess } from './tag.repo';
+import { deleteNotebook } from './notebook.repo';
 import { customAlphabet } from 'nanoid';
 
 /**
@@ -351,6 +352,11 @@ export async function deleteNote(id: string, userId: string): Promise<boolean> {
         } else {
             // Note has no tag - only owner can delete
             if (doc.userId.toString() !== userId) return false;
+        }
+
+        // Cascade delete: Remove associated notebook if this is a notebook-type note
+        if (doc.type === 'notebook') {
+            await deleteNotebook(doc.documentId);
         }
 
         const result = await getCollection().deleteOne({ documentId: id });

@@ -51,3 +51,6 @@ export const DrawNoteGuard = createNoteTypeGuard('draw');
 
 /** Guard that matches kanban-type notes */
 export const KanbanNoteGuard = createNoteTypeGuard('kanban');
+
+/** Guard that matches notebook-type notes */
+export const NotebookNoteGuard = createNoteTypeGuard('notebook');

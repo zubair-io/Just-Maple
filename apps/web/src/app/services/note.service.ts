@@ -631,6 +631,14 @@ export class NoteService {
   }
 
   /**
+   * Add or update a note locally (offline-first)
+   * Used for notes created offline before server sync
+   */
+  addLocalNote(note: Note): void {
+    this.store.update(upsertEntities([note]));
+  }
+
+  /**
    * Get sync metadata (e.g. storage-adapter-id)
    */
   async getSyncMetadata(key: string): Promise<Uint8Array | undefined> {

@@ -132,6 +132,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
                         t.Literal('lego'),
                         t.Literal('draw'),
                         t.Literal('kanban'),
+                        t.Literal('notebook'),
                     ]),
                 ),
                 title: t.Optional(t.String({ maxLength: 500 })),
