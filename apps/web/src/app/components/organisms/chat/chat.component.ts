@@ -223,10 +223,10 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
         StarterKit.configure({
           heading: false,
           codeBlock: false,
-        }),
+        }) as any,
         Placeholder.configure({
           placeholder: 'Type a message...',
-        }),
+        }) as any,
         Mention.configure({
           HTMLAttributes: {
             class: 'mention',
@@ -263,8 +263,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
               };
             },
           },
-        }),
-        SendOnEnter,
+        }) as any,
+        SendOnEnter as any,
       ],
       content: '',
       onUpdate: () => {

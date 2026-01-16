@@ -44,8 +44,7 @@ export const CodeEnterHandler = Extension.create({
           }
 
           // First enter - insert hard break + empty code element
-          editor
-            .chain()
+          (editor.chain() as any)
             .setHardBreak()
             .insertContent({
               type: 'text',
