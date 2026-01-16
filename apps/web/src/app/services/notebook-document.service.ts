@@ -217,8 +217,8 @@ export class NotebookDocumentService {
     // Create SSE provider
     doc.sseProvider = new YJSSSEProvider(noteId, doc.ydoc, token);
 
-    // Create WebRTC provider
-    doc.webrtcProvider = new YJSWebRTCProvider(noteId, doc.ydoc, doc.sseProvider);
+    // Create WebRTC provider (with awareness for cursor sync)
+    doc.webrtcProvider = new YJSWebRTCProvider(noteId, doc.ydoc, doc.sseProvider, doc.awareness);
 
     // Setup connection handler - announce WebRTC presence once SSE connects
     doc.sseProvider.onConnected = () => {
