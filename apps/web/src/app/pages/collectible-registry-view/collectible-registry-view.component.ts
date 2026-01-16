@@ -179,4 +179,39 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
         return 'remove_circle_outline';
     }
   }
+
+  formatDescription(description: any): string {
+    if (!description) return '';
+
+    // If it's already a string, return it
+    if (typeof description === 'string') {
+      description = JSON.parse(description);
+    }
+
+    // If it's ProseMirror JSON, extract text
+    if (description.type === 'doc' && description.content) {
+      return this.extractTextFromProseMirror(description.content);
+    }
+
+    return '';
+  }
+
+  private extractTextFromProseMirror(content: any[]): string {
+    let text = '';
+
+    for (const node of content) {
+      if (node.type === 'text') {
+        text += node.text || '';
+      } else if (node.content) {
+        text += this.extractTextFromProseMirror(node.content);
+      }
+
+      // Add line breaks for block elements
+      if (node.type === 'paragraph' || node.type === 'heading') {
+        text += '\n';
+      }
+    }
+
+    return text.trim();
+  }
 }

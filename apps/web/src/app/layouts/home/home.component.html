@@ -26,6 +26,9 @@
     [style.padding-bottom]="
       shouldShowFooterPadding() ? 'max(env(safe-area-inset-bottom), 4rem)' : '0'
     "
+    (touchstart)="onTouchStart($event)"
+    (touchmove)="onTouchMove($event)"
+    (touchend)="onTouchEnd($event)"
   >
     <router-outlet />
   </main>

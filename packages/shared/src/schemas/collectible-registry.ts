@@ -3,6 +3,7 @@ import { Type, Static } from '@sinclair/typebox';
 export const RegistryTagSchema = Type.Object({
     type: Type.String(),
     value: Type.String(),
+    label: Type.String(),
 });
 
 export type RegistryTag = Static<typeof RegistryTagSchema>;

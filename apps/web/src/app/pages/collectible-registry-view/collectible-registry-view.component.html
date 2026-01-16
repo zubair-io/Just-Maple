@@ -86,9 +86,19 @@
               <span
                 class="px-2 py-1 text-xs rounded-full bg-stone-100 text-[var(--color-text-muted)]"
               >
-                {{ tag.value }}
+                {{ tag.label }}: {{ tag.value }}
               </span>
             }
+          </div>
+        }
+
+        <!-- Description -->
+        @if (registry()!.description) {
+          <div class="prose prose-sm max-w-none mb-6">
+            <h2 class="text-sm font-medium text-[var(--color-text-muted)] mb-2">Description</h2>
+            <div class="text-sm text-[var(--color-text-main)]">
+              {{ formatDescription(registry()!.description) }}
+            </div>
           </div>
         }
 
@@ -181,7 +191,7 @@
           }
         </div>
 
-        <!-- Provider Data (if available) -->
+        <!-- Provider Data (if available)
         @if (registry()!.providerData) {
           <div class="bg-stone-50 rounded-lg p-4">
             <h2 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">Details</h2>
@@ -204,7 +214,7 @@
               }
             </dl>
           </div>
-        }
+        } -->
       </div>
     } @else {
       <div class="flex flex-col items-center justify-center h-64 text-[var(--color-text-muted)]">

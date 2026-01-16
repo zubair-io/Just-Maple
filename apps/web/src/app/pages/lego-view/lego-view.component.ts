@@ -7,6 +7,7 @@ import { Subscription, switchMap, of, catchError } from 'rxjs';
 import { TagService } from '../../services/tag.service';
 import { PaperService } from '../../services/paper.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
+import { UiStateService } from '../../services/ui-state.service';
 import { PaperListComponent } from '../../components';
 import type { Paper, CollectibleRegistry, RegistryTag } from '@maple/shared';
 
@@ -23,6 +24,7 @@ export class LegoViewComponent implements OnInit, OnDestroy {
   readonly tagService = inject(TagService);
   readonly paperService = inject(PaperService);
   readonly registryService = inject(CollectibleRegistryService);
+  private readonly uiStateService = inject(UiStateService);
 
   private routeSubscription?: Subscription;
 
@@ -199,5 +201,12 @@ export class LegoViewComponent implements OnInit, OnDestroy {
   clearFilters(): void {
     this.searchQuery.set('');
     this.selectedRegistryTags.set([]);
+  }
+
+  openSidebarOnMobile(): void {
+    // Only open sidebar on mobile (< 768px)
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      this.uiStateService.openSidebar();
+    }
   }
 }

@@ -28,9 +28,14 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   readonly selectedNoteId = signal<string | null>(null);
   readonly selectedTagId = signal<string | null>(null);
-  readonly sidebarOpen = signal(false);
+  readonly sidebarOpen = this.uiStateService.sidebarOpen;
   readonly chatInputFocused = this.uiStateService.chatInputFocused;
   private readonly isMobile = signal(false);
+
+  // Swipe gesture tracking
+  private touchStartX = 0;
+  private touchStartY = 0;
+  private touchStartTime = 0;
 
   // Computed: should show mobile footer padding
   readonly shouldShowFooterPadding = computed(() => {
@@ -128,11 +133,11 @@ export class HomeComponent implements OnInit, OnDestroy {
   }
 
   toggleSidebar(): void {
-    this.sidebarOpen.update((open) => !open);
+    this.uiStateService.toggleSidebar();
   }
 
   closeSidebar(): void {
-    this.sidebarOpen.set(false);
+    this.uiStateService.closeSidebar();
   }
 
   openLastNote(): void {
@@ -201,5 +206,53 @@ export class HomeComponent implements OnInit, OnDestroy {
           console.error('Failed to create note:', error);
         },
       });
+  }
+
+  onTouchStart(event: TouchEvent): void {
+    // Only track touch events on mobile
+    if (typeof window === 'undefined' || window.innerWidth >= 768) return;
+
+    const touch = event.touches[0];
+    this.touchStartX = touch.clientX;
+    this.touchStartY = touch.clientY;
+    this.touchStartTime = Date.now();
+  }
+
+  onTouchMove(event: TouchEvent): void {
+    // Prevent default to allow swipe detection
+    // But only if we're swiping from the left edge
+    if (this.touchStartX < 50 && !this.sidebarOpen()) {
+      const touch = event.touches[0];
+      const deltaX = touch.clientX - this.touchStartX;
+
+      // If swiping right, prevent scroll to make swipe smoother
+      if (deltaX > 10) {
+        event.preventDefault();
+      }
+    }
+  }
+
+  onTouchEnd(event: TouchEvent): void {
+    // Only handle on mobile when sidebar is closed
+    if (typeof window === 'undefined' || window.innerWidth >= 768 || this.sidebarOpen()) return;
+
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - this.touchStartX;
+    const deltaY = Math.abs(touch.clientY - this.touchStartY);
+    const deltaTime = Date.now() - this.touchStartTime;
+
+    // Swipe criteria:
+    // - Start from left edge (< 50px)
+    // - Swipe right (deltaX > 100px)
+    // - More horizontal than vertical (deltaX > deltaY)
+    // - Quick swipe (< 300ms)
+    if (this.touchStartX < 50 && deltaX > 100 && deltaX > deltaY && deltaTime < 300) {
+      this.uiStateService.openSidebar();
+    }
+
+    // Reset
+    this.touchStartX = 0;
+    this.touchStartY = 0;
+    this.touchStartTime = 0;
   }
 }

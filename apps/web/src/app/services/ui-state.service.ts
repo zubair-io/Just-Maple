@@ -11,6 +11,9 @@ export class UiStateService {
   /** Signal to trigger barcode scanner from footer */
   readonly showScanner = signal(false);
 
+  /** Signal for sidebar open state (mobile) */
+  readonly sidebarOpen = signal(false);
+
   setChatInputFocused(focused: boolean): void {
     this.chatInputFocused.set(focused);
   }
@@ -21,5 +24,17 @@ export class UiStateService {
 
   closeScanner(): void {
     this.showScanner.set(false);
+  }
+
+  toggleSidebar(): void {
+    this.sidebarOpen.update((open) => !open);
+  }
+
+  openSidebar(): void {
+    this.sidebarOpen.set(true);
+  }
+
+  closeSidebar(): void {
+    this.sidebarOpen.set(false);
   }
 }

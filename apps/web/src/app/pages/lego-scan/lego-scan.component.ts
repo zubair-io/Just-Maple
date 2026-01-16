@@ -10,7 +10,7 @@ import {
   ElementRef,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
-import { CommonModule } from '@angular/common';
+import { CommonModule, Location } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ScrollingModule } from '@angular/cdk/scrolling';
 import { Router, ActivatedRoute } from '@angular/router';
@@ -32,6 +32,7 @@ import type { Paper, CollectibleRegistry, PaperStatus } from '@maple/shared';
 export class LegoScanComponent implements OnInit, OnDestroy {
   @ViewChild('videoElement') videoElement?: ElementRef<HTMLVideoElement>;
 
+  private readonly location = inject(Location);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   readonly tagService = inject(TagService);
@@ -101,8 +102,32 @@ export class LegoScanComponent implements OnInit, OnDestroy {
       });
     }
 
-    // Sort alphabetically by title
-    return [...filtered].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    // Sort by newest first (by year tag if available, then by createdAt)
+    return [...filtered].sort((a, b) => {
+      // Try to extract year from tags
+      const getYear = (registry: CollectibleRegistry) => {
+        const yearTag = registry.tags.find((t) => /^\d{4}$/.test(t.value));
+        return yearTag ? parseInt(yearTag.value, 10) : 0;
+      };
+
+      const yearA = getYear(a);
+      const yearB = getYear(b);
+
+      // Sort by year descending (newest first)
+      if (yearA !== yearB) {
+        return yearB - yearA;
+      }
+
+      // Fall back to createdAt descending
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      if (dateA !== dateB) {
+        return dateB - dateA;
+      }
+
+      // Final fallback to alphabetical
+      return (a.title || '').localeCompare(b.title || '');
+    });
   });
 
   ngOnInit(): void {
@@ -121,12 +146,7 @@ export class LegoScanComponent implements OnInit, OnDestroy {
   }
 
   goBack(): void {
-    const tagId = this.tagId();
-    if (tagId) {
-      this.router.navigate(['/', tagId]);
-    } else {
-      this.router.navigate(['/']);
-    }
+    this.location.back();
   }
 
   updateSearchQuery(event: Event): void {

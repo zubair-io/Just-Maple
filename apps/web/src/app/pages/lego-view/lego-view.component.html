@@ -5,7 +5,8 @@
   <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
     @if (selectedTag()) {
       <div
-        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100"
+        (click)="openSidebarOnMobile()"
+        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100 cursor-pointer hover:bg-stone-200 transition-colors"
       >
         <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
         <span>{{ selectedTag()!.label }}</span>

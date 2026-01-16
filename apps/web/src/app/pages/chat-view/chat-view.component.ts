@@ -6,6 +6,7 @@ import { Subscription, switchMap, of, combineLatest } from 'rxjs';
 import { TagService } from '../../services/tag.service';
 import { NoteService } from '../../services/note.service';
 import { NotificationService } from '../../services/notification.service';
+import { UiStateService } from '../../services/ui-state.service';
 import { ChatComponent, MemberAvatarGroupComponent, ShareModalComponent } from '../../components';
 import { DEFAULT_NOTE_CONTENT, type TagMember } from '@maple/shared';
 
@@ -22,6 +23,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   readonly tagService = inject(TagService);
   readonly noteService = inject(NoteService);
   private readonly notificationService = inject(NotificationService);
+  private readonly uiStateService = inject(UiStateService);
 
   private routeSubscription?: Subscription;
 
@@ -84,5 +86,12 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   onMembersChanged(): void {
     // Trigger members refetch after sharing/unsharing
     this.membersRefreshTrigger.update((n) => n + 1);
+  }
+
+  openSidebarOnMobile(): void {
+    // Only open sidebar on mobile (< 768px)
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      this.uiStateService.openSidebar();
+    }
   }
 }

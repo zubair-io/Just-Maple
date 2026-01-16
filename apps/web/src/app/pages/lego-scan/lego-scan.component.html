@@ -10,7 +10,7 @@
       <span class="material-symbols-rounded">arrow_back</span>
     </button>
 
-    <h1 class="text-lg font-medium text-[var(--color-text-main)]">Scan Items</h1>
+    <h1 class="text-lg font-medium text-[var(--color-text-main)]">Add to Collection</h1>
 
     @if (selectedTag()) {
       <div
@@ -104,7 +104,7 @@
       <div
         *cdkVirtualFor="let registry of filteredRegistries(); trackBy: trackByRegistryId"
         (click)="onSelectRegistry(registry)"
-        class="flex items-center p-3 cursor-pointer transition-colors border-b border-[var(--color-border)]"
+        class="flex items-center p-3 cursor-pointer transition-colors border-b border-[var(--color-border)] max-w-full"
         [class.bg-green-50]="getCollectionStatus(registry._id) === 'have'"
         [class.bg-yellow-50]="getCollectionStatus(registry._id) === 'want'"
         [class.bg-gray-100]="getCollectionStatus(registry._id) === 'sold'"
