@@ -12,7 +12,7 @@ const nanoid = customAlphabet('1234567890abcdefghijklmnopqrstuvwxyz', 12);
  * Event Stream Routes
  * Provides Server-Sent Events (SSE) endpoint for real-time app updates
  */
-export const eventRoutes = new Elysia({ prefix: '/api/events' })
+export const eventRoutes = new Elysia({ prefix: '/sse/events' })
     .use(jwtPlugin)
 
     // SSE stream endpoint for real-time app events

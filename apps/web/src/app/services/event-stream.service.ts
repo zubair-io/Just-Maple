@@ -41,7 +41,7 @@ export class EventStreamService {
   private _isConnected = false;
 
   // API configuration
-  private readonly API_BASE = `${environment.apiUrl || ''}/api/events`;
+  private readonly API_BASE = `${environment.apiUrl || ''}/sse/events`;
 
   /**
    * Connect to the SSE event stream

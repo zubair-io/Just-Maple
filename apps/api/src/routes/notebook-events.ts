@@ -34,12 +34,12 @@ function getUserColor(userId: string): string {
  * Notebook Events Routes
  * SSE streaming for Y.Doc collaboration
  */
-export const notebookEventsRoutes = new Elysia({ prefix: '/api/notebook' })
+export const notebookEventsRoutes = new Elysia({ prefix: '/sse/notebook' })
     .use(jwtPlugin)
 
     /**
      * SSE stream for notebook collaboration
-     * GET /api/notebook/:noteId/events?token=xxx&clientId=xxx
+     * GET /sse/notebook/:noteId/events?token=xxx&clientId=xxx
      */
     .get(
         '/:noteId/events',
@@ -158,7 +158,7 @@ export const notebookEventsRoutes = new Elysia({ prefix: '/api/notebook' })
 
     /**
      * Receive Y.Doc update from client
-     * POST /api/notebook/:noteId/update?clientId=xxx
+     * POST /sse/notebook/:noteId/update?clientId=xxx
      */
     .post(
         '/:noteId/update',
@@ -229,7 +229,7 @@ export const notebookEventsRoutes = new Elysia({ prefix: '/api/notebook' })
 
     /**
      * Initialize notebook (for first sync of offline-created notebook)
-     * POST /api/notebook/:noteId/init
+     * POST /sse/notebook/:noteId/init
      */
     .post(
         '/:noteId/init',
@@ -304,7 +304,7 @@ export const notebookEventsRoutes = new Elysia({ prefix: '/api/notebook' })
 
     /**
      * Get notebook state (for manual sync/recovery)
-     * GET /api/notebook/:noteId/state
+     * GET /sse/notebook/:noteId/state
      */
     .get(
         '/:noteId/state',
@@ -362,7 +362,7 @@ export const notebookEventsRoutes = new Elysia({ prefix: '/api/notebook' })
 
     /**
      * Get room statistics (connected peers)
-     * GET /api/notebook/:noteId/peers
+     * GET /sse/notebook/:noteId/peers
      */
     .get(
         '/:noteId/peers',

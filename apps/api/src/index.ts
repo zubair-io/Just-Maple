@@ -93,8 +93,8 @@ async function main() {
     })
         // Serve static files and SPA fallback
         .get('*', async ({ path, set }) => {
-            // Skip API routes and WebSocket routes
-            if (path.startsWith('/api') || path.startsWith('/ws')) {
+            // Skip API routes, WebSocket routes, and SSE routes
+            if (path.startsWith('/api') || path.startsWith('/ws') || path.startsWith('/sse')) {
                 set.status = 404;
                 return { error: 'Not found' };
             }
