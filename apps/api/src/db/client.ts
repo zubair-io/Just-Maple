@@ -54,7 +54,7 @@ async function createIndexes(database: Db): Promise<void> {
     // Notes collection
     await database.collection('notes').createIndex({ tagId: 1, updatedAt: -1 }); // For listing notes by tag
     await database.collection('notes').createIndex({ userId: 1, updatedAt: -1 }); // For listing user's notes
-    await database.collection('notes').createIndex({ documentId: 1 }, { unique: true }); // For lookup by documentId
+    await database.collection('notes').createIndex({ documentId: 1 }); // For lookup by documentId
 
     // Notebooks collection (Y.Doc storage for notebook-type notes)
     await database.collection('notebooks').createIndex({ noteId: 1 }, { unique: true }); // Link to parent note

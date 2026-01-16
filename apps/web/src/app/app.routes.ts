@@ -43,6 +43,12 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/chat-view/chat-view.component').then((m) => m.ChatViewComponent),
           },
+          // Create new note route
+          {
+            path: 'new',
+            loadComponent: () =>
+              import('./pages/new-note/new-note.component').then((m) => m.NewNoteComponent),
+          },
           // Lego scan route
           {
             path: 'scan',
