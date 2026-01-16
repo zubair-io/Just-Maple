@@ -8,12 +8,12 @@ import { yjsSSEService } from '../services/yjs-sse.service';
  * Notebook Signaling Routes
  * WebRTC signaling relay for P2P collaboration
  */
-export const notebookSignalRoutes = new Elysia({ prefix: '/api/signal' })
+export const notebookSignalRoutes = new Elysia({ prefix: '/sse/signal' })
     .use(jwtPlugin)
 
     /**
      * Relay WebRTC signaling message
-     * POST /api/signal/:noteId
+     * POST /sse/signal/:noteId
      */
     .post(
         '/:noteId',
@@ -89,7 +89,7 @@ export const notebookSignalRoutes = new Elysia({ prefix: '/api/signal' })
 
     /**
      * Announce presence in a room (alternative to SSE auto-announce)
-     * POST /api/signal/:noteId/announce
+     * POST /sse/signal/:noteId/announce
      */
     .post(
         '/:noteId/announce',

@@ -70,7 +70,7 @@ export class YJSSSEProvider {
       this.disconnect();
     }
 
-    const url = `/api/notebook/${this.noteId}/events?token=${encodeURIComponent(this.authToken)}&clientId=${this._clientId}`;
+    const url = `/sse/notebook/${this.noteId}/events?token=${encodeURIComponent(this.authToken)}&clientId=${this._clientId}`;
 
     try {
       this.eventSource = new EventSource(url);
@@ -201,7 +201,7 @@ export class YJSSSEProvider {
     }
 
     try {
-      await fetch(`/api/notebook/${this.noteId}/update?clientId=${this._clientId}`, {
+      await fetch(`/sse/notebook/${this.noteId}/update?clientId=${this._clientId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/octet-stream',
@@ -219,7 +219,7 @@ export class YJSSSEProvider {
    */
   async sendSignal(message: Omit<SignalMessage, 'from' | 'roomId' | 'timestamp'>): Promise<void> {
     try {
-      await fetch(`/api/signal/${this.noteId}`, {
+      await fetch(`/sse/signal/${this.noteId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
