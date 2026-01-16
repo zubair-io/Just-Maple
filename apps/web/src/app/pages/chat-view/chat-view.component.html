@@ -21,7 +21,7 @@
 
     <!-- Shared Members -->
     <div class="flex items-center gap-3">
-      @if (members().length > 0) {
+      @if (members().length > 1) {
         <div
           class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-stone-100 transition-colors"
           title="Click to manage sharing"
@@ -38,14 +38,16 @@
 
       <!-- Actions -->
       <div class="flex items-center gap-1">
-        <button
-          (click)="openShareModal()"
-          class="flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 text-xs font-medium rounded-lg transition-colors"
-          title="Manage Sharing"
-        >
-          <span class="material-symbols-rounded text-sm">share</span>
-          <span>Share</span>
-        </button>
+        @if (members().length <= 1) {
+          <button
+            (click)="openShareModal()"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 text-xs font-medium rounded-lg transition-colors"
+            title="Manage Sharing"
+          >
+            <span class="material-symbols-rounded text-sm">share</span>
+            <span>Share</span>
+          </button>
+        }
         <button
           (click)="createNote()"
           class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg transition-colors"

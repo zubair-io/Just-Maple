@@ -9,23 +9,40 @@ import {
   OnDestroy,
   afterNextRender,
   DestroyRef,
+  ApplicationRef,
+  createComponent,
+  EnvironmentInjector,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
-import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
-import type { Note } from '@maple/shared';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
 import { NotebookDocumentService } from '../../../services/notebook-document.service';
+import { NoteService } from '../../../services/note.service';
 import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
+import { SlashCommandMenuComponent } from '../../molecules/slash-command-menu/slash-command-menu.component';
+import DragHandle from '@tiptap/extension-drag-handle';
+import {
+  CustomDocument,
+  EmojiReplacer,
+  SlashCommands,
+  defaultSlashCommands,
+  filterCommands,
+  getTableExtensions,
+  TableOfContents,
+  type SlashCommandItem,
+} from './extensions';
+import { EditorToolbarComponent } from '../../molecules/editor-toolbar/editor-toolbar.component';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 
 @Component({
   selector: 'app-notebook-editor',
   standalone: true,
-  imports: [CommonModule, SyncStatusComponent],
+  imports: [CommonModule, SyncStatusComponent, EditorToolbarComponent],
   templateUrl: './notebook-editor.component.html',
   styleUrl: './notebook-editor.component.scss',
 })
@@ -33,8 +50,14 @@ export class NotebookEditorComponent implements OnDestroy {
   @ViewChild('editorElement', { static: false })
   private editorRef?: ElementRef<HTMLElement>;
 
+  @ViewChild('editorWrapper', { static: false })
+  private editorWrapperRef?: ElementRef<HTMLElement>;
+
   private readonly notebookService = inject(NotebookDocumentService);
+  private readonly noteService = inject(NoteService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly appRef = inject(ApplicationRef);
+  private readonly injector = inject(EnvironmentInjector);
 
   readonly noteId = input.required<string>();
   readonly editable = input<boolean>(true);
@@ -42,12 +65,17 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly isReady = signal(false);
   readonly isFocused = signal(false);
   readonly error = signal<string | null>(null);
+  readonly isFullWidth = signal(false);
 
-  private editor: Editor | null = null;
+  private _editor: Editor | null = null;
   private ydoc: Y.Doc | null = null;
   private awareness: Awareness | null = null;
   private readonly viewReady = signal(false);
   private lastNoteId: string | null = null;
+  private titleUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
+  private lastSyncedTitle: string = '';
+  private slashMenuElement: HTMLElement | null = null;
+  private slashMenuComponent: SlashCommandMenuComponent | null = null;
 
   constructor() {
     // Initialize editor after view is ready
@@ -96,33 +124,87 @@ export class NotebookEditorComponent implements OnDestroy {
         return;
       }
 
-      // Create TipTap editor with YJS collaboration
-      const localState = awareness.getLocalState();
-      const userData = localState?.['user'] || {
-        name: 'Anonymous',
-        color: '#888888',
-      };
-
-      this.editor = new Editor({
+      // Create TipTap editor with YJS collaboration and Notion-like features
+      this._editor = new Editor({
         element: this.editorRef.nativeElement,
         extensions: [
-          StarterKit as any,
+          // Custom document that enforces heading first
+          CustomDocument,
+          // StarterKit without document (we use CustomDocument) and undoRedo (Collaboration has its own)
+          StarterKit.configure({
+            document: false,
+            undoRedo: false,
+          } as any),
+          // Placeholder with different text for headings
           Placeholder.configure({
-            placeholder: 'Start writing...',
+            placeholder: ({ node }) => {
+              if (node.type.name === 'heading') {
+                return 'Note title';
+              }
+              return "Type '/' for commands...";
+            },
           }) as any,
+          // YJS Collaboration
           Collaboration.configure({
             document: ydoc,
             field: 'prosemirror',
           }) as any,
-          CollaborationCursor.configure({
-            provider: awareness as any,
-            user: userData,
-          }) as any,
+          // Emoji replacer (e.g., :) -> emoji)
+          EmojiReplacer,
+          // Task lists
+          TaskList,
+          TaskItem.configure({
+            nested: true,
+          }),
+          // Table support
+          ...getTableExtensions(),
+          // Table of Contents
+          TableOfContents,
+          // Drag handles for blocks
+          DragHandle.configure({
+            render: () => {
+              const handle = document.createElement('div');
+              handle.classList.add('drag-handle');
+              handle.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                  <circle cx="4" cy="3" r="1.5"/>
+                  <circle cx="10" cy="3" r="1.5"/>
+                  <circle cx="4" cy="7" r="1.5"/>
+                  <circle cx="10" cy="7" r="1.5"/>
+                  <circle cx="4" cy="11" r="1.5"/>
+                  <circle cx="10" cy="11" r="1.5"/>
+                </svg>
+              `;
+              return handle;
+            },
+          }),
+          // Slash commands
+          SlashCommands.configure({
+            suggestion: {
+              items: ({ query }: { query: string }) => filterCommands(defaultSlashCommands, query),
+              render: () => this.createSlashMenuRenderer(),
+              command: ({
+                editor,
+                range,
+                props,
+              }: {
+                editor: Editor;
+                range: any;
+                props: SlashCommandItem;
+              }) => {
+                props.command({ editor, range });
+              },
+            },
+          }),
         ],
         editable: this.editable(),
         onFocus: () => this.isFocused.set(true),
         onBlur: () => this.isFocused.set(false),
+        onUpdate: ({ editor }) => this.handleContentUpdate(editor),
       });
+
+      // Initialize lastSyncedTitle with the current title from the document
+      this.lastSyncedTitle = this.extractFirstHeadingText(this._editor)?.trim() || '';
 
       this.isReady.set(true);
       console.log('[NotebookEditor] Editor initialized successfully');
@@ -132,10 +214,158 @@ export class NotebookEditorComponent implements OnDestroy {
     }
   }
 
+  /**
+   * Handle editor content updates - extract first heading and sync as title
+   */
+  private handleContentUpdate(editor: Editor): void {
+    const title = this.extractFirstHeadingText(editor)?.trim();
+
+    // Only update if title changed and not empty
+    if (title && title !== this.lastSyncedTitle) {
+      // Clear existing timeout
+      if (this.titleUpdateTimeout) {
+        clearTimeout(this.titleUpdateTimeout);
+      }
+
+      // Debounce title updates (500ms)
+      this.titleUpdateTimeout = setTimeout(() => {
+        this.lastSyncedTitle = title;
+        const noteId = this.noteId();
+        console.log(`[NotebookEditor] Syncing title: "${title}" for ${noteId}`);
+        this.noteService.updateNote(noteId, { title }).subscribe({
+          error: (err) => console.error('[NotebookEditor] Failed to sync title:', err),
+        });
+      }, 500);
+    }
+  }
+
+  /**
+   * Extract text from the first heading in the document
+   */
+  private extractFirstHeadingText(editor: Editor): string | null {
+    const doc = editor.state.doc;
+    let headingText: string | null = null;
+
+    // Find the first heading node
+    doc.descendants((node, pos) => {
+      if (headingText !== null) return false; // Stop if found
+
+      if (node.type.name === 'heading') {
+        headingText = node.textContent.trim();
+        return false; // Stop traversal
+      }
+
+      return true; // Continue
+    });
+
+    return headingText;
+  }
+
+  /**
+   * Create the slash command menu renderer for TipTap suggestion
+   */
+  private createSlashMenuRenderer() {
+    let popup: HTMLElement | null = null;
+    let menuComponent: SlashCommandMenuComponent | null = null;
+    let componentRef: any = null;
+
+    return {
+      onStart: (props: any) => {
+        // Create popup element
+        popup = document.createElement('div');
+        popup.classList.add('slash-menu-popup');
+        popup.style.position = 'absolute';
+        popup.style.zIndex = '1000';
+        document.body.appendChild(popup);
+
+        // Create Angular component dynamically
+        componentRef = createComponent(SlashCommandMenuComponent, {
+          environmentInjector: this.injector,
+          hostElement: popup,
+        });
+
+        menuComponent = componentRef.instance;
+        menuComponent!.items.set(props.items);
+        menuComponent!.query.set(props.query);
+
+        // Handle command selection
+        componentRef.instance.commandSelected.subscribe((item: SlashCommandItem) => {
+          props.command(item);
+        });
+
+        this.appRef.attachView(componentRef.hostView);
+
+        // Position the popup
+        this.updatePopupPosition(popup, props.clientRect);
+      },
+
+      onUpdate: (props: any) => {
+        if (menuComponent) {
+          menuComponent.items.set(props.items);
+          menuComponent.query.set(props.query);
+        }
+        if (popup && props.clientRect) {
+          this.updatePopupPosition(popup, props.clientRect);
+        }
+      },
+
+      onKeyDown: (props: any) => {
+        if (!menuComponent) return false;
+
+        if (props.event.key === 'ArrowUp') {
+          menuComponent.navigateUp();
+          return true;
+        }
+
+        if (props.event.key === 'ArrowDown') {
+          menuComponent.navigateDown();
+          return true;
+        }
+
+        if (props.event.key === 'Enter') {
+          menuComponent.selectCurrent();
+          return true;
+        }
+
+        return false;
+      },
+
+      onExit: () => {
+        if (componentRef) {
+          this.appRef.detachView(componentRef.hostView);
+          componentRef.destroy();
+        }
+        if (popup) {
+          popup.remove();
+          popup = null;
+        }
+        menuComponent = null;
+      },
+    };
+  }
+
+  /**
+   * Position the slash menu popup near the cursor
+   */
+  private updatePopupPosition(popup: HTMLElement, clientRect: (() => DOMRect | null) | null): void {
+    if (!clientRect) return;
+
+    const rect = typeof clientRect === 'function' ? clientRect() : clientRect;
+    if (!rect) return;
+
+    popup.style.left = `${rect.left}px`;
+    popup.style.top = `${rect.bottom + 8}px`;
+  }
+
   private cleanup(): void {
-    if (this.editor) {
-      this.editor.destroy();
-      this.editor = null;
+    if (this.titleUpdateTimeout) {
+      clearTimeout(this.titleUpdateTimeout);
+      this.titleUpdateTimeout = null;
+    }
+
+    if (this._editor) {
+      this._editor.destroy();
+      this._editor = null;
     }
 
     if (this.lastNoteId) {
@@ -145,13 +375,32 @@ export class NotebookEditorComponent implements OnDestroy {
     this.ydoc = null;
     this.awareness = null;
     this.isReady.set(false);
+    this.lastSyncedTitle = '';
   }
 
   focus(): void {
-    this.editor?.commands.focus();
+    this._editor?.commands.focus();
   }
 
   getEditor(): Editor | null {
-    return this.editor;
+    return this._editor;
+  }
+
+  toggleFullWidth(): void {
+    this.isFullWidth.update((v) => !v);
+  }
+
+  /**
+   * Handle click on the editor wrapper to focus
+   */
+  onEditorWrapperClick(event: MouseEvent): void {
+    // Only focus if clicking directly on the wrapper (not on editor content)
+    const target = event.target as HTMLElement;
+    if (
+      target.classList.contains('editor-wrapper') ||
+      target.classList.contains('editor-content')
+    ) {
+      this._editor?.commands.focus('end');
+    }
   }
 }

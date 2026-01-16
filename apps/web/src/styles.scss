@@ -399,7 +399,7 @@ blockquote {
 }
 
 .ProseMirror-selectednode {
-  outline: 2px solid #8cf;
+  //outline: 2px solid #8cf;
 }
 
 /* Make sure li selections wrap around markers */
@@ -425,4 +425,52 @@ img.ProseMirror-separator {
   display: inline !important;
   border: none !important;
   margin: 0 !important;
+}
+
+// Drag handle styles (official TipTap extension)
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  cursor: grab;
+  color: var(--color-text-muted);
+  border-radius: 4px;
+  // Slow fade out (300ms delay + 200ms transition)
+  transition:
+    opacity 0.2s 0.3s,
+    background-color 0.15s;
+  opacity: 0;
+  -webkit-user-select: none;
+  user-select: none;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.08));
+    // Fast fade in (no delay)
+    transition:
+      opacity 0.1s,
+      background-color 0.15s;
+    opacity: 1 !important;
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+// Show drag handle when content is hovered
+.editor-content:hover .drag-handle {
+  // Fast fade in when editor is hovered
+  transition:
+    opacity 0.1s,
+    background-color 0.15s;
+  opacity: 0.6;
+}
+
+// During drag - keep visible
+[data-dragging='true'].drag-handle,
+.drag-handle:active {
+  opacity: 1 !important;
+  transition: none;
 }

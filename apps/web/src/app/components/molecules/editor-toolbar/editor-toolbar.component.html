@@ -1,0 +1,72 @@
+<div class="editor-toolbar" [class.disabled]="!editor()">
+  <!-- Formatting buttons -->
+  <div class="toolbar-group">
+    @for (btn of formattingButtons(); track btn.label) {
+      <button
+        type="button"
+        class="toolbar-btn"
+        [class.active]="btn.isActive?.()"
+        [disabled]="btn.disabled?.()"
+        [title]="btn.label"
+        (click)="btn.action()"
+      >
+        <span class="btn-icon" [class.bold]="btn.icon === 'B'" [class.italic]="btn.icon === 'I'">
+          {{ btn.icon }}
+        </span>
+      </button>
+    }
+  </div>
+
+  <div class="toolbar-divider"></div>
+
+  <!-- Block buttons -->
+  <div class="toolbar-group">
+    @for (btn of blockButtons(); track btn.label) {
+      <button
+        type="button"
+        class="toolbar-btn"
+        [class.active]="btn.isActive?.()"
+        [disabled]="btn.disabled?.()"
+        [title]="btn.label"
+        (click)="btn.action()"
+      >
+        <span class="btn-icon">{{ btn.icon }}</span>
+      </button>
+    }
+  </div>
+
+  <div class="toolbar-divider"></div>
+
+  <!-- Insert buttons -->
+  <div class="toolbar-group">
+    @for (btn of insertButtons(); track btn.label) {
+      <button
+        type="button"
+        class="toolbar-btn"
+        [class.active]="btn.isActive?.()"
+        [disabled]="btn.disabled?.()"
+        [title]="btn.label"
+        (click)="btn.action()"
+      >
+        <span class="btn-icon">{{ btn.icon }}</span>
+      </button>
+    }
+  </div>
+
+  <div class="toolbar-spacer"></div>
+
+  <!-- History buttons -->
+  <div class="toolbar-group">
+    @for (btn of historyButtons(); track btn.label) {
+      <button
+        type="button"
+        class="toolbar-btn"
+        [disabled]="btn.disabled?.()"
+        [title]="btn.label"
+        (click)="btn.action()"
+      >
+        <span class="btn-icon">{{ btn.icon }}</span>
+      </button>
+    }
+  </div>
+</div>

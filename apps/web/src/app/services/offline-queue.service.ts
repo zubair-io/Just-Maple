@@ -1,6 +1,7 @@
 import { Injectable, inject, signal, effect, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
 import { IndexedDBService } from './indexed-db.service';
 import { ConnectivityService } from './connectivity.service';
 import { DB_STORES } from './db-stores';
@@ -206,91 +207,46 @@ export class OfflineQueueService {
   }
 
   private async processCreateNote(item: OfflineQueueItem): Promise<void> {
-    const response = await fetch('/api/notes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    await firstValueFrom(
+      this.http.post('/api/notes', {
         documentId: item.documentId,
         ...item.payload,
       }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to sync note');
-    }
+    );
   }
 
   private async processUpdateNote(item: OfflineQueueItem): Promise<void> {
-    const response = await fetch(`/api/notes/${item.documentId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(item.payload),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to update note');
-    }
+    await firstValueFrom(this.http.put(`/api/notes/${item.documentId}`, item.payload));
   }
 
   private async processDeleteNote(item: OfflineQueueItem): Promise<void> {
-    const response = await fetch(`/api/notes/${item.documentId}`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok && response.status !== 404) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to delete note');
-    }
+    await firstValueFrom(this.http.delete(`/api/notes/${item.documentId}`));
   }
 
   private async processSyncNotebook(item: OfflineQueueItem): Promise<void> {
-    const response = await fetch(`/api/notebook/${item.documentId}/init`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/octet-stream' },
-      body: item.payload.state,
-    });
+    // Convert state to Blob for proper binary transfer
+    const state = item.payload.state;
+    const blob = new Blob([state instanceof Uint8Array ? state : new Uint8Array(state)]);
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to sync notebook');
-    }
+    await firstValueFrom(
+      this.http.post(`/api/notebook/${item.documentId}/init`, blob, {
+        headers: { 'Content-Type': 'application/octet-stream' },
+      }),
+    );
   }
 
   private async processMoveNote(item: OfflineQueueItem): Promise<void> {
-    const response = await fetch(`/api/notes/${item.documentId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tagId: item.payload.tagId }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to move note');
-    }
+    await firstValueFrom(
+      this.http.put(`/api/notes/${item.documentId}`, { tagId: item.payload.tagId }),
+    );
   }
 
   private async processTrashNote(item: OfflineQueueItem): Promise<void> {
-    const response = await fetch(`/api/notes/${item.documentId}/trash`, {
-      method: 'POST',
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to trash note');
-    }
+    await firstValueFrom(this.http.post(`/api/notes/${item.documentId}/trash`, {}));
   }
 
   private async processRestoreNote(item: OfflineQueueItem): Promise<void> {
-    const response = await fetch(`/api/notes/${item.documentId}/restore`, {
-      method: 'POST',
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to restore note');
-    }
+    await firstValueFrom(this.http.post(`/api/notes/${item.documentId}/restore`, {}));
   }
 
   /**

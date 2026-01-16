@@ -54,6 +54,13 @@ async function createIndexes(database: Db): Promise<void> {
     // Notes collection
     await database.collection('notes').createIndex({ tagId: 1, updatedAt: -1 }); // For listing notes by tag
     await database.collection('notes').createIndex({ userId: 1, updatedAt: -1 }); // For listing user's notes
+
+    // Drop old unique documentId index if it exists (CosmosDB compatibility)
+    try {
+        await database.collection('notes').dropIndex('documentId_1');
+    } catch (e) {
+        // Index doesn't exist, ignore
+    }
     await database.collection('notes').createIndex({ documentId: 1 }); // For lookup by documentId
 
     // Notebooks collection (Y.Doc storage for notebook-type notes)

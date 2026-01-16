@@ -1,0 +1,152 @@
+import { Extension, type Editor, type Range } from '@tiptap/core';
+import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion';
+
+/**
+ * Slash command item definition
+ */
+export interface SlashCommandItem {
+  title: string;
+  description: string;
+  icon: string;
+  command: (props: { editor: Editor; range: Range }) => void;
+}
+
+/**
+ * Default slash commands
+ */
+export const defaultSlashCommands: SlashCommandItem[] = [
+  {
+    title: 'Heading 1',
+    description: 'Large section heading',
+    icon: 'H1',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run();
+    },
+  },
+  {
+    title: 'Heading 2',
+    description: 'Medium section heading',
+    icon: 'H2',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run();
+    },
+  },
+  {
+    title: 'Heading 3',
+    description: 'Small section heading',
+    icon: 'H3',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run();
+    },
+  },
+  {
+    title: 'Bullet List',
+    description: 'Create a simple bullet list',
+    icon: '•',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).toggleBulletList().run();
+    },
+  },
+  {
+    title: 'Numbered List',
+    description: 'Create a numbered list',
+    icon: '1.',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).toggleOrderedList().run();
+    },
+  },
+  {
+    title: 'To-do List',
+    description: 'Track tasks with checkboxes',
+    icon: '☑',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).toggleTaskList().run();
+    },
+  },
+  {
+    title: 'Quote',
+    description: 'Capture a quote',
+    icon: '"',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).toggleBlockquote().run();
+    },
+  },
+  {
+    title: 'Code Block',
+    description: 'Add a code snippet',
+    icon: '</>',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).toggleCodeBlock().run();
+    },
+  },
+  {
+    title: 'Divider',
+    description: 'Visual divider line',
+    icon: '—',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).setHorizontalRule().run();
+    },
+  },
+  {
+    title: 'Table',
+    description: 'Insert a table',
+    icon: '▦',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any)
+        .insertTable({
+          rows: 3,
+          cols: 3,
+          withHeaderRow: true,
+        })
+        .run();
+    },
+  },
+  {
+    title: 'Table of Contents',
+    description: 'Auto-generated navigation',
+    icon: '☰',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).insertTableOfContents().run();
+    },
+  },
+];
+
+export interface SlashCommandsOptions {
+  suggestion: Omit<SuggestionOptions<SlashCommandItem>, 'editor'>;
+}
+
+/**
+ * Slash Commands Extension
+ * Enables Notion-like "/" menu for inserting blocks
+ */
+export const SlashCommands = Extension.create<SlashCommandsOptions>({
+  name: 'slashCommands',
+
+  addOptions() {
+    return {
+      suggestion: {
+        char: '/',
+        startOfLine: false,
+        command: ({ editor, range, props }) => {
+          props.command({ editor, range });
+        },
+      },
+    };
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      Suggestion({
+        editor: this.editor,
+        ...this.options.suggestion,
+      }),
+    ];
+  },
+});
+
+/**
+ * Filter commands by query
+ */
+export function filterCommands(items: SlashCommandItem[], query: string): SlashCommandItem[] {
+  return items.filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
+}

@@ -1,6 +1,13 @@
 import * as Y from 'yjs';
 import { signal } from '@angular/core';
+import { customAlphabet } from 'nanoid';
 import type { NotebookSSEEvent, SignalMessage } from '@maple/shared';
+
+// Generate client IDs using nanoid (works in all browsers)
+const generateClientId = customAlphabet(
+  '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+  21,
+);
 
 /**
  * YJS SSE Provider
@@ -26,6 +33,10 @@ export class YJSSSEProvider {
   // Signal handler (set by WebRTC provider)
   onSignal?: (message: SignalMessage) => void;
 
+  // Connection event handlers
+  onConnected?: () => void;
+  onSynced?: (synced: boolean) => void;
+
   // Peer event handlers
   onPeerJoin?: (peer: {
     clientId: string;
@@ -40,7 +51,7 @@ export class YJSSSEProvider {
     private readonly ydoc: Y.Doc,
     authToken: string,
   ) {
-    this._clientId = crypto.randomUUID();
+    this._clientId = generateClientId();
     this.authToken = authToken;
 
     // Listen for local Y.Doc changes
@@ -69,6 +80,7 @@ export class YJSSSEProvider {
         this.connected.set(true);
         this.error.set(null);
         this.reconnectAttempts = 0;
+        this.onConnected?.();
       };
 
       this.eventSource.onmessage = this.handleMessage.bind(this);
@@ -99,6 +111,7 @@ export class YJSSSEProvider {
 
     this.connected.set(false);
     this.synced.set(false);
+    this.onSynced?.(false);
   }
 
   /**
@@ -143,6 +156,7 @@ export class YJSSSEProvider {
       const state = this.base64ToUint8Array(data.state);
       Y.applyUpdate(this.ydoc, state, 'remote');
       this.synced.set(true);
+      this.onSynced?.(true);
       console.log(`[YJS-SSE] Initial state applied, version: ${data.version}`);
 
       // Notify about existing peers

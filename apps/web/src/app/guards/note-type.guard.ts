@@ -19,7 +19,7 @@ function createNoteTypeGuard(expectedType: NoteType): CanMatchFn {
 
     // Allow 'new' route ONLY for write-type notes
     if (documentId === 'new') {
-      return expectedType === 'write';
+      return false;
     }
 
     // If not in store, wait briefly for it to load (max 1 second)
