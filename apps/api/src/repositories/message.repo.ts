@@ -9,6 +9,7 @@ import type {
     Mention,
 } from '@maple/shared';
 import { findTagByIdWithAccess } from './tag.repo';
+import { findUsersByIds } from './user.repo';
 
 interface MessageDocument {
     _id: ObjectId;
@@ -26,10 +27,6 @@ interface MessageDocument {
     updatedAt: Date;
     editedAt?: Date;
     deletedAt?: Date;
-}
-
-interface MessageWithUser extends MessageDocument {
-    user?: { email: string; displayName?: string; profilePictureUrl?: string }[];
 }
 
 function getCollection(): Collection<MessageDocument> {
@@ -70,7 +67,7 @@ export async function findMessagesByTagId(
         before?: string; // Cursor-based pagination: messages before this ID
     },
 ): Promise<Message[]> {
-    const matchStage: Record<string, unknown> = {
+    const query: Record<string, unknown> = {
         tagId: new ObjectId(tagId),
         threadId: { $in: [null] }, // Only top-level messages, not thread replies
         deletedAt: { $exists: false },
@@ -79,7 +76,7 @@ export async function findMessagesByTagId(
     // Cursor-based pagination
     if (options?.before) {
         try {
-            matchStage._id = { $lt: new ObjectId(options.before) };
+            query._id = { $lt: new ObjectId(options.before) };
         } catch {
             // Invalid ObjectId, ignore
         }
@@ -87,26 +84,16 @@ export async function findMessagesByTagId(
 
     const limit = options?.limit || 500;
 
-    // Use aggregation to join with users collection
-    const docs = await getCollection()
-        .aggregate<MessageWithUser>([
-            { $match: matchStage },
-            { $sort: { _id: -1 } },
-            { $limit: limit },
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'userId',
-                    foreignField: '_id',
-                    as: 'user',
-                },
-            },
-        ])
-        .toArray();
+    // Fetch messages without user data
+    const docs = await getCollection().find(query).sort({ _id: -1 }).limit(limit).toArray();
+
+    // Batch fetch unique users
+    const userIds = [...new Set(docs.map((doc) => doc.userId.toString()))];
+    const usersMap = await findUsersByIds(userIds);
 
     // Return in chronological order (oldest first)
     return docs.reverse().map((doc) => {
-        const user = doc.user?.[0];
+        const user = usersMap.get(doc.userId.toString());
         return toMessageResponse(doc, user?.email, user?.displayName, user?.profilePictureUrl);
     });
 }
@@ -268,14 +255,14 @@ export async function findMessagesByThreadId(
         before?: string;
     },
 ): Promise<Message[]> {
-    const matchStage: Record<string, unknown> = {
+    const query: Record<string, unknown> = {
         threadId: new ObjectId(threadId),
         deletedAt: { $exists: false },
     };
 
     if (options?.before) {
         try {
-            matchStage._id = { $lt: new ObjectId(options.before) };
+            query._id = { $lt: new ObjectId(options.before) };
         } catch {
             // Invalid ObjectId, ignore
         }
@@ -283,22 +270,16 @@ export async function findMessagesByThreadId(
 
     const limit = options?.limit || 50;
 
-    // Use aggregation to join with users collection
-    const docs = await getCollection()
-        .aggregate<MessageWithUser>([
-            { $match: matchStage },
-            { $sort: { _id: -1 } },
-            { $limit: limit },
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'userId',
-                    foreignField: '_id',
-                    as: 'user',
-                },
-            },
-        ])
-        .toArray();
+    // Fetch messages without user data
+    const docs = await getCollection().find(query).sort({ _id: -1 }).limit(limit).toArray();
+
+    // Batch fetch unique users (only for non-bot messages)
+    const userIds = [
+        ...new Set(
+            docs.filter((doc) => doc.senderType !== 'bot').map((doc) => doc.userId.toString()),
+        ),
+    ];
+    const usersMap = await findUsersByIds(userIds);
 
     // Return in chronological order (oldest first)
     return docs.reverse().map((doc) => {
@@ -306,7 +287,7 @@ export async function findMessagesByThreadId(
         if (doc.senderType === 'bot') {
             return toMessageResponse(doc);
         }
-        const user = doc.user?.[0];
+        const user = usersMap.get(doc.userId.toString());
         return toMessageResponse(doc, user?.email, user?.displayName, user?.profilePictureUrl);
     });
 }
