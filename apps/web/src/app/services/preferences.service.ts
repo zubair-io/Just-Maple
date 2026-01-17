@@ -66,10 +66,7 @@ export class PreferencesService {
       take(1),
       tap((response) => this.servers.set(response.servers)),
       map(() => void 0),
-      catchError(() => {
-        console.error('[Preferences] Failed to load servers from native');
-        return of(void 0);
-      }),
+      catchError(() => of(void 0)),
     );
   }
 
@@ -84,16 +81,12 @@ export class PreferencesService {
       take(1),
       tap((response) => this.activeServer.set(response)),
       map(() => void 0),
-      catchError(() => {
-        console.error('[Preferences] Failed to load active server from native');
-        return of(void 0);
-      }),
+      catchError(() => of(void 0)),
     );
   }
 
   setActiveServer(serverId: string): Observable<void> {
     if (!this.nativeBridge.isNativeApp()) {
-      console.warn('[Preferences] Server switching only available in native app');
       return of(void 0);
     }
 
@@ -103,20 +96,14 @@ export class PreferencesService {
       take(1),
       tap((response) => {
         this.activeServer.set(response);
-        // Native side will reload WebView to new server's root URL
-        console.log('[Preferences] Switched to server:', response.name, response.url);
       }),
       map(() => void 0),
-      catchError(() => {
-        console.error('[Preferences] Failed to set active server');
-        return of(void 0);
-      }),
+      catchError(() => of(void 0)),
     );
   }
 
   validateServer(url: string): Observable<boolean> {
     if (!this.nativeBridge.isNativeApp()) {
-      console.warn('[Preferences] Server validation only available in native app');
       return of(false);
     }
 
@@ -144,7 +131,6 @@ export class PreferencesService {
 
   addServer(name: string, url: string, apiUrl?: string): Observable<void> {
     if (!this.nativeBridge.isNativeApp()) {
-      console.warn('[Preferences] Adding servers only available in native app');
       return of(void 0);
     }
 
@@ -163,10 +149,7 @@ export class PreferencesService {
           take(1),
           tap((response) => this.servers.set(response.servers)),
           map(() => void 0),
-          catchError(() => {
-            console.error('[Preferences] Failed to add server');
-            return of(void 0);
-          }),
+          catchError(() => of(void 0)),
         );
       }),
       // Flatten the nested observable
@@ -176,7 +159,6 @@ export class PreferencesService {
 
   removeServer(serverId: string): Observable<void> {
     if (!this.nativeBridge.isNativeApp()) {
-      console.warn('[Preferences] Removing servers only available in native app');
       return of(void 0);
     }
 
@@ -186,10 +168,7 @@ export class PreferencesService {
       take(1),
       tap((response) => this.servers.set(response.servers)),
       map(() => void 0),
-      catchError(() => {
-        console.error('[Preferences] Failed to remove server');
-        return of(void 0);
-      }),
+      catchError(() => of(void 0)),
     );
   }
 

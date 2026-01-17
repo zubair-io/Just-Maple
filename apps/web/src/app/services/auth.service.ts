@@ -112,10 +112,6 @@ export class AuthService {
     // If running in native app, get token from native keychain
     if (this.nativeBridge.isNativeApp()) {
       const serverId = this.getNativeServerId();
-      console.log(
-        '[Auth] Running in native app, requesting token from keychain for server:',
-        serverId,
-      );
       this.nativeBridge.getToken(serverId);
 
       // Wait for token response
@@ -123,7 +119,6 @@ export class AuthService {
         const response = await firstValueFrom(this.nativeBridge.onCurrentToken().pipe(take(1)));
 
         if (response.token) {
-          console.log('[Auth] Token received from native keychain');
           // We have the token from native, but we still need the user data
           // Try to get it from localStorage first
           const stored = localStorage.getItem(this.getStorageKey());
@@ -144,7 +139,7 @@ export class AuthService {
           await this.fetchCurrentUser();
         }
       } catch {
-        console.log('[Auth] No token in native keychain');
+        // No token in native keychain
       }
       this.markInitReady();
       return;
@@ -194,7 +189,6 @@ export class AuthService {
     // If running in native app, also save token to native keychain
     if (this.nativeBridge.isNativeApp()) {
       const serverId = this.getNativeServerId();
-      console.log('[Auth] Saving token to native keychain for server:', serverId);
       this.nativeBridge.saveToken(auth.accessToken, serverId);
     }
   }
@@ -209,7 +203,6 @@ export class AuthService {
     // If running in native app, also clear token from native keychain
     if (this.nativeBridge.isNativeApp()) {
       const serverId = this.getNativeServerId();
-      console.log('[Auth] Clearing token from native keychain for server:', serverId);
       this.nativeBridge.clearToken(serverId);
     }
   }
@@ -323,10 +316,7 @@ export class AuthService {
         });
       }),
       map(() => true),
-      catchError((error) => {
-        console.log('[Auth] Token refresh failed:', error);
-        return of(false);
-      }),
+      catchError(() => of(false)),
     );
   }
 

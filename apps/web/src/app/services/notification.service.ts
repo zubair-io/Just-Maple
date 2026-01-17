@@ -1,7 +1,7 @@
 import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom, take, Observable, map, tap, catchError, throwError } from 'rxjs';
+import { firstValueFrom, take, Observable, map, tap } from 'rxjs';
 import { nanoid } from 'nanoid';
 import { NativeBridgeService } from './native-bridge.service';
 import type { Notification, NotificationListResponse, DeviceRegistration } from '@maple/shared';
@@ -60,13 +60,11 @@ export class NotificationService {
 
       // Listen for notification taps
       this.nativeBridge.onNotificationTapped().subscribe((notification) => {
-        console.log('[NotificationService] Notification tapped:', notification);
         this.handleNotificationTap(notification);
       });
 
       // Listen for foreground notifications
       this.nativeBridge.onForegroundNotification().subscribe((notification) => {
-        console.log('[NotificationService] Foreground notification:', notification);
         this.handleForegroundNotification(notification);
       });
 
@@ -82,7 +80,6 @@ export class NotificationService {
    */
   async requestPushPermission(): Promise<boolean> {
     if (!this.nativeBridge.isNativeApp()) {
-      console.warn('[NotificationService] Push notifications only available in native app');
       return false;
     }
 
@@ -102,8 +99,7 @@ export class NotificationService {
       }
 
       return response.granted;
-    } catch (error) {
-      console.error('[NotificationService] Failed to request push permission:', error);
+    } catch {
       return false;
     } finally {
       this.isRequestingPermission.set(false);
@@ -129,15 +125,11 @@ export class NotificationService {
       const devices = await firstValueFrom(this.getDevices());
       const hasServerRegistration = devices.length > 0;
 
-      console.log(
-        `[NotificationService] Push status - local: ${localResponse.isRegistered}, server: ${hasServerRegistration} (${devices.length} devices)`,
-      );
-
       // Use server state as source of truth
       this.isRegistered.set(hasServerRegistration);
       this.serverId.set(localResponse.serverId || null);
-    } catch (error) {
-      console.error('[NotificationService] Failed to check push status:', error);
+    } catch {
+      // Silently fail - push status check is non-critical
     }
   }
 
@@ -146,28 +138,21 @@ export class NotificationService {
    */
   async unregisterPushNotifications(): Promise<void> {
     if (!this.nativeBridge.isNativeApp()) {
-      console.warn('[NotificationService] Push notifications only available in native app');
       return;
     }
 
-    try {
-      // Tell native app to unregister (it will call the API and clear local state)
-      this.nativeBridge.unregisterPushNotifications();
+    // Tell native app to unregister (it will call the API and clear local state)
+    this.nativeBridge.unregisterPushNotifications();
 
-      // Wait for response
-      const response = await firstValueFrom(this.nativeBridge.onPushUnregistered().pipe(take(1)));
+    // Wait for response
+    const response = await firstValueFrom(this.nativeBridge.onPushUnregistered().pipe(take(1)));
 
-      if (response.success) {
-        // Clear web app state
-        this.isRegistered.set(false);
-        this.serverId.set(null);
-        console.log('[NotificationService] Successfully unregistered from push notifications');
-      } else {
-        throw new Error(response.error || 'Failed to unregister');
-      }
-    } catch (error) {
-      console.error('[NotificationService] Failed to unregister from push notifications:', error);
-      throw error;
+    if (response.success) {
+      // Clear web app state
+      this.isRegistered.set(false);
+      this.serverId.set(null);
+    } else {
+      throw new Error(response.error || 'Failed to unregister');
     }
   }
 
@@ -188,10 +173,6 @@ export class NotificationService {
           this.syncBadgeCount();
         }),
         map(() => void 0),
-        catchError((error) => {
-          console.error('[NotificationService] Failed to fetch notifications:', error);
-          return throwError(() => error);
-        }),
       );
   }
 
@@ -199,27 +180,10 @@ export class NotificationService {
    * Fetch a single notification by ID
    */
   fetchNotification(id: string, apiUrl?: string): Observable<Notification> {
-    console.log(`[NotificationService] 📡 Fetching notification ID: ${id}`);
-    console.log(`[NotificationService] 📡 API URL: ${apiUrl || 'default'}`);
-
     const url = apiUrl ? `${apiUrl}/api/notifications/${id}` : `/api/notifications/${id}`;
-    console.log(`[NotificationService] 📡 Full URL: ${url}`);
-    console.log(`[NotificationService] 📡 Making HTTP GET request...`);
-
-    return this.http.get<{ notification: Notification }>(url).pipe(
-      tap((response) => {
-        console.log(
-          `[NotificationService] ✅ Successfully fetched notification:`,
-          response.notification,
-        );
-      }),
-      map((response) => response.notification),
-      catchError((error) => {
-        console.error('[NotificationService] ❌ Failed to fetch notification:', error);
-        console.error('[NotificationService] ❌ Error details:', JSON.stringify(error, null, 2));
-        return throwError(() => error);
-      }),
-    );
+    return this.http
+      .get<{ notification: Notification }>(url)
+      .pipe(map((response) => response.notification));
   }
 
   /**
@@ -235,10 +199,6 @@ export class NotificationService {
         this.syncBadgeCount();
       }),
       map(() => void 0),
-      catchError((error) => {
-        console.error('[NotificationService] Failed to mark notification as read:', error);
-        return throwError(() => error);
-      }),
     );
   }
 
@@ -248,9 +208,7 @@ export class NotificationService {
    */
   syncBadgeCount(): void {
     if (this.nativeBridge.isNativeApp()) {
-      const count = this.unreadCount();
-      console.log(`[NotificationService] Syncing badge count: ${count}`);
-      this.nativeBridge.setBadge(count);
+      this.nativeBridge.setBadge(this.unreadCount());
     }
   }
 
@@ -259,7 +217,6 @@ export class NotificationService {
    */
   clearBadge(): void {
     if (this.nativeBridge.isNativeApp()) {
-      console.log('[NotificationService] Clearing badge');
       this.nativeBridge.setBadge(0);
     }
   }
@@ -279,10 +236,6 @@ export class NotificationService {
           this.clearBadge();
         }),
         map(() => void 0),
-        catchError((error) => {
-          console.error('[NotificationService] Failed to mark all notifications as read:', error);
-          return throwError(() => error);
-        }),
       );
   }
 
@@ -290,13 +243,9 @@ export class NotificationService {
    * Get list of registered devices
    */
   getDevices(): Observable<DeviceRegistration[]> {
-    return this.http.get<{ devices: DeviceRegistration[] }>('/api/notifications/devices').pipe(
-      map((response) => response.devices),
-      catchError((error) => {
-        console.error('[NotificationService] Failed to fetch devices:', error);
-        return throwError(() => error);
-      }),
-    );
+    return this.http
+      .get<{ devices: DeviceRegistration[] }>('/api/notifications/devices')
+      .pipe(map((response) => response.devices));
   }
 
   // MARK: - Toast Management
@@ -341,18 +290,12 @@ export class NotificationService {
     tagId?: string;
     messageId?: string;
   }): void {
-    console.log('[NotificationService] 🔔 Processing foreground notification');
-    console.log('[NotificationService] 🔔 Current active tag:', this.activeTagId());
-    console.log('[NotificationService] 🔔 Notification tag:', notification.tagId);
-
     // Check if user is viewing this tag's messages
     const currentTagId = this.activeTagId();
     const notificationTagId = notification.tagId;
 
     // Only show toast if NOT currently viewing this tag
     if (!notificationTagId || notificationTagId !== currentTagId) {
-      console.log('[NotificationService] 🔔 Showing toast (user not in this tag)');
-
       // Fetch full notification to get message content
       this.fetchNotification(notification.notificationId, notification.apiUrl).subscribe({
         next: (fullNotification) => {
@@ -407,14 +350,10 @@ export class NotificationService {
             duration: 5000,
           });
         },
-        error: (error) => {
-          console.error('[NotificationService] ❌ Failed to fetch foreground notification:', error);
+        error: () => {
+          // Silently fail - non-critical
         },
       });
-    } else {
-      console.log(
-        '[NotificationService] 🔔 Suppressing toast (user is in this tag - message shown via SignalR)',
-      );
     }
   }
 
@@ -423,40 +362,23 @@ export class NotificationService {
     type: string;
     apiUrl: string;
   }): void {
-    console.log('[NotificationService] 👆 Notification tap received from native app!');
-    console.log('[NotificationService] 👆 Notification ID:', notification.notificationId);
-    console.log('[NotificationService] 👆 Type:', notification.type);
-    console.log('[NotificationService] 👆 API URL:', notification.apiUrl);
-
     // Fetch full notification content from the correct server and navigate
-    console.log('[NotificationService] 👆 Fetching full notification data...');
     this.fetchNotification(notification.notificationId, notification.apiUrl).subscribe({
       next: (fullNotification) => {
-        console.log('[NotificationService] 👆 Got full notification, navigating...');
         this.navigateToNotification(fullNotification);
       },
-      error: (error) => {
-        console.error('[NotificationService] ❌ Failed to fetch tapped notification:', error);
+      error: () => {
+        // Silently fail - non-critical
       },
     });
   }
 
   private navigateToNotification(notification: Notification): void {
-    console.log(
-      '[NotificationService] 🧭 Navigating based on notification type:',
-      notification.type,
-    );
-    console.log('[NotificationService] 🧭 Notification data:', notification.data);
-
     // Handle navigation based on notification type
     switch (notification.type) {
       case 'share_received':
         if (notification.data['tagId']) {
-          const tagId = notification.data['tagId'];
-          console.log(`[NotificationService] 🧭 Navigating to shared tag: ${tagId}`);
-          this.router.navigate(['/', tagId]);
-        } else {
-          console.warn('[NotificationService] ⚠️ share_received notification missing tagId');
+          this.router.navigate(['/', notification.data['tagId']]);
         }
         break;
 
@@ -464,66 +386,35 @@ export class NotificationService {
         if (notification.data['tagId']) {
           const tagId = notification.data['tagId'];
           const messageId = notification.data['messageId'];
-          console.log(
-            `[NotificationService] 🧭 Navigating to tag with new message: ${tagId}, messageId: ${messageId}`,
-          );
           // Navigate to tag with optional message ID as query param for scrolling
           if (messageId) {
             this.router.navigate(['/', tagId], { queryParams: { messageId } });
           } else {
             this.router.navigate(['/', tagId]);
           }
-        } else {
-          console.warn('[NotificationService] ⚠️ message_received notification missing tagId');
         }
         break;
 
       case 'transcription_complete':
         if (notification.data['memoId']) {
-          const memoId = notification.data['memoId'];
-          console.log(`[NotificationService] 🧭 Navigating to memo: ${memoId}`);
-          this.router.navigate(['/', memoId]);
-        } else {
-          console.warn(
-            '[NotificationService] ⚠️ transcription_complete notification missing memoId',
-          );
+          this.router.navigate(['/', notification.data['memoId']]);
         }
         break;
 
       case 'reminder':
         if (notification.data['memoId']) {
-          const memoId = notification.data['memoId'];
-          console.log(`[NotificationService] 🧭 Navigating to memo (reminder): ${memoId}`);
-          this.router.navigate(['/', memoId]);
-        } else {
-          console.warn('[NotificationService] ⚠️ reminder notification missing memoId');
+          this.router.navigate(['/', notification.data['memoId']]);
         }
         break;
 
       case 'export_ready':
-        console.log('[NotificationService] 📦 Export ready:', notification.data['exportId']);
-        break;
-
       case 'processing_failed':
-        console.error(
-          '[NotificationService] ❌ Processing failed:',
-          notification.data['errorCode'],
-        );
-        break;
-
       default:
-        console.warn('[NotificationService] ⚠️ Unknown notification type:', notification.type);
+        // No navigation for these types
+        break;
     }
 
     // Mark as read after navigation
-    console.log(`[NotificationService] 📖 Marking notification ${notification._id} as read...`);
-    this.markAsRead(notification._id).subscribe({
-      next: () => {
-        console.log(`[NotificationService] ✅ Marked notification ${notification._id} as read`);
-      },
-      error: (error) => {
-        console.error('[NotificationService] ❌ Failed to mark notification as read:', error);
-      },
-    });
+    this.markAsRead(notification._id).subscribe();
   }
 }

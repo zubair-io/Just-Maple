@@ -47,10 +47,6 @@ export class NativeBridgeService {
 
   private detectNativeApp(): void {
     this._isNativeApp = !!(window.webkit?.messageHandlers?.nativeBridge || window.__nativeBridge__);
-
-    if (this._isNativeApp) {
-      console.log('[NativeBridge] Running in native app');
-    }
   }
 
   isNativeApp(): boolean {
@@ -66,8 +62,6 @@ export class NativeBridgeService {
   private setupMessageReceiver(): void {
     window.__nativeBridge__ = {
       receive: (message: NativeToWebMessage) => {
-        console.log('[NativeBridge] Received:', message);
-
         // Store initial state
         if (message.type === 'initialize') {
           this._initialState = message.payload as InitialState;
@@ -217,19 +211,15 @@ export class NativeBridgeService {
 
   private sendMessage(message: WebToNativeMessageType): void {
     if (!this._isNativeApp) {
-      console.warn('[NativeBridge] Not in native app, message not sent:', message);
       return;
     }
 
     const handler = window.webkit?.messageHandlers?.nativeBridge;
     if (!handler) {
-      console.error('[NativeBridge] Native bridge not available');
       return;
     }
 
-    const json = JSON.stringify(message);
-    handler.postMessage(json);
-    console.log('[NativeBridge] Sent:', message);
+    handler.postMessage(JSON.stringify(message));
   }
 
   // MARK: - Server Management

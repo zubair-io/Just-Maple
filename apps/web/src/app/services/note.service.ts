@@ -137,7 +137,6 @@ export class NoteService {
       .on('note.created')
       .pipe(
         tap((event: Extract<AppEvent, { type: 'note.created' }>) => {
-          console.log('[NoteService] Received note.created event', event.note);
           const documentId = event.note.documentId;
           if (!this.store.query(getEntity(documentId))) {
             this.store.update(addEntities(event.note));
@@ -175,7 +174,6 @@ export class NoteService {
     this.realtimeWS
       .on('note.trashed')
       .subscribe((event: Extract<AppEvent, { type: 'note.trashed' }>) => {
-        console.log('[NoteService] Received note.trashed event', event.noteId);
         // Remove from visible list (user can view trash separately)
         this.store.update(deleteEntities(event.noteId));
       });
@@ -183,7 +181,6 @@ export class NoteService {
     this.realtimeWS
       .on('note.restored')
       .subscribe((event: Extract<AppEvent, { type: 'note.restored' }>) => {
-        console.log('[NoteService] Received note.restored event', event.note);
         this.store.update(upsertEntities([event.note]));
         this.persistToIndexedDB([event.note]);
       });
@@ -335,8 +332,6 @@ export class NoteService {
       of(tempNote),
       this.http.post<{ note: Note }>('/api/notes', data).pipe(
         tap((response) => {
-          console.log('Created note:', response.note);
-
           this.store.update(updateEntities(response.note.documentId, response.note));
           this.persistToIndexedDB([response.note]);
           this._isLoading.set(false);

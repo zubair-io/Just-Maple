@@ -169,7 +169,6 @@ export class RealtimeWSService {
         break;
 
       case 'app':
-        console.log('[WS] Received app event:', data.event?.type, data.event);
         this.appEvents$.next(data.event);
         break;
 
@@ -184,8 +183,6 @@ export class RealtimeWSService {
             handler(event);
           }
           this.notebookEvents$.next({ noteId, event });
-        } else {
-          console.warn('[WS] Received notebook event without noteId:', event);
         }
         break;
       }

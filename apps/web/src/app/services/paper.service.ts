@@ -83,14 +83,11 @@ export class PaperService {
    * Subscribe to paper events from WebSocket event stream
    */
   private subscribeToRealtimeEvents(): void {
-    console.log('[PaperService] Subscribing to WebSocket paper events');
-
     // Subscribe to paper.created events
     this.realtimeWS
       .on('paper.created')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event: Extract<AppEvent, { type: 'paper.created' }>) => {
-        console.log('[PaperService] Received paper.created WS:', event.paper._id);
         // Remove any temp papers with matching registry data
         const tempPapers = this.store
           .query(getAllEntities())
@@ -112,7 +109,6 @@ export class PaperService {
       .on('paper.updated')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event: Extract<AppEvent, { type: 'paper.updated' }>) => {
-        console.log('[PaperService] Received paper.updated WS:', event.paper._id);
         this.store.update(upsertEntities([event.paper]));
         this.persistToIndexedDB([event.paper]);
       });
@@ -122,7 +118,6 @@ export class PaperService {
       .on('paper.deleted')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event: Extract<AppEvent, { type: 'paper.deleted' }>) => {
-        console.log('[PaperService] Received paper.deleted WS:', event.paperId);
         this.store.update(deleteEntities(event.paperId));
         if (isPlatformBrowser(this.platformId)) {
           this.indexedDB.delete(event.paperId, STORE_NAME);

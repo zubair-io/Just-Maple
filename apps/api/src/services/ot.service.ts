@@ -50,9 +50,9 @@ class OTService {
         );
     }
 
-    // Debug helper
-    private debug(msg: string, ...args: any[]) {
-        console.log(`[OT Service] ${msg}`, ...args);
+    // Debug helper - no-op in production
+    private debug(_msg: string, ..._args: any[]) {
+        // Disabled for production
     }
 
     // Check permission with caching
@@ -75,41 +75,25 @@ class OTService {
             expiresAt: Date.now() + PERMISSION_CACHE_TTL,
         });
 
-        console.log(
-            `[OT Service] Permission check for user ${userId} on note ${noteId}: ${hasAccess ? 'granted' : 'denied'} (cached for ${PERMISSION_CACHE_TTL / 1000}s)`,
-        );
-
         return hasAccess;
     }
 
     // Invalidate permission cache for a specific note (call this when permissions change)
     invalidatePermissions(noteId: string): void {
-        let invalidated = 0;
         for (const key of this.permissionCache.keys()) {
             if (key.endsWith(`:${noteId}`)) {
                 this.permissionCache.delete(key);
-                invalidated++;
             }
-        }
-        if (invalidated > 0) {
-            console.log(
-                `[OT Service] Invalidated ${invalidated} permission cache entries for note ${noteId}`,
-            );
         }
     }
 
     // Periodic cleanup of expired cache entries
     private cleanupExpiredPermissions(): void {
         const now = Date.now();
-        let cleaned = 0;
         for (const [key, entry] of this.permissionCache.entries()) {
             if (entry.expiresAt <= now) {
                 this.permissionCache.delete(key);
-                cleaned++;
             }
-        }
-        if (cleaned > 0) {
-            console.log(`[OT Service] Cleaned up ${cleaned} expired permission cache entries`);
         }
     }
 
@@ -131,9 +115,6 @@ class OTService {
                 generation: 0,
             };
             this.documents.set(noteId, doc);
-            console.log(
-                `[OT Service] Starting new session for note ${noteId} at version ${doc.version}`,
-            );
         } else if (doc.clientIds.size === 0 && doc.version > 0) {
             // Stale session - reload from database to avoid divergence
             const note = await findNoteByIdForCollab(noteId, 'OTService');
@@ -141,16 +122,9 @@ class OTService {
 
             // Only reset if database version differs (indicates persistence happened)
             if (dbVersion !== doc.version) {
-                console.log(
-                    `[OT Service] Reloading stale session for note ${noteId} from DB (memory: ${doc.version}, DB: ${dbVersion})`,
-                );
                 doc.version = dbVersion;
                 doc.steps = [];
                 doc.currentDoc = note?.content;
-            } else {
-                console.log(
-                    `[OT Service] Resuming stale session for note ${noteId} at version ${doc.version}`,
-                );
             }
         }
 
@@ -169,7 +143,6 @@ class OTService {
         // SECURITY: Validate user still has access before processing steps
         const connInfo = this.connections.get(clientID);
         if (!connInfo) {
-            console.error(`[OT Service] No connection info for clientID: ${clientID}`);
             return {
                 version: 0,
                 steps: [],
@@ -181,9 +154,6 @@ class OTService {
         // Verify user still has permission to edit this note (with caching)
         const hasPermission = await this.checkPermission(noteId, connInfo.userId);
         if (!hasPermission) {
-            console.error(
-                `[OT Service] Permission denied for user ${connInfo.userId} on note ${noteId}`,
-            );
             // Remove from permission cache to force fresh check on reconnect
             this.permissionCache.delete(`${connInfo.userId}:${noteId}`);
             return {
@@ -207,7 +177,6 @@ class OTService {
             );
             const missedSteps = missedStepsData.map((s) => s.step);
             const missedClientIDs = missedStepsData.map((s) => s.clientID);
-            console.log(`[OT Service] Client behind, sending ${missedSteps.length} missed steps`);
             return {
                 version: doc.version,
                 steps: missedSteps,
@@ -225,9 +194,6 @@ class OTService {
             if (doc.steps.length > MAX_STEPS_IN_MEMORY) {
                 const excess = doc.steps.length - MAX_STEPS_IN_MEMORY;
                 doc.steps.splice(0, excess);
-                console.log(
-                    `[OT Service] Trimmed ${excess} old steps for note ${noteId} (keeping last ${MAX_STEPS_IN_MEMORY})`,
-                );
             }
 
             doc.version += clientSteps.length;
@@ -235,12 +201,7 @@ class OTService {
             // Update current document state if client sent it
             if (clientDoc) {
                 doc.currentDoc = clientDoc;
-                console.log(`[OT Service] Updated currentDoc from client ${clientID}`);
             }
-
-            console.log(
-                `[OT Service] Applied steps, new version: ${doc.version}, broadcasting to other clients`,
-            );
 
             // Persist to MongoDB (async, don't block)
             this.persistSteps(noteId, clientSteps, doc.version).catch(console.error);
@@ -269,13 +230,10 @@ class OTService {
         };
     }
 
-    private async persistSteps(noteId: string, steps: any[], version: number): Promise<void> {
+    private async persistSteps(noteId: string, _steps: any[], version: number): Promise<void> {
         try {
             const doc = this.documents.get(noteId);
             if (!doc || !doc.currentDoc) {
-                console.error(
-                    `[OT Service] Cannot persist steps - no document state for ${noteId}`,
-                );
                 return;
             }
 
@@ -289,12 +247,8 @@ class OTService {
                 },
                 'OTService',
             );
-
-            console.log(`[OT Service] Persisted version ${version} for note ${noteId}`);
-        } catch (error) {
-            console.error(`[OT Service] Failed to persist steps for note ${noteId}:`, error);
+        } catch {
             // Don't throw - let collaboration continue even if persistence fails
-            // TODO: Queue for retry
         }
     }
 
@@ -305,15 +259,6 @@ class OTService {
             steps, // Included for broadcast
             clientIDs: Array(steps.length).fill(sender),
         };
-
-        console.log(
-            `[OT Service] Broadcasting ${steps.length} steps at version ${version} to note ${noteId}`,
-        );
-        console.log(`[OT Service] Sender clientID: "${sender}"`);
-        console.log(
-            `[OT Service] Connected clients for this note:`,
-            collabRealtimeService.getConnectedClients(noteId),
-        );
 
         // Use realtime service (WebSocket)
         collabRealtimeService.broadcast(noteId, message, sender);
@@ -341,22 +286,12 @@ class OTService {
                 clearTimeout(doc.cleanupTimeout);
                 doc.cleanupTimeout = undefined;
                 doc.generation++; // Increment generation to invalidate any pending cleanups
-                console.log(
-                    `[OT Service] Cancelled cleanup for note ${noteId} - client reconnected (gen ${doc.generation})`,
-                );
             }
         }
 
         // Store userId for permission validation
         if (connection?.userId) {
             this.connections.set(clientID, { userId: connection.userId });
-            console.log(
-                `[OT Service] Registered connection ${clientID} for user ${connection.userId}`,
-            );
-        } else {
-            console.warn(
-                `[OT Service] Connection ${clientID} missing userId - permission checks will fail`,
-            );
         }
 
         // Register with realtime service
@@ -390,13 +325,6 @@ class OTService {
                     // 3. Generation hasn't changed (no reconnections happened)
                     if (d && d.clientIds.size === 0 && d.generation === currentGeneration) {
                         this.documents.delete(noteId);
-                        console.log(
-                            `[OT Service] Cleaned up session for note ${noteId} after last client disconnected (gen ${currentGeneration})`,
-                        );
-                    } else if (d && d.generation !== currentGeneration) {
-                        console.log(
-                            `[OT Service] Skipped cleanup for note ${noteId} - generation changed (stale cleanup from gen ${currentGeneration}, current gen ${d.generation})`,
-                        );
                     }
                 }, delay);
             } else {
@@ -410,7 +338,6 @@ class OTService {
 
         // Clean up connection info
         this.connections.delete(clientID);
-        console.log(`[OT Service] Removed connection ${clientID}`);
 
         // Unregister from realtime service
         collabRealtimeService.removeConnection(noteId, clientID);
