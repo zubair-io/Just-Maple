@@ -1,6 +1,7 @@
 export const config = {
     port: parseInt(process.env.PORT || '7071'),
     mongodbUri: process.env.MONGODB_URI || 'mongodb://192.168.0.244:27017/justmaple',
+    redisUrl: process.env.REDIS_URL,
     jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
     jwtExpiresIn: '14d', // 14 days - refreshes on each app open
     magicLinkExpiresIn: 15 * 60 * 1000, // 15 minutes

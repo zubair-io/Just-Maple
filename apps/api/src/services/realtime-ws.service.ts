@@ -1,4 +1,5 @@
 import type { Note, Tag, Paper, NotebookSSEEvent } from '@maple/shared';
+import { redisPubSub } from './redis.service';
 
 /**
  * App Events - CRUD operations on notes, tags, papers
@@ -48,6 +49,9 @@ class RealtimeWSService {
 
     // Notebook rooms: noteId -> clientId -> client info
     private notebookRooms = new Map<string, Map<string, NotebookClient>>();
+
+    // Track Redis subscriptions for notebooks
+    private notebookRedisSubscriptions = new Set<string>();
 
     // Keepalive interval
     private readonly KEEPALIVE_INTERVAL = 30000;
@@ -145,8 +149,11 @@ class RealtimeWSService {
         userInfo: { userId: string; userName: string; userColor: string },
     ): void {
         // Get or create room
-        if (!this.notebookRooms.has(noteId)) {
+        const isNewRoom = !this.notebookRooms.has(noteId);
+        if (isNewRoom) {
             this.notebookRooms.set(noteId, new Map());
+            // Subscribe to Redis channel for this notebook (for cross-replica sync)
+            this.subscribeNotebookRedis(noteId);
         }
 
         const room = this.notebookRooms.get(noteId)!;
@@ -223,6 +230,8 @@ class RealtimeWSService {
         // Clean up empty room
         if (room.size === 0) {
             this.notebookRooms.delete(noteId);
+            // Unsubscribe from Redis channel
+            this.unsubscribeNotebookRedis(noteId);
         }
     }
 
@@ -251,6 +260,7 @@ class RealtimeWSService {
 
     /**
      * Broadcast Y.Doc update to all clients in a notebook room except sender
+     * Also publishes to Redis for cross-replica sync
      */
     broadcastUpdate(noteId: string, update: Uint8Array, excludeClientId: string): void {
         const event: NotebookSSEEvent = {
@@ -262,12 +272,19 @@ class RealtimeWSService {
             timestamp: new Date().toISOString(),
         };
 
+        // Publish to Redis for other replicas
+        if (redisPubSub.connected) {
+            redisPubSub.publishNotebook(noteId, event);
+        }
+
+        // Broadcast to local clients
         this.broadcastToNotebookPeers(noteId, event, excludeClientId);
     }
 
     /**
      * Broadcast awareness update to all clients in a notebook room except sender
      * Awareness updates contain cursor positions, selections, user presence, etc.
+     * Also publishes to Redis for cross-replica sync
      */
     broadcastAwareness(noteId: string, update: Uint8Array, excludeClientId: string): void {
         const event: NotebookSSEEvent = {
@@ -279,6 +296,12 @@ class RealtimeWSService {
             timestamp: new Date().toISOString(),
         };
 
+        // Publish to Redis for other replicas
+        if (redisPubSub.connected) {
+            redisPubSub.publishNotebook(noteId, event);
+        }
+
+        // Broadcast to local clients
         this.broadcastToNotebookPeers(noteId, event, excludeClientId);
     }
 
@@ -342,6 +365,59 @@ class RealtimeWSService {
     private sendNotebookEvent(ws: WebSocket, noteId: string, event: NotebookSSEEvent): void {
         const message = JSON.stringify({ channel: 'notebook', noteId, event });
         this.safeSend(ws, message);
+    }
+
+    // ==================== Redis Integration ====================
+
+    /**
+     * Subscribe to Redis channel for a notebook
+     */
+    private subscribeNotebookRedis(noteId: string): void {
+        if (this.notebookRedisSubscriptions.has(noteId)) return;
+
+        if (redisPubSub.connected) {
+            redisPubSub
+                .subscribeNotebook(noteId, (event: NotebookSSEEvent) => {
+                    this.handleRedisNotebookEvent(noteId, event);
+                })
+                .catch(() => {});
+            this.notebookRedisSubscriptions.add(noteId);
+        }
+    }
+
+    /**
+     * Unsubscribe from Redis channel for a notebook
+     */
+    private unsubscribeNotebookRedis(noteId: string): void {
+        if (!this.notebookRedisSubscriptions.has(noteId)) return;
+
+        if (redisPubSub.connected) {
+            redisPubSub
+                .unsubscribeNotebook(noteId, (event: NotebookSSEEvent) => {
+                    this.handleRedisNotebookEvent(noteId, event);
+                })
+                .catch(() => {});
+        }
+        this.notebookRedisSubscriptions.delete(noteId);
+    }
+
+    /**
+     * Handle notebook event from Redis (from another replica)
+     */
+    private handleRedisNotebookEvent(noteId: string, event: NotebookSSEEvent): void {
+        const room = this.notebookRooms.get(noteId);
+        if (!room) return;
+
+        // For updates from other replicas, broadcast to all local clients
+        // The 'from' field contains the original sender's clientId
+        const excludeClientId = (event.data as any)?.from || '';
+
+        // Broadcast to all local clients except the original sender (if they're on this replica)
+        for (const [clientId, client] of room) {
+            if (clientId !== excludeClientId) {
+                this.sendNotebookEvent(client.ws, noteId, event);
+            }
+        }
     }
 
     // ==================== Utility Methods ====================

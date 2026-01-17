@@ -14,6 +14,7 @@ import { legoRoutes } from './routes/lego';
 import { collabRoutes } from './routes/collab';
 import { notebookRoutes } from './routes/notebook';
 import { realtimeWebSocket } from './ws/realtime.ws';
+import { redisPubSub } from './services/redis.service';
 import { config } from './config';
 
 function getStaticDir(): string {
@@ -36,6 +37,13 @@ async function main() {
 
     // Connect to MongoDB
     await connectToDatabase();
+
+    // Connect to Redis for cross-replica pub/sub
+    try {
+        await redisPubSub.connect();
+    } catch (error) {
+        console.warn('[Redis] Failed to connect, running without cross-replica sync:', error);
+    }
 
     const app = new Elysia()
         .use(
@@ -149,6 +157,7 @@ async function main() {
     console.log(`🍁 PaperbarkMaple API running at http://localhost:${config.port}`);
     console.log(`   Environment: ${envName}`);
     console.log(`   MongoDB: ${config.mongodbUri}`);
+    console.log(`   Redis: ${redisPubSub.connected ? config.redisUrl : 'not connected'}`);
     console.log(`   WebSocket: ws://localhost:${config.port}/ws/realtime`);
     console.log(`   Frontend: ${frontendAvailable ? 'serving from ' + STATIC_DIR : 'not built'}`);
 }

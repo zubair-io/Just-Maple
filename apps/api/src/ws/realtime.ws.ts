@@ -8,7 +8,11 @@ import { createMessage } from '../repositories/message.repo';
 import { authenticateWebSocket } from './ws-auth';
 import { realtimeWSService, type AppEvent } from '../services/realtime-ws.service';
 import { yjsDocumentService } from '../services/yjs-document.service';
-import { broadcastChatEvent } from '../services/realtime.service';
+import {
+    broadcastChatEvent,
+    subscribeToTagChat,
+    unsubscribeFromTagChat,
+} from '../services/realtime.service';
 import { customAlphabet } from 'nanoid';
 import type { ChatEvent, TypingEvent, NoteContent } from '@maple/shared';
 
@@ -97,6 +101,11 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
                     notebookClients: new Map(),
                 };
 
+                // Subscribe to Redis channels for user's tags (for cross-replica sync)
+                for (const tagId of tagIds) {
+                    subscribeToTagChat(tagId).catch(() => {});
+                }
+
                 // Send connection confirmation
                 ws.send(
                     JSON.stringify({
@@ -148,12 +157,17 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
             if (!context) return;
 
             // Leave all notebook rooms
-            for (const [noteId, clientId] of context.notebookClients) {
+            for (const [noteId] of context.notebookClients) {
                 realtimeWSService.leaveNotebook(noteId, ws.raw as unknown as WebSocket);
             }
 
             // Unregister connection
             realtimeWSService.unregisterConnection(context.userId, context.connection);
+
+            // Check if we should unsubscribe from Redis channels
+            for (const tagId of context.subscribedTags) {
+                unsubscribeFromTagChat(tagId).catch(() => {});
+            }
         },
     });
 
@@ -359,6 +373,8 @@ async function handleChatMessage(
             if (tagId && !context.subscribedTags.has(tagId)) {
                 context.subscribedTags.add(tagId);
                 context.connection.subscribedTags.add(tagId);
+                // Subscribe to Redis channel for this tag
+                subscribeToTagChat(tagId).catch(() => {});
             }
             break;
         }
@@ -368,6 +384,8 @@ async function handleChatMessage(
             if (tagId) {
                 context.subscribedTags.delete(tagId);
                 context.connection.subscribedTags.delete(tagId);
+                // Check if we should unsubscribe from Redis
+                unsubscribeFromTagChat(tagId).catch(() => {});
             }
             break;
         }
