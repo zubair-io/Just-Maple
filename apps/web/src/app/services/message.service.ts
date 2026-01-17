@@ -20,6 +20,7 @@ import { RealtimeService } from './realtime.service';
 import { RealtimeWSService } from './realtime-ws.service';
 import { AuthService } from './auth.service';
 import { NetworkService } from './network.service';
+import { NotificationService } from './notification.service';
 import { DB_STORES } from './db-stores';
 import type {
   Message,
@@ -41,6 +42,7 @@ export class MessageService {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
   private readonly network = inject(NetworkService);
+  private readonly notificationService = inject(NotificationService);
 
   // ELF Store
   private readonly store = createStore(
@@ -109,12 +111,57 @@ export class MessageService {
 
   private handleNewMessage(message: Message): void {
     const currentTagId = this._currentTagId();
-    // Only add if for current tag
+    const currentUserId = this.authService.user()?._id;
+
+    // Only add to store if for current tag
     if (message.tagId === currentTagId) {
       // Use upsert to handle duplicates (e.g., sender's own message)
       this.store.update(upsertEntities(message));
       this.persistToIndexedDB([message]);
     }
+
+    // Show toast notification if message is from another user and not for the active tag
+    if (
+      message.userId !== currentUserId &&
+      message.tagId !== this.notificationService.activeTagId()
+    ) {
+      const senderName = message.senderDisplayName || message.senderEmail || 'Someone';
+      const messagePreview = this.extractTextFromContent(message.content);
+
+      this.notificationService.showToast({
+        title: senderName,
+        message: messagePreview || 'Sent a message',
+        type: 'info',
+        duration: 5000,
+      });
+    }
+  }
+
+  /**
+   * Extract plain text from TipTap JSON content
+   */
+  private extractTextFromContent(content: any): string {
+    if (!content || typeof content !== 'object') {
+      return '';
+    }
+
+    let text = '';
+
+    const traverse = (node: any) => {
+      if (node.type === 'text') {
+        text += node.text || '';
+      }
+      if (node.content && Array.isArray(node.content)) {
+        for (const child of node.content) {
+          traverse(child);
+        }
+      }
+    };
+
+    traverse(content);
+    const trimmed = text.trim();
+    // Truncate to 100 characters for toast preview
+    return trimmed.length > 100 ? trimmed.substring(0, 100) + '...' : trimmed;
   }
 
   private handleEditedMessage(message: Message): void {
