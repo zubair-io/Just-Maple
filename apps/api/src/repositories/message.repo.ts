@@ -50,9 +50,9 @@ function toMessageResponse(
         senderType: doc.senderType,
         userBotId: doc.userBotId?.toString(),
         senderEmail,
-        // For bots, prefer document fields over passed parameters
-        senderDisplayName: doc.senderDisplayName || senderDisplayName,
-        senderProfilePictureUrl: doc.senderProfilePictureUrl || senderProfilePictureUrl,
+        // Prefer user lookup data (for users), fall back to document fields (for bots)
+        senderDisplayName: senderDisplayName || doc.senderDisplayName,
+        senderProfilePictureUrl: senderProfilePictureUrl || doc.senderProfilePictureUrl,
         content: doc.content,
         mentions: doc.mentions,
         hasThread: doc.hasThread,
