@@ -68,6 +68,8 @@ export class YJSWSProvider {
    * Connect to notebook room via WebSocket
    */
   connect(): void {
+    console.log(`[YJS-WS] Connecting to notebook: ${this.noteId}, clientId: ${this._clientId}`);
+
     // Register event handler for this notebook
     this.realtimeWS.onNotebookEvent(this.noteId, this.handleEvent.bind(this));
 
@@ -78,6 +80,8 @@ export class YJSWSProvider {
     // Note: The actual connected state depends on the WebSocket connection
     // and whether we've successfully joined the room
     this.connected.set(this.realtimeWS.isConnected());
+
+    console.log(`[YJS-WS] WS connected: ${this.realtimeWS.isConnected()}`);
 
     if (this.realtimeWS.isConnected()) {
       this.onConnected?.();
@@ -98,6 +102,8 @@ export class YJSWSProvider {
    * Handle incoming notebook event
    */
   private handleEvent(event: NotebookSSEEvent): void {
+    console.log(`[YJS-WS] Received event: ${event.type}`, event);
+
     switch (event.type) {
       case 'ydoc-init':
         this.handleInit(event.data);
@@ -124,9 +130,17 @@ export class YJSWSProvider {
    * Handle initial document state from server
    */
   private handleInit(data: { state: string; version: number; peers: any[] }): void {
+    console.log(
+      `[YJS-WS] handleInit - state size: ${data.state?.length || 0}, version: ${data.version}, peers: ${data.peers?.length || 0}`,
+    );
+
     try {
       const state = this.base64ToUint8Array(data.state);
+      console.log(`[YJS-WS] Decoded state: ${state.length} bytes`);
+
       Y.applyUpdate(this.ydoc, state, 'remote');
+      console.log(`[YJS-WS] Applied update to ydoc`);
+
       this.connected.set(true);
       this.synced.set(true);
       this.onConnected?.();
@@ -139,7 +153,9 @@ export class YJSWSProvider {
 
       // Send initial awareness state after sync
       this.sendInitialAwareness();
-    } catch {
+      console.log(`[YJS-WS] Initial sync complete`);
+    } catch (err) {
+      console.error(`[YJS-WS] handleInit error:`, err);
       this.error.set('Failed to load document');
     }
   }

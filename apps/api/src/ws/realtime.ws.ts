@@ -1,10 +1,15 @@
 import { Elysia } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { config } from '../config';
-import { findTagsByUserId, findTagByIdWithAccess } from '../repositories/tag.repo';
+import {
+    findTagsByUserId,
+    findTagByIdWithAccess,
+    getUsersWithTagAccess,
+} from '../repositories/tag.repo';
 import { findUserById } from '../repositories/user.repo';
 import { findNoteByDocumentId } from '../repositories/note.repo';
 import { createMessage } from '../repositories/message.repo';
+import { findPaperById, createPaper, updatePaper, deletePaper } from '../repositories/paper.repo';
 import { authenticateWebSocket } from './ws-auth';
 import { realtimeWSService, type AppEvent } from '../services/realtime-ws.service';
 import { yjsDocumentService } from '../services/yjs-document.service';
@@ -140,6 +145,10 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
                         await handleChatMessage(ws, context, action, payload);
                         break;
 
+                    case 'app':
+                        await handleAppMessage(ws, context, action, payload);
+                        break;
+
                     case 'system':
                         handleSystemMessage(ws, context, action, payload);
                         break;
@@ -185,9 +194,12 @@ async function handleNotebookMessage(
             const { noteId } = payload;
             if (!noteId) return;
 
+            console.log(`[Notebook] Join request for noteId: ${noteId}`);
+
             // Verify user has access to this notebook
             const note = await findNoteByDocumentId(noteId, context.userId);
             if (!note || note.type !== 'notebook') {
+                console.log(`[Notebook] Access denied or not a notebook: ${noteId}`);
                 ws.send(
                     JSON.stringify({
                         channel: 'notebook',
@@ -213,6 +225,9 @@ async function handleNotebookMessage(
 
             // Get initial state
             const state = await yjsDocumentService.getStateAsUpdate(noteId);
+            console.log(
+                `[Notebook] Sending initial state for ${noteId}, size: ${state.length} bytes`,
+            );
 
             // Send initial state
             realtimeWSService.sendInitialState(noteId, clientId, state, 1);
@@ -221,6 +236,7 @@ async function handleNotebookMessage(
             ws.send(
                 JSON.stringify({
                     channel: 'notebook',
+                    noteId,
                     event: {
                         type: 'joined',
                         noteId,
@@ -228,6 +244,7 @@ async function handleNotebookMessage(
                     },
                 }),
             );
+            console.log(`[Notebook] Join complete for ${noteId}, clientId: ${clientId}`);
             break;
         }
 
@@ -428,6 +445,141 @@ function broadcastChatEventToTag(tagId: string, event: ChatEvent, excludeUserId:
                     // Connection might be closed
                 }
             }
+        }
+    }
+}
+
+/**
+ * Handle app channel messages (papers CRUD)
+ */
+async function handleAppMessage(
+    ws: any,
+    context: WSContext,
+    action: string,
+    payload: any,
+): Promise<void> {
+    switch (action) {
+        case 'paper.create': {
+            const { tags, data } = payload;
+            if (!data?.itemId || !data?.provider) {
+                ws.send(
+                    JSON.stringify({
+                        channel: 'app',
+                        event: { type: 'error', message: 'Missing required paper data' },
+                    }),
+                );
+                return;
+            }
+
+            // Verify user has write access to all tags
+            for (const tagId of tags || []) {
+                const tag = await findTagByIdWithAccess(tagId, context.userId, 'write');
+                if (!tag) {
+                    ws.send(
+                        JSON.stringify({
+                            channel: 'app',
+                            event: { type: 'error', message: 'Access denied to tag' },
+                        }),
+                    );
+                    return;
+                }
+            }
+
+            const paper = await createPaper(context.userId, { tags, data });
+
+            // Broadcast to all users with access to each tag
+            for (const tagId of paper.tags) {
+                const recipientUserIds = await getUsersWithTagAccess(tagId);
+                realtimeWSService.sendToUsers(recipientUserIds, {
+                    type: 'paper.created',
+                    paper,
+                    tagId,
+                });
+            }
+            break;
+        }
+
+        case 'paper.update': {
+            const { paperId, data, tags } = payload;
+            if (!paperId) {
+                ws.send(
+                    JSON.stringify({
+                        channel: 'app',
+                        event: { type: 'error', message: 'Missing paperId' },
+                    }),
+                );
+                return;
+            }
+
+            const paper = await updatePaper(paperId, context.userId, { data, tags });
+
+            if (!paper) {
+                ws.send(
+                    JSON.stringify({
+                        channel: 'app',
+                        event: { type: 'error', message: 'Paper not found or access denied' },
+                    }),
+                );
+                return;
+            }
+
+            // Broadcast to all users with access to each tag
+            for (const tagId of paper.tags) {
+                const recipientUserIds = await getUsersWithTagAccess(tagId);
+                realtimeWSService.sendToUsers(recipientUserIds, {
+                    type: 'paper.updated',
+                    paper,
+                    tagId,
+                });
+            }
+            break;
+        }
+
+        case 'paper.delete': {
+            const { paperId } = payload;
+            if (!paperId) {
+                ws.send(
+                    JSON.stringify({
+                        channel: 'app',
+                        event: { type: 'error', message: 'Missing paperId' },
+                    }),
+                );
+                return;
+            }
+
+            // Get paper first to know which tags to broadcast to
+            const paper = await findPaperById(paperId, context.userId);
+            if (!paper) {
+                ws.send(
+                    JSON.stringify({
+                        channel: 'app',
+                        event: { type: 'error', message: 'Paper not found or access denied' },
+                    }),
+                );
+                return;
+            }
+
+            const deleted = await deletePaper(paperId, context.userId);
+            if (!deleted) {
+                ws.send(
+                    JSON.stringify({
+                        channel: 'app',
+                        event: { type: 'error', message: 'Failed to delete paper' },
+                    }),
+                );
+                return;
+            }
+
+            // Broadcast to all users with access to each tag
+            for (const tagId of paper.tags) {
+                const recipientUserIds = await getUsersWithTagAccess(tagId);
+                realtimeWSService.sendToUsers(recipientUserIds, {
+                    type: 'paper.deleted',
+                    paperId,
+                    tagId,
+                });
+            }
+            break;
         }
     }
 }

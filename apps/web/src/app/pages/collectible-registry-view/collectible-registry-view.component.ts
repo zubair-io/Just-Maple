@@ -6,6 +6,7 @@ import { Subscription, switchMap, of, catchError, forkJoin } from 'rxjs';
 import { TagService } from '../../services/tag.service';
 import { PaperService } from '../../services/paper.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
+import { RealtimeWSService } from '../../services/realtime-ws.service';
 import type { PaperStatus } from '@maple/shared';
 
 @Component({
@@ -18,6 +19,7 @@ import type { PaperStatus } from '@maple/shared';
 export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
   private readonly location = inject(Location);
   private readonly route = inject(ActivatedRoute);
+  private readonly realtimeWS = inject(RealtimeWSService);
   readonly tagService = inject(TagService);
   readonly paperService = inject(PaperService);
   readonly registryService = inject(CollectibleRegistryService);
@@ -109,31 +111,50 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
 
     if (!registryId || !tagId || !registry) return;
 
-    this.isSaving.set(true);
-
-    if (currentPaper) {
-      // Update existing paper - store update will refresh computed
-      this.paperService.updatePaper(currentPaper._id, { data: { status } }).subscribe({
-        next: () => this.isSaving.set(false),
-        error: () => this.isSaving.set(false),
-      });
+    // Use WebSocket for real-time updates
+    if (this.realtimeWS.isConnected()) {
+      if (currentPaper) {
+        // Optimistic update first, then send via WebSocket
+        this.paperService.optimisticUpdate(currentPaper._id, { status });
+        this.realtimeWS.updatePaper(currentPaper._id, { status });
+      } else {
+        // Optimistic create, then send via WebSocket
+        const paperData = {
+          itemId: registry.providerId,
+          provider: registry.provider,
+          registryData: registryId,
+          status,
+          quantity: 1,
+        };
+        this.paperService.optimisticCreate([tagId], paperData as any);
+        this.realtimeWS.createPaper([tagId], paperData);
+      }
     } else {
-      // Create new paper - store update will populate computed
-      this.paperService
-        .createPaper({
-          tags: [tagId],
-          data: {
-            itemId: registry.providerId,
-            provider: registry.provider,
-            registryData: registryId,
-            status,
-            quantity: 1,
-          },
-        })
-        .subscribe({
+      // Fallback to HTTP if WebSocket not connected (already has optimistic updates)
+      this.isSaving.set(true);
+
+      if (currentPaper) {
+        this.paperService.updatePaper(currentPaper._id, { data: { status } }).subscribe({
           next: () => this.isSaving.set(false),
           error: () => this.isSaving.set(false),
         });
+      } else {
+        this.paperService
+          .createPaper({
+            tags: [tagId],
+            data: {
+              itemId: registry.providerId,
+              provider: registry.provider,
+              registryData: registryId,
+              status,
+              quantity: 1,
+            },
+          })
+          .subscribe({
+            next: () => this.isSaving.set(false),
+            error: () => this.isSaving.set(false),
+          });
+      }
     }
   }
 
@@ -143,11 +164,21 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
 
     const newQuantity = Math.max(0, (currentPaper.data.quantity ?? 1) + delta);
 
-    this.isSaving.set(true);
-    this.paperService.updatePaper(currentPaper._id, { data: { quantity: newQuantity } }).subscribe({
-      next: () => this.isSaving.set(false),
-      error: () => this.isSaving.set(false),
-    });
+    // Use WebSocket for real-time updates
+    if (this.realtimeWS.isConnected()) {
+      // Optimistic update first, then send via WebSocket
+      this.paperService.optimisticUpdate(currentPaper._id, { quantity: newQuantity });
+      this.realtimeWS.updatePaper(currentPaper._id, { quantity: newQuantity });
+    } else {
+      // Fallback to HTTP (already has optimistic updates)
+      this.isSaving.set(true);
+      this.paperService
+        .updatePaper(currentPaper._id, { data: { quantity: newQuantity } })
+        .subscribe({
+          next: () => this.isSaving.set(false),
+          error: () => this.isSaving.set(false),
+        });
+    }
   }
 
   selectImage(index: number): void {

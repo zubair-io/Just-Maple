@@ -29,6 +29,7 @@ export type AppEvent =
 interface ServerMessage {
   channel: 'system' | 'app' | 'notebook' | 'chat';
   event: any;
+  noteId?: string; // Present for notebook channel messages
 }
 
 /**
@@ -168,21 +169,23 @@ export class RealtimeWSService {
         break;
 
       case 'app':
+        console.log('[WS] Received app event:', data.event?.type, data.event);
         this.appEvents$.next(data.event);
         break;
 
       case 'notebook': {
         // Route to specific notebook handler
         const event = data.event as NotebookSSEEvent;
-        // For notebook events, we need to extract noteId from the event or context
-        // The server should include noteId in notebook events
-        if ('noteId' in data) {
-          const noteId = (data as any).noteId;
+        const noteId = data.noteId;
+
+        if (noteId) {
           const handler = this.notebookHandlers.get(noteId);
           if (handler) {
             handler(event);
           }
           this.notebookEvents$.next({ noteId, event });
+        } else {
+          console.warn('[WS] Received notebook event without noteId:', event);
         }
         break;
       }
@@ -358,6 +361,44 @@ export class RealtimeWSService {
       channel: 'chat',
       action: 'unsubscribe',
       tagId,
+    });
+  }
+
+  // ==================== Paper Methods ====================
+
+  /**
+   * Create a paper via WebSocket
+   */
+  createPaper(tags: string[], data: any): void {
+    this.send({
+      channel: 'app',
+      action: 'paper.create',
+      tags,
+      data,
+    });
+  }
+
+  /**
+   * Update a paper via WebSocket
+   */
+  updatePaper(paperId: string, data?: any, tags?: string[]): void {
+    this.send({
+      channel: 'app',
+      action: 'paper.update',
+      paperId,
+      data,
+      tags,
+    });
+  }
+
+  /**
+   * Delete a paper via WebSocket
+   */
+  deletePaper(paperId: string): void {
+    this.send({
+      channel: 'app',
+      action: 'paper.delete',
+      paperId,
     });
   }
 

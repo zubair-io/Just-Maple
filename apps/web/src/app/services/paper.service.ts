@@ -91,6 +91,18 @@ export class PaperService {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event: Extract<AppEvent, { type: 'paper.created' }>) => {
         console.log('[PaperService] Received paper.created WS:', event.paper._id);
+        // Remove any temp papers with matching registry data
+        const tempPapers = this.store
+          .query(getAllEntities())
+          .filter(
+            (p) =>
+              p._id.startsWith('temp-') &&
+              p.data.registryData === event.paper.data.registryData &&
+              p.tags.some((t) => event.paper.tags.includes(t)),
+          );
+        if (tempPapers.length > 0) {
+          this.store.update(deleteEntities(tempPapers.map((p) => p._id)));
+        }
         this.store.update(upsertEntities([event.paper]));
         this.persistToIndexedDB([event.paper]);
       });
@@ -380,6 +392,58 @@ export class PaperService {
    */
   getPaperById(id: string): Paper | undefined {
     return this.store.query(getEntity(id));
+  }
+
+  /**
+   * Optimistically update a paper in the store (for WebSocket operations)
+   * Returns the original paper for potential rollback
+   */
+  optimisticUpdate(id: string, data: Partial<Paper['data']>): Paper | undefined {
+    const original = this.store.query(getEntity(id));
+    if (!original) return undefined;
+
+    this.store.update(
+      updateEntities(id, (entity) => ({
+        ...entity,
+        data: { ...entity.data, ...data },
+        updatedAt: new Date().toISOString(),
+      })),
+    );
+
+    return original;
+  }
+
+  /**
+   * Optimistically create a paper in the store (for WebSocket operations)
+   * Returns the temporary ID for tracking
+   */
+  optimisticCreate(tags: string[], data: Paper['data']): string {
+    const tempId = `temp-${Date.now()}`;
+    const now = new Date().toISOString();
+    const tempPaper: Paper = {
+      _id: tempId,
+      tags,
+      type: 'collectible',
+      data: {
+        ...data,
+        created: now,
+      },
+      createdBy: 'temp',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.store.update(addEntities(tempPaper));
+    return tempId;
+  }
+
+  /**
+   * Remove a temporary paper (for when WS broadcast replaces it)
+   */
+  removeTemp(tempId: string): void {
+    if (tempId.startsWith('temp-')) {
+      this.store.update(deleteEntities(tempId));
+    }
   }
 
   /**

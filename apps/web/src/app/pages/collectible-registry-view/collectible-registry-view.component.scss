@@ -1,1 +1,6 @@
-// Minimal styles - using Tailwind for most styling
+// Host element must fill parent for scrolling to work
+:host {
+  display: block;
+  height: 100%;
+  overflow: hidden;
+}

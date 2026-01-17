@@ -111,9 +111,15 @@ class RealtimeWSService {
      */
     sendToUser(userId: string, event: AppEvent): void {
         const connections = this.userConnections.get(userId);
-        if (!connections || connections.size === 0) return;
+        if (!connections || connections.size === 0) {
+            console.log(`[WS] sendToUser: no connections for user ${userId}`);
+            return;
+        }
 
         const message = JSON.stringify({ channel: 'app', event });
+        console.log(
+            `[WS] sendToUser: sending ${event.type} to ${userId} (${connections.size} connections)`,
+        );
 
         for (const conn of connections) {
             this.safeSend(conn.ws, message);
@@ -240,10 +246,16 @@ class RealtimeWSService {
      */
     sendInitialState(noteId: string, clientId: string, state: Uint8Array, version: number): void {
         const room = this.notebookRooms.get(noteId);
-        if (!room) return;
+        if (!room) {
+            console.log(`[WS] sendInitialState: room not found for ${noteId}`);
+            return;
+        }
 
         const client = room.get(clientId);
-        if (!client) return;
+        if (!client) {
+            console.log(`[WS] sendInitialState: client ${clientId} not found in room ${noteId}`);
+            return;
+        }
 
         const event: NotebookSSEEvent = {
             type: 'ydoc-init',
@@ -255,7 +267,8 @@ class RealtimeWSService {
             timestamp: new Date().toISOString(),
         };
 
-        this.sendNotebookEvent(client.ws, noteId, event);
+        const sent = this.sendNotebookEvent(client.ws, noteId, event);
+        console.log(`[WS] sendInitialState for ${noteId}: ${sent ? 'success' : 'failed'}`);
     }
 
     /**
@@ -362,9 +375,9 @@ class RealtimeWSService {
     /**
      * Send notebook event to a specific WebSocket
      */
-    private sendNotebookEvent(ws: WebSocket, noteId: string, event: NotebookSSEEvent): void {
+    private sendNotebookEvent(ws: WebSocket, noteId: string, event: NotebookSSEEvent): boolean {
         const message = JSON.stringify({ channel: 'notebook', noteId, event });
-        this.safeSend(ws, message);
+        return this.safeSend(ws, message);
     }
 
     // ==================== Redis Integration ====================
@@ -427,12 +440,17 @@ class RealtimeWSService {
      */
     private safeSend(ws: WebSocket, message: string): boolean {
         try {
-            if (ws.readyState === WebSocket.OPEN) {
+            // Bun's ServerWebSocket uses readyState 1 for OPEN
+            // Cast to number to avoid TypeScript issues with different WebSocket types
+            const readyState = ws.readyState as number;
+            if (readyState === 1) {
                 ws.send(message);
                 return true;
+            } else {
+                console.log(`[WS] Cannot send - readyState: ${readyState}`);
             }
-        } catch {
-            // Connection might be closed
+        } catch (error) {
+            console.error('[WS] Send error:', error);
         }
         return false;
     }
