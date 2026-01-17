@@ -50,6 +50,7 @@ export class YJSSSEProvider {
     private readonly noteId: string,
     private readonly ydoc: Y.Doc,
     authToken: string,
+    private readonly apiUrl: string = '',
   ) {
     this._clientId = generateClientId();
     this.authToken = authToken;
@@ -70,7 +71,7 @@ export class YJSSSEProvider {
       this.disconnect();
     }
 
-    const url = `/sse/notebook/${this.noteId}/events?token=${encodeURIComponent(this.authToken)}&clientId=${this._clientId}`;
+    const url = `${this.apiUrl}/sse/notebook/${this.noteId}/events?token=${encodeURIComponent(this.authToken)}&clientId=${this._clientId}`;
 
     try {
       this.eventSource = new EventSource(url);
@@ -201,7 +202,7 @@ export class YJSSSEProvider {
     }
 
     try {
-      await fetch(`/sse/notebook/${this.noteId}/update?clientId=${this._clientId}`, {
+      await fetch(`${this.apiUrl}/sse/notebook/${this.noteId}/update?clientId=${this._clientId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/octet-stream',
@@ -219,7 +220,7 @@ export class YJSSSEProvider {
    */
   async sendSignal(message: Omit<SignalMessage, 'from' | 'roomId' | 'timestamp'>): Promise<void> {
     try {
-      await fetch(`/sse/signal/${this.noteId}`, {
+      await fetch(`${this.apiUrl}/sse/signal/${this.noteId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

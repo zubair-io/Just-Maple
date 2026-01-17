@@ -11,6 +11,7 @@ import { NoteService } from './note.service';
 import { YJSSSEProvider } from './yjs-sse-provider';
 import { YJSWebRTCProvider } from './yjs-webrtc-provider';
 import type { Note, SyncStatus } from '@maple/shared';
+import { environment } from '../../environments/environment';
 
 // Generate document IDs (base58, URL-safe)
 const nanoidBase58 = customAlphabet(
@@ -215,7 +216,7 @@ export class NotebookDocumentService {
     if (!token) return;
 
     // Create SSE provider
-    doc.sseProvider = new YJSSSEProvider(noteId, doc.ydoc, token);
+    doc.sseProvider = new YJSSSEProvider(noteId, doc.ydoc, token, environment.apiUrl);
 
     // Create WebRTC provider (with awareness for cursor sync)
     doc.webrtcProvider = new YJSWebRTCProvider(noteId, doc.ydoc, doc.sseProvider, doc.awareness);
