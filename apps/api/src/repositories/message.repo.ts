@@ -154,13 +154,9 @@ export async function createMessage(
         doc.threadId = new ObjectId(threadId);
     }
 
-    // Store bot sender info if provided
-    if (senderDisplayName) {
-        doc.senderDisplayName = senderDisplayName;
-    }
-    if (senderProfilePictureUrl) {
-        doc.senderProfilePictureUrl = senderProfilePictureUrl;
-    }
+    // Note: senderDisplayName and senderProfilePictureUrl are NOT stored
+    // They are passed through for real-time WebSocket broadcasts only
+    // When messages are fetched later, user info comes from the $lookup
 
     const result = await getCollection().insertOne(doc);
 
@@ -326,14 +322,16 @@ export async function createMessageInThread(data: {
     content: NoteContent;
 }): Promise<Message> {
     const now = new Date();
+    const isBot = data.senderType === 'bot';
     const doc: Omit<MessageDocument, '_id'> = {
         tagId: new ObjectId(data.tagId),
         threadId: new ObjectId(data.threadId),
         userId: new ObjectId(data.userId),
         userBotId: data.userBotId ? new ObjectId(data.userBotId) : undefined,
         senderType: data.senderType,
-        senderDisplayName: data.senderDisplayName,
-        senderProfilePictureUrl: data.senderProfilePictureUrl,
+        // Only store display name and profile picture for bots (users get it from lookup)
+        senderDisplayName: isBot ? data.senderDisplayName : undefined,
+        senderProfilePictureUrl: isBot ? data.senderProfilePictureUrl : undefined,
         content: data.content,
         createdAt: now,
         updatedAt: now,
