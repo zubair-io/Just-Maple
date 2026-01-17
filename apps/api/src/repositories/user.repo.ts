@@ -42,6 +42,26 @@ export async function findUserById(id: string): Promise<UserResponse | null> {
     }
 }
 
+export async function findUsersByIds(ids: string[]): Promise<Map<string, UserResponse>> {
+    const userMap = new Map<string, UserResponse>();
+    if (ids.length === 0) return userMap;
+
+    try {
+        const objectIds = ids.map((id) => new ObjectId(id));
+        const docs = await getCollection()
+            .find({ _id: { $in: objectIds } })
+            .toArray();
+
+        for (const doc of docs) {
+            userMap.set(doc._id.toString(), toUserResponse(doc));
+        }
+    } catch {
+        // Return empty map on error
+    }
+
+    return userMap;
+}
+
 export async function createUser(data: CreateUser): Promise<UserResponse> {
     const now = new Date();
 
