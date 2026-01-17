@@ -2,6 +2,7 @@ import { Injectable, inject, signal, effect, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { nanoid } from 'nanoid';
 import { IndexedDBService } from './indexed-db.service';
 import { ConnectivityService } from './connectivity.service';
 import { DB_STORES } from './db-stores';
@@ -72,7 +73,7 @@ export class OfflineQueueService {
     documentId: string,
     payload?: any,
   ): Promise<string> {
-    const id = crypto.randomUUID();
+    const id = nanoid();
     const item: OfflineQueueItem = {
       id,
       action,
@@ -261,6 +262,66 @@ export class OfflineQueueService {
    */
   hasPendingForNote(documentId: string): boolean {
     return this._queue().some((item) => item.documentId === documentId);
+  }
+
+  /**
+   * Wait for a specific queue item to be processed
+   * Resolves when the item is no longer in the queue (processed or removed)
+   */
+  waitForItem(itemId: string, timeoutMs: number = 30000): Promise<boolean> {
+    return new Promise((resolve) => {
+      // If item not in queue, it's already processed
+      if (!this._queue().some((item) => item.id === itemId)) {
+        resolve(true);
+        return;
+      }
+
+      const startTime = Date.now();
+      const checkInterval = setInterval(() => {
+        // Check if item is still in queue
+        const stillInQueue = this._queue().some((item) => item.id === itemId);
+
+        if (!stillInQueue) {
+          clearInterval(checkInterval);
+          resolve(true);
+        } else if (Date.now() - startTime > timeoutMs) {
+          clearInterval(checkInterval);
+          resolve(false); // Timeout
+        }
+      }, 100);
+    });
+  }
+
+  /**
+   * Wait for a specific action on a document to complete
+   */
+  waitForAction(
+    documentId: string,
+    action: OfflineAction,
+    timeoutMs: number = 30000,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      // If action not in queue, it's already processed
+      if (!this._queue().some((item) => item.documentId === documentId && item.action === action)) {
+        resolve(true);
+        return;
+      }
+
+      const startTime = Date.now();
+      const checkInterval = setInterval(() => {
+        const stillInQueue = this._queue().some(
+          (item) => item.documentId === documentId && item.action === action,
+        );
+
+        if (!stillInQueue) {
+          clearInterval(checkInterval);
+          resolve(true);
+        } else if (Date.now() - startTime > timeoutMs) {
+          clearInterval(checkInterval);
+          resolve(false);
+        }
+      }, 100);
+    });
   }
 
   /**

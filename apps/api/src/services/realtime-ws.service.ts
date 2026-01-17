@@ -53,6 +53,9 @@ class RealtimeWSService {
     // Track Redis subscriptions for notebooks
     private notebookRedisSubscriptions = new Set<string>();
 
+    // Track Redis subscriptions for app events (per user)
+    private appEventRedisSubscriptions = new Set<string>();
+
     // Keepalive interval
     private readonly KEEPALIVE_INTERVAL = 30000;
     private keepaliveTimer: Timer;
@@ -70,8 +73,12 @@ class RealtimeWSService {
      * Register a new WebSocket connection for a user
      */
     registerConnection(userId: string, ws: WebSocket, subscribedTags?: string[]): UserConnection {
-        if (!this.userConnections.has(userId)) {
+        const isFirstConnection = !this.userConnections.has(userId);
+
+        if (isFirstConnection) {
             this.userConnections.set(userId, new Set());
+            // Subscribe to Redis channel for app events (cross-replica sync)
+            this.subscribeAppEventsRedis(userId);
         }
 
         const connection: UserConnection = {
@@ -101,6 +108,8 @@ class RealtimeWSService {
 
         if (connections.size === 0) {
             this.userConnections.delete(userId);
+            // Unsubscribe from Redis channel for app events
+            this.unsubscribeAppEventsRedis(userId);
         }
     }
 
@@ -108,17 +117,30 @@ class RealtimeWSService {
 
     /**
      * Send app event to a specific user (all their connections)
+     * Also publishes to Redis for cross-replica sync
      */
     sendToUser(userId: string, event: AppEvent): void {
+        // Publish to Redis for other replicas
+        if (redisPubSub.connected) {
+            redisPubSub.publishAppEvent(userId, event);
+        }
+
+        // Send to local connections
+        this.sendToUserLocal(userId, event);
+    }
+
+    /**
+     * Send app event to local connections only (called from Redis handler)
+     */
+    private sendToUserLocal(userId: string, event: AppEvent): void {
         const connections = this.userConnections.get(userId);
         if (!connections || connections.size === 0) {
-            console.log(`[WS] sendToUser: no connections for user ${userId}`);
             return;
         }
 
         const message = JSON.stringify({ channel: 'app', event });
         console.log(
-            `[WS] sendToUser: sending ${event.type} to ${userId} (${connections.size} connections)`,
+            `[WS] sendToUserLocal: sending ${event.type} to ${userId} (${connections.size} connections)`,
         );
 
         for (const conn of connections) {
@@ -431,6 +453,48 @@ class RealtimeWSService {
                 this.sendNotebookEvent(client.ws, noteId, event);
             }
         }
+    }
+
+    // ==================== App Events Redis Integration ====================
+
+    /**
+     * Subscribe to Redis channel for app events (per user)
+     */
+    private subscribeAppEventsRedis(userId: string): void {
+        if (this.appEventRedisSubscriptions.has(userId)) return;
+
+        if (redisPubSub.connected) {
+            redisPubSub
+                .subscribeAppEvents(userId, (event: AppEvent) => {
+                    this.handleRedisAppEvent(userId, event);
+                })
+                .catch(() => {});
+            this.appEventRedisSubscriptions.add(userId);
+        }
+    }
+
+    /**
+     * Unsubscribe from Redis channel for app events
+     */
+    private unsubscribeAppEventsRedis(userId: string): void {
+        if (!this.appEventRedisSubscriptions.has(userId)) return;
+
+        if (redisPubSub.connected) {
+            redisPubSub
+                .unsubscribeAppEvents(userId, (event: AppEvent) => {
+                    this.handleRedisAppEvent(userId, event);
+                })
+                .catch(() => {});
+        }
+        this.appEventRedisSubscriptions.delete(userId);
+    }
+
+    /**
+     * Handle app event from Redis (from another replica)
+     * Only sends to local connections - does NOT re-publish to Redis
+     */
+    private handleRedisAppEvent(userId: string, event: AppEvent): void {
+        this.sendToUserLocal(userId, event);
     }
 
     // ==================== Utility Methods ====================

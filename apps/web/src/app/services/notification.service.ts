@@ -2,6 +2,7 @@ import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom, take, Observable, map, tap, catchError, throwError } from 'rxjs';
+import { nanoid } from 'nanoid';
 import { NativeBridgeService } from './native-bridge.service';
 import type { Notification, NotificationListResponse, DeviceRegistration } from '@maple/shared';
 import type { ToastData } from '../components/atoms/toast/toast.component';
@@ -304,7 +305,7 @@ export class NotificationService {
    * Display an in-app toast notification
    */
   showToast(toast: Omit<ToastData, 'id'>): void {
-    const id = crypto.randomUUID();
+    const id = nanoid();
     const newToast: ToastData = { ...toast, id };
     this.toasts.update((toasts) => [...toasts, newToast]);
 

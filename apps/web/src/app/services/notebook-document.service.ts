@@ -401,9 +401,13 @@ export class NotebookDocumentService {
     // Update sync status
     this.updateSyncStatus(documentId, 'pending');
 
-    // Connect if online
+    // Connect if online - but wait for note to be created on server first
     if (this.connectivity.canSync()) {
-      await this.connectProviders(documentId, doc);
+      // Wait for the create-note action to complete before connecting WS
+      const created = await this.offlineQueue.waitForAction(documentId, 'create-note', 10000);
+      if (created) {
+        await this.connectProviders(documentId, doc);
+      }
     }
 
     return { note, ydoc, awareness };
