@@ -9,7 +9,6 @@ export const DB_STORES = {
   NOTE: 'note',
   SYNC_METADATA: 'sync-metadata',
   MESSAGE: 'message',
-  AUTOMERGE: 'automerge',
   OFFLINE_QUEUE: 'offline-queue',
 } as const;
 

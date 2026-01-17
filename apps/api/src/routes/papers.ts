@@ -11,7 +11,7 @@ import {
     updatePaper,
     deletePaper,
 } from '../repositories/paper.repo';
-import { eventStreamService } from '../services/event-stream.service';
+import { realtimeWSService } from '../services/realtime-ws.service';
 
 export const paperRoutes = new Elysia({ prefix: '/api/papers' })
     .use(jwtPlugin)
@@ -125,7 +125,7 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                 console.log(
                     `[Papers] Sending paper.created SSE to ${recipientUserIds.length} users for tag ${tagId}`,
                 );
-                eventStreamService.sendToUsers(recipientUserIds, {
+                realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'paper.created',
                     paper,
                     tagId,
@@ -175,7 +175,7 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                 console.log(
                     `[Papers] Sending paper.updated SSE to ${recipientUserIds.length} users for tag ${tagId}`,
                 );
-                eventStreamService.sendToUsers(recipientUserIds, {
+                realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'paper.updated',
                     paper,
                     tagId,
@@ -238,7 +238,7 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                 console.log(
                     `[Papers] Sending paper.deleted SSE to ${recipientUserIds.length} users for tag ${tagId}`,
                 );
-                eventStreamService.sendToUsers(recipientUserIds, {
+                realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'paper.deleted',
                     paperId: params.id,
                     tagId,

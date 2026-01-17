@@ -12,13 +12,8 @@ import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
 import { legoRoutes } from './routes/lego';
 import { collabRoutes } from './routes/collab';
-import { webrtcSignalingRoutes } from './routes/webrtc-signaling';
-import { eventRoutes } from './routes/events';
-import { notebookEventsRoutes } from './routes/notebook-events';
-import { notebookSignalRoutes } from './routes/notebook-signal';
-import { chatWebSocket, WebSocketRealtimeService } from './ws/chat.ws';
-import { automergeSyncWs, initializeAutomergeRepo } from './ws/automerge-sync.ws';
-import { setRealtimeService } from './services/realtime.service';
+import { notebookRoutes } from './routes/notebook';
+import { realtimeWebSocket } from './ws/realtime.ws';
 import { config } from './config';
 
 function getStaticDir(): string {
@@ -42,12 +37,6 @@ async function main() {
     // Connect to MongoDB
     await connectToDatabase();
 
-    // Initialize Automerge Repo (requires DB connection)
-    initializeAutomergeRepo();
-
-    // Initialize realtime service (WebSocket)
-    setRealtimeService(new WebSocketRealtimeService());
-
     const app = new Elysia()
         .use(
             cors({
@@ -65,12 +54,8 @@ async function main() {
         .use(botRoutes)
         .use(legoRoutes)
         .use(collabRoutes)
-        .use(webrtcSignalingRoutes) // WebRTC signaling for P2P collaboration
-        .use(eventRoutes) // SSE event stream for real-time app updates
-        .use(notebookEventsRoutes) // SSE for notebook Y.Doc collaboration
-        .use(notebookSignalRoutes) // WebRTC signaling for notebook P2P
-        .use(automergeSyncWs) // Automerge sync WebSocket
-        .use(chatWebSocket); // WebSocket chat
+        .use(notebookRoutes)
+        .use(realtimeWebSocket); // Unified WebSocket for app events + notebook sync + chat
 
     app.get('/api/health', async ({ set }) => {
         try {
@@ -164,8 +149,7 @@ async function main() {
     console.log(`🍁 PaperbarkMaple API running at http://localhost:${config.port}`);
     console.log(`   Environment: ${envName}`);
     console.log(`   MongoDB: ${config.mongodbUri}`);
-    console.log(`   Automerge Sync: ws://localhost:${config.port}/ws/automerge-sync`);
-    console.log(`   WebSocket Chat: ws://localhost:${config.port}/ws/chat`);
+    console.log(`   WebSocket: ws://localhost:${config.port}/ws/realtime`);
     console.log(`   Frontend: ${frontendAvailable ? 'serving from ' + STATIC_DIR : 'not built'}`);
 }
 

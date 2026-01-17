@@ -17,6 +17,7 @@ import {
 } from '@ngneat/elf-entities';
 import { IndexedDBService } from './indexed-db.service';
 import { RealtimeService } from './realtime.service';
+import { RealtimeWSService } from './realtime-ws.service';
 import { AuthService } from './auth.service';
 import { NetworkService } from './network.service';
 import { DB_STORES } from './db-stores';
@@ -35,6 +36,7 @@ export class MessageService {
   private readonly http = inject(HttpClient);
   private readonly indexedDB = inject(IndexedDBService);
   private readonly realtime = inject(RealtimeService);
+  private readonly realtimeWS = inject(RealtimeWSService);
   private readonly authService = inject(AuthService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
@@ -251,7 +253,7 @@ export class MessageService {
   }
 
   /**
-   * Send a new message
+   * Send a new message via WebSocket (preferred) or HTTP fallback
    */
   sendMessage(
     tagId: string,
@@ -260,6 +262,16 @@ export class MessageService {
   ): Observable<Message> {
     this._error.set(null);
 
+    // For simple messages without threads, use WebSocket
+    // For thread messages, fall back to HTTP (more complex logic needed)
+    if (!options?.threadId && !options?.parentMessageId && this.realtimeWS.isConnected()) {
+      // Send via WebSocket - message will come back via broadcast
+      this.realtimeWS.sendChatMessage(tagId, content);
+      // Return empty observable - message will appear via WebSocket
+      return of(null as unknown as Message);
+    }
+
+    // Fall back to HTTP for thread messages or when WebSocket not connected
     const tempId = `temp-${Date.now()}`;
     const now = new Date().toISOString();
     const currentUser = this.authService.user();

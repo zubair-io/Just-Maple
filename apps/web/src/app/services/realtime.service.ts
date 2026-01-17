@@ -1,32 +1,31 @@
-import { Injectable, signal, inject, PLATFORM_ID, DestroyRef, NgZone } from '@angular/core';
+import { Injectable, signal, inject, PLATFORM_ID, DestroyRef, computed } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { Subject, Observable, filter } from 'rxjs';
-import { AuthService } from './auth.service';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RealtimeWSService } from './realtime-ws.service';
 import type { ChatEvent, TypingEvent } from '@maple/shared';
-import { environment } from '../../environments/environment';
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
+/**
+ * RealtimeService - Chat-specific wrapper around RealtimeWSService
+ * Provides chat events and typing indicators via the unified WebSocket
+ */
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
-  private readonly authService = inject(AuthService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly ngZone = inject(NgZone);
-
-  // WebSocket connection
-  private ws: WebSocket | null = null;
-  private reconnectAttempts = 0;
-  private readonly maxReconnectAttempts = 5;
-  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly realtimeWS = inject(RealtimeWSService);
 
   // State signals
-  private readonly _status = signal<ConnectionStatus>('disconnected');
   private readonly _subscribedTags = signal<string[]>([]);
 
-  readonly status = this._status.asReadonly();
   readonly subscribedTags = this._subscribedTags.asReadonly();
+
+  // Computed status from RealtimeWSService (as a signal for reactivity)
+  readonly status = computed<ConnectionStatus>(() =>
+    this.realtimeWS.connected() ? 'connected' : 'disconnected',
+  );
 
   // Event subjects
   private readonly _events$ = new Subject<ChatEvent>();
@@ -37,38 +36,62 @@ export class RealtimeService {
   readonly typing$ = this._typing$.asObservable();
 
   constructor() {
-    this.destroyRef.onDestroy(() => {
-      this.disconnect();
+    if (isPlatformBrowser(this.platformId)) {
+      this.setupEventListeners();
+    }
+  }
+
+  /**
+   * Setup listeners for chat events from the unified WebSocket
+   */
+  private setupEventListeners(): void {
+    // Listen for 'connected' event to get subscribed tags
+    this.realtimeWS
+      .on('connected')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((event) => {
+        this._subscribedTags.set(event.subscribedTags || []);
+      });
+
+    // Listen for chat events from RealtimeWSService
+    this.realtimeWS.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+      // Chat events come through the unified stream with type matching chat event patterns
+      if ('action' in event) {
+        const chatEvent = event as unknown as ChatEvent;
+
+        // Handle typing events separately
+        if (chatEvent.action === 'typing' && chatEvent.data) {
+          this._typing$.next(chatEvent.data as TypingEvent);
+          return;
+        }
+
+        this._events$.next(chatEvent);
+      }
     });
   }
 
   /**
    * Connect to realtime server via WebSocket
+   * Delegates to RealtimeWSService
    */
-  async connect(): Promise<void> {
-    if (!isPlatformBrowser(this.platformId)) {
-      return;
-    }
-
-    await this.connectWebSocket();
+  connect(): void {
+    // Connection is managed by RealtimeWSService
+    // This is called for compatibility but actual connection happens via HomeComponent
   }
 
   /**
    * Disconnect from realtime server
+   * Delegates to RealtimeWSService
    */
   disconnect(): void {
-    this.disconnectWebSocket();
+    // Disconnection is managed by RealtimeWSService
   }
 
   /**
    * Send typing indicator
    */
   sendTyping(tagId: string, isTyping: boolean = true): void {
-    this.sendWs({
-      type: 'typing',
-      tagId,
-      isTyping,
-    });
+    this.realtimeWS.sendTyping(tagId, isTyping);
   }
 
   /**
@@ -76,7 +99,7 @@ export class RealtimeService {
    */
   subscribe(tagId: string): void {
     if (!this._subscribedTags().includes(tagId)) {
-      this.sendWs({ type: 'subscribe', tagId });
+      this.realtimeWS.subscribeTag(tagId);
     }
   }
 
@@ -84,7 +107,7 @@ export class RealtimeService {
    * Unsubscribe from a tag's chat
    */
   unsubscribe(tagId: string): void {
-    this.sendWs({ type: 'unsubscribe', tagId });
+    this.realtimeWS.unsubscribeTag(tagId);
   }
 
   /**
@@ -99,170 +122,5 @@ export class RealtimeService {
    */
   typingForTag(tagId: string): Observable<TypingEvent> {
     return this.typing$.pipe(filter((event) => event.tagId === tagId));
-  }
-
-  // ============ WebSocket Implementation ============
-
-  private async connectWebSocket(): Promise<void> {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      console.log('[RealtimeService] WebSocket already connected, skipping');
-      return;
-    }
-
-    const token = this.authService.accessToken();
-    if (!token) {
-      console.warn('[RealtimeService] No auth token available, cannot connect WebSocket');
-      return;
-    }
-
-    console.log('[RealtimeService] Connecting WebSocket with token...');
-    this._status.set('connecting');
-
-    try {
-      const wsUrl = this.getWebSocketUrl();
-      console.log('[RealtimeService] WebSocket URL:', wsUrl);
-      // Pass token via Sec-WebSocket-Protocol header (secure, not in URL)
-      this.ws = new WebSocket(wsUrl, [token]);
-
-      this.ws.onopen = () => {
-        this.ngZone.run(() => {
-          console.log('[RealtimeService] WebSocket connected');
-          this._status.set('connected');
-          this.reconnectAttempts = 0;
-          this.startPingInterval();
-        });
-      };
-
-      this.ws.onmessage = (event) => {
-        this.ngZone.run(() => {
-          try {
-            const data = JSON.parse(event.data);
-            this.handleWsMessage(data);
-          } catch {
-            // Ignore malformed messages
-          }
-        });
-      };
-
-      this.ws.onclose = (event) => {
-        this.ngZone.run(() => {
-          console.log(
-            '[RealtimeService] WebSocket closed:',
-            event.code,
-            event.reason,
-            'wasClean:',
-            event.wasClean,
-          );
-          this.stopPingInterval();
-          this._status.set('disconnected');
-
-          if (!event.wasClean && this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.scheduleReconnect();
-          }
-        });
-      };
-
-      this.ws.onerror = (err) => {
-        console.error('[RealtimeService] WebSocket error:', err);
-        // Error handled by onclose
-      };
-    } catch {
-      this._status.set('disconnected');
-      this.scheduleReconnect();
-    }
-  }
-
-  private disconnectWebSocket(): void {
-    this.stopPingInterval();
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
-
-    if (this.ws) {
-      this.ws.close(1000, 'Client disconnect');
-      this.ws = null;
-    }
-
-    this._status.set('disconnected');
-    this._subscribedTags.set([]);
-  }
-
-  private getWebSocketUrl(): string {
-    // Use environment.wsUrl if configured, otherwise use relative URL (same origin)
-    if (environment.wsUrl) {
-      return `${environment.wsUrl}/ws/chat`;
-    }
-
-    // Fallback: construct from window.location (dev/self-hosted)
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    return `${protocol}//${host}/ws/chat`;
-  }
-
-  private handleWsMessage(data: unknown): void {
-    if (!data || typeof data !== 'object') return;
-
-    const msg = data as Record<string, unknown>;
-
-    // Handle connection confirmation
-    if (msg['type'] === 'connected') {
-      const subscribedTags = (msg['subscribedTags'] as string[]) || [];
-      console.log('[RealtimeService] Connected, subscribed to tags:', subscribedTags);
-      this._subscribedTags.set(subscribedTags);
-      return;
-    }
-
-    // Handle pong
-    if (msg['type'] === 'pong') {
-      return;
-    }
-
-    // Handle chat events
-    if (msg['action']) {
-      const event = msg as unknown as ChatEvent;
-      console.log('[RealtimeService] Received event:', event.action, 'for tag:', event.tagId);
-
-      // Handle typing events separately
-      if (event.action === 'typing' && event.data) {
-        this._typing$.next(event.data as TypingEvent);
-        return;
-      }
-
-      this._events$.next(event);
-    }
-  }
-
-  private sendWs(data: Record<string, unknown>): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
-    }
-  }
-
-  private scheduleReconnect(): void {
-    if (this.reconnectTimeout) return;
-
-    this.reconnectAttempts++;
-    this._status.set('reconnecting');
-
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000);
-
-    this.reconnectTimeout = setTimeout(() => {
-      this.reconnectTimeout = null;
-      this.connect();
-    }, delay);
-  }
-
-  private startPingInterval(): void {
-    this.pingInterval = setInterval(() => {
-      this.sendWs({ type: 'ping' });
-    }, 30000);
-  }
-
-  private stopPingInterval(): void {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
   }
 }

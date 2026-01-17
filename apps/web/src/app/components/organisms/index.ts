@@ -1,5 +1,4 @@
 export { SidebarComponent } from './sidebar/sidebar.component';
-export { NoteEditorComponent } from './note-editor/note-editor.component';
 export { NotebookEditorComponent } from './notebook-editor/notebook-editor.component';
 export { ChatComponent } from './chat/chat.component';
 export { PaperListComponent } from './paper-list/paper-list.component';

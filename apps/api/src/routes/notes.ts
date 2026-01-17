@@ -14,8 +14,7 @@ import {
     findNoteByDocumentId,
 } from '../repositories/note.repo';
 import { otService } from '../services/ot.service';
-import { automergeService } from '../services/automerge.service';
-import { eventStreamService } from '../services/event-stream.service';
+import { realtimeWSService } from '../services/realtime-ws.service';
 import { getUsersWithTagAccess } from '../repositories/tag.repo';
 
 export const noteRoutes = new Elysia({ prefix: '/api/notes' })
@@ -76,21 +75,6 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
                 return { error: 'Note not found' };
             }
 
-            // Initialize Automerge document if it doesn't exist (write notes only)
-            // This ensures all clients get the same document URL
-            if (note.type === 'write' && !note.automergeDoc) {
-                console.log(`[Note Route] Initializing Automerge document for note ${params.id}`);
-                try {
-                    // This will create and save the document to DB
-                    await automergeService.getDocument(params.id);
-                    // Reload note to get the automergeDoc field
-                    const updatedNote = await findNoteByDocumentId(params.id, auth.user._id);
-                    return { note: updatedNote };
-                } catch (error) {
-                    console.error('[Note Route] Failed to initialize Automerge document:', error);
-                }
-            }
-
             return { note };
         },
         {
@@ -115,7 +99,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
 
                 // Send SSE event to all users with access to this tag
                 const recipientUserIds = await getUsersWithTagAccess(note.tagId);
-                eventStreamService.sendToUsers(recipientUserIds, {
+                realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'note.created',
                     note,
                     tagId: note.tagId,
@@ -160,7 +144,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             // Send SSE event for title updates (real-time sidebar updates)
             if (note.tagId && body.title !== undefined) {
                 const recipientUserIds = await getUsersWithTagAccess(note.tagId);
-                eventStreamService.sendToUsers(recipientUserIds, {
+                realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'note.updated',
                     noteId: note.documentId,
                     title: body.title,
@@ -204,7 +188,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             // Send SSE event for note trashed
             if (note.tagId) {
                 const recipientUserIds = await getUsersWithTagAccess(note.tagId);
-                eventStreamService.sendToUsers(recipientUserIds, {
+                realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'note.trashed',
                     noteId: note.documentId,
                     tagId: note.tagId,
@@ -237,7 +221,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             // Send SSE event for note restored
             if (note.tagId) {
                 const recipientUserIds = await getUsersWithTagAccess(note.tagId);
-                eventStreamService.sendToUsers(recipientUserIds, {
+                realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'note.restored',
                     note,
                     tagId: note.tagId,
@@ -278,7 +262,7 @@ export const noteRoutes = new Elysia({ prefix: '/api/notes' })
             // Send SSE event for note deleted
             if (note.tagId) {
                 const recipientUserIds = await getUsersWithTagAccess(note.tagId);
-                eventStreamService.sendToUsers(recipientUserIds, {
+                realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'note.deleted',
                     noteId: note.documentId,
                     tagId: note.tagId,

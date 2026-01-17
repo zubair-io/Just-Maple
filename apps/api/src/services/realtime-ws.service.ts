@@ -1,0 +1,456 @@
+import type { Note, Tag, Paper, NotebookSSEEvent } from '@maple/shared';
+
+/**
+ * App Events - CRUD operations on notes, tags, papers
+ */
+export type AppEvent =
+    | { type: 'note.created'; note: Note; tagId?: string }
+    | { type: 'note.updated'; noteId: string; title?: string; updatedAt: string; tagId?: string }
+    | { type: 'note.deleted'; noteId: string; tagId?: string }
+    | { type: 'note.trashed'; noteId: string; tagId?: string }
+    | { type: 'note.restored'; note: Note; tagId?: string }
+    | { type: 'tag.created'; tag: Tag }
+    | { type: 'tag.updated'; tagId: string; label?: string }
+    | { type: 'tag.deleted'; tagId: string }
+    | { type: 'paper.created'; paper: Paper; tagId: string }
+    | { type: 'paper.updated'; paper: Paper; tagId: string }
+    | { type: 'paper.deleted'; paperId: string; tagId: string };
+
+/**
+ * Notebook client info (for Y.Doc collaboration)
+ */
+interface NotebookClient {
+    ws: WebSocket;
+    userId: string;
+    userName: string;
+    userColor: string;
+    connectedAt: Date;
+}
+
+/**
+ * Connection info for a user
+ */
+interface UserConnection {
+    ws: WebSocket;
+    subscribedNotebooks: Set<string>;
+    subscribedTags: Set<string>;
+}
+
+/**
+ * Realtime WebSocket Service
+ * Unified connection management for:
+ * - App events (notes/tags/papers CRUD) - broadcast to user connections
+ * - Notebook Y.Doc sync - room-based for collaborative editing
+ */
+class RealtimeWSService {
+    // User connections: userId -> Set of connections
+    private userConnections = new Map<string, Set<UserConnection>>();
+
+    // Notebook rooms: noteId -> clientId -> client info
+    private notebookRooms = new Map<string, Map<string, NotebookClient>>();
+
+    // Keepalive interval
+    private readonly KEEPALIVE_INTERVAL = 30000;
+    private keepaliveTimer: Timer;
+
+    constructor() {
+        // Start keepalive pings
+        this.keepaliveTimer = setInterval(() => {
+            this.sendKeepalives();
+        }, this.KEEPALIVE_INTERVAL);
+    }
+
+    // ==================== User Connection Management ====================
+
+    /**
+     * Register a new WebSocket connection for a user
+     */
+    registerConnection(userId: string, ws: WebSocket, subscribedTags?: string[]): UserConnection {
+        if (!this.userConnections.has(userId)) {
+            this.userConnections.set(userId, new Set());
+        }
+
+        const connection: UserConnection = {
+            ws,
+            subscribedNotebooks: new Set(),
+            subscribedTags: new Set(subscribedTags || []),
+        };
+
+        this.userConnections.get(userId)!.add(connection);
+
+        return connection;
+    }
+
+    /**
+     * Unregister a user connection
+     */
+    unregisterConnection(userId: string, connection: UserConnection): void {
+        const connections = this.userConnections.get(userId);
+        if (!connections) return;
+
+        // Leave all subscribed notebooks
+        for (const noteId of connection.subscribedNotebooks) {
+            this.leaveNotebook(noteId, connection.ws);
+        }
+
+        connections.delete(connection);
+
+        if (connections.size === 0) {
+            this.userConnections.delete(userId);
+        }
+    }
+
+    // ==================== App Event Broadcasting ====================
+
+    /**
+     * Send app event to a specific user (all their connections)
+     */
+    sendToUser(userId: string, event: AppEvent): void {
+        const connections = this.userConnections.get(userId);
+        if (!connections || connections.size === 0) return;
+
+        const message = JSON.stringify({ channel: 'app', event });
+
+        for (const conn of connections) {
+            this.safeSend(conn.ws, message);
+        }
+    }
+
+    /**
+     * Send app event to multiple users
+     */
+    sendToUsers(userIds: string[], event: AppEvent): void {
+        for (const userId of userIds) {
+            this.sendToUser(userId, event);
+        }
+    }
+
+    /**
+     * Broadcast app event to all connected users
+     */
+    broadcastAppEvent(event: AppEvent): void {
+        const userIds = Array.from(this.userConnections.keys());
+        this.sendToUsers(userIds, event);
+    }
+
+    // ==================== Notebook Room Management ====================
+
+    /**
+     * Join a notebook room for Y.Doc collaboration
+     */
+    joinNotebook(
+        noteId: string,
+        clientId: string,
+        ws: WebSocket,
+        userInfo: { userId: string; userName: string; userColor: string },
+    ): void {
+        // Get or create room
+        if (!this.notebookRooms.has(noteId)) {
+            this.notebookRooms.set(noteId, new Map());
+        }
+
+        const room = this.notebookRooms.get(noteId)!;
+
+        // Add client to room
+        room.set(clientId, {
+            ws,
+            userId: userInfo.userId,
+            userName: userInfo.userName,
+            userColor: userInfo.userColor,
+            connectedAt: new Date(),
+        });
+
+        // Notify other clients about new peer
+        this.broadcastToNotebookPeers(
+            noteId,
+            {
+                type: 'peer-join',
+                data: {
+                    clientId,
+                    userId: userInfo.userId,
+                    userName: userInfo.userName,
+                    userColor: userInfo.userColor,
+                },
+                timestamp: new Date().toISOString(),
+            },
+            clientId,
+        );
+
+        // Track subscription in user connection
+        const userId = userInfo.userId;
+        const connections = this.userConnections.get(userId);
+        if (connections) {
+            for (const conn of connections) {
+                if (conn.ws === ws) {
+                    conn.subscribedNotebooks.add(noteId);
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Leave a notebook room
+     */
+    leaveNotebook(noteId: string, ws: WebSocket): void {
+        const room = this.notebookRooms.get(noteId);
+        if (!room) return;
+
+        // Find client by WebSocket
+        let clientId: string | null = null;
+        for (const [cid, client] of room) {
+            if (client.ws === ws) {
+                clientId = cid;
+                break;
+            }
+        }
+
+        if (!clientId) return;
+
+        room.delete(clientId);
+
+        // Notify other clients about peer leaving
+        this.broadcastToNotebookPeers(
+            noteId,
+            {
+                type: 'peer-leave',
+                data: { clientId },
+                timestamp: new Date().toISOString(),
+            },
+            clientId,
+        );
+
+        // Clean up empty room
+        if (room.size === 0) {
+            this.notebookRooms.delete(noteId);
+        }
+    }
+
+    /**
+     * Send initial document state to a newly connected client
+     */
+    sendInitialState(noteId: string, clientId: string, state: Uint8Array, version: number): void {
+        const room = this.notebookRooms.get(noteId);
+        if (!room) return;
+
+        const client = room.get(clientId);
+        if (!client) return;
+
+        const event: NotebookSSEEvent = {
+            type: 'ydoc-init',
+            data: {
+                state: Buffer.from(state).toString('base64'),
+                version,
+                peers: this.getRoomPeers(noteId, clientId),
+            },
+            timestamp: new Date().toISOString(),
+        };
+
+        this.sendNotebookEvent(client.ws, noteId, event);
+    }
+
+    /**
+     * Broadcast Y.Doc update to all clients in a notebook room except sender
+     */
+    broadcastUpdate(noteId: string, update: Uint8Array, excludeClientId: string): void {
+        const event: NotebookSSEEvent = {
+            type: 'ydoc-update',
+            data: {
+                update: Buffer.from(update).toString('base64'),
+                from: excludeClientId,
+            },
+            timestamp: new Date().toISOString(),
+        };
+
+        this.broadcastToNotebookPeers(noteId, event, excludeClientId);
+    }
+
+    /**
+     * Broadcast awareness update to all clients in a notebook room except sender
+     * Awareness updates contain cursor positions, selections, user presence, etc.
+     */
+    broadcastAwareness(noteId: string, update: Uint8Array, excludeClientId: string): void {
+        const event: NotebookSSEEvent = {
+            type: 'awareness-update',
+            data: {
+                update: Buffer.from(update).toString('base64'),
+                from: excludeClientId,
+            },
+            timestamp: new Date().toISOString(),
+        };
+
+        this.broadcastToNotebookPeers(noteId, event, excludeClientId);
+    }
+
+    /**
+     * Get list of peers in a notebook room
+     */
+    private getRoomPeers(
+        noteId: string,
+        excludeClientId: string,
+    ): Array<{
+        clientId: string;
+        userId: string;
+        userName: string;
+        userColor: string;
+    }> {
+        const room = this.notebookRooms.get(noteId);
+        if (!room) return [];
+
+        const peers: Array<{
+            clientId: string;
+            userId: string;
+            userName: string;
+            userColor: string;
+        }> = [];
+
+        for (const [clientId, client] of room) {
+            if (clientId !== excludeClientId) {
+                peers.push({
+                    clientId,
+                    userId: client.userId,
+                    userName: client.userName,
+                    userColor: client.userColor,
+                });
+            }
+        }
+
+        return peers;
+    }
+
+    /**
+     * Broadcast notebook event to all peers except one
+     */
+    private broadcastToNotebookPeers(
+        noteId: string,
+        event: NotebookSSEEvent,
+        excludeClientId: string,
+    ): void {
+        const room = this.notebookRooms.get(noteId);
+        if (!room) return;
+
+        for (const [clientId, client] of room) {
+            if (clientId !== excludeClientId) {
+                this.sendNotebookEvent(client.ws, noteId, event);
+            }
+        }
+    }
+
+    /**
+     * Send notebook event to a specific WebSocket
+     */
+    private sendNotebookEvent(ws: WebSocket, noteId: string, event: NotebookSSEEvent): void {
+        const message = JSON.stringify({ channel: 'notebook', noteId, event });
+        this.safeSend(ws, message);
+    }
+
+    // ==================== Utility Methods ====================
+
+    /**
+     * Safe send to WebSocket
+     */
+    private safeSend(ws: WebSocket, message: string): boolean {
+        try {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(message);
+                return true;
+            }
+        } catch {
+            // Connection might be closed
+        }
+        return false;
+    }
+
+    /**
+     * Send keepalive pings to all connections
+     */
+    private sendKeepalives(): void {
+        const pingMessage = JSON.stringify({ channel: 'system', event: { type: 'ping' } });
+
+        for (const connections of this.userConnections.values()) {
+            for (const conn of connections) {
+                this.safeSend(conn.ws, pingMessage);
+            }
+        }
+    }
+
+    /**
+     * Get client count in a notebook room
+     */
+    getNotebookClientCount(noteId: string): number {
+        return this.notebookRooms.get(noteId)?.size ?? 0;
+    }
+
+    /**
+     * Get client IDs in a notebook room
+     */
+    getNotebookClientIds(noteId: string): string[] {
+        const room = this.notebookRooms.get(noteId);
+        if (!room) return [];
+        return Array.from(room.keys());
+    }
+
+    /**
+     * Check if client is in a notebook room
+     */
+    isClientInNotebook(noteId: string, clientId: string): boolean {
+        return this.notebookRooms.get(noteId)?.has(clientId) ?? false;
+    }
+
+    /**
+     * Get all connections for chat broadcasting
+     * Returns a map of userId -> connections with their tag subscriptions
+     */
+    getAllConnections(): Map<string, Set<UserConnection>> {
+        return this.userConnections;
+    }
+
+    /**
+     * Get statistics
+     */
+    getStats(): {
+        totalUsers: number;
+        totalConnections: number;
+        totalNotebookRooms: number;
+        notebookRoomStats: Array<{ noteId: string; clients: number }>;
+    } {
+        let totalConnections = 0;
+        for (const connections of this.userConnections.values()) {
+            totalConnections += connections.size;
+        }
+
+        const notebookRoomStats: Array<{ noteId: string; clients: number }> = [];
+        for (const [noteId, room] of this.notebookRooms) {
+            notebookRoomStats.push({ noteId, clients: room.size });
+        }
+
+        return {
+            totalUsers: this.userConnections.size,
+            totalConnections,
+            totalNotebookRooms: this.notebookRooms.size,
+            notebookRoomStats,
+        };
+    }
+
+    /**
+     * Shutdown service
+     */
+    shutdown(): void {
+        clearInterval(this.keepaliveTimer);
+
+        // Close all connections
+        for (const connections of this.userConnections.values()) {
+            for (const conn of connections) {
+                try {
+                    conn.ws.close(1001, 'Server shutting down');
+                } catch {}
+            }
+        }
+
+        this.userConnections.clear();
+        this.notebookRooms.clear();
+    }
+}
+
+// Singleton instance
+export const realtimeWSService = new RealtimeWSService();

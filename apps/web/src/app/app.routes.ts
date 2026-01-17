@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { AuthGuard, PublicGuard } from './guards/auth.guard';
-import { WriteNoteGuard, LegoNoteGuard, NotebookNoteGuard } from './guards/note-type.guard';
+import { LegoNoteGuard, NotebookNoteGuard } from './guards/note-type.guard';
 
 export const routes: Routes = [
   // Settings route - must come before the home route
@@ -70,19 +70,12 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/lego-view/lego-view.component').then((m) => m.LegoViewComponent),
           },
-          // Notebook-type note - shows collaborative notebook editor
+          // Notebook-type note - shows collaborative notebook editor (default for notes)
           {
             path: ':documentId',
             canMatch: [NotebookNoteGuard],
             loadComponent: () =>
               import('./pages/notebook/notebook.component').then((m) => m.NotebookComponent),
-          },
-          // Write-type note (default) - shows note editor
-          {
-            path: ':documentId',
-            canMatch: [WriteNoteGuard],
-            loadComponent: () =>
-              import('./pages/write/write.component').then((m) => m.WriteComponent),
           },
         ],
       },

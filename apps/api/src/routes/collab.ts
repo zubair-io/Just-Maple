@@ -4,7 +4,6 @@ import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
 import { findNoteById } from '../repositories/note.repo';
 import { otService } from '../services/ot.service';
-import { automergeService } from '../services/automerge.service';
 import { generateClientID } from '../utils/client-id';
 import type { JWTPayload, CollabStepsRequest, CollabBatchRequest } from '@maple/shared';
 
@@ -144,49 +143,6 @@ export const collabRoutes = new Elysia({ prefix: '/api/collab' })
                     { minItems: 1, maxItems: 100 }, // Limit batch size to prevent DoS
                 ),
                 doc: t.Any(),
-                clientID: t.Optional(t.String()),
-            }),
-        },
-    )
-    .post(
-        '/:noteId/automerge-sync',
-        async ({ auth, params, body, set }) => {
-            if (!auth) {
-                set.status = 401;
-                return { error: 'Unauthorized' };
-            }
-
-            const { noteId } = params;
-            const { syncMessage, clientID: providedClientID } = body;
-
-            // Verify access
-            const note = await findNoteById(noteId, auth.user._id);
-            if (!note) {
-                set.status = 404;
-                return { error: 'Note not found' };
-            }
-
-            // Use clientID from request or generate fallback
-            const clientID = providedClientID || generateClientID(auth.user._id, 'automerge');
-
-            // Convert base64 to binary
-            const binaryMessage = Buffer.from(syncMessage, 'base64');
-
-            // Process sync message
-            const responseMessage = await automergeService.receiveSyncMessage(
-                noteId,
-                clientID,
-                binaryMessage,
-            );
-
-            // Return response
-            return {
-                syncMessage: Buffer.from(responseMessage).toString('base64'),
-            };
-        },
-        {
-            body: t.Object({
-                syncMessage: t.String(),
                 clientID: t.Optional(t.String()),
             }),
         },

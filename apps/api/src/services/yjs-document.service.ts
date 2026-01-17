@@ -5,7 +5,7 @@ import {
     getNotebookState,
     notebookExists,
 } from '../repositories/notebook.repo';
-import { yjsSSEService } from './yjs-sse.service';
+import { realtimeWSService } from './realtime-ws.service';
 
 /**
  * YJS Document Manager Service
@@ -87,8 +87,8 @@ class YJSDocumentService {
         // Apply update with client ID as origin
         Y.applyUpdate(ydoc, update, clientId);
 
-        // Broadcast to other clients (SSE service handles this)
-        yjsSSEService.broadcastUpdate(noteId, update, clientId);
+        // Note: Broadcasting to other clients is now handled by the caller (realtime.ws.ts)
+        // The realtimeWSService.broadcastUpdate() should be called after this
     }
 
     /**
@@ -259,7 +259,7 @@ class YJSDocumentService {
         for (const [noteId, lastActive] of this.lastActivity) {
             // Check if document is idle and has no connected clients
             if (now - lastActive > this.IDLE_TIMEOUT) {
-                const clientCount = yjsSSEService.getClientCount(noteId);
+                const clientCount = realtimeWSService.getNotebookClientCount(noteId);
                 if (clientCount === 0) {
                     console.log(`[YJS] Unloading idle document: ${noteId}`);
                     this.unloadDocument(noteId).catch(console.error);

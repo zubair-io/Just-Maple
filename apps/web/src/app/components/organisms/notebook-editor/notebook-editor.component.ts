@@ -112,8 +112,6 @@ export class NotebookEditorComponent implements OnDestroy {
     this.error.set(null);
 
     try {
-      console.log('[NotebookEditor] Initializing editor for', noteId);
-
       // Open document via service (handles offline-first loading)
       const { ydoc, awareness } = await this.notebookService.openDocument(noteId);
       this.ydoc = ydoc;
@@ -121,7 +119,6 @@ export class NotebookEditorComponent implements OnDestroy {
 
       // Wait for editor element
       if (!this.editorRef?.nativeElement) {
-        console.error('[NotebookEditor] Editor element not ready');
         return;
       }
 
@@ -233,9 +230,7 @@ export class NotebookEditorComponent implements OnDestroy {
       this.lastSyncedTitle = this.extractFirstHeadingText(this._editor)?.trim() || '';
 
       this.isReady.set(true);
-      console.log('[NotebookEditor] Editor initialized successfully');
-    } catch (err) {
-      console.error('[NotebookEditor] Failed to initialize:', err);
+    } catch {
       this.error.set('Failed to load notebook');
     }
   }
@@ -257,10 +252,7 @@ export class NotebookEditorComponent implements OnDestroy {
       this.titleUpdateTimeout = setTimeout(() => {
         this.lastSyncedTitle = title;
         const noteId = this.noteId();
-        console.log(`[NotebookEditor] Syncing title: "${title}" for ${noteId}`);
-        this.noteService.updateNote(noteId, { title }).subscribe({
-          error: (err) => console.error('[NotebookEditor] Failed to sync title:', err),
-        });
+        this.noteService.updateNote(noteId, { title }).subscribe();
       }, 500);
     }
   }

@@ -7,7 +7,7 @@
     "dev": "bun run --watch src/index.ts",
     "dev:e2e": "bun run --watch src/index-e2e.ts",
     "start": "bun run --watch src/index.ts",
-    "build": "bun run --cwd ../../packages/shared build && bun build src/index.ts --outdir dist --target bun --external @automerge/automerge",
+    "build": "bun run --cwd ../../packages/shared build && bun build src/index.ts --outdir dist --target bun",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "migrate:gravatar": "bun run scripts/migrate-gravatar-profiles.ts"
@@ -15,7 +15,6 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@anthropic-ai/sdk": "^0.71.2",
-    "@automerge/automerge": "^3.2.1",
     "@azure/communication-email": "^1.1.0",
     "@azure/storage-blob": "^12.29.1",
     "@elysiajs/cors": "^1.2.0",

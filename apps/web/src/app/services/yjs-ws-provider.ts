@@ -1,0 +1,246 @@
+import * as Y from 'yjs';
+import { signal } from '@angular/core';
+import { customAlphabet } from 'nanoid';
+import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate } from 'y-protocols/awareness';
+import type { NotebookSSEEvent } from '@maple/shared';
+import type { RealtimeWSService } from './realtime-ws.service';
+
+// Generate client IDs using nanoid
+const generateClientId = customAlphabet(
+  '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+  21,
+);
+
+/**
+ * Y.js WebSocket Provider
+ * Syncs Y.Doc with server via unified WebSocket connection
+ * Handles document updates and peer awareness
+ */
+export class YJSWSProvider {
+  private readonly _clientId: string;
+  private unsubscribeHandler: (() => void) | null = null;
+  private awarenessUpdateHandler: ((changes: any) => void) | null = null;
+
+  // Reactive state
+  readonly connected = signal(false);
+  readonly synced = signal(false);
+  readonly error = signal<string | null>(null);
+
+  // Connection event handlers
+  onConnected?: () => void;
+  onSynced?: (synced: boolean) => void;
+
+  // Peer event handlers
+  onPeerJoin?: (peer: {
+    clientId: string;
+    userId: string;
+    userName: string;
+    userColor: string;
+  }) => void;
+  onPeerLeave?: (clientId: string) => void;
+
+  constructor(
+    private readonly noteId: string,
+    private readonly ydoc: Y.Doc,
+    private readonly realtimeWS: RealtimeWSService,
+    private readonly awareness?: Awareness,
+  ) {
+    this._clientId = generateClientId();
+
+    // Listen for local Y.Doc changes
+    this.ydoc.on('update', this.handleLocalUpdate.bind(this));
+
+    // Listen for local awareness changes
+    if (this.awareness) {
+      this.awarenessUpdateHandler = ({ added, updated, removed }: any) => {
+        const changedClients = added.concat(updated).concat(removed);
+        this.handleLocalAwarenessUpdate(changedClients);
+      };
+      this.awareness.on('update', this.awarenessUpdateHandler);
+    }
+  }
+
+  get clientId(): string {
+    return this._clientId;
+  }
+
+  /**
+   * Connect to notebook room via WebSocket
+   */
+  connect(): void {
+    // Register event handler for this notebook
+    this.realtimeWS.onNotebookEvent(this.noteId, this.handleEvent.bind(this));
+
+    // Join the notebook room
+    this.realtimeWS.joinNotebook(this.noteId, this._clientId);
+
+    // Track connection state based on realtimeWS
+    // Note: The actual connected state depends on the WebSocket connection
+    // and whether we've successfully joined the room
+    this.connected.set(this.realtimeWS.isConnected());
+
+    if (this.realtimeWS.isConnected()) {
+      this.onConnected?.();
+    }
+  }
+
+  /**
+   * Disconnect from notebook room
+   */
+  disconnect(): void {
+    this.realtimeWS.leaveNotebook(this.noteId);
+    this.connected.set(false);
+    this.synced.set(false);
+    this.onSynced?.(false);
+  }
+
+  /**
+   * Handle incoming notebook event
+   */
+  private handleEvent(event: NotebookSSEEvent): void {
+    switch (event.type) {
+      case 'ydoc-init':
+        this.handleInit(event.data);
+        break;
+      case 'ydoc-update':
+        this.handleRemoteUpdate(event.data);
+        break;
+      case 'awareness-update':
+        this.handleRemoteAwarenessUpdate(event.data);
+        break;
+      case 'peer-join':
+        this.onPeerJoin?.(event.data);
+        break;
+      case 'peer-leave':
+        this.onPeerLeave?.(event.data.clientId);
+        break;
+      case 'ping':
+        // Keepalive, no action needed
+        break;
+    }
+  }
+
+  /**
+   * Handle initial document state from server
+   */
+  private handleInit(data: { state: string; version: number; peers: any[] }): void {
+    try {
+      const state = this.base64ToUint8Array(data.state);
+      Y.applyUpdate(this.ydoc, state, 'remote');
+      this.connected.set(true);
+      this.synced.set(true);
+      this.onConnected?.();
+      this.onSynced?.(true);
+
+      // Notify about existing peers
+      for (const peer of data.peers || []) {
+        this.onPeerJoin?.(peer);
+      }
+
+      // Send initial awareness state after sync
+      this.sendInitialAwareness();
+    } catch {
+      this.error.set('Failed to load document');
+    }
+  }
+
+  /**
+   * Send initial awareness state to other peers
+   */
+  private sendInitialAwareness(): void {
+    if (!this.awareness) return;
+
+    const localClientId = this.awareness.clientID;
+    const update = encodeAwarenessUpdate(this.awareness, [localClientId]);
+    this.realtimeWS.sendAwarenessUpdate(this.noteId, update);
+  }
+
+  /**
+   * Handle remote document update
+   */
+  private handleRemoteUpdate(data: { update: string; from: string }): void {
+    try {
+      const update = this.base64ToUint8Array(data.update);
+      Y.applyUpdate(this.ydoc, update, 'remote');
+    } catch {
+      // Failed to apply remote update
+    }
+  }
+
+  /**
+   * Handle local Y.Doc update
+   */
+  private handleLocalUpdate(update: Uint8Array, origin: any): void {
+    // Don't send back remote updates
+    if (origin === 'remote') return;
+
+    // Only send if connected and synced
+    if (!this.connected() || !this.synced()) {
+      return;
+    }
+
+    // Send update via WebSocket
+    this.realtimeWS.sendNotebookUpdate(this.noteId, update);
+  }
+
+  /**
+   * Handle local awareness update (cursor moved, selection changed, etc.)
+   */
+  private handleLocalAwarenessUpdate(changedClients: number[]): void {
+    if (!this.awareness || !this.connected() || !this.synced()) {
+      return;
+    }
+
+    // Only send if local client changed
+    const localClientId = this.awareness.clientID;
+    if (!changedClients.includes(localClientId)) {
+      return;
+    }
+
+    // Encode and send awareness update
+    const update = encodeAwarenessUpdate(this.awareness, [localClientId]);
+    this.realtimeWS.sendAwarenessUpdate(this.noteId, update);
+  }
+
+  /**
+   * Handle remote awareness update from server
+   */
+  private handleRemoteAwarenessUpdate(data: { update: string; from: string }): void {
+    if (!this.awareness) return;
+
+    try {
+      const update = this.base64ToUint8Array(data.update);
+      applyAwarenessUpdate(this.awareness, update, 'remote');
+    } catch {
+      // Failed to apply awareness update
+    }
+  }
+
+  /**
+   * Convert base64 string to Uint8Array
+   */
+  private base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  /**
+   * Destroy provider
+   */
+  destroy(): void {
+    this.disconnect();
+
+    // Remove Y.Doc update listener
+    this.ydoc.off('update', this.handleLocalUpdate.bind(this));
+
+    // Remove awareness listener
+    if (this.awareness && this.awarenessUpdateHandler) {
+      this.awareness.off('update', this.awarenessUpdateHandler);
+      this.awarenessUpdateHandler = null;
+    }
+  }
+}

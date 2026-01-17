@@ -47,6 +47,7 @@ export type RoomState = Static<typeof RoomStateSchema>;
 export const NotebookSSEEventTypeSchema = Type.Union([
     Type.Literal('ydoc-init'), // Initial document state
     Type.Literal('ydoc-update'), // Document update from another client
+    Type.Literal('awareness-update'), // Awareness update (cursors, selections)
     Type.Literal('signal'), // WebRTC signaling message
     Type.Literal('peer-join'), // Peer joined the room
     Type.Literal('peer-leave'), // Peer left the room

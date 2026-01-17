@@ -24,7 +24,7 @@ import {
   getActiveEntity,
 } from '@ngneat/elf-entities';
 import { IndexedDBService } from './indexed-db.service';
-import { EventStreamService, type AppEvent } from './event-stream.service';
+import { RealtimeWSService, type AppEvent } from './realtime-ws.service';
 import { DB_STORES } from './db-stores';
 import type { Paper, CreatePaperInput, UpdatePaperInput, PaperStatus } from '@maple/shared';
 
@@ -41,7 +41,7 @@ export class PaperService {
   private readonly http = inject(HttpClient);
   private readonly indexedDB = inject(IndexedDBService);
   private readonly platformId = inject(PLATFORM_ID);
-  private readonly eventStream = inject(EventStreamService);
+  private readonly realtimeWS = inject(RealtimeWSService);
   private readonly destroyRef = inject(DestroyRef);
 
   // Track last fetch time per tagId for caching
@@ -80,37 +80,37 @@ export class PaperService {
   }
 
   /**
-   * Subscribe to paper events from SSE event stream
+   * Subscribe to paper events from WebSocket event stream
    */
   private subscribeToRealtimeEvents(): void {
-    console.log('[PaperService] Subscribing to SSE paper events');
+    console.log('[PaperService] Subscribing to WebSocket paper events');
 
     // Subscribe to paper.created events
-    this.eventStream
+    this.realtimeWS
       .on('paper.created')
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((event) => {
-        console.log('[PaperService] Received paper.created SSE:', event.paper._id);
+      .subscribe((event: Extract<AppEvent, { type: 'paper.created' }>) => {
+        console.log('[PaperService] Received paper.created WS:', event.paper._id);
         this.store.update(upsertEntities([event.paper]));
         this.persistToIndexedDB([event.paper]);
       });
 
     // Subscribe to paper.updated events
-    this.eventStream
+    this.realtimeWS
       .on('paper.updated')
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((event) => {
-        console.log('[PaperService] Received paper.updated SSE:', event.paper._id);
+      .subscribe((event: Extract<AppEvent, { type: 'paper.updated' }>) => {
+        console.log('[PaperService] Received paper.updated WS:', event.paper._id);
         this.store.update(upsertEntities([event.paper]));
         this.persistToIndexedDB([event.paper]);
       });
 
     // Subscribe to paper.deleted events
-    this.eventStream
+    this.realtimeWS
       .on('paper.deleted')
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((event) => {
-        console.log('[PaperService] Received paper.deleted SSE:', event.paperId);
+      .subscribe((event: Extract<AppEvent, { type: 'paper.deleted' }>) => {
+        console.log('[PaperService] Received paper.deleted WS:', event.paperId);
         this.store.update(deleteEntities(event.paperId));
         if (isPlatformBrowser(this.platformId)) {
           this.indexedDB.delete(event.paperId, STORE_NAME);

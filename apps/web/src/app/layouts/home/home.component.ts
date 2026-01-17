@@ -7,7 +7,7 @@ import { TagService } from '../../services/tag.service';
 import { NoteService } from '../../services/note.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { UiStateService } from '../../services/ui-state.service';
-import { EventStreamService } from '../../services/event-stream.service';
+import { RealtimeWSService } from '../../services/realtime-ws.service';
 import { SidebarComponent } from '../../components';
 
 @Component({
@@ -24,7 +24,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly noteService = inject(NoteService);
   private readonly realtimeService = inject(RealtimeService);
   private readonly uiStateService = inject(UiStateService);
-  private readonly eventStream = inject(EventStreamService);
+  private readonly realtimeWS = inject(RealtimeWSService);
 
   readonly selectedNoteId = signal<string | null>(null);
   readonly selectedTagId = signal<string | null>(null);
@@ -58,12 +58,11 @@ export class HomeComponent implements OnInit, OnDestroy {
     // Wait for auth to be ready before connecting to realtime services
     // This ensures the access token is available
     this.authService.initReady$.subscribe(() => {
-      console.log('[HomeComponent] Auth ready, connecting realtime services');
       // Connect to realtime service
       this.realtimeService.connect();
 
-      // Connect to SSE event stream for real-time updates
-      this.eventStream.connect();
+      // Connect to unified WebSocket for real-time updates
+      this.realtimeWS.connect();
     });
 
     // Sync selected IDs from route
@@ -90,7 +89,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.routerSubscription?.unsubscribe();
     this.resizeSubscription?.unsubscribe();
-    this.eventStream.disconnect();
+    this.realtimeWS.disconnect();
   }
 
   private checkIsMobile(): void {

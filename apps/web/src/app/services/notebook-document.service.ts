@@ -1,5 +1,6 @@
 import { Injectable, inject, signal, effect, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
+import { firstValueFrom } from 'rxjs';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { Awareness } from 'y-protocols/awareness';
@@ -8,10 +9,9 @@ import { AuthService } from './auth.service';
 import { ConnectivityService } from './connectivity.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { NoteService } from './note.service';
-import { YJSSSEProvider } from './yjs-sse-provider';
-import { YJSWebRTCProvider } from './yjs-webrtc-provider';
+import { RealtimeWSService } from './realtime-ws.service';
+import { YJSWSProvider } from './yjs-ws-provider';
 import type { Note, SyncStatus } from '@maple/shared';
-import { environment } from '../../environments/environment';
 
 // Generate document IDs (base58, URL-safe)
 const nanoidBase58 = customAlphabet(
@@ -26,8 +26,7 @@ interface OpenDocument {
   ydoc: Y.Doc;
   awareness: Awareness;
   persistence: IndexeddbPersistence;
-  sseProvider: YJSSSEProvider | null;
-  webrtcProvider: YJSWebRTCProvider | null;
+  wsProvider: YJSWSProvider | null;
 }
 
 /**
@@ -42,6 +41,7 @@ export class NotebookDocumentService {
   private readonly connectivity = inject(ConnectivityService);
   private readonly offlineQueue = inject(OfflineQueueService);
   private readonly noteService = inject(NoteService);
+  private readonly realtimeWS = inject(RealtimeWSService);
 
   private openDocs = new Map<string, OpenDocument>();
 
@@ -55,22 +55,20 @@ export class NotebookDocumentService {
   }
 
   private setupConnectivityListener(): void {
-    // When connectivity changes, connect/disconnect SSE providers
+    // When connectivity changes, connect/disconnect WebSocket providers
     effect(() => {
       const canSync = this.connectivity.canSync();
 
       for (const [noteId, doc] of this.openDocs) {
         if (canSync) {
           // Reconnect if needed
-          if (!doc.sseProvider || !doc.sseProvider.connected()) {
+          if (!doc.wsProvider || !doc.wsProvider.connected()) {
             this.connectProviders(noteId, doc);
           }
         } else {
           // Disconnect when offline
-          doc.sseProvider?.disconnect();
-          doc.webrtcProvider?.destroy();
-          doc.sseProvider = null;
-          doc.webrtcProvider = null;
+          doc.wsProvider?.disconnect();
+          doc.wsProvider = null;
         }
       }
     });
@@ -84,37 +82,29 @@ export class NotebookDocumentService {
     ydoc: Y.Doc;
     awareness: Awareness;
   }> {
-    console.log(`[NotebookDoc] Opening document: ${noteId}`);
-
     // Check if already open
     if (this.openDocs.has(noteId)) {
-      console.log(`[NotebookDoc] Document already open: ${noteId}`);
       const doc = this.openDocs.get(noteId)!;
       return { ydoc: doc.ydoc, awareness: doc.awareness };
     }
 
     // Create Y.Doc
     const ydoc = new Y.Doc();
-    console.log(`[NotebookDoc] Created Y.Doc for: ${noteId}`);
 
     // Create awareness for cursor sync
     const awareness = new Awareness(ydoc);
     this.setupAwareness(awareness);
-    console.log(`[NotebookDoc] Created Awareness for: ${noteId}`);
 
     // Setup local persistence FIRST (offline-first)
-    console.log(`[NotebookDoc] Setting up IndexedDB persistence for: ${noteId}`);
     const persistence = new IndexeddbPersistence(`ydoc-${noteId}`, ydoc);
     await persistence.whenSynced;
-    console.log(`[NotebookDoc] Loaded from IndexedDB: ${noteId}`);
 
     // Store reference
     const doc: OpenDocument = {
       ydoc,
       awareness,
       persistence,
-      sseProvider: null,
-      webrtcProvider: null,
+      wsProvider: null,
     };
     this.openDocs.set(noteId, doc);
 
@@ -124,32 +114,66 @@ export class NotebookDocumentService {
 
     // Connect to server if online (don't block on this - can work offline)
     if (this.connectivity.canSync()) {
-      // Connect providers in background - don't fail document loading if SSE fails
-      this.connectProviders(noteId, doc).catch(async (err) => {
-        console.warn(`[NotebookDoc] Failed to connect providers (will work offline):`, err);
-
-        // If document is empty and SSE failed, try to fetch initial state via REST API
-        if (isDocEmpty) {
-          await this.fetchInitialState(noteId, ydoc);
-        }
-      });
-
-      // Also fetch initial state if doc is empty (in case SSE takes too long)
-      if (isDocEmpty) {
-        // Give SSE a short time to connect, then fallback to REST
-        setTimeout(async () => {
-          const docState = this.openDocs.get(noteId);
-          if (docState && !docState.sseProvider?.synced()) {
-            await this.fetchInitialState(noteId, ydoc);
-          }
-        }, 2000);
-      }
-    } else if (isDocEmpty) {
-      // Offline and empty - nothing we can do, will sync when online
-      console.warn(`[NotebookDoc] Document is empty and offline, will sync when connected`);
+      // Start sync process after auth is ready
+      this.syncDocument(noteId, doc, ydoc, isDocEmpty);
     }
 
     return { ydoc, awareness };
+  }
+
+  /**
+   * Sync document with server
+   * Tries both WebSocket and REST API in parallel for faster sync
+   */
+  private async syncDocument(
+    noteId: string,
+    doc: OpenDocument,
+    ydoc: Y.Doc,
+    isDocEmpty: boolean,
+  ): Promise<void> {
+    // Wait for auth to be ready first
+    await this.waitForAuth();
+
+    // Track if we've already synced (to avoid applying state twice)
+    let hasSynced = false;
+
+    // Strategy: Try both REST and WebSocket in parallel
+    // Whichever syncs first wins
+
+    // 1. If document is empty, immediately try REST API (faster initial load)
+    if (isDocEmpty) {
+      this.fetchInitialState(noteId, ydoc)
+        .then(() => {
+          if (!hasSynced) {
+            hasSynced = true;
+          }
+        })
+        .catch(() => {
+          // REST sync failed, will rely on WebSocket
+        });
+    }
+
+    // 2. Also connect WebSocket provider (for real-time updates)
+    try {
+      await this.connectProviders(noteId, doc);
+
+      // If WS connected and synced, mark as synced
+      if (doc.wsProvider?.synced()) {
+        if (!hasSynced) {
+          hasSynced = true;
+        }
+      }
+    } catch {
+      // If WS failed and doc is still empty, try REST as final fallback
+      if (isDocEmpty && !hasSynced) {
+        try {
+          await this.fetchInitialState(noteId, ydoc);
+          hasSynced = true;
+        } catch {
+          // All sync methods failed
+        }
+      }
+    }
   }
 
   /**
@@ -159,27 +183,20 @@ export class NotebookDocumentService {
     const token = this.authService.accessToken();
     if (!token) return;
 
-    try {
-      console.log(`[NotebookDoc] Fetching initial state via REST API for: ${noteId}`);
+    const response = await fetch(`/api/notebook/${noteId}/state`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
-      const response = await fetch(`/api/notebook/${noteId}/state`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      if (data.state) {
-        const state = this.base64ToUint8Array(data.state);
-        Y.applyUpdate(ydoc, state, 'remote');
-        console.log(`[NotebookDoc] Applied initial state from REST API for: ${noteId}`);
-      }
-    } catch (err) {
-      console.error(`[NotebookDoc] Failed to fetch initial state:`, err);
+    const data = await response.json();
+    if (data.state) {
+      const state = this.base64ToUint8Array(data.state);
+      Y.applyUpdate(ydoc, state, 'remote');
     }
   }
 
@@ -202,37 +219,92 @@ export class NotebookDocumentService {
     const user = this.authService.user();
     if (user) {
       awareness.setLocalStateField('user', {
-        name: user.displayName || user.email || 'Anonymous',
+        name: user.displayName?.split(' ')[0] || user.email || 'Anonymous',
         color: this.generateUserColor(user._id),
       });
     }
   }
 
   /**
-   * Connect SSE and WebRTC providers
+   * Connect WebSocket provider
    */
   private async connectProviders(noteId: string, doc: OpenDocument): Promise<void> {
-    const token = this.authService.accessToken();
-    if (!token) return;
+    // Ensure WebSocket is connected
+    if (!this.realtimeWS.isConnected()) {
+      this.realtimeWS.connect();
 
-    // Create SSE provider
-    doc.sseProvider = new YJSSSEProvider(noteId, doc.ydoc, token, environment.apiUrl);
+      // Wait for WebSocket to connect (up to 10 seconds)
+      const connected = await this.waitForConnection(10000);
+      if (!connected) {
+        return;
+      }
+    }
 
-    // Create WebRTC provider (with awareness for cursor sync)
-    doc.webrtcProvider = new YJSWebRTCProvider(noteId, doc.ydoc, doc.sseProvider, doc.awareness);
-
-    // Setup connection handler - announce WebRTC presence once SSE connects
-    doc.sseProvider.onConnected = () => {
-      doc.webrtcProvider?.announcePresence();
-    };
+    // Create WebSocket provider
+    doc.wsProvider = new YJSWSProvider(noteId, doc.ydoc, this.realtimeWS, doc.awareness);
 
     // Track sync status via callback
-    doc.sseProvider.onSynced = (synced: boolean) => {
+    doc.wsProvider.onSynced = (synced: boolean) => {
       this.updateSyncStatus(noteId, synced ? 'synced' : 'syncing');
     };
 
-    // Connect SSE
-    doc.sseProvider.connect();
+    // Connect to notebook room
+    doc.wsProvider.connect();
+  }
+
+  /**
+   * Wait for WebSocket connection with timeout
+   * Assumes auth is already ready (waitForAuth was called first)
+   */
+  private waitForConnection(timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      // Already connected
+      if (this.realtimeWS.isConnected()) {
+        resolve(true);
+        return;
+      }
+
+      // Trigger connection (auth should be ready at this point)
+      this.realtimeWS.connect();
+
+      // Poll for connection
+      this.pollForConnection(timeoutMs, resolve);
+    });
+  }
+
+  /**
+   * Poll for WebSocket connection
+   */
+  private pollForConnection(timeoutMs: number, resolve: (connected: boolean) => void): void {
+    const startTime = Date.now();
+    const checkInterval = setInterval(() => {
+      if (this.realtimeWS.isConnected()) {
+        clearInterval(checkInterval);
+        resolve(true);
+      } else if (Date.now() - startTime > timeoutMs) {
+        clearInterval(checkInterval);
+        resolve(false);
+      }
+    }, 100);
+  }
+
+  /**
+   * Wait for auth to be ready
+   * Returns immediately if already authenticated
+   */
+  private waitForAuth(): Promise<void> {
+    return new Promise((resolve) => {
+      // If already authenticated, resolve immediately
+      if (this.authService.accessToken()) {
+        resolve();
+        return;
+      }
+
+      // Wait for auth to be ready
+      firstValueFrom(this.authService.initReady$).then(() => {
+        resolve();
+      });
+    });
   }
 
   /**
@@ -242,9 +314,8 @@ export class NotebookDocumentService {
     const doc = this.openDocs.get(noteId);
     if (!doc) return;
 
-    // Cleanup providers
-    doc.sseProvider?.destroy();
-    doc.webrtcProvider?.destroy();
+    // Cleanup provider
+    doc.wsProvider?.destroy();
 
     // Cleanup persistence
     doc.persistence.destroy();
@@ -253,7 +324,6 @@ export class NotebookDocumentService {
     doc.ydoc.destroy();
 
     this.openDocs.delete(noteId);
-    console.log(`[NotebookDoc] Closed: ${noteId}`);
   }
 
   /**
@@ -324,8 +394,7 @@ export class NotebookDocumentService {
       ydoc,
       awareness,
       persistence,
-      sseProvider: null,
-      webrtcProvider: null,
+      wsProvider: null,
     };
     this.openDocs.set(documentId, doc);
 
@@ -336,8 +405,6 @@ export class NotebookDocumentService {
     if (this.connectivity.canSync()) {
       await this.connectProviders(documentId, doc);
     }
-
-    console.log(`[NotebookDoc] Created new notebook: ${documentId}`);
 
     return { note, ydoc, awareness };
   }
@@ -362,10 +429,12 @@ export class NotebookDocumentService {
 
   /**
    * Get peers count for a document
+   * Note: Peer count tracking was removed with WebRTC. Returns 0 for now.
    */
   getPeersCount(noteId: string): number {
-    const doc = this.openDocs.get(noteId);
-    return doc?.webrtcProvider?.peersConnected() ?? 0;
+    // Peer count tracking would need to be implemented in the WebSocket provider
+    // if needed. For now, return 0.
+    return 0;
   }
 
   /**

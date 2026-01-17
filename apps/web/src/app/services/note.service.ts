@@ -43,7 +43,7 @@ import {
 import { IndexedDBService } from './indexed-db.service';
 import { NetworkService } from './network.service';
 import { DB_STORES } from './db-stores';
-import { EventStreamService } from './event-stream.service';
+import { RealtimeWSService, type AppEvent } from './realtime-ws.service';
 import type {
   Note,
   CreateNoteInput,
@@ -67,7 +67,7 @@ export class NoteService {
   private readonly indexedDB = inject(IndexedDBService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly network = inject(NetworkService);
-  private readonly eventStream = inject(EventStreamService);
+  private readonly realtimeWS = inject(RealtimeWSService);
   private init = false;
 
   // ELF Store
@@ -133,10 +133,10 @@ export class NoteService {
 
   private setupEventStreamListeners() {
     //  Listen for note.created events
-    this.eventStream
+    this.realtimeWS
       .on('note.created')
       .pipe(
-        tap((event) => {
+        tap((event: Extract<AppEvent, { type: 'note.created' }>) => {
           console.log('[NoteService] Received note.created event', event.note);
           const documentId = event.note.documentId;
           if (!this.store.query(getEntity(documentId))) {
@@ -145,40 +145,48 @@ export class NoteService {
           }
         }),
         debounceTime(1000),
-        switchMap((event) => {
+        switchMap((event: Extract<AppEvent, { type: 'note.created' }>) => {
           return this.getNote(event.note.documentId);
         }),
       )
       .subscribe();
     // Listen for note.updated events
-    this.eventStream.on('note.updated').subscribe((event) => {
-      this.store.update(
-        updateEntities(event.noteId, (note) => ({
-          ...note,
-          title: event.title ?? note.title,
-          updatedAt: event.updatedAt,
-        })),
-      );
-    });
+    this.realtimeWS
+      .on('note.updated')
+      .subscribe((event: Extract<AppEvent, { type: 'note.updated' }>) => {
+        this.store.update(
+          updateEntities(event.noteId, (note) => ({
+            ...note,
+            title: event.title ?? note.title,
+            updatedAt: event.updatedAt,
+          })),
+        );
+      });
     // Listen for note.deleted events
-    this.eventStream.on('note.deleted').subscribe((event) => {
-      this.store.update(deleteEntities(event.noteId));
-      if (isPlatformBrowser(this.platformId)) {
-        this.indexedDB.delete(event.noteId, STORE_NAME);
-      }
-    });
+    this.realtimeWS
+      .on('note.deleted')
+      .subscribe((event: Extract<AppEvent, { type: 'note.deleted' }>) => {
+        this.store.update(deleteEntities(event.noteId));
+        if (isPlatformBrowser(this.platformId)) {
+          this.indexedDB.delete(event.noteId, STORE_NAME);
+        }
+      });
     // Listen for note.trashed events
-    this.eventStream.on('note.trashed').subscribe((event) => {
-      console.log('[NoteService] Received note.trashed event', event.noteId);
-      // Remove from visible list (user can view trash separately)
-      this.store.update(deleteEntities(event.noteId));
-    });
+    this.realtimeWS
+      .on('note.trashed')
+      .subscribe((event: Extract<AppEvent, { type: 'note.trashed' }>) => {
+        console.log('[NoteService] Received note.trashed event', event.noteId);
+        // Remove from visible list (user can view trash separately)
+        this.store.update(deleteEntities(event.noteId));
+      });
     // Listen for note.restored events
-    this.eventStream.on('note.restored').subscribe((event) => {
-      console.log('[NoteService] Received note.restored event', event.note);
-      this.store.update(upsertEntities([event.note]));
-      this.persistToIndexedDB([event.note]);
-    });
+    this.realtimeWS
+      .on('note.restored')
+      .subscribe((event: Extract<AppEvent, { type: 'note.restored' }>) => {
+        console.log('[NoteService] Received note.restored event', event.note);
+        this.store.update(upsertEntities([event.note]));
+        this.persistToIndexedDB([event.note]);
+      });
   }
 
   private async hydrateFromIndexedDB(): Promise<void> {
