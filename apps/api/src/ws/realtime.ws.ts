@@ -5,7 +5,9 @@ import {
     findTagsByUserId,
     findTagByIdWithAccess,
     getUsersWithTagAccess,
+    getTagMembers,
 } from '../repositories/tag.repo';
+import { sendMessageReceivedNotification } from '../services/notification.service';
 import { findUserById } from '../repositories/user.repo';
 import { findNoteByDocumentId } from '../repositories/note.repo';
 import { createMessage } from '../repositories/message.repo';
@@ -359,6 +361,29 @@ async function handleChatMessage(
             };
 
             broadcastChatEvent(tagId, chatEvent).catch(console.error);
+
+            // Send push notifications to all tag members except the author
+            getTagMembers(tagId, context.userId)
+                .then((tagMembers) => {
+                    if (tagMembers) {
+                        const notificationPromises = tagMembers
+                            .filter((member) => member.userId !== context.userId)
+                            .map((member) =>
+                                sendMessageReceivedNotification(
+                                    member.userId,
+                                    tagId,
+                                    message._id,
+                                    user?.email || context.email,
+                                    user?.displayName,
+                                    user?.profilePictureUrl,
+                                    message.content,
+                                ),
+                            );
+                        Promise.allSettled(notificationPromises).catch(console.error);
+                    }
+                })
+                .catch(console.error);
+
             break;
         }
 
