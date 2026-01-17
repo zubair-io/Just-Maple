@@ -2,7 +2,8 @@
 //  WebSocketManager.swift
 //  Just Maple Watch App
 //
-//  Native WebSocket client for real-time messaging (replaces SignalR)
+//  Native WebSocket client for real-time messaging
+//  Uses unified /ws/realtime endpoint with channel-based protocol
 //
 
 import Foundation
@@ -145,13 +146,13 @@ class WebSocketManager: NSObject, ObservableObject {
             }
 
             // Build WebSocket URL (without token in URL for security)
-            let wsURLString = "\(wsBaseURL)/ws/chat"
+            let wsURLString = "\(wsBaseURL)/ws/realtime"
             guard let url = URL(string: wsURLString) else {
                 log("[WebSocket] ❌ Invalid WebSocket URL")
                 throw WebSocketError.invalidURL
             }
 
-            log("[WebSocket] 📡 Connecting to: \(wsBaseURL)/ws/chat")
+            log("[WebSocket] 📡 Connecting to: \(wsBaseURL)/ws/realtime")
 
             // Create WebSocket task with token in Sec-WebSocket-Protocol header
             guard let session = urlSession else {
@@ -212,7 +213,7 @@ class WebSocketManager: NSObject, ObservableObject {
         }
 
         log("[WebSocket] 📥 Subscribing to tag: \(tagId)")
-        sendMessage(["type": "subscribe", "tagId": tagId])
+        sendMessage(["channel": "chat", "action": "subscribe", "tagId": tagId])
         subscribedTags.append(tagId)
         log("[WebSocket] ✅ Subscribed to tag: \(tagId)")
     }
@@ -222,7 +223,7 @@ class WebSocketManager: NSObject, ObservableObject {
         guard connectionStatus == .connected else { return }
 
         log("[WebSocket] 📤 Unsubscribing from tag: \(tagId)")
-        sendMessage(["type": "unsubscribe", "tagId": tagId])
+        sendMessage(["channel": "chat", "action": "unsubscribe", "tagId": tagId])
         subscribedTags.removeAll { $0 == tagId }
         log("[WebSocket] ✅ Unsubscribed from tag: \(tagId)")
     }
@@ -263,26 +264,49 @@ class WebSocketManager: NSObject, ObservableObject {
                 let data = Data(text.utf8)
                 let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
 
-                // Handle connection confirmation
-                if let type = json?["type"] as? String, type == "connected" {
-                    if let tags = json?["subscribedTags"] as? [String] {
-                        subscribedTags = tags
-                        log("[WebSocket] ✅ Connection confirmed, subscribed to \(tags.count) tags")
+                guard let channel = json?["channel"] as? String else {
+                    log("[WebSocket] ⚠️ Message missing channel field")
+                    return
+                }
+
+                switch channel {
+                case "system":
+                    // Handle system messages (connected, pong, ping)
+                    if let event = json?["event"] as? [String: Any],
+                       let type = event["type"] as? String {
+                        switch type {
+                        case "connected":
+                            if let tags = event["subscribedTags"] as? [String] {
+                                subscribedTags = tags
+                                log("[WebSocket] ✅ Connection confirmed, subscribed to \(tags.count) tags")
+                            }
+                        case "pong":
+                            // Keepalive response, nothing to do
+                            break
+                        case "ping":
+                            // Server ping, respond with pong
+                            sendMessage(["channel": "system", "action": "pong"])
+                        default:
+                            break
+                        }
                     }
-                    return
-                }
 
-                // Handle pong
-                if let type = json?["type"] as? String, type == "pong" {
-                    return
-                }
+                case "chat":
+                    // Handle chat events
+                    if let eventData = json?["event"] {
+                        let eventJson = try JSONSerialization.data(withJSONObject: eventData)
+                        let event = try JSONDecoder().decode(ChatEvent.self, from: eventJson)
+                        log("[WebSocket] 📬 RECEIVED - Action: \(event.action), Tag: \(event.tagId), User: \(event.userId)")
+                        _chatEvents.send(event)
+                        log("[WebSocket] ✅ Event published successfully")
+                    }
 
-                // Handle chat events
-                if json?["action"] != nil {
-                    let event = try JSONDecoder().decode(ChatEvent.self, from: data)
-                    log("[WebSocket] 📬 RECEIVED - Action: \(event.action), Tag: \(event.tagId), User: \(event.userId)")
-                    _chatEvents.send(event)
-                    log("[WebSocket] ✅ Event published successfully")
+                case "app":
+                    // Handle app events (notes/tags CRUD) - not needed for watch yet
+                    break
+
+                default:
+                    log("[WebSocket] ⚠️ Unknown channel: \(channel)")
                 }
 
             } catch {
@@ -324,7 +348,7 @@ class WebSocketManager: NSObject, ObservableObject {
                 guard let self = self, !Task.isCancelled else { return }
 
                 await MainActor.run {
-                    self.sendMessage(["type": "ping"])
+                    self.sendMessage(["channel": "system", "action": "ping"])
                 }
             }
         }
