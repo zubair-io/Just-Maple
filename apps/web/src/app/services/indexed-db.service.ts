@@ -22,7 +22,7 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 7,
+    dbVersion: 8,
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.COLLECTABLE, keyPath: '_id', autoIncrement: false },
