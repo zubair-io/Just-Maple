@@ -1,6 +1,8 @@
 import { Injectable, inject, signal, effect, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
-import { firstValueFrom } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
+import { Observable, firstValueFrom, forkJoin, of } from 'rxjs';
+import { switchMap, catchError, tap, map } from 'rxjs/operators';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { Awareness } from 'y-protocols/awareness';
@@ -10,6 +12,7 @@ import { ConnectivityService } from './connectivity.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { NoteService } from './note.service';
 import { RealtimeWSService } from './realtime-ws.service';
+import { VisibilityService } from './visibility.service';
 import { YJSWSProvider } from './yjs-ws-provider';
 import type { Note, SyncStatus } from '@maple/shared';
 
@@ -37,11 +40,13 @@ interface OpenDocument {
 @Injectable({ providedIn: 'root' })
 export class NotebookDocumentService {
   private readonly platformId = inject(PLATFORM_ID);
+  private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
   private readonly connectivity = inject(ConnectivityService);
   private readonly offlineQueue = inject(OfflineQueueService);
   private readonly noteService = inject(NoteService);
   private readonly realtimeWS = inject(RealtimeWSService);
+  private readonly visibilityService = inject(VisibilityService);
 
   private openDocs = new Map<string, OpenDocument>();
 
@@ -51,7 +56,35 @@ export class NotebookDocumentService {
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
       this.setupConnectivityListener();
+      this.setupVisibilityListener();
     }
+  }
+
+  /**
+   * Setup visibility listener to sync documents when tab becomes visible
+   */
+  private setupVisibilityListener(): void {
+    this.visibilityService.becameVisible$
+      .pipe(switchMap(() => this.syncOpenDocuments$()))
+      .subscribe();
+  }
+
+  /**
+   * Sync all open documents with server
+   * Called when document becomes visible to catch up on missed updates
+   */
+  private syncOpenDocuments$(): Observable<void> {
+    if (!this.connectivity.canSync() || this.openDocs.size === 0) {
+      return of(undefined);
+    }
+
+    const syncs = Array.from(this.openDocs.entries()).map(([noteId, doc]) =>
+      this.fetchInitialState$(noteId, doc.ydoc).pipe(
+        catchError(() => of(undefined)), // Silently fail individual syncs
+      ),
+    );
+
+    return forkJoin(syncs).pipe(map(() => undefined));
   }
 
   private setupConnectivityListener(): void {
@@ -177,27 +210,25 @@ export class NotebookDocumentService {
   }
 
   /**
-   * Fetch initial document state from REST API (fallback when SSE fails)
+   * Fetch document state from REST API (Observable)
    */
-  private async fetchInitialState(noteId: string, ydoc: Y.Doc): Promise<void> {
-    const token = this.authService.accessToken();
-    if (!token) return;
+  private fetchInitialState$(noteId: string, ydoc: Y.Doc): Observable<void> {
+    return this.http.get<{ state: string }>(`/api/notebook/${noteId}/state`).pipe(
+      tap((data) => {
+        if (data.state) {
+          const state = this.base64ToUint8Array(data.state);
+          Y.applyUpdate(ydoc, state, 'remote');
+        }
+      }),
+      map(() => undefined),
+    );
+  }
 
-    const response = await fetch(`/api/notebook/${noteId}/state`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    if (data.state) {
-      const state = this.base64ToUint8Array(data.state);
-      Y.applyUpdate(ydoc, state, 'remote');
-    }
+  /**
+   * Fetch document state from REST API (Promise)
+   */
+  private fetchInitialState(noteId: string, ydoc: Y.Doc): Promise<void> {
+    return firstValueFrom(this.fetchInitialState$(noteId, ydoc));
   }
 
   /**

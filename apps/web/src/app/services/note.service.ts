@@ -9,10 +9,7 @@ import {
   throwError,
   of,
   switchMap,
-  startWith,
   concat,
-  groupBy,
-  mergeMap,
   debounceTime,
   Subject,
   merge,
@@ -42,6 +39,7 @@ import {
 } from '@ngneat/elf-entities';
 import { IndexedDBService } from './indexed-db.service';
 import { NetworkService } from './network.service';
+import { VisibilityService } from './visibility.service';
 import { DB_STORES } from './db-stores';
 import { RealtimeWSService, type AppEvent } from './realtime-ws.service';
 import type {
@@ -67,6 +65,7 @@ export class NoteService {
   private readonly indexedDB = inject(IndexedDBService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly network = inject(NetworkService);
+  private readonly visibilityService = inject(VisibilityService);
   private readonly realtimeWS = inject(RealtimeWSService);
   private init = false;
 
@@ -98,10 +97,12 @@ export class NoteService {
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
       this.hydrateFromIndexedDB();
+
+      // Refresh notes when document becomes visible (user returns to tab)
+      this.visibilityService.becameVisible$.pipe(switchMap(() => this.loadNotes())).subscribe();
     }
 
     this.setupEventStreamListeners();
-    this.loadNotes().subscribe();
   }
 
   // private setupSaveSubscription() {

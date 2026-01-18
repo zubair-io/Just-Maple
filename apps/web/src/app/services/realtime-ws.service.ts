@@ -3,6 +3,7 @@ import { isPlatformBrowser } from '@angular/common';
 import { Subject, Observable } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { AuthService } from './auth.service';
+import { VisibilityService } from './visibility.service';
 import { environment } from '../../environments/environment';
 import type { Note, Tag, Paper, NotebookSSEEvent } from '@maple/shared';
 
@@ -43,6 +44,7 @@ interface ServerMessage {
 export class RealtimeWSService {
   private platformId = inject(PLATFORM_ID);
   private authService = inject(AuthService);
+  private visibilityService = inject(VisibilityService);
 
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
@@ -64,6 +66,15 @@ export class RealtimeWSService {
 
   // Pending messages queue (sent when connected)
   private pendingMessages: string[] = [];
+
+  constructor() {
+    if (isPlatformBrowser(this.platformId)) {
+      // Reconnect when document becomes visible if not connected
+      this.visibilityService.becameVisible$
+        .pipe(filter(() => !this.connected()))
+        .subscribe(() => this.connect());
+    }
+  }
 
   /**
    * Connect to WebSocket server

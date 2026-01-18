@@ -46,14 +46,13 @@ export class HomeComponent implements OnInit, OnDestroy {
   private resizeSubscription?: Subscription;
 
   ngOnInit(): void {
-    // Load tags and notes
+    // Ensure default tag exists (tags auto-load via visibility service)
     this.tagService.ensureDefaultTag().subscribe({
       next: () => {
         // Auto-select first tag if on root path
         this.autoSelectFirstTag();
       },
     });
-    this.noteService.loadNotes().subscribe();
 
     // Wait for auth to be ready before connecting to realtime services
     // This ensures the access token is available

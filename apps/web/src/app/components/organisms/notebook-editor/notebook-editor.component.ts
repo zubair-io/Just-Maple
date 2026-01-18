@@ -140,14 +140,14 @@ export class NotebookEditorComponent implements OnDestroy {
             undoRedo: false,
           } as any),
           // Placeholder with different text for headings
-          Placeholder.configure({
-            placeholder: ({ node }) => {
-              if (node.type.name === 'heading') {
-                return 'Note title';
-              }
-              return "Type '/' for commands...";
-            },
-          }) as any,
+          // Placeholder.configure({
+          //   placeholder: ({ node }) => {
+          //     if (node.type.name === 'heading') {
+          //       return 'Note title';
+          //     }
+          //     return "Type '/' for commands...";
+          //   },
+          // }) as any,
           // YJS Collaboration
           Collaboration.configure({
             document: ydoc,

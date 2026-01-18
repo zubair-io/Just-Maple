@@ -131,6 +131,37 @@ components/
 - Do NOT use BehaviorSubject or RxJS for component state
 - Services can use signals for shared state
 
+### HTTP Requests
+
+**Always use Angular's `HttpClient`** for API calls. Never use raw `fetch()`.
+
+**Why:**
+
+- `HttpClient` uses the environment's base URL configuration
+- Auth interceptors automatically attach tokens
+- Consistent error handling and retry logic
+- Observable-based for better integration with Angular
+
+**Do:**
+
+```typescript
+private readonly http = inject(HttpClient);
+
+// Use HttpClient with relative URLs
+const data = await firstValueFrom(
+    this.http.get<{ state: string }>('/api/notebook/state')
+);
+```
+
+**Don't:**
+
+```typescript
+// BAD: Raw fetch bypasses env config and auth
+const response = await fetch('/api/notebook/state', {
+    headers: { Authorization: `Bearer ${token}` },
+});
+```
+
 ### Routing
 
 - Use ID-based routes: `/:tagId/:noteId`
@@ -332,3 +363,4 @@ bun run typecheck
 | Use design tokens              | Hardcode colors                     |
 | One concern per page component | Combine views with conditionals     |
 | Route-level view switching     | Component-level type checking       |
+| Use HttpClient for API calls   | Use raw fetch()                     |

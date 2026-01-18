@@ -1,7 +1,7 @@
 import { Injectable, inject, PLATFORM_ID, signal, computed } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, map, catchError, throwError, of } from 'rxjs';
+import { Observable, tap, map, catchError, throwError, of, switchMap } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { createStore, filterNil } from '@ngneat/elf';
 import {
@@ -25,6 +25,7 @@ import {
 import { IndexedDBService } from './indexed-db.service';
 import { AuthService } from './auth.service';
 import { NetworkService } from './network.service';
+import { VisibilityService } from './visibility.service';
 import { DB_STORES } from './db-stores';
 import type {
   Tag,
@@ -44,6 +45,7 @@ export class TagService {
   private readonly authService = inject(AuthService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly network = inject(NetworkService);
+  private readonly visibilityService = inject(VisibilityService);
 
   // ELF Store
   private readonly store = createStore(
@@ -71,6 +73,9 @@ export class TagService {
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
       this.hydrateFromIndexedDB();
+
+      // Refresh tags when document becomes visible (user returns to tab)
+      this.visibilityService.becameVisible$.pipe(switchMap(() => this.loadTags())).subscribe();
     }
   }
 

@@ -1,7 +1,7 @@
 import { Injectable, inject, PLATFORM_ID, signal, computed, DestroyRef } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, map, catchError, throwError, of, Subscription } from 'rxjs';
+import { Observable, tap, map, catchError, throwError, of, Subscription, switchMap } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { createStore } from '@ngneat/elf';
 import {
@@ -21,6 +21,7 @@ import { RealtimeWSService } from './realtime-ws.service';
 import { AuthService } from './auth.service';
 import { NetworkService } from './network.service';
 import { NotificationService } from './notification.service';
+import { VisibilityService } from './visibility.service';
 import { DB_STORES } from './db-stores';
 import type {
   Message,
@@ -43,6 +44,7 @@ export class MessageService {
   private readonly destroyRef = inject(DestroyRef);
   private readonly network = inject(NetworkService);
   private readonly notificationService = inject(NotificationService);
+  private readonly visibilityService = inject(VisibilityService);
 
   // ELF Store
   private readonly store = createStore(
@@ -76,6 +78,11 @@ export class MessageService {
     if (isPlatformBrowser(this.platformId)) {
       this.hydrateFromIndexedDB();
       this.setupRealtimeHandlers();
+
+      // Refresh unread counts when document becomes visible (user returns to tab)
+      this.visibilityService.becameVisible$
+        .pipe(switchMap(() => this.loadUnreadCounts()))
+        .subscribe();
     }
 
     this.destroyRef.onDestroy(() => {
