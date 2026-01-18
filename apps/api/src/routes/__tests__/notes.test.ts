@@ -3,8 +3,8 @@ import { createTestApp } from '../../__tests__/helpers/app';
 import {
     createUserFixture,
     createMagicLinkFixture,
-    createTagFixture,
-    createNoteFixture,
+    createNotebookFixture,
+    createPageFixture,
 } from '../../__tests__/helpers/fixtures';
 import { mongoAvailable } from '../../__tests__/setup';
 
@@ -24,161 +24,161 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
         return data.accessToken;
     }
 
-    describe('GET /api/notes/', () => {
+    describe('GET /api/pages/', () => {
         it('should return user notes', async () => {
             const user = await createUserFixture();
-            const note1 = await createNoteFixture({
+            const note1 = await createPageFixture({
                 userId: user._id.toString(),
                 title: 'Note 1',
             });
-            const note2 = await createNoteFixture({
+            const note2 = await createPageFixture({
                 userId: user._id.toString(),
                 title: 'Note 2',
             });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/', {
+                new Request('http://localhost/api/pages/', {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.notes).toHaveLength(2);
-            expect(data.notes.some((n: any) => n._id === note1._id.toString())).toBe(true);
-            expect(data.notes.some((n: any) => n._id === note2._id.toString())).toBe(true);
+            expect(data.pages).toHaveLength(2);
+            expect(data.pages.some((n: any) => n._id === note1._id.toString())).toBe(true);
+            expect(data.pages.some((n: any) => n._id === note2._id.toString())).toBe(true);
         });
 
         it('should not return other users notes', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            await createNoteFixture({ userId: user2._id.toString() });
+            await createPageFixture({ userId: user2._id.toString() });
             const token = await getAuthToken(user1._id.toString(), user1.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/', {
+                new Request('http://localhost/api/pages/', {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.notes).toHaveLength(0);
+            expect(data.pages).toHaveLength(0);
         });
 
         it('should filter by tagId', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
-            const note1 = await createNoteFixture({
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
+            const note1 = await createPageFixture({
                 userId: user._id.toString(),
                 tagId: tag._id.toString(),
             });
-            await createNoteFixture({ userId: user._id.toString() }); // No tag
+            await createPageFixture({ userId: user._id.toString() }); // No tag
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/?tagId=${tag._id.toString()}`, {
+                new Request(`http://localhost/api/pages/?tagId=${tag._id.toString()}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.notes).toHaveLength(1);
-            expect(data.notes[0]._id).toBe(note1._id.toString());
+            expect(data.pages).toHaveLength(1);
+            expect(data.pages[0]._id).toBe(note1._id.toString());
         });
 
         it('should filter favorites', async () => {
             const user = await createUserFixture();
-            const favorite = await createNoteFixture({
+            const favorite = await createPageFixture({
                 userId: user._id.toString(),
                 isFavorite: true,
             });
-            await createNoteFixture({ userId: user._id.toString(), isFavorite: false });
+            await createPageFixture({ userId: user._id.toString(), isFavorite: false });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/?favorites=true', {
+                new Request('http://localhost/api/pages/?favorites=true', {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.notes).toHaveLength(1);
-            expect(data.notes[0]._id).toBe(favorite._id.toString());
+            expect(data.pages).toHaveLength(1);
+            expect(data.pages[0]._id).toBe(favorite._id.toString());
         });
 
         it('should filter trashed notes', async () => {
             const user = await createUserFixture();
-            const trashed = await createNoteFixture({
+            const trashed = await createPageFixture({
                 userId: user._id.toString(),
                 isTrashed: true,
                 trashedAt: new Date(),
             });
-            await createNoteFixture({ userId: user._id.toString(), isTrashed: false });
+            await createPageFixture({ userId: user._id.toString(), isTrashed: false });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/?trash=true', {
+                new Request('http://localhost/api/pages/?trash=true', {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.notes).toHaveLength(1);
-            expect(data.notes[0]._id).toBe(trashed._id.toString());
+            expect(data.pages).toHaveLength(1);
+            expect(data.pages[0]._id).toBe(trashed._id.toString());
         });
 
         it('should filter archived notes', async () => {
             const user = await createUserFixture();
-            const archived = await createNoteFixture({
+            const archived = await createPageFixture({
                 userId: user._id.toString(),
                 isArchived: true,
             });
-            await createNoteFixture({ userId: user._id.toString(), isArchived: false });
+            await createPageFixture({ userId: user._id.toString(), isArchived: false });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/?archived=true', {
+                new Request('http://localhost/api/pages/?archived=true', {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.notes).toHaveLength(1);
-            expect(data.notes[0]._id).toBe(archived._id.toString());
+            expect(data.pages).toHaveLength(1);
+            expect(data.pages[0]._id).toBe(archived._id.toString());
         });
 
         it('should require authentication', async () => {
-            const response = await app.handle(new Request('http://localhost/api/notes/'));
+            const response = await app.handle(new Request('http://localhost/api/pages/'));
 
             expect(response.status).toBe(401);
         });
     });
 
-    describe('GET /api/notes/:id', () => {
+    describe('GET /api/pages/:id', () => {
         it('should return note by id', async () => {
             const user = await createUserFixture();
-            const note = await createNoteFixture({
+            const note = await createPageFixture({
                 userId: user._id.toString(),
                 title: 'Test Note',
             });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.documentId}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.note._id).toBe(note._id.toString());
-            expect(data.note.title).toBe('Test Note');
+            expect(data.page._id).toBe(note._id.toString());
+            expect(data.page.title).toBe('Test Note');
         });
 
         it('should return 404 for non-existent note', async () => {
@@ -186,7 +186,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/507f1f77bcf86cd799439011', {
+                new Request('http://localhost/api/pages/507f1f77bcf86cd799439011', {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -197,11 +197,11 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
         it('should not return other users note', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const note = await createNoteFixture({ userId: user1._id.toString() });
+            const note = await createPageFixture({ userId: user1._id.toString() });
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.documentId}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -210,13 +210,13 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
         });
     });
 
-    describe('POST /api/notes/', () => {
+    describe('POST /api/pages/', () => {
         it('should create a new note', async () => {
             const user = await createUserFixture();
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/', {
+                new Request('http://localhost/api/pages/', {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -232,18 +232,18 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.note.title).toBe('New Note');
-            expect(data.note.type).toBe('write');
-            expect(data.note.userId).toBe(user._id.toString());
+            expect(data.page.title).toBe('New Note');
+            expect(data.page.type).toBe('write');
+            expect(data.page.userId).toBe(user._id.toString());
         });
 
         it('should create note with tag', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/', {
+                new Request('http://localhost/api/pages/', {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -258,7 +258,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.note.tagId).toBe(tag._id.toString());
+            expect(data.page.tagId).toBe(tag._id.toString());
         });
 
         it('should create lego note', async () => {
@@ -266,7 +266,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/', {
+                new Request('http://localhost/api/pages/', {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -281,7 +281,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.note.type).toBe('lego');
+            expect(data.page.type).toBe('lego');
         });
 
         it('should create note with default values', async () => {
@@ -289,7 +289,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/', {
+                new Request('http://localhost/api/pages/', {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -301,21 +301,21 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.note.type).toBe('write');
-            expect(data.note.isFavorite).toBe(false);
-            expect(data.note.isArchived).toBe(false);
-            expect(data.note.isTrashed).toBe(false);
+            expect(data.page.type).toBe('write');
+            expect(data.page.isFavorite).toBe(false);
+            expect(data.page.isArchived).toBe(false);
+            expect(data.page.isTrashed).toBe(false);
         });
     });
 
-    describe('PUT /api/notes/:id', () => {
+    describe('PUT /api/pages/:id', () => {
         it('should update note title', async () => {
             const user = await createUserFixture();
-            const note = await createNoteFixture({ userId: user._id.toString() });
+            const note = await createPageFixture({ userId: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.documentId}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -327,18 +327,18 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.note.title).toBe('Updated Title');
+            expect(data.page.title).toBe('Updated Title');
         });
 
         it('should update note content', async () => {
             const user = await createUserFixture();
-            const note = await createNoteFixture({ userId: user._id.toString() });
+            const note = await createPageFixture({ userId: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const newContent = { type: 'doc', content: [{ type: 'text', text: 'New content' }] };
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.documentId}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -350,19 +350,19 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.note.content).toEqual(newContent);
+            expect(data.page.content).toEqual(newContent);
         });
 
         it('should toggle favorite', async () => {
             const user = await createUserFixture();
-            const note = await createNoteFixture({
+            const note = await createPageFixture({
                 userId: user._id.toString(),
                 isFavorite: false,
             });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.documentId}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -374,21 +374,21 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.note.isFavorite).toBe(true);
+            expect(data.page.isFavorite).toBe(true);
         });
 
         it('should move note to different tag', async () => {
             const user = await createUserFixture();
-            const tag1 = await createTagFixture({ createdBy: user._id.toString() });
-            const tag2 = await createTagFixture({ createdBy: user._id.toString() });
-            const note = await createNoteFixture({
+            const tag1 = await createNotebookFixture({ createdBy: user._id.toString() });
+            const tag2 = await createNotebookFixture({ createdBy: user._id.toString() });
+            const note = await createPageFixture({
                 userId: user._id.toString(),
                 tagId: tag1._id.toString(),
             });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.documentId}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -400,17 +400,17 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.note.tagId).toBe(tag2._id.toString());
+            expect(data.page.tagId).toBe(tag2._id.toString());
         });
 
         it('should not allow updating other users note', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const note = await createNoteFixture({ userId: user1._id.toString() });
+            const note = await createPageFixture({ userId: user1._id.toString() });
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.documentId}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -424,17 +424,17 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
         });
     });
 
-    describe('POST /api/notes/:id/trash', () => {
+    describe('POST /api/pages/:id/trash', () => {
         it('should move note to trash', async () => {
             const user = await createUserFixture();
-            const note = await createNoteFixture({
+            const note = await createPageFixture({
                 userId: user._id.toString(),
                 isTrashed: false,
             });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note.documentId}/trash`, {
+                new Request(`http://localhost/api/pages/${note.documentId}/trash`, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -442,8 +442,8 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.note.isTrashed).toBe(true);
-            expect(data.note.trashedAt).toBeDefined();
+            expect(data.page.isTrashed).toBe(true);
+            expect(data.page.trashedAt).toBeDefined();
         });
 
         it('should return 404 for non-existent note', async () => {
@@ -451,7 +451,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/507f1f77bcf86cd799439011/trash', {
+                new Request('http://localhost/api/pages/507f1f77bcf86cd799439011/trash', {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -461,10 +461,10 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
         });
     });
 
-    describe('POST /api/notes/:id/restore', () => {
+    describe('POST /api/pages/:id/restore', () => {
         it('should restore note from trash', async () => {
             const user = await createUserFixture();
-            const note = await createNoteFixture({
+            const note = await createPageFixture({
                 userId: user._id.toString(),
                 isTrashed: true,
                 trashedAt: new Date(),
@@ -472,7 +472,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note.documentId}/restore`, {
+                new Request(`http://localhost/api/pages/${note.documentId}/restore`, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -480,8 +480,8 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.note.isTrashed).toBe(false);
-            expect(data.note.trashedAt).toBeUndefined();
+            expect(data.page.isTrashed).toBe(false);
+            expect(data.page.trashedAt).toBeUndefined();
         });
 
         it('should return 404 for non-existent note', async () => {
@@ -489,7 +489,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/507f1f77bcf86cd799439011/restore', {
+                new Request('http://localhost/api/pages/507f1f77bcf86cd799439011/restore', {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -499,14 +499,14 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
         });
     });
 
-    describe('DELETE /api/notes/:id', () => {
+    describe('DELETE /api/pages/:id', () => {
         it('should permanently delete note', async () => {
             const user = await createUserFixture();
-            const note = await createNoteFixture({ userId: user._id.toString() });
+            const note = await createPageFixture({ userId: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.documentId}`, {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -514,7 +514,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.message).toBe('Note deleted permanently');
+            expect(data.message).toBe('Page deleted permanently');
         });
 
         it('should return 404 for non-existent note', async () => {
@@ -522,7 +522,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/507f1f77bcf86cd799439011', {
+                new Request('http://localhost/api/pages/507f1f77bcf86cd799439011', {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -534,11 +534,11 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
         it('should not allow deleting other users note', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const note = await createNoteFixture({ userId: user1._id.toString() });
+            const note = await createPageFixture({ userId: user1._id.toString() });
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/notes/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.documentId}`, {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -548,27 +548,27 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
         });
     });
 
-    describe('DELETE /api/notes/trash/empty', () => {
+    describe('DELETE /api/pages/trash/empty', () => {
         it('should empty trash', async () => {
             const user = await createUserFixture();
-            await createNoteFixture({
+            await createPageFixture({
                 userId: user._id.toString(),
                 isTrashed: true,
                 trashedAt: new Date(),
             });
-            await createNoteFixture({
+            await createPageFixture({
                 userId: user._id.toString(),
                 isTrashed: true,
                 trashedAt: new Date(),
             });
-            await createNoteFixture({
+            await createPageFixture({
                 userId: user._id.toString(),
                 isTrashed: false,
             }); // Not trashed
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/trash/empty', {
+                new Request('http://localhost/api/pages/trash/empty', {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -577,18 +577,18 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             expect(response.status).toBe(200);
             const data: any = await response.json();
             expect(data.count).toBe(2);
-            expect(data.message).toContain('Deleted 2 notes');
+            expect(data.message).toContain('Deleted 2 pages');
         });
 
         it('should only delete current users trashed notes', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            await createNoteFixture({
+            await createPageFixture({
                 userId: user1._id.toString(),
                 isTrashed: true,
                 trashedAt: new Date(),
             });
-            await createNoteFixture({
+            await createPageFixture({
                 userId: user2._id.toString(),
                 isTrashed: true,
                 trashedAt: new Date(),
@@ -596,7 +596,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user1._id.toString(), user1.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/trash/empty', {
+                new Request('http://localhost/api/pages/trash/empty', {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -609,11 +609,11 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
         it('should return 0 when no trashed notes', async () => {
             const user = await createUserFixture();
-            await createNoteFixture({ userId: user._id.toString(), isTrashed: false });
+            await createPageFixture({ userId: user._id.toString(), isTrashed: false });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/notes/trash/empty', {
+                new Request('http://localhost/api/pages/trash/empty', {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),

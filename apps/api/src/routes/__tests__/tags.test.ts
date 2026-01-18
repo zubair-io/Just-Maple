@@ -3,7 +3,7 @@ import { createTestApp } from '../../__tests__/helpers/app';
 import {
     createUserFixture,
     createMagicLinkFixture,
-    createTagFixture,
+    createNotebookFixture,
     createUserBotFixture,
     createBotTemplateFixture,
 } from '../../__tests__/helpers/fixtures';
@@ -30,46 +30,46 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         return data.accessToken;
     }
 
-    describe('GET /api/tags/', () => {
+    describe('GET /api/notebooks/', () => {
         it('should return user tags', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/tags/', {
+                new Request('http://localhost/api/notebooks/', {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.tags).toHaveLength(1);
-            expect(data.tags[0]._id).toBe(tag._id.toString());
-            expect(data.tags[0].label).toBe(tag.label);
+            expect(data.notebooks).toHaveLength(1);
+            expect(data.notebooks[0]._id).toBe(tag._id.toString());
+            expect(data.notebooks[0].label).toBe(tag.label);
         });
 
         it('should not return other users tags', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            await createTagFixture({ createdBy: user2._id.toString() });
+            await createNotebookFixture({ createdBy: user2._id.toString() });
             const token = await getAuthToken(user1._id.toString(), user1.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/tags/', {
+                new Request('http://localhost/api/notebooks/', {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.tags).toHaveLength(0);
+            expect(data.notebooks).toHaveLength(0);
         });
 
         it('should return shared tags', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            await createTagFixture({
+            await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },
@@ -79,39 +79,39 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/tags/', {
+                new Request('http://localhost/api/notebooks/', {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.tags).toHaveLength(1);
+            expect(data.notebooks).toHaveLength(1);
         });
 
         it('should require authentication', async () => {
-            const response = await app.handle(new Request('http://localhost/api/tags/'));
+            const response = await app.handle(new Request('http://localhost/api/notebooks/'));
 
             expect(response.status).toBe(401);
         });
     });
 
-    describe('GET /api/tags/:id', () => {
+    describe('GET /api/notebooks/:id', () => {
         it('should return tag by id', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.tag._id).toBe(tag._id.toString());
-            expect(data.tag.label).toBe(tag.label);
+            expect(data.notebook._id).toBe(tag._id.toString());
+            expect(data.notebook.label).toBe(tag.label);
         });
 
         it('should return 404 for non-existent tag', async () => {
@@ -119,7 +119,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/tags/507f1f77bcf86cd799439011', {
+                new Request('http://localhost/api/notebooks/507f1f77bcf86cd799439011', {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -130,11 +130,11 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         it('should not return tag user does not have access to', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user1._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user1._id.toString() });
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -143,13 +143,13 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         });
     });
 
-    describe('POST /api/tags/', () => {
+    describe('POST /api/notebooks/', () => {
         it('should create a new tag', async () => {
             const user = await createUserFixture();
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/tags/', {
+                new Request('http://localhost/api/notebooks/', {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -161,12 +161,12 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.tag.label).toBe('New Tag');
-            expect(data.tag.type).toBe('folder');
-            expect(data.tag.value).toBe('mixed');
-            expect(data.tag.sharing.sharedWith).toHaveLength(1);
-            expect(data.tag.sharing.sharedWith[0].userId).toBe(user._id.toString());
-            expect(data.tag.sharing.sharedWith[0].accessLevel).toBe('owner');
+            expect(data.notebook.label).toBe('New Tag');
+            expect(data.notebook.type).toBe('folder');
+            expect(data.notebook.value).toBe('mixed');
+            expect(data.notebook.sharing.sharedWith).toHaveLength(1);
+            expect(data.notebook.sharing.sharedWith[0].userId).toBe(user._id.toString());
+            expect(data.notebook.sharing.sharedWith[0].accessLevel).toBe('owner');
         });
 
         it('should create tag with value', async () => {
@@ -174,7 +174,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/tags/', {
+                new Request('http://localhost/api/notebooks/', {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -186,7 +186,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.tag.value).toBe('notes');
+            expect(data.notebook.value).toBe('notes');
         });
 
         it('should require label', async () => {
@@ -194,7 +194,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/tags/', {
+                new Request('http://localhost/api/notebooks/', {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -208,14 +208,14 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         });
     });
 
-    describe('PUT /api/tags/:id', () => {
+    describe('PUT /api/notebooks/:id', () => {
         it('should update tag label', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -227,13 +227,13 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.tag.label).toBe('Updated Label');
+            expect(data.notebook.label).toBe('Updated Label');
         });
 
         it('should not allow non-owner to update tag', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },
@@ -243,7 +243,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -257,14 +257,14 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         });
     });
 
-    describe('DELETE /api/tags/:id', () => {
+    describe('DELETE /api/notebooks/:id', () => {
         it('should delete tag', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}`, {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -272,13 +272,13 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.message).toBe('Tag deleted successfully');
+            expect(data.message).toBe('Notebook deleted successfully');
         });
 
         it('should not allow non-owner to delete tag', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },
@@ -288,7 +288,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}`, {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -298,11 +298,11 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         });
     });
 
-    describe('GET /api/tags/:id/members', () => {
+    describe('GET /api/notebooks/:id/members', () => {
         it('should return tag members', async () => {
             const user1 = await createUserFixture({ displayName: 'User 1' });
             const user2 = await createUserFixture({ displayName: 'User 2' });
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },
@@ -312,7 +312,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user1._id.toString(), user1.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/members`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/members`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -325,15 +325,15 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         });
     });
 
-    describe('POST /api/tags/:id/share', () => {
+    describe('POST /api/notebooks/:id/share', () => {
         it('should share tag with user', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user1._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user1._id.toString() });
             const token = await getAuthToken(user1._id.toString(), user1.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/share`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/share`, {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -345,23 +345,25 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.tag.sharing.sharedWith).toHaveLength(2);
+            expect(data.notebook.sharing.sharedWith).toHaveLength(2);
             expect(
-                data.tag.sharing.sharedWith.some((u: any) => u.userId === user2._id.toString()),
+                data.notebook.sharing.sharedWith.some(
+                    (u: any) => u.userId === user2._id.toString(),
+                ),
             ).toBe(true);
             expect(
-                data.tag.sharing.sharedWith.find((u: any) => u.userId === user2._id.toString())
+                data.notebook.sharing.sharedWith.find((u: any) => u.userId === user2._id.toString())
                     ?.accessLevel,
             ).toBe('write');
         });
 
         it('should return 404 for non-existent user', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/share`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/share`, {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -381,7 +383,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
             const user3 = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },
@@ -391,7 +393,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/share`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/share`, {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -405,11 +407,11 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         });
     });
 
-    describe('DELETE /api/tags/:id/share/:userId', () => {
+    describe('DELETE /api/notebooks/:id/share/:userId', () => {
         it('should unshare tag from user', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },
@@ -420,7 +422,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
 
             const response = await app.handle(
                 new Request(
-                    `http://localhost/api/tags/${tag._id.toString()}/share/${user2._id.toString()}`,
+                    `http://localhost/api/notebooks/${tag._id.toString()}/share/${user2._id.toString()}`,
                     {
                         method: 'DELETE',
                         headers: { Authorization: `Bearer ${token}` },
@@ -431,7 +433,9 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             expect(response.status).toBe(200);
             const data: any = await response.json();
             expect(
-                data.tag.sharing.sharedWith.some((u: any) => u.userId === user2._id.toString()),
+                data.notebook.sharing.sharedWith.some(
+                    (u: any) => u.userId === user2._id.toString(),
+                ),
             ).toBe(false);
         });
 
@@ -439,7 +443,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
             const user3 = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },
@@ -451,7 +455,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
 
             const response = await app.handle(
                 new Request(
-                    `http://localhost/api/tags/${tag._id.toString()}/share/${user3._id.toString()}`,
+                    `http://localhost/api/notebooks/${tag._id.toString()}/share/${user3._id.toString()}`,
                     {
                         method: 'DELETE',
                         headers: { Authorization: `Bearer ${token}` },
@@ -463,14 +467,14 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         });
     });
 
-    describe('PUT /api/tags/:id/public', () => {
+    describe('PUT /api/notebooks/:id/public', () => {
         it('should update public status', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/public`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/public`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -482,13 +486,13 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.tag.sharing.isPublic).toBe(true);
+            expect(data.notebook.sharing.isPublic).toBe(true);
         });
 
         it('should not allow non-owner to change public status', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },
@@ -498,7 +502,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/public`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/public`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -512,14 +516,14 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         });
     });
 
-    describe('GET /api/tags/:id/access', () => {
+    describe('GET /api/notebooks/:id/access', () => {
         it('should return owner access level', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/access`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/access`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -532,7 +536,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         it('should return write access level for shared user', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },
@@ -542,7 +546,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/access`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/access`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -553,10 +557,10 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         });
     });
 
-    describe('GET /api/tags/:id/shared-bots', () => {
+    describe('GET /api/notebooks/:id/shared-bots', () => {
         it('should return shared bots', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const template = await createBotTemplateFixture({ name: 'Test Bot' });
             const userBot = await createUserBotFixture({
                 userId: user._id.toString(),
@@ -565,11 +569,15 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             // First share the bot to the tag (we need to do this via repo since route requires it)
-            const { shareBotToTag } = await import('../../repositories/tag.repo');
-            await shareBotToTag(tag._id.toString(), user._id.toString(), userBot._id.toString());
+            const { shareBotToNotebook } = await import('../../repositories/notebook.repo');
+            await shareBotToNotebook(
+                tag._id.toString(),
+                user._id.toString(),
+                userBot._id.toString(),
+            );
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/shared-bots`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/shared-bots`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -582,11 +590,11 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
 
         it('should return empty array when no bots shared', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/shared-bots`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/shared-bots`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -597,10 +605,10 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
         });
     });
 
-    describe('POST /api/tags/:id/bots', () => {
+    describe('POST /api/notebooks/:id/bots', () => {
         it('should share bot to tag', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const template = await createBotTemplateFixture();
             const userBot = await createUserBotFixture({
                 userId: user._id.toString(),
@@ -609,7 +617,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/bots`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/bots`, {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -621,19 +629,19 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.tag.sharing.sharedBots).toBeDefined();
+            expect(data.notebook.sharing.sharedBots).toBeDefined();
             expect(
-                data.tag.sharing.sharedBots.some(
+                data.notebook.sharing.sharedBots.some(
                     (b: any) => b.userBotId === userBot._id.toString(),
                 ),
             ).toBe(true);
         });
     });
 
-    describe('DELETE /api/tags/:id/bots/:userBotId', () => {
+    describe('DELETE /api/notebooks/:id/bots/:userBotId', () => {
         it('should remove bot from tag', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const template = await createBotTemplateFixture();
             const userBot = await createUserBotFixture({
                 userId: user._id.toString(),
@@ -642,12 +650,16 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             // First share the bot
-            const { shareBotToTag } = await import('../../repositories/tag.repo');
-            await shareBotToTag(tag._id.toString(), user._id.toString(), userBot._id.toString());
+            const { shareBotToNotebook } = await import('../../repositories/notebook.repo');
+            await shareBotToNotebook(
+                tag._id.toString(),
+                user._id.toString(),
+                userBot._id.toString(),
+            );
 
             const response = await app.handle(
                 new Request(
-                    `http://localhost/api/tags/${tag._id.toString()}/bots/${userBot._id.toString()}`,
+                    `http://localhost/api/notebooks/${tag._id.toString()}/bots/${userBot._id.toString()}`,
                     {
                         method: 'DELETE',
                         headers: { Authorization: `Bearer ${token}` },
@@ -658,7 +670,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
             expect(response.status).toBe(200);
             const data: any = await response.json();
             expect(
-                data.tag.sharing.sharedBots?.some(
+                data.notebook.sharing.sharedBots?.some(
                     (b: any) => b.userBotId === userBot._id.toString(),
                 ) ?? false,
             ).toBe(false);

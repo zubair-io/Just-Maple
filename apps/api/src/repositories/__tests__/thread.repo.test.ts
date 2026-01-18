@@ -8,7 +8,7 @@ import {
     findThreadsByTagId,
     getOrCreateThread,
 } from '../thread.repo';
-import { createThreadFixture, createTagFixture } from '../../__tests__/helpers/fixtures';
+import { createThreadFixture, createNotebookFixture } from '../../__tests__/helpers/fixtures';
 import { mongoAvailable } from '../../__tests__/setup';
 
 describe.runIf(mongoAvailable)('ThreadRepo', () => {
@@ -107,7 +107,7 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
 
     describe('findThreadsByTagId', () => {
         it('should return threads for tag', async () => {
-            const tag = await createTagFixture();
+            const tag = await createNotebookFixture();
             await createThreadFixture({ tagId: tag._id.toString() });
             await createThreadFixture({ tagId: tag._id.toString() });
 
@@ -117,8 +117,8 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
         });
 
         it('should not return threads from other tags', async () => {
-            const tag1 = await createTagFixture();
-            const tag2 = await createTagFixture();
+            const tag1 = await createNotebookFixture();
+            const tag2 = await createNotebookFixture();
             await createThreadFixture({ tagId: tag1._id.toString() });
             await createThreadFixture({ tagId: tag2._id.toString() });
 
@@ -129,7 +129,7 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
         });
 
         it('should respect limit option', async () => {
-            const tag = await createTagFixture();
+            const tag = await createNotebookFixture();
             await createThreadFixture({ tagId: tag._id.toString() });
             await createThreadFixture({ tagId: tag._id.toString() });
             await createThreadFixture({ tagId: tag._id.toString() });
@@ -140,7 +140,7 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
         });
 
         it('should sort by updatedAt descending', async () => {
-            const tag = await createTagFixture();
+            const tag = await createNotebookFixture();
 
             // Create threads with slight delay to ensure different timestamps
             const thread1 = await createThreadFixture({ tagId: tag._id.toString() });

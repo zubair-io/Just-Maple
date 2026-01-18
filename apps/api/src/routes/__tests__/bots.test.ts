@@ -3,7 +3,7 @@ import { createTestApp } from '../../__tests__/helpers/app';
 import {
     createUserFixture,
     createMagicLinkFixture,
-    createTagFixture,
+    createNotebookFixture,
     createBotTemplateFixture,
     createUserBotFixture,
     createMessageFixture,
@@ -468,10 +468,10 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
         });
     });
 
-    describe('GET /api/tags/:id/bots', () => {
+    describe('GET /api/notebooks/:id/bots', () => {
         it('should return bots available in tag', async () => {
             const user = await createUserFixture({ displayName: 'Test User' });
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const template = await createBotTemplateFixture({ name: 'Claude' });
             const userBot = await createUserBotFixture({
                 userId: user._id.toString(),
@@ -481,11 +481,15 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             // Share bot to tag
-            const { shareBotToTag } = await import('../../repositories/tag.repo');
-            await shareBotToTag(tag._id.toString(), user._id.toString(), userBot._id.toString());
+            const { shareBotToNotebook } = await import('../../repositories/notebook.repo');
+            await shareBotToNotebook(
+                tag._id.toString(),
+                user._id.toString(),
+                userBot._id.toString(),
+            );
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/bots`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/bots`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -504,7 +508,7 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request('http://localhost/api/tags/507f1f77bcf86cd799439011/bots', {
+                new Request('http://localhost/api/notebooks/507f1f77bcf86cd799439011/bots', {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -516,7 +520,7 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
     describe('GET /api/threads/:id', () => {
         it('should return thread details', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message = await createMessageFixture({
                 tagId: tag._id.toString(),
                 userId: user._id.toString(),
@@ -542,7 +546,7 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
         it('should return 403 for thread in inaccessible tag', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user1._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user1._id.toString() });
             const message = await createMessageFixture({
                 tagId: tag._id.toString(),
                 userId: user1._id.toString(),
@@ -566,7 +570,7 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
     describe('GET /api/threads/:id/messages', () => {
         it('should return messages in thread', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const parentMessage = await createMessageFixture({
                 tagId: tag._id.toString(),
                 userId: user._id.toString(),
@@ -596,7 +600,7 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
 
         it('should respect limit parameter', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const parentMessage = await createMessageFixture({
                 tagId: tag._id.toString(),
                 userId: user._id.toString(),
@@ -641,7 +645,7 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
     describe('GET /api/messages/:messageId/thread', () => {
         it('should return thread for message', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message = await createMessageFixture({
                 tagId: tag._id.toString(),
                 userId: user._id.toString(),
@@ -667,7 +671,7 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
 
         it('should return 404 when message has no thread', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message = await createMessageFixture({
                 tagId: tag._id.toString(),
                 userId: user._id.toString(),

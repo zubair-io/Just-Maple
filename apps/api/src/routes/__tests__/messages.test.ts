@@ -3,7 +3,7 @@ import { createTestApp } from '../../__tests__/helpers/app';
 import {
     createUserFixture,
     createMagicLinkFixture,
-    createTagFixture,
+    createNotebookFixture,
     createMessageFixture,
     createThreadFixture,
 } from '../../__tests__/helpers/fixtures';
@@ -34,10 +34,10 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
         return data.accessToken;
     }
 
-    describe('GET /api/tags/:id/messages', () => {
+    describe('GET /api/notebooks/:id/messages', () => {
         it('should return messages for tag', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message1 = await createMessageFixture({
                 tagId: tag._id.toString(),
                 userId: user._id.toString(),
@@ -49,7 +49,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/messages`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/messages`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -61,8 +61,8 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
 
         it('should not return messages from other tags', async () => {
             const user = await createUserFixture();
-            const tag1 = await createTagFixture({ createdBy: user._id.toString() });
-            const tag2 = await createTagFixture({ createdBy: user._id.toString() });
+            const tag1 = await createNotebookFixture({ createdBy: user._id.toString() });
+            const tag2 = await createNotebookFixture({ createdBy: user._id.toString() });
             await createMessageFixture({
                 tagId: tag2._id.toString(),
                 userId: user._id.toString(),
@@ -70,7 +70,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag1._id.toString()}/messages`, {
+                new Request(`http://localhost/api/notebooks/${tag1._id.toString()}/messages`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -82,7 +82,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
 
         it('should respect limit parameter', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             // Create 3 messages
             await createMessageFixture({
                 tagId: tag._id.toString(),
@@ -99,9 +99,12 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/messages?limit=2`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                }),
+                new Request(
+                    `http://localhost/api/notebooks/${tag._id.toString()}/messages?limit=2`,
+                    {
+                        headers: { Authorization: `Bearer ${token}` },
+                    },
+                ),
             );
 
             expect(response.status).toBe(200);
@@ -112,11 +115,11 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
         it('should return 404 for tag user does not have access to', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user1._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user1._id.toString() });
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/messages`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/messages`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -125,10 +128,10 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
         });
     });
 
-    describe('POST /api/tags/:id/messages', () => {
+    describe('POST /api/notebooks/:id/messages', () => {
         it('should send a message', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const messageContent = {
@@ -137,7 +140,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             };
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/messages`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/messages`, {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -156,7 +159,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
 
         it('should create thread when replying to message', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const parentMessage = await createMessageFixture({
                 tagId: tag._id.toString(),
                 userId: user._id.toString(),
@@ -164,7 +167,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/messages`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/messages`, {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -184,7 +187,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
 
         it('should add message to existing thread', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const parentMessage = await createMessageFixture({
                 tagId: tag._id.toString(),
                 userId: user._id.toString(),
@@ -196,7 +199,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/messages`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/messages`, {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -217,7 +220,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
         it('should require write access', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },
@@ -227,7 +230,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/messages`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/messages`, {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -243,11 +246,11 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
         it('should return 403 for non-accessible tag', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user1._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user1._id.toString() });
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/messages`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/messages`, {
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -261,14 +264,14 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
         });
     });
 
-    describe('POST /api/tags/:id/read', () => {
+    describe('POST /api/notebooks/:id/read', () => {
         it('should mark tag as read', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/read`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/read`, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -282,11 +285,11 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
         it('should return 404 for non-accessible tag', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user1._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user1._id.toString() });
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/read`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/read`, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -296,14 +299,14 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
         });
     });
 
-    describe('GET /api/tags/:id/unread', () => {
+    describe('GET /api/notebooks/:id/unread', () => {
         it('should return unread count for tag', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/unread`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/unread`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -317,11 +320,11 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
         it('should return 404 for non-accessible tag', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user1._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user1._id.toString() });
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/tags/${tag._id.toString()}/unread`, {
+                new Request(`http://localhost/api/notebooks/${tag._id.toString()}/unread`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -333,8 +336,8 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
     describe('GET /api/unread', () => {
         it('should return unread counts for all user tags', async () => {
             const user = await createUserFixture();
-            const tag1 = await createTagFixture({ createdBy: user._id.toString() });
-            const tag2 = await createTagFixture({ createdBy: user._id.toString() });
+            const tag1 = await createNotebookFixture({ createdBy: user._id.toString() });
+            const tag2 = await createNotebookFixture({ createdBy: user._id.toString() });
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
@@ -359,7 +362,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
     describe('PUT /api/messages/:id', () => {
         it('should edit message', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message = await createMessageFixture({
                 tagId: tag._id.toString(),
                 userId: user._id.toString(),
@@ -389,7 +392,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
         it('should not allow editing other users message', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },
@@ -438,7 +441,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
     describe('DELETE /api/messages/:id', () => {
         it('should soft delete message', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({ createdBy: user._id.toString() });
+            const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message = await createMessageFixture({
                 tagId: tag._id.toString(),
                 userId: user._id.toString(),
@@ -460,7 +463,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
         it('should not allow deleting other users message', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user1._id.toString(),
                 sharedWith: [
                     { userId: user1._id.toString(), accessLevel: 'owner' },

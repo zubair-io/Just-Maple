@@ -1,8 +1,8 @@
 import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { authRoutes } from '../../routes/auth';
-import { tagRoutes } from '../../routes/tags';
-import { noteRoutes } from '../../routes/notes';
+import { notebookRoutes } from '../../routes/notebooks';
+import { pageRoutes } from '../../routes/pages';
 import { messageRoutes } from '../../routes/messages';
 import { botRoutes } from '../../routes/bots';
 
@@ -15,8 +15,8 @@ export function createTestApp() {
             }),
         )
         .use(authRoutes)
-        .use(tagRoutes)
-        .use(noteRoutes)
+        .use(notebookRoutes)
+        .use(pageRoutes)
         .use(messageRoutes)
         .use(botRoutes)
         .get('/api/health', () => ({ status: 'ok', timestamp: new Date().toISOString() }));

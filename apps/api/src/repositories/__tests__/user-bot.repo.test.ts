@@ -13,7 +13,7 @@ import {
     createUserFixture,
     createBotTemplateFixture,
     createUserBotFixture,
-    createTagFixture,
+    createNotebookFixture,
 } from '../../__tests__/helpers/fixtures';
 import { mongoAvailable } from '../../__tests__/setup';
 
@@ -102,7 +102,7 @@ describe.runIf(mongoAvailable)('UserBotRepo', () => {
     describe.skip('findEnabledBotsForTag', () => {
         it('should return global bots (no tagId)', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user._id.toString(),
                 sharedWith: [{ userId: user._id.toString(), role: 'owner' }],
             });
@@ -118,7 +118,7 @@ describe.runIf(mongoAvailable)('UserBotRepo', () => {
 
         it('should return tag-specific bots', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user._id.toString(),
                 sharedWith: [{ userId: user._id.toString(), role: 'owner' }],
             });
@@ -135,7 +135,7 @@ describe.runIf(mongoAvailable)('UserBotRepo', () => {
 
         it('should not return disabled bots', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user._id.toString(),
                 sharedWith: [{ userId: user._id.toString(), role: 'owner' }],
             });
@@ -284,7 +284,7 @@ describe.runIf(mongoAvailable)('UserBotRepo', () => {
     describe('searchUserBots', () => {
         it('should search by handle', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user._id.toString(),
                 sharedWith: [{ userId: user._id.toString(), role: 'owner' }],
             });
@@ -302,7 +302,7 @@ describe.runIf(mongoAvailable)('UserBotRepo', () => {
 
         it('should search by displayName', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user._id.toString(),
                 sharedWith: [{ userId: user._id.toString(), role: 'owner' }],
             });
@@ -325,7 +325,7 @@ describe.runIf(mongoAvailable)('UserBotRepo', () => {
 
         it('should not return disabled bots', async () => {
             const user = await createUserFixture();
-            const tag = await createTagFixture({
+            const tag = await createNotebookFixture({
                 createdBy: user._id.toString(),
                 sharedWith: [{ userId: user._id.toString(), role: 'owner' }],
             });
