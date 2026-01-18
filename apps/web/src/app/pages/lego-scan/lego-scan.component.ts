@@ -17,10 +17,10 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription, switchMap, of } from 'rxjs';
 import { BrowserCodeReader, BrowserMultiFormatReader, BarcodeFormat } from '@zxing/browser';
 import { DecodeHintType } from '@zxing/library';
-import { TagService } from '../../services/tag.service';
-import { PaperService } from '../../services/paper.service';
+import { NotebookService } from '../../services/notebook.service';
+import { CollectableService } from '../../services/collectable.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
-import type { Paper, CollectibleRegistry, PaperStatus } from '@maple/shared';
+import type { Collectable, CollectibleRegistry, CollectableStatus } from '@maple/shared';
 
 @Component({
   selector: 'app-lego-scan',
@@ -35,14 +35,14 @@ export class LegoScanComponent implements OnInit, OnDestroy {
   private readonly location = inject(Location);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  readonly tagService = inject(TagService);
-  readonly paperService = inject(PaperService);
+  readonly notebookService = inject(NotebookService);
+  readonly collectableService = inject(CollectableService);
   readonly registryService = inject(CollectibleRegistryService);
 
   private routeSubscription?: Subscription;
   private controls: { stop: () => void } | null = null;
 
-  readonly tagId = signal<string | null>(null);
+  readonly notebookId = signal<string | null>(null);
   readonly searchQuery = signal('');
   readonly cameraEnabled = signal(false);
   readonly isScanning = signal(false);
@@ -51,35 +51,37 @@ export class LegoScanComponent implements OnInit, OnDestroy {
   readonly dropdownPosition = signal<'above' | 'below'>('above'); // dropdown position
 
   // Computed signals reactively derive from store - no validation needed
-  readonly selectedTag = computed(() => {
-    const id = this.tagId();
+  readonly selectedNotebook = computed(() => {
+    const id = this.notebookId();
     if (!id) return null;
-    return this.tagService.tags().find((t) => t._id === id) || null;
+    return this.notebookService.notebooks().find((n) => n._id === id) || null;
   });
 
-  // Reactively load papers when tagId changes, with proper subscription management
-  private readonly paperLoader = toSignal(
-    toObservable(this.tagId).pipe(
-      switchMap((tagId) => (tagId ? this.paperService.loadPapers({ tagId }) : of(null))),
+  // Reactively load collectables when notebookId changes, with proper subscription management
+  private readonly collectableLoader = toSignal(
+    toObservable(this.notebookId).pipe(
+      switchMap((notebookId) =>
+        notebookId ? this.collectableService.loadCollectables({ notebookId }) : of(null),
+      ),
     ),
     { initialValue: null },
   );
 
   constructor() {}
 
-  /** Map of registryId -> Paper for quick lookup */
-  readonly papersMap = computed(() => {
-    const tagId = this.tagId();
-    if (!tagId) return new Map<string, Paper>();
+  /** Map of registryId -> Collectable for quick lookup */
+  readonly collectablesMap = computed(() => {
+    const notebookId = this.notebookId();
+    if (!notebookId) return new Map<string, Collectable>();
 
-    // Use papersSignal directly for proper reactive tracking
-    const allPapers = this.paperService.papersSignal() ?? [];
-    const papers = allPapers.filter((p) => p.tags.includes(tagId));
-    const map = new Map<string, Paper>();
+    // Use collectablesSignal directly for proper reactive tracking
+    const allCollectables = this.collectableService.collectablesSignal() ?? [];
+    const collectables = allCollectables.filter((c) => c.tags.includes(notebookId));
+    const map = new Map<string, Collectable>();
 
-    for (const paper of papers) {
-      if (paper.data.registryData) {
-        map.set(paper.data.registryData, paper);
+    for (const collectable of collectables) {
+      if (collectable.data.registryData) {
+        map.set(collectable.data.registryData, collectable);
       }
     }
 
@@ -133,7 +135,7 @@ export class LegoScanComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Subscribe to route params and set ID directly - effect handles loading
     this.routeSubscription = this.route.params.subscribe((params) => {
-      this.tagId.set(params['tagId'] || null);
+      this.notebookId.set(params['tagId'] || null);
     });
 
     // Initialize registry data
@@ -234,20 +236,20 @@ export class LegoScanComponent implements OnInit, OnDestroy {
   }
 
   onSelectRegistry(registry: CollectibleRegistry): void {
-    const tagId = this.tagId();
-    if (tagId) {
-      this.router.navigate(['/', tagId, 'collectible', registry._id]);
+    const notebookId = this.notebookId();
+    if (notebookId) {
+      this.router.navigate(['/', notebookId, 'collectible', registry._id]);
     }
   }
 
   isInCollection(registryId: string): boolean {
-    const paper = this.papersMap().get(registryId);
-    return paper !== undefined && paper.data.status !== 'none';
+    const collectable = this.collectablesMap().get(registryId);
+    return collectable !== undefined && collectable.data.status !== 'none';
   }
 
-  getCollectionStatus(registryId: string): PaperStatus | null {
-    const paper = this.papersMap().get(registryId);
-    return paper?.data.status ?? null;
+  getCollectionStatus(registryId: string): CollectableStatus | null {
+    const collectable = this.collectablesMap().get(registryId);
+    return collectable?.data.status ?? null;
   }
 
   toggleDropdown(event: Event, registryId: string): void {
@@ -276,25 +278,27 @@ export class LegoScanComponent implements OnInit, OnDestroy {
     this.openDropdown.set(null);
   }
 
-  setStatus(event: Event, registry: CollectibleRegistry, status: PaperStatus): void {
+  setStatus(event: Event, registry: CollectibleRegistry, status: CollectableStatus): void {
     event.stopPropagation();
     this.openDropdown.set(null);
 
-    const tagId = this.tagId();
-    if (!tagId) return;
+    const notebookId = this.notebookId();
+    if (!notebookId) return;
 
-    const existingPaper = this.papersMap().get(registry._id);
+    const existingCollectable = this.collectablesMap().get(registry._id);
     this.isSaving.set(registry._id);
 
-    if (existingPaper) {
-      this.paperService.updatePaper(existingPaper._id, { data: { status } }).subscribe({
-        next: () => this.isSaving.set(null),
-        error: () => this.isSaving.set(null),
-      });
+    if (existingCollectable) {
+      this.collectableService
+        .updateCollectable(existingCollectable._id, { data: { status } })
+        .subscribe({
+          next: () => this.isSaving.set(null),
+          error: () => this.isSaving.set(null),
+        });
     } else {
-      this.paperService
-        .createPaper({
-          tags: [tagId],
+      this.collectableService
+        .createCollectable({
+          tags: [notebookId],
           data: {
             itemId: registry.providerId,
             provider: registry.provider,
@@ -317,29 +321,33 @@ export class LegoScanComponent implements OnInit, OnDestroy {
   toggleCollection(event: Event, registry: CollectibleRegistry): void {
     event.stopPropagation(); // Prevent row click
 
-    const tagId = this.tagId();
-    if (!tagId) return;
+    const notebookId = this.notebookId();
+    if (!notebookId) return;
 
-    const existingPaper = this.papersMap().get(registry._id);
+    const existingCollectable = this.collectablesMap().get(registry._id);
     this.isSaving.set(registry._id);
 
-    if (existingPaper && existingPaper.data.status !== 'none') {
+    if (existingCollectable && existingCollectable.data.status !== 'none') {
       // Mark as 'none' (soft remove from collection)
-      this.paperService.updatePaper(existingPaper._id, { data: { status: 'none' } }).subscribe({
-        next: () => this.isSaving.set(null),
-        error: () => this.isSaving.set(null),
-      });
-    } else if (existingPaper) {
-      // Paper exists with 'none' status - update to 'have'
-      this.paperService.updatePaper(existingPaper._id, { data: { status: 'have' } }).subscribe({
-        next: () => this.isSaving.set(null),
-        error: () => this.isSaving.set(null),
-      });
+      this.collectableService
+        .updateCollectable(existingCollectable._id, { data: { status: 'none' } })
+        .subscribe({
+          next: () => this.isSaving.set(null),
+          error: () => this.isSaving.set(null),
+        });
+    } else if (existingCollectable) {
+      // Collectable exists with 'none' status - update to 'have'
+      this.collectableService
+        .updateCollectable(existingCollectable._id, { data: { status: 'have' } })
+        .subscribe({
+          next: () => this.isSaving.set(null),
+          error: () => this.isSaving.set(null),
+        });
     } else {
-      // Create new paper with "have" status
-      this.paperService
-        .createPaper({
-          tags: [tagId],
+      // Create new collectable with "have" status
+      this.collectableService
+        .createCollectable({
+          tags: [notebookId],
           data: {
             itemId: registry.providerId,
             provider: registry.provider,

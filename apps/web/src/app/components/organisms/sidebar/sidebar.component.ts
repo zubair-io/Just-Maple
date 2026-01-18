@@ -13,13 +13,13 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
-import { TagService } from '../../../services/tag.service';
-import { NoteService } from '../../../services/note.service';
+import { NotebookService } from '../../../services/notebook.service';
+import { PageService } from '../../../services/page.service';
 import { MessageService } from '../../../services/message.service';
 import { NotificationService } from '../../../services/notification.service';
 import { NetworkService } from '../../../services/network.service';
 import { ProfileAvatarComponent } from '../../atoms';
-import type { Note } from '@maple/shared';
+import type { Page } from '@maple/shared';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map, switchMap } from 'rxjs';
 
@@ -33,54 +33,50 @@ import { filter, map, switchMap } from 'rxjs';
 export class SidebarComponent implements OnInit {
   private readonly router = inject(Router);
   readonly authService = inject(AuthService);
-  readonly tagService = inject(TagService);
-  readonly noteService = inject(NoteService);
+  readonly notebookService = inject(NotebookService);
+  readonly pageService = inject(PageService);
   readonly messageService = inject(MessageService);
   readonly notificationService = inject(NotificationService);
   readonly networkService = inject(NetworkService);
   readonly route = inject(ActivatedRoute);
 
-  readonly selectedTagId = input<string | null>(null);
-  readonly selectedNoteId = toSignal(this.noteService.activeId$, { initialValue: null });
+  readonly selectedNotebookId = input<string | null>(null);
+  readonly selectedPageId = toSignal(this.pageService.activeId$, { initialValue: null });
 
-  readonly newNote = output<void>();
-  readonly selectNote = output<string>();
-  readonly selectTag = output<string>();
-  readonly createTag = output<void>();
+  readonly newPage = output<void>();
+  readonly selectPage = output<string>();
+  readonly selectNotebook = output<string>();
+  readonly createNotebook = output<void>();
   readonly settings = output<void>();
 
   readonly searchQuery = signal('');
-  readonly expandedTags = signal<Set<string>>(new Set());
-  getNotesForTag = toSignal(
-    this.noteService.notes$.pipe(
-      map((notes) => {
-        return notes
+  readonly expandedNotebooks = signal<Set<string>>(new Set());
+  getPagesForNotebook = toSignal(
+    this.pageService.pages$.pipe(
+      map((pages) => {
+        return pages
           .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
           .reduce(
-            (acc, note) => {
-              (acc[note.tagId || 'no_tag'] ??= []).push(note);
+            (acc, page) => {
+              (acc[page.tagId || 'no_notebook'] ??= []).push(page);
               return acc;
             },
-            {} as Record<string, Note[]>,
+            {} as Record<string, Page[]>,
           );
       }),
     ),
-    { initialValue: {} as Record<string, Note[]> },
+    { initialValue: {} as Record<string, Page[]> },
   );
 
-  // readonly selectedNoteId = toSignal(this.route.paramMap.pipe(switchMap(()=>{
-  //   this.this.noteService.activeId$(),
-  // })), { initialValue: null });
-
   constructor() {
-    // Auto-expand tag when selectedTagId changes
+    // Auto-expand notebook when selectedNotebookId changes
     effect(() => {
-      const tagId = this.selectedTagId();
-      if (tagId) {
-        this.expandedTags.update((tags) => {
-          const newTags = new Set(tags);
-          newTags.add(tagId);
-          return newTags;
+      const notebookId = this.selectedNotebookId();
+      if (notebookId) {
+        this.expandedNotebooks.update((notebooks) => {
+          const newNotebooks = new Set(notebooks);
+          newNotebooks.add(notebookId);
+          return newNotebooks;
         });
       }
     });
@@ -119,44 +115,40 @@ export class SidebarComponent implements OnInit {
     this.messageService.loadUnreadCounts().subscribe();
   }
 
-  getUnreadCount(tagId: string): number {
-    return this.messageService.getUnreadCount(tagId);
+  getUnreadCount(notebookId: string): number {
+    return this.messageService.getUnreadCount(notebookId);
   }
 
-  toggleTag(tagId: string): void {
-    this.expandedTags.update((tags) => {
-      const newTags = new Set(tags);
-      if (newTags.has(tagId)) {
-        newTags.delete(tagId);
+  toggleNotebook(notebookId: string): void {
+    this.expandedNotebooks.update((notebooks) => {
+      const newNotebooks = new Set(notebooks);
+      if (newNotebooks.has(notebookId)) {
+        newNotebooks.delete(notebookId);
       } else {
-        newTags.add(tagId);
+        newNotebooks.add(notebookId);
       }
-      return newTags;
+      return newNotebooks;
     });
-    this.selectTag.emit(tagId);
-    this.router.navigate(['/', tagId]);
+    this.selectNotebook.emit(notebookId);
+    this.router.navigate(['/', notebookId]);
   }
 
-  // getNotesForTag(tagId: string): Signal<Note[]> {
-  //   return toSignal(this.noteService.notesByTag$(tagId), { initialValue: [] });
-  // }
-
-  getNoteRouterLink(note: Note, tagId: string): string[] {
-    const urlParam = note.documentId;
-    return ['/', tagId, urlParam];
+  getPageRouterLink(page: Page, notebookId: string): string[] {
+    const urlParam = page.documentId;
+    return ['/', notebookId, urlParam];
   }
 
-  onNewNote(): void {
-    this.newNote.emit();
+  onNewPage(): void {
+    this.newPage.emit();
   }
 
-  onSelectNote(note: Note, tagId: string): void {
-    // Emit noteId for backward compatibility
-    this.selectNote.emit(note._id);
+  onSelectPage(page: Page, notebookId: string): void {
+    // Emit pageId for backward compatibility
+    this.selectPage.emit(page._id);
   }
 
-  onCreateTag(): void {
-    this.createTag.emit();
+  onCreateNotebook(): void {
+    this.createNotebook.emit();
   }
 
   onSettings(): void {

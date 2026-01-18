@@ -1,19 +1,19 @@
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
-import { getUsersWithTagAccess } from '../repositories/tag.repo';
+import { getUsersWithNotebookAccess } from '../repositories/notebook.repo';
 import type { JWTPayload } from '@maple/shared';
 import {
-    findPapersByUserId,
-    findPaperById,
-    findPaperByRegistryData,
-    createPaper,
-    updatePaper,
-    deletePaper,
-} from '../repositories/paper.repo';
+    findCollectablesByUserId,
+    findCollectableById,
+    findCollectableByRegistryData,
+    createCollectable,
+    updateCollectable,
+    deleteCollectable,
+} from '../repositories/collectable.repo';
 import { realtimeWSService } from '../services/realtime-ws.service';
 
-export const paperRoutes = new Elysia({ prefix: '/api/papers' })
+export const collectableRoutes = new Elysia({ prefix: '/api/collectables' })
     .use(jwtPlugin)
     .derive(async ({ jwt, request }) => {
         const authHeader = request.headers.get('authorization');
@@ -32,19 +32,19 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
         }
     })
 
-    // Get all papers for the current user (with optional filters)
+    // Get all collectables for the current user (with optional filters)
     .get(
         '/',
         async ({ auth, query, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const papers = await findPapersByUserId(auth.user._id, {
+            const collectables = await findCollectablesByUserId(auth.user._id, {
                 tagId: query.tagId,
                 status: query.status as 'have' | 'want' | 'sold' | undefined,
                 updatedAfter: query.updatedAfter,
             });
-            return { papers };
+            return { collectables };
         },
         {
             query: t.Object({
@@ -55,7 +55,7 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
         },
     )
 
-    // Get paper by registry data (for collectible registry view)
+    // Get collectable by registry data (for collectible registry view)
     .get(
         '/by-registry/:registryId',
         async ({ auth, params, query, set }) => {
@@ -68,14 +68,14 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                 return { error: 'Bad Request', message: 'tagId query parameter required' };
             }
 
-            const paper = await findPaperByRegistryData(
+            const collectable = await findCollectableByRegistryData(
                 params.registryId,
                 query.tagId,
                 auth.user._id,
             );
 
-            // Return null paper if not found (not a 404 - the registry exists, user just doesn't have it)
-            return { paper };
+            // Return null collectable if not found (not a 404 - the registry exists, user just doesn't have it)
+            return { collectable };
         },
         {
             params: t.Object({
@@ -87,21 +87,21 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
         },
     )
 
-    // Get a single paper by ID
+    // Get a single collectable by ID
     .get(
         '/:id',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const paper = await findPaperById(params.id, auth.user._id);
+            const collectable = await findCollectableById(params.id, auth.user._id);
 
-            if (!paper) {
+            if (!collectable) {
                 set.status = 404;
-                return { error: 'Paper not found' };
+                return { error: 'Collectable not found' };
             }
 
-            return { paper };
+            return { collectable };
         },
         {
             params: t.Object({
@@ -110,29 +110,29 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
         },
     )
 
-    // Create a new paper
+    // Create a new collectable
     .post(
         '/',
         async ({ auth, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const paper = await createPaper(auth.user._id, body);
+            const collectable = await createCollectable(auth.user._id, body);
 
-            // Send SSE event to all users with access to each tag
-            for (const tagId of paper.tags) {
-                const recipientUserIds = await getUsersWithTagAccess(tagId);
+            // Send SSE event to all users with access to each notebook
+            for (const tagId of collectable.tags) {
+                const recipientUserIds = await getUsersWithNotebookAccess(tagId);
                 console.log(
-                    `[Papers] Sending paper.created SSE to ${recipientUserIds.length} users for tag ${tagId}`,
+                    `[Collectables] Sending collectable.created SSE to ${recipientUserIds.length} users for notebook ${tagId}`,
                 );
                 realtimeWSService.sendToUsers(recipientUserIds, {
-                    type: 'paper.created',
-                    paper,
+                    type: 'collectable.created',
+                    collectable,
                     tagId,
                 });
             }
 
-            return { paper };
+            return { collectable };
         },
         {
             body: t.Object({
@@ -155,34 +155,34 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
         },
     )
 
-    // Update a paper
+    // Update a collectable
     .put(
         '/:id',
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const paper = await updatePaper(params.id, auth.user._id, body);
+            const collectable = await updateCollectable(params.id, auth.user._id, body);
 
-            if (!paper) {
+            if (!collectable) {
                 set.status = 404;
-                return { error: 'Paper not found' };
+                return { error: 'Collectable not found' };
             }
 
-            // Send SSE event to all users with access to each tag
-            for (const tagId of paper.tags) {
-                const recipientUserIds = await getUsersWithTagAccess(tagId);
+            // Send SSE event to all users with access to each notebook
+            for (const tagId of collectable.tags) {
+                const recipientUserIds = await getUsersWithNotebookAccess(tagId);
                 console.log(
-                    `[Papers] Sending paper.updated SSE to ${recipientUserIds.length} users for tag ${tagId}`,
+                    `[Collectables] Sending collectable.updated SSE to ${recipientUserIds.length} users for notebook ${tagId}`,
                 );
                 realtimeWSService.sendToUsers(recipientUserIds, {
-                    type: 'paper.updated',
-                    paper,
+                    type: 'collectable.updated',
+                    collectable,
                     tagId,
                 });
             }
 
-            return { paper };
+            return { collectable };
         },
         {
             params: t.Object({
@@ -210,7 +210,7 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
         },
     )
 
-    // Delete a paper
+    // Delete a collectable
     .delete(
         '/:id',
         async ({ auth, params, set }) => {
@@ -218,34 +218,34 @@ export const paperRoutes = new Elysia({ prefix: '/api/papers' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Get paper first to know which tags to broadcast to
-            const paper = await findPaperById(params.id, auth.user._id);
-            if (!paper) {
+            // Get collectable first to know which notebooks to broadcast to
+            const collectable = await findCollectableById(params.id, auth.user._id);
+            if (!collectable) {
                 set.status = 404;
-                return { error: 'Paper not found' };
+                return { error: 'Collectable not found' };
             }
 
-            const deleted = await deletePaper(params.id, auth.user._id);
+            const deleted = await deleteCollectable(params.id, auth.user._id);
 
             if (!deleted) {
                 set.status = 404;
-                return { error: 'Paper not found' };
+                return { error: 'Collectable not found' };
             }
 
-            // Send SSE event to all users with access to each tag
-            for (const tagId of paper.tags) {
-                const recipientUserIds = await getUsersWithTagAccess(tagId);
+            // Send SSE event to all users with access to each notebook
+            for (const tagId of collectable.tags) {
+                const recipientUserIds = await getUsersWithNotebookAccess(tagId);
                 console.log(
-                    `[Papers] Sending paper.deleted SSE to ${recipientUserIds.length} users for tag ${tagId}`,
+                    `[Collectables] Sending collectable.deleted SSE to ${recipientUserIds.length} users for notebook ${tagId}`,
                 );
                 realtimeWSService.sendToUsers(recipientUserIds, {
-                    type: 'paper.deleted',
-                    paperId: params.id,
+                    type: 'collectable.deleted',
+                    collectableId: params.id,
                     tagId,
                 });
             }
 
-            return { message: 'Paper deleted' };
+            return { message: 'Collectable deleted' };
         },
         {
             params: t.Object({

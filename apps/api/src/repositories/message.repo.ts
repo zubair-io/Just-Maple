@@ -2,13 +2,13 @@ import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import type {
     Message,
-    NoteContent,
+    PageContent,
     CreateMessageInput,
     UpdateMessageInput,
     SenderType,
     Mention,
 } from '@maple/shared';
-import { findTagByIdWithAccess } from './tag.repo';
+import { findNotebookByIdWithAccess } from './notebook.repo';
 import { findUsersByIds } from './user.repo';
 
 interface MessageDocument {
@@ -20,7 +20,7 @@ interface MessageDocument {
     userBotId?: ObjectId;
     senderDisplayName?: string;
     senderProfilePictureUrl?: string;
-    content: NoteContent;
+    content: PageContent;
     mentions?: Mention[];
     hasThread?: boolean;
     createdAt: Date;
@@ -108,7 +108,7 @@ export async function findMessageById(id: string, userId?: string): Promise<Mess
 
         // If userId is provided, verify tag access
         if (userId) {
-            const tag = await findTagByIdWithAccess(doc.tagId.toString(), userId, 'read');
+            const tag = await findNotebookByIdWithAccess(doc.tagId.toString(), userId, 'read');
             if (!tag) return null; // No access to the tag
         }
 
@@ -300,7 +300,7 @@ export async function createMessageInThread(data: {
     senderType: SenderType;
     senderDisplayName?: string;
     senderProfilePictureUrl?: string;
-    content: NoteContent;
+    content: PageContent;
 }): Promise<Message> {
     const now = new Date();
     const isBot = data.senderType === 'bot';

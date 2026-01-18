@@ -26,43 +26,50 @@ import {
 import { IndexedDBService } from './indexed-db.service';
 import { RealtimeWSService, type AppEvent } from './realtime-ws.service';
 import { DB_STORES } from './db-stores';
-import type { Paper, CreatePaperInput, UpdatePaperInput, PaperStatus } from '@maple/shared';
+import type {
+  Collectable,
+  CreateCollectableInput,
+  UpdateCollectableInput,
+  CollectableStatus,
+} from '@maple/shared';
 
-const STORE_NAME = DB_STORES.PAPER;
+const STORE_NAME = DB_STORES.COLLECTABLE;
 const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
 
-export interface PaperFilters {
-  tagId?: string;
-  status?: PaperStatus;
+export interface CollectableFilters {
+  notebookId?: string;
+  status?: CollectableStatus;
 }
 
 @Injectable({ providedIn: 'root' })
-export class PaperService {
+export class CollectableService {
   private readonly http = inject(HttpClient);
   private readonly indexedDB = inject(IndexedDBService);
   private readonly platformId = inject(PLATFORM_ID);
   private readonly realtimeWS = inject(RealtimeWSService);
   private readonly destroyRef = inject(DestroyRef);
 
-  // Track last fetch time per tagId for caching
+  // Track last fetch time per notebookId for caching
   private readonly lastFetchMap = new Map<string, number>();
 
   // ELF Store
   private readonly store = createStore(
     { name: STORE_NAME },
-    withEntities<Paper, '_id'>({ idKey: '_id' }),
+    withEntities<Collectable, '_id'>({ idKey: '_id' }),
     withActiveId(),
   );
 
   // Observable selectors
-  readonly papers$ = this.store.pipe(selectAllEntities());
-  readonly activePaper$ = this.store.pipe(selectActiveEntity());
+  readonly collectables$ = this.store.pipe(selectAllEntities());
+  readonly activeCollectable$ = this.store.pipe(selectActiveEntity());
 
   // Signal wrappers for Angular reactivity
-  private readonly _papersSignal = toSignal(this.papers$, { initialValue: [] as Paper[] });
+  private readonly _collectablesSignal = toSignal(this.collectables$, {
+    initialValue: [] as Collectable[],
+  });
 
   // Public signal for direct reactive access in components
-  readonly papersSignal = this._papersSignal;
+  readonly collectablesSignal = this._collectablesSignal;
 
   // UI state signals (not persisted)
   private readonly _isLoading = signal(false);
@@ -80,47 +87,47 @@ export class PaperService {
   }
 
   /**
-   * Subscribe to paper events from WebSocket event stream
+   * Subscribe to collectable events from WebSocket event stream
    */
   private subscribeToRealtimeEvents(): void {
-    // Subscribe to paper.created events
+    // Subscribe to collectable.created events
     this.realtimeWS
-      .on('paper.created')
+      .on('collectable.created')
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((event: Extract<AppEvent, { type: 'paper.created' }>) => {
-        // Remove any temp papers with matching registry data
-        const tempPapers = this.store
+      .subscribe((event: Extract<AppEvent, { type: 'collectable.created' }>) => {
+        // Remove any temp collectables with matching registry data
+        const tempCollectables = this.store
           .query(getAllEntities())
           .filter(
             (p) =>
               p._id.startsWith('temp-') &&
-              p.data.registryData === event.paper.data.registryData &&
-              p.tags.some((t) => event.paper.tags.includes(t)),
+              p.data.registryData === event.collectable.data.registryData &&
+              p.tags.some((t) => event.collectable.tags.includes(t)),
           );
-        if (tempPapers.length > 0) {
-          this.store.update(deleteEntities(tempPapers.map((p) => p._id)));
+        if (tempCollectables.length > 0) {
+          this.store.update(deleteEntities(tempCollectables.map((p) => p._id)));
         }
-        this.store.update(upsertEntities([event.paper]));
-        this.persistToIndexedDB([event.paper]);
+        this.store.update(upsertEntities([event.collectable]));
+        this.persistToIndexedDB([event.collectable]);
       });
 
-    // Subscribe to paper.updated events
+    // Subscribe to collectable.updated events
     this.realtimeWS
-      .on('paper.updated')
+      .on('collectable.updated')
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((event: Extract<AppEvent, { type: 'paper.updated' }>) => {
-        this.store.update(upsertEntities([event.paper]));
-        this.persistToIndexedDB([event.paper]);
+      .subscribe((event: Extract<AppEvent, { type: 'collectable.updated' }>) => {
+        this.store.update(upsertEntities([event.collectable]));
+        this.persistToIndexedDB([event.collectable]);
       });
 
-    // Subscribe to paper.deleted events
+    // Subscribe to collectable.deleted events
     this.realtimeWS
-      .on('paper.deleted')
+      .on('collectable.deleted')
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((event: Extract<AppEvent, { type: 'paper.deleted' }>) => {
-        this.store.update(deleteEntities(event.paperId));
+      .subscribe((event: Extract<AppEvent, { type: 'collectable.deleted' }>) => {
+        this.store.update(deleteEntities(event.collectableId));
         if (isPlatformBrowser(this.platformId)) {
-          this.indexedDB.delete(event.paperId, STORE_NAME);
+          this.indexedDB.delete(event.collectableId, STORE_NAME);
         }
       });
   }
@@ -129,47 +136,47 @@ export class PaperService {
    * Load data from IndexedDB into ELF store
    */
   private async hydrateFromIndexedDB(): Promise<void> {
-    const cached = await this.indexedDB.getAll<Paper>(STORE_NAME);
+    const cached = await this.indexedDB.getAll<Collectable>(STORE_NAME);
     if (cached.length > 0 && this.store.query(getEntitiesCount()) === 0) {
       this.store.update(setEntities(cached));
     }
   }
 
   /**
-   * Get all papers as a reactive signal
+   * Get all collectables as a reactive signal
    */
-  papers(): Paper[] {
-    return this._papersSignal() ?? [];
+  collectables(): Collectable[] {
+    return this._collectablesSignal() ?? [];
   }
 
   /**
-   * Get selected paper ID synchronously
+   * Get selected collectable ID synchronously
    */
-  selectedPaperId(): string | null {
+  selectedCollectableId(): string | null {
     const active = this.store.query(getActiveEntity());
     return active?._id || null;
   }
 
   /**
-   * Get selected paper synchronously
+   * Get selected collectable synchronously
    */
-  selectedPaper(): Paper | null {
+  selectedCollectable(): Collectable | null {
     return this.store.query(getActiveEntity()) || null;
   }
 
   /**
-   * Load papers from API with optional filters
-   * Uses 1-minute cache per tagId to prevent duplicate requests
+   * Load collectables from API with optional filters
+   * Uses 1-minute cache per notebookId to prevent duplicate requests
    */
-  loadPapers(filters?: PaperFilters): Observable<Paper[]> {
-    const cacheKey = filters?.tagId || '_all';
+  loadCollectables(filters?: CollectableFilters): Observable<Collectable[]> {
+    const cacheKey = filters?.notebookId || '_all';
     const now = Date.now();
     const lastFetch = this.lastFetchMap.get(cacheKey);
 
     // Return cached data if within TTL
     if (lastFetch && now - lastFetch < CACHE_TTL_MS) {
-      const cached = filters?.tagId
-        ? this.store.query(getAllEntities()).filter((p) => p.tags.includes(filters.tagId!))
+      const cached = filters?.notebookId
+        ? this.store.query(getAllEntities()).filter((p) => p.tags.includes(filters.notebookId!))
         : this.store.query(getAllEntities());
       return of(cached);
     }
@@ -178,32 +185,32 @@ export class PaperService {
     this._error.set(null);
 
     const params: Record<string, string> = {};
-    if (filters?.tagId) params['tagId'] = filters.tagId;
+    if (filters?.notebookId) params['notebookId'] = filters.notebookId;
     if (filters?.status) params['status'] = filters.status;
 
     // Get newest updatedAt for incremental sync
-    const existingPapers = filters?.tagId
-      ? this.store.query(getAllEntities()).filter((p) => p.tags.includes(filters.tagId!))
+    const existingCollectables = filters?.notebookId
+      ? this.store.query(getAllEntities()).filter((p) => p.tags.includes(filters.notebookId!))
       : this.store.query(getAllEntities());
-    if (existingPapers.length > 0) {
-      const newest = existingPapers.reduce(
+    if (existingCollectables.length > 0) {
+      const newest = existingCollectables.reduce(
         (max, p) => (p.updatedAt > max ? p.updatedAt : max),
-        existingPapers[0].updatedAt,
+        existingCollectables[0].updatedAt,
       );
       params['updatedAfter'] = newest;
     }
 
-    return this.http.get<{ papers: Paper[] }>('/api/papers', { params }).pipe(
+    return this.http.get<{ collectables: Collectable[] }>('/api/collectables', { params }).pipe(
       tap((response) => {
-        // Upsert papers into store
-        this.store.update(upsertEntities(response.papers));
-        this.persistToIndexedDB(response.papers);
+        // Upsert collectables into store
+        this.store.update(upsertEntities(response.collectables));
+        this.persistToIndexedDB(response.collectables);
         this.lastFetchMap.set(cacheKey, now);
         this._isLoading.set(false);
       }),
-      map((response) => response.papers),
+      map((response) => response.collectables),
       catchError((err) => {
-        const message = err?.error?.error || 'Failed to load papers';
+        const message = err?.error?.error || 'Failed to load collectables';
         this._error.set(message);
         this._isLoading.set(false);
         return of([]);
@@ -212,9 +219,9 @@ export class PaperService {
   }
 
   /**
-   * Load a single paper by ID
+   * Load a single collectable by ID
    */
-  loadPaper(id: string): Observable<Paper | null> {
+  loadCollectable(id: string): Observable<Collectable | null> {
     // Check cache first
     const cached = this.store.query(getEntity(id));
     if (cached) {
@@ -224,15 +231,15 @@ export class PaperService {
     this._isLoading.set(true);
     this._error.set(null);
 
-    return this.http.get<{ paper: Paper }>(`/api/papers/${id}`).pipe(
+    return this.http.get<{ collectable: Collectable }>(`/api/collectables/${id}`).pipe(
       tap((response) => {
-        this.store.update(upsertEntities([response.paper]));
-        this.persistToIndexedDB([response.paper]);
+        this.store.update(upsertEntities([response.collectable]));
+        this.persistToIndexedDB([response.collectable]);
         this._isLoading.set(false);
       }),
-      map((response) => response.paper),
+      map((response) => response.collectable),
       catchError((err) => {
-        const message = err?.error?.error || 'Failed to load paper';
+        const message = err?.error?.error || 'Failed to load collectable';
         this._error.set(message);
         this._isLoading.set(false);
         return of(null);
@@ -241,16 +248,16 @@ export class PaperService {
   }
 
   /**
-   * Create a new paper with optimistic update
+   * Create a new collectable with optimistic update
    */
-  createPaper(data: CreatePaperInput): Observable<Paper> {
+  createCollectable(data: CreateCollectableInput): Observable<Collectable> {
     this._isLoading.set(true);
     this._error.set(null);
 
-    // Create temporary paper for optimistic update
+    // Create temporary collectable for optimistic update
     const tempId = `temp-${Date.now()}`;
     const now = new Date().toISOString();
-    const tempPaper: Paper = {
+    const tempCollectable: Collectable = {
       _id: tempId,
       tags: data.tags || [],
       type: 'collectible',
@@ -268,21 +275,21 @@ export class PaperService {
     };
 
     // Optimistic add
-    this.store.update(addEntities(tempPaper));
+    this.store.update(addEntities(tempCollectable));
 
-    return this.http.post<{ paper: Paper }>('/api/papers', data).pipe(
+    return this.http.post<{ collectable: Collectable }>('/api/collectables', data).pipe(
       tap((response) => {
-        // Remove temp and add real paper
+        // Remove temp and add real collectable
         this.store.update(deleteEntities(tempId));
-        this.store.update(addEntities(response.paper));
-        this.persistToIndexedDB([response.paper]);
+        this.store.update(addEntities(response.collectable));
+        this.persistToIndexedDB([response.collectable]);
         this._isLoading.set(false);
       }),
-      map((response) => response.paper),
+      map((response) => response.collectable),
       catchError((err) => {
         // Rollback optimistic update
         this.store.update(deleteEntities(tempId));
-        const message = err?.error?.error || 'Failed to create paper';
+        const message = err?.error?.error || 'Failed to create collectable';
         this._error.set(message);
         this._isLoading.set(false);
         return throwError(() => new Error(message));
@@ -291,15 +298,15 @@ export class PaperService {
   }
 
   /**
-   * Update a paper with optimistic update
+   * Update a collectable with optimistic update
    */
-  updatePaper(id: string, data: UpdatePaperInput): Observable<Paper> {
+  updateCollectable(id: string, data: UpdateCollectableInput): Observable<Collectable> {
     this._error.set(null);
 
     // Store original for rollback
     const original = this.store.query(getEntity(id));
     if (!original) {
-      return throwError(() => new Error('Paper not found'));
+      return throwError(() => new Error('Collectable not found'));
     }
 
     // Optimistic update
@@ -312,17 +319,17 @@ export class PaperService {
       })),
     );
 
-    return this.http.put<{ paper: Paper }>(`/api/papers/${id}`, data).pipe(
+    return this.http.put<{ collectable: Collectable }>(`/api/collectables/${id}`, data).pipe(
       tap((response) => {
         // Update with server response
-        this.store.update(updateEntities(id, response.paper));
-        this.persistToIndexedDB([response.paper]);
+        this.store.update(updateEntities(id, response.collectable));
+        this.persistToIndexedDB([response.collectable]);
       }),
-      map((response) => response.paper),
+      map((response) => response.collectable),
       catchError((err) => {
         // Rollback optimistic update
         this.store.update(updateEntities(id, () => original));
-        const message = err?.error?.error || 'Failed to update paper';
+        const message = err?.error?.error || 'Failed to update collectable';
         this._error.set(message);
         return throwError(() => new Error(message));
       }),
@@ -330,19 +337,19 @@ export class PaperService {
   }
 
   /**
-   * Delete a paper with optimistic update
+   * Delete a collectable with optimistic update
    */
-  deletePaper(id: string): Observable<void> {
+  deleteCollectable(id: string): Observable<void> {
     this._error.set(null);
 
     // Store original for rollback
     const original = this.store.query(getEntity(id));
     if (!original) {
-      return throwError(() => new Error('Paper not found'));
+      return throwError(() => new Error('Collectable not found'));
     }
 
-    // Check if this is the active paper
-    const wasActive = this.selectedPaperId() === id;
+    // Check if this is the active collectable
+    const wasActive = this.selectedCollectableId() === id;
 
     // Optimistic delete
     this.store.update(deleteEntities(id));
@@ -350,7 +357,7 @@ export class PaperService {
       this.store.update(resetActiveId());
     }
 
-    return this.http.delete(`/api/papers/${id}`).pipe(
+    return this.http.delete(`/api/collectables/${id}`).pipe(
       tap(() => {
         // Also delete from IndexedDB
         if (isPlatformBrowser(this.platformId)) {
@@ -364,7 +371,7 @@ export class PaperService {
         if (wasActive) {
           this.store.update(setActiveId(id));
         }
-        const message = err?.error?.error || 'Failed to delete paper';
+        const message = err?.error?.error || 'Failed to delete collectable';
         this._error.set(message);
         return throwError(() => new Error(message));
       }),
@@ -372,9 +379,9 @@ export class PaperService {
   }
 
   /**
-   * Select a paper as active
+   * Select a collectable as active
    */
-  selectPaper(id: string | null): void {
+  selectCollectable(id: string | null): void {
     if (id) {
       this.store.update(setActiveId(id));
     } else {
@@ -383,17 +390,17 @@ export class PaperService {
   }
 
   /**
-   * Get paper by ID synchronously
+   * Get collectable by ID synchronously
    */
-  getPaperById(id: string): Paper | undefined {
+  getCollectableById(id: string): Collectable | undefined {
     return this.store.query(getEntity(id));
   }
 
   /**
-   * Optimistically update a paper in the store (for WebSocket operations)
-   * Returns the original paper for potential rollback
+   * Optimistically update a collectable in the store (for WebSocket operations)
+   * Returns the original collectable for potential rollback
    */
-  optimisticUpdate(id: string, data: Partial<Paper['data']>): Paper | undefined {
+  optimisticUpdate(id: string, data: Partial<Collectable['data']>): Collectable | undefined {
     const original = this.store.query(getEntity(id));
     if (!original) return undefined;
 
@@ -409,13 +416,13 @@ export class PaperService {
   }
 
   /**
-   * Optimistically create a paper in the store (for WebSocket operations)
+   * Optimistically create a collectable in the store (for WebSocket operations)
    * Returns the temporary ID for tracking
    */
-  optimisticCreate(tags: string[], data: Paper['data']): string {
+  optimisticCreate(tags: string[], data: Collectable['data']): string {
     const tempId = `temp-${Date.now()}`;
     const now = new Date().toISOString();
-    const tempPaper: Paper = {
+    const tempCollectable: Collectable = {
       _id: tempId,
       tags,
       type: 'collectible',
@@ -428,12 +435,12 @@ export class PaperService {
       updatedAt: now,
     };
 
-    this.store.update(addEntities(tempPaper));
+    this.store.update(addEntities(tempCollectable));
     return tempId;
   }
 
   /**
-   * Remove a temporary paper (for when WS broadcast replaces it)
+   * Remove a temporary collectable (for when WS broadcast replaces it)
    */
   removeTemp(tempId: string): void {
     if (tempId.startsWith('temp-')) {
@@ -442,41 +449,44 @@ export class PaperService {
   }
 
   /**
-   * Get papers for a specific tag
+   * Get collectables for a specific notebook
    */
-  getPapersForTag(tagId: string): Paper[] {
-    return this.store.query(getAllEntities()).filter((p) => p.tags.includes(tagId));
+  getCollectablesForNotebook(notebookId: string): Collectable[] {
+    return this.store.query(getAllEntities()).filter((p) => p.tags.includes(notebookId));
   }
 
   /**
-   * Select a single paper as observable
+   * Select a single collectable as observable
    */
-  select(id: string): Observable<Paper | undefined> {
+  select(id: string): Observable<Collectable | undefined> {
     return this.store.pipe(selectEntity(id));
   }
 
   /**
-   * Load paper by registry data ID
+   * Load collectable by registry data ID
    * Always fetches from API to ensure data is fresh (avoids stale cache issues)
    */
-  loadPaperByRegistry(registryId: string, tagId: string): Observable<Paper | null> {
+  loadCollectableByRegistry(
+    registryId: string,
+    notebookId: string,
+  ): Observable<Collectable | null> {
     this._isLoading.set(true);
     this._error.set(null);
 
     return this.http
-      .get<{ paper: Paper | null }>(`/api/papers/by-registry/${registryId}`, {
-        params: { tagId },
+      .get<{ collectable: Collectable | null }>(`/api/collectables/by-registry/${registryId}`, {
+        params: { notebookId },
       })
       .pipe(
         tap((response) => {
-          if (response.paper) {
-            this.store.update(upsertEntities([response.paper]));
-            this.persistToIndexedDB([response.paper]);
+          if (response.collectable) {
+            this.store.update(upsertEntities([response.collectable]));
+            this.persistToIndexedDB([response.collectable]);
           } else {
-            // Remove stale cache entry if API says paper doesn't exist
+            // Remove stale cache entry if API says collectable doesn't exist
             const cached = this.store
               .query(getAllEntities())
-              .find((p) => p.data.registryData === registryId && p.tags.includes(tagId));
+              .find((p) => p.data.registryData === registryId && p.tags.includes(notebookId));
             if (cached) {
               this.store.update(deleteEntities(cached._id));
               if (isPlatformBrowser(this.platformId)) {
@@ -486,9 +496,9 @@ export class PaperService {
           }
           this._isLoading.set(false);
         }),
-        map((response) => response.paper),
+        map((response) => response.collectable),
         catchError((err) => {
-          const message = err?.error?.error || 'Failed to load paper';
+          const message = err?.error?.error || 'Failed to load collectable';
           this._error.set(message);
           this._isLoading.set(false);
           return of(null);
@@ -497,7 +507,7 @@ export class PaperService {
   }
 
   /**
-   * Clear all papers from store and IndexedDB
+   * Clear all collectables from store and IndexedDB
    */
   async clearCache(): Promise<void> {
     this.store.update(setEntities([]));
@@ -509,10 +519,10 @@ export class PaperService {
   }
 
   /**
-   * Persist papers to IndexedDB
+   * Persist collectables to IndexedDB
    */
-  private async persistToIndexedDB(papers: Paper[]): Promise<void> {
-    if (!isPlatformBrowser(this.platformId) || papers.length === 0) return;
-    await this.indexedDB.putMany(papers, STORE_NAME);
+  private async persistToIndexedDB(collectables: Collectable[]): Promise<void> {
+    if (!isPlatformBrowser(this.platformId) || collectables.length === 0) return;
+    await this.indexedDB.putMany(collectables, STORE_NAME);
   }
 }

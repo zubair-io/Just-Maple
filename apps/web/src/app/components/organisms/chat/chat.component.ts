@@ -25,7 +25,7 @@ import { ChatMessageComponent } from './chat-message.component';
 import { ChatTypingComponent } from './chat-typing.component';
 import { MentionSuggestionComponent } from './mention-suggestion.component';
 import { Mention, type MentionNodeAttrs } from './extensions/mention';
-import type { Message, NoteContent, TypingEvent, ChatEvent } from '@maple/shared';
+import type { Message, PageContent, TypingEvent, ChatEvent } from '@maple/shared';
 import { extractMentions, extractText } from '@maple/shared';
 import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of } from 'rxjs';
 
@@ -77,13 +77,15 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   readonly mentionPosition = signal<{ top: number; left: number }>({ top: 0, left: 0 });
   readonly mentionPositionAbove = signal(false);
 
-  // Reactively load bots when tag changes or cache is invalidated
-  readonly allTagBots = toSignal(
+  // Reactively load bots when notebook changes or cache is invalidated
+  readonly allNotebookBots = toSignal(
     combineLatest([
       toObservable(this.tagId),
-      toObservable(this.botService.tagBotsCacheVersion),
+      toObservable(this.botService.notebookBotsCacheVersion),
     ]).pipe(
-      switchMap(([tagId, _cacheVersion]) => (tagId ? this.botService.getTagBots(tagId) : of([]))),
+      switchMap(([notebookId, _cacheVersion]) =>
+        notebookId ? this.botService.getNotebookBots(notebookId) : of([]),
+      ),
     ),
     { initialValue: [] as BotSuggestion[] },
   );
@@ -179,7 +181,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     // Setup mention search with client-side filtering (no debounce needed)
     this.mentionSearch$.pipe(takeUntil(this.destroy$)).subscribe({
       next: (query) => {
-        const filtered = BotService.filterBots(this.allTagBots(), query);
+        const filtered = BotService.filterBots(this.allNotebookBots(), query);
         this.mentionSuggestions.set(filtered);
         this.mentionSuggestionsLoading.set(false);
       },
@@ -531,7 +533,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   sendMessage(): void {
     if (!this.editor) return;
 
-    const content = this.editor.getJSON() as NoteContent;
+    const content = this.editor.getJSON() as PageContent;
 
     // Check if empty
     if (this.isContentEmpty(content)) return;
@@ -572,7 +574,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     this.messageService.sendTyping(this.tagId(), false);
   }
 
-  private sendRegularMessage(content: NoteContent, mentions: MentionNodeAttrs[]): void {
+  private sendRegularMessage(content: PageContent, mentions: MentionNodeAttrs[]): void {
     this.messageService.sendMessage(this.tagId(), content).subscribe({
       next: (message) => {
         this.editor?.commands.clearContent();
@@ -586,7 +588,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  private extractMentionsFromContent(content: NoteContent): MentionNodeAttrs[] {
+  private extractMentionsFromContent(content: PageContent): MentionNodeAttrs[] {
     // Use shared utility and map to local MentionNodeAttrs type
     return extractMentions(content) as MentionNodeAttrs[];
   }
@@ -594,7 +596,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private invokeMentionedBots(
     message: Message,
     mentions: MentionNodeAttrs[],
-    content: NoteContent,
+    content: PageContent,
   ): void {
     const fullText = this.extractTextFromContent(content);
 
@@ -641,12 +643,12 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       });
   }
 
-  private extractTextFromContent(content: NoteContent): string {
+  private extractTextFromContent(content: PageContent): string {
     // Use shared utility (without newlines for chat messages)
     return extractText(content, { includeNewlines: false });
   }
 
-  private isContentEmpty(content: NoteContent): boolean {
+  private isContentEmpty(content: PageContent): boolean {
     if (!content || !content.content) return true;
     if (content.content.length === 0) return true;
     if (
@@ -694,7 +696,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     // If message has a thread, load it and add bot mentions
     if (message.hasThread) {
       // Use cached bots
-      const botSuggestionMap = new Map(this.allTagBots().map((s) => [s.id, s]));
+      const botSuggestionMap = new Map(this.allNotebookBots().map((s) => [s.id, s]));
 
       // Fetch thread messages
       this.botService.getThreadForMessage(message._id).subscribe((result) => {

@@ -14,7 +14,7 @@ import TaskItem from '@tiptap/extension-task-item';
 import TaskList from '@tiptap/extension-task-list';
 import Highlight from '@tiptap/extension-highlight';
 import { Mention } from '../../organisms/chat/extensions/mention';
-import type { NoteContent } from '@maple/shared';
+import type { PageContent } from '@maple/shared';
 
 @Component({
   selector: 'app-content-renderer',
@@ -27,7 +27,7 @@ export class ContentRendererComponent implements AfterViewInit, OnDestroy {
   @ViewChild('editorElement', { static: true })
   private editorRef!: ElementRef<HTMLElement>;
 
-  readonly content = input<NoteContent | string | null>(null);
+  readonly content = input<PageContent | string | null>(null);
 
   private editor: Editor | null = null;
 
@@ -44,7 +44,7 @@ export class ContentRendererComponent implements AfterViewInit, OnDestroy {
    * Normalize content to a format TipTap can render
    * Handles: ProseMirror JSON, plain strings, or null
    */
-  private normalizeContent(content: NoteContent | string | null): NoteContent | string {
+  private normalizeContent(content: PageContent | string | null): PageContent | string {
     if (!content) {
       return '';
     }

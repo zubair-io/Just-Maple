@@ -13,7 +13,7 @@ import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import type { BotInvocation, NoteContent } from '@maple/shared';
+import type { BotInvocation, PageContent } from '@maple/shared';
 
 @Component({
   selector: 'app-bot-output',
@@ -36,7 +36,7 @@ export class BotOutputComponent implements OnDestroy {
 
   private editor: Editor | null = null;
   private viewReady = false;
-  private pendingContent: NoteContent | null = null;
+  private pendingContent: PageContent | null = null;
   private pollTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -83,7 +83,7 @@ export class BotOutputComponent implements OnDestroy {
     });
   }
 
-  private setEditorContent(content: NoteContent): void {
+  private setEditorContent(content: PageContent): void {
     if (!this.editor) {
       // Store for later if editor not ready
       this.pendingContent = content;
@@ -128,11 +128,11 @@ export class BotOutputComponent implements OnDestroy {
           return;
         }
 
-        // Handle NoteContent output
+        // Handle PageContent output
         if (inv.output && typeof inv.output === 'object' && inv.output.type === 'doc') {
-          this.setEditorContent(inv.output as NoteContent);
+          this.setEditorContent(inv.output as PageContent);
         } else if (typeof inv.output === 'string') {
-          // Legacy: Convert raw string to NoteContent
+          // Legacy: Convert raw string to PageContent
           this.setEditorContent({
             type: 'doc',
             content: [

@@ -4,9 +4,9 @@
  */
 export const DB_STORES = {
   COLLECTIBLE_REGISTRY: 'collectible-registry',
-  PAPER: 'paper',
-  TAG: 'tag',
-  NOTE: 'note',
+  COLLECTABLE: 'collectable',
+  NOTEBOOK: 'notebook',
+  PAGE: 'page',
   SYNC_METADATA: 'sync-metadata',
   MESSAGE: 'message',
   OFFLINE_QUEUE: 'offline-queue',

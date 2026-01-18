@@ -9,10 +9,10 @@ import { SidebarComponent } from '../../organisms';
   template: `
     <div class="h-screen flex overflow-hidden bg-[var(--color-bg)]">
       <app-sidebar
-        (newNote)="onNewNote()"
-        (selectNote)="onSelectNote($event)"
-        (selectTag)="onSelectTag($event)"
-        (createTag)="onCreateTag()"
+        (newPage)="onNewPage()"
+        (selectPage)="onSelectPage($event)"
+        (selectNotebook)="onSelectNotebook($event)"
+        (createNotebook)="onCreateNotebook()"
         (settings)="onSettings()"
       />
       <main class="flex-1 h-full overflow-y-auto flex flex-col relative">
@@ -22,20 +22,20 @@ import { SidebarComponent } from '../../organisms';
   `,
 })
 export class MainLayoutComponent {
-  onNewNote(): void {
-    // TODO: Implement note creation
+  onNewPage(): void {
+    // TODO: Implement page creation
   }
 
-  onSelectNote(_noteId: string): void {
-    // TODO: Navigate to note
+  onSelectPage(_pageId: string): void {
+    // TODO: Navigate to page
   }
 
-  onSelectTag(_tagId: string): void {
-    // TODO: Filter by tag
+  onSelectNotebook(_notebookId: string): void {
+    // TODO: Filter by notebook
   }
 
-  onCreateTag(): void {
-    // TODO: Show tag creation dialog
+  onCreateNotebook(): void {
+    // TODO: Show notebook creation dialog
   }
 
   onSettings(): void {

@@ -1,13 +1,13 @@
 import { Type, Static } from '@sinclair/typebox';
 
-export const NoteContentSchema = Type.Object({
+export const PageContentSchema = Type.Object({
     type: Type.String(),
     content: Type.Optional(Type.Array(Type.Any())),
     attrs: Type.Optional(Type.Record(Type.String(), Type.Any())),
     text: Type.Optional(Type.String()),
 });
 
-export type NoteContent = Static<typeof NoteContentSchema>;
+export type PageContent = Static<typeof PageContentSchema>;
 
 export const SyncStatusSchema = Type.Union([
     Type.Literal('pending'),
@@ -19,8 +19,8 @@ export const SyncStatusSchema = Type.Union([
 
 export type SyncStatus = Static<typeof SyncStatusSchema>;
 
-// Note type - determines the editor/view used
-export const NoteTypeSchema = Type.Union([
+// Page type - determines the editor/view used
+export const PageTypeSchema = Type.Union([
     Type.Literal('write'),
     Type.Literal('lego'),
     Type.Literal('draw'),
@@ -28,21 +28,21 @@ export const NoteTypeSchema = Type.Union([
     Type.Literal('notebook'),
 ]);
 
-export type NoteType = Static<typeof NoteTypeSchema>;
+export type PageType = Static<typeof PageTypeSchema>;
 
-export const NoteSchema = Type.Object({
+export const PageSchema = Type.Object({
     _id: Type.String(),
     userId: Type.String(),
-    type: NoteTypeSchema,
+    type: PageTypeSchema,
     title: Type.String(),
     // DUAL STORAGE: content field kept for search/compatibility, automergeDoc is source of truth
-    content: NoteContentSchema, // ProseMirror JSON format (for search indexing)
+    content: PageContentSchema, // ProseMirror JSON format (for search indexing)
     automergeDoc: Type.Optional(Type.Any()), // Binary CRDT (source of truth)
     documentId: Type.String(), // Document ID for routing and Automerge identification
     // Automerge metadata
     version: Type.Optional(Type.Number()), // Hash of Automerge heads (for cache validation)
     lastSyncedHeads: Type.Optional(Type.Array(Type.String())), // Automerge heads (for sync optimization)
-    tagId: Type.Optional(Type.String()), // Associated tag/folder
+    tagId: Type.Optional(Type.String()), // Associated notebook/folder
     isFavorite: Type.Optional(Type.Boolean()),
     isArchived: Type.Optional(Type.Boolean()),
     isTrashed: Type.Optional(Type.Boolean()),
@@ -51,22 +51,22 @@ export const NoteSchema = Type.Object({
     updatedAt: Type.String({ format: 'date-time' }),
 });
 
-export type Note = Static<typeof NoteSchema>;
+export type Page = Static<typeof PageSchema>;
 
-export const CreateNoteSchema = Type.Object({
-    type: Type.Optional(NoteTypeSchema),
+export const CreatePageSchema = Type.Object({
+    type: Type.Optional(PageTypeSchema),
     title: Type.Optional(Type.String({ maxLength: 500 })),
-    content: Type.Optional(NoteContentSchema),
+    content: Type.Optional(PageContentSchema),
     tagId: Type.Optional(Type.String()),
     documentId: Type.Optional(Type.String()), // Document ID for routing
     automergeDoc: Type.Optional(Type.Any()), // Binary CRDT
 });
 
-export type CreateNoteInput = Static<typeof CreateNoteSchema>;
+export type CreatePageInput = Static<typeof CreatePageSchema>;
 
-export const UpdateNoteSchema = Type.Object({
+export const UpdatePageSchema = Type.Object({
     title: Type.Optional(Type.String({ maxLength: 500 })),
-    content: Type.Optional(NoteContentSchema),
+    content: Type.Optional(PageContentSchema),
     automergeDoc: Type.Optional(Type.Any()), // Binary CRDT
     documentId: Type.Optional(Type.String()), // Document ID for routing
     version: Type.Optional(Type.Number()), // Automerge heads hash
@@ -77,10 +77,10 @@ export const UpdateNoteSchema = Type.Object({
     isTrashed: Type.Optional(Type.Boolean()),
 });
 
-export type UpdateNoteInput = Static<typeof UpdateNoteSchema>;
+export type UpdatePageInput = Static<typeof UpdatePageSchema>;
 
-// Default empty note content - starts with H1 heading as title
-export const DEFAULT_NOTE_CONTENT: NoteContent = {
+// Default empty page content - starts with H1 heading as title
+export const DEFAULT_PAGE_CONTENT: PageContent = {
     type: 'doc',
     content: [
         {

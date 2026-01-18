@@ -21,8 +21,8 @@
       <span class="px-2 py-0.5 text-xs font-medium rounded-full" [ngClass]="statusClass()">
         {{ statusLabel() }}
       </span>
-      @if (paper().data.quantity > 1) {
-        <span class="text-xs text-gray-500"> x{{ paper().data.quantity }} </span>
+      @if (collectable().data.quantity > 1) {
+        <span class="text-xs text-gray-500"> x{{ collectable().data.quantity }} </span>
       }
     </div>
   </div>

@@ -1,59 +1,87 @@
 import { Type, Static } from '@sinclair/typebox';
 
-// Notebook document stored in MongoDB 'notebooks' collection
-// Separate from notes collection to store Y.Doc binary state
+// Access level for shared users
+export const AccessLevelSchema = Type.Union([
+    Type.Literal('read'),
+    Type.Literal('write'),
+    Type.Literal('owner'),
+]);
+export type AccessLevel = Static<typeof AccessLevelSchema>;
+
+// Shared user entry
+export const SharedWithEntrySchema = Type.Object({
+    userId: Type.String(),
+    accessLevel: AccessLevelSchema,
+});
+export type SharedWithEntry = Static<typeof SharedWithEntrySchema>;
+
+// Shared bot entry
+export const SharedBotEntrySchema = Type.Object({
+    userBotId: Type.String(),
+});
+export type SharedBotEntry = Static<typeof SharedBotEntrySchema>;
+
+// Sharing configuration
+export const NotebookSharingSchema = Type.Object({
+    sharedWith: Type.Array(SharedWithEntrySchema),
+    isPublic: Type.Optional(Type.Boolean()),
+    sharedBots: Type.Optional(Type.Array(SharedBotEntrySchema)),
+});
+export type NotebookSharing = Static<typeof NotebookSharingSchema>;
+
+// Notebook value - metadata for folder content type
+export const NotebookValueSchema = Type.Union([
+    Type.Literal('mixed'),
+    Type.Literal('recordings'),
+    Type.Literal('notes'),
+]);
+export type NotebookValue = Static<typeof NotebookValueSchema>;
+
 export const NotebookSchema = Type.Object({
     _id: Type.String(),
-    noteId: Type.String(), // Links to parent note document
-    state: Type.Any(), // Y.Doc encoded state (Uint8Array stored as Binary)
-    version: Type.Number(), // Increments on each update, for cache invalidation
+    type: Type.Literal('folder'),
+    value: NotebookValueSchema,
+    label: Type.String(),
+    sharing: NotebookSharingSchema,
+    createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
 });
 
 export type Notebook = Static<typeof NotebookSchema>;
 
-// For creating a new notebook (when syncing offline-created notebook)
 export const CreateNotebookSchema = Type.Object({
-    noteId: Type.String(),
-    state: Type.Any(), // Y.Doc encoded state
+    label: Type.String({ minLength: 1, maxLength: 100 }),
+    value: Type.Optional(NotebookValueSchema),
 });
 
 export type CreateNotebookInput = Static<typeof CreateNotebookSchema>;
 
-// For updating notebook state
 export const UpdateNotebookSchema = Type.Object({
-    state: Type.Any(), // Y.Doc update or full state
-    version: Type.Number(),
+    label: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+    value: Type.Optional(NotebookValueSchema),
 });
 
 export type UpdateNotebookInput = Static<typeof UpdateNotebookSchema>;
 
-// Notebook metadata for SSE events (without the heavy binary state)
-export const NotebookMetadataSchema = Type.Object({
-    noteId: Type.String(),
-    version: Type.Number(),
-    updatedAt: Type.String({ format: 'date-time' }),
+// Share notebook with user
+export const ShareNotebookSchema = Type.Object({
+    userId: Type.String(),
+    accessLevel: Type.Union([Type.Literal('read'), Type.Literal('write')]),
 });
+export type ShareNotebookInput = Static<typeof ShareNotebookSchema>;
 
-export type NotebookMetadata = Static<typeof NotebookMetadataSchema>;
-
-// Y.Doc update message for SSE streaming
-export const YDocUpdateSchema = Type.Object({
-    type: Type.Literal('ydoc-update'),
-    noteId: Type.String(),
-    update: Type.String(), // Base64-encoded Y.Doc update
-    clientId: Type.String(), // Origin client
-    version: Type.Number(),
+// Update sharing settings
+export const UpdateSharingSchema = Type.Object({
+    isPublic: Type.Optional(Type.Boolean()),
 });
+export type UpdateSharingInput = Static<typeof UpdateSharingSchema>;
 
-export type YDocUpdate = Static<typeof YDocUpdateSchema>;
-
-// Initial state message when client connects
-export const YDocInitSchema = Type.Object({
-    type: Type.Literal('ydoc-init'),
-    noteId: Type.String(),
-    state: Type.String(), // Base64-encoded full Y.Doc state
-    version: Type.Number(),
+// Notebook member with full user data (for displaying member list)
+export const NotebookMemberSchema = Type.Object({
+    userId: Type.String(),
+    email: Type.String({ format: 'email' }),
+    displayName: Type.Optional(Type.String()),
+    profilePictureUrl: Type.Optional(Type.String()),
+    accessLevel: AccessLevelSchema,
 });
-
-export type YDocInit = Static<typeof YDocInitSchema>;
+export type NotebookMember = Static<typeof NotebookMemberSchema>;

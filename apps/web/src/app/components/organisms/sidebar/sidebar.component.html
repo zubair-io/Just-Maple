@@ -49,9 +49,9 @@
         />
       </div>
       <button
-        (click)="onNewNote()"
+        (click)="onNewPage()"
         class="w-8 h-8 flex items-center justify-center bg-[var(--color-primary)] text-white rounded-md shadow-sm hover:bg-[var(--color-primary-hover)] hover:shadow transition-all"
-        title="New Note"
+        title="New Page"
       >
         <span class="material-symbols-rounded text-lg">edit</span>
       </button>
@@ -60,13 +60,13 @@
 
   <!-- Navigation -->
   <div class="flex-1 overflow-y-auto px-3 py-4">
-    <!-- Tags Section -->
+    <!-- Notebooks Section -->
     <div class="mb-2 px-2 flex items-center justify-between group">
       <span class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
-        >Notes</span
+        >Notebooks</span
       >
       <button
-        (click)="onCreateTag()"
+        (click)="onCreateNotebook()"
         class="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
       >
         <span class="material-symbols-rounded text-base">add</span>
@@ -74,72 +74,75 @@
     </div>
 
     <ul class="space-y-0.5">
-      @for (tag of tagService.tags(); track tag._id) {
+      @for (notebook of notebookService.notebooks(); track notebook._id) {
         <li>
-          <!-- Tag Header -->
+          <!-- Notebook Header -->
           <div
-            (click)="toggleTag(tag._id)"
+            (click)="toggleNotebook(notebook._id)"
             class="group flex items-center justify-between px-2 py-1.5 text-sm cursor-pointer transition-colors"
-            [class.bg-white]="selectedTagId() === tag._id"
-            [class.shadow-sm]="selectedTagId() === tag._id"
-            [class.ring-1]="selectedTagId() === tag._id"
-            [class.ring-stone-200]="selectedTagId() === tag._id"
-            [class.hover:bg-stone-200/50]="selectedTagId() !== tag._id"
+            [class.bg-white]="selectedNotebookId() === notebook._id"
+            [class.shadow-sm]="selectedNotebookId() === notebook._id"
+            [class.ring-1]="selectedNotebookId() === notebook._id"
+            [class.ring-stone-200]="selectedNotebookId() === notebook._id"
+            [class.hover:bg-stone-200/50]="selectedNotebookId() !== notebook._id"
           >
             <div class="flex items-center gap-2">
               <span
                 class="material-symbols-rounded text-sm transition-colors"
-                [class.text-[var(--color-primary)]]="selectedTagId() === tag._id"
-                [class.text-[var(--color-text-muted)]]="selectedTagId() !== tag._id"
-                >tag</span
+                [class.text-[var(--color-primary)]]="selectedNotebookId() === notebook._id"
+                [class.text-[var(--color-text-muted)]]="selectedNotebookId() !== notebook._id"
+                >folder</span
               >
               <span
-                [class.font-medium]="selectedTagId() === tag._id"
-                [class.text-[var(--color-text-main)]]="selectedTagId() === tag._id"
-                [class.text-[var(--color-text-muted)]]="selectedTagId() !== tag._id"
-                >{{ tag.label }}</span
+                [class.font-medium]="selectedNotebookId() === notebook._id"
+                [class.text-[var(--color-text-main)]]="selectedNotebookId() === notebook._id"
+                [class.text-[var(--color-text-muted)]]="selectedNotebookId() !== notebook._id"
+                >{{ notebook.label }}</span
               >
               <!-- Unread badge -->
-              @if (getUnreadCount(tag._id) > 0) {
+              @if (getUnreadCount(notebook._id) > 0) {
                 <span
                   class="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-primary)] text-white rounded-full min-w-[18px] text-center"
                 >
-                  {{ getUnreadCount(tag._id) > 99 ? '99+' : getUnreadCount(tag._id) }}
+                  {{ getUnreadCount(notebook._id) > 99 ? '99+' : getUnreadCount(notebook._id) }}
                 </span>
               }
             </div>
-            @if ((getNotesForTag()[tag._id || 'no_tag'] || []).length > 0) {
+            @if ((getPagesForNotebook()[notebook._id || 'no_notebook'] || []).length > 0) {
               <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">
-                {{ expandedTags().has(tag._id) ? 'expand_less' : 'expand_more' }}
+                {{ expandedNotebooks().has(notebook._id) ? 'expand_less' : 'expand_more' }}
               </span>
             }
           </div>
 
-          <!-- Notes under tag -->
-          @if (expandedTags().has(tag._id)) {
+          <!-- Pages under notebook -->
+          @if (expandedNotebooks().has(notebook._id)) {
             <ul class="ml-4 pl-3 border-l border-[var(--color-border)] mt-1 space-y-0.5 list-none">
-              @for (note of getNotesForTag()[tag._id || 'no_tag'] || []; track note._id) {
+              @for (
+                page of getPagesForNotebook()[notebook._id || 'no_notebook'] || [];
+                track page._id
+              ) {
                 <li>
                   <a
-                    [routerLink]="getNoteRouterLink(note, tag._id)"
-                    (click)="onSelectNote(note, tag._id)"
+                    [routerLink]="getPageRouterLink(page, notebook._id)"
+                    (click)="onSelectPage(page, notebook._id)"
                     class="flex items-center gap-1.5 px-2 py-1.5 text-sm cursor-pointer transition-colors"
-                    [class.bg-stone-100]="selectedNoteId() === note.documentId"
-                    [class.text-[var(--color-text-main)]]="selectedNoteId() === note.documentId"
-                    [class.font-medium]="selectedNoteId() === note.documentId"
-                    [class.border-l-2]="selectedNoteId() === note.documentId"
-                    [class.border-[var(--color-primary)]]="selectedNoteId() === note.documentId"
-                    [class.-ml-[13px]]="selectedNoteId() === note.documentId"
-                    [class.pl-3]="selectedNoteId() === note.documentId"
-                    [class.text-[var(--color-text-muted)]]="selectedNoteId() !== note.documentId"
+                    [class.bg-stone-100]="selectedPageId() === page.documentId"
+                    [class.text-[var(--color-text-main)]]="selectedPageId() === page.documentId"
+                    [class.font-medium]="selectedPageId() === page.documentId"
+                    [class.border-l-2]="selectedPageId() === page.documentId"
+                    [class.border-[var(--color-primary)]]="selectedPageId() === page.documentId"
+                    [class.-ml-[13px]]="selectedPageId() === page.documentId"
+                    [class.pl-3]="selectedPageId() === page.documentId"
+                    [class.text-[var(--color-text-muted)]]="selectedPageId() !== page.documentId"
                     [class.hover:text-[var(--color-text-main)]]="
-                      selectedNoteId() !== note.documentId
+                      selectedPageId() !== page.documentId
                     "
                   >
                     <span class="material-symbols-rounded text-xs opacity-60">{{
-                      note.type === 'notebook' ? 'book' : note.type === 'lego' ? 'toys' : 'article'
+                      page.type === 'notebook' ? 'book' : page.type === 'lego' ? 'toys' : 'article'
                     }}</span>
-                    <span class="truncate">{{ note.title }}</span>
+                    <span class="truncate">{{ page.title }}</span>
                   </a>
                 </li>
               }

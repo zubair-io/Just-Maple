@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, input, inject, computed } from '@an
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { switchMap, of } from 'rxjs';
-import type { Paper, CollectibleRegistry } from '@maple/shared';
+import type { Collectable, CollectibleRegistry } from '@maple/shared';
 import { CollectibleRegistryService } from '../../../services/collectible-registry.service';
 
 @Component({
@@ -13,23 +13,23 @@ import { CollectibleRegistryService } from '../../../services/collectible-regist
   styleUrl: './paper-list-item.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class PaperListItemComponent {
+export class CollectableListItemComponent {
   private readonly registryService = inject(CollectibleRegistryService);
 
-  readonly paper = input.required<Paper>();
+  readonly collectable = input.required<Collectable>();
   readonly selected = input(false);
 
-  private readonly registryData$ = toObservable(this.paper).pipe(
-    switchMap((paper) =>
-      paper.data.registryData
-        ? this.registryService.select(paper.data.registryData)
+  private readonly registryData$ = toObservable(this.collectable).pipe(
+    switchMap((collectable) =>
+      collectable.data.registryData
+        ? this.registryService.select(collectable.data.registryData)
         : of(undefined),
     ),
   );
   readonly registryData = toSignal(this.registryData$);
 
   readonly title = computed(() => {
-    return this.registryData()?.title || this.paper().data.itemId;
+    return this.registryData()?.title || this.collectable().data.itemId;
   });
 
   readonly image = computed(() => {
@@ -43,7 +43,7 @@ export class PaperListItemComponent {
   });
 
   readonly statusLabel = computed(() => {
-    const status = this.paper().data.status;
+    const status = this.collectable().data.status;
     switch (status) {
       case 'have':
         return 'Have';
@@ -57,7 +57,7 @@ export class PaperListItemComponent {
   });
 
   readonly statusClass = computed(() => {
-    const status = this.paper().data.status;
+    const status = this.collectable().data.status;
     switch (status) {
       case 'have':
         return 'bg-green-100 text-green-800';

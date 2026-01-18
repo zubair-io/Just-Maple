@@ -12,12 +12,12 @@
 
     <h1 class="text-lg font-medium text-[var(--color-text-main)]">Add to Collection</h1>
 
-    @if (selectedTag()) {
+    @if (selectedNotebook()) {
       <div
         class="ml-auto flex items-center gap-1.5 text-sm p-1 px-2 rounded bg-stone-100 text-[var(--color-text-muted)]"
       >
         <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
-        <span>{{ selectedTag()!.label }}</span>
+        <span>{{ selectedNotebook()!.label }}</span>
       </div>
     }
   </header>

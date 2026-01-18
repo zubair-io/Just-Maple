@@ -28,8 +28,8 @@ export class NotificationService {
   // Toast notifications
   readonly toasts = signal<ToastData[]>([]);
 
-  // Current active tag (for smart toast filtering)
-  readonly activeTagId = signal<string | null>(null);
+  // Current active notebook (for smart toast filtering)
+  readonly activeNotebookId = signal<string | null>(null);
 
   constructor() {
     this.init();
@@ -271,10 +271,10 @@ export class NotificationService {
   }
 
   /**
-   * Set the currently active tag ID (for smart toast filtering)
+   * Set the currently active notebook ID (for smart toast filtering)
    */
-  setActiveTag(tagId: string | null): void {
-    this.activeTagId.set(tagId);
+  setActiveNotebook(notebookId: string | null): void {
+    this.activeNotebookId.set(notebookId);
   }
 
   // MARK: - Notification Handling
@@ -290,12 +290,12 @@ export class NotificationService {
     tagId?: string;
     messageId?: string;
   }): void {
-    // Check if user is viewing this tag's messages
-    const currentTagId = this.activeTagId();
-    const notificationTagId = notification.tagId;
+    // Check if user is viewing this notebook's messages
+    const currentNotebookId = this.activeNotebookId();
+    const notificationNotebookId = notification.tagId;
 
-    // Only show toast if NOT currently viewing this tag
-    if (!notificationTagId || notificationTagId !== currentTagId) {
+    // Only show toast if NOT currently viewing this notebook
+    if (!notificationNotebookId || notificationNotebookId !== currentNotebookId) {
       // Fetch full notification to get message content
       this.fetchNotification(notification.notificationId, notification.apiUrl).subscribe({
         next: (fullNotification) => {

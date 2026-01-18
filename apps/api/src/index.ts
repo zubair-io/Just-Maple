@@ -3,16 +3,16 @@ import { cors } from '@elysiajs/cors';
 import { join, resolve } from 'path';
 import { connectToDatabase, getDb } from './db/client';
 import { authRoutes } from './routes/auth';
-import { tagRoutes } from './routes/tags';
-import { noteRoutes } from './routes/notes';
+import { notebookRoutes } from './routes/notebooks';
+import { pageRoutes } from './routes/pages';
 import { messageRoutes } from './routes/messages';
-import { paperRoutes } from './routes/papers';
+import { collectableRoutes } from './routes/collectables';
 import { collectibleRegistryRoutes } from './routes/collectible-registry';
 import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
 import { legoRoutes } from './routes/lego';
 import { collabRoutes } from './routes/collab';
-import { notebookRoutes } from './routes/notebook';
+import { memoRoutes } from './routes/memo';
 import { realtimeWebSocket } from './ws/realtime.ws';
 import { redisPubSub } from './services/redis.service';
 import { config } from './config';
@@ -53,16 +53,16 @@ async function main() {
             }),
         )
         .use(authRoutes)
-        .use(tagRoutes)
-        .use(noteRoutes)
+        .use(notebookRoutes)
+        .use(pageRoutes)
         .use(messageRoutes)
-        .use(paperRoutes)
+        .use(collectableRoutes)
         .use(collectibleRegistryRoutes)
         .use(notificationRoutes)
         .use(botRoutes)
         .use(legoRoutes)
         .use(collabRoutes)
-        .use(notebookRoutes)
+        .use(memoRoutes)
         .use(realtimeWebSocket); // Unified WebSocket for app events + notebook sync + chat
 
     app.get('/api/health', async ({ set }) => {

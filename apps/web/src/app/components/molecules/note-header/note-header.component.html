@@ -1,15 +1,15 @@
-@if (note()) {
+@if (page()) {
   <header
     class="h-14 flex items-center justify-between px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
   >
     <!-- Breadcrumb -->
     <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-      @if (tag()) {
+      @if (notebook()) {
         <div
           class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-stone-100"
         >
           <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">tag</span>
-          <span>{{ tag()!.label }}</span>
+          <span>{{ notebook()!.label }}</span>
         </div>
         <span class="text-stone-300">/</span>
       }
@@ -17,7 +17,7 @@
         class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100"
       >
         <span class="material-symbols-rounded text-sm">article</span>
-        <span>{{ note()!.title }}</span>
+        <span>{{ page()!.title }}</span>
       </div>
     </div>
 
@@ -36,14 +36,14 @@
         <button
           (click)="toggleFavorite.emit()"
           class="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
-          [class.text-[var(--color-primary)]]="note()?.isFavorite"
-          [class.text-[var(--color-text-muted)]]="!note()?.isFavorite"
-          [class.hover:text-[var(--color-text-main)]]="!note()?.isFavorite"
+          [class.text-[var(--color-primary)]]="page()?.isFavorite"
+          [class.text-[var(--color-text-muted)]]="!page()?.isFavorite"
+          [class.hover:text-[var(--color-text-main)]]="!page()?.isFavorite"
           [class.hover:bg-stone-100]="true"
           title="Favorite"
         >
           <span class="material-symbols-rounded text-lg">
-            {{ note()?.isFavorite ? 'star' : 'star_border' }}
+            {{ page()?.isFavorite ? 'star' : 'star_border' }}
           </span>
         </button>
         <button
@@ -54,7 +54,7 @@
         </button>
       </div>
       <button
-        (click)="createNote()"
+        (click)="createPage()"
         class="ml-2 flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg transition-colors"
         title="New Note"
       >

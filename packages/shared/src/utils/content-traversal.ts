@@ -1,4 +1,4 @@
-import type { NoteContent } from '../schemas/note';
+import type { PageContent } from '../schemas/page';
 
 /**
  * Node visitor callback for content traversal
@@ -28,7 +28,7 @@ export interface ContentNode {
  * Provides a reusable way to walk through TipTap/ProseMirror JSON content
  */
 export function traverseContent(
-    content: NoteContent | ContentNode | undefined | null,
+    content: PageContent | ContentNode | undefined | null,
     visitor: ContentNodeVisitor,
 ): void {
     if (!content || typeof content !== 'object') return;
@@ -64,7 +64,7 @@ export interface MentionAttrs {
 /**
  * Extract all mentions from content
  */
-export function extractMentions(content: NoteContent | undefined | null): MentionAttrs[] {
+export function extractMentions(content: PageContent | undefined | null): MentionAttrs[] {
     const mentions: MentionAttrs[] = [];
 
     traverseContent(content, (node) => {
@@ -102,7 +102,7 @@ export interface ExtractTextOptions {
  * Extract plain text from content
  */
 export function extractText(
-    content: NoteContent | undefined | null,
+    content: PageContent | undefined | null,
     options: ExtractTextOptions = {},
 ): string {
     const { includeNewlines = true, maxLength, includeMentions = true } = options;
@@ -145,7 +145,7 @@ export function extractText(
  * Get text after a mention in content
  */
 export function getTextAfterMention(
-    content: NoteContent | undefined | null,
+    content: PageContent | undefined | null,
     mentionHandle: string,
 ): string {
     const fullText = extractText(content);

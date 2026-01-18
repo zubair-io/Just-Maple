@@ -3,8 +3,8 @@ import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
 import { Subscription, filter, fromEvent } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
-import { TagService } from '../../services/tag.service';
-import { NoteService } from '../../services/note.service';
+import { NotebookService } from '../../services/notebook.service';
+import { PageService } from '../../services/page.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { RealtimeWSService } from '../../services/realtime-ws.service';
@@ -20,14 +20,14 @@ import { SidebarComponent } from '../../components';
 export class HomeComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   readonly authService = inject(AuthService);
-  readonly tagService = inject(TagService);
-  readonly noteService = inject(NoteService);
+  readonly notebookService = inject(NotebookService);
+  readonly pageService = inject(PageService);
   private readonly realtimeService = inject(RealtimeService);
   private readonly uiStateService = inject(UiStateService);
   private readonly realtimeWS = inject(RealtimeWSService);
 
-  readonly selectedNoteId = signal<string | null>(null);
-  readonly selectedTagId = signal<string | null>(null);
+  readonly selectedPageId = signal<string | null>(null);
+  readonly selectedNotebookId = signal<string | null>(null);
   readonly sidebarOpen = this.uiStateService.sidebarOpen;
   readonly chatInputFocused = this.uiStateService.chatInputFocused;
   private readonly isMobile = signal(false);
@@ -46,11 +46,11 @@ export class HomeComponent implements OnInit, OnDestroy {
   private resizeSubscription?: Subscription;
 
   ngOnInit(): void {
-    // Ensure default tag exists (tags auto-load via visibility service)
-    this.tagService.ensureDefaultTag().subscribe({
+    // Ensure default notebook exists (notebooks auto-load via visibility service)
+    this.notebookService.ensureDefaultNotebook().subscribe({
       next: () => {
-        // Auto-select first tag if on root path
-        this.autoSelectFirstTag();
+        // Auto-select first notebook if on root path
+        this.autoSelectFirstNotebook();
       },
     });
 
@@ -102,30 +102,30 @@ export class HomeComponent implements OnInit, OnDestroy {
     const segments = url.split('/').filter(Boolean);
 
     if (segments.length >= 1) {
-      // First segment is tagId (if not a special route like 'favorites', 'trash')
+      // First segment is notebookId (if not a special route like 'favorites', 'trash')
       const firstSegment = segments[0];
       if (!['favorites', 'trash', 'login', 'verify'].includes(firstSegment)) {
-        this.selectedTagId.set(firstSegment);
+        this.selectedNotebookId.set(firstSegment);
       }
     }
 
     if (segments.length >= 2) {
-      // Second segment is documentId - find note by documentId and set selectedNoteId to _id
+      // Second segment is documentId - find page by documentId and set selectedPageId to _id
       const documentId = segments[1];
-      const note = this.noteService.notes().find((n) => n.documentId === documentId);
-      this.selectedNoteId.set(note?._id || null);
+      const page = this.pageService.pages().find((n) => n.documentId === documentId);
+      this.selectedPageId.set(page?._id || null);
     }
   }
 
-  private autoSelectFirstTag(): void {
-    // Only redirect if on root path (no tag selected)
+  private autoSelectFirstNotebook(): void {
+    // Only redirect if on root path (no notebook selected)
     const url = this.router.url;
     const segments = url.split('/').filter(Boolean);
 
     if (segments.length === 0) {
-      const tags = this.tagService.tags();
-      if (tags.length > 0) {
-        this.router.navigate(['/', tags[0]._id]);
+      const notebooks = this.notebookService.notebooks();
+      if (notebooks.length > 0) {
+        this.router.navigate(['/', notebooks[0]._id]);
       }
     }
   }
@@ -138,42 +138,42 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.uiStateService.closeSidebar();
   }
 
-  openLastNote(): void {
-    const notes = this.noteService.notes();
-    if (notes.length > 0) {
-      // Get the most recently updated note
-      const sortedNotes = [...notes].sort(
+  openLastPage(): void {
+    const pages = this.pageService.pages();
+    if (pages.length > 0) {
+      // Get the most recently updated page
+      const sortedPages = [...pages].sort(
         (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       );
-      const lastNote = sortedNotes[0];
-      const urlParam = lastNote.documentId;
-      if (lastNote.tagId) {
-        this.router.navigate(['/', lastNote.tagId, urlParam]);
+      const lastPage = sortedPages[0];
+      const urlParam = lastPage.documentId;
+      if (lastPage.tagId) {
+        this.router.navigate(['/', lastPage.tagId, urlParam]);
       } else {
-        this.selectedNoteId.set(lastNote._id);
+        this.selectedPageId.set(lastPage._id);
       }
     }
   }
 
-  onNewNote(): void {
-    // Will be handled by the note-view component
+  onNewPage(): void {
+    // Will be handled by the page-view component
   }
 
-  onSelectNote(noteId: string): void {
-    this.selectedNoteId.set(noteId);
+  onSelectPage(pageId: string): void {
+    this.selectedPageId.set(pageId);
   }
 
-  onSelectTag(tagId: string): void {
-    this.selectedTagId.set(tagId);
+  onSelectNotebook(notebookId: string): void {
+    this.selectedNotebookId.set(notebookId);
   }
 
-  onCreateTag(): void {
-    const name = prompt('Enter tag name:');
+  onCreateNotebook(): void {
+    const name = prompt('Enter notebook name:');
     if (!name) return;
 
-    this.tagService.createTag({ label: name }).subscribe({
+    this.notebookService.createNotebook({ label: name }).subscribe({
       error: (error) => {
-        console.error('Failed to create tag:', error);
+        console.error('Failed to create notebook:', error);
       },
     });
   }
@@ -182,26 +182,26 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.router.navigate(['/settings']);
   }
 
-  createNewNote(): void {
-    const tagId = this.selectedTagId();
-    // Create a new note and navigate to it
-    this.noteService
-      .createNote({
+  createNewPage(): void {
+    const notebookId = this.selectedNotebookId();
+    // Create a new page and navigate to it
+    this.pageService
+      .createPage({
         title: 'Untitled',
         content: { type: 'doc', content: [] },
-        tagId: tagId || undefined,
+        tagId: notebookId || undefined,
       })
       .subscribe({
-        next: (note) => {
-          const urlParam = note.documentId;
-          if (tagId) {
-            this.router.navigate(['/', tagId, urlParam]);
+        next: (page) => {
+          const urlParam = page.documentId;
+          if (notebookId) {
+            this.router.navigate(['/', notebookId, urlParam]);
           } else {
             this.router.navigate(['/', urlParam]);
           }
         },
         error: (error) => {
-          console.error('Failed to create note:', error);
+          console.error('Failed to create page:', error);
         },
       });
   }

@@ -10,12 +10,12 @@
       <span class="material-symbols-rounded">arrow_back</span>
     </button>
 
-    @if (selectedTag()) {
+    @if (selectedNotebook()) {
       <div
         class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium text-sm p-1 px-2 rounded bg-stone-100"
       >
         <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
-        <span>{{ selectedTag()!.label }}</span>
+        <span>{{ selectedNotebook()!.label }}</span>
       </div>
     }
   </header>

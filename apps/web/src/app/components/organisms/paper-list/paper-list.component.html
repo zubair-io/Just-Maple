@@ -6,9 +6,9 @@
   class="paper-list-viewport"
 >
   <app-paper-list-item
-    *cdkVirtualFor="let paper of papers(); trackBy: trackByFn"
-    [paper]="paper"
-    [selected]="selectedPaperId() === paper._id"
-    (click)="onSelectPaper(paper)"
+    *cdkVirtualFor="let collectable of collectables(); trackBy: trackByFn"
+    [collectable]="collectable"
+    [selected]="selectedCollectableId() === collectable._id"
+    (click)="onSelectCollectable(collectable)"
   />
 </cdk-virtual-scroll-viewport>

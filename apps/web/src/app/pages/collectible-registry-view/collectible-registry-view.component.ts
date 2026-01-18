@@ -1,13 +1,13 @@
-import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule, Location } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { Subscription, switchMap, of, catchError, forkJoin } from 'rxjs';
-import { TagService } from '../../services/tag.service';
-import { PaperService } from '../../services/paper.service';
+import { NotebookService } from '../../services/notebook.service';
+import { CollectableService } from '../../services/collectable.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
 import { RealtimeWSService } from '../../services/realtime-ws.service';
-import type { PaperStatus } from '@maple/shared';
+import type { CollectableStatus } from '@maple/shared';
 
 @Component({
   selector: 'app-collectible-registry-view',
@@ -20,22 +20,22 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
   private readonly location = inject(Location);
   private readonly route = inject(ActivatedRoute);
   private readonly realtimeWS = inject(RealtimeWSService);
-  readonly tagService = inject(TagService);
-  readonly paperService = inject(PaperService);
+  readonly notebookService = inject(NotebookService);
+  readonly collectableService = inject(CollectableService);
   readonly registryService = inject(CollectibleRegistryService);
 
   private routeSubscription?: Subscription;
 
-  readonly tagId = signal<string | null>(null);
+  readonly notebookId = signal<string | null>(null);
   readonly registryId = signal<string | null>(null);
   readonly isSaving = signal(false);
   readonly selectedImageIndex = signal(0);
 
   // Computed signals reactively derive from stores
-  readonly selectedTag = computed(() => {
-    const id = this.tagId();
+  readonly selectedNotebook = computed(() => {
+    const id = this.notebookId();
     if (!id) return null;
-    return this.tagService.tags().find((t) => t._id === id) || null;
+    return this.notebookService.notebooks().find((n) => n._id === id) || null;
   });
 
   readonly registry = computed(() => {
@@ -44,39 +44,39 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
     return this.registryService.registries().find((r) => r._id === id) || null;
   });
 
-  readonly paper = computed(() => {
+  readonly collectable = computed(() => {
     const registryId = this.registryId();
-    const tagId = this.tagId();
-    if (!registryId || !tagId) return null;
+    const notebookId = this.notebookId();
+    if (!registryId || !notebookId) return null;
     return (
-      this.paperService
-        .papers()
-        .find((p) => p.data.registryData === registryId && p.tags.includes(tagId)) || null
+      this.collectableService
+        .collectables()
+        .find((c) => c.data.registryData === registryId && c.tags.includes(notebookId)) || null
     );
   });
 
   readonly isLoading = computed(() => {
-    return this.paperService.isLoading() || !this.registry();
+    return this.collectableService.isLoading() || !this.registry();
   });
 
-  readonly collectionStatus = computed<PaperStatus>(() => {
-    const p = this.paper();
-    if (!p) return 'none';
-    return p.data.status;
+  readonly collectionStatus = computed<CollectableStatus>(() => {
+    const c = this.collectable();
+    if (!c) return 'none';
+    return c.data.status;
   });
 
   readonly quantity = computed(() => {
-    const p = this.paper();
-    return p?.data.quantity ?? 0;
+    const c = this.collectable();
+    return c?.data.quantity ?? 0;
   });
 
-  // Reactively load data when tagId changes, with proper subscription management
+  // Reactively load data when notebookId changes, with proper subscription management
   private readonly dataLoader = toSignal(
-    toObservable(this.tagId).pipe(
-      switchMap((tagId) =>
-        tagId
+    toObservable(this.notebookId).pipe(
+      switchMap((notebookId) =>
+        notebookId
           ? forkJoin({
-              papers: this.paperService.loadPapers({ tagId }),
+              collectables: this.collectableService.loadCollectables({ notebookId }),
               registry: this.registryService.initializeRegistry().pipe(catchError(() => of(null))),
             })
           : of(null),
@@ -90,7 +90,7 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Subscribe to route params and set IDs directly - computed signals handle the rest
     this.routeSubscription = this.route.params.subscribe((params) => {
-      this.tagId.set(params['tagId'] || null);
+      this.notebookId.set(params['tagId'] || null);
       this.registryId.set(params['collectibleId'] || null);
     });
   }
@@ -103,45 +103,47 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
     this.location.back();
   }
 
-  setStatus(status: PaperStatus): void {
+  setStatus(status: CollectableStatus): void {
     const registryId = this.registryId();
-    const tagId = this.tagId();
-    const currentPaper = this.paper();
+    const notebookId = this.notebookId();
+    const currentCollectable = this.collectable();
     const registry = this.registry();
 
-    if (!registryId || !tagId || !registry) return;
+    if (!registryId || !notebookId || !registry) return;
 
     // Use WebSocket for real-time updates
     if (this.realtimeWS.isConnected()) {
-      if (currentPaper) {
+      if (currentCollectable) {
         // Optimistic update first, then send via WebSocket
-        this.paperService.optimisticUpdate(currentPaper._id, { status });
-        this.realtimeWS.updatePaper(currentPaper._id, { status });
+        this.collectableService.optimisticUpdate(currentCollectable._id, { status });
+        this.realtimeWS.updateCollectable(currentCollectable._id, { status });
       } else {
         // Optimistic create, then send via WebSocket
-        const paperData = {
+        const collectableData = {
           itemId: registry.providerId,
           provider: registry.provider,
           registryData: registryId,
           status,
           quantity: 1,
         };
-        this.paperService.optimisticCreate([tagId], paperData as any);
-        this.realtimeWS.createPaper([tagId], paperData);
+        this.collectableService.optimisticCreate([notebookId], collectableData as any);
+        this.realtimeWS.createCollectable([notebookId], collectableData);
       }
     } else {
       // Fallback to HTTP if WebSocket not connected (already has optimistic updates)
       this.isSaving.set(true);
 
-      if (currentPaper) {
-        this.paperService.updatePaper(currentPaper._id, { data: { status } }).subscribe({
-          next: () => this.isSaving.set(false),
-          error: () => this.isSaving.set(false),
-        });
+      if (currentCollectable) {
+        this.collectableService
+          .updateCollectable(currentCollectable._id, { data: { status } })
+          .subscribe({
+            next: () => this.isSaving.set(false),
+            error: () => this.isSaving.set(false),
+          });
       } else {
-        this.paperService
-          .createPaper({
-            tags: [tagId],
+        this.collectableService
+          .createCollectable({
+            tags: [notebookId],
             data: {
               itemId: registry.providerId,
               provider: registry.provider,
@@ -159,21 +161,23 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
   }
 
   updateQuantity(delta: number): void {
-    const currentPaper = this.paper();
-    if (!currentPaper) return;
+    const currentCollectable = this.collectable();
+    if (!currentCollectable) return;
 
-    const newQuantity = Math.max(0, (currentPaper.data.quantity ?? 1) + delta);
+    const newQuantity = Math.max(0, (currentCollectable.data.quantity ?? 1) + delta);
 
     // Use WebSocket for real-time updates
     if (this.realtimeWS.isConnected()) {
       // Optimistic update first, then send via WebSocket
-      this.paperService.optimisticUpdate(currentPaper._id, { quantity: newQuantity });
-      this.realtimeWS.updatePaper(currentPaper._id, { quantity: newQuantity });
+      this.collectableService.optimisticUpdate(currentCollectable._id, {
+        quantity: newQuantity,
+      });
+      this.realtimeWS.updateCollectable(currentCollectable._id, { quantity: newQuantity });
     } else {
       // Fallback to HTTP (already has optimistic updates)
       this.isSaving.set(true);
-      this.paperService
-        .updatePaper(currentPaper._id, { data: { quantity: newQuantity } })
+      this.collectableService
+        .updateCollectable(currentCollectable._id, { data: { quantity: newQuantity } })
         .subscribe({
           next: () => this.isSaving.set(false),
           error: () => this.isSaving.set(false),
@@ -185,7 +189,7 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
     this.selectedImageIndex.set(index);
   }
 
-  getStatusLabel(status: PaperStatus): string {
+  getStatusLabel(status: CollectableStatus): string {
     switch (status) {
       case 'have':
         return 'Have';
@@ -198,7 +202,7 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
     }
   }
 
-  getStatusIcon(status: PaperStatus): string {
+  getStatusIcon(status: CollectableStatus): string {
     switch (status) {
       case 'have':
         return 'check_circle';

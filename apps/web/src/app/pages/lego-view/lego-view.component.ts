@@ -4,12 +4,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription, switchMap, of, catchError } from 'rxjs';
-import { TagService } from '../../services/tag.service';
-import { PaperService } from '../../services/paper.service';
+import { NotebookService } from '../../services/notebook.service';
+import { CollectableService } from '../../services/collectable.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { PaperListComponent } from '../../components';
-import type { Paper, CollectibleRegistry, RegistryTag } from '@maple/shared';
+import type { Collectable, CollectibleRegistry, RegistryTag } from '@maple/shared';
 
 @Component({
   selector: 'app-lego-view',
@@ -21,23 +21,23 @@ import type { Paper, CollectibleRegistry, RegistryTag } from '@maple/shared';
 export class LegoViewComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  readonly tagService = inject(TagService);
-  readonly paperService = inject(PaperService);
+  readonly notebookService = inject(NotebookService);
+  readonly collectableService = inject(CollectableService);
   readonly registryService = inject(CollectibleRegistryService);
   private readonly uiStateService = inject(UiStateService);
 
   private routeSubscription?: Subscription;
 
-  readonly selectedTagId = signal<string | null>(null);
+  readonly selectedNotebookId = signal<string | null>(null);
   readonly showFilterPanel = signal(false);
   readonly searchQuery = signal('');
   readonly selectedRegistryTags = signal<string[]>([]);
 
   // Computed signals reactively derive from store - no validation needed
-  readonly selectedTag = computed(() => {
-    const tagId = this.selectedTagId();
-    if (!tagId) return null;
-    return this.tagService.tags().find((t) => t._id === tagId) || null;
+  readonly selectedNotebook = computed(() => {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return null;
+    return this.notebookService.notebooks().find((n) => n._id === notebookId) || null;
   });
 
   // Computed map for O(1) registry lookups (reactive to store changes)
@@ -46,14 +46,14 @@ export class LegoViewComponent implements OnInit, OnDestroy {
     return new Map(registries.map((r) => [r._id, r]));
   });
 
-  // Reactively load papers when tagId changes, with proper subscription management
-  private readonly paperLoader = toSignal(
-    toObservable(this.selectedTagId).pipe(
-      switchMap((tagId) =>
-        tagId
+  // Reactively load collectables when notebookId changes, with proper subscription management
+  private readonly collectableLoader = toSignal(
+    toObservable(this.selectedNotebookId).pipe(
+      switchMap((notebookId) =>
+        notebookId
           ? this.registryService.initializeRegistry().pipe(
               catchError(() => of(null)), // Continue even if registry init fails
-              switchMap(() => this.paperService.loadPapers({ tagId })),
+              switchMap(() => this.collectableService.loadCollectables({ notebookId })),
             )
           : of(null),
       ),
@@ -65,22 +65,22 @@ export class LegoViewComponent implements OnInit, OnDestroy {
     console.log('LegoViewComponent initialized');
   }
 
-  /** Get all papers for the tag (excluding 'none' status) */
-  private readonly allPapersForTag = computed(() => {
-    const tagId = this.selectedTagId();
-    if (!tagId) return [];
-    // Use papersSignal directly for proper reactive tracking
-    const papers = this.paperService.papersSignal() ?? [];
-    return papers.filter((p) => p.tags.includes(tagId) && p.data.status !== 'none');
+  /** Get all collectables for the notebook (excluding 'none' status) */
+  private readonly allCollectablesForNotebook = computed(() => {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return [];
+    // Use collectablesSignal directly for proper reactive tracking
+    const collectables = this.collectableService.collectablesSignal() ?? [];
+    return collectables.filter((c) => c.tags.includes(notebookId) && c.data.status !== 'none');
   });
 
-  /** Get unique registry tags from all papers for filter options */
+  /** Get unique registry tags from all collectables for filter options */
   readonly availableRegistryTags = computed(() => {
-    const papers = this.allPapersForTag();
+    const collectables = this.allCollectablesForNotebook();
     const tagSet = new Map<string, RegistryTag>();
 
-    for (const paper of papers) {
-      const registry = this.getRegistryForPaper(paper);
+    for (const collectable of collectables) {
+      const registry = this.getRegistryForCollectable(collectable);
       if (registry?.tags) {
         for (const tag of registry.tags) {
           // Only include string tags without dashes, not purely numeric, and not ending in "+"
@@ -99,18 +99,18 @@ export class LegoViewComponent implements OnInit, OnDestroy {
     return Array.from(tagSet.values()).sort((a, b) => a.value.localeCompare(b.value));
   });
 
-  /** Filtered and sorted papers */
-  readonly papersForTag = computed(() => {
-    const papers = this.allPapersForTag();
+  /** Filtered and sorted collectables */
+  readonly collectablesForNotebook = computed(() => {
+    const collectables = this.allCollectablesForNotebook();
     const query = this.searchQuery().toLowerCase().trim();
     const selectedTags = this.selectedRegistryTags();
 
-    let filtered = papers;
+    let filtered = collectables;
 
     // Filter by search query (title or provider ID)
     if (query) {
-      filtered = filtered.filter((paper) => {
-        const registry = this.getRegistryForPaper(paper);
+      filtered = filtered.filter((collectable) => {
+        const registry = this.getRegistryForCollectable(collectable);
         if (!registry) return false;
 
         const titleMatch = registry.title?.toLowerCase().includes(query);
@@ -121,8 +121,8 @@ export class LegoViewComponent implements OnInit, OnDestroy {
 
     // Filter by selected registry tags
     if (selectedTags.length > 0) {
-      filtered = filtered.filter((paper) => {
-        const registry = this.getRegistryForPaper(paper);
+      filtered = filtered.filter((collectable) => {
+        const registry = this.getRegistryForCollectable(collectable);
         if (!registry?.tags) return false;
 
         return selectedTags.some((selectedTag) =>
@@ -131,7 +131,7 @@ export class LegoViewComponent implements OnInit, OnDestroy {
       });
     }
 
-    // Sort by newest first (by paper createdAt or registry data created)
+    // Sort by newest first (by collectable createdAt or registry data created)
     return [...filtered].sort((a, b) => {
       const dateA = new Date(a.data.created || a.createdAt).getTime();
       const dateB = new Date(b.data.created || b.createdAt).getTime();
@@ -144,16 +144,16 @@ export class LegoViewComponent implements OnInit, OnDestroy {
     return this.searchQuery().trim().length > 0 || this.selectedRegistryTags().length > 0;
   });
 
-  /** Get registry for a paper (reactive O(1) lookup) */
-  getRegistryForPaper(paper: Paper): CollectibleRegistry | undefined {
-    if (!paper.data.registryData) return undefined;
-    return this.registriesMap().get(paper.data.registryData);
+  /** Get registry for a collectable (reactive O(1) lookup) */
+  getRegistryForCollectable(collectable: Collectable): CollectibleRegistry | undefined {
+    if (!collectable.data.registryData) return undefined;
+    return this.registriesMap().get(collectable.data.registryData);
   }
 
   ngOnInit(): void {
     // Subscribe to route params and set ID directly - effect handles loading
     this.routeSubscription = this.route.params.subscribe((params) => {
-      this.selectedTagId.set(params['tagId'] || null);
+      this.selectedNotebookId.set(params['tagId'] || null);
     });
   }
 
@@ -161,17 +161,17 @@ export class LegoViewComponent implements OnInit, OnDestroy {
     this.routeSubscription?.unsubscribe();
   }
 
-  onSelectPaper(paper: Paper): void {
-    const tagId = this.selectedTagId();
-    if (tagId && paper.data.registryData) {
-      this.router.navigate(['/', tagId, 'collectible', paper.data.registryData]);
+  onSelectCollectable(collectable: Collectable): void {
+    const notebookId = this.selectedNotebookId();
+    if (notebookId && collectable.data.registryData) {
+      this.router.navigate(['/', notebookId, 'collectible', collectable.data.registryData]);
     }
   }
 
   openScanner(): void {
-    const tagId = this.selectedTagId();
-    if (tagId) {
-      this.router.navigate(['/', tagId, 'scan']);
+    const notebookId = this.selectedNotebookId();
+    if (notebookId) {
+      this.router.navigate(['/', notebookId, 'scan']);
     }
   }
 

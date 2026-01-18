@@ -1,10 +1,10 @@
 import * as Y from 'yjs';
 import {
-    findNotebookByNoteId,
-    updateNotebookForYJS,
-    getNotebookState,
-    notebookExists,
-} from '../repositories/notebook.repo';
+    findMemoByNoteId,
+    updateMemoForYJS,
+    getMemoState,
+    memoExists,
+} from '../repositories/memo.repo';
 import { realtimeWSService } from './realtime-ws.service';
 
 /**
@@ -56,7 +56,7 @@ class YJSDocumentService {
         ydoc = new Y.Doc();
 
         // Try to load from database
-        const state = await getNotebookState(noteId);
+        const state = await getMemoState(noteId);
         if (state) {
             Y.applyUpdate(ydoc, state);
             console.log(`[YJS] Loaded document from database: ${noteId}`);
@@ -122,7 +122,7 @@ class YJSDocumentService {
      * If notebook already exists, merges states
      */
     async initializeNotebook(noteId: string, initialState: Uint8Array): Promise<Uint8Array> {
-        const exists = await notebookExists(noteId);
+        const exists = await memoExists(noteId);
 
         if (exists) {
             // Document exists - merge states
@@ -203,7 +203,7 @@ class YJSDocumentService {
      */
     private async persistDocument(noteId: string, ydoc: Y.Doc): Promise<void> {
         const state = Y.encodeStateAsUpdate(ydoc);
-        await updateNotebookForYJS(noteId, state);
+        await updateMemoForYJS(noteId, state);
     }
 
     /**

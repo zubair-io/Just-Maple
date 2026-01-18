@@ -1,7 +1,7 @@
 import { Component, input, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ProfileAvatarComponent } from '../../atoms';
-import type { TagMember } from '@maple/shared';
+import type { NotebookMember } from '@maple/shared';
 
 @Component({
   selector: 'app-member-avatar-group',
@@ -11,7 +11,7 @@ import type { TagMember } from '@maple/shared';
   styleUrl: './member-avatar-group.component.scss',
 })
 export class MemberAvatarGroupComponent {
-  readonly members = input.required<TagMember[]>();
+  readonly members = input.required<NotebookMember[]>();
   readonly maxDisplay = input<number>(5);
   readonly size = input<'xs' | 'sm' | 'md' | 'lg' | 'xl'>('sm');
   readonly clickable = input<boolean>(true);

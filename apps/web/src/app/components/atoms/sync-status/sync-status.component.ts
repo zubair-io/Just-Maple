@@ -1,7 +1,7 @@
 import { Component, inject, input, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ConnectivityService } from '../../../services/connectivity.service';
-import { NotebookDocumentService } from '../../../services/notebook-document.service';
+import { MemoDocumentService } from '../../../services/memo-document.service';
 import { OfflineQueueService } from '../../../services/offline-queue.service';
 
 @Component({
@@ -13,10 +13,10 @@ import { OfflineQueueService } from '../../../services/offline-queue.service';
 })
 export class SyncStatusComponent {
   private readonly connectivity = inject(ConnectivityService);
-  private readonly notebookService = inject(NotebookDocumentService);
+  private readonly memoService = inject(MemoDocumentService);
   private readonly offlineQueue = inject(OfflineQueueService);
 
-  readonly noteId = input.required<string>();
+  readonly pageId = input.required<string>();
 
   readonly status = computed(() => {
     // Check offline first
@@ -24,13 +24,13 @@ export class SyncStatusComponent {
       return 'offline';
     }
 
-    // Check if there are pending operations for this note
-    if (this.offlineQueue.hasPendingForNote(this.noteId())) {
+    // Check if there are pending operations for this page
+    if (this.offlineQueue.hasPendingForNote(this.pageId())) {
       return 'pending';
     }
 
-    // Get sync status from notebook service
-    return this.notebookService.getSyncStatus(this.noteId());
+    // Get sync status from memo service
+    return this.memoService.getSyncStatus(this.pageId());
   });
 
   readonly statusText = computed(() => {
@@ -72,6 +72,6 @@ export class SyncStatusComponent {
   });
 
   readonly peersCount = computed(() => {
-    return this.notebookService.getPeersCount(this.noteId());
+    return this.memoService.getPeersCount(this.pageId());
   });
 }

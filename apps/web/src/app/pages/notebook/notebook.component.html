@@ -1,10 +1,14 @@
 <div class="notebook-page">
-  @if (selectedNote(); as note) {
-    <app-note-header [note]="note" [tag]="selectedTag()" (favoriteClicked)="toggleFavorite()" />
+  @if (selectedPage(); as page) {
+    <app-note-header
+      [page]="page"
+      [notebook]="selectedNotebook()"
+      (favoriteClicked)="toggleFavorite()"
+    />
 
     <div class="notebook-content">
       @if (documentId(); as docId) {
-        <app-notebook-editor [noteId]="docId" />
+        <app-notebook-editor [pageId]="docId" />
       }
     </div>
   } @else {

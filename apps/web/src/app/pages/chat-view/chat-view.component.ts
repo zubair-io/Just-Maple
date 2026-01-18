@@ -3,12 +3,12 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription, switchMap, of, combineLatest } from 'rxjs';
-import { TagService } from '../../services/tag.service';
-import { NoteService } from '../../services/note.service';
+import { NotebookService } from '../../services/notebook.service';
+import { PageService } from '../../services/page.service';
 import { NotificationService } from '../../services/notification.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { ChatComponent, MemberAvatarGroupComponent, ShareModalComponent } from '../../components';
-import { DEFAULT_NOTE_CONTENT, type TagMember } from '@maple/shared';
+import { DEFAULT_PAGE_CONTENT, type NotebookMember } from '@maple/shared';
 
 @Component({
   selector: 'app-chat-view',
@@ -20,59 +20,61 @@ import { DEFAULT_NOTE_CONTENT, type TagMember } from '@maple/shared';
 export class ChatViewComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  readonly tagService = inject(TagService);
-  readonly noteService = inject(NoteService);
+  readonly notebookService = inject(NotebookService);
+  readonly pageService = inject(PageService);
   private readonly notificationService = inject(NotificationService);
   private readonly uiStateService = inject(UiStateService);
 
   private routeSubscription?: Subscription;
 
-  readonly selectedTagId = signal<string | null>(null);
+  readonly selectedNotebookId = signal<string | null>(null);
   readonly showShareModal = signal<boolean>(false);
   private readonly membersRefreshTrigger = signal<number>(0);
 
-  // Reactively load members when tag changes or refresh is triggered
+  // Reactively load members when notebook changes or refresh is triggered
   readonly members = toSignal(
     combineLatest([
-      toObservable(this.selectedTagId),
+      toObservable(this.selectedNotebookId),
       toObservable(this.membersRefreshTrigger),
     ]).pipe(
-      switchMap(([tagId, _trigger]) => (tagId ? this.tagService.fetchTagMembers(tagId) : of([]))),
+      switchMap(([notebookId, _trigger]) =>
+        notebookId ? this.notebookService.fetchNotebookMembers(notebookId) : of([]),
+      ),
     ),
-    { initialValue: [] as TagMember[] },
+    { initialValue: [] as NotebookMember[] },
   );
 
   constructor() {
-    // Track active tag for smart notification filtering
+    // Track active notebook for smart notification filtering
     effect(() => {
-      const tagId = this.selectedTagId();
-      this.notificationService.setActiveTag(tagId);
+      const notebookId = this.selectedNotebookId();
+      this.notificationService.setActiveNotebook(notebookId);
     });
   }
 
   // Computed signals reactively derive from store - no validation needed
-  readonly selectedTag = computed(() => {
-    const tagId = this.selectedTagId();
-    if (!tagId) return null;
-    return this.tagService.tags().find((t) => t._id === tagId) || null;
+  readonly selectedNotebook = computed(() => {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return null;
+    return this.notebookService.notebooks().find((n) => n._id === notebookId) || null;
   });
 
   ngOnInit(): void {
     // Subscribe to route params and set ID directly - let computed handle the rest
     this.routeSubscription = this.route.params.subscribe((params) => {
-      this.selectedTagId.set(params['tagId'] || null);
+      this.selectedNotebookId.set(params['tagId'] || null);
     });
   }
 
   ngOnDestroy(): void {
     this.routeSubscription?.unsubscribe();
-    // Clear active tag when leaving chat view
-    this.notificationService.setActiveTag(null);
+    // Clear active notebook when leaving chat view
+    this.notificationService.setActiveNotebook(null);
   }
 
-  createNote(): void {
-    const tagId = this.selectedTagId();
-    this.router.navigate(['/', tagId, 'new']);
+  createPage(): void {
+    const notebookId = this.selectedNotebookId();
+    this.router.navigate(['/', notebookId, 'new']);
   }
 
   openShareModal(): void {

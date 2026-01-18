@@ -1,5 +1,5 @@
 import { Type, Static } from '@sinclair/typebox';
-import { NoteContentSchema } from './note';
+import { PageContentSchema } from './page';
 
 // Sender type - distinguishes between user and bot messages
 export const SenderTypeSchema = Type.Union([
@@ -32,7 +32,7 @@ export const MessageSchema = Type.Object({
     senderEmail: Type.Optional(Type.String()), // Populated sender email
     senderDisplayName: Type.Optional(Type.String()), // Populated sender display name (or bot name)
     senderProfilePictureUrl: Type.Optional(Type.String()), // Populated sender profile picture (or bot avatar)
-    content: NoteContentSchema, // TipTap/ProseMirror JSON (rich text)
+    content: PageContentSchema, // TipTap/ProseMirror JSON (rich text)
     mentions: Type.Optional(Type.Array(MentionSchema)), // Parsed mentions from content
     hasThread: Type.Optional(Type.Boolean()), // Whether this message has a thread reply
     createdAt: Type.String({ format: 'date-time' }),
@@ -45,14 +45,14 @@ export type Message = Static<typeof MessageSchema>;
 
 // Create message input
 export const CreateMessageSchema = Type.Object({
-    content: NoteContentSchema,
+    content: PageContentSchema,
 });
 
 export type CreateMessageInput = Static<typeof CreateMessageSchema>;
 
 // Update message input
 export const UpdateMessageSchema = Type.Object({
-    content: NoteContentSchema,
+    content: PageContentSchema,
 });
 
 export type UpdateMessageInput = Static<typeof UpdateMessageSchema>;
@@ -87,9 +87,9 @@ export const ChatActionSchema = Type.Union([
     Type.Literal('bot_invocation_started'), // Bot started processing
     Type.Literal('bot_invocation_completed'), // Bot finished
     Type.Literal('bot_invocation_failed'), // Bot failed
-    Type.Literal('paper_created'),
-    Type.Literal('paper_updated'),
-    Type.Literal('paper_deleted'),
+    Type.Literal('collectable_created'),
+    Type.Literal('collectable_updated'),
+    Type.Literal('collectable_deleted'),
 ]);
 
 export type ChatAction = Static<typeof ChatActionSchema>;

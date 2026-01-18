@@ -1,11 +1,11 @@
 import Redis from 'ioredis';
 import { config } from '../config';
-import type { ChatEvent, NotebookSSEEvent } from '@maple/shared';
+import type { ChatEvent, MemoSSEEvent } from '@maple/shared';
 
 // Channel prefixes
 const CHANNELS = {
-    CHAT: 'chat:', // chat:{tagId}
-    NOTEBOOK: 'notebook:', // notebook:{noteId}
+    CHAT: 'chat:', // chat:{notebookId}
+    MEMO: 'memo:', // memo:{noteId} for Y.Doc sync
     APP: 'app:', // app:{userId} for app events
 } as const;
 
@@ -131,37 +131,37 @@ class RedisPubSubService {
         await this.unsubscribe(channel, handler);
     }
 
-    // ==================== Notebook Pub/Sub ====================
+    // ==================== Memo Pub/Sub ====================
 
     /**
-     * Publish notebook event (Y.Doc update, awareness, peer events)
+     * Publish memo event (Y.Doc update, awareness, peer events)
      */
-    publishNotebook(noteId: string, event: NotebookSSEEvent): void {
+    publishNotebook(noteId: string, event: MemoSSEEvent): void {
         if (!this.publisher) return;
-        const channel = `${CHANNELS.NOTEBOOK}${noteId}`;
+        const channel = `${CHANNELS.MEMO}${noteId}`;
         this.publisher.publish(channel, JSON.stringify(event));
     }
 
     /**
-     * Subscribe to notebook events
+     * Subscribe to memo events
      */
     async subscribeNotebook(noteId: string, handler: MessageHandler): Promise<void> {
-        const channel = `${CHANNELS.NOTEBOOK}${noteId}`;
+        const channel = `${CHANNELS.MEMO}${noteId}`;
         await this.subscribe(channel, handler);
     }
 
     /**
-     * Unsubscribe from notebook events
+     * Unsubscribe from memo events
      */
     async unsubscribeNotebook(noteId: string, handler: MessageHandler): Promise<void> {
-        const channel = `${CHANNELS.NOTEBOOK}${noteId}`;
+        const channel = `${CHANNELS.MEMO}${noteId}`;
         await this.unsubscribe(channel, handler);
     }
 
     // ==================== App Events Pub/Sub ====================
 
     /**
-     * Publish app event to a user channel (notes/tags/papers CRUD)
+     * Publish app event to a user channel (pages/notebooks/collectables CRUD)
      */
     publishAppEvent(userId: string, event: any): void {
         if (!this.publisher) return;

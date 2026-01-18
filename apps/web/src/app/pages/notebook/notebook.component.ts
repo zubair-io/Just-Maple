@@ -3,8 +3,8 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
-import { NoteService } from '../../services/note.service';
-import { TagService } from '../../services/tag.service';
+import { PageService } from '../../services/page.service';
+import { NotebookService } from '../../services/notebook.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { NotebookEditorComponent } from '../../components/organisms/notebook-editor/notebook-editor.component';
 import { NoteHeaderComponent } from '../../components';
@@ -19,31 +19,33 @@ import { NoteHeaderComponent } from '../../components';
 export class NotebookComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly noteService = inject(NoteService);
-  private readonly tagService = inject(TagService);
+  private readonly pageService = inject(PageService);
+  private readonly notebookService = inject(NotebookService);
   private readonly uiStateService = inject(UiStateService);
 
   private routeSubscription?: Subscription;
 
   readonly documentId = signal<string | null>(null);
-  readonly tagId = signal<string | null>(null);
+  readonly notebookId = signal<string | null>(null);
 
-  // Get the note from the store
-  readonly selectedNote = toSignal(this.noteService.activeNote$, { initialValue: null });
+  // Get the page from the store
+  readonly selectedPage = toSignal(this.pageService.activePage$, { initialValue: null });
 
-  // Get the tag for the selected note
-  readonly selectedTag = toSignal(this.tagService.activeTag$, { initialValue: null });
+  // Get the notebook for the selected page
+  readonly selectedNotebook = toSignal(this.notebookService.activeNotebook$, {
+    initialValue: null,
+  });
 
   constructor() {
     // Subscribe to route params
     this.routeSubscription = this.route.params.subscribe((params) => {
       const documentId = params['documentId'] || null;
-      const tagId = params['tagId'] || null;
+      const notebookId = params['tagId'] || null;
       this.documentId.set(documentId);
-      this.tagId.set(tagId);
+      this.notebookId.set(notebookId);
 
       if (documentId) {
-        this.noteService.setActiveNoteId(documentId);
+        this.pageService.setActivePageId(documentId);
       }
     });
   }
@@ -53,10 +55,10 @@ export class NotebookComponent implements OnDestroy {
   }
 
   toggleFavorite(): void {
-    const note = this.selectedNote();
-    if (!note?._id) return;
+    const page = this.selectedPage();
+    if (!page?._id) return;
 
-    this.noteService.toggleFavorite(note._id).subscribe({
+    this.pageService.toggleFavorite(page._id).subscribe({
       error: (error) => {
         console.error('Failed to toggle favorite:', error);
       },

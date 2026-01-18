@@ -2,7 +2,7 @@ import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
-import { findNoteById } from '../repositories/note.repo';
+import { findPageById } from '../repositories/page.repo';
 import { otService } from '../services/ot.service';
 import { generateClientID } from '../utils/client-id';
 import type { JWTPayload, CollabStepsRequest, CollabBatchRequest } from '@maple/shared';
@@ -32,7 +32,7 @@ export const collabRoutes = new Elysia({ prefix: '/api/collab' })
         }
 
         const { noteId } = params;
-        const note = await findNoteById(noteId, auth.user._id);
+        const note = await findPageById(noteId, auth.user._id);
 
         if (!note) {
             set.status = 404;
@@ -67,7 +67,7 @@ export const collabRoutes = new Elysia({ prefix: '/api/collab' })
             const { noteId } = params;
             const { version, steps, doc, clientID: providedClientID } = body;
 
-            const note = await findNoteById(noteId, auth.user._id);
+            const note = await findPageById(noteId, auth.user._id);
             if (!note) {
                 set.status = 404;
                 return { error: 'Note not found' };
@@ -105,7 +105,7 @@ export const collabRoutes = new Elysia({ prefix: '/api/collab' })
             const { noteId } = params;
             const { stepsBatch, doc, clientID: providedClientID } = body;
 
-            const note = await findNoteById(noteId, auth.user._id);
+            const note = await findPageById(noteId, auth.user._id);
             if (!note) {
                 set.status = 404;
                 return { error: 'Note not found' };

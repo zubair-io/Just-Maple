@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
-import { findTagById, findTagByIdWithAccess } from '../repositories/tag.repo';
+import { findNotebookById, findNotebookByIdWithAccess } from '../repositories/notebook.repo';
 import type { JWTPayload, ChatEvent } from '@maple/shared';
 import {
     findAllBotTemplates,
@@ -217,18 +217,18 @@ export const botRoutes = new Elysia({ prefix: '/api' })
     // Bot Invocation (Triggering bots)
     // ============================================
 
-    // Get all bots available in a tag (for @mention autocomplete)
+    // Get all bots available in a notebook (for @mention autocomplete)
     .get(
-        '/tags/:id/bots',
+        '/notebooks/:id/bots',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
             }
 
-            const tag = await findTagById(params.id, auth.user._id);
-            if (!tag) {
+            const notebook = await findNotebookById(params.id, auth.user._id);
+            if (!notebook) {
                 set.status = 404;
-                return { error: 'Tag not found' };
+                return { error: 'Notebook not found' };
             }
 
             const enrichedBots = await findUserBotsForTag(params.id);
@@ -253,17 +253,17 @@ export const botRoutes = new Elysia({ prefix: '/api' })
 
     // Invoke a bot (trigger via @mention)
     .post(
-        '/tags/:id/bots/invoke',
+        '/notebooks/:id/bots/invoke',
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
             }
 
-            // Verify tag access - bot invocation requires write access
-            const tag = await findTagByIdWithAccess(params.id, auth.user._id, 'write');
-            if (!tag) {
+            // Verify notebook access - bot invocation requires write access
+            const notebook = await findNotebookByIdWithAccess(params.id, auth.user._id, 'write');
+            if (!notebook) {
                 set.status = 404;
-                return { error: 'Tag not found or access denied' };
+                return { error: 'Notebook not found or access denied' };
             }
 
             // Find the bot by handle
@@ -346,7 +346,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
 
             // Verify user has access to the tag
-            const tag = await findTagById(invocation.tagId, auth.user._id);
+            const tag = await findNotebookById(invocation.tagId, auth.user._id);
             if (!tag) {
                 set.status = 403;
                 return { error: 'Access denied' };
@@ -382,7 +382,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
 
             // Verify access
-            const tag = await findTagById(thread.tagId, auth.user._id);
+            const tag = await findNotebookById(thread.tagId, auth.user._id);
             if (!tag) {
                 set.status = 403;
                 return { error: 'Access denied' };
@@ -417,7 +417,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
 
             // Verify access
-            const tag = await findTagById(thread.tagId, auth.user._id);
+            const tag = await findNotebookById(thread.tagId, auth.user._id);
             if (!tag) {
                 set.status = 403;
                 return { error: 'Access denied' };
@@ -449,7 +449,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
 
             // Verify access
-            const tag = await findTagById(thread.tagId, auth.user._id);
+            const tag = await findNotebookById(thread.tagId, auth.user._id);
             if (!tag) {
                 set.status = 403;
                 return { error: 'Access denied' };

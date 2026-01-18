@@ -1,9 +1,9 @@
 import { Component, input, output, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import type { Note, Tag } from '@maple/shared';
-import { DEFAULT_NOTE_CONTENT } from '@maple/shared';
-import { NoteService } from '../../../services/note.service';
+import type { Page, Notebook } from '@maple/shared';
+import { DEFAULT_PAGE_CONTENT } from '@maple/shared';
+import { PageService } from '../../../services/page.service';
 
 @Component({
   selector: 'app-note-header',
@@ -13,18 +13,18 @@ import { NoteService } from '../../../services/note.service';
   styleUrl: './note-header.component.scss',
 })
 export class NoteHeaderComponent {
-  private readonly noteService = inject(NoteService);
+  private readonly pageService = inject(PageService);
   private readonly router = inject(Router);
 
-  readonly note = input<Note | null>(null);
-  readonly tag = input<Tag | null>(null);
+  readonly page = input<Page | null>(null);
+  readonly notebook = input<Notebook | null>(null);
 
   readonly toggleFavorite = output<void>();
 
   readonly formattedDate = computed(() => {
-    const note = this.note();
-    if (!note?.updatedAt) return '';
-    return this.formatDateValue(note.updatedAt);
+    const page = this.page();
+    if (!page?.updatedAt) return '';
+    return this.formatDateValue(page.updatedAt);
   });
 
   private formatDateValue(dateString: string): string {
@@ -45,8 +45,8 @@ export class NoteHeaderComponent {
     return date.toLocaleDateString();
   }
 
-  createNote(): void {
-    const tagId = this.tag()?._id;
-    this.router.navigate(['/', tagId, 'new']);
+  createPage(): void {
+    const notebookId = this.notebook()?._id;
+    this.router.navigate(['/', notebookId, 'new']);
   }
 }

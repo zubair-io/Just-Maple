@@ -10,11 +10,11 @@ import { customAlphabet } from 'nanoid';
 import { AuthService } from './auth.service';
 import { ConnectivityService } from './connectivity.service';
 import { OfflineQueueService } from './offline-queue.service';
-import { NoteService } from './note.service';
+import { PageService } from './page.service';
 import { RealtimeWSService } from './realtime-ws.service';
 import { VisibilityService } from './visibility.service';
 import { YJSWSProvider } from './yjs-ws-provider';
-import type { Note, SyncStatus } from '@maple/shared';
+import type { Page, SyncStatus } from '@maple/shared';
 
 // Generate document IDs (base58, URL-safe)
 const nanoidBase58 = customAlphabet(
@@ -33,18 +33,18 @@ interface OpenDocument {
 }
 
 /**
- * Notebook Document Service
- * Manages Y.Doc lifecycle for notebook-type notes
+ * Memo Document Service
+ * Manages Y.Doc lifecycle for memo-type pages
  * Handles offline-first creation and sync
  */
 @Injectable({ providedIn: 'root' })
-export class NotebookDocumentService {
+export class MemoDocumentService {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly http = inject(HttpClient);
   private readonly authService = inject(AuthService);
   private readonly connectivity = inject(ConnectivityService);
   private readonly offlineQueue = inject(OfflineQueueService);
-  private readonly noteService = inject(NoteService);
+  private readonly pageService = inject(PageService);
   private readonly realtimeWS = inject(RealtimeWSService);
   private readonly visibilityService = inject(VisibilityService);
 
@@ -78,8 +78,8 @@ export class NotebookDocumentService {
       return of(undefined);
     }
 
-    const syncs = Array.from(this.openDocs.entries()).map(([noteId, doc]) =>
-      this.fetchInitialState$(noteId, doc.ydoc).pipe(
+    const syncs = Array.from(this.openDocs.entries()).map(([pageId, doc]) =>
+      this.fetchInitialState$(pageId, doc.ydoc).pipe(
         catchError(() => of(undefined)), // Silently fail individual syncs
       ),
     );
@@ -92,11 +92,11 @@ export class NotebookDocumentService {
     effect(() => {
       const canSync = this.connectivity.canSync();
 
-      for (const [noteId, doc] of this.openDocs) {
+      for (const [pageId, doc] of this.openDocs) {
         if (canSync) {
           // Reconnect if needed
           if (!doc.wsProvider || !doc.wsProvider.connected()) {
-            this.connectProviders(noteId, doc);
+            this.connectProviders(pageId, doc);
           }
         } else {
           // Disconnect when offline
@@ -108,16 +108,16 @@ export class NotebookDocumentService {
   }
 
   /**
-   * Open a notebook document
+   * Open a memo document
    * Loads from IndexedDB first (offline-first), then syncs with server
    */
-  async openDocument(noteId: string): Promise<{
+  async openDocument(pageId: string): Promise<{
     ydoc: Y.Doc;
     awareness: Awareness;
   }> {
     // Check if already open
-    if (this.openDocs.has(noteId)) {
-      const doc = this.openDocs.get(noteId)!;
+    if (this.openDocs.has(pageId)) {
+      const doc = this.openDocs.get(pageId)!;
       return { ydoc: doc.ydoc, awareness: doc.awareness };
     }
 
@@ -129,7 +129,7 @@ export class NotebookDocumentService {
     this.setupAwareness(awareness);
 
     // Setup local persistence FIRST (offline-first)
-    const persistence = new IndexeddbPersistence(`ydoc-${noteId}`, ydoc);
+    const persistence = new IndexeddbPersistence(`ydoc-${pageId}`, ydoc);
     await persistence.whenSynced;
 
     // Store reference
@@ -139,7 +139,7 @@ export class NotebookDocumentService {
       persistence,
       wsProvider: null,
     };
-    this.openDocs.set(noteId, doc);
+    this.openDocs.set(pageId, doc);
 
     // Check if document is empty (no content from IndexedDB)
     const prosemirror = ydoc.getXmlFragment('prosemirror');
@@ -148,7 +148,7 @@ export class NotebookDocumentService {
     // Connect to server if online (don't block on this - can work offline)
     if (this.connectivity.canSync()) {
       // Start sync process after auth is ready
-      this.syncDocument(noteId, doc, ydoc, isDocEmpty);
+      this.syncDocument(pageId, doc, ydoc, isDocEmpty);
     }
 
     return { ydoc, awareness };
@@ -159,7 +159,7 @@ export class NotebookDocumentService {
    * Tries both WebSocket and REST API in parallel for faster sync
    */
   private async syncDocument(
-    noteId: string,
+    pageId: string,
     doc: OpenDocument,
     ydoc: Y.Doc,
     isDocEmpty: boolean,
@@ -175,7 +175,7 @@ export class NotebookDocumentService {
 
     // 1. If document is empty, immediately try REST API (faster initial load)
     if (isDocEmpty) {
-      this.fetchInitialState(noteId, ydoc)
+      this.fetchInitialState(pageId, ydoc)
         .then(() => {
           if (!hasSynced) {
             hasSynced = true;
@@ -188,7 +188,7 @@ export class NotebookDocumentService {
 
     // 2. Also connect WebSocket provider (for real-time updates)
     try {
-      await this.connectProviders(noteId, doc);
+      await this.connectProviders(pageId, doc);
 
       // If WS connected and synced, mark as synced
       if (doc.wsProvider?.synced()) {
@@ -200,7 +200,7 @@ export class NotebookDocumentService {
       // If WS failed and doc is still empty, try REST as final fallback
       if (isDocEmpty && !hasSynced) {
         try {
-          await this.fetchInitialState(noteId, ydoc);
+          await this.fetchInitialState(pageId, ydoc);
           hasSynced = true;
         } catch {
           // All sync methods failed
@@ -212,8 +212,8 @@ export class NotebookDocumentService {
   /**
    * Fetch document state from REST API (Observable)
    */
-  private fetchInitialState$(noteId: string, ydoc: Y.Doc): Observable<void> {
-    return this.http.get<{ state: string }>(`/api/notebook/${noteId}/state`).pipe(
+  private fetchInitialState$(pageId: string, ydoc: Y.Doc): Observable<void> {
+    return this.http.get<{ state: string }>(`/api/memos/${pageId}/state`).pipe(
       tap((data) => {
         if (data.state) {
           const state = this.base64ToUint8Array(data.state);
@@ -227,8 +227,8 @@ export class NotebookDocumentService {
   /**
    * Fetch document state from REST API (Promise)
    */
-  private fetchInitialState(noteId: string, ydoc: Y.Doc): Promise<void> {
-    return firstValueFrom(this.fetchInitialState$(noteId, ydoc));
+  private fetchInitialState(pageId: string, ydoc: Y.Doc): Promise<void> {
+    return firstValueFrom(this.fetchInitialState$(pageId, ydoc));
   }
 
   /**
@@ -259,7 +259,7 @@ export class NotebookDocumentService {
   /**
    * Connect WebSocket provider
    */
-  private async connectProviders(noteId: string, doc: OpenDocument): Promise<void> {
+  private async connectProviders(pageId: string, doc: OpenDocument): Promise<void> {
     // Ensure WebSocket is connected
     if (!this.realtimeWS.isConnected()) {
       this.realtimeWS.connect();
@@ -272,14 +272,14 @@ export class NotebookDocumentService {
     }
 
     // Create WebSocket provider
-    doc.wsProvider = new YJSWSProvider(noteId, doc.ydoc, this.realtimeWS, doc.awareness);
+    doc.wsProvider = new YJSWSProvider(pageId, doc.ydoc, this.realtimeWS, doc.awareness);
 
     // Track sync status via callback
     doc.wsProvider.onSynced = (synced: boolean) => {
-      this.updateSyncStatus(noteId, synced ? 'synced' : 'syncing');
+      this.updateSyncStatus(pageId, synced ? 'synced' : 'syncing');
     };
 
-    // Connect to notebook room
+    // Connect to memo room
     doc.wsProvider.connect();
   }
 
@@ -339,10 +339,10 @@ export class NotebookDocumentService {
   }
 
   /**
-   * Close a notebook document
+   * Close a memo document
    */
-  closeDocument(noteId: string): void {
-    const doc = this.openDocs.get(noteId);
+  closeDocument(pageId: string): void {
+    const doc = this.openDocs.get(pageId);
     if (!doc) return;
 
     // Cleanup provider
@@ -354,15 +354,15 @@ export class NotebookDocumentService {
     // Cleanup Y.Doc
     doc.ydoc.destroy();
 
-    this.openDocs.delete(noteId);
+    this.openDocs.delete(pageId);
   }
 
   /**
-   * Create a new notebook (offline-capable)
+   * Create a new memo (offline-capable)
    * Creates locally first, queues server sync
    */
-  async createNotebook(tagId?: string): Promise<{
-    note: Note;
+  async createMemo(notebookId?: string): Promise<{
+    page: Page;
     ydoc: Y.Doc;
     awareness: Awareness;
   }> {
@@ -384,15 +384,15 @@ export class NotebookDocumentService {
     const persistence = new IndexeddbPersistence(`ydoc-${documentId}`, ydoc);
     await persistence.whenSynced;
 
-    // Create note metadata locally
-    const note: Note = {
+    // Create page metadata locally
+    const page: Page = {
       _id: documentId, // Temporary, will be replaced by server
       userId: this.authService.user()?._id || '',
       type: 'notebook',
-      title: 'Untitled Notebook',
+      title: 'Untitled Memo',
       content: { type: 'doc', content: [] },
       documentId,
-      tagId,
+      tagId: notebookId,
       isFavorite: false,
       isArchived: false,
       isTrashed: false,
@@ -400,20 +400,20 @@ export class NotebookDocumentService {
       updatedAt: now,
     };
 
-    // Save note metadata locally via note service
+    // Save page metadata locally via page service
     // This will be synced by the offline queue
-    this.noteService.addLocalNote(note);
-    await this.noteService.persistToIndexedDB([note]);
+    this.pageService.addLocalPage(page);
+    await this.pageService.persistToIndexedDB([page]);
 
     // Queue for server sync
     await this.offlineQueue.enqueue('create-note', documentId, documentId, {
       type: 'notebook',
-      title: note.title,
-      tagId,
+      title: page.title,
+      tagId: notebookId,
       documentId,
     });
 
-    // Queue notebook Y.Doc sync
+    // Queue memo Y.Doc sync
     // Store as Array for IndexedDB serialization, convert back when processing
     const state = Y.encodeStateAsUpdate(ydoc);
     await this.offlineQueue.enqueue('sync-notebook', documentId, documentId, {
@@ -432,32 +432,32 @@ export class NotebookDocumentService {
     // Update sync status
     this.updateSyncStatus(documentId, 'pending');
 
-    // Connect if online - but wait for note to be created on server first
+    // Connect if online - but wait for page to be created on server first
     if (this.connectivity.canSync()) {
-      // Wait for the create-note action to complete before connecting WS
+      // Wait for the create-page action to complete before connecting WS
       const created = await this.offlineQueue.waitForAction(documentId, 'create-note', 10000);
       if (created) {
         await this.connectProviders(documentId, doc);
       }
     }
 
-    return { note, ydoc, awareness };
+    return { page, ydoc, awareness };
   }
 
   /**
    * Get sync status for a document
    */
-  getSyncStatus(noteId: string): SyncStatus {
-    return this._syncStatuses().get(noteId) || 'synced';
+  getSyncStatus(pageId: string): SyncStatus {
+    return this._syncStatuses().get(pageId) || 'synced';
   }
 
   /**
    * Update sync status
    */
-  private updateSyncStatus(noteId: string, status: SyncStatus): void {
+  private updateSyncStatus(pageId: string, status: SyncStatus): void {
     this._syncStatuses.update((map) => {
       const newMap = new Map(map);
-      newMap.set(noteId, status);
+      newMap.set(pageId, status);
       return newMap;
     });
   }
@@ -466,7 +466,7 @@ export class NotebookDocumentService {
    * Get peers count for a document
    * Note: Peer count tracking was removed with WebRTC. Returns 0 for now.
    */
-  getPeersCount(noteId: string): number {
+  getPeersCount(pageId: string): number {
     // Peer count tracking would need to be implemented in the WebSocket provider
     // if needed. For now, return 0.
     return 0;
@@ -475,8 +475,8 @@ export class NotebookDocumentService {
   /**
    * Check if document is open
    */
-  isDocumentOpen(noteId: string): boolean {
-    return this.openDocs.has(noteId);
+  isDocumentOpen(pageId: string): boolean {
+    return this.openDocs.has(pageId);
   }
 
   /**
@@ -503,8 +503,8 @@ export class NotebookDocumentService {
    * Close all open documents
    */
   closeAll(): void {
-    for (const noteId of this.openDocs.keys()) {
-      this.closeDocument(noteId);
+    for (const pageId of this.openDocs.keys()) {
+      this.closeDocument(pageId);
     }
   }
 }

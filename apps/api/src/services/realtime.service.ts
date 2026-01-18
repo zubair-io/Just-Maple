@@ -2,26 +2,26 @@ import type { ChatEvent } from '@maple/shared';
 import { realtimeWSService } from './realtime-ws.service';
 import { redisPubSub } from './redis.service';
 
-// Track which tags we're subscribed to in Redis
-const subscribedTags = new Set<string>();
+// Track which notebooks we're subscribed to in Redis
+const subscribedNotebooks = new Set<string>();
 
 /**
  * Handle incoming chat event from Redis (from another replica)
  */
-function handleRedisChat(tagId: string, event: ChatEvent): void {
+function handleRedisChat(notebookId: string, event: ChatEvent): void {
     // Broadcast to local connections only
-    broadcastToLocalConnections(tagId, event);
+    broadcastToLocalConnections(notebookId, event);
 }
 
 /**
  * Broadcast to local WebSocket connections (this replica only)
  */
-function broadcastToLocalConnections(tagId: string, event: ChatEvent): void {
+function broadcastToLocalConnections(notebookId: string, event: ChatEvent): void {
     const connections = realtimeWSService.getAllConnections();
 
     for (const [, userConns] of connections) {
         for (const conn of userConns) {
-            if (conn.subscribedTags.has(tagId) && conn.ws.readyState === 1) {
+            if (conn.subscribedTags.has(notebookId) && conn.ws.readyState === 1) {
                 try {
                     conn.ws.send(JSON.stringify({ channel: 'chat', event }));
                 } catch {
@@ -33,32 +33,32 @@ function broadcastToLocalConnections(tagId: string, event: ChatEvent): void {
 }
 
 /**
- * Subscribe to a tag's chat channel in Redis
- * Called when a user subscribes to a tag
+ * Subscribe to a notebook's chat channel in Redis
+ * Called when a user subscribes to a notebook
  */
-export async function subscribeToTagChat(tagId: string): Promise<void> {
-    if (subscribedTags.has(tagId)) return;
+export async function subscribeToNotebookChat(notebookId: string): Promise<void> {
+    if (subscribedNotebooks.has(notebookId)) return;
 
     if (redisPubSub.connected) {
-        await redisPubSub.subscribeChat(tagId, (event: ChatEvent) => {
-            handleRedisChat(tagId, event);
+        await redisPubSub.subscribeChat(notebookId, (event: ChatEvent) => {
+            handleRedisChat(notebookId, event);
         });
-        subscribedTags.add(tagId);
+        subscribedNotebooks.add(notebookId);
     }
 }
 
 /**
- * Unsubscribe from a tag's chat channel in Redis
- * Called when no more users are subscribed to a tag on this replica
+ * Unsubscribe from a notebook's chat channel in Redis
+ * Called when no more users are subscribed to a notebook on this replica
  */
-export async function unsubscribeFromTagChat(tagId: string): Promise<void> {
-    // Check if any local connections still need this tag
+export async function unsubscribeFromNotebookChat(notebookId: string): Promise<void> {
+    // Check if any local connections still need this notebook
     const connections = realtimeWSService.getAllConnections();
     let hasSubscribers = false;
 
     for (const [, userConns] of connections) {
         for (const conn of userConns) {
-            if (conn.subscribedTags.has(tagId)) {
+            if (conn.subscribedTags.has(notebookId)) {
                 hasSubscribers = true;
                 break;
             }
@@ -67,28 +67,28 @@ export async function unsubscribeFromTagChat(tagId: string): Promise<void> {
     }
 
     // Only unsubscribe from Redis if no local subscribers
-    if (!hasSubscribers && subscribedTags.has(tagId)) {
+    if (!hasSubscribers && subscribedNotebooks.has(notebookId)) {
         if (redisPubSub.connected) {
-            await redisPubSub.unsubscribeChat(tagId, (event: ChatEvent) => {
-                handleRedisChat(tagId, event);
+            await redisPubSub.unsubscribeChat(notebookId, (event: ChatEvent) => {
+                handleRedisChat(notebookId, event);
             });
         }
-        subscribedTags.delete(tagId);
+        subscribedNotebooks.delete(notebookId);
     }
 }
 
 /**
- * Broadcast a chat event to all users subscribed to a tag
+ * Broadcast a chat event to all users subscribed to a notebook
  * Publishes to Redis for cross-replica delivery and broadcasts locally
  */
-export async function broadcastChatEvent(tagId: string, event: ChatEvent): Promise<void> {
+export async function broadcastChatEvent(notebookId: string, event: ChatEvent): Promise<void> {
     // Publish to Redis for other replicas
     if (redisPubSub.connected) {
-        redisPubSub.publishChat(tagId, event);
+        redisPubSub.publishChat(notebookId, event);
     }
 
     // Also broadcast to local connections (for this replica)
     // Note: Redis will also deliver to us, but we broadcast locally for lower latency
     // The client handles deduplication via message IDs
-    broadcastToLocalConnections(tagId, event);
+    broadcastToLocalConnections(notebookId, event);
 }

@@ -2,12 +2,12 @@ import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
 import {
-    findTagById,
-    findTagsByUserId,
-    findTagByIdWithAccess,
+    findNotebookById,
+    findNotebooksByUserId,
+    findNotebookByIdWithAccess,
     hasAccess,
-    getTagMembers,
-} from '../repositories/tag.repo';
+    getNotebookMembers,
+} from '../repositories/notebook.repo';
 import type { JWTPayload, ChatEvent } from '@maple/shared';
 import {
     findMessagesByTagId,
@@ -44,19 +44,22 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
         }
     })
 
-    // Get messages for a tag (paginated)
+    // Get messages for a notebook (paginated)
     .get(
-        '/tags/:id/messages',
+        '/notebooks/:id/messages',
         async ({ auth, params, query, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Verify user has access to this tag
-            const tag = await findTagById(params.id, auth.user._id);
-            if (!tag) {
+            // Verify user has access to this notebook
+            const notebook = await findNotebookById(params.id, auth.user._id);
+            if (!notebook) {
                 set.status = 404;
-                return { error: 'Tag not found', message: 'Tag does not exist or access denied' };
+                return {
+                    error: 'Notebook not found',
+                    message: 'Notebook does not exist or access denied',
+                };
             }
 
             const messages = await findMessagesByTagId(params.id, {
@@ -77,19 +80,22 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
         },
     )
 
-    // Send a message to a tag's chat
+    // Send a message to a notebook's chat
     .post(
-        '/tags/:id/messages',
+        '/notebooks/:id/messages',
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Verify user has write access to this tag
-            const tag = await findTagByIdWithAccess(params.id, auth.user._id, 'write');
-            if (!tag) {
+            // Verify user has write access to this notebook
+            const notebook = await findNotebookByIdWithAccess(params.id, auth.user._id, 'write');
+            if (!notebook) {
                 set.status = 403;
-                return { error: 'Forbidden', message: 'You do not have write access to this tag' };
+                return {
+                    error: 'Forbidden',
+                    message: 'You do not have write access to this notebook',
+                };
             }
 
             // Handle thread creation if replying to a parent message
@@ -149,7 +155,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             }
 
             // Send push notifications to all tag members except the author
-            const tagMembers = await getTagMembers(params.id, auth.user._id);
+            const tagMembers = await getNotebookMembers(params.id, auth.user._id);
             if (tagMembers) {
                 // Send notification to each member except the message author
                 const notificationPromises = tagMembers
@@ -184,19 +190,22 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
         },
     )
 
-    // Mark tag as read
+    // Mark notebook as read
     .post(
-        '/tags/:id/read',
+        '/notebooks/:id/read',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Verify user has access to this tag
-            const tag = await findTagById(params.id, auth.user._id);
-            if (!tag) {
+            // Verify user has access to this notebook
+            const notebook = await findNotebookById(params.id, auth.user._id);
+            if (!notebook) {
                 set.status = 404;
-                return { error: 'Tag not found', message: 'Tag does not exist or access denied' };
+                return {
+                    error: 'Notebook not found',
+                    message: 'Notebook does not exist or access denied',
+                };
             }
 
             const tracking = await markAsRead(auth.user._id, params.id);
@@ -210,19 +219,22 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
         },
     )
 
-    // Get unread count for a specific tag
+    // Get unread count for a specific notebook
     .get(
-        '/tags/:id/unread',
+        '/notebooks/:id/unread',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Verify user has access to this tag
-            const tag = await findTagById(params.id, auth.user._id);
-            if (!tag) {
+            // Verify user has access to this notebook
+            const notebook = await findNotebookById(params.id, auth.user._id);
+            if (!notebook) {
                 set.status = 404;
-                return { error: 'Tag not found', message: 'Tag does not exist or access denied' };
+                return {
+                    error: 'Notebook not found',
+                    message: 'Notebook does not exist or access denied',
+                };
             }
 
             const count = await getUnreadCountForTag(auth.user._id, params.id);
@@ -243,7 +255,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
         }
 
         // Get all user's tags
-        const tags = await findTagsByUserId(auth.user._id);
+        const tags = await findNotebooksByUserId(auth.user._id);
         const tagIds = tags.map((t) => t._id);
 
         const counts = await getUnreadCountsForUser(auth.user._id, tagIds);

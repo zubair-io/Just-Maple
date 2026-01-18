@@ -1,15 +1,15 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import type {
-    Paper,
-    CreatePaperInput,
-    UpdatePaperInput,
-    PaperData,
-    PaperStatus,
+    Collectable,
+    CreateCollectableInput,
+    UpdateCollectableInput,
+    CollectableData,
+    CollectableStatus,
 } from '@maple/shared';
-import { findTagsByUserId, findTagByIdWithAccess } from './tag.repo';
+import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
 
-interface PaperDocument {
+interface CollectableDocument {
     _id: ObjectId;
     tags: ObjectId[];
     type: 'collectible';
@@ -17,7 +17,7 @@ interface PaperDocument {
         itemId: string;
         provider: string;
         registryData?: ObjectId;
-        status: PaperStatus;
+        status: CollectableStatus;
         quantity: number;
         created?: Date;
     };
@@ -26,11 +26,11 @@ interface PaperDocument {
     updatedAt: Date;
 }
 
-function getCollection(): Collection<PaperDocument> {
-    return getDb().collection<PaperDocument>('paper');
+function getCollection(): Collection<CollectableDocument> {
+    return getDb().collection<CollectableDocument>('collectables');
 }
 
-function toPaperResponse(doc: PaperDocument): Paper {
+function toCollectableResponse(doc: CollectableDocument): Collectable {
     return {
         _id: doc._id.toString(),
         tags: doc.tags?.map((t) => t.toString()) ?? [],
@@ -53,19 +53,19 @@ function toPaperResponse(doc: PaperDocument): Paper {
     };
 }
 
-export async function findPapersByUserId(
+export async function findCollectablesByUserId(
     userId: string,
     options?: {
         tagId?: string;
-        status?: PaperStatus;
+        status?: CollectableStatus;
         updatedAfter?: string;
     },
-): Promise<Paper[]> {
+): Promise<Collectable[]> {
     // If specific tagId is provided, verify access first
     if (options?.tagId) {
-        const tag = await findTagByIdWithAccess(options.tagId, userId, 'read');
-        if (!tag) {
-            return []; // No access to this tag
+        const notebook = await findNotebookByIdWithAccess(options.tagId, userId, 'read');
+        if (!notebook) {
+            return []; // No access to this notebook
         }
 
         const query: Record<string, unknown> = {
@@ -76,27 +76,27 @@ export async function findPapersByUserId(
             query['data.status'] = options.status;
         }
 
-        // Incremental sync: only return papers updated after the given timestamp
+        // Incremental sync: only return collectables updated after the given timestamp
         if (options?.updatedAfter) {
             query.updatedAt = { $gt: new Date(options.updatedAfter) };
         }
 
         const docs = await getCollection().find(query).sort({ updatedAt: -1 }).toArray();
-        return docs.map(toPaperResponse);
+        return docs.map(toCollectableResponse);
     }
 
-    // No specific tag - get all papers user has access to
-    // 1. Get all tags the user has access to
-    const accessibleTags = await findTagsByUserId(userId);
-    const tagIds = accessibleTags.map((t) => new ObjectId(t._id));
+    // No specific notebook - get all collectables user has access to
+    // 1. Get all notebooks the user has access to
+    const accessibleNotebooks = await findNotebooksByUserId(userId);
+    const notebookIds = accessibleNotebooks.map((t) => new ObjectId(t._id));
 
-    // 2. Find papers that:
+    // 2. Find collectables that:
     //    - Have at least one tag the user has access to, OR
     //    - Have no tags AND belong to the user (createdBy)
     const query: Record<string, unknown> = {
         $or: [
-            { tags: { $in: tagIds } }, // Papers in accessible tags
-            { tags: { $size: 0 }, createdBy: new ObjectId(userId) }, // User's untagged papers
+            { tags: { $in: notebookIds } }, // Collectables in accessible notebooks
+            { tags: { $size: 0 }, createdBy: new ObjectId(userId) }, // User's untagged collectables
         ],
     };
 
@@ -104,46 +104,49 @@ export async function findPapersByUserId(
         query['data.status'] = options.status;
     }
 
-    // Incremental sync: only return papers updated after the given timestamp
+    // Incremental sync: only return collectables updated after the given timestamp
     if (options?.updatedAfter) {
         query.updatedAt = { $gt: new Date(options.updatedAfter) };
     }
 
     const docs = await getCollection().find(query).sort({ updatedAt: -1 }).toArray();
-    return docs.map(toPaperResponse);
+    return docs.map(toCollectableResponse);
 }
 
-export async function findPaperById(id: string, userId: string): Promise<Paper | null> {
+export async function findCollectableById(id: string, userId: string): Promise<Collectable | null> {
     try {
         const doc = await getCollection().findOne({ _id: new ObjectId(id) });
         if (!doc) return null;
 
         // Check access based on tags or ownership
         if (doc.tags.length > 0) {
-            // Paper has tags - check if user has access to any of them
+            // Collectable has tags - check if user has access to any of them
             let hasAccess = false;
             for (const tagId of doc.tags) {
-                const tag = await findTagByIdWithAccess(tagId.toString(), userId, 'read');
-                if (tag) {
+                const notebook = await findNotebookByIdWithAccess(tagId.toString(), userId, 'read');
+                if (notebook) {
                     hasAccess = true;
                     break;
                 }
             }
             if (!hasAccess) return null;
         } else {
-            // Paper has no tags - only creator can access
+            // Collectable has no tags - only creator can access
             if (doc.createdBy.toString() !== userId) return null;
         }
 
-        return toPaperResponse(doc);
+        return toCollectableResponse(doc);
     } catch {
         return null;
     }
 }
 
-export async function createPaper(userId: string, data: CreatePaperInput): Promise<Paper> {
+export async function createCollectable(
+    userId: string,
+    data: CreateCollectableInput,
+): Promise<Collectable> {
     const now = new Date();
-    const doc: Omit<PaperDocument, '_id'> = {
+    const doc: Omit<CollectableDocument, '_id'> = {
         tags: data.tags?.map((t) => new ObjectId(t)) || [],
         type: 'collectible',
         data: {
@@ -159,7 +162,7 @@ export async function createPaper(userId: string, data: CreatePaperInput): Promi
         updatedAt: now,
     };
 
-    const result = await getCollection().insertOne(doc as PaperDocument);
+    const result = await getCollection().insertOne(doc as CollectableDocument);
 
     return {
         _id: result.insertedId.toString(),
@@ -179,38 +182,42 @@ export async function createPaper(userId: string, data: CreatePaperInput): Promi
     };
 }
 
-export async function updatePaper(
+export async function updateCollectable(
     id: string,
     userId: string,
-    data: UpdatePaperInput,
-): Promise<Paper | null> {
+    data: UpdateCollectableInput,
+): Promise<Collectable | null> {
     try {
-        // First, find the paper to check access
+        // First, find the collectable to check access
         const doc = await getCollection().findOne({ _id: new ObjectId(id) });
         if (!doc) return null;
 
         // Check write access based on tags or ownership
         if (doc.tags.length > 0) {
-            // Paper has tags - check if user has write access to any of them
+            // Collectable has tags - check if user has write access to any of them
             let hasWriteAccess = false;
             for (const tagId of doc.tags) {
-                const tag = await findTagByIdWithAccess(tagId.toString(), userId, 'write');
-                if (tag) {
+                const notebook = await findNotebookByIdWithAccess(
+                    tagId.toString(),
+                    userId,
+                    'write',
+                );
+                if (notebook) {
                     hasWriteAccess = true;
                     break;
                 }
             }
             if (!hasWriteAccess) return null;
         } else {
-            // Paper has no tags - only creator can update
+            // Collectable has no tags - only creator can update
             if (doc.createdBy.toString() !== userId) return null;
         }
 
-        // If adding new tags, verify write access to those tags
+        // If adding new tags, verify write access to those notebooks
         if (data.tags !== undefined) {
             for (const tagId of data.tags) {
-                const tag = await findTagByIdWithAccess(tagId, userId, 'write');
-                if (!tag) return null; // No write access to new tag
+                const notebook = await findNotebookByIdWithAccess(tagId, userId, 'write');
+                if (!notebook) return null; // No write access to new notebook
             }
         }
 
@@ -245,21 +252,21 @@ export async function updatePaper(
             { returnDocument: 'after' },
         );
 
-        return result ? toPaperResponse(result) : null;
+        return result ? toCollectableResponse(result) : null;
     } catch {
         return null;
     }
 }
 
-export async function findPaperByRegistryData(
+export async function findCollectableByRegistryData(
     registryId: string,
     tagId: string,
     userId: string,
-): Promise<Paper | null> {
+): Promise<Collectable | null> {
     try {
-        // Verify user has access to the tag
-        const tag = await findTagByIdWithAccess(tagId, userId, 'read');
-        if (!tag) return null;
+        // Verify user has access to the notebook
+        const notebook = await findNotebookByIdWithAccess(tagId, userId, 'read');
+        if (!notebook) return null;
 
         const doc = await getCollection().findOne({
             'data.registryData': new ObjectId(registryId),
@@ -268,32 +275,36 @@ export async function findPaperByRegistryData(
 
         if (!doc) return null;
 
-        return toPaperResponse(doc);
+        return toCollectableResponse(doc);
     } catch {
         return null;
     }
 }
 
-export async function deletePaper(id: string, userId: string): Promise<boolean> {
+export async function deleteCollectable(id: string, userId: string): Promise<boolean> {
     try {
-        // First, find the paper to check access
+        // First, find the collectable to check access
         const doc = await getCollection().findOne({ _id: new ObjectId(id) });
         if (!doc) return false;
 
         // Check write access based on tags or ownership
         if (doc.tags.length > 0) {
-            // Paper has tags - check if user has write access to any of them
+            // Collectable has tags - check if user has write access to any of them
             let hasWriteAccess = false;
             for (const tagId of doc.tags) {
-                const tag = await findTagByIdWithAccess(tagId.toString(), userId, 'write');
-                if (tag) {
+                const notebook = await findNotebookByIdWithAccess(
+                    tagId.toString(),
+                    userId,
+                    'write',
+                );
+                if (notebook) {
                     hasWriteAccess = true;
                     break;
                 }
             }
             if (!hasWriteAccess) return false;
         } else {
-            // Paper has no tags - only creator can delete
+            // Collectable has no tags - only creator can delete
             if (doc.createdBy.toString() !== userId) return false;
         }
 

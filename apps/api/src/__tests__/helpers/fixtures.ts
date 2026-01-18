@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import { customAlphabet } from 'nanoid';
 import { testDb } from '../setup';
 
-// Same documentId generator as in note.repo.ts
+// Same documentId generator as in page.repo.ts
 const nanoidBase58 = customAlphabet(
     '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
     32,
@@ -115,10 +115,10 @@ export function generateToken(): string {
 }
 
 // ============================================
-// Tag Fixtures
+// Notebook Fixtures
 // ============================================
 
-export interface TagDoc {
+export interface NotebookDoc {
     _id: ObjectId;
     type: 'folder';
     value: 'mixed' | 'recordings' | 'notes';
@@ -132,7 +132,7 @@ export interface TagDoc {
     updatedAt: Date;
 }
 
-export interface CreateTagOptions {
+export interface CreateNotebookOptions {
     label?: string;
     value?: 'mixed' | 'recordings' | 'notes';
     createdBy?: string;
@@ -140,15 +140,17 @@ export interface CreateTagOptions {
     isPublic?: boolean;
 }
 
-export async function createTagFixture(options: CreateTagOptions = {}): Promise<TagDoc> {
+export async function createNotebookFixture(
+    options: CreateNotebookOptions = {},
+): Promise<NotebookDoc> {
     const now = new Date();
     const createdBy = options.createdBy || new ObjectId().toString();
 
-    const doc: TagDoc = {
+    const doc: NotebookDoc = {
         _id: new ObjectId(),
         type: 'folder',
         value: options.value || 'mixed',
-        label: options.label || `test-tag-${Date.now()}`,
+        label: options.label || `test-notebook-${Date.now()}`,
         sharing: {
             sharedWith: options.sharedWith || [{ userId: createdBy, accessLevel: 'owner' }],
             isPublic: options.isPublic ?? false,
@@ -157,7 +159,7 @@ export async function createTagFixture(options: CreateTagOptions = {}): Promise<
         createdAt: now,
         updatedAt: now,
     };
-    await testDb!.collection('tags').insertOne(doc);
+    await testDb!.collection('notebooks').insertOne(doc);
     return doc;
 }
 
@@ -367,13 +369,13 @@ export async function createBotInvocationFixture(
 }
 
 // ============================================
-// Note Fixtures
+// Page Fixtures
 // ============================================
 
-export interface NoteDoc {
+export interface PageDoc {
     _id: ObjectId;
     userId: ObjectId;
-    type: 'write' | 'lego';
+    type: 'write' | 'lego' | 'notebook';
     title: string;
     content: any;
     documentId: string;
@@ -387,9 +389,9 @@ export interface NoteDoc {
     updatedAt: Date;
 }
 
-export interface CreateNoteOptions {
+export interface CreatePageOptions {
     userId?: string;
-    type?: 'write' | 'lego';
+    type?: 'write' | 'lego' | 'notebook';
     title?: string;
     content?: any;
     documentId?: string;
@@ -401,14 +403,14 @@ export interface CreateNoteOptions {
     trashedAt?: Date;
 }
 
-export async function createNoteFixture(options: CreateNoteOptions = {}): Promise<NoteDoc> {
+export async function createPageFixture(options: CreatePageOptions = {}): Promise<PageDoc> {
     const now = new Date();
 
-    const doc: NoteDoc = {
+    const doc: PageDoc = {
         _id: new ObjectId(),
         userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
         type: options.type || 'write',
-        title: options.title || 'Test Note',
+        title: options.title || 'Test Page',
         content: options.content || { type: 'doc', content: [] },
         documentId: options.documentId || nanoidBase58(),
         version: options.version ?? 1,
@@ -420,7 +422,7 @@ export async function createNoteFixture(options: CreateNoteOptions = {}): Promis
         createdAt: now,
         updatedAt: now,
     };
-    await testDb!.collection('notes').insertOne(doc);
+    await testDb!.collection('pages').insertOne(doc);
     return doc;
 }
 

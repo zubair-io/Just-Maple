@@ -2,26 +2,31 @@ import { Elysia } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { config } from '../config';
 import {
-    findTagsByUserId,
-    findTagByIdWithAccess,
-    getUsersWithTagAccess,
-    getTagMembers,
-} from '../repositories/tag.repo';
+    findNotebooksByUserId,
+    findNotebookByIdWithAccess,
+    getUsersWithNotebookAccess,
+    getNotebookMembers,
+} from '../repositories/notebook.repo';
 import { sendMessageReceivedNotification } from '../services/notification.service';
 import { findUserById } from '../repositories/user.repo';
-import { findNoteByDocumentId } from '../repositories/note.repo';
+import { findPageByDocumentId } from '../repositories/page.repo';
 import { createMessage } from '../repositories/message.repo';
-import { findPaperById, createPaper, updatePaper, deletePaper } from '../repositories/paper.repo';
+import {
+    findCollectableById,
+    createCollectable,
+    updateCollectable,
+    deleteCollectable,
+} from '../repositories/collectable.repo';
 import { authenticateWebSocket } from './ws-auth';
 import { realtimeWSService, type AppEvent } from '../services/realtime-ws.service';
 import { yjsDocumentService } from '../services/yjs-document.service';
 import {
     broadcastChatEvent,
-    subscribeToTagChat,
-    unsubscribeFromTagChat,
+    subscribeToNotebookChat,
+    unsubscribeFromNotebookChat,
 } from '../services/realtime.service';
 import { customAlphabet } from 'nanoid';
-import type { ChatEvent, TypingEvent, NoteContent } from '@maple/shared';
+import type { ChatEvent, TypingEvent, PageContent } from '@maple/shared';
 
 // Generate client IDs
 const nanoid = customAlphabet('1234567890abcdefghijklmnopqrstuvwxyz', 16);
@@ -52,16 +57,16 @@ interface WSContext {
     userName: string;
     userColor: string;
     connection: ReturnType<typeof realtimeWSService.registerConnection>;
-    subscribedTags: Set<string>;
-    notebookClients: Map<string, string>; // noteId -> clientId
+    subscribedNotebooks: Set<string>;
+    memoClients: Map<string, string>; // noteId -> clientId (for Y.Doc memo sync)
 }
 
 /**
  * Unified Realtime WebSocket
  * Single endpoint for all real-time communication:
- * - App events (notes/tags/papers CRUD)
+ * - App events (pages/notebooks/collectables CRUD)
  * - Chat/typing indicators
- * - Notebook Y.Doc sync
+ * - Memo Y.Doc sync
  */
 export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
     .use(
@@ -86,15 +91,15 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
                 const userName = user?.name || email || 'Anonymous';
                 const userColor = getUserColor(userId);
 
-                // Auto-subscribe to user's tags for chat
-                const tags = await findTagsByUserId(userId);
-                const tagIds = tags.map((t) => t._id);
+                // Auto-subscribe to user's notebooks for chat
+                const notebooks = await findNotebooksByUserId(userId);
+                const notebookIds = notebooks.map((n) => n._id);
 
-                // Register connection with service (including subscribed tags)
+                // Register connection with service (including subscribed notebooks)
                 const connection = realtimeWSService.registerConnection(
                     userId,
                     ws.raw as unknown as WebSocket,
-                    tagIds,
+                    notebookIds,
                 );
 
                 // Store connection context
@@ -104,13 +109,13 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
                     userName,
                     userColor,
                     connection,
-                    subscribedTags: new Set(tagIds),
-                    notebookClients: new Map(),
+                    subscribedNotebooks: new Set(notebookIds),
+                    memoClients: new Map(),
                 };
 
-                // Subscribe to Redis channels for user's tags (for cross-replica sync)
-                for (const tagId of tagIds) {
-                    subscribeToTagChat(tagId).catch(() => {});
+                // Subscribe to Redis channels for user's notebooks (for cross-replica sync)
+                for (const notebookId of notebookIds) {
+                    subscribeToNotebookChat(notebookId).catch(() => {});
                 }
 
                 // Send connection confirmation
@@ -120,7 +125,7 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
                         event: {
                             type: 'connected',
                             userId,
-                            subscribedTags: tags.map((t) => t._id),
+                            subscribedNotebooks: notebooks.map((n) => n._id),
                         },
                     }),
                 );
@@ -139,8 +144,8 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
                 const { channel, action, ...payload } = data;
 
                 switch (channel) {
-                    case 'notebook':
-                        await handleNotebookMessage(ws, context, action, payload);
+                    case 'memo':
+                        await handleMemoMessage(ws, context, action, payload);
                         break;
 
                     case 'chat':
@@ -167,8 +172,8 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
             const context = (ws.data as unknown as { context: WSContext }).context;
             if (!context) return;
 
-            // Leave all notebook rooms
-            for (const [noteId] of context.notebookClients) {
+            // Leave all memo rooms
+            for (const [noteId] of context.memoClients) {
                 realtimeWSService.leaveNotebook(noteId, ws.raw as unknown as WebSocket);
             }
 
@@ -176,16 +181,16 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
             realtimeWSService.unregisterConnection(context.userId, context.connection);
 
             // Check if we should unsubscribe from Redis channels
-            for (const tagId of context.subscribedTags) {
-                unsubscribeFromTagChat(tagId).catch(() => {});
+            for (const notebookId of context.subscribedNotebooks) {
+                unsubscribeFromNotebookChat(notebookId).catch(() => {});
             }
         },
     });
 
 /**
- * Handle notebook channel messages
+ * Handle memo channel messages (Y.Doc sync for notebook-type pages)
  */
-async function handleNotebookMessage(
+async function handleMemoMessage(
     ws: any,
     context: WSContext,
     action: string,
@@ -196,22 +201,22 @@ async function handleNotebookMessage(
             const { noteId } = payload;
             if (!noteId) return;
 
-            console.log(`[Notebook] Join request for noteId: ${noteId}`);
+            console.log(`[Memo] Join request for noteId: ${noteId}`);
 
-            // Verify user has access to this notebook
-            const note = await findNoteByDocumentId(noteId, context.userId);
-            if (!note || note.type !== 'notebook') {
-                console.log(`[Notebook] Access denied or not a notebook: ${noteId}`);
+            // Verify user has access to this page (must be notebook type for memo)
+            const page = await findPageByDocumentId(noteId, context.userId);
+            if (!page || page.type !== 'notebook') {
+                console.log(`[Memo] Access denied or not a notebook page: ${noteId}`);
                 ws.send(
                     JSON.stringify({
-                        channel: 'notebook',
-                        event: { type: 'error', message: 'Note not found or access denied' },
+                        channel: 'memo',
+                        event: { type: 'error', message: 'Page not found or access denied' },
                     }),
                 );
                 return;
             }
 
-            // Generate client ID for this notebook session
+            // Generate client ID for this memo session
             const clientId = payload.clientId || nanoid();
 
             // Join room
@@ -222,14 +227,12 @@ async function handleNotebookMessage(
             });
 
             // Track in context
-            context.notebookClients.set(noteId, clientId);
+            context.memoClients.set(noteId, clientId);
             context.connection.subscribedNotebooks.add(noteId);
 
             // Get initial state
             const state = await yjsDocumentService.getStateAsUpdate(noteId);
-            console.log(
-                `[Notebook] Sending initial state for ${noteId}, size: ${state.length} bytes`,
-            );
+            console.log(`[Memo] Sending initial state for ${noteId}, size: ${state.length} bytes`);
 
             // Send initial state
             realtimeWSService.sendInitialState(noteId, clientId, state, 1);
@@ -237,7 +240,7 @@ async function handleNotebookMessage(
             // Send join confirmation with clientId
             ws.send(
                 JSON.stringify({
-                    channel: 'notebook',
+                    channel: 'memo',
                     noteId,
                     event: {
                         type: 'joined',
@@ -246,7 +249,7 @@ async function handleNotebookMessage(
                     },
                 }),
             );
-            console.log(`[Notebook] Join complete for ${noteId}, clientId: ${clientId}`);
+            console.log(`[Memo] Join complete for ${noteId}, clientId: ${clientId}`);
             break;
         }
 
@@ -255,7 +258,7 @@ async function handleNotebookMessage(
             if (!noteId) return;
 
             realtimeWSService.leaveNotebook(noteId, ws.raw as unknown as WebSocket);
-            context.notebookClients.delete(noteId);
+            context.memoClients.delete(noteId);
             context.connection.subscribedNotebooks.delete(noteId);
             break;
         }
@@ -264,9 +267,9 @@ async function handleNotebookMessage(
             const { noteId, update: updateBase64 } = payload;
             if (!noteId || !updateBase64) return;
 
-            const clientId = context.notebookClients.get(noteId);
+            const clientId = context.memoClients.get(noteId);
             if (!clientId) {
-                // Not subscribed to this notebook
+                // Not subscribed to this memo
                 return;
             }
 
@@ -285,9 +288,9 @@ async function handleNotebookMessage(
             const { noteId, update: awarenessBase64 } = payload;
             if (!noteId || !awarenessBase64) return;
 
-            const clientId = context.notebookClients.get(noteId);
+            const clientId = context.memoClients.get(noteId);
             if (!clientId) {
-                // Not subscribed to this notebook
+                // Not subscribed to this memo
                 return;
             }
 
@@ -315,20 +318,20 @@ async function handleChatMessage(
 ): Promise<void> {
     switch (action) {
         case 'message': {
-            const { tagId, content } = payload as { tagId: string; content: NoteContent };
-            if (!tagId || !content) {
+            const { notebookId, content } = payload as { notebookId: string; content: PageContent };
+            if (!notebookId || !content) {
                 ws.send(
                     JSON.stringify({
                         channel: 'chat',
-                        event: { type: 'error', message: 'Missing tagId or content' },
+                        event: { type: 'error', message: 'Missing notebookId or content' },
                     }),
                 );
                 return;
             }
 
-            // Verify user has write access to this tag
-            const tag = await findTagByIdWithAccess(tagId, context.userId, 'write');
-            if (!tag) {
+            // Verify user has write access to this notebook
+            const notebook = await findNotebookByIdWithAccess(notebookId, context.userId, 'write');
+            if (!notebook) {
                 ws.send(
                     JSON.stringify({
                         channel: 'chat',
@@ -343,7 +346,7 @@ async function handleChatMessage(
 
             // Create the message in the database
             const message = await createMessage(
-                tagId,
+                notebookId,
                 context.userId,
                 { content },
                 user?.email,
@@ -351,27 +354,27 @@ async function handleChatMessage(
                 user?.profilePictureUrl,
             );
 
-            // Broadcast to all users subscribed to this tag (including sender)
+            // Broadcast to all users subscribed to this notebook (including sender)
             const chatEvent: ChatEvent = {
                 action: 'message',
                 data: message,
-                tagId,
+                tagId: notebookId,
                 userId: context.userId,
                 timestamp: new Date().toISOString(),
             };
 
-            broadcastChatEvent(tagId, chatEvent).catch(console.error);
+            broadcastChatEvent(notebookId, chatEvent).catch(console.error);
 
-            // Send push notifications to all tag members except the author
-            getTagMembers(tagId, context.userId)
-                .then((tagMembers) => {
-                    if (tagMembers) {
-                        const notificationPromises = tagMembers
+            // Send push notifications to all notebook members except the author
+            getNotebookMembers(notebookId, context.userId)
+                .then((notebookMembers) => {
+                    if (notebookMembers) {
+                        const notificationPromises = notebookMembers
                             .filter((member) => member.userId !== context.userId)
                             .map((member) =>
                                 sendMessageReceivedNotification(
                                     member.userId,
-                                    tagId,
+                                    notebookId,
                                     message._id,
                                     user?.email || context.email,
                                     user?.displayName,
@@ -388,11 +391,11 @@ async function handleChatMessage(
         }
 
         case 'typing': {
-            const { tagId, isTyping } = payload;
-            if (!tagId || !context.subscribedTags.has(tagId)) return;
+            const { notebookId, isTyping } = payload;
+            if (!notebookId || !context.subscribedNotebooks.has(notebookId)) return;
 
             const typingEvent: TypingEvent = {
-                tagId,
+                tagId: notebookId,
                 userId: context.userId,
                 isTyping: isTyping ?? true,
             };
@@ -400,34 +403,34 @@ async function handleChatMessage(
             const chatEvent: ChatEvent = {
                 action: 'typing',
                 data: typingEvent,
-                tagId,
+                tagId: notebookId,
                 userId: context.userId,
                 timestamp: new Date().toISOString(),
             };
 
-            // Broadcast to all users subscribed to this tag
-            broadcastChatEventToTag(tagId, chatEvent, context.userId);
+            // Broadcast to all users subscribed to this notebook
+            broadcastChatEventToNotebook(notebookId, chatEvent, context.userId);
             break;
         }
 
         case 'subscribe': {
-            const { tagId } = payload;
-            if (tagId && !context.subscribedTags.has(tagId)) {
-                context.subscribedTags.add(tagId);
-                context.connection.subscribedTags.add(tagId);
-                // Subscribe to Redis channel for this tag
-                subscribeToTagChat(tagId).catch(() => {});
+            const { notebookId } = payload;
+            if (notebookId && !context.subscribedNotebooks.has(notebookId)) {
+                context.subscribedNotebooks.add(notebookId);
+                context.connection.subscribedTags.add(notebookId);
+                // Subscribe to Redis channel for this notebook
+                subscribeToNotebookChat(notebookId).catch(() => {});
             }
             break;
         }
 
         case 'unsubscribe': {
-            const { tagId } = payload;
-            if (tagId) {
-                context.subscribedTags.delete(tagId);
-                context.connection.subscribedTags.delete(tagId);
+            const { notebookId } = payload;
+            if (notebookId) {
+                context.subscribedNotebooks.delete(notebookId);
+                context.connection.subscribedTags.delete(notebookId);
                 // Check if we should unsubscribe from Redis
-                unsubscribeFromTagChat(tagId).catch(() => {});
+                unsubscribeFromNotebookChat(notebookId).catch(() => {});
             }
             break;
         }
@@ -447,18 +450,22 @@ function handleSystemMessage(ws: any, context: WSContext, action: string, payloa
 }
 
 /**
- * Broadcast chat event to all users subscribed to a tag
+ * Broadcast chat event to all users subscribed to a notebook
  */
-function broadcastChatEventToTag(tagId: string, event: ChatEvent, excludeUserId: string): void {
-    // Get all connections and check if they're subscribed to this tag
+function broadcastChatEventToNotebook(
+    notebookId: string,
+    event: ChatEvent,
+    excludeUserId: string,
+): void {
+    // Get all connections and check if they're subscribed to this notebook
     const connections = realtimeWSService.getAllConnections();
 
     for (const [userId, userConns] of connections) {
         if (userId === excludeUserId) continue;
 
         for (const conn of userConns) {
-            // Check if this connection is subscribed to the tag
-            if (conn.subscribedTags.has(tagId)) {
+            // Check if this connection is subscribed to the notebook
+            if (conn.subscribedTags.has(notebookId)) {
                 try {
                     conn.ws.send(
                         JSON.stringify({
@@ -475,7 +482,7 @@ function broadcastChatEventToTag(tagId: string, event: ChatEvent, excludeUserId:
 }
 
 /**
- * Handle app channel messages (papers CRUD)
+ * Handle app channel messages (collectables CRUD)
  */
 async function handleAppMessage(
     ws: any,
@@ -484,124 +491,131 @@ async function handleAppMessage(
     payload: any,
 ): Promise<void> {
     switch (action) {
-        case 'paper.create': {
+        case 'collectable.create': {
             const { tags, data } = payload;
             if (!data?.itemId || !data?.provider) {
                 ws.send(
                     JSON.stringify({
                         channel: 'app',
-                        event: { type: 'error', message: 'Missing required paper data' },
+                        event: { type: 'error', message: 'Missing required collectable data' },
                     }),
                 );
                 return;
             }
 
-            // Verify user has write access to all tags
-            for (const tagId of tags || []) {
-                const tag = await findTagByIdWithAccess(tagId, context.userId, 'write');
-                if (!tag) {
+            // Verify user has write access to all notebooks
+            for (const notebookId of tags || []) {
+                const notebook = await findNotebookByIdWithAccess(
+                    notebookId,
+                    context.userId,
+                    'write',
+                );
+                if (!notebook) {
                     ws.send(
                         JSON.stringify({
                             channel: 'app',
-                            event: { type: 'error', message: 'Access denied to tag' },
+                            event: { type: 'error', message: 'Access denied to notebook' },
                         }),
                     );
                     return;
                 }
             }
 
-            const paper = await createPaper(context.userId, { tags, data });
+            const collectable = await createCollectable(context.userId, { tags, data });
 
-            // Broadcast to all users with access to each tag
-            for (const tagId of paper.tags) {
-                const recipientUserIds = await getUsersWithTagAccess(tagId);
+            // Broadcast to all users with access to each notebook
+            for (const notebookId of collectable.tags) {
+                const recipientUserIds = await getUsersWithNotebookAccess(notebookId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
-                    type: 'paper.created',
-                    paper,
-                    tagId,
+                    type: 'collectable.created',
+                    collectable,
+                    notebookId,
                 });
             }
             break;
         }
 
-        case 'paper.update': {
-            const { paperId, data, tags } = payload;
-            if (!paperId) {
+        case 'collectable.update': {
+            const { collectableId, data, tags } = payload;
+            if (!collectableId) {
                 ws.send(
                     JSON.stringify({
                         channel: 'app',
-                        event: { type: 'error', message: 'Missing paperId' },
+                        event: { type: 'error', message: 'Missing collectableId' },
                     }),
                 );
                 return;
             }
 
-            const paper = await updatePaper(paperId, context.userId, { data, tags });
+            const collectable = await updateCollectable(collectableId, context.userId, {
+                data,
+                tags,
+            });
 
-            if (!paper) {
+            if (!collectable) {
                 ws.send(
                     JSON.stringify({
                         channel: 'app',
-                        event: { type: 'error', message: 'Paper not found or access denied' },
+                        event: { type: 'error', message: 'Collectable not found or access denied' },
                     }),
                 );
                 return;
             }
 
-            // Broadcast to all users with access to each tag
-            for (const tagId of paper.tags) {
-                const recipientUserIds = await getUsersWithTagAccess(tagId);
+            // Broadcast to all users with access to each notebook
+            for (const notebookId of collectable.tags) {
+                const recipientUserIds = await getUsersWithNotebookAccess(notebookId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
-                    type: 'paper.updated',
-                    paper,
-                    tagId,
+                    type: 'collectable.updated',
+                    collectable,
+                    notebookId,
                 });
             }
             break;
         }
 
-        case 'paper.delete': {
-            const { paperId } = payload;
-            if (!paperId) {
+        case 'collectable.delete': {
+            const { collectableId } = payload;
+            if (!collectableId) {
                 ws.send(
                     JSON.stringify({
                         channel: 'app',
-                        event: { type: 'error', message: 'Missing paperId' },
+                        event: { type: 'error', message: 'Missing collectableId' },
                     }),
                 );
                 return;
             }
 
-            // Get paper first to know which tags to broadcast to
-            const paper = await findPaperById(paperId, context.userId);
-            if (!paper) {
+            // Get collectable first to know which notebooks to broadcast to
+            const collectable = await findCollectableById(collectableId, context.userId);
+            if (!collectable) {
                 ws.send(
                     JSON.stringify({
                         channel: 'app',
-                        event: { type: 'error', message: 'Paper not found or access denied' },
+                        event: { type: 'error', message: 'Collectable not found or access denied' },
                     }),
                 );
                 return;
             }
 
-            const deleted = await deletePaper(paperId, context.userId);
+            const deleted = await deleteCollectable(collectableId, context.userId);
             if (!deleted) {
                 ws.send(
                     JSON.stringify({
                         channel: 'app',
-                        event: { type: 'error', message: 'Failed to delete paper' },
+                        event: { type: 'error', message: 'Failed to delete collectable' },
                     }),
                 );
                 return;
             }
 
-            // Broadcast to all users with access to each tag
-            for (const tagId of paper.tags) {
-                const recipientUserIds = await getUsersWithTagAccess(tagId);
+            // Broadcast to all users with access to each notebook
+            for (const notebookId of collectable.tags) {
+                const recipientUserIds = await getUsersWithNotebookAccess(notebookId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
-                    type: 'paper.deleted',
-                    paperId,
-                    tagId,
+                    type: 'collectable.deleted',
+                    collectableId,
+                    notebookId,
                 });
             }
             break;

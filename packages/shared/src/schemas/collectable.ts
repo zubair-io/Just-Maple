@@ -1,61 +1,61 @@
 import { Type, Static } from '@sinclair/typebox';
 
-export const PaperStatusSchema = Type.Union([
+export const CollectableStatusSchema = Type.Union([
     Type.Literal('have'),
     Type.Literal('want'),
     Type.Literal('sold'),
     Type.Literal('none'),
 ]);
 
-export type PaperStatus = Static<typeof PaperStatusSchema>;
+export type CollectableStatus = Static<typeof CollectableStatusSchema>;
 
-export const PaperDataSchema = Type.Object({
+export const CollectableDataSchema = Type.Object({
     itemId: Type.String(),
     provider: Type.String(),
     registryData: Type.Optional(Type.String()),
-    status: PaperStatusSchema,
+    status: CollectableStatusSchema,
     quantity: Type.Number({ minimum: 0 }),
     created: Type.String({ format: 'date-time' }),
 });
 
-export type PaperData = Static<typeof PaperDataSchema>;
+export type CollectableData = Static<typeof CollectableDataSchema>;
 
-export const PaperSchema = Type.Object({
+export const CollectableSchema = Type.Object({
     _id: Type.String(),
     tags: Type.Array(Type.String()),
     type: Type.Literal('collectible'),
-    data: PaperDataSchema,
+    data: CollectableDataSchema,
     createdBy: Type.String(),
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
 });
 
-export type Paper = Static<typeof PaperSchema>;
+export type Collectable = Static<typeof CollectableSchema>;
 
-export const CreatePaperSchema = Type.Object({
+export const CreateCollectableSchema = Type.Object({
     tags: Type.Optional(Type.Array(Type.String())),
     data: Type.Object({
         itemId: Type.String(),
         provider: Type.String(),
         registryData: Type.Optional(Type.String()),
-        status: Type.Optional(PaperStatusSchema),
+        status: Type.Optional(CollectableStatusSchema),
         quantity: Type.Optional(Type.Number({ minimum: 0 })),
     }),
 });
 
-export type CreatePaperInput = Static<typeof CreatePaperSchema>;
+export type CreateCollectableInput = Static<typeof CreateCollectableSchema>;
 
-export const UpdatePaperSchema = Type.Object({
+export const UpdateCollectableSchema = Type.Object({
     tags: Type.Optional(Type.Array(Type.String())),
     data: Type.Optional(
         Type.Object({
             itemId: Type.Optional(Type.String()),
             provider: Type.Optional(Type.String()),
             registryData: Type.Optional(Type.String()),
-            status: Type.Optional(PaperStatusSchema),
+            status: Type.Optional(CollectableStatusSchema),
             quantity: Type.Optional(Type.Number({ minimum: 0 })),
         }),
     ),
 });
 
-export type UpdatePaperInput = Static<typeof UpdatePaperSchema>;
+export type UpdateCollectableInput = Static<typeof UpdateCollectableSchema>;

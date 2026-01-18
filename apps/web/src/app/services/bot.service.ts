@@ -9,7 +9,7 @@ import type {
   UpdateUserBotInput,
   Thread,
   Message,
-  Tag,
+  Notebook,
 } from '@maple/shared';
 
 export interface BotSuggestion {
@@ -51,13 +51,13 @@ export class BotService {
   readonly userBots = this._userBots.asReadonly();
   readonly userBotsLoading = this._userBotsLoading.asReadonly();
 
-  // Tag bots cache
-  private readonly _tagBotsCache = new Map<string, BotSuggestion[]>();
-  private readonly _tagBotsLoading = signal<Set<string>>(new Set());
-  private readonly _tagBotsCacheVersion = signal(0);
+  // Notebook bots cache
+  private readonly _notebookBotsCache = new Map<string, BotSuggestion[]>();
+  private readonly _notebookBotsLoading = signal<Set<string>>(new Set());
+  private readonly _notebookBotsCacheVersion = signal(0);
 
   // Public signal for cache invalidation
-  readonly tagBotsCacheVersion = this._tagBotsCacheVersion.asReadonly();
+  readonly notebookBotsCacheVersion = this._notebookBotsCacheVersion.asReadonly();
 
   // ============================================
   // Bot Templates
@@ -156,36 +156,36 @@ export class BotService {
   // Bot Search (for @mentions)
   // ============================================
 
-  getTagBots(tagId: string): Observable<BotSuggestion[]> {
+  getNotebookBots(notebookId: string): Observable<BotSuggestion[]> {
     // Return cached if available
-    const cached = this._tagBotsCache.get(tagId);
+    const cached = this._notebookBotsCache.get(notebookId);
     if (cached) {
       return of(cached);
     }
 
     // Check if already loading
-    if (this._tagBotsLoading().has(tagId)) {
+    if (this._notebookBotsLoading().has(notebookId)) {
       // Return empty for now, will be updated when load completes
       return of([]);
     }
 
     // Mark as loading
-    this._tagBotsLoading.update((set) => new Set(set).add(tagId));
+    this._notebookBotsLoading.update((set) => new Set(set).add(notebookId));
 
-    return this.http.get<{ bots: BotSuggestion[] }>(`/api/tags/${tagId}/bots`).pipe(
+    return this.http.get<{ bots: BotSuggestion[] }>(`/api/notebooks/${notebookId}/bots`).pipe(
       tap((response) => {
-        this._tagBotsCache.set(tagId, response.bots);
-        this._tagBotsLoading.update((set) => {
+        this._notebookBotsCache.set(notebookId, response.bots);
+        this._notebookBotsLoading.update((set) => {
           const newSet = new Set(set);
-          newSet.delete(tagId);
+          newSet.delete(notebookId);
           return newSet;
         });
       }),
       map((response) => response.bots),
       catchError(() => {
-        this._tagBotsLoading.update((set) => {
+        this._notebookBotsLoading.update((set) => {
           const newSet = new Set(set);
-          newSet.delete(tagId);
+          newSet.delete(notebookId);
           return newSet;
         });
         return of([]);
@@ -206,15 +206,15 @@ export class BotService {
     );
   }
 
-  // Clear tag bots cache
-  clearTagBotsCache(tagId?: string): void {
-    if (tagId) {
-      this._tagBotsCache.delete(tagId);
+  // Clear notebook bots cache
+  clearNotebookBotsCache(notebookId?: string): void {
+    if (notebookId) {
+      this._notebookBotsCache.delete(notebookId);
     } else {
-      this._tagBotsCache.clear();
+      this._notebookBotsCache.clear();
     }
     // Increment version to trigger reactive updates
-    this._tagBotsCacheVersion.update((v) => v + 1);
+    this._notebookBotsCacheVersion.update((v) => v + 1);
   }
 
   // ============================================
@@ -222,9 +222,9 @@ export class BotService {
   // ============================================
 
   invokeBot(
-    tagId: string,
+    notebookId: string,
     botHandle: string,
-    sourceType: 'message' | 'note',
+    sourceType: 'message' | 'page',
     sourceId: string,
     context: {
       mentionText?: string;
@@ -234,7 +234,7 @@ export class BotService {
     },
   ): Observable<BotInvocation> {
     return this.http
-      .post<{ invocation: BotInvocation }>(`/api/tags/${tagId}/bots/invoke`, {
+      .post<{ invocation: BotInvocation }>(`/api/notebooks/${notebookId}/bots/invoke`, {
         botHandle,
         sourceType,
         sourceId,
@@ -257,43 +257,49 @@ export class BotService {
   }
 
   // ============================================
-  // Bot-Tag Sharing
+  // Bot-Notebook Sharing
   // ============================================
 
-  // Get bots shared with a tag (with owner info)
-  getTagSharedBots(tagId: string): Observable<EnrichedUserBot[]> {
-    return this.http.get<{ bots: EnrichedUserBot[] }>(`/api/tags/${tagId}/shared-bots`).pipe(
-      map((response) => response.bots),
-      catchError(() => of([])),
-    );
+  // Get bots shared with a notebook (with owner info)
+  getNotebookSharedBots(notebookId: string): Observable<EnrichedUserBot[]> {
+    return this.http
+      .get<{ bots: EnrichedUserBot[] }>(`/api/notebooks/${notebookId}/shared-bots`)
+      .pipe(
+        map((response) => response.bots),
+        catchError(() => of([])),
+      );
   }
 
-  // Share bot with tag
-  shareBotToTag(tagId: string, userBotId: string): Observable<Tag> {
-    return this.http.post<{ tag: Tag }>(`/api/tags/${tagId}/bots`, { userBotId }).pipe(
-      tap(() => {
-        this.clearTagBotsCache(tagId);
-      }),
-      map((response) => response.tag),
-      catchError((err) => {
-        const message = err?.error?.error || 'Failed to share bot';
-        return throwError(() => new Error(message));
-      }),
-    );
+  // Share bot with notebook
+  shareBotToNotebook(notebookId: string, userBotId: string): Observable<Notebook> {
+    return this.http
+      .post<{ notebook: Notebook }>(`/api/notebooks/${notebookId}/bots`, { userBotId })
+      .pipe(
+        tap(() => {
+          this.clearNotebookBotsCache(notebookId);
+        }),
+        map((response) => response.notebook),
+        catchError((err) => {
+          const message = err?.error?.error || 'Failed to share bot';
+          return throwError(() => new Error(message));
+        }),
+      );
   }
 
-  // Remove bot from tag
-  unshareBotFromTag(tagId: string, userBotId: string): Observable<Tag> {
-    return this.http.delete<{ tag: Tag }>(`/api/tags/${tagId}/bots/${userBotId}`).pipe(
-      tap(() => {
-        this.clearTagBotsCache(tagId);
-      }),
-      map((response) => response.tag),
-      catchError((err) => {
-        const message = err?.error?.error || 'Failed to remove bot';
-        return throwError(() => new Error(message));
-      }),
-    );
+  // Remove bot from notebook
+  unshareBotFromNotebook(notebookId: string, userBotId: string): Observable<Notebook> {
+    return this.http
+      .delete<{ notebook: Notebook }>(`/api/notebooks/${notebookId}/bots/${userBotId}`)
+      .pipe(
+        tap(() => {
+          this.clearNotebookBotsCache(notebookId);
+        }),
+        map((response) => response.notebook),
+        catchError((err) => {
+          const message = err?.error?.error || 'Failed to remove bot';
+          return throwError(() => new Error(message));
+        }),
+      );
   }
 
   // ============================================

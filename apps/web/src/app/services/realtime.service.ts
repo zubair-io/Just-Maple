@@ -45,12 +45,12 @@ export class RealtimeService {
    * Setup listeners for chat events from the unified WebSocket
    */
   private setupEventListeners(): void {
-    // Listen for 'connected' event to get subscribed tags
+    // Listen for 'connected' event to get subscribed notebooks
     this.realtimeWS
       .on('connected')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event) => {
-        this._subscribedTags.set(event.subscribedTags || []);
+        this._subscribedTags.set(event.subscribedNotebooks || []);
       });
 
     // Listen for chat events from RealtimeWSService
@@ -95,19 +95,19 @@ export class RealtimeService {
   }
 
   /**
-   * Subscribe to a tag's chat
+   * Subscribe to a notebook's chat
    */
   subscribe(tagId: string): void {
     if (!this._subscribedTags().includes(tagId)) {
-      this.realtimeWS.subscribeTag(tagId);
+      this.realtimeWS.subscribeNotebook(tagId);
     }
   }
 
   /**
-   * Unsubscribe from a tag's chat
+   * Unsubscribe from a notebook's chat
    */
   unsubscribe(tagId: string): void {
-    this.realtimeWS.unsubscribeTag(tagId);
+    this.realtimeWS.unsubscribeNotebook(tagId);
   }
 
   /**

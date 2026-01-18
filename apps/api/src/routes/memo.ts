@@ -2,16 +2,16 @@ import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
-import { findNoteByDocumentId } from '../repositories/note.repo';
+import { findPageByDocumentId } from '../repositories/page.repo';
 import { yjsDocumentService } from '../services/yjs-document.service';
 import type { JWTPayload } from '@maple/shared';
 
 /**
- * Notebook API routes
- * Handles Y.js notebook initialization and state retrieval
- * Used by offline queue for syncing offline-created notebooks
+ * Memo API routes
+ * Handles Y.js memo initialization and state retrieval
+ * Used by offline queue for syncing offline-created memos
  */
-export const notebookRoutes = new Elysia({ prefix: '/api/notebook' })
+export const memoRoutes = new Elysia({ prefix: '/api/memos' })
     .use(jwt({ name: 'jwt', secret: config.jwtSecret }))
     .derive(async ({ jwt, request }) => {
         const authHeader = request.headers.get('authorization');
@@ -30,8 +30,8 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebook' })
         return { auth: user ? { user } : null };
     })
     /**
-     * Initialize notebook with Y.js state
-     * Used for first sync of offline-created notebooks
+     * Initialize memo with Y.js state
+     * Used for first sync of offline-created memos
      */
     .post(
         '/:noteId/init',
@@ -43,17 +43,17 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebook' })
 
             const { noteId } = params;
 
-            // Verify note exists and user has access (noteId is the documentId)
-            const note = await findNoteByDocumentId(noteId, auth.user._id);
-            if (!note) {
+            // Verify page exists and user has access (noteId is the documentId)
+            const page = await findPageByDocumentId(noteId, auth.user._id);
+            if (!page) {
                 set.status = 404;
-                return { error: 'Note not found' };
+                return { error: 'Page not found' };
             }
 
-            // Verify it's a notebook type
-            if (note.type !== 'notebook') {
+            // Verify it's a notebook type (page with memo)
+            if (page.type !== 'notebook') {
                 set.status = 400;
-                return { error: 'Note is not a notebook type' };
+                return { error: 'Page is not a notebook type' };
             }
 
             try {
@@ -61,22 +61,22 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebook' })
                 const arrayBuffer = await request.arrayBuffer();
                 const state = new Uint8Array(arrayBuffer);
 
-                // Initialize notebook with the state
+                // Initialize memo with the state
                 const mergedState = await yjsDocumentService.initializeNotebook(noteId, state);
 
                 // Return merged state as base64
                 const base64State = Buffer.from(mergedState).toString('base64');
 
-                console.log(`[Notebook] Initialized notebook ${noteId} with ${state.length} bytes`);
+                console.log(`[Memo] Initialized memo ${noteId} with ${state.length} bytes`);
 
                 return {
                     success: true,
                     state: base64State,
                 };
             } catch (error) {
-                console.error(`[Notebook] Failed to initialize ${noteId}:`, error);
+                console.error(`[Memo] Failed to initialize ${noteId}:`, error);
                 set.status = 500;
-                return { error: 'Failed to initialize notebook' };
+                return { error: 'Failed to initialize memo' };
             }
         },
         {
@@ -84,7 +84,7 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebook' })
         },
     )
     /**
-     * Get notebook Y.js state
+     * Get memo Y.js state
      * Used for fetching initial state when WebSocket is slow or unavailable
      */
     .get('/:noteId/state', async ({ auth, params, set }) => {
@@ -95,17 +95,17 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebook' })
 
         const { noteId } = params;
 
-        // Verify note exists and user has access (noteId is the documentId)
-        const note = await findNoteByDocumentId(noteId, auth.user._id);
-        if (!note) {
+        // Verify page exists and user has access (noteId is the documentId)
+        const page = await findPageByDocumentId(noteId, auth.user._id);
+        if (!page) {
             set.status = 404;
-            return { error: 'Note not found' };
+            return { error: 'Page not found' };
         }
 
-        // Verify it's a notebook type
-        if (note.type !== 'notebook') {
+        // Verify it's a notebook type (page with memo)
+        if (page.type !== 'notebook') {
             set.status = 400;
-            return { error: 'Note is not a notebook type' };
+            return { error: 'Page is not a notebook type' };
         }
 
         try {
@@ -119,8 +119,8 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebook' })
                 state: base64State,
             };
         } catch (error) {
-            console.error(`[Notebook] Failed to get state for ${noteId}:`, error);
+            console.error(`[Memo] Failed to get state for ${noteId}:`, error);
             set.status = 500;
-            return { error: 'Failed to get notebook state' };
+            return { error: 'Failed to get memo state' };
         }
     });

@@ -1,7 +1,7 @@
 import { Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { RouterOutlet, ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
-import { TagService } from '../../services/tag.service';
+import { NotebookService } from '../../services/notebook.service';
 
 @Component({
   selector: 'app-tag',
@@ -12,15 +12,15 @@ import { TagService } from '../../services/tag.service';
 })
 export class TagComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
-  private readonly tagService = inject(TagService);
+  private readonly notebookService = inject(NotebookService);
   private routeSubscription?: Subscription;
 
   ngOnInit(): void {
-    // Subscribe to route params and set active tag
+    // Subscribe to route params and set active notebook
     this.routeSubscription = this.route.params.subscribe((params) => {
-      const tagId = params['tagId'];
-      if (tagId) {
-        this.tagService.setActiveTag(tagId);
+      const notebookId = params['tagId'];
+      if (notebookId) {
+        this.notebookService.setActiveNotebook(notebookId);
       }
     });
   }

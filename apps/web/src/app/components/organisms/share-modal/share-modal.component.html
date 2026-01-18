@@ -10,7 +10,9 @@
   >
     <!-- Header -->
     <div class="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
-      <h2 class="text-lg font-semibold text-[var(--color-text-main)]">Share "{{ tag().label }}"</h2>
+      <h2 class="text-lg font-semibold text-[var(--color-text-main)]">
+        Share "{{ notebook().label }}"
+      </h2>
       <button
         (click)="onClose()"
         class="p-1 hover:bg-stone-100 rounded-lg transition-colors text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
@@ -31,7 +33,7 @@
           placeholder="Enter email address"
           class="flex-1 px-3 py-2 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)]"
           [disabled]="isSharing()"
-          (keyup.enter)="shareTag()"
+          (keyup.enter)="shareNotebook()"
         />
         <select
           [(ngModel)]="selectedAccessLevel"
@@ -42,7 +44,7 @@
           <option value="read">Can view</option>
         </select>
         <button
-          (click)="shareTag()"
+          (click)="shareNotebook()"
           [disabled]="isSharing() || !emailInput().trim()"
           class="px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -101,7 +103,7 @@
           <div class="text-center py-8 text-[var(--color-text-muted)] text-sm">
             <span class="material-symbols-rounded text-4xl mb-2 block opacity-30">group</span>
             <p>No one has access yet</p>
-            <p class="text-xs mt-1">Share this tag to collaborate</p>
+            <p class="text-xs mt-1">Share this notebook to collaborate</p>
           </div>
         }
       </div>
@@ -131,7 +133,7 @@
             <span class="material-symbols-rounded text-3xl mb-2 block opacity-30">smart_toy</span>
             <p>No bots shared yet</p>
             @if (isOwner()) {
-              <p class="text-xs mt-1">Add bots to use them in this tag</p>
+              <p class="text-xs mt-1">Add bots to use them in this notebook</p>
             }
           </div>
         } @else {
@@ -182,7 +184,7 @@
           (click)="$event.stopPropagation()"
         >
           <div class="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
-            <h3 class="text-lg font-semibold text-[var(--color-text-main)]">Add Bot to Tag</h3>
+            <h3 class="text-lg font-semibold text-[var(--color-text-main)]">Add Bot to Notebook</h3>
             <button
               (click)="showAddBotDialog.set(false)"
               class="p-1 hover:bg-stone-100 rounded-lg transition-colors text-[var(--color-text-muted)]"

@@ -3,13 +3,13 @@
 >
   <!-- Breadcrumb -->
   <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-    @if (selectedTag()) {
+    @if (selectedNotebook()) {
       <div
         (click)="openSidebarOnMobile()"
         class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100 cursor-pointer hover:bg-stone-200 transition-colors"
       >
         <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
-        <span>{{ selectedTag()!.label }}</span>
+        <span>{{ selectedNotebook()!.label }}</span>
       </div>
     }
   </div>
@@ -17,7 +17,7 @@
   <!-- Actions -->
   <div class="flex items-center gap-1">
     <span class="text-xs text-[var(--color-text-muted)] mr-2">
-      {{ papersForTag().length }} items
+      {{ collectablesForNotebook().length }} items
     </span>
     <div class="flex items-center border-l border-[var(--color-border)] pl-2 gap-1">
       <button
@@ -117,9 +117,9 @@
 
 <app-paper-list
   class="flex-1 min-h-0 overflow-hidden"
-  [papers]="papersForTag()"
-  [selectedPaperId]="null"
-  (selectPaper)="onSelectPaper($event)"
+  [collectables]="collectablesForNotebook()"
+  [selectedCollectableId]="null"
+  (selectCollectable)="onSelectCollectable($event)"
 />
 
 <!-- FAB for scanning (hidden on mobile) -->

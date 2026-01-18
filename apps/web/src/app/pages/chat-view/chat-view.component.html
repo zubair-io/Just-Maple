@@ -1,5 +1,5 @@
 <!-- Header -->
-@if (selectedTag()) {
+@if (selectedNotebook()) {
   <header
     class="h-14 flex items-center justify-between px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
   >
@@ -9,8 +9,8 @@
         (click)="openSidebarOnMobile()"
         class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-stone-100"
       >
-        <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">tag</span>
-        <span>{{ selectedTag()!.label }}</span>
+        <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
+        <span>{{ selectedNotebook()!.label }}</span>
       </div>
       <span class="text-stone-300">/</span>
       <div class="flex items-center gap-1.5 text-[var(--color-text-muted)] font-medium p-1">
@@ -49,12 +49,12 @@
           </button>
         }
         <button
-          (click)="createNote()"
+          (click)="createPage()"
           class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg transition-colors"
-          title="New Note"
+          title="New Page"
         >
           <span class="material-symbols-rounded text-sm">add</span>
-          <span>New Note</span>
+          <span>New Page</span>
         </button>
       </div>
     </div>
@@ -62,8 +62,8 @@
 }
 
 <!-- Chat Content -->
-@if (selectedTag()) {
-  <app-chat [tagId]="selectedTag()!._id" />
+@if (selectedNotebook()) {
+  <app-chat [tagId]="selectedNotebook()!._id" />
 } @else {
   <div class="empty-state">
     <div class="empty-icon">
@@ -75,9 +75,9 @@
 }
 
 <!-- Share Modal -->
-@if (showShareModal() && selectedTag()) {
+@if (showShareModal() && selectedNotebook()) {
   <app-share-modal
-    [tag]="selectedTag()!"
+    [notebook]="selectedNotebook()!"
     [members]="members()"
     (closed)="closeShareModal()"
     (membersChanged)="onMembersChanged()"

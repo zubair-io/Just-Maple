@@ -73,7 +73,7 @@ describe('MessageService', () => {
         done();
       });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/messages');
       expect(req.request.method).toBe('GET');
       req.flush({ messages });
     });
@@ -85,7 +85,7 @@ describe('MessageService', () => {
         done();
       });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/messages');
       req.flush({ messages: [mockMessage] });
     });
 
@@ -98,7 +98,7 @@ describe('MessageService', () => {
         },
       });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/messages');
       req.flush({ error: 'Failed to load messages' }, { status: 500, statusText: 'Server Error' });
     });
   });
@@ -112,7 +112,7 @@ describe('MessageService', () => {
 
       // First load messages to set currentTagId
       service.loadMessages('tag-1').subscribe();
-      const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
+      const loadReq = httpMock.expectOne('/api/notebooks/tag-1/messages');
       loadReq.flush({ messages: [] });
 
       service.sendMessage('tag-1', content).subscribe((result) => {
@@ -121,7 +121,7 @@ describe('MessageService', () => {
         done();
       });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/messages');
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual({ content });
       req.flush({ message: mockMessage });
@@ -135,7 +135,7 @@ describe('MessageService', () => {
 
       // First load messages to set currentTagId
       service.loadMessages('tag-1').subscribe();
-      const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
+      const loadReq = httpMock.expectOne('/api/notebooks/tag-1/messages');
       loadReq.flush({ messages: [] });
 
       service.sendMessage('tag-1', content).subscribe();
@@ -145,7 +145,7 @@ describe('MessageService', () => {
       expect(messages.some((m) => m._id.startsWith('temp-'))).toBe(true);
 
       // Complete the request
-      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/messages');
       req.flush({ message: mockMessage });
     });
 
@@ -157,7 +157,7 @@ describe('MessageService', () => {
 
       // First load messages to set currentTagId
       service.loadMessages('tag-1').subscribe();
-      const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
+      const loadReq = httpMock.expectOne('/api/notebooks/tag-1/messages');
       loadReq.flush({ messages: [] });
 
       service.sendMessage('tag-1', content).subscribe({
@@ -169,7 +169,7 @@ describe('MessageService', () => {
         },
       });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/messages');
       req.flush({ error: 'Failed' }, { status: 500, statusText: 'Server Error' });
     });
   });
@@ -178,7 +178,7 @@ describe('MessageService', () => {
     beforeEach((done) => {
       // Load messages to set currentTagId
       service.loadMessages('tag-1').subscribe(() => done());
-      const req = httpMock.expectOne('/api/tags/tag-1/messages');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/messages');
       req.flush({ messages: [] });
     });
 
@@ -220,7 +220,7 @@ describe('MessageService', () => {
     it('should update message from realtime edited event', () => {
       // First add a message
       service.loadMessages('tag-1').subscribe();
-      const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
+      const loadReq = httpMock.expectOne('/api/notebooks/tag-1/messages');
       loadReq.flush({ messages: [mockMessage] });
 
       const editedMessage: Message = {
@@ -247,7 +247,7 @@ describe('MessageService', () => {
     it('should remove message from realtime deleted event', () => {
       // First add a message
       service.loadMessages('tag-1').subscribe();
-      const loadReq = httpMock.expectOne('/api/tags/tag-1/messages');
+      const loadReq = httpMock.expectOne('/api/notebooks/tag-1/messages');
       loadReq.flush({ messages: [mockMessage] });
 
       realtimeEventsSubject.next({
@@ -293,7 +293,7 @@ describe('MessageService', () => {
         done();
       });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/read');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/read');
       expect(req.request.method).toBe('POST');
       req.flush({ lastReadAt: new Date().toISOString() });
     });

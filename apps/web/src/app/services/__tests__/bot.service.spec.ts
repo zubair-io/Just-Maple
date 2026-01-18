@@ -243,7 +243,7 @@ describe('BotService', () => {
         done();
       });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/bots');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/bots');
       expect(req.request.method).toBe('GET');
       req.flush({ bots: suggestions });
     });
@@ -263,7 +263,7 @@ describe('BotService', () => {
 
       // First call
       service.getTagBots('tag-1').subscribe();
-      const req = httpMock.expectOne('/api/tags/tag-1/bots');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/bots');
       req.flush({ bots: suggestions });
 
       // Second call should use cache (no HTTP request)
@@ -273,7 +273,7 @@ describe('BotService', () => {
       });
 
       // Verify no additional HTTP request was made
-      httpMock.expectNone('/api/tags/tag-1/bots');
+      httpMock.expectNone('/api/notebooks/tag-1/bots');
     });
 
     it('should return empty array on error', (done) => {
@@ -282,7 +282,7 @@ describe('BotService', () => {
         done();
       });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/bots');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/bots');
       req.flush({ error: 'Server error' }, { status: 500, statusText: 'Server Error' });
     });
 
@@ -380,7 +380,7 @@ describe('BotService', () => {
           done();
         });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/bots/invoke');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/bots/invoke');
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toEqual({
         botHandle: 'hello',
@@ -399,7 +399,7 @@ describe('BotService', () => {
         },
       });
 
-      const req = httpMock.expectOne('/api/tags/tag-1/bots/invoke');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/bots/invoke');
       req.flush({ error: 'Bot not found' }, { status: 404, statusText: 'Not Found' });
     });
   });

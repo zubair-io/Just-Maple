@@ -27,7 +27,7 @@ import type {
   Message,
   CreateMessageInput,
   UpdateMessageInput,
-  NoteContent,
+  PageContent,
   UnreadCount,
 } from '@maple/shared';
 
@@ -127,10 +127,10 @@ export class MessageService {
       this.persistToIndexedDB([message]);
     }
 
-    // Show toast notification if message is from another user and not for the active tag
+    // Show toast notification if message is from another user and not for the active notebook
     if (
       message.userId !== currentUserId &&
-      message.tagId !== this.notificationService.activeTagId()
+      message.tagId !== this.notificationService.activeNotebookId()
     ) {
       const senderName = message.senderDisplayName || message.senderEmail || 'Someone';
       const messagePreview = this.extractTextFromContent(message.content);
@@ -230,7 +230,7 @@ export class MessageService {
     this._isLoading.set(true);
     this._error.set(null);
 
-    return this.http.get<{ messages: Message[] }>(`/api/tags/${tagId}/messages`).pipe(
+    return this.http.get<{ messages: Message[] }>(`/api/notebooks/${tagId}/messages`).pipe(
       tap((response) => {
         if (reset) {
           this.store.update(setEntities(response.messages));
@@ -278,7 +278,7 @@ export class MessageService {
     this._isLoading.set(true);
 
     return this.http
-      .get<{ messages: Message[] }>(`/api/tags/${tagId}/messages`, {
+      .get<{ messages: Message[] }>(`/api/notebooks/${tagId}/messages`, {
         params: { before: oldestMessage._id },
       })
       .pipe(
@@ -311,7 +311,7 @@ export class MessageService {
    */
   sendMessage(
     tagId: string,
-    content: NoteContent,
+    content: PageContent,
     options?: { threadId?: string; parentMessageId?: string },
   ): Observable<Message> {
     this._error.set(null);
@@ -346,7 +346,7 @@ export class MessageService {
     // Optimistic update
     this.store.update(addEntities(tempMessage));
 
-    const body: { content: NoteContent; threadId?: string; parentMessageId?: string } = {
+    const body: { content: PageContent; threadId?: string; parentMessageId?: string } = {
       content,
     };
     if (options?.threadId) {
@@ -356,7 +356,7 @@ export class MessageService {
       body.parentMessageId = options.parentMessageId;
     }
 
-    return this.http.post<{ message: Message }>(`/api/tags/${tagId}/messages`, body).pipe(
+    return this.http.post<{ message: Message }>(`/api/notebooks/${tagId}/messages`, body).pipe(
       tap((response) => {
         this.store.update(deleteEntities(tempId));
         // Use upsert - message may already exist from WebSocket broadcast
@@ -376,7 +376,7 @@ export class MessageService {
   /**
    * Edit a message
    */
-  editMessage(id: string, content: NoteContent): Observable<Message> {
+  editMessage(id: string, content: PageContent): Observable<Message> {
     this._error.set(null);
 
     const original = this.store.query(getEntity(id));
@@ -443,7 +443,7 @@ export class MessageService {
    * Mark tag as read
    */
   markAsRead(tagId: string): Observable<void> {
-    return this.http.post<{ lastReadAt: string }>(`/api/tags/${tagId}/read`, {}).pipe(
+    return this.http.post<{ lastReadAt: string }>(`/api/notebooks/${tagId}/read`, {}).pipe(
       tap(() => {
         // Update local unread count
         const counts = this._unreadCounts().filter((c) => c.tagId !== tagId);

@@ -43,8 +43,8 @@ export const RoomStateSchema = Type.Object({
 
 export type RoomState = Static<typeof RoomStateSchema>;
 
-// SSE event types for notebook collaboration
-export const NotebookSSEEventTypeSchema = Type.Union([
+// SSE event types for memo Y.Doc collaboration
+export const MemoSSEEventTypeSchema = Type.Union([
     Type.Literal('ydoc-init'), // Initial document state
     Type.Literal('ydoc-update'), // Document update from another client
     Type.Literal('awareness-update'), // Awareness update (cursors, selections)
@@ -54,13 +54,13 @@ export const NotebookSSEEventTypeSchema = Type.Union([
     Type.Literal('ping'), // Keepalive ping
 ]);
 
-export type NotebookSSEEventType = Static<typeof NotebookSSEEventTypeSchema>;
+export type MemoSSEEventType = Static<typeof MemoSSEEventTypeSchema>;
 
-// Generic SSE event wrapper
-export const NotebookSSEEventSchema = Type.Object({
-    type: NotebookSSEEventTypeSchema,
+// Generic SSE event wrapper for memo collaboration
+export const MemoSSEEventSchema = Type.Object({
+    type: MemoSSEEventTypeSchema,
     data: Type.Any(),
     timestamp: Type.String({ format: 'date-time' }),
 });
 
-export type NotebookSSEEvent = Static<typeof NotebookSSEEventSchema>;
+export type MemoSSEEvent = Static<typeof MemoSSEEventSchema>;

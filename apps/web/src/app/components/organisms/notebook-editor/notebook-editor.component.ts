@@ -21,8 +21,8 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
-import { NotebookDocumentService } from '../../../services/notebook-document.service';
-import { NoteService } from '../../../services/note.service';
+import { MemoDocumentService } from '../../../services/memo-document.service';
+import { PageService } from '../../../services/page.service';
 import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
 import { SlashCommandMenuComponent } from '../../molecules/slash-command-menu/slash-command-menu.component';
 import DragHandle from '@tiptap/extension-drag-handle';
@@ -54,13 +54,13 @@ export class NotebookEditorComponent implements OnDestroy {
   @ViewChild('editorWrapper', { static: false })
   private editorWrapperRef?: ElementRef<HTMLElement>;
 
-  private readonly notebookService = inject(NotebookDocumentService);
-  private readonly noteService = inject(NoteService);
+  private readonly memoService = inject(MemoDocumentService);
+  private readonly pageService = inject(PageService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
 
-  readonly noteId = input.required<string>();
+  readonly pageId = input.required<string>();
   readonly editable = input<boolean>(true);
 
   readonly isReady = signal(false);
@@ -72,7 +72,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private ydoc: Y.Doc | null = null;
   private awareness: Awareness | null = null;
   private readonly viewReady = signal(false);
-  private lastNoteId: string | null = null;
+  private lastPageId: string | null = null;
   private titleUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastSyncedTitle: string = '';
   private slashMenuElement: HTMLElement | null = null;
@@ -84,16 +84,16 @@ export class NotebookEditorComponent implements OnDestroy {
       this.viewReady.set(true);
     });
 
-    // Initialize when noteId changes
+    // Initialize when pageId changes
     effect(() => {
-      const currentNoteId = this.noteId();
-      if (!this.viewReady() || !currentNoteId) {
+      const currentPageId = this.pageId();
+      if (!this.viewReady() || !currentPageId) {
         return;
       }
 
-      if (currentNoteId !== this.lastNoteId) {
-        this.lastNoteId = currentNoteId;
-        this.initializeEditor(currentNoteId);
+      if (currentPageId !== this.lastPageId) {
+        this.lastPageId = currentPageId;
+        this.initializeEditor(currentPageId);
       }
     });
 
@@ -106,14 +106,14 @@ export class NotebookEditorComponent implements OnDestroy {
     this.cleanup();
   }
 
-  private async initializeEditor(noteId: string): Promise<void> {
+  private async initializeEditor(pageId: string): Promise<void> {
     this.cleanup();
     this.isReady.set(false);
     this.error.set(null);
 
     try {
       // Open document via service (handles offline-first loading)
-      const { ydoc, awareness } = await this.notebookService.openDocument(noteId);
+      const { ydoc, awareness } = await this.memoService.openDocument(pageId);
       this.ydoc = ydoc;
       this.awareness = awareness;
 
@@ -231,7 +231,7 @@ export class NotebookEditorComponent implements OnDestroy {
 
       this.isReady.set(true);
     } catch {
-      this.error.set('Failed to load notebook');
+      this.error.set('Failed to load memo');
     }
   }
 
@@ -251,8 +251,8 @@ export class NotebookEditorComponent implements OnDestroy {
       // Debounce title updates (500ms)
       this.titleUpdateTimeout = setTimeout(() => {
         this.lastSyncedTitle = title;
-        const noteId = this.noteId();
-        this.noteService.updateNote(noteId, { title }).subscribe();
+        const pageId = this.pageId();
+        this.pageService.updatePage(pageId, { title }).subscribe();
       }, 500);
     }
   }
@@ -386,8 +386,8 @@ export class NotebookEditorComponent implements OnDestroy {
       this._editor = null;
     }
 
-    if (this.lastNoteId) {
-      this.notebookService.closeDocument(this.lastNoteId);
+    if (this.lastPageId) {
+      this.memoService.closeDocument(this.lastPageId);
     }
 
     this.ydoc = null;

@@ -3,24 +3,24 @@ import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById, findUserByEmail } from '../repositories/user.repo';
 import type { JWTPayload } from '@maple/shared';
 import {
-    findTagsByUserId,
-    findTagById,
-    createTag,
-    updateTag,
-    deleteTag,
-    shareTag,
-    unshareTag,
-    updateTagPublicStatus,
-    getTagMembers,
-    getTagMembersWithUserData,
+    findNotebooksByUserId,
+    findNotebookById,
+    createNotebook,
+    updateNotebook,
+    deleteNotebook,
+    shareNotebook,
+    unshareNotebook,
+    updateNotebookPublicStatus,
+    getNotebookMembers,
+    getNotebookMembersWithUserData,
     getAccessLevel,
-    shareBotToTag,
-    unshareBotFromTag,
-} from '../repositories/tag.repo';
+    shareBotToNotebook,
+    unshareBotFromNotebook,
+} from '../repositories/notebook.repo';
 import { findUserBotsForTag } from '../repositories/user-bot.repo';
 import { sendNotification } from '../services/notification.service';
 
-export const tagRoutes = new Elysia({ prefix: '/api/tags' })
+export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
     .use(jwtPlugin)
     .derive(async ({ jwt, request }) => {
         const authHeader = request.headers.get('authorization');
@@ -39,30 +39,30 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         }
     })
 
-    // Get all tags for the current user
+    // Get all notebooks for the current user
     .get('/', async ({ auth, set }) => {
         if (!checkAuth(auth, set)) {
             return { error: 'Unauthorized', message: 'Valid authentication required' };
         }
-        const tags = await findTagsByUserId(auth.user._id);
-        return { tags };
+        const notebooks = await findNotebooksByUserId(auth.user._id);
+        return { notebooks };
     })
 
-    // Get a single tag by ID
+    // Get a single notebook by ID
     .get(
         '/:id',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const tag = await findTagById(params.id, auth.user._id);
+            const notebook = await findNotebookById(params.id, auth.user._id);
 
-            if (!tag) {
+            if (!notebook) {
                 set.status = 404;
-                return { error: 'Tag not found' };
+                return { error: 'Notebook not found' };
             }
 
-            return { tag };
+            return { notebook };
         },
         {
             params: t.Object({
@@ -71,15 +71,15 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Create a new tag
+    // Create a new notebook
     .post(
         '/',
         async ({ auth, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const tag = await createTag(auth.user._id, body);
-            return { tag };
+            const notebook = await createNotebook(auth.user._id, body);
+            return { notebook };
         },
         {
             body: t.Object({
@@ -91,21 +91,21 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Update a tag
+    // Update a notebook
     .put(
         '/:id',
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const tag = await updateTag(params.id, auth.user._id, body);
+            const notebook = await updateNotebook(params.id, auth.user._id, body);
 
-            if (!tag) {
+            if (!notebook) {
                 set.status = 404;
-                return { error: 'Tag not found' };
+                return { error: 'Notebook not found' };
             }
 
-            return { tag };
+            return { notebook };
         },
         {
             params: t.Object({
@@ -120,21 +120,21 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Delete a tag
+    // Delete a notebook
     .delete(
         '/:id',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const deleted = await deleteTag(params.id, auth.user._id);
+            const deleted = await deleteNotebook(params.id, auth.user._id);
 
             if (!deleted) {
                 set.status = 404;
-                return { error: 'Tag not found' };
+                return { error: 'Notebook not found' };
             }
 
-            return { message: 'Tag deleted successfully' };
+            return { message: 'Notebook deleted successfully' };
         },
         {
             params: t.Object({
@@ -143,7 +143,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Get tag members (users with access) including full user data
+    // Get notebook members (users with access) including full user data
     .get(
         '/:id/members',
         async ({ auth, params, set }) => {
@@ -151,10 +151,10 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const members = await getTagMembersWithUserData(params.id, auth.user._id);
+            const members = await getNotebookMembersWithUserData(params.id, auth.user._id);
             if (!members) {
                 set.status = 404;
-                return { error: 'Tag not found' };
+                return { error: 'Notebook not found' };
             }
 
             return { members };
@@ -166,7 +166,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Share tag with user (by email)
+    // Share notebook with user (by email)
     .post(
         '/:id/share',
         async ({ auth, params, body, set }) => {
@@ -181,32 +181,32 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
                 return { error: 'User not found', message: 'No user with that email exists' };
             }
 
-            const tag = await shareTag(params.id, auth.user._id, {
+            const notebook = await shareNotebook(params.id, auth.user._id, {
                 userId: targetUser._id,
                 accessLevel: body.accessLevel,
             });
 
-            if (!tag) {
+            if (!notebook) {
                 set.status = 403;
                 return {
                     error: 'Forbidden',
-                    message: 'You do not have permission to share this tag',
+                    message: 'You do not have permission to share this notebook',
                 };
             }
 
             // Send notification to the user who received the share
             try {
                 await sendNotification(targetUser._id, 'share_received', {
-                    tagId: params.id,
+                    notebookId: params.id,
                     sharedBy: auth.user._id,
-                    tagLabel: tag.label,
+                    notebookLabel: notebook.label,
                 });
             } catch (error) {
-                console.error('[Tags] Failed to send share notification:', error);
+                console.error('[Notebooks] Failed to send share notification:', error);
                 // Don't fail the request if notification fails
             }
 
-            return { tag };
+            return { notebook };
         },
         {
             params: t.Object({
@@ -219,7 +219,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Remove user's access to tag
+    // Remove user's access to notebook
     .delete(
         '/:id/share/:userId',
         async ({ auth, params, set }) => {
@@ -227,17 +227,17 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const tag = await unshareTag(params.id, auth.user._id, params.userId);
+            const notebook = await unshareNotebook(params.id, auth.user._id, params.userId);
 
-            if (!tag) {
+            if (!notebook) {
                 set.status = 403;
                 return {
                     error: 'Forbidden',
-                    message: 'You do not have permission to unshare this tag',
+                    message: 'You do not have permission to unshare this notebook',
                 };
             }
 
-            return { tag };
+            return { notebook };
         },
         {
             params: t.Object({
@@ -247,7 +247,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Update tag's public status
+    // Update notebook's public status
     .put(
         '/:id/public',
         async ({ auth, params, body, set }) => {
@@ -255,9 +255,13 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const tag = await updateTagPublicStatus(params.id, auth.user._id, body.isPublic);
+            const notebook = await updateNotebookPublicStatus(
+                params.id,
+                auth.user._id,
+                body.isPublic,
+            );
 
-            if (!tag) {
+            if (!notebook) {
                 set.status = 403;
                 return {
                     error: 'Forbidden',
@@ -265,7 +269,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
                 };
             }
 
-            return { tag };
+            return { notebook };
         },
         {
             params: t.Object({
@@ -277,7 +281,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Get current user's access level for a tag
+    // Get current user's access level for a notebook
     .get(
         '/:id/access',
         async ({ auth, params, set }) => {
@@ -285,13 +289,13 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const tag = await findTagById(params.id, auth.user._id);
-            if (!tag) {
+            const notebook = await findNotebookById(params.id, auth.user._id);
+            if (!notebook) {
                 set.status = 404;
-                return { error: 'Tag not found' };
+                return { error: 'Notebook not found' };
             }
 
-            const accessLevel = getAccessLevel(tag, auth.user._id);
+            const accessLevel = getAccessLevel(notebook, auth.user._id);
 
             return { accessLevel };
         },
@@ -302,7 +306,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Get bots shared with this tag
+    // Get bots shared with this notebook
     .get(
         '/:id/shared-bots',
         async ({ auth, params, set }) => {
@@ -310,10 +314,10 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const tag = await findTagById(params.id, auth.user._id);
-            if (!tag) {
+            const notebook = await findNotebookById(params.id, auth.user._id);
+            if (!notebook) {
                 set.status = 404;
-                return { error: 'Tag not found' };
+                return { error: 'Notebook not found' };
             }
 
             const enrichedBots = await findUserBotsForTag(params.id);
@@ -326,7 +330,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Share bot with tag
+    // Share bot with notebook
     .post(
         '/:id/bots',
         async ({ auth, params, body, set }) => {
@@ -334,14 +338,18 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const updatedTag = await shareBotToTag(params.id, auth.user._id, body.userBotId);
+            const updatedNotebook = await shareBotToNotebook(
+                params.id,
+                auth.user._id,
+                body.userBotId,
+            );
 
-            if (!updatedTag) {
+            if (!updatedNotebook) {
                 set.status = 400;
                 return { error: 'Failed to share bot' };
             }
 
-            return { tag: updatedTag };
+            return { notebook: updatedNotebook };
         },
         {
             params: t.Object({
@@ -353,7 +361,7 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
         },
     )
 
-    // Remove bot from tag
+    // Remove bot from notebook
     .delete(
         '/:id/bots/:userBotId',
         async ({ auth, params, set }) => {
@@ -361,14 +369,18 @@ export const tagRoutes = new Elysia({ prefix: '/api/tags' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const updatedTag = await unshareBotFromTag(params.id, auth.user._id, params.userBotId);
+            const updatedNotebook = await unshareBotFromNotebook(
+                params.id,
+                auth.user._id,
+                params.userBotId,
+            );
 
-            if (!updatedTag) {
+            if (!updatedNotebook) {
                 set.status = 400;
                 return { error: 'Failed to remove bot' };
             }
 
-            return { tag: updatedTag };
+            return { notebook: updatedNotebook };
         },
         {
             params: t.Object({

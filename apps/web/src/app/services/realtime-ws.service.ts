@@ -5,40 +5,40 @@ import { filter } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { VisibilityService } from './visibility.service';
 import { environment } from '../../environments/environment';
-import type { Note, Tag, Paper, NotebookSSEEvent } from '@maple/shared';
+import type { Page, Notebook, Collectable, MemoSSEEvent } from '@maple/shared';
 
 /**
- * App Events - CRUD operations on notes, tags, papers
+ * App Events - CRUD operations on pages, notebooks, collectables
  */
 export type AppEvent =
-  | { type: 'connected'; userId: string; subscribedTags: string[] }
-  | { type: 'note.created'; note: Note; tagId?: string }
-  | { type: 'note.updated'; noteId: string; title?: string; updatedAt: string; tagId?: string }
-  | { type: 'note.deleted'; noteId: string; tagId?: string }
-  | { type: 'note.trashed'; noteId: string; tagId?: string }
-  | { type: 'note.restored'; note: Note; tagId?: string }
-  | { type: 'tag.created'; tag: Tag }
-  | { type: 'tag.updated'; tagId: string; label?: string }
-  | { type: 'tag.deleted'; tagId: string }
-  | { type: 'paper.created'; paper: Paper; tagId: string }
-  | { type: 'paper.updated'; paper: Paper; tagId: string }
-  | { type: 'paper.deleted'; paperId: string; tagId: string };
+  | { type: 'connected'; userId: string; subscribedNotebooks: string[] }
+  | { type: 'page.created'; page: Page; notebookId?: string }
+  | { type: 'page.updated'; pageId: string; title?: string; updatedAt: string; notebookId?: string }
+  | { type: 'page.deleted'; pageId: string; notebookId?: string }
+  | { type: 'page.trashed'; pageId: string; notebookId?: string }
+  | { type: 'page.restored'; page: Page; notebookId?: string }
+  | { type: 'notebook.created'; notebook: Notebook }
+  | { type: 'notebook.updated'; notebookId: string; label?: string }
+  | { type: 'notebook.deleted'; notebookId: string }
+  | { type: 'collectable.created'; collectable: Collectable; notebookId: string }
+  | { type: 'collectable.updated'; collectable: Collectable; notebookId: string }
+  | { type: 'collectable.deleted'; collectableId: string; notebookId: string };
 
 /**
  * Message from server
  */
 interface ServerMessage {
-  channel: 'system' | 'app' | 'notebook' | 'chat';
+  channel: 'system' | 'app' | 'memo' | 'chat';
   event: any;
-  noteId?: string; // Present for notebook channel messages
+  pageId?: string; // Present for memo channel messages
 }
 
 /**
  * Realtime WebSocket Service
  * Single WebSocket connection for all real-time communication:
- * - App events (notes/tags/papers CRUD)
+ * - App events (pages/notebooks/collectables CRUD)
  * - Chat/typing indicators
- * - Notebook Y.Doc sync
+ * - Memo Y.Doc sync
  */
 @Injectable({ providedIn: 'root' })
 export class RealtimeWSService {
@@ -58,11 +58,11 @@ export class RealtimeWSService {
 
   // Event streams
   private appEvents$ = new Subject<AppEvent>();
-  private notebookEvents$ = new Subject<{ noteId: string; event: NotebookSSEEvent }>();
+  private memoEvents$ = new Subject<{ pageId: string; event: MemoSSEEvent }>();
   private systemEvents$ = new Subject<any>();
 
-  // Notebook handlers map: noteId -> handler function
-  private notebookHandlers = new Map<string, (event: NotebookSSEEvent) => void>();
+  // Memo handlers map: pageId -> handler function
+  private memoHandlers = new Map<string, (event: MemoSSEEvent) => void>();
 
   // Pending messages queue (sent when connected)
   private pendingMessages: string[] = [];
@@ -183,17 +183,17 @@ export class RealtimeWSService {
         this.appEvents$.next(data.event);
         break;
 
-      case 'notebook': {
-        // Route to specific notebook handler
-        const event = data.event as NotebookSSEEvent;
-        const noteId = data.noteId;
+      case 'memo': {
+        // Route to specific memo handler
+        const event = data.event as MemoSSEEvent;
+        const pageId = data.pageId;
 
-        if (noteId) {
-          const handler = this.notebookHandlers.get(noteId);
+        if (pageId) {
+          const handler = this.memoHandlers.get(pageId);
           if (handler) {
             handler(event);
           }
-          this.notebookEvents$.next({ noteId, event });
+          this.memoEvents$.next({ pageId, event });
         }
         break;
       }
@@ -240,41 +240,41 @@ export class RealtimeWSService {
     }
   }
 
-  // ==================== Notebook Methods ====================
+  // ==================== Memo Methods ====================
 
   /**
-   * Join a notebook room for Y.Doc sync
+   * Join a memo room for Y.Doc sync
    */
-  joinNotebook(noteId: string, clientId?: string): void {
+  joinMemo(pageId: string, clientId?: string): void {
     this.send({
-      channel: 'notebook',
+      channel: 'memo',
       action: 'join',
-      noteId,
+      pageId,
       clientId,
     });
   }
 
   /**
-   * Leave a notebook room
+   * Leave a memo room
    */
-  leaveNotebook(noteId: string): void {
+  leaveMemo(pageId: string): void {
     this.send({
-      channel: 'notebook',
+      channel: 'memo',
       action: 'leave',
-      noteId,
+      pageId,
     });
-    this.notebookHandlers.delete(noteId);
+    this.memoHandlers.delete(pageId);
   }
 
   /**
    * Send Y.Doc update
    */
-  sendNotebookUpdate(noteId: string, update: Uint8Array): void {
+  sendMemoUpdate(pageId: string, update: Uint8Array): void {
     const base64 = uint8ArrayToBase64(update);
     this.send({
-      channel: 'notebook',
+      channel: 'memo',
       action: 'update',
-      noteId,
+      pageId,
       update: base64,
     });
   }
@@ -282,21 +282,21 @@ export class RealtimeWSService {
   /**
    * Send awareness update (cursor position, selection, etc.)
    */
-  sendAwarenessUpdate(noteId: string, update: Uint8Array): void {
+  sendAwarenessUpdate(pageId: string, update: Uint8Array): void {
     const base64 = uint8ArrayToBase64(update);
     this.send({
-      channel: 'notebook',
+      channel: 'memo',
       action: 'awareness',
-      noteId,
+      pageId,
       update: base64,
     });
   }
 
   /**
-   * Register handler for notebook events
+   * Register handler for memo events
    */
-  onNotebookEvent(noteId: string, handler: (event: NotebookSSEEvent) => void): void {
-    this.notebookHandlers.set(noteId, handler);
+  onMemoEvent(pageId: string, handler: (event: MemoSSEEvent) => void): void {
+    this.memoHandlers.set(pageId, handler);
   }
 
   // ==================== App Event Subscriptions ====================
@@ -318,10 +318,10 @@ export class RealtimeWSService {
   }
 
   /**
-   * Subscribe to all notebook events
+   * Subscribe to all memo events
    */
-  get notebookEvents(): Observable<{ noteId: string; event: NotebookSSEEvent }> {
-    return this.notebookEvents$.asObservable();
+  get memoEvents(): Observable<{ pageId: string; event: MemoSSEEvent }> {
+    return this.memoEvents$.asObservable();
   }
 
   // ==================== Chat Methods ====================
@@ -329,11 +329,11 @@ export class RealtimeWSService {
   /**
    * Send a chat message via WebSocket
    */
-  sendChatMessage(tagId: string, content: any): void {
+  sendChatMessage(notebookId: string, content: any): void {
     this.send({
       channel: 'chat',
       action: 'message',
-      tagId,
+      notebookId,
       content,
     });
   }
@@ -341,72 +341,72 @@ export class RealtimeWSService {
   /**
    * Send typing indicator
    */
-  sendTyping(tagId: string, isTyping: boolean): void {
+  sendTyping(notebookId: string, isTyping: boolean): void {
     this.send({
       channel: 'chat',
       action: 'typing',
-      tagId,
+      notebookId,
       isTyping,
     });
   }
 
   /**
-   * Subscribe to a tag for chat
+   * Subscribe to a notebook for chat
    */
-  subscribeTag(tagId: string): void {
+  subscribeNotebook(notebookId: string): void {
     this.send({
       channel: 'chat',
       action: 'subscribe',
-      tagId,
+      notebookId,
     });
   }
 
   /**
-   * Unsubscribe from a tag
+   * Unsubscribe from a notebook
    */
-  unsubscribeTag(tagId: string): void {
+  unsubscribeNotebook(notebookId: string): void {
     this.send({
       channel: 'chat',
       action: 'unsubscribe',
-      tagId,
+      notebookId,
     });
   }
 
-  // ==================== Paper Methods ====================
+  // ==================== Collectable Methods ====================
 
   /**
-   * Create a paper via WebSocket
+   * Create a collectable via WebSocket
    */
-  createPaper(tags: string[], data: any): void {
+  createCollectable(notebookIds: string[], data: any): void {
     this.send({
       channel: 'app',
-      action: 'paper.create',
-      tags,
+      action: 'collectable.create',
+      notebookIds,
       data,
     });
   }
 
   /**
-   * Update a paper via WebSocket
+   * Update a collectable via WebSocket
    */
-  updatePaper(paperId: string, data?: any, tags?: string[]): void {
+  updateCollectable(collectableId: string, data?: any, notebookIds?: string[]): void {
     this.send({
       channel: 'app',
-      action: 'paper.update',
-      paperId,
+      action: 'collectable.update',
+      collectableId,
       data,
-      tags,
+      notebookIds,
     });
   }
 
   /**
-   * Delete a paper via WebSocket
+   * Delete a collectable via WebSocket
    */
-  deletePaper(paperId: string): void {
+  deleteCollectable(collectableId: string): void {
     this.send({
       channel: 'app',
-      action: 'paper.delete',
-      paperId,
+      action: 'collectable.delete',
+      collectableId,
     });
   }
 

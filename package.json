@@ -47,6 +47,7 @@
     "@automerge/automerge-repo-network-websocket": "2.5.1",
     "@automerge/automerge-repo-storage-indexeddb": "2.5.1",
     "@automerge/prosemirror": "0.1.0",
+    "mongodb": "^7.0.0",
     "nanoid": "^5.1.6",
     "prettier": "^3.7.4"
   }

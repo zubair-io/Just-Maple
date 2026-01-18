@@ -43,24 +43,24 @@ import { VisibilityService } from './visibility.service';
 import { DB_STORES } from './db-stores';
 import { RealtimeWSService, type AppEvent } from './realtime-ws.service';
 import type {
-  Note,
-  CreateNoteInput,
-  UpdateNoteInput,
-  NoteContent,
-  DEFAULT_NOTE_CONTENT,
+  Page,
+  CreatePageInput,
+  UpdatePageInput,
+  PageContent,
+  DEFAULT_PAGE_CONTENT,
 } from '@maple/shared';
 
-const STORE_NAME = DB_STORES.NOTE;
+const STORE_NAME = DB_STORES.PAGE;
 
-export interface NoteFilters {
-  tagId?: string;
+export interface PageFilters {
+  notebookId?: string;
   favorites?: boolean;
   trash?: boolean;
   archived?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
-export class NoteService {
+export class PageService {
   private readonly http = inject(HttpClient);
   private readonly indexedDB = inject(IndexedDBService);
   private readonly platformId = inject(PLATFORM_ID);
@@ -72,17 +72,17 @@ export class NoteService {
   // ELF Store
   private readonly store = createStore(
     { name: STORE_NAME },
-    withEntities<Note, 'documentId'>({ idKey: 'documentId' }),
+    withEntities<Page, 'documentId'>({ idKey: 'documentId' }),
     withActiveId(),
   );
 
   // Observable selectors
-  readonly notes$ = this.store.pipe(selectAllEntities());
-  readonly activeNote$: Observable<Note> = this.store.pipe(selectActiveEntity(), filterNil());
+  readonly pages$ = this.store.pipe(selectAllEntities());
+  readonly activePage$: Observable<Page> = this.store.pipe(selectActiveEntity(), filterNil());
   readonly activeId$ = this.store.pipe(selectActiveId());
 
   // Signal wrappers for Angular reactivity
-  private readonly _notesSignal = toSignal(this.notes$, { initialValue: [] as Note[] });
+  private readonly _pagesSignal = toSignal(this.pages$, { initialValue: [] as Page[] });
 
   // UI state signals
   private readonly _isLoading = signal(false);
@@ -98,154 +98,126 @@ export class NoteService {
     if (isPlatformBrowser(this.platformId)) {
       this.hydrateFromIndexedDB();
 
-      // Refresh notes when document becomes visible (user returns to tab)
-      this.visibilityService.becameVisible$.pipe(switchMap(() => this.loadNotes())).subscribe();
+      // Refresh pages when document becomes visible (user returns to tab)
+      this.visibilityService.becameVisible$.pipe(switchMap(() => this.loadPages())).subscribe();
     }
 
     this.setupEventStreamListeners();
   }
 
-  // private setupSaveSubscription() {
-  //   this.saveSubject
-  //     .pipe(
-  //       // Group saves by note ID so one note doesn't block another
-  //       groupBy((req) => req.id),
-  //       // For each group (each note ID), debounce
-  //       mergeMap((group) =>
-  //         group.pipe(
-  //           debounceTime(1000), // Wait 1 second of silence
-  //           switchMap((req) => {
-  //             console.log('[NoteService] Processing debounced save for', req.id);
-  //             return this.http
-  //               .put<{ note: Note }>(`/api/notes/${req.id}`, { automergeDoc: req.base64Data })
-  //               .pipe(
-  //                 tap(() => console.log('[NoteService] Synced automerge doc to server', req.id)),
-  //                 catchError((err) => {
-  //                   console.error('[NoteService] Failed to sync automerge doc', err);
-  //                   return of(null);
-  //                 }),
-  //               );
-  //           }),
-  //         ),
-  //       ),
-  //     )
-  //     .subscribe();
-  // }
-
   private setupEventStreamListeners() {
-    //  Listen for note.created events
+    //  Listen for page.created events
     this.realtimeWS
-      .on('note.created')
+      .on('page.created')
       .pipe(
-        tap((event: Extract<AppEvent, { type: 'note.created' }>) => {
-          const documentId = event.note.documentId;
+        tap((event: Extract<AppEvent, { type: 'page.created' }>) => {
+          const documentId = event.page.documentId;
           if (!this.store.query(getEntity(documentId))) {
-            this.store.update(addEntities(event.note));
-            this.persistToIndexedDB([event.note]);
+            this.store.update(addEntities(event.page));
+            this.persistToIndexedDB([event.page]);
           }
         }),
         debounceTime(1000),
-        switchMap((event: Extract<AppEvent, { type: 'note.created' }>) => {
-          return this.getNote(event.note.documentId);
+        switchMap((event: Extract<AppEvent, { type: 'page.created' }>) => {
+          return this.getPage(event.page.documentId);
         }),
       )
       .subscribe();
-    // Listen for note.updated events
+    // Listen for page.updated events
     this.realtimeWS
-      .on('note.updated')
-      .subscribe((event: Extract<AppEvent, { type: 'note.updated' }>) => {
+      .on('page.updated')
+      .subscribe((event: Extract<AppEvent, { type: 'page.updated' }>) => {
         this.store.update(
-          updateEntities(event.noteId, (note) => ({
-            ...note,
-            title: event.title ?? note.title,
+          updateEntities(event.pageId, (page) => ({
+            ...page,
+            title: event.title ?? page.title,
             updatedAt: event.updatedAt,
           })),
         );
       });
-    // Listen for note.deleted events
+    // Listen for page.deleted events
     this.realtimeWS
-      .on('note.deleted')
-      .subscribe((event: Extract<AppEvent, { type: 'note.deleted' }>) => {
-        this.store.update(deleteEntities(event.noteId));
+      .on('page.deleted')
+      .subscribe((event: Extract<AppEvent, { type: 'page.deleted' }>) => {
+        this.store.update(deleteEntities(event.pageId));
         if (isPlatformBrowser(this.platformId)) {
-          this.indexedDB.delete(event.noteId, STORE_NAME);
+          this.indexedDB.delete(event.pageId, STORE_NAME);
         }
       });
-    // Listen for note.trashed events
+    // Listen for page.trashed events
     this.realtimeWS
-      .on('note.trashed')
-      .subscribe((event: Extract<AppEvent, { type: 'note.trashed' }>) => {
+      .on('page.trashed')
+      .subscribe((event: Extract<AppEvent, { type: 'page.trashed' }>) => {
         // Remove from visible list (user can view trash separately)
-        this.store.update(deleteEntities(event.noteId));
+        this.store.update(deleteEntities(event.pageId));
       });
-    // Listen for note.restored events
+    // Listen for page.restored events
     this.realtimeWS
-      .on('note.restored')
-      .subscribe((event: Extract<AppEvent, { type: 'note.restored' }>) => {
-        this.store.update(upsertEntities([event.note]));
-        this.persistToIndexedDB([event.note]);
+      .on('page.restored')
+      .subscribe((event: Extract<AppEvent, { type: 'page.restored' }>) => {
+        this.store.update(upsertEntities([event.page]));
+        this.persistToIndexedDB([event.page]);
       });
   }
 
   private async hydrateFromIndexedDB(): Promise<void> {
-    const cached = await this.indexedDB.getAll<Note>(STORE_NAME);
-    // console.log(cached);
+    const cached = await this.indexedDB.getAll<Page>(STORE_NAME);
     if (cached.length > 0 && this.store.query(getEntitiesCount()) === 0) {
       this.store.update(setEntities(cached));
     }
   }
-  setActiveNoteId(id: string | null): void {
+  setActivePageId(id: string | null): void {
     this.store.update(setActiveId(id));
   }
 
   /**
-   * Get all notes as a reactive signal
+   * Get all pages as a reactive signal
    */
-  notes(): Note[] {
-    return this._notesSignal() ?? [];
+  pages(): Page[] {
+    return this._pagesSignal() ?? [];
   }
-  notesByTag$(tagId: string): Observable<Note[]> {
-    return this.store.pipe(selectManyByPredicate((entity) => entity.tagId === tagId));
+  pagesByNotebook$(notebookId: string): Observable<Page[]> {
+    return this.store.pipe(selectManyByPredicate((entity) => entity.tagId === notebookId));
   }
 
   /**
-   * Get selected note ID synchronously
+   * Get selected page ID synchronously
    */
-  selectedNoteId(): string | null {
+  selectedPageId(): string | null {
     const active = this.store.query(getActiveEntity());
     return active?._id || null;
   }
 
   /**
-   * Get selected note synchronously
+   * Get selected page synchronously
    */
-  selectedNote(): Note | null {
+  selectedPage(): Page | null {
     return this.store.query(getActiveEntity()) || null;
   }
 
   /**
-   * Load notes from API with optional filters
+   * Load pages from API with optional filters
    */
-  loadNotes(filters?: NoteFilters): Observable<Note[]> {
+  loadPages(filters?: PageFilters): Observable<Page[]> {
     this.init = true;
     this._isLoading.set(true);
     this._error.set(null);
 
     const params: Record<string, string> = {};
-    if (filters?.tagId) params['tagId'] = filters.tagId;
+    if (filters?.notebookId) params['notebookId'] = filters.notebookId;
     if (filters?.favorites) params['favorites'] = 'true';
     if (filters?.trash) params['trash'] = 'true';
     if (filters?.archived) params['archived'] = 'true';
 
-    return this.http.get<{ notes: Note[] }>('/api/notes', { params }).pipe(
+    return this.http.get<{ pages: Page[] }>('/api/pages', { params }).pipe(
       tap((response) => {
-        this.store.update(setEntities(response.notes));
-        this.persistToIndexedDB(response.notes);
+        this.store.update(setEntities(response.pages));
+        this.persistToIndexedDB(response.pages);
         this._isLoading.set(false);
       }),
-      map((response) => response.notes),
+      map((response) => response.pages),
       catchError((err) => {
-        let message = err?.error?.error || 'Failed to load notes';
+        let message = err?.error?.error || 'Failed to load pages';
 
         // Network-aware error message
         if (!this.network.isOnline()) {
@@ -263,22 +235,22 @@ export class NoteService {
   }
 
   /**
-   * Get a single note by ID from server
+   * Get a single page by ID from server
    */
-  getNote(noteId: string): Observable<Note> {
+  getPage(pageId: string): Observable<Page> {
     this._isLoading.set(true);
     this._error.set(null);
 
-    const httpCall = this.http.get<{ note: Note }>(`/api/notes/${noteId}`).pipe(
+    const httpCall = this.http.get<{ page: Page }>(`/api/pages/${pageId}`).pipe(
       tap((response) => {
-        this.store.update(upsertEntities(response.note));
-        this.persistToIndexedDB([response.note]);
+        this.store.update(upsertEntities(response.page));
+        this.persistToIndexedDB([response.page]);
         this._isLoading.set(false);
       }),
-      map((response) => response.note),
+      map((response) => response.page),
       map((data) => ({ source: 'server', data })),
       catchError((err) => {
-        const message = err?.error?.error || 'Failed to fetch note';
+        const message = err?.error?.error || 'Failed to fetch page';
         this._error.set(message);
         this._isLoading.set(false);
         return throwError(() => err);
@@ -286,7 +258,7 @@ export class NoteService {
     );
 
     const localData = this.store.pipe(
-      selectEntity(noteId),
+      selectEntity(pageId),
       map((data) => ({ source: 'local', data })),
     );
 
@@ -298,20 +270,20 @@ export class NoteService {
   }
 
   /**
-   * Create a new note with optimistic update
+   * Create a new page with optimistic update
    */
-  createNote(data: CreateNoteInput): Observable<Note> {
+  createPage(data: CreatePageInput): Observable<Page> {
     this._isLoading.set(true);
     this._error.set(null);
 
     const tempId = `temp-${Date.now()}`;
     const now = new Date().toISOString();
-    const defaultContent: NoteContent = {
+    const defaultContent: PageContent = {
       type: 'doc',
       content: [{ type: 'paragraph', content: [] }],
     };
 
-    const tempNote: Note = {
+    const tempPage: Page = {
       _id: tempId,
       userId: 'temp',
       type: data.type || 'write',
@@ -327,41 +299,38 @@ export class NoteService {
       updatedAt: now,
     };
 
-    this.store.update(addEntities(tempNote));
+    this.store.update(addEntities(tempPage));
 
     return concat(
-      of(tempNote),
-      this.http.post<{ note: Note }>('/api/notes', data).pipe(
+      of(tempPage),
+      this.http.post<{ page: Page }>('/api/pages', data).pipe(
         tap((response) => {
-          this.store.update(updateEntities(response.note.documentId, response.note));
-          this.persistToIndexedDB([response.note]);
+          this.store.update(updateEntities(response.page.documentId, response.page));
+          this.persistToIndexedDB([response.page]);
           this._isLoading.set(false);
         }),
-        map((response) => response.note),
+        map((response) => response.page),
       ),
     );
   }
 
   updateAutoMerge(id: string, data: any) {
-    const original = this.store.query(getEntity(id)) as Note;
-    // if (!original) {
-    //   return throwError(() => new Error('Note not found'));
-    // }
+    const original = this.store.query(getEntity(id)) as Page;
 
     const snapshot = data.key[1] === 'snapshot';
     const automergeDoc = snapshot ? [] : (original.automergeDoc ?? []);
     automergeDoc.push(data);
-    return this.updateNote(id, { automergeDoc });
+    return this.updatePage(id, { automergeDoc });
   }
 
   /**
-   * Update a note with optimistic update
+   * Update a page with optimistic update
    */
-  updateNote(id: string, data: UpdateNoteInput): Observable<Note> {
+  updatePage(id: string, data: UpdatePageInput): Observable<Page> {
     this._error.set(null);
     const original = this.store.query(getEntity(id));
     if (!original) {
-      return throwError(() => new Error('Note not found'));
+      return throwError(() => new Error('Page not found'));
     }
 
     // // Optimistic update
@@ -374,15 +343,15 @@ export class NoteService {
       })),
     );
 
-    return this.http.put<{ note: Note }>(`/api/notes/${id}`, data).pipe(
+    return this.http.put<{ page: Page }>(`/api/pages/${id}`, data).pipe(
       tap((response) => {
-        this.store.update(updateEntities(id, () => response.note));
-        this.persistToIndexedDB([response.note]);
+        this.store.update(updateEntities(id, () => response.page));
+        this.persistToIndexedDB([response.page]);
       }),
-      map((response) => response.note),
+      map((response) => response.page),
       catchError((err) => {
         this.store.update(updateEntities(id, () => original));
-        const message = err?.error?.error || 'Failed to update note';
+        const message = err?.error?.error || 'Failed to update page';
         this._error.set(message);
         return throwError(() => new Error(message));
       }),
@@ -398,72 +367,33 @@ export class NoteService {
   }
 
   /**
-   * Get note directly from storage (bypassing in-memory store)
+   * Get page directly from storage (bypassing in-memory store)
    */
-  async getNoteFromStorage(id: string): Promise<Note | undefined> {
+  async getPageFromStorage(id: string): Promise<Page | undefined> {
     if (!isPlatformBrowser(this.platformId)) return undefined;
-    return this.indexedDB.get<Note>(id, STORE_NAME);
+    return this.indexedDB.get<Page>(id, STORE_NAME);
   }
 
   /**
-   * Get all notes directly from storage
+   * Get all pages directly from storage
    */
-  async getAllNotesFromStorage(): Promise<Note[]> {
+  async getAllPagesFromStorage(): Promise<Page[]> {
     if (!isPlatformBrowser(this.platformId)) return [];
-    return this.indexedDB.getAll<Note>(STORE_NAME);
+    return this.indexedDB.getAll<Page>(STORE_NAME);
   }
 
-  // /**
-  //  * Save Automerge document
-  //  * - Updates local store/IndexedDB immediately
-  //  * - Triggers debounced background API sync
-  //  */
-  // async saveAutomergeDoc(id: string, base64Data: string): Promise<void> {
-  //   let original = this.store.query(getEntity(id));
-
-  //   // If not in memory, try fetching from storage
-  //   if (!original) {
-  //     original = await this.getNoteFromStorage(id);
-  //   }
-
-  //   if (!original) {
-  //     console.warn('[NoteService] Cannot save Automerge doc, note not found locally:', id);
-  //     return;
-  //   }
-
-  //   // 1. Optimistic local update (this happens immediately on every keystroke/save)
-  //   const updatedNote: Note = {
-  //     ...original,
-  //     automergeDoc: base64Data, // Store as base64 string locally
-  //     updatedAt: new Date().toISOString(),
-  //   };
-
-  //   // console.log('[NoteService] Saving automerge doc locally', id);
-
-  //   // Update memory if present
-  //   if (this.store.query(getEntity(id))) {
-  //     this.store.update(updateEntities(id, updatedNote));
-  //   }
-
-  //   // Always persist to DB
-  //   await this.persistToIndexedDB([updatedNote]);
-
-  //   // 2. Queue sync to server via Subject
-  //   this.saveSubject.next({ id, base64Data });
-  // }
-
   /**
-   * Move note to trash
+   * Move page to trash
    */
   moveToTrash(id: string): Observable<void> {
     this._error.set(null);
 
     const original = this.store.query(getEntity(id));
     if (!original) {
-      return throwError(() => new Error('Note not found'));
+      return throwError(() => new Error('Page not found'));
     }
 
-    const wasActive = this.selectedNoteId() === id;
+    const wasActive = this.selectedPageId() === id;
 
     // Optimistic update - remove from visible list
     this.store.update(deleteEntities(id));
@@ -471,7 +401,7 @@ export class NoteService {
       this.store.update(resetActiveId());
     }
 
-    return this.http.post(`/api/notes/${id}/trash`, {}).pipe(
+    return this.http.post(`/api/pages/${id}/trash`, {}).pipe(
       tap(() => {
         if (isPlatformBrowser(this.platformId)) {
           this.indexedDB.delete(id, STORE_NAME);
@@ -483,7 +413,7 @@ export class NoteService {
         if (wasActive) {
           this.store.update(setActiveId(id));
         }
-        const message = err?.error?.error || 'Failed to move note to trash';
+        const message = err?.error?.error || 'Failed to move page to trash';
         this._error.set(message);
         return throwError(() => new Error(message));
       }),
@@ -491,19 +421,19 @@ export class NoteService {
   }
 
   /**
-   * Restore note from trash
+   * Restore page from trash
    */
-  restoreFromTrash(id: string): Observable<Note> {
+  restoreFromTrash(id: string): Observable<Page> {
     this._error.set(null);
 
-    return this.http.post<{ note: Note }>(`/api/notes/${id}/restore`, {}).pipe(
+    return this.http.post<{ page: Page }>(`/api/pages/${id}/restore`, {}).pipe(
       tap((response) => {
-        this.store.update(upsertEntities([response.note]));
-        this.persistToIndexedDB([response.note]);
+        this.store.update(upsertEntities([response.page]));
+        this.persistToIndexedDB([response.page]);
       }),
-      map((response) => response.note),
+      map((response) => response.page),
       catchError((err) => {
-        const message = err?.error?.error || 'Failed to restore note';
+        const message = err?.error?.error || 'Failed to restore page';
         this._error.set(message);
         return throwError(() => new Error(message));
       }),
@@ -511,20 +441,20 @@ export class NoteService {
   }
 
   /**
-   * Permanently delete a note
+   * Permanently delete a page
    */
-  deleteNote(id: string): Observable<void> {
+  deletePage(id: string): Observable<void> {
     this._error.set(null);
 
     const original = this.store.query(getEntity(id));
-    const wasActive = this.selectedNoteId() === id;
+    const wasActive = this.selectedPageId() === id;
 
     this.store.update(deleteEntities(id));
     if (wasActive) {
       this.store.update(resetActiveId());
     }
 
-    return this.http.delete(`/api/notes/${id}`).pipe(
+    return this.http.delete(`/api/pages/${id}`).pipe(
       tap(() => {
         if (isPlatformBrowser(this.platformId)) {
           this.indexedDB.delete(id, STORE_NAME);
@@ -538,7 +468,7 @@ export class NoteService {
             this.store.update(setActiveId(id));
           }
         }
-        const message = err?.error?.error || 'Failed to delete note';
+        const message = err?.error?.error || 'Failed to delete page';
         this._error.set(message);
         return throwError(() => new Error(message));
       }),
@@ -546,18 +476,18 @@ export class NoteService {
   }
 
   /**
-   * Empty trash - delete all trashed notes
+   * Empty trash - delete all trashed pages
    */
   emptyTrash(): Observable<number> {
     this._isLoading.set(true);
     this._error.set(null);
 
-    return this.http.delete<{ count: number }>('/api/notes/trash/empty').pipe(
+    return this.http.delete<{ count: number }>('/api/pages/trash/empty').pipe(
       tap((response) => {
-        // Remove all trashed notes from store
-        const allNotes = this.notes();
-        const nonTrashedNotes = allNotes.filter((n) => !n.isTrashed);
-        this.store.update(setEntities(nonTrashedNotes));
+        // Remove all trashed pages from store
+        const allPages = this.pages();
+        const nonTrashedPages = allPages.filter((n) => !n.isTrashed);
+        this.store.update(setEntities(nonTrashedPages));
         this._isLoading.set(false);
       }),
       map((response) => response.count),
@@ -573,47 +503,47 @@ export class NoteService {
   /**
    * Toggle favorite status
    */
-  toggleFavorite(id: string): Observable<Note> {
-    const note = this.store.query(getEntity(id));
-    if (!note) {
-      return throwError(() => new Error('Note not found'));
+  toggleFavorite(id: string): Observable<Page> {
+    const page = this.store.query(getEntity(id));
+    if (!page) {
+      return throwError(() => new Error('Page not found'));
     }
 
-    return this.updateNote(id, { isFavorite: !note.isFavorite });
+    return this.updatePage(id, { isFavorite: !page.isFavorite });
   }
 
   /**
-   * Select a note as active
+   * Select a page as active
    */
-  selectNote(id: string | null): void {
+  selectPage(id: string | null): void {
     if (id) {
       this.store.update(setActiveId(id));
     } else {
       this.store.update(resetActiveId());
     }
   }
-  queryNote(id: string): Note | undefined {
+  queryPage(id: string): Page | undefined {
     return this.store.query(getEntity(id));
   }
 
   /**
-   * Get note by ID synchronously
+   * Get page by ID synchronously
    */
-  getNoteById(id: string): Note | undefined {
+  getPageById(id: string): Page | undefined {
     return this.store.query(getEntity(id));
   }
 
   /**
-   * Get notes for a specific tag
+   * Get pages for a specific notebook
    */
-  getNotesForTag(tagId: string): Note[] {
-    return this.store.query(getAllEntities()).filter((n) => n.tagId === tagId);
+  getPagesForNotebook(notebookId: string): Page[] {
+    return this.store.query(getAllEntities()).filter((n) => n.tagId === notebookId);
   }
 
   /**
-   * Select a single note as observable
+   * Select a single page as observable
    */
-  select(id: string): Observable<Note> {
+  select(id: string): Observable<Page> {
     return this.store.pipe(selectEntity(id)).pipe(filterNil());
   }
 
@@ -629,17 +559,17 @@ export class NoteService {
     }
   }
 
-  async persistToIndexedDB(notes: Note[]): Promise<void> {
-    if (!isPlatformBrowser(this.platformId) || notes.length === 0) return;
-    await this.indexedDB.putMany(notes, STORE_NAME);
+  async persistToIndexedDB(pages: Page[]): Promise<void> {
+    if (!isPlatformBrowser(this.platformId) || pages.length === 0) return;
+    await this.indexedDB.putMany(pages, STORE_NAME);
   }
 
   /**
-   * Add or update a note locally (offline-first)
-   * Used for notes created offline before server sync
+   * Add or update a page locally (offline-first)
+   * Used for pages created offline before server sync
    */
-  addLocalNote(note: Note): void {
-    this.store.update(upsertEntities([note]));
+  addLocalPage(page: Page): void {
+    this.store.update(upsertEntities([page]));
   }
 
   /**

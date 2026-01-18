@@ -1,21 +1,27 @@
-import type { Note, Tag, Paper, NotebookSSEEvent } from '@maple/shared';
+import type { Page, Notebook, Collectable, MemoSSEEvent } from '@maple/shared';
 import { redisPubSub } from './redis.service';
 
 /**
- * App Events - CRUD operations on notes, tags, papers
+ * App Events - CRUD operations on pages, notebooks, collectables
  */
 export type AppEvent =
-    | { type: 'note.created'; note: Note; tagId?: string }
-    | { type: 'note.updated'; noteId: string; title?: string; updatedAt: string; tagId?: string }
-    | { type: 'note.deleted'; noteId: string; tagId?: string }
-    | { type: 'note.trashed'; noteId: string; tagId?: string }
-    | { type: 'note.restored'; note: Note; tagId?: string }
-    | { type: 'tag.created'; tag: Tag }
-    | { type: 'tag.updated'; tagId: string; label?: string }
-    | { type: 'tag.deleted'; tagId: string }
-    | { type: 'paper.created'; paper: Paper; tagId: string }
-    | { type: 'paper.updated'; paper: Paper; tagId: string }
-    | { type: 'paper.deleted'; paperId: string; tagId: string };
+    | { type: 'page.created'; page: Page; notebookId?: string }
+    | {
+          type: 'page.updated';
+          pageId: string;
+          title?: string;
+          updatedAt: string;
+          notebookId?: string;
+      }
+    | { type: 'page.deleted'; pageId: string; notebookId?: string }
+    | { type: 'page.trashed'; pageId: string; notebookId?: string }
+    | { type: 'page.restored'; page: Page; notebookId?: string }
+    | { type: 'notebook.created'; notebook: Notebook }
+    | { type: 'notebook.updated'; notebookId: string; label?: string }
+    | { type: 'notebook.deleted'; notebookId: string }
+    | { type: 'collectable.created'; collectable: Collectable; notebookId: string }
+    | { type: 'collectable.updated'; collectable: Collectable; notebookId: string }
+    | { type: 'collectable.deleted'; collectableId: string; notebookId: string };
 
 /**
  * Notebook client info (for Y.Doc collaboration)
@@ -40,8 +46,8 @@ interface UserConnection {
 /**
  * Realtime WebSocket Service
  * Unified connection management for:
- * - App events (notes/tags/papers CRUD) - broadcast to user connections
- * - Notebook Y.Doc sync - room-based for collaborative editing
+ * - App events (pages/notebooks/collectables CRUD) - broadcast to user connections
+ * - Memo Y.Doc sync - room-based for collaborative editing
  */
 class RealtimeWSService {
     // User connections: userId -> Set of connections
@@ -279,7 +285,7 @@ class RealtimeWSService {
             return;
         }
 
-        const event: NotebookSSEEvent = {
+        const event: MemoSSEEvent = {
             type: 'ydoc-init',
             data: {
                 state: Buffer.from(state).toString('base64'),
@@ -298,7 +304,7 @@ class RealtimeWSService {
      * Also publishes to Redis for cross-replica sync
      */
     broadcastUpdate(noteId: string, update: Uint8Array, excludeClientId: string): void {
-        const event: NotebookSSEEvent = {
+        const event: MemoSSEEvent = {
             type: 'ydoc-update',
             data: {
                 update: Buffer.from(update).toString('base64'),
@@ -322,7 +328,7 @@ class RealtimeWSService {
      * Also publishes to Redis for cross-replica sync
      */
     broadcastAwareness(noteId: string, update: Uint8Array, excludeClientId: string): void {
-        const event: NotebookSSEEvent = {
+        const event: MemoSSEEvent = {
             type: 'awareness-update',
             data: {
                 update: Buffer.from(update).toString('base64'),
@@ -381,7 +387,7 @@ class RealtimeWSService {
      */
     private broadcastToNotebookPeers(
         noteId: string,
-        event: NotebookSSEEvent,
+        event: MemoSSEEvent,
         excludeClientId: string,
     ): void {
         const room = this.notebookRooms.get(noteId);
@@ -397,7 +403,7 @@ class RealtimeWSService {
     /**
      * Send notebook event to a specific WebSocket
      */
-    private sendNotebookEvent(ws: WebSocket, noteId: string, event: NotebookSSEEvent): boolean {
+    private sendNotebookEvent(ws: WebSocket, noteId: string, event: MemoSSEEvent): boolean {
         const message = JSON.stringify({ channel: 'notebook', noteId, event });
         return this.safeSend(ws, message);
     }
@@ -412,7 +418,7 @@ class RealtimeWSService {
 
         if (redisPubSub.connected) {
             redisPubSub
-                .subscribeNotebook(noteId, (event: NotebookSSEEvent) => {
+                .subscribeNotebook(noteId, (event: MemoSSEEvent) => {
                     this.handleRedisNotebookEvent(noteId, event);
                 })
                 .catch(() => {});
@@ -428,7 +434,7 @@ class RealtimeWSService {
 
         if (redisPubSub.connected) {
             redisPubSub
-                .unsubscribeNotebook(noteId, (event: NotebookSSEEvent) => {
+                .unsubscribeNotebook(noteId, (event: MemoSSEEvent) => {
                     this.handleRedisNotebookEvent(noteId, event);
                 })
                 .catch(() => {});
@@ -439,7 +445,7 @@ class RealtimeWSService {
     /**
      * Handle notebook event from Redis (from another replica)
      */
-    private handleRedisNotebookEvent(noteId: string, event: NotebookSSEEvent): void {
+    private handleRedisNotebookEvent(noteId: string, event: MemoSSEEvent): void {
         const room = this.notebookRooms.get(noteId);
         if (!room) return;
 

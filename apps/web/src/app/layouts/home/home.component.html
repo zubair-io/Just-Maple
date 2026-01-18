@@ -11,11 +11,11 @@
     [class.translate-x-0]="sidebarOpen()"
   >
     <app-sidebar
-      [selectedTagId]="selectedTagId()"
-      (newNote)="onNewNote()"
-      (selectNote)="onSelectNote($event); closeSidebar()"
-      (selectTag)="onSelectTag($event)"
-      (createTag)="onCreateTag()"
+      [selectedNotebookId]="selectedNotebookId()"
+      (newPage)="onNewPage()"
+      (selectPage)="onSelectPage($event); closeSidebar()"
+      (selectNotebook)="onSelectNotebook($event)"
+      (createNotebook)="onCreateNotebook()"
       (settings)="onSettings()"
     />
   </div>
@@ -47,13 +47,13 @@
         <span class="text-[10px] font-medium">Menu</span>
       </button>
 
-      <!-- New Note button -->
+      <!-- New Page button -->
       <button
-        (click)="createNewNote()"
+        (click)="createNewPage()"
         class="flex flex-col items-center justify-center gap-1 p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors"
       >
         <span class="material-symbols-rounded text-2xl">edit</span>
-        <span class="text-[10px] font-medium">New Note</span>
+        <span class="text-[10px] font-medium">New Page</span>
       </button>
 
       <!-- Settings Button -->

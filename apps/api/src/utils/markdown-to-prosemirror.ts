@@ -1,5 +1,5 @@
 import MarkdownIt from 'markdown-it';
-import type { NoteContent } from '@maple/shared';
+import type { PageContent } from '@maple/shared';
 
 const md = new MarkdownIt({
     html: false,
@@ -18,7 +18,7 @@ interface ProseMirrorNode {
 /**
  * Convert markdown text to ProseMirror JSON
  */
-export function markdownToProseMirror(markdown: string): NoteContent {
+export function markdownToProseMirror(markdown: string): PageContent {
     const tokens = md.parse(markdown, {});
     const content: ProseMirrorNode[] = [];
 
@@ -125,7 +125,7 @@ export function markdownToProseMirror(markdown: string): NoteContent {
     return {
         type: 'doc',
         content,
-    } as NoteContent;
+    } as PageContent;
 }
 
 function parseInlineContent(token: any): ProseMirrorNode[] {

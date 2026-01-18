@@ -1,9 +1,9 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { NoteService } from '../../services/note.service';
-import { NotebookDocumentService } from '../../services/notebook-document.service';
-import type { NoteType } from '@maple/shared';
+import { PageService } from '../../services/page.service';
+import { MemoDocumentService } from '../../services/memo-document.service';
+import type { PageType } from '@maple/shared';
 
 @Component({
   selector: 'app-new-note',
@@ -11,51 +11,51 @@ import type { NoteType } from '@maple/shared';
   imports: [CommonModule],
   template: `
     <div class="flex items-center justify-center h-full">
-      <div class="text-[var(--color-text-muted)]">Creating note...</div>
+      <div class="text-[var(--color-text-muted)]">Creating page...</div>
     </div>
   `,
 })
 export class NewNoteComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly noteService = inject(NoteService);
-  private readonly notebookService = inject(NotebookDocumentService);
+  private readonly pageService = inject(PageService);
+  private readonly memoService = inject(MemoDocumentService);
 
   ngOnInit(): void {
-    const tagId = this.route.snapshot.paramMap.get('tagId');
-    const type = (this.route.snapshot.queryParamMap.get('type') as NoteType) || 'notebook';
+    const notebookId = this.route.snapshot.paramMap.get('tagId');
+    const type = (this.route.snapshot.queryParamMap.get('type') as PageType) || 'notebook';
 
-    this.createNote(tagId, type);
+    this.createPage(notebookId, type);
   }
 
-  private async createNote(tagId: string | null, type: NoteType): Promise<void> {
+  private async createPage(notebookId: string | null, type: PageType): Promise<void> {
     try {
       if (type === 'notebook') {
-        // Create notebook using the offline-first notebook service
-        const { note } = await this.notebookService.createNotebook(tagId || undefined);
-        this.router.navigate(['/', tagId, note.documentId], { replaceUrl: true });
+        // Create memo using the offline-first memo service
+        const { page } = await this.memoService.createMemo(notebookId || undefined);
+        this.router.navigate(['/', notebookId, page.documentId], { replaceUrl: true });
       } else {
-        // Create other note types using the regular note service
-        this.noteService
-          .createNote({
+        // Create other page types using the regular page service
+        this.pageService
+          .createPage({
             title: 'Untitled',
             content: { type: 'doc', content: [] },
-            tagId: tagId || undefined,
+            tagId: notebookId || undefined,
             type,
           })
           .subscribe({
-            next: (note) => {
-              this.router.navigate(['/', tagId, note.documentId], { replaceUrl: true });
+            next: (page) => {
+              this.router.navigate(['/', notebookId, page.documentId], { replaceUrl: true });
             },
             error: (err) => {
-              console.error('Failed to create note:', err);
-              this.router.navigate(['/', tagId], { replaceUrl: true });
+              console.error('Failed to create page:', err);
+              this.router.navigate(['/', notebookId], { replaceUrl: true });
             },
           });
       }
     } catch (err) {
-      console.error('Failed to create note:', err);
-      this.router.navigate(['/', tagId], { replaceUrl: true });
+      console.error('Failed to create page:', err);
+      this.router.navigate(['/', notebookId], { replaceUrl: true });
     }
   }
 }

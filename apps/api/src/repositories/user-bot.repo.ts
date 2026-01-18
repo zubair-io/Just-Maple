@@ -106,7 +106,7 @@ async function findUserBotDocByHandleForTag(
 ): Promise<UserBotDocument | null> {
     // Find a bot with this handle that is shared with this tag
     const tagDoc = await getDb()
-        .collection('tags')
+        .collection('notebooks')
         .findOne({ _id: new ObjectId(tagId) });
     if (!tagDoc) return null;
 
@@ -235,7 +235,7 @@ export async function deleteUserBot(id: string, userId: string): Promise<boolean
 export async function findUserBotsForTag(tagId: string): Promise<UserBot[]> {
     try {
         const tagDoc = await getDb()
-            .collection('tags')
+            .collection('notebooks')
             .findOne({ _id: new ObjectId(tagId) });
         if (!tagDoc) return [];
 
@@ -311,7 +311,7 @@ export async function searchUserBots(
 
         // Get bots shared with the tag
         const tagDoc = await getDb()
-            .collection('tags')
+            .collection('notebooks')
             .findOne({ _id: new ObjectId(tagId) });
 
         if (!tagDoc) {

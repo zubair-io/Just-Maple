@@ -2,7 +2,7 @@ import * as Y from 'yjs';
 import { signal } from '@angular/core';
 import { customAlphabet } from 'nanoid';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate } from 'y-protocols/awareness';
-import type { NotebookSSEEvent } from '@maple/shared';
+import type { MemoSSEEvent } from '@maple/shared';
 import type { RealtimeWSService } from './realtime-ws.service';
 
 // Generate client IDs using nanoid
@@ -40,7 +40,7 @@ export class YJSWSProvider {
   onPeerLeave?: (clientId: string) => void;
 
   constructor(
-    private readonly noteId: string,
+    private readonly pageId: string,
     private readonly ydoc: Y.Doc,
     private readonly realtimeWS: RealtimeWSService,
     private readonly awareness?: Awareness,
@@ -65,16 +65,16 @@ export class YJSWSProvider {
   }
 
   /**
-   * Connect to notebook room via WebSocket
+   * Connect to memo room via WebSocket
    */
   connect(): void {
-    console.log(`[YJS-WS] Connecting to notebook: ${this.noteId}, clientId: ${this._clientId}`);
+    console.log(`[YJS-WS] Connecting to memo: ${this.pageId}, clientId: ${this._clientId}`);
 
-    // Register event handler for this notebook
-    this.realtimeWS.onNotebookEvent(this.noteId, this.handleEvent.bind(this));
+    // Register event handler for this memo
+    this.realtimeWS.onMemoEvent(this.pageId, this.handleEvent.bind(this));
 
-    // Join the notebook room
-    this.realtimeWS.joinNotebook(this.noteId, this._clientId);
+    // Join the memo room
+    this.realtimeWS.joinMemo(this.pageId, this._clientId);
 
     // Track connection state based on realtimeWS
     // Note: The actual connected state depends on the WebSocket connection
@@ -89,19 +89,19 @@ export class YJSWSProvider {
   }
 
   /**
-   * Disconnect from notebook room
+   * Disconnect from memo room
    */
   disconnect(): void {
-    this.realtimeWS.leaveNotebook(this.noteId);
+    this.realtimeWS.leaveMemo(this.pageId);
     this.connected.set(false);
     this.synced.set(false);
     this.onSynced?.(false);
   }
 
   /**
-   * Handle incoming notebook event
+   * Handle incoming memo event
    */
-  private handleEvent(event: NotebookSSEEvent): void {
+  private handleEvent(event: MemoSSEEvent): void {
     console.log(`[YJS-WS] Received event: ${event.type}`, event);
 
     switch (event.type) {
@@ -168,7 +168,7 @@ export class YJSWSProvider {
 
     const localClientId = this.awareness.clientID;
     const update = encodeAwarenessUpdate(this.awareness, [localClientId]);
-    this.realtimeWS.sendAwarenessUpdate(this.noteId, update);
+    this.realtimeWS.sendAwarenessUpdate(this.pageId, update);
   }
 
   /**
@@ -196,7 +196,7 @@ export class YJSWSProvider {
     }
 
     // Send update via WebSocket
-    this.realtimeWS.sendNotebookUpdate(this.noteId, update);
+    this.realtimeWS.sendMemoUpdate(this.pageId, update);
   }
 
   /**
@@ -215,7 +215,7 @@ export class YJSWSProvider {
 
     // Encode and send awareness update
     const update = encodeAwarenessUpdate(this.awareness, [localClientId]);
-    this.realtimeWS.sendAwarenessUpdate(this.noteId, update);
+    this.realtimeWS.sendAwarenessUpdate(this.pageId, update);
   }
 
   /**

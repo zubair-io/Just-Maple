@@ -4,7 +4,7 @@ import type {
     UserBot,
     BotConfig,
     Action,
-    NoteContent,
+    PageContent,
 } from '@maple/shared';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
@@ -149,7 +149,7 @@ export class BotExecutorService {
             const executionTimeMs = Date.now() - startTime;
 
             // Update invocation with completed status
-            // Store NoteContent format for consistent rendering with TipTap
+            // Store PageContent format for consistent rendering with TipTap
             await updateInvocationStatus(invocationId, 'completed', {
                 output: responseContent,
                 threadId,
@@ -588,7 +588,7 @@ export class BotExecutorService {
     /**
      * Prepare response content for posting
      */
-    private prepareResponse(ctx: ExecutionContext): NoteContent {
+    private prepareResponse(ctx: ExecutionContext): PageContent {
         const response = String(ctx.variables.$response || '');
 
         // Convert markdown to ProseMirror JSON
@@ -602,7 +602,7 @@ export class BotExecutorService {
         invocation: BotInvocation,
         userBot: UserBot,
         template: BotTemplate,
-        content: NoteContent,
+        content: PageContent,
     ): Promise<{ threadId: string; messageId: string }> {
         // Get or create thread for the parent message
         const thread = await getOrCreateThread({
