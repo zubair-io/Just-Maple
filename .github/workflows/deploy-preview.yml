@@ -65,6 +65,68 @@ jobs:
                     -f apps/api/Dockerfile .
                   docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
 
+            - name: Generate Container App YAML
+              run: |
+                  cat > containerapp.yaml << 'YAML'
+                  properties:
+                    managedEnvironmentId: /subscriptions/${{ secrets.CAJUSTMAPLEAPI_AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.App/managedEnvironments/${{ env.CONTAINER_APP_ENV }}
+                    configuration:
+                      ingress:
+                        external: true
+                        targetPort: 7071
+                        transport: auto
+                      registries:
+                        - server: ${{ env.REGISTRY }}
+                          username: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_USERNAME }}
+                          passwordSecretRef: registry-password
+                      secrets:
+                        - name: registry-password
+                          value: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_PASSWORD }}
+                        - name: jwt-secret
+                          value: ${{ secrets.JWT_SECRET }}
+                    template:
+                      containers:
+                        # Main API container
+                        - name: api
+                          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
+                          resources:
+                            cpu: 0.5
+                            memory: 1Gi
+                          env:
+                            - name: MONGODB_URI
+                              value: mongodb://localhost:27017/justmaple
+                            - name: REDIS_URL
+                              value: redis://localhost:6379
+                            - name: JWT_SECRET
+                              secretRef: jwt-secret
+                        # MongoDB sidecar
+                        - name: mongodb
+                          image: docker.io/library/mongo:7
+                          resources:
+                            cpu: 0.25
+                            memory: 0.5Gi
+                          volumeMounts:
+                            - volumeName: mongodb-data
+                              mountPath: /data/db
+                        # Redis sidecar
+                        - name: redis
+                          image: docker.io/library/redis:7-alpine
+                          resources:
+                            cpu: 0.25
+                            memory: 0.5Gi
+                          volumeMounts:
+                            - volumeName: redis-data
+                              mountPath: /data
+                      volumes:
+                        - name: mongodb-data
+                          storageType: EmptyDir
+                        - name: redis-data
+                          storageType: EmptyDir
+                      scale:
+                        minReplicas: 1
+                        maxReplicas: 1
+                  YAML
+
             - name: Create or update preview Container App
               id: deploy
               run: |
@@ -81,27 +143,13 @@ jobs:
                     az containerapp create \
                       --name "$CONTAINER_APP" \
                       --resource-group ${{ env.RESOURCE_GROUP }} \
-                      --environment ${{ env.CONTAINER_APP_ENV }} \
-                      --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }} \
-                      --registry-server ${{ env.REGISTRY }} \
-                      --registry-username ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_USERNAME }} \
-                      --registry-password ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_PASSWORD }} \
-                      --target-port 7071 \
-                      --ingress external \
-                      --min-replicas 0 \
-                      --max-replicas 1 \
-                      --cpu 0.25 \
-                      --memory 0.5Gi \
-                      --env-vars \
-                        MONGODB_URI="${{ secrets.PREVIEW_MONGODB_URI }}" \
-                        REDIS_URL="${{ secrets.PREVIEW_REDIS_URL }}" \
-                        JWT_SECRET="${{ secrets.JWT_SECRET }}"
+                      --yaml containerapp.yaml
                   else
                     echo "Updating existing preview environment..."
                     az containerapp update \
                       --name "$CONTAINER_APP" \
                       --resource-group ${{ env.RESOURCE_GROUP }} \
-                      --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
+                      --yaml containerapp.yaml
                   fi
 
                   # Get the FQDN
@@ -123,6 +171,9 @@ jobs:
                       |-------------|-----|
                       | API | ${previewUrl} |
                       | Health Check | ${previewUrl}/api/health |
+
+                      **Note:** This is a self-contained environment with its own MongoDB and Redis.
+                      Data is ephemeral and will be lost when the container restarts.
 
                       This preview will be automatically deleted when the PR is closed.`;
 
