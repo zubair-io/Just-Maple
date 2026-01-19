@@ -1,0 +1,13 @@
+# Override for development - API only (uses external MongoDB/Redis)
+# This is loaded by default with `docker compose up api`
+version: '3.8'
+
+services:
+    api:
+        profiles:
+            - default
+        environment:
+            # Connect to external services (Azure Cosmos DB, Azure Cache for Redis)
+            - MONGODB_URI=${MONGODB_URI}
+            - REDIS_URL=${REDIS_URL}
+        depends_on: []
