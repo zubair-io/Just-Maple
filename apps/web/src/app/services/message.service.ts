@@ -74,6 +74,10 @@ export class MessageService {
   // Realtime subscription
   private realtimeSubscription: Subscription | null = null;
 
+  // Deduplication: track recently processed message IDs to prevent duplicate handling
+  private readonly processedMessageIds = new Set<string>();
+  private readonly MAX_PROCESSED_IDS = 100;
+
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
       this.hydrateFromIndexedDB();
@@ -117,8 +121,18 @@ export class MessageService {
   }
 
   private handleNewMessage(message: Message): void {
+    // Deduplicate: skip if we've already processed this message
+    if (this.processedMessageIds.has(message._id)) {
+      return;
+    }
+    if (this.processedMessageIds.size >= this.MAX_PROCESSED_IDS) {
+      this.processedMessageIds.clear();
+    }
+    this.processedMessageIds.add(message._id);
+
     const currentTagId = this._currentTagId();
     const currentUserId = this.authService.user()?._id;
+    const activeNotebookId = this.notificationService.activeNotebookId();
 
     // Only add to store if for current tag
     if (message.tagId === currentTagId) {
@@ -127,11 +141,13 @@ export class MessageService {
       this.persistToIndexedDB([message]);
     }
 
-    // Show toast notification if message is from another user and not for the active notebook
-    if (
-      message.userId !== currentUserId &&
-      message.tagId !== this.notificationService.activeNotebookId()
-    ) {
+    // If user is viewing this notebook, mark as read immediately to prevent unread count buildup
+    if (message.tagId === activeNotebookId) {
+      this.markAsRead(message.tagId).subscribe();
+      // Also mark any corresponding notifications as read
+      this.notificationService.markNotebookMessagesAsRead(message.tagId);
+    } else if (message.userId !== currentUserId) {
+      // Show toast notification if message is from another user and NOT for the active notebook
       const senderName = message.senderDisplayName || message.senderEmail || 'Someone';
       const messagePreview = this.extractTextFromContent(message.content);
 
@@ -140,6 +156,19 @@ export class MessageService {
         message: messagePreview || 'Sent a message',
         type: 'info',
         duration: 5000,
+        avatarEmail: message.senderEmail,
+        avatarDisplayName: message.senderDisplayName,
+        avatarUrl: message.senderProfilePictureUrl,
+      });
+
+      // Increment local unread count for this notebook
+      this._unreadCounts.update((counts) => {
+        const existing = counts.find((c) => c.tagId === message.tagId);
+        if (existing) {
+          return counts.map((c) => (c.tagId === message.tagId ? { ...c, count: c.count + 1 } : c));
+        } else {
+          return [...counts, { tagId: message.tagId, count: 1 }];
+        }
       });
     }
   }

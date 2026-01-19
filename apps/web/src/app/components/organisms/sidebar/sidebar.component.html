@@ -91,8 +91,13 @@
                 class="material-symbols-rounded text-sm transition-colors"
                 [class.text-[var(--color-primary)]]="selectedNotebookId() === notebook._id"
                 [class.text-[var(--color-text-muted)]]="selectedNotebookId() !== notebook._id"
-                >folder</span
               >
+                @if (selectedNotebookId() === notebook._id) {
+                  book_5
+                } @else {
+                  book_2
+                }
+              </span>
               <span
                 [class.font-medium]="selectedNotebookId() === notebook._id"
                 [class.text-[var(--color-text-main)]]="selectedNotebookId() === notebook._id"
@@ -140,7 +145,11 @@
                     "
                   >
                     <span class="material-symbols-rounded text-xs opacity-60">{{
-                      page.type === 'notebook' ? 'book' : page.type === 'lego' ? 'toys' : 'article'
+                      page.type === 'notebook'
+                        ? 'description'
+                        : page.type === 'lego'
+                          ? 'brick'
+                          : 'article'
                     }}</span>
                     <span class="truncate">{{ page.title }}</span>
                   </a>

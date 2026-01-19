@@ -240,6 +240,20 @@ export class NotificationService {
   }
 
   /**
+   * Mark all message_received notifications for a specific notebook as read
+   * Called when user views a chat to sync notification state with viewed messages
+   */
+  markNotebookMessagesAsRead(tagId: string): void {
+    const unreadMessageNotifications = this.notifications().filter(
+      (n) => !n.read && n.type === 'message_received' && n.data['tagId'] === tagId,
+    );
+
+    unreadMessageNotifications.forEach((n) => {
+      this.markAsRead(n._id).subscribe();
+    });
+  }
+
+  /**
    * Get list of registered devices
    */
   getDevices(): Observable<DeviceRegistration[]> {

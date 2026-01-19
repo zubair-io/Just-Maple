@@ -5,6 +5,7 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription, switchMap, of, combineLatest } from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
 import { PageService } from '../../services/page.service';
+import { MessageService } from '../../services/message.service';
 import { NotificationService } from '../../services/notification.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { ChatComponent, MemberAvatarGroupComponent, ShareModalComponent } from '../../components';
@@ -22,6 +23,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   readonly notebookService = inject(NotebookService);
   readonly pageService = inject(PageService);
+  private readonly messageService = inject(MessageService);
   private readonly notificationService = inject(NotificationService);
   private readonly uiStateService = inject(UiStateService);
 
@@ -45,10 +47,16 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   );
 
   constructor() {
-    // Track active notebook for smart notification filtering
+    // Track active notebook for smart notification filtering and mark messages as read
     effect(() => {
       const notebookId = this.selectedNotebookId();
       this.notificationService.setActiveNotebook(notebookId);
+      if (notebookId) {
+        // Mark message notifications as read (for notification bell badge)
+        this.notificationService.markNotebookMessagesAsRead(notebookId);
+        // Mark messages as read (for per-notebook unread badge)
+        this.messageService.markAsRead(notebookId).subscribe();
+      }
     });
   }
 
