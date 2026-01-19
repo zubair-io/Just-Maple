@@ -1,65 +1,11 @@
 <!-- Header -->
-@if (selectedNotebook()) {
-  <header
-    class="h-14 flex items-center justify-between px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
-  >
-    <!-- Breadcrumb -->
-    <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-      <div
-        (click)="openSidebarOnMobile()"
-        class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-stone-100"
-      >
-        <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
-        <span>{{ selectedNotebook()!.label }}</span>
-      </div>
-      <span class="text-stone-300">/</span>
-      <div class="flex items-center gap-1.5 text-[var(--color-text-muted)] font-medium p-1">
-        <span class="material-symbols-rounded text-sm">chat</span>
-        <span>Messages</span>
-      </div>
-    </div>
-
-    <!-- Shared Members -->
-    <div class="flex items-center gap-3">
-      @if (members().length > 1) {
-        <div
-          class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-stone-100 transition-colors"
-          title="Click to manage sharing"
-        >
-          <span class="text-xs text-[var(--color-text-muted)]">Shared with</span>
-          <app-member-avatar-group
-            [members]="members()"
-            [maxDisplay]="3"
-            size="xs"
-            (clicked)="openShareModal()"
-          />
-        </div>
-      }
-
-      <!-- Actions -->
-      <div class="flex items-center gap-1">
-        @if (members().length <= 1) {
-          <button
-            (click)="openShareModal()"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 text-xs font-medium rounded-lg transition-colors"
-            title="Manage Sharing"
-          >
-            <span class="material-symbols-rounded text-sm">share</span>
-            <span>Share</span>
-          </button>
-        }
-        <button
-          (click)="createPage()"
-          class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg transition-colors"
-          title="New Page"
-        >
-          <span class="material-symbols-rounded text-sm">add</span>
-          <span>New Page</span>
-        </button>
-      </div>
-    </div>
-  </header>
-}
+<app-notebook-header
+  [notebook]="selectedNotebook()!"
+  [members]="members()"
+  contextIcon="chat"
+  contextLabel="Messages"
+  (shareClicked)="openShareModal()"
+/>
 
 <!-- Chat Content -->
 @if (selectedNotebook()) {

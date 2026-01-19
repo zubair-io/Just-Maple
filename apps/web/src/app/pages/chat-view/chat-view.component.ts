@@ -1,31 +1,26 @@
 import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
-import { Router, ActivatedRoute } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { Subscription, switchMap, of, combineLatest } from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
-import { PageService } from '../../services/page.service';
 import { MessageService } from '../../services/message.service';
 import { NotificationService } from '../../services/notification.service';
-import { UiStateService } from '../../services/ui-state.service';
-import { ChatComponent, MemberAvatarGroupComponent, ShareModalComponent } from '../../components';
-import { DEFAULT_PAGE_CONTENT, type NotebookMember } from '@maple/shared';
+import { ChatComponent, ShareModalComponent, NotebookHeaderComponent } from '../../components';
+import type { NotebookMember } from '@maple/shared';
 
 @Component({
   selector: 'app-chat-view',
   standalone: true,
-  imports: [CommonModule, ChatComponent, MemberAvatarGroupComponent, ShareModalComponent],
+  imports: [CommonModule, ChatComponent, ShareModalComponent, NotebookHeaderComponent],
   templateUrl: './chat-view.component.html',
   styleUrl: './chat-view.component.scss',
 })
 export class ChatViewComponent implements OnInit, OnDestroy {
-  private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   readonly notebookService = inject(NotebookService);
-  readonly pageService = inject(PageService);
   private readonly messageService = inject(MessageService);
   private readonly notificationService = inject(NotificationService);
-  private readonly uiStateService = inject(UiStateService);
 
   private routeSubscription?: Subscription;
 
@@ -80,11 +75,6 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     this.notificationService.setActiveNotebook(null);
   }
 
-  createPage(): void {
-    const notebookId = this.selectedNotebookId();
-    this.router.navigate(['/', notebookId, 'new']);
-  }
-
   openShareModal(): void {
     this.showShareModal.set(true);
   }
@@ -96,12 +86,5 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   onMembersChanged(): void {
     // Trigger members refetch after sharing/unsharing
     this.membersRefreshTrigger.update((n) => n + 1);
-  }
-
-  openSidebarOnMobile(): void {
-    // Only open sidebar on mobile (< 768px)
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      this.uiStateService.openSidebar();
-    }
   }
 }

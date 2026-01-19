@@ -12,3 +12,4 @@ export * from './collab';
 export * from './memo';
 export * from './offline-queue';
 export * from './signaling';
+export * from './whiteboard';

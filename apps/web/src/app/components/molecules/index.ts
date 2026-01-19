@@ -9,3 +9,4 @@ export { MemberAvatarGroupComponent } from './member-avatar-group/member-avatar-
 export { SettingsHeaderComponent } from './settings-header/settings-header.component';
 export { OfflineIndicatorComponent } from './offline-indicator/offline-indicator.component';
 export { NoteHeaderComponent } from './note-header/note-header.component';
+export { NotebookHeaderComponent } from './notebook-header/notebook-header.component';

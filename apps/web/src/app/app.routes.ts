@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { AuthGuard, PublicGuard } from './guards/auth.guard';
-import { LegoPageGuard, NotebookPageGuard } from './guards/page-type.guard';
+import { LegoPageGuard, DrawPageGuard, NotebookPageGuard } from './guards/page-type.guard';
 
 export const routes: Routes = [
   // Settings route - must come before the home route
@@ -69,6 +69,13 @@ export const routes: Routes = [
             canMatch: [LegoPageGuard],
             loadComponent: () =>
               import('./pages/lego-view/lego-view.component').then((m) => m.LegoViewComponent),
+          },
+          // Draw-type page - shows collaborative whiteboard
+          {
+            path: ':documentId',
+            canMatch: [DrawPageGuard],
+            loadComponent: () =>
+              import('./pages/draw-view/draw-view.component').then((m) => m.DrawViewComponent),
           },
           // Notebook-type page - shows collaborative notebook editor (default for pages)
           {

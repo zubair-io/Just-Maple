@@ -1,0 +1,112 @@
+@if (notebook()) {
+  <header
+    class="h-14 flex items-center justify-between px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
+  >
+    <!-- Breadcrumb -->
+    <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+      <div
+        (click)="openSidebarOnMobile()"
+        class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-stone-100"
+      >
+        <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
+        <span>{{ notebook().label }}</span>
+      </div>
+      <span class="text-stone-300">/</span>
+      <div class="flex items-center gap-1.5 text-[var(--color-text-muted)] font-medium p-1">
+        <span class="material-symbols-rounded text-sm">{{ contextIcon() }}</span>
+        <span>{{ contextLabel() }}</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-3">
+      <!-- Shared Members -->
+      @if (members().length > 1) {
+        <div
+          class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-stone-100 transition-colors"
+          title="Click to manage sharing"
+        >
+          <span class="text-xs text-[var(--color-text-muted)]">Shared with</span>
+          <app-member-avatar-group
+            [members]="members()"
+            [maxDisplay]="3"
+            size="xs"
+            (clicked)="shareClicked.emit()"
+          />
+        </div>
+      }
+
+      <div class="flex items-center gap-1">
+        <!-- Share button (only when not shared) -->
+        @if (members().length <= 1) {
+          <button
+            (click)="shareClicked.emit()"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 text-xs font-medium rounded-lg transition-colors"
+            title="Manage Sharing"
+          >
+            <span class="material-symbols-rounded text-sm">share</span>
+            <span>Share</span>
+          </button>
+        }
+
+        <!-- Additional actions from content projection -->
+        @if (additionalActions()) {
+          <ng-container [ngTemplateOutlet]="additionalActions()!" />
+        }
+
+        <!-- Split button for new page -->
+        @if (showNewButton()) {
+          <div class="relative ml-1" (click)="$event.stopPropagation()">
+            <div class="flex">
+              <!-- Main button -->
+              <button
+                (click)="createPage('notebook')"
+                class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-l-lg transition-colors"
+                title="New Note"
+              >
+                <span class="material-symbols-rounded text-sm">add</span>
+                <span>New Note</span>
+              </button>
+              <!-- Dropdown toggle -->
+              <button
+                (click)="toggleDropdown($event)"
+                class="flex items-center px-1.5 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-r-lg border-l border-white/20 transition-colors"
+                title="More options"
+              >
+                <span class="material-symbols-rounded text-sm">
+                  {{ isDropdownOpen() ? 'expand_less' : 'expand_more' }}
+                </span>
+              </button>
+            </div>
+
+            <!-- Dropdown menu -->
+            @if (isDropdownOpen()) {
+              <div
+                class="absolute right-0 top-full mt-1 w-44 bg-white rounded-lg shadow-lg border border-[var(--color-border)] py-1 z-50"
+              >
+                <button
+                  (click)="createPage('notebook')"
+                  class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+                >
+                  <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                    >article</span
+                  >
+                  <span>New Note</span>
+                </button>
+                <button
+                  (click)="createPage('draw')"
+                  class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+                >
+                  <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                    >draw</span
+                  >
+                  <span>New Whiteboard</span>
+                </button>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  </header>
+}

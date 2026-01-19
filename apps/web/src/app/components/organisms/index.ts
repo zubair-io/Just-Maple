@@ -6,3 +6,4 @@ export { CollectableListItemComponent as PaperListItemComponent } from './paper-
 export { BarcodeScannerComponent } from './barcode-scanner/barcode-scanner.component';
 export { CollectibleItemViewComponent } from './collectible-item-view/collectible-item-view.component';
 export { ShareModalComponent } from './share-modal/share-modal.component';
+export { WhiteboardComponent } from './whiteboard/whiteboard.component';

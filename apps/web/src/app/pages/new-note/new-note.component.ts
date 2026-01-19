@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PageService } from '../../services/page.service';
 import { MemoDocumentService } from '../../services/memo-document.service';
+import { WhiteboardDocumentService } from '../../services/whiteboard-document.service';
 import type { PageType } from '@maple/shared';
 
 @Component({
@@ -20,6 +21,7 @@ export class NewNoteComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly pageService = inject(PageService);
   private readonly memoService = inject(MemoDocumentService);
+  private readonly whiteboardService = inject(WhiteboardDocumentService);
 
   ngOnInit(): void {
     const notebookId = this.route.snapshot.paramMap.get('tagId');
@@ -33,6 +35,10 @@ export class NewNoteComponent implements OnInit {
       if (type === 'notebook') {
         // Create memo using the offline-first memo service
         const { page } = await this.memoService.createMemo(notebookId || undefined);
+        this.router.navigate(['/', notebookId, page.documentId], { replaceUrl: true });
+      } else if (type === 'draw') {
+        // Create whiteboard using the offline-first whiteboard service
+        const { page } = await this.whiteboardService.createWhiteboard(notebookId || undefined);
         this.router.navigate(['/', notebookId, page.documentId], { replaceUrl: true });
       } else {
         // Create other page types using the regular page service
