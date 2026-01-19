@@ -203,10 +203,10 @@ async function handleMemoMessage(
 
             console.log(`[Memo] Join request for noteId: ${noteId}`);
 
-            // Verify user has access to this page (must be notebook type for memo)
+            // Verify user has access to this page (must be notebook or draw type for memo/whiteboard sync)
             const page = await findPageByDocumentId(noteId, context.userId);
-            if (!page || page.type !== 'notebook') {
-                console.log(`[Memo] Access denied or not a notebook page: ${noteId}`);
+            if (!page || (page.type !== 'notebook' && page.type !== 'draw')) {
+                console.log(`[Memo] Access denied or not a notebook/draw page: ${noteId}`);
                 ws.send(
                     JSON.stringify({
                         channel: 'memo',

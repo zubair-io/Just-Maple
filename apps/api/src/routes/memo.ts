@@ -50,10 +50,10 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                 return { error: 'Page not found' };
             }
 
-            // Verify it's a notebook type (page with memo)
-            if (page.type !== 'notebook') {
+            // Verify it's a notebook or draw type (pages with Y.Doc sync)
+            if (page.type !== 'notebook' && page.type !== 'draw') {
                 set.status = 400;
-                return { error: 'Page is not a notebook type' };
+                return { error: 'Page type does not support Y.Doc sync' };
             }
 
             try {
@@ -102,10 +102,10 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
             return { error: 'Page not found' };
         }
 
-        // Verify it's a notebook type (page with memo)
-        if (page.type !== 'notebook') {
+        // Verify it's a notebook or draw type (pages with Y.Doc sync)
+        if (page.type !== 'notebook' && page.type !== 'draw') {
             set.status = 400;
-            return { error: 'Page is not a notebook type' };
+            return { error: 'Page type does not support Y.Doc sync' };
         }
 
         try {

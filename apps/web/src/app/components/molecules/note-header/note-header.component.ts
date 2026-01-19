@@ -1,7 +1,7 @@
-import { Component, input, output, computed, inject } from '@angular/core';
+import { Component, input, output, computed, inject, signal, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
-import type { Page, Notebook } from '@maple/shared';
+import type { Page, Notebook, PageType } from '@maple/shared';
 import { DEFAULT_PAGE_CONTENT } from '@maple/shared';
 import { PageService } from '../../../services/page.service';
 
@@ -20,6 +20,9 @@ export class NoteHeaderComponent {
   readonly notebook = input<Notebook | null>(null);
 
   readonly toggleFavorite = output<void>();
+
+  // Dropdown state
+  readonly isDropdownOpen = signal(false);
 
   readonly formattedDate = computed(() => {
     const page = this.page();
@@ -45,8 +48,23 @@ export class NoteHeaderComponent {
     return date.toLocaleDateString();
   }
 
-  createPage(): void {
+  createPage(type: PageType = 'notebook'): void {
     const notebookId = this.notebook()?._id;
-    this.router.navigate(['/', notebookId, 'new']);
+    if (type === 'notebook') {
+      this.router.navigate(['/', notebookId, 'new']);
+    } else {
+      this.router.navigate(['/', notebookId, 'new'], { queryParams: { type } });
+    }
+    this.isDropdownOpen.set(false);
+  }
+
+  toggleDropdown(event: Event): void {
+    event.stopPropagation();
+    this.isDropdownOpen.update((open) => !open);
+  }
+
+  @HostListener('document:click')
+  onDocumentClick(): void {
+    this.isDropdownOpen.set(false);
   }
 }

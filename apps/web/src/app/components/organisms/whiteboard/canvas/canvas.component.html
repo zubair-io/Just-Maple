@@ -1,0 +1,14 @@
+<div class="canvas-container" [style.cursor]="cursorStyle()">
+  <canvas
+    #canvas
+    class="drawing-canvas"
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="onPointerUp($event)"
+    (pointerleave)="onPointerLeave()"
+    (wheel)="onWheel($event)"
+    (touchstart)="onTouchStart($event)"
+    (touchmove)="onTouchMove($event)"
+    (touchend)="onTouchEnd($event)"
+  ></canvas>
+</div>

@@ -1,0 +1,20 @@
+<div class="draw-page">
+  @if (selectedPage(); as page) {
+    <app-note-header
+      [page]="page"
+      [notebook]="selectedNotebook()"
+      (favoriteClicked)="toggleFavorite()"
+    />
+
+    <div class="draw-content">
+      @if (documentId(); as docId) {
+        <app-whiteboard [pageId]="docId" />
+      }
+    </div>
+  } @else {
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+      <span>Loading whiteboard...</span>
+    </div>
+  }
+</div>
