@@ -1,14 +1,19 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import type { User, CreateUser, UserResponse } from '@maple/shared';
-import { fetchGravatarProfile, getGravatarUrl } from '../services/gravatar.service';
-import { deleteProfilePicture } from '../services/storage.service';
+import { getGravatarProfileAndImageUrl } from '../services/gravatar.service';
+import {
+    deleteProfilePictures,
+    downloadProcessAndUploadImage,
+    type ProfilePictureUrls,
+} from '../services/storage.service';
 
 interface UserDocument {
     _id: ObjectId;
     email: string;
     displayName?: string;
     profilePictureUrl?: string;
+    profilePictureThumbnailUrl?: string;
     admin?: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -24,6 +29,7 @@ function toUserResponse(doc: UserDocument): UserResponse {
         email: doc.email,
         displayName: doc.displayName,
         profilePictureUrl: doc.profilePictureUrl,
+        profilePictureThumbnailUrl: doc.profilePictureThumbnailUrl,
         admin: doc.admin,
     };
 }
@@ -65,25 +71,57 @@ export async function findUsersByIds(ids: string[]): Promise<Map<string, UserRes
 export async function createUser(data: CreateUser): Promise<UserResponse> {
     const now = new Date();
 
-    // Try to fetch Gravatar profile data
-    const gravatarProfile = await fetchGravatarProfile(data.email);
+    // Try to fetch Gravatar profile data and image URL
+    const gravatarData = await getGravatarProfileAndImageUrl(data.email);
 
+    // Create initial user document without profile picture
     const doc: Omit<UserDocument, '_id'> = {
         email: data.email.toLowerCase(),
-        displayName: data.displayName || gravatarProfile.displayName,
-        // Use Gravatar thumbnail if available, otherwise generate Gravatar URL
-        profilePictureUrl: gravatarProfile.thumbnailUrl || getGravatarUrl(data.email),
+        displayName: data.displayName || gravatarData.displayName,
         createdAt: now,
         updatedAt: now,
     };
 
     const result = await getCollection().insertOne(doc as UserDocument);
+    const userId = result.insertedId.toString();
+
+    // If Gravatar has an image, download, process, and upload it
+    if (gravatarData.imageUrl) {
+        try {
+            const profilePictures = await downloadProcessAndUploadImage(
+                userId,
+                gravatarData.imageUrl,
+            );
+            if (profilePictures) {
+                // Update user with processed profile picture URLs
+                await getCollection().updateOne(
+                    { _id: result.insertedId },
+                    {
+                        $set: {
+                            profilePictureUrl: profilePictures.fullUrl,
+                            profilePictureThumbnailUrl: profilePictures.thumbnailUrl,
+                        },
+                    },
+                );
+
+                return {
+                    _id: userId,
+                    email: doc.email,
+                    displayName: doc.displayName,
+                    profilePictureUrl: profilePictures.fullUrl,
+                    profilePictureThumbnailUrl: profilePictures.thumbnailUrl,
+                };
+            }
+        } catch (error) {
+            console.error('[User] Failed to process Gravatar image:', error);
+            // Continue without profile picture if processing fails
+        }
+    }
 
     return {
-        _id: result.insertedId.toString(),
+        _id: userId,
         email: doc.email,
         displayName: doc.displayName,
-        profilePictureUrl: doc.profilePictureUrl,
     };
 }
 
@@ -119,24 +157,25 @@ export async function updateUserDisplayName(
 
 export async function updateUserProfilePicture(
     userId: string,
-    profilePictureUrl: string,
+    profilePictures: ProfilePictureUrls,
 ): Promise<UserResponse | null> {
     try {
-        // Get current user to delete old picture if it's not from Gravatar
+        // Get current user to delete old pictures (from our storage)
         const currentUser = await findUserById(userId);
-        if (
-            currentUser?.profilePictureUrl &&
-            !currentUser.profilePictureUrl.includes('gravatar.com')
-        ) {
-            // Delete old custom profile picture
-            await deleteProfilePicture(currentUser.profilePictureUrl);
+        if (currentUser?.profilePictureUrl) {
+            // Delete old profile pictures from storage
+            await deleteProfilePictures(
+                currentUser.profilePictureUrl,
+                currentUser.profilePictureThumbnailUrl,
+            );
         }
 
         const result = await getCollection().findOneAndUpdate(
             { _id: new ObjectId(userId) },
             {
                 $set: {
-                    profilePictureUrl,
+                    profilePictureUrl: profilePictures.fullUrl,
+                    profilePictureThumbnailUrl: profilePictures.thumbnailUrl,
                     updatedAt: new Date(),
                 },
             },
