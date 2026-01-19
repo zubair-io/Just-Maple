@@ -618,11 +618,11 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
                 return { error: 'Image must be less than 5MB' };
             }
 
-            // Upload to blob storage
-            const profilePictureUrl = await uploadProfilePicture(user._id, buffer, contentType);
+            // Upload to blob storage (processes image: strips metadata, creates thumbnail)
+            const profilePictures = await uploadProfilePicture(user._id, buffer);
 
-            // Update user with new profile picture URL
-            const updatedUser = await updateUserProfilePicture(user._id, profilePictureUrl);
+            // Update user with new profile picture URLs
+            const updatedUser = await updateUserProfilePicture(user._id, profilePictures);
 
             if (!updatedUser) {
                 set.status = 500;
