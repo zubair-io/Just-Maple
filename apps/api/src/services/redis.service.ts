@@ -232,6 +232,19 @@ class RedisPubSubService {
         return this.isConnected;
     }
 
+    // ==================== Deduplication ====================
+
+    /**
+     * Check if a message ID was already processed, and mark it if not.
+     * Uses SET NX EX for atomic check-and-set with TTL.
+     * @returns true if this is a new message (should be processed), false if duplicate
+     */
+    async checkAndSetDedup(key: string, ttlSeconds: number = 5): Promise<boolean> {
+        if (!this.publisher) return true; // No Redis, allow all
+        const result = await this.publisher.set(key, '1', 'EX', ttlSeconds, 'NX');
+        return result === 'OK';
+    }
+
     /**
      * Disconnect from Redis
      */

@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+    api:
+        build:
+            context: .
+            dockerfile: apps/api/Dockerfile
+        ports:
+            - '7071:7071'
+        environment:
+            - MONGODB_URI=${MONGODB_URI:-mongodb://mongodb:27017/justmaple}
+            - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+            - JWT_SECRET=${JWT_SECRET:-dev-secret}
+        depends_on:
+            mongodb:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        profiles:
+            - full
+            - selfhost
+
+    # Only started with 'full' or 'selfhost' profiles
+    mongodb:
+        image: mongo:7
+        ports:
+            - '27017:27017'
+        volumes:
+            - mongodb_data:/data/db
+        healthcheck:
+            test: mongosh --eval "db.adminCommand('ping')" --quiet
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        profiles:
+            - full
+            - selfhost
+
+    redis:
+        image: redis:7-alpine
+        ports:
+            - '6379:6379'
+        volumes:
+            - redis_data:/data
+        healthcheck:
+            test: ['CMD', 'redis-cli', 'ping']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        profiles:
+            - full
+            - selfhost
+
+volumes:
+    mongodb_data:
+    redis_data:

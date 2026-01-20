@@ -1,0 +1,245 @@
+name: Deploy Preview Environment
+
+on:
+    pull_request:
+        types: [opened, synchronize, reopened]
+        paths:
+            - 'apps/api/**'
+            - 'apps/web/**'
+            - 'packages/shared/**'
+
+    # Cleanup when PR is closed/merged
+    pull_request_target:
+        types: [closed]
+
+env:
+    REGISTRY: acrjustmaple.azurecr.io
+    IMAGE_NAME: justmaple-api
+    RESOURCE_GROUP: rg-justmaple-preview
+    CONTAINER_APP_ENV: cae-justmaple-preview
+
+jobs:
+    deploy-preview:
+        if: github.event.action != 'closed'
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        permissions:
+            id-token: write
+            contents: read
+            pull-requests: write
+
+        outputs:
+            preview_url: ${{ steps.deploy.outputs.preview_url }}
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Generate preview name
+              id: preview-name
+              run: |
+                  # Sanitize branch name for Azure (lowercase, alphanumeric, max 32 chars)
+                  BRANCH="${{ github.head_ref }}"
+                  PREVIEW_NAME=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | cut -c1-32 | sed 's/-$//')
+                  echo "name=ca-preview-${PREVIEW_NAME}" >> $GITHUB_OUTPUT
+                  echo "label=${PREVIEW_NAME}" >> $GITHUB_OUTPUT
+
+            - name: Azure Login (OIDC)
+              uses: azure/login@v2
+              with:
+                  client-id: ${{ secrets.CAJUSTMAPLEAPI_AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.CAJUSTMAPLEAPI_AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.CAJUSTMAPLEAPI_AZURE_SUBSCRIPTION_ID }}
+
+            - name: Log in to Azure Container Registry
+              uses: azure/docker-login@v1
+              with:
+                  login-server: ${{ env.REGISTRY }}
+                  username: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_USERNAME }}
+                  password: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_PASSWORD }}
+
+            - name: Build and push Docker image
+              run: |
+                  docker build \
+                    -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }} \
+                    -f apps/api/Dockerfile .
+                  docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
+
+            - name: Generate Container App YAML
+              run: |
+                  cat > containerapp.yaml << 'YAML'
+                  properties:
+                    managedEnvironmentId: /subscriptions/${{ secrets.CAJUSTMAPLEAPI_AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.App/managedEnvironments/${{ env.CONTAINER_APP_ENV }}
+                    configuration:
+                      ingress:
+                        external: true
+                        targetPort: 7071
+                        transport: auto
+                      registries:
+                        - server: ${{ env.REGISTRY }}
+                          username: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_USERNAME }}
+                          passwordSecretRef: registry-password
+                      secrets:
+                        - name: registry-password
+                          value: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_PASSWORD }}
+                        - name: jwt-secret
+                          value: ${{ secrets.JWT_SECRET }}
+                    template:
+                      containers:
+                        # Main API container
+                        - name: api
+                          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
+                          resources:
+                            cpu: 0.5
+                            memory: 1Gi
+                          env:
+                            - name: MONGODB_URI
+                              value: mongodb://localhost:27017/justmaple
+                            - name: REDIS_URL
+                              value: redis://localhost:6379
+                            - name: JWT_SECRET
+                              secretRef: jwt-secret
+                        # MongoDB sidecar
+                        - name: mongodb
+                          image: docker.io/library/mongo:7
+                          resources:
+                            cpu: 0.25
+                            memory: 0.5Gi
+                          volumeMounts:
+                            - volumeName: mongodb-data
+                              mountPath: /data/db
+                        # Redis sidecar
+                        - name: redis
+                          image: docker.io/library/redis:7-alpine
+                          resources:
+                            cpu: 0.25
+                            memory: 0.5Gi
+                          volumeMounts:
+                            - volumeName: redis-data
+                              mountPath: /data
+                      volumes:
+                        - name: mongodb-data
+                          storageType: EmptyDir
+                        - name: redis-data
+                          storageType: EmptyDir
+                      scale:
+                        minReplicas: 1
+                        maxReplicas: 1
+                  YAML
+
+            - name: Create or update preview Container App
+              id: deploy
+              run: |
+                  CONTAINER_APP="${{ steps.preview-name.outputs.name }}"
+
+                  # Check if container app exists
+                  EXISTS=$(az containerapp show \
+                    --name "$CONTAINER_APP" \
+                    --resource-group ${{ env.RESOURCE_GROUP }} \
+                    --query "name" -o tsv 2>/dev/null || echo "")
+
+                  if [ -z "$EXISTS" ]; then
+                    echo "Creating new preview environment..."
+                    az containerapp create \
+                      --name "$CONTAINER_APP" \
+                      --resource-group ${{ env.RESOURCE_GROUP }} \
+                      --yaml containerapp.yaml
+                  else
+                    echo "Updating existing preview environment..."
+                    az containerapp update \
+                      --name "$CONTAINER_APP" \
+                      --resource-group ${{ env.RESOURCE_GROUP }} \
+                      --yaml containerapp.yaml
+                  fi
+
+                  # Get the FQDN
+                  FQDN=$(az containerapp show \
+                    --name "$CONTAINER_APP" \
+                    --resource-group ${{ env.RESOURCE_GROUP }} \
+                    --query "properties.configuration.ingress.fqdn" -o tsv)
+
+                  echo "preview_url=https://${FQDN}" >> $GITHUB_OUTPUT
+
+            - name: Comment on PR with preview URL
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const previewUrl = '${{ steps.deploy.outputs.preview_url }}';
+                      const body = `## 🍁 Preview Environment Ready
+
+                      | Environment | URL |
+                      |-------------|-----|
+                      | API | ${previewUrl} |
+                      | Health Check | ${previewUrl}/api/health |
+
+                      **Note:** This is a self-contained environment with its own MongoDB and Redis.
+                      Data is ephemeral and will be lost when the container restarts.
+
+                      This preview will be automatically deleted when the PR is closed.`;
+
+                      // Find existing comment
+                      const comments = await github.rest.issues.listComments({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: context.issue.number,
+                      });
+
+                      const botComment = comments.data.find(c =>
+                        c.user.type === 'Bot' && c.body.includes('Preview Environment Ready')
+                      );
+
+                      if (botComment) {
+                        await github.rest.issues.updateComment({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          comment_id: botComment.id,
+                          body: body
+                        });
+                      } else {
+                        await github.rest.issues.createComment({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          issue_number: context.issue.number,
+                          body: body
+                        });
+                      }
+
+    cleanup-preview:
+        if: github.event.action == 'closed'
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        permissions:
+            id-token: write
+            contents: read
+
+        steps:
+            - name: Generate preview name
+              id: preview-name
+              run: |
+                  BRANCH="${{ github.head_ref }}"
+                  PREVIEW_NAME=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | cut -c1-32 | sed 's/-$//')
+                  echo "name=ca-preview-${PREVIEW_NAME}" >> $GITHUB_OUTPUT
+
+            - name: Azure Login (OIDC)
+              uses: azure/login@v2
+              with:
+                  client-id: ${{ secrets.CAJUSTMAPLEAPI_AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.CAJUSTMAPLEAPI_AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.CAJUSTMAPLEAPI_AZURE_SUBSCRIPTION_ID }}
+
+            - name: Delete preview Container App
+              run: |
+                  CONTAINER_APP="${{ steps.preview-name.outputs.name }}"
+
+                  echo "Deleting preview environment: $CONTAINER_APP"
+                  az containerapp delete \
+                    --name "$CONTAINER_APP" \
+                    --resource-group ${{ env.RESOURCE_GROUP }} \
+                    --yes || echo "Container app not found or already deleted"
+
+            - name: Delete container image
+              run: |
+                  az acr repository delete \
+                    --name acrjustmaple \
+                    --image ${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }} \
+                    --yes || echo "Image not found or already deleted"

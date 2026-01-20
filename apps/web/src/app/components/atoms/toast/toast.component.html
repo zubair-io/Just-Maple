@@ -5,6 +5,14 @@
   [class.toast--warning]="toast().type === 'warning'"
   [class.toast--error]="toast().type === 'error'"
 >
+  @if (toast().avatarEmail) {
+    <app-profile-avatar
+      [email]="toast().avatarEmail!"
+      [displayName]="toast().avatarDisplayName"
+      [profilePictureUrl]="toast().avatarUrl"
+      size="sm"
+    />
+  }
   <div class="toast__content">
     <div class="toast__title">{{ toast().title }}</div>
     <div class="toast__message">{{ toast().message }}</div>

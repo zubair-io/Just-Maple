@@ -9,14 +9,24 @@ const subscribedNotebooks = new Set<string>();
  * Handle incoming chat event from Redis (from another replica)
  */
 function handleRedisChat(notebookId: string, event: ChatEvent): void {
-    // Broadcast to local connections only
+    // Broadcast to local connections only (dedup happens inside)
     broadcastToLocalConnections(notebookId, event);
 }
 
 /**
  * Broadcast to local WebSocket connections (this replica only)
+ * Uses Redis for deduplication to prevent double delivery
  */
-function broadcastToLocalConnections(notebookId: string, event: ChatEvent): void {
+async function broadcastToLocalConnections(notebookId: string, event: ChatEvent): Promise<void> {
+    // Deduplicate using Redis - prevents double delivery from local + Redis echo
+    const messageId = (event.data as any)?._id;
+    if (messageId && redisPubSub.connected) {
+        const isNew = await redisPubSub.checkAndSetDedup(`chat:dedup:${messageId}`, 5);
+        if (!isNew) {
+            return; // Already broadcast to local connections
+        }
+    }
+
     const connections = realtimeWSService.getAllConnections();
 
     for (const [, userConns] of connections) {
@@ -87,8 +97,6 @@ export async function broadcastChatEvent(notebookId: string, event: ChatEvent): 
         redisPubSub.publishChat(notebookId, event);
     }
 
-    // Also broadcast to local connections (for this replica)
-    // Note: Redis will also deliver to us, but we broadcast locally for lower latency
-    // The client handles deduplication via message IDs
-    broadcastToLocalConnections(notebookId, event);
+    // Broadcast to local connections (dedup happens inside)
+    await broadcastToLocalConnections(notebookId, event);
 }
