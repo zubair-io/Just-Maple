@@ -66,14 +66,13 @@ jobs:
 
             - name: Generate Container App YAML
               run: |
-                  cat > containerapp.yaml << 'YAML'
+                  cat > containerapp.yaml << EOF
                   properties:
                     managedEnvironmentId: /subscriptions/${{ secrets.CAJUSTMAPLEAPI_AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.App/managedEnvironments/${{ env.CONTAINER_APP_ENV }}
                     configuration:
                       ingress:
                         external: true
                         targetPort: 7071
-                        transport: auto
                       registries:
                         - server: ${{ env.REGISTRY }}
                           username: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_USERNAME }}
@@ -85,7 +84,6 @@ jobs:
                           value: ${{ secrets.JWT_SECRET }}
                     template:
                       containers:
-                        # Main API container
                         - name: api
                           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
                           resources:
@@ -98,33 +96,23 @@ jobs:
                               value: redis://localhost:6379
                             - name: JWT_SECRET
                               secretRef: jwt-secret
-                        # MongoDB sidecar
                         - name: mongodb
                           image: docker.io/library/mongo:7
                           resources:
                             cpu: 0.25
                             memory: 0.5Gi
-                          volumeMounts:
-                            - volumeName: mongodb-data
-                              mountPath: /data/db
-                        # Redis sidecar
                         - name: redis
                           image: docker.io/library/redis:7-alpine
                           resources:
                             cpu: 0.25
                             memory: 0.5Gi
-                          volumeMounts:
-                            - volumeName: redis-data
-                              mountPath: /data
-                      volumes:
-                        - name: mongodb-data
-                          storageType: EmptyDir
-                        - name: redis-data
-                          storageType: EmptyDir
                       scale:
                         minReplicas: 1
                         maxReplicas: 1
-                  YAML
+                  EOF
+                  # Remove leading whitespace from YAML
+                  sed -i 's/^                  //' containerapp.yaml
+                  cat containerapp.yaml
 
             - name: Create or update preview Container App
               id: deploy
