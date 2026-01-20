@@ -67,6 +67,10 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           }
           env: [
             {
+              name: 'NODE_ENV'
+              value: 'production'
+            }
+            {
               name: 'MONGODB_URI'
               value: 'mongodb://localhost:27017/justmaple'
             }
