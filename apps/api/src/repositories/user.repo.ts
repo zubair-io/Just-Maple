@@ -98,7 +98,8 @@ export async function createUser(data: CreateUser): Promise<UserResponse> {
                     { _id: result.insertedId },
                     {
                         $set: {
-                            profilePictureUrl: profilePictures.fullUrl,
+                            profilePictureUrl: profilePictures.thumbnailUrl,
+                            profilePictureFullUrl: profilePictures.fullUrl,
                             profilePictureThumbnailUrl: profilePictures.thumbnailUrl,
                         },
                     },
@@ -108,7 +109,8 @@ export async function createUser(data: CreateUser): Promise<UserResponse> {
                     _id: userId,
                     email: doc.email,
                     displayName: doc.displayName,
-                    profilePictureUrl: profilePictures.fullUrl,
+                    profilePictureUrl: profilePictures.thumbnailUrl,
+                    profilePictureFullUrl: profilePictures.fullUrl,
                     profilePictureThumbnailUrl: profilePictures.thumbnailUrl,
                 };
             }

@@ -5,6 +5,7 @@ export const UserSchema = Type.Object({
     email: Type.String({ format: 'email' }),
     displayName: Type.Optional(Type.String()),
     profilePictureUrl: Type.Optional(Type.String()),
+    profilePictureFullUrl: Type.Optional(Type.String()),
     profilePictureThumbnailUrl: Type.Optional(Type.String()),
     admin: Type.Optional(Type.Boolean()),
     createdAt: Type.String({ format: 'date-time' }),
@@ -25,6 +26,7 @@ export const UserResponseSchema = Type.Object({
     email: Type.String(),
     displayName: Type.Optional(Type.String()),
     profilePictureUrl: Type.Optional(Type.String()),
+    profilePictureFullUrl: Type.Optional(Type.String()),
     profilePictureThumbnailUrl: Type.Optional(Type.String()),
     admin: Type.Optional(Type.Boolean()),
 });
