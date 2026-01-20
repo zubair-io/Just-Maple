@@ -73,28 +73,28 @@ jobs:
                   JWT_SECRET_VAL: ${{ secrets.JWT_SECRET }}
                   IMAGE_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
               run: |
-                  cat > containerapp.yaml <<EOF
+                  cat > containerapp.yaml << 'YAML'
                   type: Microsoft.App/containerApps
                   location: eastus
                   properties:
-                    managedEnvironmentId: ${MANAGED_ENV_ID}
+                    managedEnvironmentId: MANAGED_ENV_ID_PLACEHOLDER
                     configuration:
                       ingress:
                         external: true
                         targetPort: 7071
                       registries:
-                        - server: ${REGISTRY_SERVER}
-                          username: ${REGISTRY_USER}
+                        - server: REGISTRY_SERVER_PLACEHOLDER
+                          username: REGISTRY_USER_PLACEHOLDER
                           passwordSecretRef: registry-password
                       secrets:
                         - name: registry-password
-                          value: ${REGISTRY_PASS}
+                          value: REGISTRY_PASS_PLACEHOLDER
                         - name: jwt-secret
-                          value: ${JWT_SECRET_VAL}
+                          value: JWT_SECRET_PLACEHOLDER
                     template:
                       containers:
                         - name: api
-                          image: ${IMAGE_TAG}
+                          image: IMAGE_TAG_PLACEHOLDER
                           resources:
                             cpu: 0.5
                             memory: 1Gi
@@ -118,9 +118,27 @@ jobs:
                       scale:
                         minReplicas: 1
                         maxReplicas: 1
-                  EOF
-                  # Remove the leading 18 spaces from each line (matches workflow indentation)
-                  sed -i 's/^                  //' containerapp.yaml
+                  YAML
+                  # Dedent: find min leading whitespace and remove it from all lines
+                  python3 -c "
+                  import re
+                  with open('containerapp.yaml', 'r') as f:
+                      lines = f.readlines()
+                  # Find minimum indent (ignoring empty lines)
+                  non_empty = [l for l in lines if l.strip()]
+                  if non_empty:
+                      min_indent = min(len(l) - len(l.lstrip()) for l in non_empty)
+                      lines = [l[min_indent:] if len(l) > min_indent else l for l in lines]
+                  with open('containerapp.yaml', 'w') as f:
+                      f.writelines(lines)
+                  "
+                  # Substitute placeholders
+                  sed -i "s|MANAGED_ENV_ID_PLACEHOLDER|${MANAGED_ENV_ID}|g" containerapp.yaml
+                  sed -i "s|REGISTRY_SERVER_PLACEHOLDER|${REGISTRY_SERVER}|g" containerapp.yaml
+                  sed -i "s|REGISTRY_USER_PLACEHOLDER|${REGISTRY_USER}|g" containerapp.yaml
+                  sed -i "s|REGISTRY_PASS_PLACEHOLDER|${REGISTRY_PASS}|g" containerapp.yaml
+                  sed -i "s|JWT_SECRET_PLACEHOLDER|${JWT_SECRET_VAL}|g" containerapp.yaml
+                  sed -i "s|IMAGE_TAG_PLACEHOLDER|${IMAGE_TAG}|g" containerapp.yaml
                   echo "Generated YAML:"
                   cat containerapp.yaml
 
