@@ -38,11 +38,10 @@ jobs:
             - name: Generate preview name
               id: preview-name
               run: |
-                  # Sanitize branch name for Azure (lowercase, alphanumeric, max 32 chars)
-                  BRANCH="${{ github.head_ref }}"
-                  PREVIEW_NAME=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | cut -c1-32 | sed 's/-$//')
-                  echo "name=ca-preview-${PREVIEW_NAME}" >> $GITHUB_OUTPUT
-                  echo "label=${PREVIEW_NAME}" >> $GITHUB_OUTPUT
+                  # Use PR number for short, unique name (e.g., ca-preview-pr-50)
+                  PR_NUMBER="${{ github.event.pull_request.number }}"
+                  echo "name=ca-preview-pr-${PR_NUMBER}" >> $GITHUB_OUTPUT
+                  echo "label=pr-${PR_NUMBER}" >> $GITHUB_OUTPUT
 
             - name: Azure Login (OIDC)
               uses: azure/login@v2
@@ -216,9 +215,8 @@ jobs:
             - name: Generate preview name
               id: preview-name
               run: |
-                  BRANCH="${{ github.head_ref }}"
-                  PREVIEW_NAME=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | cut -c1-32 | sed 's/-$//')
-                  echo "name=ca-preview-${PREVIEW_NAME}" >> $GITHUB_OUTPUT
+                  PR_NUMBER="${{ github.event.pull_request.number }}"
+                  echo "name=ca-preview-pr-${PR_NUMBER}" >> $GITHUB_OUTPUT
 
             - name: Azure Login (OIDC)
               uses: azure/login@v2
