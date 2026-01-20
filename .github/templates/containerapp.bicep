@@ -22,7 +22,7 @@ param registryPassword string
 
 @secure()
 @description('JWT secret for authentication')
-param jwtSecret string
+param jwtSecret string = 'preview-jwt-secret-placeholder'
 
 resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
   name: containerAppName
