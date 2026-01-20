@@ -24,6 +24,9 @@ param registryPassword string
 @description('JWT secret for authentication')
 param jwtSecret string = 'preview-jwt-secret-placeholder'
 
+@description('Revision suffix to force new deployment (use commit SHA)')
+param revisionSuffix string = ''
+
 resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
   name: containerAppName
   location: location
@@ -53,6 +56,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
       ]
     }
     template: {
+      revisionSuffix: revisionSuffix != '' ? revisionSuffix : null
       containers: [
         {
           name: 'api'
