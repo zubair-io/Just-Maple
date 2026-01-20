@@ -70,19 +70,24 @@ export class ShapeTool implements Tool {
       return {};
     }
 
-    // Update pending shape
+    const pendingShape = {
+      type: this._shapeType,
+      startPoint: this.startPoint!,
+      endPoint: event.canvas,
+      style: {
+        strokeColor: this.context!.strokeColor(),
+        strokeWidth: this.context!.strokeSize(),
+      },
+    };
+
+    // Update local pending shape
     this.context.toolState.update((state) => ({
       ...state,
-      pendingShape: {
-        type: this._shapeType,
-        startPoint: this.startPoint!,
-        endPoint: event.canvas,
-        style: {
-          strokeColor: this.context!.strokeColor(),
-          strokeWidth: this.context!.strokeSize(),
-        },
-      },
+      pendingShape,
     }));
+
+    // Share via awareness for remote users to see
+    this.context.whiteboard.awareness.setLocalStateField('pendingShape', pendingShape);
 
     return { render: true };
   }
@@ -196,6 +201,9 @@ export class ShapeTool implements Tool {
         ...state,
         pendingShape: undefined,
       }));
+
+      // Clear from awareness
+      this.context.whiteboard.awareness.setLocalStateField('pendingShape', null);
     }
   }
 }

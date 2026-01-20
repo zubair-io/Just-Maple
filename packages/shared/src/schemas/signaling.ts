@@ -52,6 +52,7 @@ export const MemoSSEEventTypeSchema = Type.Union([
     Type.Literal('peer-join'), // Peer joined the room
     Type.Literal('peer-leave'), // Peer left the room
     Type.Literal('ping'), // Keepalive ping
+    Type.Literal('joined'), // Room join confirmation
 ]);
 
 export type MemoSSEEventType = Static<typeof MemoSSEEventTypeSchema>;

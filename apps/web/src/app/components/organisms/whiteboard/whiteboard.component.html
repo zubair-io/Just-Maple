@@ -16,10 +16,15 @@
       [strokeSize]="strokeSize()"
       (cameraChange)="onCameraChange($event)"
       (cursorPositionChange)="onCursorPositionChange($event)"
+      (sizeChange)="onCanvasSizeChange($event)"
     />
 
     <!-- Remote cursors overlay -->
-    <app-whiteboard-cursors [awareness]="wb.awareness" [camera]="camera()" />
+    <app-whiteboard-cursors
+      [awareness]="wb.awareness"
+      [camera]="camera()"
+      [canvasSize]="canvasSize()"
+    />
 
     <div class="toolbar-container">
       <app-whiteboard-toolbar

@@ -49,6 +49,7 @@ export class WhiteboardComponent implements OnDestroy {
   readonly strokeSize = signal(4);
   readonly zoom = signal(1);
   readonly camera = signal<Camera>({ x: 0, y: 0, zoom: 1 });
+  readonly canvasSize = signal<{ width: number; height: number }>({ width: 0, height: 0 });
 
   // Tools
   private readonly tools: Map<WhiteboardToolType, Tool> = new Map();
@@ -129,6 +130,10 @@ export class WhiteboardComponent implements OnDestroy {
     if (pageId) {
       this.whiteboardService.updateCursor(pageId, position.x, position.y);
     }
+  }
+
+  onCanvasSizeChange(size: { width: number; height: number }): void {
+    this.canvasSize.set(size);
   }
 
   onZoomIn(): void {

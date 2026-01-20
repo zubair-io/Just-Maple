@@ -75,6 +75,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private lastPageId: string | null = null;
   private titleUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastSyncedTitle: string = '';
+  private isInitialSync = true;
   private slashMenuElement: HTMLElement | null = null;
   private slashMenuComponent: SlashCommandMenuComponent | null = null;
 
@@ -229,6 +230,11 @@ export class NotebookEditorComponent implements OnDestroy {
       // Initialize lastSyncedTitle with the current title from the document
       this.lastSyncedTitle = this.extractFirstHeadingText(this._editor)?.trim() || '';
 
+      // Mark initial sync as complete after a brief delay to avoid catching sync updates
+      setTimeout(() => {
+        this.isInitialSync = false;
+      }, 500);
+
       this.isReady.set(true);
     } catch {
       this.error.set('Failed to load memo');
@@ -239,7 +245,15 @@ export class NotebookEditorComponent implements OnDestroy {
    * Handle editor content updates - extract first heading and sync as title
    */
   private handleContentUpdate(editor: Editor): void {
+    console.log('[NotebookEditor] Content updated', this.lastSyncedTitle);
+    // Skip during initial sync to avoid unnecessary updates
+
     const title = this.extractFirstHeadingText(editor)?.trim();
+
+    if (!this.lastSyncedTitle) {
+      this.lastSyncedTitle = title || '';
+      return;
+    }
 
     // Only update if title changed and not empty
     if (title && title !== this.lastSyncedTitle) {
@@ -394,6 +408,7 @@ export class NotebookEditorComponent implements OnDestroy {
     this.awareness = null;
     this.isReady.set(false);
     this.lastSyncedTitle = '';
+    this.isInitialSync = true;
   }
 
   focus(): void {

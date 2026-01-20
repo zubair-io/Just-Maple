@@ -4,6 +4,7 @@ import { getDb } from '../db/client';
 import type { Page, PageContent, PageType, CreatePageInput, UpdatePageInput } from '@maple/shared';
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
 import { deleteMemo } from './memo.repo';
+import { deleteWhiteboard } from './whiteboard.repo';
 import { customAlphabet } from 'nanoid';
 
 /**
@@ -322,9 +323,11 @@ export async function deletePage(id: string, userId: string): Promise<boolean> {
             if (doc.userId.toString() !== userId) return false;
         }
 
-        // Cascade delete: Remove associated memo if this is a notebook-type page
-        if (doc.type === 'notebook') {
+        // Cascade delete: Remove associated data based on page type
+        if (doc.type === 'memo') {
             await deleteMemo(doc.documentId);
+        } else if (doc.type === 'whiteboard') {
+            await deleteWhiteboard(doc.documentId);
         }
 
         const result = await getCollection().deleteOne({ documentId: id });

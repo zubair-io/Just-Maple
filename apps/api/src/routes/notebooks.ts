@@ -2,6 +2,13 @@ import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById, findUserByEmail } from '../repositories/user.repo';
 import type { JWTPayload } from '@maple/shared';
+
+/**
+ * Sanitize a name/label string by trimming whitespace and removing newlines
+ */
+function sanitizeName(name: string): string {
+    return name.replace(/[\r\n]/g, ' ').trim();
+}
 import {
     findNotebooksByUserId,
     findNotebookById,
@@ -78,12 +85,16 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const notebook = await createNotebook(auth.user._id, body);
+            const sanitizedBody = {
+                ...body,
+                label: sanitizeName(body.label),
+            };
+            const notebook = await createNotebook(auth.user._id, sanitizedBody);
             return { notebook };
         },
         {
             body: t.Object({
-                label: t.String({ minLength: 1, maxLength: 100 }),
+                label: t.String({ minLength: 1, maxLength: 255 }),
                 value: t.Optional(
                     t.Union([t.Literal('mixed'), t.Literal('recordings'), t.Literal('notes')]),
                 ),
@@ -98,7 +109,11 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const notebook = await updateNotebook(params.id, auth.user._id, body);
+            const sanitizedBody = {
+                ...body,
+                label: body.label ? sanitizeName(body.label) : undefined,
+            };
+            const notebook = await updateNotebook(params.id, auth.user._id, sanitizedBody);
 
             if (!notebook) {
                 set.status = 404;
@@ -112,7 +127,7 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
                 id: t.String(),
             }),
             body: t.Object({
-                label: t.Optional(t.String({ minLength: 1, maxLength: 100 })),
+                label: t.Optional(t.String({ minLength: 1, maxLength: 255 })),
                 value: t.Optional(
                     t.Union([t.Literal('mixed'), t.Literal('recordings'), t.Literal('notes')]),
                 ),

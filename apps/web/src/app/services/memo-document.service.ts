@@ -14,6 +14,7 @@ import { PageService } from './page.service';
 import { RealtimeWSService } from './realtime-ws.service';
 import { VisibilityService } from './visibility.service';
 import { YJSWSProvider } from './yjs-ws-provider';
+import { getUserColor } from '../utils/user-colors';
 import type { Page, SyncStatus } from '@maple/shared';
 
 // Generate document IDs (base58, URL-safe)
@@ -251,7 +252,7 @@ export class MemoDocumentService {
     if (user) {
       awareness.setLocalStateField('user', {
         name: user.displayName?.split(' ')[0] || user.email || 'Anonymous',
-        color: this.generateUserColor(user._id),
+        color: getUserColor(user._id),
       });
     }
   }
@@ -272,7 +273,7 @@ export class MemoDocumentService {
     }
 
     // Create WebSocket provider
-    doc.wsProvider = new YJSWSProvider(pageId, doc.ydoc, this.realtimeWS, doc.awareness);
+    doc.wsProvider = new YJSWSProvider(pageId, doc.ydoc, this.realtimeWS, doc.awareness, 'memo');
 
     // Track sync status via callback
     doc.wsProvider.onSynced = (synced: boolean) => {
@@ -388,7 +389,7 @@ export class MemoDocumentService {
     const page: Page = {
       _id: documentId, // Temporary, will be replaced by server
       userId: this.authService.user()?._id || '',
-      type: 'notebook',
+      type: 'memo',
       title: 'Untitled Memo',
       content: { type: 'doc', content: [] },
       documentId,
@@ -407,7 +408,7 @@ export class MemoDocumentService {
 
     // Queue for server sync
     await this.offlineQueue.enqueue('create-note', documentId, documentId, {
-      type: 'notebook',
+      type: 'memo',
       title: page.title,
       tagId: notebookId,
       documentId,
@@ -418,6 +419,7 @@ export class MemoDocumentService {
     const state = Y.encodeStateAsUpdate(ydoc);
     await this.offlineQueue.enqueue('sync-notebook', documentId, documentId, {
       state: Array.from(state),
+      pageType: 'memo',
     });
 
     // Store open document
@@ -477,26 +479,6 @@ export class MemoDocumentService {
    */
   isDocumentOpen(pageId: string): boolean {
     return this.openDocs.has(pageId);
-  }
-
-  /**
-   * Generate consistent user color based on ID
-   */
-  private generateUserColor(userId: string): string {
-    const colors = [
-      '#FF6B6B',
-      '#4ECDC4',
-      '#45B7D1',
-      '#96CEB4',
-      '#FFEAA7',
-      '#DDA0DD',
-      '#98D8C8',
-      '#F7DC6F',
-      '#BB8FCE',
-      '#85C1E9',
-    ];
-    const hash = userId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
-    return colors[hash % colors.length];
   }
 
   /**

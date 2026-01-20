@@ -86,9 +86,9 @@
             [class.ring-stone-200]="selectedNotebookId() === notebook._id"
             [class.hover:bg-stone-200/50]="selectedNotebookId() !== notebook._id"
           >
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 min-w-0 flex-1">
               <span
-                class="material-symbols-rounded text-sm transition-colors"
+                class="material-symbols-rounded text-sm transition-colors flex-shrink-0"
                 [class.text-[var(--color-primary)]]="selectedNotebookId() === notebook._id"
                 [class.text-[var(--color-text-muted)]]="selectedNotebookId() !== notebook._id"
               >
@@ -98,12 +98,31 @@
                   book_2
                 }
               </span>
-              <span
-                [class.font-medium]="selectedNotebookId() === notebook._id"
-                [class.text-[var(--color-text-main)]]="selectedNotebookId() === notebook._id"
-                [class.text-[var(--color-text-muted)]]="selectedNotebookId() !== notebook._id"
-                >{{ notebook.label }}</span
-              >
+              @if (editingNotebookId() === notebook._id) {
+                <input
+                  type="text"
+                  [value]="editValue()"
+                  (input)="editValue.set($any($event.target).value)"
+                  (keydown)="onEditKeydown($event)"
+                  (blur)="onEditBlur()"
+                  (focus)="onEditInputFocus($event)"
+                  class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-white border border-[var(--color-primary)] rounded outline-none"
+                  maxlength="255"
+                  #editInput
+                />
+              } @else {
+                <span
+                  class="truncate"
+                  [class.font-medium]="selectedNotebookId() === notebook._id"
+                  [class.text-[var(--color-text-main)]]="selectedNotebookId() === notebook._id"
+                  [class.text-[var(--color-text-muted)]]="selectedNotebookId() !== notebook._id"
+                  (dblclick)="
+                    selectedNotebookId() === notebook._id &&
+                      startEditingNotebook(notebook._id, notebook.label, $event)
+                  "
+                  >{{ notebook.label }}</span
+                >
+              }
               <!-- Unread badge -->
               @if (getUnreadCount(notebook._id) > 0) {
                 <span
@@ -129,7 +148,11 @@
               ) {
                 <li>
                   <a
-                    [routerLink]="getPageRouterLink(page, notebook._id)"
+                    [routerLink]="
+                      editingPageId() !== page.documentId
+                        ? getPageRouterLink(page, notebook._id)
+                        : null
+                    "
                     (click)="onSelectPage(page, notebook._id)"
                     class="flex items-center gap-1.5 px-2 py-1.5 text-sm cursor-pointer transition-colors"
                     [class.bg-stone-100]="selectedPageId() === page.documentId"
@@ -144,14 +167,41 @@
                       selectedPageId() !== page.documentId
                     "
                   >
-                    <span class="material-symbols-rounded text-xs opacity-60">{{
-                      page.type === 'notebook'
-                        ? 'description'
-                        : page.type === 'lego'
-                          ? 'brick'
-                          : 'article'
-                    }}</span>
-                    <span class="truncate">{{ page.title }}</span>
+                    <span class="material-symbols-rounded text-xs opacity-60 flex-shrink-0">
+                      @if (page.type === 'collectable') {
+                        brick
+                      } @else if (page.type === 'memo') {
+                        description
+                      } @else if (page.type === 'whiteboard') {
+                        draw
+                      } @else if (page.type === 'message') {
+                      } @else {
+                        article
+                      }
+                    </span>
+                    @if (editingPageId() === page.documentId) {
+                      <input
+                        type="text"
+                        [value]="editValue()"
+                        (input)="editValue.set($any($event.target).value)"
+                        (keydown)="onEditKeydown($event)"
+                        (blur)="onEditBlur()"
+                        (focus)="onEditInputFocus($event)"
+                        (click)="$event.stopPropagation(); $event.preventDefault()"
+                        class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-white border border-[var(--color-primary)] rounded outline-none"
+                        maxlength="255"
+                        #editInput
+                      />
+                    } @else {
+                      <span
+                        class="truncate"
+                        (dblclick)="
+                          selectedPageId() === page.documentId &&
+                            startEditingPage(page.documentId, page.title, $event)
+                        "
+                        >{{ page.title }}</span
+                      >
+                    }
                   </a>
                 </li>
               }

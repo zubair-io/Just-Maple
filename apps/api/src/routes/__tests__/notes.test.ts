@@ -273,15 +273,15 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        title: 'Lego Note',
-                        type: 'lego',
+                        title: 'Collectable Note',
+                        type: 'collectable',
                     }),
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.page.type).toBe('lego');
+            expect(data.page.type).toBe('collectable');
         });
 
         it('should create note with default values', async () => {

@@ -155,7 +155,7 @@ export const WhiteboardMetadataSchema = Type.Object({
 
 export type WhiteboardMetadata = Static<typeof WhiteboardMetadataSchema>;
 
-// Awareness state for collaborative cursors
+// Awareness state for collaborative cursors and pending strokes
 export const WhiteboardAwarenessStateSchema = Type.Object({
     user: Type.Optional(
         Type.Object({
@@ -172,6 +172,32 @@ export const WhiteboardAwarenessStateSchema = Type.Object({
     ),
     selectedIds: Type.Optional(Type.Array(Type.String())),
     activeTool: Type.Optional(WhiteboardToolTypeSchema),
+    // Pending stroke being drawn (for real-time collaboration)
+    pendingStroke: Type.Optional(
+        Type.Object({
+            points: Type.Array(
+                Type.Object({
+                    x: Type.Number(),
+                    y: Type.Number(),
+                    pressure: Type.Optional(Type.Number()),
+                }),
+            ),
+            color: Type.String(),
+            size: Type.Number(),
+        }),
+    ),
+    // Pending shape being drawn (for real-time collaboration)
+    pendingShape: Type.Optional(
+        Type.Object({
+            type: ShapeTypeSchema,
+            startPoint: Type.Object({ x: Type.Number(), y: Type.Number() }),
+            endPoint: Type.Object({ x: Type.Number(), y: Type.Number() }),
+            style: Type.Object({
+                strokeColor: Type.String(),
+                strokeWidth: Type.Number(),
+            }),
+        }),
+    ),
 });
 
 export type WhiteboardAwarenessState = Static<typeof WhiteboardAwarenessStateSchema>;

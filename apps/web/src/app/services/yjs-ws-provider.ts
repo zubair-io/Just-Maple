@@ -44,6 +44,7 @@ export class YJSWSProvider {
     private readonly ydoc: Y.Doc,
     private readonly realtimeWS: RealtimeWSService,
     private readonly awareness?: Awareness,
+    private readonly pageType?: 'memo' | 'whiteboard',
   ) {
     this._clientId = generateClientId();
 
@@ -123,6 +124,12 @@ export class YJSWSProvider {
       case 'ping':
         // Keepalive, no action needed
         break;
+      case 'joined':
+        // Join confirmation received - connection is ready
+        console.log(`[YJS-WS] Joined room for ${this.pageId}`);
+        break;
+      default:
+        console.log(`[YJS-WS] Unhandled event type: ${(event as any).type}`);
     }
   }
 
@@ -192,11 +199,15 @@ export class YJSWSProvider {
 
     // Only send if connected and synced
     if (!this.connected() || !this.synced()) {
+      console.log(
+        `[YJS-WS] Skipping update - connected: ${this.connected()}, synced: ${this.synced()}, pageId: ${this.pageId}`,
+      );
       return;
     }
 
-    // Send update via WebSocket
-    this.realtimeWS.sendMemoUpdate(this.pageId, update);
+    // Send update via WebSocket with pageType for routing to correct backend service
+    console.log(`[YJS-WS] Sending update for ${this.pageId}, size: ${update.length} bytes`);
+    this.realtimeWS.sendMemoUpdate(this.pageId, update, this.pageType);
   }
 
   /**

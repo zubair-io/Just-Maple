@@ -6,7 +6,7 @@
   overflow: hidden;
 }
 
-.draw-page {
+.whiteboard-page {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -14,7 +14,7 @@
   overflow: hidden;
 }
 
-.draw-content {
+.whiteboard-content {
   flex: 1;
   min-height: 0;
   overflow: hidden;

@@ -209,7 +209,7 @@ export class OfflineQueueService {
 
   private async processCreateNote(item: OfflineQueueItem): Promise<void> {
     await firstValueFrom(
-      this.http.post('/api/notes', {
+      this.http.post('/api/pages', {
         documentId: item.documentId,
         ...item.payload,
       }),
@@ -217,11 +217,11 @@ export class OfflineQueueService {
   }
 
   private async processUpdateNote(item: OfflineQueueItem): Promise<void> {
-    await firstValueFrom(this.http.put(`/api/notes/${item.documentId}`, item.payload));
+    await firstValueFrom(this.http.put(`/api/pages/${item.documentId}`, item.payload));
   }
 
   private async processDeleteNote(item: OfflineQueueItem): Promise<void> {
-    await firstValueFrom(this.http.delete(`/api/notes/${item.documentId}`));
+    await firstValueFrom(this.http.delete(`/api/pages/${item.documentId}`));
   }
 
   private async processSyncNotebook(item: OfflineQueueItem): Promise<void> {
@@ -229,8 +229,12 @@ export class OfflineQueueService {
     const state = item.payload.state;
     const blob = new Blob([state instanceof Uint8Array ? state : new Uint8Array(state)]);
 
+    // Use correct endpoint based on page type
+    const pageType = item.payload.pageType || 'memo';
+    const endpoint = pageType === 'whiteboard' ? 'whiteboards' : 'memos';
+
     await firstValueFrom(
-      this.http.post(`/api/notebook/${item.documentId}/init`, blob, {
+      this.http.post(`/api/${endpoint}/${item.documentId}/init`, blob, {
         headers: { 'Content-Type': 'application/octet-stream' },
       }),
     );
@@ -238,16 +242,16 @@ export class OfflineQueueService {
 
   private async processMoveNote(item: OfflineQueueItem): Promise<void> {
     await firstValueFrom(
-      this.http.put(`/api/notes/${item.documentId}`, { tagId: item.payload.tagId }),
+      this.http.put(`/api/pages/${item.documentId}`, { tagId: item.payload.tagId }),
     );
   }
 
   private async processTrashNote(item: OfflineQueueItem): Promise<void> {
-    await firstValueFrom(this.http.post(`/api/notes/${item.documentId}/trash`, {}));
+    await firstValueFrom(this.http.post(`/api/pages/${item.documentId}/trash`, {}));
   }
 
   private async processRestoreNote(item: OfflineQueueItem): Promise<void> {
-    await firstValueFrom(this.http.post(`/api/notes/${item.documentId}/restore`, {}));
+    await firstValueFrom(this.http.post(`/api/pages/${item.documentId}/restore`, {}));
   }
 
   /**

@@ -12,7 +12,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import type { Notebook, NotebookMember, PageType } from '@maple/shared';
-import { MemberAvatarGroupComponent } from '../../atoms/member-avatar-group/member-avatar-group.component';
+import { MemberAvatarGroupComponent } from '../member-avatar-group/member-avatar-group.component';
 import { UiStateService } from '../../../services/ui-state.service';
 
 @Component({
@@ -44,9 +44,9 @@ export class NotebookHeaderComponent {
   // Content projection for additional actions
   readonly additionalActions = contentChild<TemplateRef<unknown>>('additionalActions');
 
-  createPage(type: PageType = 'notebook'): void {
+  createPage(type: PageType = 'memo'): void {
     const notebookId = this.notebook()._id;
-    if (type === 'notebook') {
+    if (type === 'memo') {
       this.router.navigate(['/', notebookId, 'new']);
     } else {
       this.router.navigate(['/', notebookId, 'new'], { queryParams: { type } });

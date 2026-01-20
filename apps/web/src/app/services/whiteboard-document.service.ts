@@ -14,6 +14,7 @@ import { PageService } from './page.service';
 import { RealtimeWSService } from './realtime-ws.service';
 import { VisibilityService } from './visibility.service';
 import { YJSWSProvider } from './yjs-ws-provider';
+import { getUserColor } from '../utils/user-colors';
 import type { Page, SyncStatus, Camera, Layer, WhiteboardElement } from '@maple/shared';
 
 // Generate document IDs (base58, URL-safe)
@@ -413,7 +414,7 @@ export class WhiteboardDocumentService {
       awareness.setLocalStateField('user', {
         id: user._id,
         name: user.displayName?.split(' ')[0] || user.email || 'Anonymous',
-        color: this.generateUserColor(user._id),
+        color: getUserColor(user._id),
       });
     }
   }
@@ -562,7 +563,7 @@ export class WhiteboardDocumentService {
     const page: Page = {
       _id: documentId,
       userId: this.authService.user()?._id || '',
-      type: 'draw',
+      type: 'whiteboard',
       title: 'Untitled Whiteboard',
       content: { type: 'doc', content: [] },
       documentId,
@@ -638,26 +639,6 @@ export class WhiteboardDocumentService {
    */
   isDocumentOpen(pageId: string): boolean {
     return this.openDocs.has(pageId);
-  }
-
-  /**
-   * Generate consistent user color based on ID
-   */
-  private generateUserColor(userId: string): string {
-    const colors = [
-      '#FF6B6B',
-      '#4ECDC4',
-      '#45B7D1',
-      '#96CEB4',
-      '#FFEAA7',
-      '#DDA0DD',
-      '#98D8C8',
-      '#F7DC6F',
-      '#BB8FCE',
-      '#85C1E9',
-    ];
-    const hash = userId.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
-    return colors[hash % colors.length];
   }
 
   /**
