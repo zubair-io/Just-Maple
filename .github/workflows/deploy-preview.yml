@@ -64,51 +64,28 @@ jobs:
                     -f apps/api/Dockerfile .
                   docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
 
-            - name: Generate Container App YAML
-              env:
-                  MANAGED_ENV_ID: /subscriptions/${{ secrets.CAJUSTMAPLEAPI_AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.App/managedEnvironments/${{ env.CONTAINER_APP_ENV }}
-                  REGISTRY_SERVER: ${{ env.REGISTRY }}
-                  REGISTRY_USER: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_USERNAME }}
-                  REGISTRY_PASS: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_PASSWORD }}
-                  JWT_SECRET: ${{ secrets.JWT_SECRET }}
-                  IMAGE_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
-              run: |
-                  envsubst < .github/templates/containerapp.yaml > containerapp.yaml
-                  echo "Generated YAML:"
-                  cat containerapp.yaml
-
-            - name: Create or update preview Container App
+            - name: Deploy Container App with Bicep
               id: deploy
               run: |
                   CONTAINER_APP="${{ steps.preview-name.outputs.name }}"
+                  IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}"
+                  ENV_ID="/subscriptions/${{ secrets.CAJUSTMAPLEAPI_AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.App/managedEnvironments/${{ env.CONTAINER_APP_ENV }}"
 
-                  # Check if container app exists
-                  EXISTS=$(az containerapp show \
-                    --name "$CONTAINER_APP" \
+                  echo "Deploying container app: $CONTAINER_APP"
+                  RESULT=$(az deployment group create \
                     --resource-group ${{ env.RESOURCE_GROUP }} \
-                    --query "name" -o tsv 2>/dev/null || echo "")
+                    --template-file .github/templates/containerapp.bicep \
+                    --parameters \
+                      containerAppName="$CONTAINER_APP" \
+                      environmentId="$ENV_ID" \
+                      imageTag="$IMAGE_TAG" \
+                      registryServer="${{ env.REGISTRY }}" \
+                      registryUsername="${{ secrets.CAJUSTMAPLEAPI_REGISTRY_USERNAME }}" \
+                      registryPassword="${{ secrets.CAJUSTMAPLEAPI_REGISTRY_PASSWORD }}" \
+                      jwtSecret="${{ secrets.JWT_SECRET }}" \
+                    --query "properties.outputs.fqdn.value" -o tsv)
 
-                  if [ -z "$EXISTS" ]; then
-                    echo "Creating new preview environment..."
-                    az containerapp create \
-                      --name "$CONTAINER_APP" \
-                      --resource-group ${{ env.RESOURCE_GROUP }} \
-                      --yaml containerapp.yaml
-                  else
-                    echo "Updating existing preview environment..."
-                    az containerapp update \
-                      --name "$CONTAINER_APP" \
-                      --resource-group ${{ env.RESOURCE_GROUP }} \
-                      --yaml containerapp.yaml
-                  fi
-
-                  # Get the FQDN
-                  FQDN=$(az containerapp show \
-                    --name "$CONTAINER_APP" \
-                    --resource-group ${{ env.RESOURCE_GROUP }} \
-                    --query "properties.configuration.ingress.fqdn" -o tsv)
-
-                  echo "preview_url=https://${FQDN}" >> $GITHUB_OUTPUT
+                  echo "preview_url=https://${RESULT}" >> $GITHUB_OUTPUT
 
             - name: Comment on PR with preview URL
               uses: actions/github-script@v7
