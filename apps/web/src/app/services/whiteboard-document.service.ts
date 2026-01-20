@@ -375,7 +375,7 @@ export class WhiteboardDocumentService {
    * Fetch document state from REST API (Observable)
    */
   private fetchInitialState$(pageId: string, ydoc: Y.Doc): Observable<void> {
-    return this.http.get<{ state: string }>(`/api/memos/${pageId}/state`).pipe(
+    return this.http.get<{ state: string }>(`/api/whiteboards/${pageId}/state`).pipe(
       tap((data) => {
         if (data.state) {
           const state = this.base64ToUint8Array(data.state);
@@ -591,6 +591,7 @@ export class WhiteboardDocumentService {
     const state = Y.encodeStateAsUpdate(ydoc);
     await this.offlineQueue.enqueue('sync-notebook', documentId, documentId, {
       state: Array.from(state),
+      pageType: 'whiteboard',
     });
 
     // Store open document
