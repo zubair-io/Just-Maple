@@ -176,7 +176,8 @@ export async function updateUserProfilePicture(
             { _id: new ObjectId(userId) },
             {
                 $set: {
-                    profilePictureUrl: profilePictures.fullUrl,
+                    profilePictureUrl: profilePictures.thumbnailUrl,
+                    profilePictureFullUrl: profilePictures.fullUrl,
                     profilePictureThumbnailUrl: profilePictures.thumbnailUrl,
                     updatedAt: new Date(),
                 },
