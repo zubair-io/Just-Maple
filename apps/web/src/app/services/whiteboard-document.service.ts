@@ -581,7 +581,7 @@ export class WhiteboardDocumentService {
 
     // Queue for server sync
     await this.offlineQueue.enqueue('create-note', documentId, documentId, {
-      type: 'draw',
+      type: 'whiteboard',
       title: page.title,
       tagId: notebookId,
       documentId,
