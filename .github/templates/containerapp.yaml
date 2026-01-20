@@ -1,7 +1,5 @@
-type: Microsoft.App/containerApps
-location: eastus
 properties:
-  managedEnvironmentId: ${MANAGED_ENV_ID}
+  environmentId: ${MANAGED_ENV_ID}
   configuration:
     ingress:
       external: true
