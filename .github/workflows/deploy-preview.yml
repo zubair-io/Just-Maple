@@ -70,72 +70,10 @@ jobs:
                   REGISTRY_SERVER: ${{ env.REGISTRY }}
                   REGISTRY_USER: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_USERNAME }}
                   REGISTRY_PASS: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_PASSWORD }}
-                  JWT_SECRET_VAL: ${{ secrets.JWT_SECRET }}
+                  JWT_SECRET: ${{ secrets.JWT_SECRET }}
                   IMAGE_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
               run: |
-                  python3 << 'PYSCRIPT'
-                  import os
-                  import textwrap
-
-                  yaml_content = textwrap.dedent("""
-                      type: Microsoft.App/containerApps
-                      location: eastus
-                      properties:
-                        managedEnvironmentId: {managed_env_id}
-                        configuration:
-                          ingress:
-                            external: true
-                            targetPort: 7071
-                          registries:
-                            - server: {registry_server}
-                              username: {registry_user}
-                              passwordSecretRef: registry-password
-                          secrets:
-                            - name: registry-password
-                              value: {registry_pass}
-                            - name: jwt-secret
-                              value: {jwt_secret}
-                        template:
-                          containers:
-                            - name: api
-                              image: {image_tag}
-                              resources:
-                                cpu: 0.5
-                                memory: 1Gi
-                              env:
-                                - name: MONGODB_URI
-                                  value: mongodb://localhost:27017/justmaple
-                                - name: REDIS_URL
-                                  value: redis://localhost:6379
-                                - name: JWT_SECRET
-                                  secretRef: jwt-secret
-                            - name: mongodb
-                              image: docker.io/library/mongo:7
-                              resources:
-                                cpu: 0.25
-                                memory: 0.5Gi
-                            - name: redis
-                              image: docker.io/library/redis:7-alpine
-                              resources:
-                                cpu: 0.25
-                                memory: 0.5Gi
-                          scale:
-                            minReplicas: 1
-                            maxReplicas: 1
-                  """).lstrip()
-
-                  formatted = yaml_content.format(
-                      managed_env_id=os.environ['MANAGED_ENV_ID'],
-                      registry_server=os.environ['REGISTRY_SERVER'],
-                      registry_user=os.environ['REGISTRY_USER'],
-                      registry_pass=os.environ['REGISTRY_PASS'],
-                      jwt_secret=os.environ['JWT_SECRET_VAL'],
-                      image_tag=os.environ['IMAGE_TAG']
-                  )
-
-                  with open('containerapp.yaml', 'w') as f:
-                      f.write(formatted)
-                  PYSCRIPT
+                  envsubst < .github/templates/containerapp.yaml > containerapp.yaml
                   echo "Generated YAML:"
                   cat containerapp.yaml
 
