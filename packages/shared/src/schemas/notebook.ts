@@ -57,7 +57,7 @@ export const CreateNotebookSchema = Type.Object({
 export type CreateNotebookInput = Static<typeof CreateNotebookSchema>;
 
 export const UpdateNotebookSchema = Type.Object({
-    label: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+    label: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
     value: Type.Optional(NotebookValueSchema),
 });
 

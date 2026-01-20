@@ -48,13 +48,9 @@ export class NoteHeaderComponent {
     return date.toLocaleDateString();
   }
 
-  createPage(type: PageType = 'notebook'): void {
+  createPage(type: PageType = 'memo'): void {
     const notebookId = this.notebook()?._id;
-    if (type === 'notebook') {
-      this.router.navigate(['/', notebookId, 'new']);
-    } else {
-      this.router.navigate(['/', notebookId, 'new'], { queryParams: { type } });
-    }
+    this.router.navigate(['/', notebookId, 'new'], { queryParams: { type } });
     this.isDropdownOpen.set(false);
   }
 

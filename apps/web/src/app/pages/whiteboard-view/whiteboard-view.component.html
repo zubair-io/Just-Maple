@@ -1,4 +1,4 @@
-<div class="draw-page">
+<div class="whiteboard-page">
   @if (selectedPage(); as page) {
     <app-note-header
       [page]="page"
@@ -6,7 +6,7 @@
       (favoriteClicked)="toggleFavorite()"
     />
 
-    <div class="draw-content">
+    <div class="whiteboard-content">
       @if (documentId(); as docId) {
         <app-whiteboard [pageId]="docId" />
       }

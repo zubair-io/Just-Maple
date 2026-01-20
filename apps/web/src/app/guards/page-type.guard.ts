@@ -28,7 +28,7 @@ function createPageTypeGuard(expectedType: PageType): CanMatchFn {
       take(1),
       map((page) => {
         if (!page) return false;
-        return (page.type || 'write') === expectedType;
+        return page.type === expectedType;
       }),
       tap((matches) => {
         if (matches) {
@@ -40,17 +40,14 @@ function createPageTypeGuard(expectedType: PageType): CanMatchFn {
   };
 }
 
-/** Guard that matches write-type pages */
-export const WritePageGuard = createPageTypeGuard('write');
+/** Guard that matches collectable-type pages */
+export const CollectablePageGuard = createPageTypeGuard('collectable');
 
-/** Guard that matches lego-type pages */
-export const LegoPageGuard = createPageTypeGuard('lego');
-
-/** Guard that matches draw-type pages */
-export const DrawPageGuard = createPageTypeGuard('draw');
+/** Guard that matches whiteboard-type pages */
+export const WhiteboardPageGuard = createPageTypeGuard('whiteboard');
 
 /** Guard that matches kanban-type pages */
 export const KanbanPageGuard = createPageTypeGuard('kanban');
 
-/** Guard that matches notebook-type pages (rich text notebook editor) */
-export const NotebookPageGuard = createPageTypeGuard('notebook');
+/** Guard that matches memo-type pages (rich text notebook editor) */
+export const MemoPageGuard = createPageTypeGuard('memo');

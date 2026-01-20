@@ -375,7 +375,7 @@ export async function createBotInvocationFixture(
 export interface PageDoc {
     _id: ObjectId;
     userId: ObjectId;
-    type: 'write' | 'lego' | 'notebook';
+    type: 'write' | 'collectable' | 'memo' | 'whiteboard' | 'kanban';
     title: string;
     content: any;
     documentId: string;
@@ -391,7 +391,7 @@ export interface PageDoc {
 
 export interface CreatePageOptions {
     userId?: string;
-    type?: 'write' | 'lego' | 'notebook';
+    type?: 'write' | 'collectable' | 'memo' | 'whiteboard' | 'kanban';
     title?: string;
     content?: any;
     documentId?: string;

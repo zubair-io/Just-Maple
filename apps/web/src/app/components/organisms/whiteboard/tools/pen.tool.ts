@@ -1,7 +1,6 @@
 import { customAlphabet } from 'nanoid';
 import simplify from 'simplify-js';
 import * as Y from 'yjs';
-import type { StrokeElement } from '@maple/shared';
 import type { Tool, ToolContext, ToolResult } from './tool.interface';
 import type { CanvasPointerEvent, CanvasPoint, PendingStroke } from '../models/types';
 
@@ -102,7 +101,7 @@ export class PenTool implements Tool {
   }
 
   /**
-   * Update the pending stroke in tool state
+   * Update the pending stroke in tool state and share via awareness
    */
   private updatePendingStroke(): void {
     if (!this.context) return;
@@ -113,10 +112,33 @@ export class PenTool implements Tool {
       size: this.context.strokeSize(),
     };
 
+    // Update local tool state for rendering
     this.context.toolState.update((state) => ({
       ...state,
       pendingStroke,
     }));
+
+    // Share via awareness for remote users to see (throttled - only send every 3rd point)
+    if (this.points.length % 3 === 0 || this.points.length < 5) {
+      // Simplify points for network efficiency while keeping full stroke
+      const pointsToSend =
+        this.points.length > 100
+          ? simplify(
+              this.points.map((p) => ({ x: p.x, y: p.y })),
+              0.5, // tolerance - higher = fewer points
+              false,
+            ).map((p, i) => ({
+              ...p,
+              pressure: this.points[Math.min(i * 2, this.points.length - 1)]?.pressure,
+            }))
+          : this.points;
+
+      this.context.whiteboard.awareness.setLocalStateField('pendingStroke', {
+        points: pointsToSend,
+        color: pendingStroke.color,
+        size: pendingStroke.size,
+      });
+    }
   }
 
   /**
@@ -130,7 +152,7 @@ export class PenTool implements Tool {
     // Simplify points to reduce storage
     const simplifiedPoints = simplify(
       this.points.map((p) => ({ x: p.x, y: p.y })),
-      1, // tolerance
+      0.5, // tolerance
       true, // high quality
     );
 
@@ -227,6 +249,9 @@ export class PenTool implements Tool {
         ...state,
         pendingStroke: undefined,
       }));
+
+      // Clear from awareness
+      this.context.whiteboard.awareness.setLocalStateField('pendingStroke', null);
     }
   }
 }

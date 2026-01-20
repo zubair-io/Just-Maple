@@ -14,6 +14,7 @@ import { legoRoutes } from './routes/lego';
 import { collabRoutes } from './routes/collab';
 import { memoRoutes } from './routes/memo';
 import { storageRoutes } from './routes/storage';
+import { whiteboardRoutes } from './routes/whiteboard';
 import { realtimeWebSocket } from './ws/realtime.ws';
 import { redisPubSub } from './services/redis.service';
 import { config } from './config';
@@ -65,6 +66,7 @@ async function main() {
         .use(collabRoutes)
         .use(memoRoutes)
         .use(storageRoutes)
+        .use(whiteboardRoutes)
         .use(realtimeWebSocket); // Unified WebSocket for app events + notebook sync + chat
 
     app.get('/api/health', async ({ set }) => {

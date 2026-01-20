@@ -22,10 +22,11 @@ export type SyncStatus = Static<typeof SyncStatusSchema>;
 // Page type - determines the editor/view used
 export const PageTypeSchema = Type.Union([
     Type.Literal('write'),
-    Type.Literal('lego'),
-    Type.Literal('draw'),
+    Type.Literal('collectable'),
+    Type.Literal('whiteboard'),
     Type.Literal('kanban'),
-    Type.Literal('notebook'),
+    Type.Literal('memo'),
+    Type.Literal('message'),
 ]);
 
 export type PageType = Static<typeof PageTypeSchema>;
@@ -65,7 +66,7 @@ export const CreatePageSchema = Type.Object({
 export type CreatePageInput = Static<typeof CreatePageSchema>;
 
 export const UpdatePageSchema = Type.Object({
-    title: Type.Optional(Type.String({ maxLength: 500 })),
+    title: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
     content: Type.Optional(PageContentSchema),
     automergeDoc: Type.Optional(Type.Any()), // Binary CRDT
     documentId: Type.Optional(Type.String()), // Document ID for routing

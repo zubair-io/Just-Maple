@@ -65,6 +65,19 @@ export class RendererService {
     toolState: ToolState,
     selectedIds: string[],
     remoteSelections?: Map<string, { ids: string[]; color: string }>,
+    remotePendingStrokes?: Map<
+      string,
+      { points: { x: number; y: number; pressure?: number }[]; color: string; size: number }
+    >,
+    remotePendingShapes?: Map<
+      string,
+      {
+        type: 'rectangle' | 'ellipse' | 'line' | 'arrow';
+        startPoint: { x: number; y: number };
+        endPoint: { x: number; y: number };
+        style: { strokeColor: string; strokeWidth: number };
+      }
+    >,
   ): void {
     if (!this.ctx) return;
 
@@ -128,11 +141,105 @@ export class RendererService {
       }
     }
 
-    // Render tool state (pending stroke, shape preview, etc.)
+    // Render remote pending strokes (from awareness)
+    if (remotePendingStrokes) {
+      for (const [userId, stroke] of remotePendingStrokes) {
+        if (stroke.points.length >= 2) {
+          this.renderPendingStrokeWithColor(stroke.points, stroke.color, stroke.size);
+        }
+      }
+    }
+
+    // Render remote pending shapes (from awareness)
+    if (remotePendingShapes) {
+      for (const [userId, shape] of remotePendingShapes) {
+        this.renderPendingShapePreview(shape);
+      }
+    }
+
+    // Render local tool state (pending stroke, shape preview, etc.)
     this.renderToolState(toolState);
 
     // Restore context state
     this.ctx.restore();
+  }
+
+  /**
+   * Render a pending stroke with specified color
+   */
+  private renderPendingStrokeWithColor(
+    points: { x: number; y: number; pressure?: number }[],
+    color: string,
+    size: number,
+  ): void {
+    if (!this.ctx || points.length < 2) return;
+
+    const inputPoints = points.map((p) => [p.x, p.y, p.pressure || 0.5]);
+
+    const strokeOutline = getStroke(inputPoints, {
+      size,
+      thinning: 0.5,
+      smoothing: 0.5,
+      streamline: 0.5,
+      simulatePressure: points[0].pressure === undefined,
+    });
+
+    if (strokeOutline.length > 0) {
+      this.ctx.fillStyle = color;
+      this.ctx.beginPath();
+      const [first, ...rest] = strokeOutline;
+      this.ctx.moveTo(first[0], first[1]);
+      for (const [x, y] of rest) {
+        this.ctx.lineTo(x, y);
+      }
+      this.ctx.closePath();
+      this.ctx.fill();
+    }
+  }
+
+  /**
+   * Render a pending shape preview (from remote awareness)
+   */
+  private renderPendingShapePreview(shape: {
+    type: 'rectangle' | 'ellipse' | 'line' | 'arrow';
+    startPoint: { x: number; y: number };
+    endPoint: { x: number; y: number };
+    style: { strokeColor: string; strokeWidth: number };
+  }): void {
+    if (!this.ctx) return;
+
+    const { type, startPoint, endPoint, style } = shape;
+
+    const x = Math.min(startPoint.x, endPoint.x);
+    const y = Math.min(startPoint.y, endPoint.y);
+    const width = Math.abs(endPoint.x - startPoint.x);
+    const height = Math.abs(endPoint.y - startPoint.y);
+
+    this.ctx.strokeStyle = style.strokeColor;
+    this.ctx.lineWidth = style.strokeWidth;
+
+    switch (type) {
+      case 'rectangle':
+        this.ctx.strokeRect(x, y, width, height);
+        break;
+
+      case 'ellipse':
+        this.ctx.beginPath();
+        this.ctx.ellipse(x + width / 2, y + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+        this.ctx.stroke();
+        break;
+
+      case 'line':
+        this.ctx.beginPath();
+        this.ctx.moveTo(startPoint.x, startPoint.y);
+        this.ctx.lineTo(endPoint.x, endPoint.y);
+        this.ctx.stroke();
+        break;
+
+      case 'arrow':
+        this.renderArrow(startPoint.x, startPoint.y, endPoint.x, endPoint.y, style.strokeWidth);
+        break;
+    }
   }
 
   /**

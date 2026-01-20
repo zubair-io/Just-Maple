@@ -404,7 +404,8 @@ class RealtimeWSService {
      * Send notebook event to a specific WebSocket
      */
     private sendNotebookEvent(ws: WebSocket, noteId: string, event: MemoSSEEvent): boolean {
-        const message = JSON.stringify({ channel: 'notebook', noteId, event });
+        // Use 'memo' channel and 'pageId' property to match frontend expectations
+        const message = JSON.stringify({ channel: 'memo', pageId: noteId, event });
         return this.safeSend(ws, message);
     }
 
@@ -543,6 +544,14 @@ class RealtimeWSService {
      */
     getNotebookClientCount(noteId: string): number {
         return this.notebookRooms.get(noteId)?.size ?? 0;
+    }
+
+    /**
+     * Get client count for a whiteboard document
+     * (Alias for getNotebookClientCount - same room infrastructure)
+     */
+    getWhiteboardClientCount(documentId: string): number {
+        return this.getNotebookClientCount(documentId);
     }
 
     /**

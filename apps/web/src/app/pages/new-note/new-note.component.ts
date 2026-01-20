@@ -25,18 +25,18 @@ export class NewNoteComponent implements OnInit {
 
   ngOnInit(): void {
     const notebookId = this.route.snapshot.paramMap.get('tagId');
-    const type = (this.route.snapshot.queryParamMap.get('type') as PageType) || 'notebook';
+    const type = (this.route.snapshot.queryParamMap.get('type') as PageType) || 'memo';
 
     this.createPage(notebookId, type);
   }
 
   private async createPage(notebookId: string | null, type: PageType): Promise<void> {
     try {
-      if (type === 'notebook') {
+      if (type === 'memo') {
         // Create memo using the offline-first memo service
         const { page } = await this.memoService.createMemo(notebookId || undefined);
         this.router.navigate(['/', notebookId, page.documentId], { replaceUrl: true });
-      } else if (type === 'draw') {
+      } else if (type === 'whiteboard') {
         // Create whiteboard using the offline-first whiteboard service
         const { page } = await this.whiteboardService.createWhiteboard(notebookId || undefined);
         this.router.navigate(['/', notebookId, page.documentId], { replaceUrl: true });

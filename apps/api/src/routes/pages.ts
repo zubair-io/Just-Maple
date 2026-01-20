@@ -2,6 +2,13 @@ import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
 import type { JWTPayload } from '@maple/shared';
+
+/**
+ * Sanitize a name/title string by trimming whitespace and removing newlines
+ */
+function sanitizeName(name: string): string {
+    return name.replace(/[\r\n]/g, ' ').trim();
+}
 import {
     findPagesByUserId,
     findPageById,
@@ -91,7 +98,11 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const page = await createPage(auth.user._id, body);
+            const sanitizedBody = {
+                ...body,
+                title: body.title ? sanitizeName(body.title) : undefined,
+            };
+            const page = await createPage(auth.user._id, sanitizedBody);
 
             // Broadcast new page creation to all clients viewing this notebook
             if (page.tagId) {
@@ -113,13 +124,13 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 type: t.Optional(
                     t.Union([
                         t.Literal('write'),
-                        t.Literal('lego'),
-                        t.Literal('draw'),
+                        t.Literal('collectable'),
+                        t.Literal('whiteboard'),
                         t.Literal('kanban'),
-                        t.Literal('notebook'),
+                        t.Literal('memo'),
                     ]),
                 ),
-                title: t.Optional(t.String({ maxLength: 500 })),
+                title: t.Optional(t.String({ maxLength: 255 })),
                 content: t.Optional(t.Any()),
                 tagId: t.Optional(t.String()),
                 documentId: t.Optional(t.String()),
@@ -134,7 +145,11 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const page = await updatePage(params.id, auth.user._id, body);
+            const sanitizedBody = {
+                ...body,
+                title: body.title ? sanitizeName(body.title) : undefined,
+            };
+            const page = await updatePage(params.id, auth.user._id, sanitizedBody);
 
             if (!page) {
                 set.status = 404;
@@ -142,12 +157,12 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             }
 
             // Send SSE event for title updates (real-time sidebar updates)
-            if (page.tagId && body.title !== undefined) {
+            if (page.tagId && sanitizedBody.title !== undefined) {
                 const recipientUserIds = await getUsersWithNotebookAccess(page.tagId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'page.updated',
                     pageId: page.documentId,
-                    title: body.title,
+                    title: sanitizedBody.title,
                     updatedAt: page.updatedAt,
                     tagId: page.tagId,
                 });
@@ -160,7 +175,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 id: t.String(),
             }),
             body: t.Object({
-                title: t.Optional(t.String({ maxLength: 500 })),
+                title: t.Optional(t.String({ maxLength: 255 })),
                 content: t.Optional(t.Any()),
                 tagId: t.Optional(t.String()),
                 isFavorite: t.Optional(t.Boolean()),

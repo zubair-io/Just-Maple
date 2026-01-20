@@ -10,13 +10,13 @@ import { WhiteboardComponent } from '../../components/organisms/whiteboard/white
 import { NoteHeaderComponent } from '../../components';
 
 @Component({
-  selector: 'app-draw-view',
+  selector: 'app-whiteboard-view',
   standalone: true,
   imports: [CommonModule, WhiteboardComponent, NoteHeaderComponent],
-  templateUrl: './draw-view.component.html',
-  styleUrl: './draw-view.component.scss',
+  templateUrl: './whiteboard-view.component.html',
+  styleUrl: './whiteboard-view.component.scss',
 })
-export class DrawViewComponent implements OnDestroy {
+export class WhiteboardViewComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly pageService = inject(PageService);

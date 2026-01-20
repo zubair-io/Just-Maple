@@ -54,6 +54,7 @@ export class RealtimeWSService {
 
   // Connection state
   readonly connected = signal(false);
+  readonly ready = signal(false); // Server has confirmed connection is ready
   readonly error = signal<string | null>(null);
 
   // Event streams
@@ -64,7 +65,7 @@ export class RealtimeWSService {
   // Memo handlers map: pageId -> handler function
   private memoHandlers = new Map<string, (event: MemoSSEEvent) => void>();
 
-  // Pending messages queue (sent when connected)
+  // Pending messages queue (sent when server confirms connection)
   private pendingMessages: string[] = [];
 
   constructor() {
@@ -113,12 +114,8 @@ export class RealtimeWSService {
         this.connected.set(true);
         this.error.set(null);
         this.reconnectAttempts = 0;
-
-        // Send pending messages using the local ws reference
-        for (const msg of this.pendingMessages) {
-          ws.send(msg);
-        }
-        this.pendingMessages = [];
+        // Don't send pending messages yet - wait for server 'connected' event
+        // which confirms the server has set up the connection context
       };
 
       this.ws.onmessage = (event) => {
@@ -136,6 +133,7 @@ export class RealtimeWSService {
 
       this.ws.onclose = (event) => {
         this.connected.set(false);
+        this.ready.set(false);
         this.ws = null;
 
         // Don't reconnect if closed intentionally or auth error
@@ -175,7 +173,14 @@ export class RealtimeWSService {
       case 'system':
         this.systemEvents$.next(data.event);
         if (data.event.type === 'connected') {
+          console.log('[WS] Server confirmed connection ready');
+          this.ready.set(true);
           this.appEvents$.next(data.event);
+          // Now send any pending messages
+          for (const msg of this.pendingMessages) {
+            this.ws?.send(msg);
+          }
+          this.pendingMessages = [];
         }
         break;
 
@@ -188,12 +193,22 @@ export class RealtimeWSService {
         const event = data.event as MemoSSEEvent;
         const pageId = data.pageId;
 
+        console.log(`[WS] Received memo event: ${event.type}, pageId: ${pageId}`);
+
         if (pageId) {
           const handler = this.memoHandlers.get(pageId);
           if (handler) {
+            console.log(`[WS] Found handler for pageId ${pageId}, invoking...`);
             handler(event);
+          } else {
+            console.log(
+              `[WS] No handler found for pageId ${pageId}. Registered handlers:`,
+              Array.from(this.memoHandlers.keys()),
+            );
           }
           this.memoEvents$.next({ pageId, event });
+        } else {
+          console.log(`[WS] Memo event received without pageId:`, data);
         }
         break;
       }
@@ -232,10 +247,11 @@ export class RealtimeWSService {
   send(message: object): void {
     const msg = JSON.stringify(message);
 
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    // Only send if WebSocket is open AND server has confirmed connection ready
+    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.ready()) {
       this.ws.send(msg);
     } else {
-      // Queue message for when connected
+      // Queue message for when server confirms connection
       this.pendingMessages.push(msg);
     }
   }
@@ -269,13 +285,14 @@ export class RealtimeWSService {
   /**
    * Send Y.Doc update
    */
-  sendMemoUpdate(pageId: string, update: Uint8Array): void {
+  sendMemoUpdate(pageId: string, update: Uint8Array, pageType?: 'memo' | 'whiteboard'): void {
     const base64 = uint8ArrayToBase64(update);
     this.send({
       channel: 'memo',
       action: 'update',
       pageId,
       update: base64,
+      pageType,
     });
   }
 
@@ -423,10 +440,10 @@ export class RealtimeWSService {
   }
 
   /**
-   * Check if connected
+   * Check if connected and ready to send messages
    */
   isConnected(): boolean {
-    return this.connected();
+    return this.ready();
   }
 }
 

@@ -22,6 +22,7 @@ import type { Tool, ToolContext } from '../tools/tool.interface';
 import type { CanvasPointerEvent, ToolState, CanvasPoint } from '../models/types';
 import { CAMERA_CONSTRAINTS } from '../models/types';
 import { AuthService } from '../../../../services/auth.service';
+import { getColorForClientId } from '../../../../utils/user-colors';
 
 @Component({
   selector: 'app-whiteboard-canvas',
@@ -49,6 +50,7 @@ export class CanvasComponent implements OnDestroy {
   // Outputs
   @Output() cameraChange = new EventEmitter<Camera>();
   @Output() cursorPositionChange = new EventEmitter<CanvasPoint>();
+  @Output() sizeChange = new EventEmitter<{ width: number; height: number }>();
 
   // Camera state
   readonly camera = signal<Camera>({ x: 0, y: 0, zoom: 1 });
@@ -66,6 +68,27 @@ export class CanvasComponent implements OnDestroy {
   private readonly remoteSelections = signal<Map<string, { ids: string[]; color: string }>>(
     new Map(),
   );
+
+  // Remote pending strokes (from awareness)
+  private readonly remotePendingStrokes = signal<
+    Map<
+      string,
+      { points: { x: number; y: number; pressure?: number }[]; color: string; size: number }
+    >
+  >(new Map());
+
+  // Remote pending shapes (from awareness)
+  private readonly remotePendingShapes = signal<
+    Map<
+      string,
+      {
+        type: 'rectangle' | 'ellipse' | 'line' | 'arrow';
+        startPoint: { x: number; y: number };
+        endPoint: { x: number; y: number };
+        style: { strokeColor: string; strokeWidth: number };
+      }
+    >
+  >(new Map());
 
   // Internal state
   private isPointerDown = false;
@@ -119,6 +142,7 @@ export class CanvasComponent implements OnDestroy {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         this.renderer.resize(width, height);
+        this.sizeChange.emit({ width, height });
         this.requestRender();
       }
     });
@@ -167,46 +191,58 @@ export class CanvasComponent implements OnDestroy {
   }
 
   /**
-   * Update remote selections from awareness
+   * Update remote selections, pending strokes, and pending shapes from awareness
    */
   private updateRemoteSelections(): void {
     const wb = this.whiteboard();
-    const currentUserId = this.authService.user()?._id;
+    const localClientId = wb.awareness.clientID;
     const states = wb.awareness.getStates() as Map<number, WhiteboardAwarenessState>;
     const selections = new Map<string, { ids: string[]; color: string }>();
+    const pendingStrokes = new Map<
+      string,
+      { points: { x: number; y: number; pressure?: number }[]; color: string; size: number }
+    >();
+    const pendingShapes = new Map<
+      string,
+      {
+        type: 'rectangle' | 'ellipse' | 'line' | 'arrow';
+        startPoint: { x: number; y: number };
+        endPoint: { x: number; y: number };
+        style: { strokeColor: string; strokeWidth: number };
+      }
+    >();
 
     states.forEach((state, clientId) => {
-      // Skip own selections
-      if (state.user?.id === currentUserId) return;
-
-      // Skip if no selections
-      if (!state.selectedIds?.length) return;
+      // Skip own state by clientId
+      if (clientId === localClientId) {
+        return;
+      }
 
       const userId = state.user?.id ?? `client-${clientId}`;
-      const color = state.user?.color ?? this.getColorForClientId(clientId);
-      selections.set(userId, { ids: state.selectedIds, color });
+      const color = state.user?.color ?? getColorForClientId(clientId);
+
+      // Track selections
+      if (state.selectedIds?.length) {
+        selections.set(userId, { ids: state.selectedIds, color });
+      }
+
+      // Track pending strokes from remote users
+      const pendingStroke = state.pendingStroke;
+      if (pendingStroke && pendingStroke.points && pendingStroke.points.length >= 2) {
+        pendingStrokes.set(userId, pendingStroke);
+      }
+
+      // Track pending shapes from remote users
+      const pendingShape = state.pendingShape;
+      if (pendingShape && pendingShape.startPoint && pendingShape.endPoint) {
+        pendingShapes.set(userId, pendingShape as any);
+      }
     });
 
     this.remoteSelections.set(selections);
+    this.remotePendingStrokes.set(pendingStrokes);
+    this.remotePendingShapes.set(pendingShapes);
     this.requestRender();
-  }
-
-  /**
-   * Get a consistent color for a client ID
-   */
-  private getColorForClientId(clientId: number): string {
-    const colors = [
-      '#F87171', // red
-      '#FB923C', // orange
-      '#FBBF24', // amber
-      '#A3E635', // lime
-      '#34D399', // emerald
-      '#22D3EE', // cyan
-      '#60A5FA', // blue
-      '#A78BFA', // violet
-      '#F472B6', // pink
-    ];
-    return colors[clientId % colors.length];
   }
 
   /**
@@ -227,13 +263,17 @@ export class CanvasComponent implements OnDestroy {
    */
   private render(): void {
     const wb = this.whiteboard();
+    const toolState = this.toolState();
+
     this.renderer.render(
       wb.layers,
       wb.elements,
       this.camera(),
-      this.toolState(),
+      toolState,
       this.selectedIds(),
       this.remoteSelections(),
+      this.remotePendingStrokes(),
+      this.remotePendingShapes(),
     );
   }
 

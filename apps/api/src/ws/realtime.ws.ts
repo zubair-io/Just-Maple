@@ -20,6 +20,7 @@ import {
 import { authenticateWebSocket } from './ws-auth';
 import { realtimeWSService, type AppEvent } from '../services/realtime-ws.service';
 import { yjsDocumentService } from '../services/yjs-document.service';
+import { yjsWhiteboardService } from '../services/yjs-whiteboard.service';
 import {
     broadcastChatEvent,
     subscribeToNotebookChat,
@@ -40,7 +41,6 @@ const USER_COLORS = [
     '#FFEAA7',
     '#DDA0DD',
     '#98D8C8',
-    '#F7DC6F',
     '#BB8FCE',
     '#85C1E9',
 ];
@@ -188,7 +188,7 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
     });
 
 /**
- * Handle memo channel messages (Y.Doc sync for notebook-type pages)
+ * Handle memo channel messages (Y.Doc sync for notebook and whiteboard pages)
  */
 async function handleMemoMessage(
     ws: any,
@@ -198,15 +198,16 @@ async function handleMemoMessage(
 ): Promise<void> {
     switch (action) {
         case 'join': {
-            const { noteId } = payload;
+            // Accept both noteId and pageId for backwards compatibility
+            const noteId = payload.noteId || payload.pageId;
             if (!noteId) return;
 
             console.log(`[Memo] Join request for noteId: ${noteId}`);
 
-            // Verify user has access to this page (must be notebook or draw type for memo/whiteboard sync)
+            // Verify user has access to this page (must be notebook or whiteboard type)
             const page = await findPageByDocumentId(noteId, context.userId);
-            if (!page || (page.type !== 'notebook' && page.type !== 'draw')) {
-                console.log(`[Memo] Access denied or not a notebook/draw page: ${noteId}`);
+            if (!page || (page.type !== 'memo' && page.type !== 'whiteboard')) {
+                console.log(`[Memo] Access denied or not a notebook/whiteboard page: ${noteId}`);
                 ws.send(
                     JSON.stringify({
                         channel: 'memo',
@@ -230,9 +231,14 @@ async function handleMemoMessage(
             context.memoClients.set(noteId, clientId);
             context.connection.subscribedNotebooks.add(noteId);
 
-            // Get initial state
-            const state = await yjsDocumentService.getStateAsUpdate(noteId);
-            console.log(`[Memo] Sending initial state for ${noteId}, size: ${state.length} bytes`);
+            // Get initial state from appropriate service based on page type
+            const isWhiteboard = page.type === 'whiteboard';
+            const state = isWhiteboard
+                ? await yjsWhiteboardService.getStateAsUpdate(noteId)
+                : await yjsDocumentService.getStateAsUpdate(noteId);
+            console.log(
+                `[Memo] Sending initial state for ${noteId} (${page.type}), size: ${state.length} bytes`,
+            );
 
             // Send initial state
             realtimeWSService.sendInitialState(noteId, clientId, state, 1);
@@ -241,10 +247,10 @@ async function handleMemoMessage(
             ws.send(
                 JSON.stringify({
                     channel: 'memo',
-                    noteId,
+                    pageId: noteId,
                     event: {
                         type: 'joined',
-                        noteId,
+                        pageId: noteId,
                         clientId,
                     },
                 }),
@@ -254,7 +260,8 @@ async function handleMemoMessage(
         }
 
         case 'leave': {
-            const { noteId } = payload;
+            // Accept both noteId and pageId for backwards compatibility
+            const noteId = payload.noteId || payload.pageId;
             if (!noteId) return;
 
             realtimeWSService.leaveNotebook(noteId, ws.raw as unknown as WebSocket);
@@ -264,28 +271,51 @@ async function handleMemoMessage(
         }
 
         case 'update': {
-            const { noteId, update: updateBase64 } = payload;
-            if (!noteId || !updateBase64) return;
+            // Accept both noteId and pageId for backwards compatibility
+            const noteId = payload.noteId || payload.pageId;
+            const { update: updateBase64, pageType } = payload;
+            console.log(
+                `[Memo] Update received for ${noteId}, pageType: ${pageType}, size: ${updateBase64?.length || 0}`,
+            );
+
+            if (!noteId || !updateBase64) {
+                console.log(`[Memo] Update rejected - missing noteId or update`);
+                return;
+            }
 
             const clientId = context.memoClients.get(noteId);
             if (!clientId) {
-                // Not subscribed to this memo
+                console.log(`[Memo] Update rejected - client not in memoClients for ${noteId}`);
                 return;
             }
 
             // Decode update
             const update = base64ToUint8Array(updateBase64);
+            console.log(`[Memo] Decoded update: ${update.length} bytes`);
 
-            // Apply update to Y.Doc and broadcast to other clients
-            await yjsDocumentService.applyUpdate(noteId, update, clientId);
+            // Apply update to Y.Doc using appropriate service
+            try {
+                if (pageType === 'whiteboard') {
+                    await yjsWhiteboardService.applyUpdate(noteId, update, clientId);
+                } else {
+                    await yjsDocumentService.applyUpdate(noteId, update, clientId);
+                }
+                console.log(`[Memo] Applied update to ${pageType || 'memo'} service`);
+            } catch (err) {
+                console.error(`[Memo] Error applying update:`, err);
+            }
 
             // Broadcast to other clients in the room
+            const clientCount = realtimeWSService.getNotebookClientCount(noteId);
+            console.log(`[Memo] Broadcasting update to ${clientCount} clients (excluding sender)`);
             realtimeWSService.broadcastUpdate(noteId, update, clientId);
             break;
         }
 
         case 'awareness': {
-            const { noteId, update: awarenessBase64 } = payload;
+            // Accept both noteId and pageId for backwards compatibility
+            const noteId = payload.noteId || payload.pageId;
+            const { update: awarenessBase64 } = payload;
             if (!noteId || !awarenessBase64) return;
 
             const clientId = context.memoClients.get(noteId);

@@ -12,6 +12,7 @@ import { CommonModule } from '@angular/common';
 import type { Awareness } from 'y-protocols/awareness';
 import type { WhiteboardAwarenessState, WhiteboardToolType } from '@maple/shared';
 import { AuthService } from '../../../../services/auth.service';
+import { getColorForClientId } from '../../../../utils/user-colors';
 import type { Camera } from '@maple/shared';
 
 interface RemoteCursor {
@@ -38,6 +39,7 @@ export class CursorsComponent implements OnDestroy {
 
   readonly awareness = input.required<Awareness>();
   readonly camera = input.required<Camera>();
+  readonly canvasSize = input<{ width: number; height: number }>({ width: 0, height: 0 });
 
   readonly remoteCursors = signal<RemoteCursor[]>([]);
 
@@ -80,21 +82,38 @@ export class CursorsComponent implements OnDestroy {
     if (!awareness) return;
 
     const currentUserId = this.authService.user()?._id;
+    const localClientId = awareness.clientID;
     const states = awareness.getStates() as Map<number, WhiteboardAwarenessState>;
     const cursors: RemoteCursor[] = [];
 
+    console.log(
+      `[Cursors] updateRemoteCursors - localClientId: ${localClientId}, states:`,
+      states.size,
+    );
+
     states.forEach((state, clientId) => {
-      // Skip own cursor
-      if (state.user?.id === currentUserId) return;
+      console.log(`[Cursors] State ${clientId}:`, state);
+
+      // Skip own cursor by clientId
+      if (clientId === localClientId) {
+        console.log(`[Cursors] Skipping own state`);
+        return;
+      }
 
       // Skip if no cursor position
-      if (!state.cursor) return;
+      if (!state.cursor) {
+        console.log(`[Cursors] No cursor for ${clientId}`);
+        return;
+      }
 
+      console.log(
+        `[Cursors] Adding cursor for ${state.user?.name} at (${state.cursor.x}, ${state.cursor.y})`,
+      );
       cursors.push({
         odlClientId: clientId,
         odlUserId: state.user?.id ?? '',
         odlUserName: state.user?.name ?? 'Anonymous',
-        odlUserColor: state.user?.color ?? this.getColorForClientId(clientId),
+        odlUserColor: state.user?.color ?? getColorForClientId(clientId),
         odlX: state.cursor.x,
         odlY: state.cursor.y,
         odlTool: state.activeTool ?? 'select',
@@ -102,17 +121,23 @@ export class CursorsComponent implements OnDestroy {
       });
     });
 
+    console.log(`[Cursors] Total remote cursors: ${cursors.length}`);
     this.remoteCursors.set(cursors);
   }
 
   /**
    * Transform canvas coordinates to screen coordinates
+   * Matches the canvas transform: translate(w/2, h/2) -> scale(zoom) -> translate(-cam.x - w/2, -cam.y - h/2)
    */
   getScreenPosition(cursor: RemoteCursor): { x: number; y: number } {
     const cam = this.camera();
+    const size = this.canvasSize();
+    const halfW = size.width / 2;
+    const halfH = size.height / 2;
+
     return {
-      x: cursor.odlX * cam.zoom + cam.x,
-      y: cursor.odlY * cam.zoom + cam.y,
+      x: (cursor.odlX - cam.x - halfW) * cam.zoom + halfW,
+      y: (cursor.odlY - cam.y - halfH) * cam.zoom + halfH,
     };
   }
 
@@ -135,21 +160,6 @@ export class CursorsComponent implements OnDestroy {
       default:
         return 'M3 3h18v18H3V3zm16 16V5H5v14h14z';
     }
-  }
-
-  private getColorForClientId(clientId: number): string {
-    const colors = [
-      '#F87171', // red
-      '#FB923C', // orange
-      '#FBBF24', // amber
-      '#A3E635', // lime
-      '#34D399', // emerald
-      '#22D3EE', // cyan
-      '#60A5FA', // blue
-      '#A78BFA', // violet
-      '#F472B6', // pink
-    ];
-    return colors[clientId % colors.length];
   }
 
   trackByCursor(_: number, cursor: RemoteCursor): number {
