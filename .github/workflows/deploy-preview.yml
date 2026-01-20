@@ -73,7 +73,7 @@ jobs:
                   JWT_SECRET_VAL: ${{ secrets.JWT_SECRET }}
                   IMAGE_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
               run: |
-                  cat > containerapp.yaml << 'YAML'
+                  cat > containerapp.yaml <<'YAML'
                   type: Microsoft.App/containerApps
                   location: eastus
                   properties:
@@ -119,18 +119,13 @@ jobs:
                         minReplicas: 1
                         maxReplicas: 1
                   YAML
-                  # Dedent: find min leading whitespace and remove it from all lines
+                  # Dedent using Python's textwrap.dedent
                   python3 -c "
-                  import re
+                  import textwrap
                   with open('containerapp.yaml', 'r') as f:
-                      lines = f.readlines()
-                  # Find minimum indent (ignoring empty lines)
-                  non_empty = [l for l in lines if l.strip()]
-                  if non_empty:
-                      min_indent = min(len(l) - len(l.lstrip()) for l in non_empty)
-                      lines = [l[min_indent:] if len(l) > min_indent else l for l in lines]
+                      content = f.read()
                   with open('containerapp.yaml', 'w') as f:
-                      f.writelines(lines)
+                      f.write(textwrap.dedent(content))
                   "
                   # Substitute placeholders
                   sed -i "s|MANAGED_ENV_ID_PLACEHOLDER|${MANAGED_ENV_ID}|g" containerapp.yaml
