@@ -62,6 +62,9 @@ export const config = {
     hornbeamConnectionString: process.env.HORNBEAM,
     profilePictureContainer: 'profile-picture',
 
+    // Local storage fallback (used when Azure Blob Storage is not configured)
+    localStoragePath: process.env.LOCAL_STORAGE_PATH || './storage',
+
     // Lego service config
     rebrickableApiKey: process.env.REBRICKABLE_API_KEY,
     brightDataApiKey: process.env.BRIGHT_DATA_API_KEY,
