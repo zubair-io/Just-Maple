@@ -65,60 +65,62 @@ jobs:
                   docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
 
             - name: Generate Container App YAML
+              env:
+                  MANAGED_ENV_ID: /subscriptions/${{ secrets.CAJUSTMAPLEAPI_AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.App/managedEnvironments/${{ env.CONTAINER_APP_ENV }}
+                  REGISTRY_SERVER: ${{ env.REGISTRY }}
+                  REGISTRY_USER: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_USERNAME }}
+                  REGISTRY_PASS: ${{ secrets.CAJUSTMAPLEAPI_REGISTRY_PASSWORD }}
+                  JWT_SECRET_VAL: ${{ secrets.JWT_SECRET }}
+                  IMAGE_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
               run: |
-                  cat > containerapp.yaml << 'EOFYAML'
-type: Microsoft.App/containerApps
-location: eastus
-properties:
-  managedEnvironmentId: ENVID_PLACEHOLDER
-  configuration:
-    ingress:
-      external: true
-      targetPort: 7071
-    registries:
-      - server: REGISTRY_PLACEHOLDER
-        username: REGISTRY_USER_PLACEHOLDER
-        passwordSecretRef: registry-password
-    secrets:
-      - name: registry-password
-        value: REGISTRY_PASS_PLACEHOLDER
-      - name: jwt-secret
-        value: JWT_SECRET_PLACEHOLDER
-  template:
-    containers:
-      - name: api
-        image: IMAGE_PLACEHOLDER
-        resources:
-          cpu: 0.5
-          memory: 1Gi
-        env:
-          - name: MONGODB_URI
-            value: mongodb://localhost:27017/justmaple
-          - name: REDIS_URL
-            value: redis://localhost:6379
-          - name: JWT_SECRET
-            secretRef: jwt-secret
-      - name: mongodb
-        image: docker.io/library/mongo:7
-        resources:
-          cpu: 0.25
-          memory: 0.5Gi
-      - name: redis
-        image: docker.io/library/redis:7-alpine
-        resources:
-          cpu: 0.25
-          memory: 0.5Gi
-    scale:
-      minReplicas: 1
-      maxReplicas: 1
-EOFYAML
-                  # Replace placeholders with actual values
-                  sed -i "s|ENVID_PLACEHOLDER|/subscriptions/${{ secrets.CAJUSTMAPLEAPI_AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.App/managedEnvironments/${{ env.CONTAINER_APP_ENV }}|g" containerapp.yaml
-                  sed -i "s|REGISTRY_PLACEHOLDER|${{ env.REGISTRY }}|g" containerapp.yaml
-                  sed -i "s|REGISTRY_USER_PLACEHOLDER|${{ secrets.CAJUSTMAPLEAPI_REGISTRY_USERNAME }}|g" containerapp.yaml
-                  sed -i "s|REGISTRY_PASS_PLACEHOLDER|${{ secrets.CAJUSTMAPLEAPI_REGISTRY_PASSWORD }}|g" containerapp.yaml
-                  sed -i "s|JWT_SECRET_PLACEHOLDER|${{ secrets.JWT_SECRET }}|g" containerapp.yaml
-                  sed -i "s|IMAGE_PLACEHOLDER|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}|g" containerapp.yaml
+                  cat > containerapp.yaml <<EOF
+                  type: Microsoft.App/containerApps
+                  location: eastus
+                  properties:
+                    managedEnvironmentId: ${MANAGED_ENV_ID}
+                    configuration:
+                      ingress:
+                        external: true
+                        targetPort: 7071
+                      registries:
+                        - server: ${REGISTRY_SERVER}
+                          username: ${REGISTRY_USER}
+                          passwordSecretRef: registry-password
+                      secrets:
+                        - name: registry-password
+                          value: ${REGISTRY_PASS}
+                        - name: jwt-secret
+                          value: ${JWT_SECRET_VAL}
+                    template:
+                      containers:
+                        - name: api
+                          image: ${IMAGE_TAG}
+                          resources:
+                            cpu: 0.5
+                            memory: 1Gi
+                          env:
+                            - name: MONGODB_URI
+                              value: mongodb://localhost:27017/justmaple
+                            - name: REDIS_URL
+                              value: redis://localhost:6379
+                            - name: JWT_SECRET
+                              secretRef: jwt-secret
+                        - name: mongodb
+                          image: docker.io/library/mongo:7
+                          resources:
+                            cpu: 0.25
+                            memory: 0.5Gi
+                        - name: redis
+                          image: docker.io/library/redis:7-alpine
+                          resources:
+                            cpu: 0.25
+                            memory: 0.5Gi
+                      scale:
+                        minReplicas: 1
+                        maxReplicas: 1
+                  EOF
+                  # Remove the leading 18 spaces from each line (matches workflow indentation)
+                  sed -i 's/^                  //' containerapp.yaml
                   echo "Generated YAML:"
                   cat containerapp.yaml
 
