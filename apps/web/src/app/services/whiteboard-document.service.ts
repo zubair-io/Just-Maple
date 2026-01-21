@@ -465,7 +465,13 @@ export class WhiteboardDocumentService {
       }
     }
 
-    doc.wsProvider = new YJSWSProvider(pageId, doc.ydoc, this.realtimeWS, doc.awareness);
+    doc.wsProvider = new YJSWSProvider(
+      pageId,
+      doc.ydoc,
+      this.realtimeWS,
+      doc.awareness,
+      'whiteboard',
+    );
 
     doc.wsProvider.onSynced = (synced: boolean) => {
       this.updateSyncStatus(pageId, synced ? 'synced' : 'syncing');
