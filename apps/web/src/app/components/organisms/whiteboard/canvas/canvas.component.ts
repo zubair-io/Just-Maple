@@ -364,6 +364,34 @@ export class CanvasComponent implements OnDestroy {
   }
 
   /**
+   * Handle pointer cancel (touch interrupted by system gesture, notification, etc.)
+   * This is critical for mobile - without it, strokes won't commit when touch is interrupted
+   */
+  onPointerCancel(event: PointerEvent): void {
+    this.canvasRef.nativeElement.releasePointerCapture(event.pointerId);
+
+    // Treat cancel like pointer up - commit any in-progress drawing
+    if (this.isPointerDown) {
+      this.isPointerDown = false;
+
+      if (this.isPanning) {
+        this.isPanning = false;
+        this.cursorStyle.set(this.isSpaceHeld ? 'grab' : 'default');
+        return;
+      }
+
+      // Forward to active tool as a pointer up event
+      const canvasEvent = this.createCanvasPointerEvent(event);
+      const tool = this.activeTool();
+      if (tool) {
+        const result = tool.onPointerUp(canvasEvent);
+        if (result.cursor) this.cursorStyle.set(result.cursor);
+        if (result.render) this.requestRender();
+      }
+    }
+  }
+
+  /**
    * Handle pointer leave
    */
   onPointerLeave(): void {
@@ -586,6 +614,13 @@ export class CanvasComponent implements OnDestroy {
     if (event.touches.length < 2) {
       this.touchState.isMultiTouch = false;
     }
+  }
+
+  /**
+   * Handle touch cancel (system interrupted the touch)
+   */
+  onTouchCancel(_event: TouchEvent): void {
+    this.touchState.isMultiTouch = false;
   }
 
   /**
