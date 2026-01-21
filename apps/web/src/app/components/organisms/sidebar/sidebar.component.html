@@ -153,7 +153,7 @@
                         ? getPageRouterLink(page, notebook._id)
                         : null
                     "
-                    (click)="onSelectPage(page, notebook._id)"
+                    (click)="onSelectPage(page)"
                     class="flex items-center gap-1.5 px-2 py-1.5 text-sm cursor-pointer transition-colors"
                     [class.bg-stone-100]="selectedPageId() === page.documentId"
                     [class.text-[var(--color-text-main)]]="selectedPageId() === page.documentId"

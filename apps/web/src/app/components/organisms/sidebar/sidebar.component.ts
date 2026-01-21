@@ -141,6 +141,11 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   }
 
   toggleNotebook(notebookId: string): void {
+    if (notebookId === this.selectedNotebookId()) {
+      const notebook = this.notebookService.getNotebookById(notebookId);
+      this.startEditingNotebook(notebookId, notebook?.label || '', new Event('click'));
+      return;
+    }
     this.expandedNotebooks.update((notebooks) => {
       const newNotebooks = new Set(notebooks);
       if (newNotebooks.has(notebookId)) {
@@ -163,7 +168,11 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
     this.newPage.emit();
   }
 
-  onSelectPage(page: Page, notebookId: string): void {
+  onSelectPage(page: Page): void {
+    if (page.documentId === this.selectedPageId()) {
+      this.startEditingPage(page.documentId, page.title, new Event('click'));
+      return;
+    }
     // Emit pageId for backward compatibility
     this.selectPage.emit(page._id);
   }
