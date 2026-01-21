@@ -111,6 +111,17 @@ export class ShapeTool implements Tool {
   }
 
   onPointerLeave(): void {
+    // If drawing, commit the shape before resetting (handles edge case where touch leaves canvas)
+    if (this.isDrawing && this.startPoint && this.context) {
+      const pendingShape = this.context.toolState().pendingShape;
+      if (pendingShape) {
+        const width = Math.abs(pendingShape.endPoint.x - this.startPoint.x);
+        const height = Math.abs(pendingShape.endPoint.y - this.startPoint.y);
+        if (width > 5 || height > 5) {
+          this.commitShape(this.startPoint, pendingShape.endPoint);
+        }
+      }
+    }
     this.reset();
   }
 
