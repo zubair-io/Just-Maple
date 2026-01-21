@@ -7,6 +7,7 @@
         #commandItem
         class="command-item"
         [class.selected]="i === selectedIndex()"
+        (mousedown)="$event.preventDefault()"
         (click)="selectItem(item)"
         (mouseenter)="selectedIndex.set(i)"
         type="button"

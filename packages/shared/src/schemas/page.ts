@@ -27,6 +27,7 @@ export const PageTypeSchema = Type.Union([
     Type.Literal('kanban'),
     Type.Literal('memo'),
     Type.Literal('message'),
+    Type.Literal('recording'),
 ]);
 
 export type PageType = Static<typeof PageTypeSchema>;

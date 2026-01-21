@@ -32,7 +32,7 @@ class KeychainHelper {
             accountsToTry = [
                 "\(tokenKeyPrefix):https://justmaple.app",
                 "\(tokenKeyPrefix):https://paperbark.justmaple.app",
-                "\(tokenKeyPrefix):https://localhost:4200",
+                "\(tokenKeyPrefix):http://localhost:4200",
             ]
         }
 
@@ -91,7 +91,7 @@ class KeychainHelper {
             accountsToTry = [
                 "\(tokenKeyPrefix):https://justmaple.app",
                 "\(tokenKeyPrefix):https://paperbark.justmaple.app",
-                "\(tokenKeyPrefix):https://localhost:4200",
+                "\(tokenKeyPrefix):http://localhost:4200",
             ]
         }
 

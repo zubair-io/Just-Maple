@@ -58,9 +58,10 @@ export const config = {
     // Gravatar config
     gravatarKey: process.env.GRAVATAR_KEY,
 
-    // Azure Blob Storage config (Hornbeam - for profile pictures)
+    // Azure Blob Storage config (Hornbeam - for profile pictures and recordings)
     hornbeamConnectionString: process.env.HORNBEAM,
     profilePictureContainer: 'profile-picture',
+    recordingsContainer: 'recordings',
 
     // Local storage fallback (used when Azure Blob Storage is not configured)
     localStoragePath: process.env.LOCAL_STORAGE_PATH || './storage',

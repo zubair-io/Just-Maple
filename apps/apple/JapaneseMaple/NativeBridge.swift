@@ -12,7 +12,7 @@ import WebKit
 
 enum WebToNativeMessage: Codable {
     case test(TestPayload)
-    case startRecording
+    case startRecording(StartRecordingPayload?)
     case stopRecording
     case cancelRecording
     case getServerList
@@ -33,6 +33,10 @@ enum WebToNativeMessage: Codable {
     struct TestPayload: Codable {
         let message: String
         let timestamp: String
+    }
+
+    struct StartRecordingPayload: Codable {
+        let includeSystemAudio: Bool?
     }
 
     struct SetActiveServerPayload: Codable {
@@ -84,7 +88,8 @@ enum WebToNativeMessage: Codable {
             let payload = try container.decode(TestPayload.self, forKey: .payload)
             self = .test(payload)
         case "startRecording":
-            self = .startRecording
+            let payload = try? container.decode(StartRecordingPayload.self, forKey: .payload)
+            self = .startRecording(payload)
         case "stopRecording":
             self = .stopRecording
         case "cancelRecording":
@@ -135,8 +140,11 @@ enum WebToNativeMessage: Codable {
         case .test(let payload):
             try container.encode("test", forKey: .type)
             try container.encode(payload, forKey: .payload)
-        case .startRecording:
+        case .startRecording(let payload):
             try container.encode("startRecording", forKey: .type)
+            if let payload = payload {
+                try container.encode(payload, forKey: .payload)
+            }
         case .stopRecording:
             try container.encode("stopRecording", forKey: .type)
         case .cancelRecording:
@@ -231,6 +239,8 @@ enum NativeToWebMessage {
         let filePath: String
         let duration: Double
         let timestamp: String
+        let audioData: String? // Base64-encoded audio file data
+        let mimeType: String?
     }
 
     struct AudioLevel: Codable {
@@ -479,10 +489,11 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 receivedAt: ISO8601DateFormatter().string(from: Date())
             )))
 
-        case .startRecording:
-            print("[Bridge] Starting multi-track recording...")
+        case .startRecording(let payload):
+            let includeSystemAudio = payload?.includeSystemAudio ?? false
+            print("[Bridge] Starting multi-track recording... (system audio: \(includeSystemAudio))")
             do {
-                let paths = try await multiTrackRecorder.startRecording()
+                let paths = try await multiTrackRecorder.startRecording(includeSystemAudio: includeSystemAudio)
                 send(.recordingStarted(NativeToWebMessage.RecordingStarted(
                     filePath: paths.micPath.path,
                     timestamp: ISO8601DateFormatter().string(from: Date())
@@ -493,10 +504,12 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                     while !Task.isCancelled {
                         try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
                         guard !Task.isCancelled else { break }
-                        // Send average of both audio levels
-                        let avgLevel = (multiTrackRecorder.micAudioLevel + multiTrackRecorder.systemAudioLevel) / 2
+                        // Send mic level only, or average if system audio is enabled
+                        let level = includeSystemAudio
+                            ? (multiTrackRecorder.micAudioLevel + multiTrackRecorder.systemAudioLevel) / 2
+                            : multiTrackRecorder.micAudioLevel
                         self?.send(.audioLevel(NativeToWebMessage.AudioLevel(
-                            level: avgLevel,
+                            level: level,
                             duration: multiTrackRecorder.recordingDuration
                         )))
                     }
@@ -517,46 +530,84 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
 
             do {
                 let result = try await multiTrackRecorder.stopRecording()
+
+                // Read audio file and convert to base64 for upload
+                var audioData: String? = nil
+                var mimeType: String? = nil
+                if let audioFileData = try? Data(contentsOf: result.micPath) {
+                    audioData = audioFileData.base64EncodedString()
+                    mimeType = "audio/mp4" // m4a files use audio/mp4 MIME type
+                    print("[Bridge] Read audio file: \(audioFileData.count) bytes")
+                }
+
                 send(.recordingStopped(NativeToWebMessage.RecordingStopped(
                     filePath: result.micPath.path,
                     duration: result.duration,
-                    timestamp: ISO8601DateFormatter().string(from: Date())
+                    timestamp: ISO8601DateFormatter().string(from: Date()),
+                    audioData: audioData,
+                    mimeType: mimeType
                 )))
 
-                // Start multi-track transcription
-                print("[Bridge] Starting multi-track transcription...")
-                do {
-                    let transcription = try await transcriptionService.transcribeMultiTrack(
-                        micAudioURL: result.micPath,
-                        systemAudioURL: result.systemPath,
-                        startTime: result.startTime
-                    ) { progress in
-                        self.send(.transcriptionProgress(NativeToWebMessage.TranscriptionProgress(
-                            text: progress,
-                            progress: 0.5
+                // Use multi-track transcription if system audio was recorded, otherwise single-track
+                if result.includesSystemAudio, let systemPath = result.systemPath {
+                    print("[Bridge] Starting multi-track transcription...")
+                    do {
+                        let transcription = try await transcriptionService.transcribeMultiTrack(
+                            micAudioURL: result.micPath,
+                            systemAudioURL: systemPath,
+                            startTime: result.startTime
+                        ) { progress in
+                            self.send(.transcriptionProgress(NativeToWebMessage.TranscriptionProgress(
+                                text: progress,
+                                progress: 0.5
+                            )))
+                        }
+
+                        // Convert segments to payload
+                        let segmentPayloads = transcription.segments.map { segment in
+                            NativeToWebMessage.TranscriptSegmentPayload(
+                                speaker: segment.speaker.rawValue,
+                                text: segment.text,
+                                startTime: segment.startTime,
+                                endTime: segment.endTime
+                            )
+                        }
+
+                        send(.transcriptionComplete(NativeToWebMessage.TranscriptionComplete(
+                            text: transcription.toFormattedText(),
+                            duration: result.duration,
+                            segments: segmentPayloads
+                        )))
+                    } catch {
+                        send(.error(NativeToWebMessage.ErrorMessage(
+                            code: "TRANSCRIPTION_ERROR",
+                            message: error.localizedDescription
                         )))
                     }
+                } else {
+                    // Single-track transcription (mic only)
+                    print("[Bridge] Starting single-track transcription...")
+                    do {
+                        let transcription = try await transcriptionService.transcribe(
+                            audioFileURL: result.micPath
+                        ) { progress in
+                            self.send(.transcriptionProgress(NativeToWebMessage.TranscriptionProgress(
+                                text: progress,
+                                progress: 0.5
+                            )))
+                        }
 
-                    // Convert segments to payload
-                    let segmentPayloads = transcription.segments.map { segment in
-                        NativeToWebMessage.TranscriptSegmentPayload(
-                            speaker: segment.speaker.rawValue,
-                            text: segment.text,
-                            startTime: segment.startTime,
-                            endTime: segment.endTime
-                        )
+                        send(.transcriptionComplete(NativeToWebMessage.TranscriptionComplete(
+                            text: transcription,
+                            duration: result.duration,
+                            segments: nil
+                        )))
+                    } catch {
+                        send(.error(NativeToWebMessage.ErrorMessage(
+                            code: "TRANSCRIPTION_ERROR",
+                            message: error.localizedDescription
+                        )))
                     }
-
-                    send(.transcriptionComplete(NativeToWebMessage.TranscriptionComplete(
-                        text: transcription.toFormattedText(),
-                        duration: result.duration,
-                        segments: segmentPayloads
-                    )))
-                } catch {
-                    send(.error(NativeToWebMessage.ErrorMessage(
-                        code: "TRANSCRIPTION_ERROR",
-                        message: error.localizedDescription
-                    )))
                 }
             } catch {
                 send(.error(NativeToWebMessage.ErrorMessage(
@@ -765,8 +816,9 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 receivedAt: ISO8601DateFormatter().string(from: Date())
             )))
 
-        case .startRecording:
-            print("[Bridge] Starting recording...")
+        case .startRecording(_):
+            // Single-track always uses mic only (system audio requires macOS 13+)
+            print("[Bridge] Starting recording (mic only)...")
             do {
                 let filePath = try await audioRecorder.startRecording()
                 send(.recordingStarted(NativeToWebMessage.RecordingStarted(
@@ -801,10 +853,22 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
 
             do {
                 let result = try await audioRecorder.stopRecording()
+
+                // Read audio file and convert to base64 for upload
+                var audioData: String? = nil
+                var mimeType: String? = nil
+                if let audioFileData = try? Data(contentsOf: result.path) {
+                    audioData = audioFileData.base64EncodedString()
+                    mimeType = "audio/mp4" // m4a files use audio/mp4 MIME type
+                    print("[Bridge] Read audio file: \(audioFileData.count) bytes")
+                }
+
                 send(.recordingStopped(NativeToWebMessage.RecordingStopped(
                     filePath: result.path.path,
                     duration: result.duration,
-                    timestamp: ISO8601DateFormatter().string(from: Date())
+                    timestamp: ISO8601DateFormatter().string(from: Date()),
+                    audioData: audioData,
+                    mimeType: mimeType
                 )))
 
                 // Start transcription

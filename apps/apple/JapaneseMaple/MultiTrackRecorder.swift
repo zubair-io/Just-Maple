@@ -41,9 +41,10 @@ class MultiTrackRecorder: NSObject, ObservableObject {
 
     struct MultiTrackResult {
         let micPath: URL
-        let systemPath: URL
+        let systemPath: URL?  // nil when system audio not captured
         let duration: TimeInterval
         let startTime: Date
+        let includesSystemAudio: Bool
     }
 
     enum RecordingError: Error {
@@ -62,14 +63,21 @@ class MultiTrackRecorder: NSObject, ObservableObject {
 
     // MARK: - Permission
 
-    func requestPermissions() async -> Bool {
+    func requestPermissions(includeSystemAudio: Bool = false) async -> Bool {
         // Request microphone permission
         let micPermission = await requestMicrophonePermission()
 
-        // Request screen recording permission (for system audio)
-        let screenPermission = await requestScreenRecordingPermission()
+        if !micPermission {
+            return false
+        }
 
-        return micPermission && screenPermission
+        // Only request screen recording permission if system audio is needed
+        if includeSystemAudio {
+            let screenPermission = await requestScreenRecordingPermission()
+            return screenPermission
+        }
+
+        return true
     }
 
     private func requestMicrophonePermission() async -> Bool {
@@ -94,15 +102,20 @@ class MultiTrackRecorder: NSObject, ObservableObject {
         }
     }
 
+    // Track whether current recording includes system audio
+    private var currentRecordingIncludesSystemAudio = false
+
     // MARK: - Recording
 
-    func startRecording() async throws -> (micPath: URL, systemPath: URL) {
+    func startRecording(includeSystemAudio: Bool = false) async throws -> (micPath: URL, systemPath: URL?) {
         guard !isRecording else {
             throw RecordingError.alreadyRecording
         }
 
-        // Request permissions
-        let hasPermissions = await requestPermissions()
+        currentRecordingIncludesSystemAudio = includeSystemAudio
+
+        // Request permissions (only request screen capture if system audio needed)
+        let hasPermissions = await requestPermissions(includeSystemAudio: includeSystemAudio)
         guard hasPermissions else {
             throw RecordingError.permissionDenied
         }
@@ -114,16 +127,21 @@ class MultiTrackRecorder: NSObject, ObservableObject {
 
         let timestamp = Date().timeIntervalSince1970
         let micFileName = "mic_\(timestamp).m4a"
-        let systemFileName = "system_\(timestamp).m4a"
 
         micFilePath = recordingsDir.appendingPathComponent(micFileName)
-        systemFilePath = recordingsDir.appendingPathComponent(systemFileName)
 
         // Start microphone recording
         try await startMicrophoneRecording(to: micFilePath!)
 
-        // Start system audio recording
-        try await startSystemAudioRecording(to: systemFilePath!)
+        // Only start system audio recording if requested
+        if includeSystemAudio {
+            let systemFileName = "system_\(timestamp).m4a"
+            systemFilePath = recordingsDir.appendingPathComponent(systemFileName)
+            try await startSystemAudioRecording(to: systemFilePath!)
+            print("  System: \(systemFilePath!.path)")
+        } else {
+            systemFilePath = nil
+        }
 
         // Mark as recording
         isRecording = true
@@ -132,11 +150,10 @@ class MultiTrackRecorder: NSObject, ObservableObject {
         // Start duration timer
         startDurationTimer()
 
-        print("[MultiTrackRecorder] Started recording")
+        print("[MultiTrackRecorder] Started recording (system audio: \(includeSystemAudio))")
         print("  Mic: \(micFilePath!.path)")
-        print("  System: \(systemFilePath!.path)")
 
-        return (micFilePath!, systemFilePath!)
+        return (micFilePath!, systemFilePath)
     }
 
     private func startMicrophoneRecording(to filePath: URL) async throws {
@@ -237,6 +254,7 @@ class MultiTrackRecorder: NSObject, ObservableObject {
         // Calculate duration
         let duration = Date().timeIntervalSince(recordingStartTime ?? Date())
         let startTime = recordingStartTime!
+        let includesSystemAudio = currentRecordingIncludesSystemAudio
 
         // Stop microphone recording
         micAudioEngine?.stop()
@@ -244,34 +262,40 @@ class MultiTrackRecorder: NSObject, ObservableObject {
         micAudioEngine = nil
         micAudioFile = nil
 
-        // Stop system audio recording
-        if let stream = screenCaptureStream {
-            try await stream.stopCapture()
-            screenCaptureStream = nil
+        // Stop system audio recording (only if it was started)
+        if includesSystemAudio {
+            if let stream = screenCaptureStream {
+                try await stream.stopCapture()
+                screenCaptureStream = nil
+            }
+            systemAudioFile = nil
         }
-        systemAudioFile = nil
 
         // Get file paths
-        guard let micPath = micFilePath, let systemPath = systemFilePath else {
+        guard let micPath = micFilePath else {
             throw RecordingError.fileCreationFailed
         }
+
+        let systemPath = systemFilePath  // Can be nil if system audio wasn't recorded
 
         // Cleanup state
         isRecording = false
         recordingStartTime = nil
         micFilePath = nil
         systemFilePath = nil
+        currentRecordingIncludesSystemAudio = false
 
         // Stop timer
         stopDurationTimer()
 
-        print("[MultiTrackRecorder] Stopped recording. Duration: \(duration)s")
+        print("[MultiTrackRecorder] Stopped recording. Duration: \(duration)s, System audio: \(includesSystemAudio)")
 
         return MultiTrackResult(
             micPath: micPath,
             systemPath: systemPath,
             duration: duration,
-            startTime: startTime
+            startTime: startTime,
+            includesSystemAudio: includesSystemAudio
         )
     }
 
@@ -282,9 +306,12 @@ class MultiTrackRecorder: NSObject, ObservableObject {
             micAudioEngine?.inputNode.removeTap(onBus: 0)
             micAudioEngine = nil
 
-            if let stream = screenCaptureStream {
-                try? await stream.stopCapture()
-                screenCaptureStream = nil
+            // Only stop screen capture if it was started
+            if currentRecordingIncludesSystemAudio {
+                if let stream = screenCaptureStream {
+                    try? await stream.stopCapture()
+                    screenCaptureStream = nil
+                }
             }
 
             // Delete files
@@ -305,6 +332,7 @@ class MultiTrackRecorder: NSObject, ObservableObject {
             recordingStartTime = nil
             micFilePath = nil
             systemFilePath = nil
+            currentRecordingIncludesSystemAudio = false
 
             stopDurationTimer()
         }

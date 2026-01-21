@@ -48,9 +48,13 @@ export interface SetBadgePayload {
   count: number;
 }
 
+export interface StartRecordingPayload {
+  includeSystemAudio?: boolean;
+}
+
 export type WebToNativeMessageType =
   | { type: 'test'; payload: TestPayload }
-  | { type: 'startRecording' }
+  | { type: 'startRecording'; payload?: StartRecordingPayload }
   | { type: 'stopRecording' }
   | { type: 'cancelRecording' }
   | { type: 'getServerList' }
@@ -99,6 +103,8 @@ export interface RecordingStopped {
   filePath: string;
   duration: number;
   timestamp: string;
+  audioData?: string; // Base64-encoded audio file data
+  mimeType?: string;
 }
 
 export interface AudioLevel {

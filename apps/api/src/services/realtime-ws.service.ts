@@ -1,4 +1,4 @@
-import type { Page, Notebook, Collectable, MemoSSEEvent } from '@maple/shared';
+import type { Page, Notebook, Collectable, MemoSSEEvent, Recording } from '@maple/shared';
 import { redisPubSub } from './redis.service';
 
 /**
@@ -21,7 +21,10 @@ export type AppEvent =
     | { type: 'notebook.deleted'; notebookId: string }
     | { type: 'collectable.created'; collectable: Collectable; notebookId: string }
     | { type: 'collectable.updated'; collectable: Collectable; notebookId: string }
-    | { type: 'collectable.deleted'; collectableId: string; notebookId: string };
+    | { type: 'collectable.deleted'; collectableId: string; notebookId: string }
+    | { type: 'recording.started'; recordingId: string; notebookId?: string }
+    | { type: 'recording.completed'; recording: Recording; notebookId?: string }
+    | { type: 'recording.failed'; recordingId: string; error?: string; notebookId?: string };
 
 /**
  * Notebook client info (for Y.Doc collaboration)
@@ -169,6 +172,28 @@ class RealtimeWSService {
     broadcastAppEvent(event: AppEvent): void {
         const userIds = Array.from(this.userConnections.keys());
         this.sendToUsers(userIds, event);
+    }
+
+    /**
+     * Broadcast app event to all clients in a notebook room
+     * Used for events that affect all collaborators (e.g., recording status)
+     */
+    broadcastToNotebookRoom(noteId: string, event: AppEvent): void {
+        const room = this.notebookRooms.get(noteId);
+        if (!room) {
+            console.log(`[WS] broadcastToNotebookRoom: No room found for noteId ${noteId}`);
+            console.log(`[WS] Available rooms:`, Array.from(this.notebookRooms.keys()));
+            return;
+        }
+
+        console.log(
+            `[WS] broadcastToNotebookRoom: Sending ${event.type} to ${room.size} clients in room ${noteId}`,
+        );
+        const message = JSON.stringify({ channel: 'app', event });
+        for (const [clientId, client] of room) {
+            console.log(`[WS] Sending to client ${clientId}`);
+            this.safeSend(client.ws, message);
+        }
     }
 
     // ==================== Notebook Room Management ====================

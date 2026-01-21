@@ -19,7 +19,7 @@ class ServerConfigService {
     // Default servers (ID is derived from URL for consistency)
     private let defaultServers: [ServerConfig] = [
         ServerConfig(name: "Production", url: "https://justmaple.app", apiUrl: "https://paperbark.justmaple.app", isCustom: false),
-        ServerConfig(name: "Localhost (Dev)", url: "https://localhost:4200", apiUrl: nil, isCustom: false)
+        ServerConfig(name: "Localhost (Dev)", url: "http://localhost:4200", apiUrl: nil, isCustom: false)
     ]
 
     private init() {}

@@ -51,7 +51,10 @@ export const authMiddleware = new Elysia({ name: 'auth-middleware' })
     });
 
 // Helper function to check auth and return early if not authenticated
-export function checkAuth(auth: AuthContext | null, set: { status: number }): auth is AuthContext {
+export function checkAuth(
+    auth: AuthContext | null,
+    set: { status?: number | string },
+): auth is AuthContext {
     if (!auth) {
         set.status = 401;
         return false;

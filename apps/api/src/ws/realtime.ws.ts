@@ -200,12 +200,26 @@ async function handleMemoMessage(
         case 'join': {
             // Accept both noteId and pageId for backwards compatibility
             const noteId = payload.noteId || payload.pageId;
+            const parentPageId = payload.parentPageId; // For embedded whiteboards
             if (!noteId) return;
 
-            console.log(`[Memo] Join request for noteId: ${noteId}`);
+            console.log(`[Memo] Join request for noteId: ${noteId}, parentPageId: ${parentPageId}`);
 
             // Verify user has access to this page (must be notebook or whiteboard type)
-            const page = await findPageByDocumentId(noteId, context.userId);
+            let page = await findPageByDocumentId(noteId, context.userId);
+
+            // If no page found but parentPageId provided, check access to parent (embedded whiteboard)
+            if (!page && parentPageId) {
+                const parentPage = await findPageByDocumentId(parentPageId, context.userId);
+                if (parentPage && parentPage.type === 'memo') {
+                    console.log(
+                        `[Memo] Embedded whiteboard - authorized via parent memo: ${parentPageId}`,
+                    );
+                    // Create a virtual page object for embedded whiteboard
+                    page = { type: 'whiteboard' } as any;
+                }
+            }
+
             if (!page || (page.type !== 'memo' && page.type !== 'whiteboard')) {
                 console.log(`[Memo] Access denied or not a notebook/whiteboard page: ${noteId}`);
                 ws.send(

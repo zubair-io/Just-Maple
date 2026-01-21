@@ -45,6 +45,7 @@ export class YJSWSProvider {
     private readonly realtimeWS: RealtimeWSService,
     private readonly awareness?: Awareness,
     private readonly pageType?: 'memo' | 'whiteboard',
+    private readonly parentPageId?: string, // For embedded whiteboards
   ) {
     this._clientId = generateClientId();
 
@@ -69,13 +70,15 @@ export class YJSWSProvider {
    * Connect to memo room via WebSocket
    */
   connect(): void {
-    console.log(`[YJS-WS] Connecting to memo: ${this.pageId}, clientId: ${this._clientId}`);
+    console.log(
+      `[YJS-WS] Connecting to memo: ${this.pageId}, clientId: ${this._clientId}, parentPageId: ${this.parentPageId}`,
+    );
 
     // Register event handler for this memo
     this.realtimeWS.onMemoEvent(this.pageId, this.handleEvent.bind(this));
 
-    // Join the memo room
-    this.realtimeWS.joinMemo(this.pageId, this._clientId);
+    // Join the memo room (pass parentPageId for embedded whiteboards)
+    this.realtimeWS.joinMemo(this.pageId, this._clientId, this.parentPageId);
 
     // Track connection state based on realtimeWS
     // Note: The actual connected state depends on the WebSocket connection
@@ -160,6 +163,17 @@ export class YJSWSProvider {
 
       // Send initial awareness state after sync
       this.sendInitialAwareness();
+
+      // Send client's state diff to server (data the server doesn't have)
+      // This ensures locally stored IndexedDB data is synced to the server
+      const serverStateVector = Y.encodeStateVectorFromUpdate(state);
+      const clientDiff = Y.encodeStateAsUpdate(this.ydoc, serverStateVector);
+      if (clientDiff.length > 2) {
+        // More than just header = we have data to send
+        console.log(`[YJS-WS] Sending client state diff to server: ${clientDiff.length} bytes`);
+        this.realtimeWS.sendMemoUpdate(this.pageId, clientDiff, this.pageType);
+      }
+
       console.log(`[YJS-WS] Initial sync complete`);
     } catch (err) {
       console.error(`[YJS-WS] handleInit error:`, err);

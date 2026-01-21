@@ -10,7 +10,7 @@ The iPhone app saves tokens to keychain with different account keys based on the
 
 - `"bearer_token:https://justmaple.app"` (production)
 - `"bearer_token:https://paperbark.justmaple.app"` (could be used)
-- `"bearer_token:https://localhost:4200"` (development)
+- `"bearer_token:http://localhost:4200"` (development)
 - Or any custom server URL
 
 The Watch app was only looking for one hardcoded key, so if the token was saved with a different server URL, it wouldn't find it.
@@ -39,7 +39,7 @@ func getToken(serverId: String? = nil) -> String? {
     let accountsToTry = [
         "\(tokenKeyPrefix):https://justmaple.app",
         "\(tokenKeyPrefix):https://paperbark.justmaple.app",
-        "\(tokenKeyPrefix):https://localhost:4200",
+        "\(tokenKeyPrefix):http://localhost:4200",
     ]
 
     // Try each one until we find a token
@@ -156,7 +156,7 @@ Examples:
 
 - `bearer_token:https://justmaple.app` (most common)
 - `bearer_token:https://paperbark.justmaple.app`
-- `bearer_token:https://localhost:4200`
+- `bearer_token:http://localhost:4200`
 
 The server URL comes from `ServerConfigService.getActiveServer().url`.
 

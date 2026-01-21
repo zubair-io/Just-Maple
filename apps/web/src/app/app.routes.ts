@@ -3,6 +3,16 @@ import { AuthGuard, PublicGuard } from './guards/auth.guard';
 import { CollectablePageGuard, WhiteboardPageGuard, MemoPageGuard } from './guards/page-type.guard';
 
 export const routes: Routes = [
+  // Auth routes - must come before the catch-all :tagId route
+  {
+    path: 'login',
+    loadComponent: () => import('./pages/login/login.component').then((m) => m.LoginComponent),
+    canActivate: [PublicGuard],
+  },
+  {
+    path: 'verify',
+    loadComponent: () => import('./pages/verify/verify.component').then((m) => m.VerifyComponent),
+  },
   // Settings route - must come before the home route
   {
     path: 'settings',
@@ -95,15 +105,6 @@ export const routes: Routes = [
     path: '',
     loadComponent: () =>
       import('./pages/marketing/marketing.component').then((m) => m.MarketingComponent),
-  },
-  {
-    path: 'login',
-    loadComponent: () => import('./pages/login/login.component').then((m) => m.LoginComponent),
-    canActivate: [PublicGuard],
-  },
-  {
-    path: 'verify',
-    loadComponent: () => import('./pages/verify/verify.component').then((m) => m.VerifyComponent),
   },
   {
     path: '**',
