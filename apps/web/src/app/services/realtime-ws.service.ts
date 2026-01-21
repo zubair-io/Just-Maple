@@ -5,7 +5,7 @@ import { filter } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { VisibilityService } from './visibility.service';
 import { environment } from '../../environments/environment';
-import type { Page, Notebook, Collectable, MemoSSEEvent } from '@maple/shared';
+import type { Page, Notebook, Collectable, MemoSSEEvent, Recording } from '@maple/shared';
 
 /**
  * App Events - CRUD operations on pages, notebooks, collectables
@@ -22,7 +22,10 @@ export type AppEvent =
   | { type: 'notebook.deleted'; notebookId: string }
   | { type: 'collectable.created'; collectable: Collectable; notebookId: string }
   | { type: 'collectable.updated'; collectable: Collectable; notebookId: string }
-  | { type: 'collectable.deleted'; collectableId: string; notebookId: string };
+  | { type: 'collectable.deleted'; collectableId: string; notebookId: string }
+  | { type: 'recording.started'; recordingId: string; notebookId?: string }
+  | { type: 'recording.completed'; recording: Recording; notebookId?: string }
+  | { type: 'recording.failed'; recordingId: string; error?: string; notebookId?: string };
 
 /**
  * Message from server
@@ -260,13 +263,17 @@ export class RealtimeWSService {
 
   /**
    * Join a memo room for Y.Doc sync
+   * @param pageId The document ID to join
+   * @param clientId Optional client ID for this session
+   * @param parentPageId Optional parent memo's pageId for embedded whiteboards (used for authorization)
    */
-  joinMemo(pageId: string, clientId?: string): void {
+  joinMemo(pageId: string, clientId?: string, parentPageId?: string): void {
     this.send({
       channel: 'memo',
       action: 'join',
       pageId,
       clientId,
+      parentPageId,
     });
   }
 

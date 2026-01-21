@@ -23,6 +23,7 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import { MemoDocumentService } from '../../../services/memo-document.service';
 import { PageService } from '../../../services/page.service';
+import { AuthService } from '../../../services/auth.service';
 import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
 import { SlashCommandMenuComponent } from '../../molecules/slash-command-menu/slash-command-menu.component';
 import DragHandle from '@tiptap/extension-drag-handle';
@@ -34,8 +35,12 @@ import {
   filterCommands,
   getTableExtensions,
   TableOfContents,
+  RecordingNode,
+  EmbedNode,
   type SlashCommandItem,
 } from './extensions';
+import { RecordingBlockComponent } from '../../molecules/recording-block/recording-block.component';
+import { PaperEmbedComponent } from '../../molecules/paper-embed/paper-embed.component';
 import { EditorToolbarComponent } from '../../molecules/editor-toolbar/editor-toolbar.component';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
@@ -56,6 +61,7 @@ export class NotebookEditorComponent implements OnDestroy {
 
   private readonly memoService = inject(MemoDocumentService);
   private readonly pageService = inject(PageService);
+  private readonly authService = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
@@ -78,6 +84,8 @@ export class NotebookEditorComponent implements OnDestroy {
   private isInitialSync = true;
   private slashMenuElement: HTMLElement | null = null;
   private slashMenuComponent: SlashCommandMenuComponent | null = null;
+  private recordingComponents = new Map<string, { componentRef: any; element: HTMLElement }>();
+  private embedComponents = new Map<string, { componentRef: any; element: HTMLElement }>();
 
   constructor() {
     // Initialize editor after view is ready
@@ -184,6 +192,10 @@ export class NotebookEditorComponent implements OnDestroy {
           ...getTableExtensions(),
           // Table of Contents
           TableOfContents,
+          // Recording node (legacy - for backward compatibility)
+          RecordingNode,
+          // Generic embed node (new system)
+          EmbedNode,
           // Drag handles for blocks
           DragHandle.configure({
             render: () => {
@@ -235,9 +247,216 @@ export class NotebookEditorComponent implements OnDestroy {
         this.isInitialSync = false;
       }, 500);
 
+      // Set up recording block event listeners (legacy)
+      this.setupRecordingBlockListeners();
+
+      // Set up embed event listeners (new system)
+      this.setupEmbedListeners();
+
       this.isReady.set(true);
     } catch {
       this.error.set('Failed to load memo');
+    }
+  }
+
+  /**
+   * Set up listeners for recording block mount/unmount events
+   */
+  private setupRecordingBlockListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    // Listen for recording node mount events
+    editorElement.addEventListener('recording-node-mounted', ((event: CustomEvent) => {
+      const { recordingId, element, editor } = event.detail;
+      this.mountRecordingComponent(recordingId, element);
+    }) as EventListener);
+
+    // Listen for recording node unmount events
+    editorElement.addEventListener('recording-node-unmounted', ((event: CustomEvent) => {
+      const { recordingId } = event.detail;
+      this.unmountRecordingComponent(recordingId);
+    }) as EventListener);
+  }
+
+  /**
+   * Mount an Angular recording block component
+   */
+  private mountRecordingComponent(recordingId: string, element: HTMLElement): void {
+    // Check if already mounted
+    if (this.recordingComponents.has(recordingId)) {
+      return;
+    }
+
+    // Create Angular component
+    const componentRef = createComponent(RecordingBlockComponent, {
+      environmentInjector: this.injector,
+      hostElement: element,
+    });
+
+    // Set inputs
+    componentRef.setInput('recordingId', recordingId);
+
+    // Handle delete requests
+    componentRef.instance.deleteRequested.subscribe((id: string) => {
+      (this._editor?.chain().focus() as any).deleteRecording(id).run();
+    });
+
+    // Attach to app
+    this.appRef.attachView(componentRef.hostView);
+
+    // Track the component
+    this.recordingComponents.set(recordingId, { componentRef, element });
+  }
+
+  /**
+   * Unmount an Angular recording block component
+   */
+  private unmountRecordingComponent(recordingId: string): void {
+    const component = this.recordingComponents.get(recordingId);
+    if (!component) return;
+
+    this.appRef.detachView(component.componentRef.hostView);
+    component.componentRef.destroy();
+    this.recordingComponents.delete(recordingId);
+  }
+
+  /**
+   * Set up listeners for generic embed mount/unmount events
+   */
+  private setupEmbedListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    // Listen for embed node mount events
+    editorElement.addEventListener('embed-node-mounted', ((event: CustomEvent) => {
+      const { id, type, createdBy, element } = event.detail;
+      console.log('[NotebookEditor] embed-node-mounted event:', { id, type, createdBy });
+      this.mountEmbedComponent(id, type, createdBy, element);
+    }) as EventListener);
+
+    // Listen for embed node unmount events
+    editorElement.addEventListener('embed-node-unmounted', ((event: CustomEvent) => {
+      const { id } = event.detail;
+      this.unmountEmbedComponent(id);
+    }) as EventListener);
+
+    // Listen for create-recording-embed event from slash command
+    editorElement.addEventListener('create-recording-embed', ((event: CustomEvent) => {
+      const range = event.detail?.range;
+      this.createRecordingEmbed(range);
+    }) as EventListener);
+
+    // Listen for create-whiteboard-embed event from slash command
+    editorElement.addEventListener('create-whiteboard-embed', ((event: CustomEvent) => {
+      const range = event.detail?.range;
+      this.createWhiteboardEmbed(range);
+    }) as EventListener);
+  }
+
+  /**
+   * Mount a PaperEmbedComponent for an embed node
+   */
+  private mountEmbedComponent(
+    id: string,
+    type: 'recording' | 'whiteboard' | 'memo',
+    createdBy: string | null,
+    element: HTMLElement,
+  ): void {
+    // Check if already mounted
+    if (this.embedComponents.has(id)) {
+      return;
+    }
+
+    // Create Angular component
+    const componentRef = createComponent(PaperEmbedComponent, {
+      environmentInjector: this.injector,
+      hostElement: element,
+    });
+
+    // Set inputs - pass the parent memo's pageId for WebSocket broadcasting
+    componentRef.setInput('embedId', id);
+    componentRef.setInput('embedType', type);
+    componentRef.setInput('createdBy', createdBy);
+    componentRef.setInput('parentPageId', this.pageId());
+
+    // Handle delete requests
+    componentRef.instance.deleteRequested.subscribe((embedId: string) => {
+      (this._editor?.chain().focus() as any).deleteEmbed(embedId).run();
+    });
+
+    // Attach to app
+    this.appRef.attachView(componentRef.hostView);
+
+    // Track the component
+    this.embedComponents.set(id, { componentRef, element });
+  }
+
+  /**
+   * Unmount a PaperEmbedComponent
+   */
+  private unmountEmbedComponent(id: string): void {
+    const component = this.embedComponents.get(id);
+    if (!component) return;
+
+    this.appRef.detachView(component.componentRef.hostView);
+    component.componentRef.destroy();
+    this.embedComponents.delete(id);
+  }
+
+  /**
+   * Create a recording embed: generate ID and insert embed node
+   * The recording entity will be created when the user starts recording
+   * @param range Optional range to delete before inserting (from slash command)
+   */
+  private createRecordingEmbed(range?: { from: number; to: number }): void {
+    // Generate a unique recording ID
+    const recordingId = crypto.randomUUID();
+
+    // Get current user ID for ownership tracking
+    const currentUserId = this.authService.user()?._id;
+    if (!currentUserId) {
+      console.error('[NotebookEditor] Cannot create recording: no user logged in');
+      return;
+    }
+
+    // Delete range and insert embed atomically to prevent schema auto-fixes
+    if (range) {
+      (this._editor?.chain().focus().deleteRange(range) as any)
+        .insertEmbed(recordingId, 'recording', currentUserId)
+        .run();
+    } else {
+      (this._editor?.chain().focus() as any)
+        .insertEmbed(recordingId, 'recording', currentUserId)
+        .run();
+    }
+  }
+
+  /**
+   * Create a whiteboard embed: generate ID and insert embed node
+   * The whiteboard document will be created when the component loads
+   * @param range Optional range to delete before inserting (from slash command)
+   */
+  private createWhiteboardEmbed(range?: { from: number; to: number }): void {
+    // Generate a unique whiteboard ID
+    const whiteboardId = crypto.randomUUID();
+
+    // Get current user ID for ownership tracking
+    const currentUserId = this.authService.user()?._id;
+    if (!currentUserId) {
+      console.error('[NotebookEditor] Cannot create whiteboard: no user logged in');
+      return;
+    }
+
+    // Delete range and insert embed atomically to prevent schema auto-fixes
+    if (range) {
+      (this._editor?.chain().focus().deleteRange(range) as any)
+        .insertEmbed(whiteboardId, 'whiteboard', currentUserId)
+        .run();
+    } else {
+      (this._editor?.chain().focus() as any)
+        .insertEmbed(whiteboardId, 'whiteboard', currentUserId)
+        .run();
     }
   }
 
@@ -300,9 +519,12 @@ export class NotebookEditorComponent implements OnDestroy {
     let popup: HTMLElement | null = null;
     let menuComponent: SlashCommandMenuComponent | null = null;
     let componentRef: any = null;
+    let currentProps: any = null; // Track current props for command execution
 
     return {
       onStart: (props: any) => {
+        currentProps = props; // Store initial props
+
         // Create popup element
         popup = document.createElement('div');
         popup.classList.add('slash-menu-popup');
@@ -320,9 +542,11 @@ export class NotebookEditorComponent implements OnDestroy {
         menuComponent!.items.set(props.items);
         menuComponent!.query.set(props.query);
 
-        // Handle command selection
+        // Handle command selection - use currentProps to get the latest range
         componentRef.instance.commandSelected.subscribe((item: SlashCommandItem) => {
-          props.command(item);
+          if (currentProps) {
+            currentProps.command(item);
+          }
         });
 
         this.appRef.attachView(componentRef.hostView);
@@ -332,6 +556,8 @@ export class NotebookEditorComponent implements OnDestroy {
       },
 
       onUpdate: (props: any) => {
+        currentProps = props; // Update props with latest range
+
         if (menuComponent) {
           menuComponent.items.set(props.items);
           menuComponent.query.set(props.query);
@@ -394,6 +620,20 @@ export class NotebookEditorComponent implements OnDestroy {
       clearTimeout(this.titleUpdateTimeout);
       this.titleUpdateTimeout = null;
     }
+
+    // Clean up recording components (legacy)
+    this.recordingComponents.forEach((component) => {
+      this.appRef.detachView(component.componentRef.hostView);
+      component.componentRef.destroy();
+    });
+    this.recordingComponents.clear();
+
+    // Clean up embed components (new system)
+    this.embedComponents.forEach((component) => {
+      this.appRef.detachView(component.componentRef.hostView);
+      component.componentRef.destroy();
+    });
+    this.embedComponents.clear();
 
     if (this._editor) {
       this._editor.destroy();

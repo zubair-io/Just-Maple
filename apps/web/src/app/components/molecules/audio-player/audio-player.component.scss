@@ -1,0 +1,146 @@
+.audio-player {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.5rem;
+}
+
+audio {
+  display: none;
+}
+
+// Error state
+.player-error {
+  padding: 1rem;
+  text-align: center;
+  color: #d94e3b;
+  font-size: 0.875rem;
+}
+
+// Controls
+.player-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.control-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-text-main);
+  transition: all 0.2s;
+  border-radius: 50%;
+
+  &:hover {
+    background: var(--color-bg-hover, #f0f0f0);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.play-button {
+  width: 48px;
+  height: 48px;
+  background: var(--color-primary);
+  color: white;
+
+  &:hover {
+    background: var(--color-primary-hover, #c04432);
+  }
+}
+
+.skip-button {
+  width: 36px;
+  height: 36px;
+  color: var(--color-text-muted);
+
+  &:hover {
+    color: var(--color-text-main);
+  }
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Progress bar
+.progress-container {
+  cursor: pointer;
+  padding: 0.5rem 0;
+}
+
+.progress-bar {
+  position: relative;
+  height: 4px;
+  background: var(--color-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.buffered {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--color-border-strong, #ccc);
+  border-radius: 2px;
+}
+
+.progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 2px;
+  transition: width 0.1s linear;
+}
+
+// Time and speed
+.time-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.time {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+.speed-button {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+}

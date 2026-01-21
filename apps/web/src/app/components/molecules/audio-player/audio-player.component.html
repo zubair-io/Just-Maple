@@ -1,0 +1,89 @@
+<div class="audio-player">
+  <!-- Hidden audio element -->
+  <audio
+    #audioElement
+    [src]="audioUrl()"
+    (loadedmetadata)="onLoadedMetadata()"
+    (canplay)="onCanPlay()"
+    (waiting)="onWaiting()"
+    (playing)="onPlaying()"
+    (pause)="onPause()"
+    (ended)="onEnded()"
+    (error)="onError()"
+    (progress)="onProgress()"
+  ></audio>
+
+  @if (error()) {
+    <div class="player-error">
+      <span>{{ error() }}</span>
+    </div>
+  } @else {
+    <div class="player-controls">
+      <!-- Skip backward -->
+      <button
+        class="control-button skip-button"
+        (click)="skipBackward()"
+        type="button"
+        title="Rewind 10 seconds"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path
+            d="M11.5 1a.5.5 0 0 1 .5.5v13a.5.5 0 0 1-1 0V8.566l-8.24 5.5a.5.5 0 0 1-.76-.427V2.361a.5.5 0 0 1 .76-.427L11 7.434V1.5a.5.5 0 0 1 .5-.5z"
+            transform="scale(-1, 1) translate(-16, 0)"
+          />
+        </svg>
+      </button>
+
+      <!-- Play/Pause -->
+      <button
+        class="control-button play-button"
+        (click)="togglePlay()"
+        type="button"
+        [disabled]="isLoading()"
+      >
+        @if (isLoading()) {
+          <div class="loading-spinner"></div>
+        } @else if (isPlaying()) {
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <rect x="4" y="3" width="4" height="14" rx="1" />
+            <rect x="12" y="3" width="4" height="14" rx="1" />
+          </svg>
+        } @else {
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M5 3.5l12 6.5-12 6.5v-13z" />
+          </svg>
+        }
+      </button>
+
+      <!-- Skip forward -->
+      <button
+        class="control-button skip-button"
+        (click)="skipForward()"
+        type="button"
+        title="Forward 10 seconds"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path
+            d="M4.5 1a.5.5 0 0 0-.5.5v13a.5.5 0 0 0 1 0V8.566l8.24 5.5a.5.5 0 0 0 .76-.427V2.361a.5.5 0 0 0-.76-.427L5 7.434V1.5a.5.5 0 0 0-.5-.5z"
+          />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="progress-container" (click)="seek($event)">
+      <div class="progress-bar">
+        <div class="buffered" [style.width.%]="bufferedProgress()"></div>
+        <div class="progress" [style.width.%]="progress()"></div>
+      </div>
+    </div>
+
+    <!-- Time and speed -->
+    <div class="time-controls">
+      <span class="time">{{ formatTime(currentTime()) }} / {{ formatTime(duration()) }}</span>
+      <button class="speed-button" (click)="cycleSpeed()" type="button">
+        {{ playbackSpeed() }}x
+      </button>
+    </div>
+  }
+</div>

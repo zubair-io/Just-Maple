@@ -1,0 +1,333 @@
+.recording-embed-wrapper {
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-secondary, #f9f9f9);
+}
+
+// Loading state
+.recording-loading,
+.recording-uploading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  color: var(--color-text-muted);
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Empty state
+.recording-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+}
+
+.record-button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--color-text-main);
+
+  &:hover {
+    background: var(--color-bg-hover, #f0f0f0);
+    border-color: var(--color-primary);
+  }
+
+  .record-icon {
+    color: #d94e3b;
+  }
+
+  .record-label {
+    font-size: 0.875rem;
+  }
+}
+
+// System audio toggle
+.system-audio-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+
+  input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--color-primary);
+  }
+
+  .toggle-label {
+    user-select: none;
+  }
+
+  &:hover {
+    color: var(--color-text-main);
+  }
+}
+
+// Waiting state (for non-owners)
+.recording-waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  color: var(--color-text-muted);
+
+  .waiting-icon {
+    opacity: 0.5;
+  }
+
+  .waiting-label {
+    font-size: 0.875rem;
+  }
+}
+
+// Recording state
+.recording-active {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pulse {
+  width: 12px;
+  height: 12px;
+  background: #d94e3b;
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.1);
+  }
+}
+
+.recording-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #d94e3b;
+}
+
+.audio-visualizer {
+  height: 4px;
+  background: var(--color-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.audio-level {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.1s ease-out;
+  border-radius: 2px;
+}
+
+.recording-duration {
+  font-size: 1.5rem;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-main);
+}
+
+.recording-controls {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.stop-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #d94e3b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s;
+
+  &:hover {
+    background: #c04432;
+  }
+}
+
+.cancel-button {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: var(--color-bg-hover, #f0f0f0);
+    border-color: var(--color-text-muted);
+  }
+}
+
+// Viewer message (non-owner during recording)
+.recording-viewer-message {
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  padding: 0.5rem 0;
+}
+
+// Complete state
+.recording-complete {
+  position: relative;
+}
+
+// Native recording info (when audio isn't uploaded to server)
+.native-recording-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg-tertiary, #f5f5f5);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+
+  .duration-badge {
+    font-size: 1rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-main);
+  }
+
+  .native-note {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+  }
+}
+
+.transcription {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.transcription-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.transcription-text {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-text-main);
+}
+
+.delete-button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0.5rem;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s;
+  border-radius: 4px;
+
+  .recording-complete:hover & {
+    opacity: 1;
+  }
+
+  &:hover {
+    background: var(--color-bg-hover, #f0f0f0);
+    color: #d94e3b;
+  }
+}
+
+// Failed state
+.recording-failed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.error-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: #d94e3b;
+  color: white;
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 0.875rem;
+}
+
+.error-text {
+  color: #d94e3b;
+  font-size: 0.875rem;
+}
+
+.retry-button {
+  padding: 0.375rem 0.75rem;
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  transition: all 0.2s;
+
+  &:hover {
+    background: var(--color-primary);
+    color: white;
+  }
+}

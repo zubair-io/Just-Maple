@@ -1,10 +1,17 @@
 import * as Y from 'yjs';
+import { customAlphabet } from 'nanoid';
 import {
     getWhiteboardState,
     updateWhiteboardState,
     whiteboardExists,
 } from '../repositories/whiteboard.repo';
 import { realtimeWSService } from './realtime-ws.service';
+
+// Generate layer IDs
+const nanoidBase58 = customAlphabet(
+    '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
+    32,
+);
 
 /**
  * YJS Whiteboard Document Manager Service
@@ -60,6 +67,9 @@ class YJSWhiteboardService {
             Y.applyUpdate(ydoc, state);
             console.log(`[YJS-Whiteboard] Loaded document from database: ${documentId}`);
         } else {
+            // For new documents, keep the Y.Doc empty - let the client initialize
+            // and sync its state to the server. This prevents conflicts when
+            // the client has locally stored data in IndexedDB.
             console.log(`[YJS-Whiteboard] Created new empty document: ${documentId}`);
         }
 
@@ -140,6 +150,35 @@ class YJSWhiteboardService {
             await this.persistDocument(documentId, ydoc);
 
             return initialState;
+        }
+    }
+
+    /**
+     * Initialize empty whiteboard with default structure
+     * Must match the frontend initialization in whiteboard-document.service.ts
+     */
+    private initializeEmptyWhiteboard(ydoc: Y.Doc): void {
+        const metadata = ydoc.getMap<unknown>('metadata');
+        const layers = ydoc.getArray<Y.Map<unknown>>('layers');
+
+        // Set default camera state
+        if (!metadata.has('camera')) {
+            metadata.set('camera', { x: 0, y: 0, zoom: 1 });
+        }
+
+        // Create default layer
+        if (layers.length === 0) {
+            const defaultLayer = new Y.Map<unknown>();
+            const layerId = nanoidBase58();
+            defaultLayer.set('id', layerId);
+            defaultLayer.set('name', 'Layer 1');
+            defaultLayer.set('visible', true);
+            defaultLayer.set('locked', false);
+            defaultLayer.set('opacity', 1);
+            defaultLayer.set('elements', []);
+            layers.push([defaultLayer]);
+
+            metadata.set('activeLayerId', layerId);
         }
     }
 

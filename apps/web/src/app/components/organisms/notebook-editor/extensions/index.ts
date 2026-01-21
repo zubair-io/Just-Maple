@@ -16,3 +16,5 @@ export {
   getTableExtensions,
 } from './table-extension';
 export { TableOfContents, extractTocItems, type TocItem } from './table-of-contents';
+export { RecordingNode, type RecordingNodeOptions } from './recording-node';
+export { EmbedNode, type EmbedNodeOptions } from './embed-node';

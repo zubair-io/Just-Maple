@@ -1,0 +1,100 @@
+<div class="recording-block-wrapper">
+  <!-- Loading state -->
+  @if (isLoading()) {
+    <div class="recording-loading">
+      <div class="loading-spinner"></div>
+      <span>Loading recording...</span>
+    </div>
+  }
+
+  <!-- Empty state - ready to record -->
+  @if (!isLoading() && state() === 'empty') {
+    <div class="recording-empty">
+      <button class="record-button" (click)="startRecording()" type="button">
+        <span class="record-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="6" />
+          </svg>
+        </span>
+        <span class="record-label">Click to record</span>
+      </button>
+      @if (canUseNative()) {
+        <span class="native-badge">Mic + System Audio</span>
+      }
+    </div>
+  }
+
+  <!-- Recording state -->
+  @if (!isLoading() && state() === 'recording') {
+    <div class="recording-active">
+      <div class="recording-indicator">
+        <span class="pulse"></span>
+        <span class="recording-text">Recording</span>
+      </div>
+
+      <div class="audio-visualizer">
+        <div class="audio-level" [style.width.%]="audioLevel() * 100"></div>
+      </div>
+
+      <div class="recording-duration">{{ formatDuration(duration()) }}</div>
+
+      <div class="recording-controls">
+        <button class="stop-button" (click)="stopRecording()" type="button">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+            <rect x="4" y="4" width="12" height="12" rx="2" />
+          </svg>
+          <span>Stop</span>
+        </button>
+        <button class="cancel-button" (click)="cancelRecording()" type="button">
+          <span>Cancel</span>
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- Uploading state -->
+  @if (!isLoading() && state() === 'uploading') {
+    <div class="recording-uploading">
+      <div class="loading-spinner"></div>
+      <span>Saving recording...</span>
+    </div>
+  }
+
+  <!-- Complete state - show player -->
+  @if (!isLoading() && state() === 'complete' && recording()) {
+    <div class="recording-complete">
+      <app-audio-player
+        [audioUrl]="recording()!.audioUrl!"
+        [duration]="recording()!.duration || 0"
+      />
+
+      @if (recording()!.transcription) {
+        <div class="transcription">
+          <div class="transcription-label">Transcription</div>
+          <div class="transcription-text">{{ recording()!.transcription }}</div>
+        </div>
+      }
+
+      <button class="delete-button" (click)="deleteRecording()" type="button">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path
+            d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"
+          />
+          <path
+            fill-rule="evenodd"
+            d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"
+          />
+        </svg>
+      </button>
+    </div>
+  }
+
+  <!-- Failed state -->
+  @if (!isLoading() && state() === 'failed') {
+    <div class="recording-failed">
+      <span class="error-icon">!</span>
+      <span class="error-text">{{ error() || 'Recording failed' }}</span>
+      <button class="retry-button" (click)="retry()" type="button">Try again</button>
+    </div>
+  }
+</div>

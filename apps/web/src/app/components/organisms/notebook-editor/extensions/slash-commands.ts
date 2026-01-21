@@ -109,6 +109,34 @@ export const defaultSlashCommands: SlashCommandItem[] = [
       (editor.chain().focus().deleteRange(range) as any).insertTableOfContents().run();
     },
   },
+  {
+    title: 'Voice Recording',
+    description: 'Record audio with your microphone',
+    icon: '🎙️',
+    command: ({ editor, range }) => {
+      // Dispatch event with range info so the handler can delete and insert atomically
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('create-recording-embed', {
+          bubbles: true,
+          detail: { range },
+        }),
+      );
+    },
+  },
+  {
+    title: 'Whiteboard',
+    description: 'Draw and sketch ideas',
+    icon: '🎨',
+    command: ({ editor, range }) => {
+      // Dispatch event with range info so the handler can delete and insert atomically
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('create-whiteboard-embed', {
+          bubbles: true,
+          detail: { range },
+        }),
+      );
+    },
+  },
 ];
 
 export interface SlashCommandsOptions {

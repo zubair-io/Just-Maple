@@ -1,0 +1,50 @@
+.whiteboard-embed-wrapper {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-bg);
+
+  &:hover .delete-button {
+    opacity: 1;
+  }
+}
+
+.whiteboard-embed-container {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  position: relative;
+
+  app-whiteboard {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  ::ng-deep .whiteboard-container {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.delete-button {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 10;
+  padding: 0.5rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s;
+  border-radius: 4px;
+
+  &:hover {
+    background: var(--color-bg-hover, #f0f0f0);
+    color: #d94e3b;
+    border-color: #d94e3b;
+  }
+}

@@ -105,7 +105,7 @@ echo "✅ Web app copied to native bundle"
 ### Server Configuration
 
 - [ ] App loads from https://justmaple.app by default
-- [ ] Can switch to https://localhost:4200 in settings
+- [ ] Can switch to http://localhost:4200 in settings
 - [ ] Can add custom server URLs
 - [ ] Server validation checks HTML title
 - [ ] App falls back to bundled version if server unreachable
@@ -143,7 +143,7 @@ The Just Maple server must:
 ### Running with Dev Server
 
 1. Start the API server: `cd apps/api && bun run dev`
-2. Start the web app: `cd apps/web && bun run dev` (runs on https://localhost:4200)
+2. Start the web app: `cd apps/web && bun run dev` (runs on http://localhost:4200)
 3. Open the native app in Xcode
 4. The app will load from localhost:4200
 5. If localhost:4200 is not available, it falls back to the bundled app

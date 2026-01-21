@@ -37,6 +37,8 @@ export class WhiteboardComponent implements OnDestroy {
 
   // Inputs
   readonly pageId = input.required<string>();
+  /** Parent memo's pageId for embedded whiteboards (used for authorization) */
+  readonly parentPageId = input<string | null>(null);
 
   // Whiteboard document
   readonly whiteboard = signal<WhiteboardYDoc | null>(null);
@@ -69,19 +71,23 @@ export class WhiteboardComponent implements OnDestroy {
     // Load document when pageId changes
     effect(() => {
       const pageId = this.pageId();
+      const parentPageId = this.parentPageId();
       if (pageId && pageId !== this.lastPageId) {
         this.lastPageId = pageId;
-        this.loadDocument(pageId);
+        this.loadDocument(pageId, parentPageId);
       }
     });
   }
 
-  private async loadDocument(pageId: string): Promise<void> {
+  private async loadDocument(pageId: string, parentPageId?: string | null): Promise<void> {
     this.isReady.set(false);
     this.error.set(null);
 
     try {
-      const whiteboard = await this.whiteboardService.openDocument(pageId);
+      const whiteboard = await this.whiteboardService.openDocument(
+        pageId,
+        parentPageId ?? undefined,
+      );
       this.whiteboard.set(whiteboard);
       this.isReady.set(true);
     } catch (e) {

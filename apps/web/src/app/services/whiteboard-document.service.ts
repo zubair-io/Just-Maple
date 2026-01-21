@@ -31,6 +31,7 @@ interface OpenWhiteboard {
   awareness: Awareness;
   persistence: IndexeddbPersistence;
   wsProvider: YJSWSProvider | null;
+  parentPageId?: string; // For embedded whiteboards
 }
 
 /**
@@ -116,8 +117,10 @@ export class WhiteboardDocumentService {
   /**
    * Open a whiteboard document
    * Returns typed helpers for whiteboard-specific Y.Doc structures
+   * @param pageId The whiteboard's document ID
+   * @param parentPageId Optional parent memo's pageId for embedded whiteboards (used for authorization)
    */
-  async openDocument(pageId: string): Promise<WhiteboardYDoc> {
+  async openDocument(pageId: string, parentPageId?: string): Promise<WhiteboardYDoc> {
     // Check if already open
     if (this.openDocs.has(pageId)) {
       const doc = this.openDocs.get(pageId)!;
@@ -141,6 +144,7 @@ export class WhiteboardDocumentService {
       awareness,
       persistence,
       wsProvider: null,
+      parentPageId,
     };
     this.openDocs.set(pageId, doc);
 
@@ -471,6 +475,7 @@ export class WhiteboardDocumentService {
       this.realtimeWS,
       doc.awareness,
       'whiteboard',
+      doc.parentPageId,
     );
 
     doc.wsProvider.onSynced = (synced: boolean) => {

@@ -310,8 +310,15 @@ export class NativeBridgeService {
 
   // MARK: - Audio Recording
 
-  startRecording(): void {
-    this.sendMessage({ type: 'startRecording' });
+  /**
+   * Start audio recording
+   * @param options.includeSystemAudio - If true, also capture system audio (macOS only, requires screen recording permission)
+   */
+  startRecording(options?: { includeSystemAudio?: boolean }): void {
+    this.sendMessage({
+      type: 'startRecording',
+      payload: options ? { includeSystemAudio: options.includeSystemAudio } : undefined,
+    });
   }
 
   stopRecording(): void {

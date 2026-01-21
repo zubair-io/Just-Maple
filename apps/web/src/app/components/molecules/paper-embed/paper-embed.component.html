@@ -1,0 +1,27 @@
+<div class="paper-embed-wrapper">
+  @switch (embedType()) {
+    @case ('recording') {
+      <app-recording-embed
+        [recordingId]="embedId()"
+        [createdBy]="createdBy()"
+        [parentPageId]="parentPageId()"
+        (deleteRequested)="onDeleteRequested()"
+      />
+    }
+    @case ('whiteboard') {
+      <app-whiteboard-embed
+        [documentId]="embedId()"
+        [parentPageId]="parentPageId()"
+        (deleteRequested)="onDeleteRequested()"
+      />
+    }
+    @case ('memo') {
+      <app-memo-embed [documentId]="embedId()" (deleteRequested)="onDeleteRequested()" />
+    }
+    @default {
+      <div class="embed-unsupported">
+        <span>Unsupported embed type: {{ embedType() }}</span>
+      </div>
+    }
+  }
+</div>

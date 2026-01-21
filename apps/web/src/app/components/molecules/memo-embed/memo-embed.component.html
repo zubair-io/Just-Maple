@@ -1,0 +1,42 @@
+<div class="memo-embed-wrapper" (click)="openMemo()">
+  @if (isLoading()) {
+    <div class="memo-loading">Loading...</div>
+  } @else {
+    <div class="memo-preview">
+      <div class="memo-icon">
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+        </svg>
+      </div>
+      <div class="memo-info">
+        <div class="memo-title">{{ page()?.title || 'Untitled Memo' }}</div>
+        @if (previewText()) {
+          <div class="memo-preview-text">{{ previewText() }}</div>
+        } @else {
+          <div class="memo-hint">Click to open memo</div>
+        }
+      </div>
+    </div>
+    <button class="delete-button" (click)="onDelete($event)" type="button">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path
+          d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"
+        />
+        <path
+          fill-rule="evenodd"
+          d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"
+        />
+      </svg>
+    </button>
+  }
+</div>

@@ -128,6 +128,8 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('whiteboard'),
                         t.Literal('kanban'),
                         t.Literal('memo'),
+                        t.Literal('message'),
+                        t.Literal('recording'),
                     ]),
                 ),
                 title: t.Optional(t.String({ maxLength: 255 })),
