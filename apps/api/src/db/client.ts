@@ -167,6 +167,10 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('collectibleregistries').createIndex({ userId: 1, updatedAt: -1 }); // For user's registries
     await database.collection('collectibleregistries').createIndex({ title: 1 }); // For sorted listing
 
+    // Recordings collection
+    await database.collection('recordings').createIndex({ id: 1, userId: 1 }); // For lookup by client-generated ID
+    await database.collection('recordings').createIndex({ userId: 1, createdAt: -1 }); // For user's recordings
+
     console.log('Database indexes created');
 }
 

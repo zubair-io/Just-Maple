@@ -92,22 +92,6 @@ export async function findRecording(id: string, userId: string): Promise<Recordi
 }
 
 /**
- * Find recording by its MongoDB _id
- */
-export async function findRecordingById(id: string, userId: string): Promise<Recording | null> {
-    try {
-        const doc = await getCollection().findOne({
-            _id: new ObjectId(id),
-            userId: new ObjectId(userId),
-        });
-        if (!doc) return null;
-        return toRecordingResponse(doc);
-    } catch {
-        return null;
-    }
-}
-
-/**
  * Update recording state
  */
 export async function updateRecordingState(

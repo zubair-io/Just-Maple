@@ -91,29 +91,12 @@ export class RecordingEmbedComponent {
   });
 
   constructor() {
-    console.log('[RecordingEmbed] Component constructed');
-
     // Load recording when recordingId changes
     effect(() => {
       const id = this.recordingId();
-      console.log('[RecordingEmbed] recordingId effect triggered:', id);
       if (id) {
         this.loadRecording(id);
       }
-    });
-
-    // Debug: log ownership info
-    effect(() => {
-      const currentUserId = this.authService.user()?._id;
-      const creator = this.createdBy();
-      const isOwner = this.isOwner();
-      console.log('[RecordingEmbed] Ownership check:', {
-        recordingId: this.recordingId(),
-        currentUserId,
-        createdBy: creator,
-        isOwner,
-        parentPageId: this.parentPageId(),
-      });
     });
 
     // Subscribe to real-time recording events for non-owners
@@ -121,9 +104,7 @@ export class RecordingEmbedComponent {
       .on('recording.started')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event) => {
-        console.log('[RecordingEmbed] Received recording.started event:', event);
         if (event.id === this.recordingId()) {
-          console.log('[RecordingEmbed] Event matches this recording, isOwner:', this.isOwner());
           // Another user started recording - update state for viewers
           if (!this.isOwner()) {
             this.state.set('recording');
@@ -135,9 +116,7 @@ export class RecordingEmbedComponent {
       .on('recording.completed')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event) => {
-        console.log('[RecordingEmbed] Received recording.completed event:', event);
         if (event.recording.id === this.recordingId()) {
-          console.log('[RecordingEmbed] Event matches this recording');
           // Recording completed - update with full recording data
           this.recording.set(event.recording);
           this.state.set('complete');
@@ -148,7 +127,6 @@ export class RecordingEmbedComponent {
       .on('recording.failed')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event) => {
-        console.log('[RecordingEmbed] Received recording.failed event:', event);
         if (event.id === this.recordingId()) {
           // Recording failed
           this.error.set(event.error || 'Recording failed');
@@ -161,7 +139,6 @@ export class RecordingEmbedComponent {
       .onTranscriptionComplete()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(async (event) => {
-        console.log('[RecordingEmbed] Native transcription complete:', event);
         // Only update if we're the active recording
         if (this.recordingService.activeRecordingId() === this.recordingId()) {
           const recordingId = this.recordingId();
@@ -173,23 +150,17 @@ export class RecordingEmbedComponent {
             end: seg.endTime,
           }));
 
-          // Save transcription to server
-          try {
-            const notebookId = this.parentPageId() || undefined;
-            console.log('[RecordingEmbed] Saving transcription to server...', { notebookId });
-            const updatedRecording = await firstValueFrom(
-              this.recordingService.saveTranscription(
-                recordingId,
-                event.text,
-                mappedSegments,
-                notebookId,
-              ),
-            );
-            console.log('[RecordingEmbed] Transcription saved:', updatedRecording);
-            this.recording.set(updatedRecording);
-          } catch (err) {
-            console.error('[RecordingEmbed] Failed to save transcription:', err);
-            // Still update local state even if server save fails
+          // Save transcription to server with retry
+          const notebookId = this.parentPageId() || undefined;
+          const saved = await this.saveTranscriptionWithRetry(
+            recordingId,
+            event.text,
+            mappedSegments,
+            notebookId,
+          );
+
+          if (!saved) {
+            // Update local state if server save failed after retries
             const current = this.recording();
             if (current) {
               this.recording.set({
@@ -201,6 +172,33 @@ export class RecordingEmbedComponent {
           }
         }
       });
+  }
+
+  /**
+   * Save transcription with retry logic (3 attempts with exponential backoff)
+   */
+  private async saveTranscriptionWithRetry(
+    recordingId: string,
+    text: string,
+    segments: { text: string; start: number; end: number }[] | undefined,
+    notebookId: string | undefined,
+    maxRetries = 3,
+  ): Promise<boolean> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const updatedRecording = await firstValueFrom(
+          this.recordingService.saveTranscription(recordingId, text, segments, notebookId),
+        );
+        this.recording.set(updatedRecording);
+        return true;
+      } catch {
+        if (attempt < maxRetries) {
+          // Exponential backoff: 1s, 2s, 4s
+          await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt - 1) * 1000));
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -243,18 +241,11 @@ export class RecordingEmbedComponent {
     this.error.set(null);
     this.state.set('recording');
 
-    console.log('[RecordingEmbed] startRecording:', {
-      recordingId,
-      notebookId,
-      canUseNative: this.canUseNative(),
-    });
-
     try {
       // Create recording on server first (notebookId enables WebSocket broadcasting)
       const recording = await firstValueFrom(
         this.recordingService.createRecording(recordingId, this.canUseNative(), notebookId),
       );
-      console.log('[RecordingEmbed] Recording created:', recording);
       this.recording.set(recording);
 
       // Start web or native recording
@@ -281,17 +272,9 @@ export class RecordingEmbedComponent {
       if (this.canUseNative()) {
         // Native recording - wait for stop confirmation with audio data
         const result = await firstValueFrom(this.recordingService.stopNativeRecording());
-        console.log('[RecordingEmbed] Native recording stopped, result:', {
-          filePath: result.filePath,
-          duration: result.duration,
-          hasAudioData: !!result.audioData,
-          audioDataLength: result.audioData?.length,
-          mimeType: result.mimeType,
-        });
 
         // If we have audio data, upload it to the server
         if (result.audioData) {
-          console.log('[RecordingEmbed] Uploading native audio to server...');
           // Convert base64 to Blob
           const binaryString = atob(result.audioData);
           const bytes = new Uint8Array(binaryString.length);
@@ -309,12 +292,10 @@ export class RecordingEmbedComponent {
               notebookId,
             ),
           );
-          console.log('[RecordingEmbed] Native audio uploaded:', recording);
           this.recording.set(recording);
           this.state.set('complete');
         } else {
           // No audio data - just update local state
-          console.log('[RecordingEmbed] No audio data from native, updating local state only');
           this.recording.set({
             ...(this.recording() || {}),
             id: recordingId,
