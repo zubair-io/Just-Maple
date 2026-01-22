@@ -4,14 +4,11 @@ import { findUserById } from '../repositories/user.repo';
 import type { JWTPayload } from '@maple/shared';
 import {
     createRecording,
-    findRecordingByRecordingId,
-    findRecordingByDocumentId,
+    findRecording,
     updateRecordingState,
     updateRecordingWithAudio,
-    updateRecordingWithAudioByDocumentId,
     saveRecordingTranscription,
     deleteRecording,
-    deleteRecordingByDocumentId,
 } from '../repositories/recording.repo';
 import {
     uploadRecording as uploadRecordingFile,
@@ -38,15 +35,15 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
         }
     })
 
-    // Get a recording by its recordingId
+    // Get a recording by its id
     .get(
-        '/:recordingId',
+        '/:id',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const recording = await findRecordingByRecordingId(params.recordingId, auth.user._id);
+            const recording = await findRecording(params.id, auth.user._id);
 
             if (!recording) {
                 set.status = 404;
@@ -57,7 +54,7 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
         },
         {
             params: t.Object({
-                recordingId: t.String(),
+                id: t.String(),
             }),
         },
     )
@@ -71,8 +68,7 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
             }
 
             const recording = await createRecording(auth.user._id, {
-                recordingId: body.recordingId,
-                documentId: body.documentId,
+                id: body.id,
                 isMultiTrack: body.isMultiTrack,
             });
 
@@ -80,11 +76,11 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
             if (body.notebookId) {
                 console.log('[Recordings] Broadcasting recording.started:', {
                     notebookId: body.notebookId,
-                    recordingId: recording.recordingId,
+                    id: recording.id,
                 });
                 realtimeWSService.broadcastToNotebookRoom(body.notebookId, {
                     type: 'recording.started',
-                    recordingId: recording.recordingId, // Use the UUID, not MongoDB _id
+                    id: recording.id, // Use the UUID, not MongoDB _id
                     notebookId: body.notebookId,
                 });
             } else {
@@ -95,152 +91,22 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
         },
         {
             body: t.Object({
-                recordingId: t.Optional(t.String()),
-                documentId: t.Optional(t.String()),
+                id: t.String(),
                 isMultiTrack: t.Optional(t.Boolean()),
                 notebookId: t.Optional(t.String()), // Parent memo ID for WebSocket broadcasting
             }),
         },
     )
 
-    // Get a recording by its documentId (new system)
-    .get(
-        '/by-document/:documentId',
-        async ({ auth, params, set }) => {
-            if (!checkAuth(auth, set)) {
-                return { error: 'Unauthorized', message: 'Valid authentication required' };
-            }
-
-            const recording = await findRecordingByDocumentId(params.documentId, auth.user._id);
-
-            if (!recording) {
-                set.status = 404;
-                return { error: 'Recording not found' };
-            }
-
-            return { recording };
-        },
-        {
-            params: t.Object({
-                documentId: t.String(),
-            }),
-        },
-    )
-
-    // Upload audio file by documentId (new system)
-    .post(
-        '/by-document/:documentId/upload',
-        async ({ auth, params, body, set }) => {
-            if (!checkAuth(auth, set)) {
-                return { error: 'Unauthorized', message: 'Valid authentication required' };
-            }
-
-            // First check if the recording exists and belongs to the user
-            const existingRecording = await findRecordingByDocumentId(
-                params.documentId,
-                auth.user._id,
-            );
-            if (!existingRecording) {
-                set.status = 404;
-                return { error: 'Recording not found' };
-            }
-
-            // If there's already an audio file, delete it first
-            if (existingRecording.audioUrl) {
-                await deleteRecordingFile(existingRecording.audioUrl);
-            }
-
-            try {
-                // Decode base64 audio data
-                const audioBuffer = Buffer.from(body.audioData, 'base64');
-
-                // Upload the audio file
-                const audioUrl = await uploadRecordingFile(
-                    params.documentId,
-                    auth.user._id,
-                    audioBuffer,
-                    body.mimeType,
-                );
-
-                // Update the recording with audio details
-                const recording = await updateRecordingWithAudioByDocumentId(
-                    params.documentId,
-                    auth.user._id,
-                    {
-                        audioUrl,
-                        duration: body.duration,
-                        mimeType: body.mimeType,
-                        fileSize: audioBuffer.length,
-                    },
-                );
-
-                if (!recording) {
-                    set.status = 500;
-                    return { error: 'Failed to update recording' };
-                }
-
-                return { recording };
-            } catch (error) {
-                console.error('[Recordings] Upload by documentId failed:', error);
-                set.status = 500;
-                return { error: 'Failed to upload audio' };
-            }
-        },
-        {
-            params: t.Object({
-                documentId: t.String(),
-            }),
-            body: t.Object({
-                audioData: t.String(), // Base64 encoded audio
-                duration: t.Number(),
-                mimeType: t.String(),
-            }),
-        },
-    )
-
-    // Delete a recording by documentId (new system)
-    .delete(
-        '/by-document/:documentId',
-        async ({ auth, params, set }) => {
-            if (!checkAuth(auth, set)) {
-                return { error: 'Unauthorized', message: 'Valid authentication required' };
-            }
-
-            // Get the recording to retrieve the audioUrl
-            const recording = await deleteRecordingByDocumentId(params.documentId, auth.user._id);
-
-            if (!recording) {
-                set.status = 404;
-                return { error: 'Recording not found' };
-            }
-
-            // Delete the audio file from storage
-            if (recording.audioUrl) {
-                await deleteRecordingFile(recording.audioUrl);
-            }
-
-            return { message: 'Recording deleted' };
-        },
-        {
-            params: t.Object({
-                documentId: t.String(),
-            }),
-        },
-    )
-
     // Update recording state (for tracking recording/uploading status)
     .put(
-        '/:recordingId/state',
+        '/:id/state',
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const recording = await updateRecordingState(
-                params.recordingId,
-                auth.user._id,
-                body.state,
-            );
+            const recording = await updateRecordingState(params.id, auth.user._id, body.state);
 
             if (!recording) {
                 set.status = 404;
@@ -251,7 +117,7 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
         },
         {
             params: t.Object({
-                recordingId: t.String(),
+                id: t.String(),
             }),
             body: t.Object({
                 state: t.Union([
@@ -267,17 +133,14 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
 
     // Upload audio file for a recording
     .post(
-        '/:recordingId/upload',
+        '/:id/upload',
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
             // First check if the recording exists and belongs to the user
-            const existingRecording = await findRecordingByRecordingId(
-                params.recordingId,
-                auth.user._id,
-            );
+            const existingRecording = await findRecording(params.id, auth.user._id);
             if (!existingRecording) {
                 set.status = 404;
                 return { error: 'Recording not found' };
@@ -294,23 +157,19 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
 
                 // Upload the audio file
                 const audioUrl = await uploadRecordingFile(
-                    params.recordingId,
+                    params.id,
                     auth.user._id,
                     audioBuffer,
                     body.mimeType,
                 );
 
                 // Update the recording with audio details
-                const recording = await updateRecordingWithAudio(
-                    params.recordingId,
-                    auth.user._id,
-                    {
-                        audioUrl,
-                        duration: body.duration,
-                        mimeType: body.mimeType,
-                        fileSize: audioBuffer.length,
-                    },
-                );
+                const recording = await updateRecordingWithAudio(params.id, auth.user._id, {
+                    audioUrl,
+                    duration: body.duration,
+                    mimeType: body.mimeType,
+                    fileSize: audioBuffer.length,
+                });
 
                 if (!recording) {
                     set.status = 500;
@@ -321,7 +180,7 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
                 if (body.notebookId) {
                     console.log('[Recordings] Broadcasting recording.completed:', {
                         notebookId: body.notebookId,
-                        recordingId: recording.recordingId,
+                        id: recording.id,
                     });
                     realtimeWSService.broadcastToNotebookRoom(body.notebookId, {
                         type: 'recording.completed',
@@ -338,13 +197,13 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
             } catch (error) {
                 console.error('[Recordings] Upload failed:', error);
                 // Mark as failed
-                await updateRecordingState(params.recordingId, auth.user._id, 'failed');
+                await updateRecordingState(params.id, auth.user._id, 'failed');
 
                 // Broadcast recording.failed event
                 if (body.notebookId) {
                     realtimeWSService.broadcastToNotebookRoom(body.notebookId, {
                         type: 'recording.failed',
-                        recordingId: params.recordingId,
+                        id: params.id,
                         error: 'Failed to upload audio',
                         notebookId: body.notebookId,
                     });
@@ -356,7 +215,7 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
         },
         {
             params: t.Object({
-                recordingId: t.String(),
+                id: t.String(),
             }),
             body: t.Object({
                 audioData: t.String(), // Base64 encoded audio
@@ -369,14 +228,14 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
 
     // Save transcription for a recording
     .put(
-        '/:recordingId/transcription',
+        '/:id/transcription',
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
             const recording = await saveRecordingTranscription(
-                params.recordingId,
+                params.id,
                 auth.user._id,
                 body.transcription,
                 body.segments,
@@ -391,7 +250,7 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
             if (body.notebookId) {
                 console.log('[Recordings] Broadcasting recording.completed (transcription):', {
                     notebookId: body.notebookId,
-                    recordingId: recording.recordingId,
+                    id: recording.id,
                 });
                 realtimeWSService.broadcastToNotebookRoom(body.notebookId, {
                     type: 'recording.completed',
@@ -404,7 +263,7 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
         },
         {
             params: t.Object({
-                recordingId: t.String(),
+                id: t.String(),
             }),
             body: t.Object({
                 transcription: t.String(),
@@ -425,14 +284,14 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
 
     // Delete a recording
     .delete(
-        '/:recordingId',
+        '/:id',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
             // Get the recording to retrieve the audioUrl
-            const recording = await deleteRecording(params.recordingId, auth.user._id);
+            const recording = await deleteRecording(params.id, auth.user._id);
 
             if (!recording) {
                 set.status = 404;
@@ -448,7 +307,7 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
         },
         {
             params: t.Object({
-                recordingId: t.String(),
+                id: t.String(),
             }),
         },
     );

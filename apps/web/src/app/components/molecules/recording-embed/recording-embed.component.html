@@ -19,7 +19,7 @@
           </span>
           <span class="record-label">Click to record</span>
         </button>
-        @if (canUseNative()) {
+        @if (showSystemAudioToggle()) {
           <label class="system-audio-toggle">
             <input
               type="checkbox"

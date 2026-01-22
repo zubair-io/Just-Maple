@@ -85,6 +85,11 @@ export class RecordingEmbedComponent {
   // Check if native recording is available
   readonly canUseNative = this.recordingService.canUseNative;
 
+  /** System audio toggle should only show on macOS (not iOS, not web) */
+  readonly showSystemAudioToggle = computed(() => {
+    return this.canUseNative() && this.nativeBridge.isMacOS();
+  });
+
   constructor() {
     console.log('[RecordingEmbed] Component constructed');
 
@@ -117,7 +122,7 @@ export class RecordingEmbedComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event) => {
         console.log('[RecordingEmbed] Received recording.started event:', event);
-        if (event.recordingId === this.recordingId()) {
+        if (event.id === this.recordingId()) {
           console.log('[RecordingEmbed] Event matches this recording, isOwner:', this.isOwner());
           // Another user started recording - update state for viewers
           if (!this.isOwner()) {
@@ -131,7 +136,7 @@ export class RecordingEmbedComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event) => {
         console.log('[RecordingEmbed] Received recording.completed event:', event);
-        if (event.recording.recordingId === this.recordingId()) {
+        if (event.recording.id === this.recordingId()) {
           console.log('[RecordingEmbed] Event matches this recording');
           // Recording completed - update with full recording data
           this.recording.set(event.recording);
@@ -144,7 +149,7 @@ export class RecordingEmbedComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event) => {
         console.log('[RecordingEmbed] Received recording.failed event:', event);
-        if (event.recordingId === this.recordingId()) {
+        if (event.id === this.recordingId()) {
           // Recording failed
           this.error.set(event.error || 'Recording failed');
           this.state.set('failed');
@@ -312,7 +317,7 @@ export class RecordingEmbedComponent {
           console.log('[RecordingEmbed] No audio data from native, updating local state only');
           this.recording.set({
             ...(this.recording() || {}),
-            recordingId,
+            id: recordingId,
             duration: result.duration,
             state: 'complete',
             audioUrl: undefined,

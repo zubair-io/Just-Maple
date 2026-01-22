@@ -3,7 +3,7 @@ import { getDb } from '../db/client';
 
 interface WhiteboardDocument {
     _id: ObjectId;
-    documentId: string; // documentId of the parent page
+    id: string; // id of the parent page
     state: Binary; // Y.Doc encoded state
     version: number;
     updatedAt: Date;
@@ -11,7 +11,7 @@ interface WhiteboardDocument {
 
 export interface Whiteboard {
     _id: string;
-    documentId: string;
+    id: string;
     state: Uint8Array;
     version: number;
     updatedAt: string;
@@ -24,7 +24,7 @@ function getCollection(): Collection<WhiteboardDocument> {
 function toWhiteboardResponse(doc: WhiteboardDocument): Whiteboard {
     return {
         _id: doc._id.toString(),
-        documentId: doc.documentId,
+        id: doc.id,
         state: new Uint8Array(doc.state.buffer),
         version: doc.version,
         updatedAt: doc.updatedAt.toISOString(),
@@ -34,11 +34,11 @@ function toWhiteboardResponse(doc: WhiteboardDocument): Whiteboard {
 /**
  * Create a new whiteboard document
  */
-export async function createWhiteboard(documentId: string, state: Uint8Array): Promise<Whiteboard> {
+export async function createWhiteboard(id: string, state: Uint8Array): Promise<Whiteboard> {
     const now = new Date();
 
     const doc: Omit<WhiteboardDocument, '_id'> = {
-        documentId,
+        id,
         state: new Binary(Buffer.from(state)),
         version: 1,
         updatedAt: now,
@@ -48,7 +48,7 @@ export async function createWhiteboard(documentId: string, state: Uint8Array): P
 
     return {
         _id: result.insertedId.toString(),
-        documentId,
+        id,
         state,
         version: 1,
         updatedAt: now.toISOString(),
@@ -56,11 +56,11 @@ export async function createWhiteboard(documentId: string, state: Uint8Array): P
 }
 
 /**
- * Find whiteboard by the parent page's documentId
+ * Find whiteboard by its id (client-generated UUID)
  */
-export async function findWhiteboardByDocumentId(documentId: string): Promise<Whiteboard | null> {
+export async function findWhiteboard(id: string): Promise<Whiteboard | null> {
     try {
-        const doc = await getCollection().findOne({ documentId });
+        const doc = await getCollection().findOne({ id });
         if (!doc) return null;
         return toWhiteboardResponse(doc);
     } catch {
@@ -69,11 +69,11 @@ export async function findWhiteboardByDocumentId(documentId: string): Promise<Wh
 }
 
 /**
- * Check if whiteboard exists for a given documentId
+ * Check if whiteboard exists for a given id
  */
-export async function whiteboardExists(documentId: string): Promise<boolean> {
+export async function whiteboardExists(id: string): Promise<boolean> {
     try {
-        const count = await getCollection().countDocuments({ documentId }, { limit: 1 });
+        const count = await getCollection().countDocuments({ id }, { limit: 1 });
         return count > 0;
     } catch {
         return false;
@@ -83,9 +83,9 @@ export async function whiteboardExists(documentId: string): Promise<boolean> {
 /**
  * Get whiteboard state as Uint8Array
  */
-export async function getWhiteboardState(documentId: string): Promise<Uint8Array | null> {
+export async function getWhiteboardState(id: string): Promise<Uint8Array | null> {
     try {
-        const doc = await getCollection().findOne({ documentId }, { projection: { state: 1 } });
+        const doc = await getCollection().findOne({ id }, { projection: { state: 1 } });
         if (!doc) return null;
 
         // Convert Binary back to Uint8Array
@@ -100,13 +100,13 @@ export async function getWhiteboardState(documentId: string): Promise<Uint8Array
  * Update whiteboard Y.Doc state (for internal YJS service)
  */
 export async function updateWhiteboardState(
-    documentId: string,
+    id: string,
     state: Uint8Array,
 ): Promise<Whiteboard | null> {
     const now = new Date();
 
     const result = await getCollection().findOneAndUpdate(
-        { documentId },
+        { id },
         {
             $set: {
                 state: new Binary(Buffer.from(state)),
@@ -114,7 +114,7 @@ export async function updateWhiteboardState(
             },
             $inc: { version: 1 },
             $setOnInsert: {
-                documentId,
+                id,
             },
         },
         { returnDocument: 'after', upsert: true },
@@ -126,9 +126,9 @@ export async function updateWhiteboardState(
 /**
  * Delete whiteboard (cascade from page deletion)
  */
-export async function deleteWhiteboard(documentId: string): Promise<boolean> {
+export async function deleteWhiteboard(id: string): Promise<boolean> {
     try {
-        const result = await getCollection().deleteOne({ documentId });
+        const result = await getCollection().deleteOne({ id });
         return result.deletedCount === 1;
     } catch {
         return false;
@@ -138,9 +138,9 @@ export async function deleteWhiteboard(documentId: string): Promise<boolean> {
 /**
  * Get only the version number (for cache validation)
  */
-export async function getWhiteboardVersion(documentId: string): Promise<number | null> {
+export async function getWhiteboardVersion(id: string): Promise<number | null> {
     try {
-        const doc = await getCollection().findOne({ documentId }, { projection: { version: 1 } });
+        const doc = await getCollection().findOne({ id }, { projection: { version: 1 } });
         return doc?.version ?? null;
     } catch {
         return null;

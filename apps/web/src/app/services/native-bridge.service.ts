@@ -57,6 +57,16 @@ export class NativeBridgeService {
     return this._initialState;
   }
 
+  /** Returns the platform ('iOS' or 'macOS') if in native app, null otherwise */
+  getPlatform(): string | null {
+    return this._initialState?.platform || null;
+  }
+
+  /** Returns true if running in native macOS app */
+  isMacOS(): boolean {
+    return this._initialState?.platform === 'macOS';
+  }
+
   // MARK: - Message Reception
 
   private setupMessageReceiver(): void {

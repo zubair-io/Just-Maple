@@ -124,18 +124,14 @@ export class RecordingService {
 
   /**
    * Create a new recording placeholder on the server
-   * @param recordingId - The unique ID for this recording
+   * @param id - The unique ID for this recording (client-generated UUID)
    * @param isMultiTrack - Whether this recording captures multiple audio tracks
    * @param notebookId - The ID of the parent memo/page (for WebSocket broadcasting)
    */
-  createRecording(
-    recordingId: string,
-    isMultiTrack?: boolean,
-    notebookId?: string,
-  ): Observable<Recording> {
+  createRecording(id: string, isMultiTrack?: boolean, notebookId?: string): Observable<Recording> {
     return this.http
       .post<{ recording: Recording }>('/api/recordings', {
-        recordingId,
+        id,
         isMultiTrack,
         notebookId,
       })
@@ -262,99 +258,6 @@ export class RecordingService {
    */
   deleteRecording(recordingId: string): Observable<void> {
     return this.http.delete(`/api/recordings/${recordingId}`).pipe(
-      map(() => undefined),
-      catchError((err) => {
-        const message = err?.error?.error || 'Failed to delete recording';
-        this._error.set(message);
-        return throwError(() => new Error(message));
-      }),
-    );
-  }
-
-  // =========================================================================
-  // API Methods (documentId-based - new system)
-  // =========================================================================
-
-  /**
-   * Create a new recording placeholder using documentId
-   */
-  createRecordingWithDocumentId(documentId: string, isMultiTrack?: boolean): Observable<Recording> {
-    return this.http
-      .post<{ recording: Recording }>('/api/recordings', {
-        documentId,
-        isMultiTrack,
-      })
-      .pipe(
-        map((response) => response.recording),
-        catchError((err) => {
-          const message = err?.error?.error || 'Failed to create recording';
-          this._error.set(message);
-          return throwError(() => new Error(message));
-        }),
-      );
-  }
-
-  /**
-   * Get a recording by its documentId
-   */
-  getRecordingByDocumentId(documentId: string): Observable<Recording | null> {
-    return this.http
-      .get<{ recording: Recording }>(`/api/recordings/by-document/${documentId}`)
-      .pipe(
-        map((response) => response.recording),
-        catchError((err) => {
-          if (err.status === 404) {
-            return of(null);
-          }
-          const message = err?.error?.error || 'Failed to load recording';
-          this._error.set(message);
-          return of(null);
-        }),
-      );
-  }
-
-  /**
-   * Upload audio data for a recording by documentId
-   */
-  uploadRecordingByDocumentId(
-    documentId: string,
-    audioBlob: Blob,
-    duration: number,
-  ): Observable<Recording> {
-    return new Observable<Recording>((subscriber) => {
-      // Convert blob to base64
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = (reader.result as string).split(',')[1];
-
-        this.http
-          .post<{ recording: Recording }>(`/api/recordings/by-document/${documentId}/upload`, {
-            audioData: base64,
-            duration,
-            mimeType: audioBlob.type || 'audio/webm',
-          })
-          .pipe(
-            map((response) => response.recording),
-            catchError((err) => {
-              const message = err?.error?.error || 'Failed to upload recording';
-              this._error.set(message);
-              return throwError(() => new Error(message));
-            }),
-          )
-          .subscribe(subscriber);
-      };
-      reader.onerror = () => {
-        subscriber.error(new Error('Failed to read audio blob'));
-      };
-      reader.readAsDataURL(audioBlob);
-    });
-  }
-
-  /**
-   * Delete a recording by documentId
-   */
-  deleteRecordingByDocumentId(documentId: string): Observable<void> {
-    return this.http.delete(`/api/recordings/by-document/${documentId}`).pipe(
       map(() => undefined),
       catchError((err) => {
         const message = err?.error?.error || 'Failed to delete recording';

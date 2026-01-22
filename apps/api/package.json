@@ -9,8 +9,7 @@
     "start": "bun run --watch src/index.ts",
     "build": "bun run --cwd ../../packages/shared build && bun build src/index.ts --outdir dist --target bun",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "migrate:gravatar": "bun run scripts/migrate-gravatar-profiles.ts"
+    "test": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
@@ -27,6 +26,7 @@
     "@types/ws": "^8.18.1",
     "axios": "^1.13.2",
     "csvtojson": "^2.0.14",
+    "dotenv": "^17.2.3",
     "elysia": "^1.2.0",
     "ioredis": "^5.9.2",
     "markdown-it": "^14.1.0",
