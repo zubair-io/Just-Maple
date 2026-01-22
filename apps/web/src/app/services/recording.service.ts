@@ -88,13 +88,6 @@ export class RecordingService {
       .onRecordingStopped()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event) => {
-        console.log('[RecordingService] Recording stopped event:', {
-          filePath: event.filePath,
-          duration: event.duration,
-          hasAudioData: !!event.audioData,
-          audioDataLength: event.audioData?.length,
-          mimeType: event.mimeType,
-        });
         this._isRecording.set(false);
         this._duration.set(event.duration);
         this._recordingComplete$.next({
@@ -288,9 +281,6 @@ export class RecordingService {
       this.analyser.fftSize = 256;
       source.connect(this.analyser);
 
-      // Start level monitoring
-      this.monitorAudioLevel();
-
       // Set up MediaRecorder
       const mimeType = this.getSupportedMimeType();
       this.mediaRecorder = new MediaRecorder(stream, { mimeType });
@@ -316,6 +306,9 @@ export class RecordingService {
       this.mediaRecorder.start(1000); // Collect data every second
       this._isRecording.set(true);
       this.startTime = Date.now();
+
+      // Start level monitoring AFTER setting isRecording to true
+      this.monitorAudioLevel();
 
       // Start duration counter
       this.durationInterval = setInterval(() => {

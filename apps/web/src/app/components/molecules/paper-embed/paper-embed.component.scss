@@ -1,5 +1,7 @@
 .paper-embed-wrapper {
   margin: 0.5rem 0;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 // Loading state

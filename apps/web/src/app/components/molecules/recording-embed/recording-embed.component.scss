@@ -183,12 +183,18 @@
   gap: 0.5rem;
   padding: 0.5rem 1rem;
   background: #d94e3b;
-  color: white;
+  color: white !important;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   font-weight: 500;
   transition: background 0.2s;
+
+  svg,
+  span {
+    color: white;
+    fill: white;
+  }
 
   &:hover {
     background: #c04432;

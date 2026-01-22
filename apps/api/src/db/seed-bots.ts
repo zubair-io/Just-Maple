@@ -88,10 +88,9 @@ const claudeDefinition: BotDefinition = {
 
 /**
  * Seed bot templates into the database
+ * Uses upsert so it's safe to run on every server boot
  */
 export async function seedBotTemplates(): Promise<void> {
-    console.log('[Seed] Creating bot templates...');
-
     // Hello World Bot
     await upsertBotTemplate('hello', {
         name: 'Hello World',
@@ -102,7 +101,6 @@ export async function seedBotTemplates(): Promise<void> {
         requiresConfig: false,
         isSystemBot: true,
     });
-    console.log('[Seed] Created Hello World bot template');
 
     // Claude Bot
     await upsertBotTemplate('claude', {
@@ -125,7 +123,4 @@ export async function seedBotTemplates(): Promise<void> {
         },
         isSystemBot: true,
     });
-    console.log('[Seed] Created Claude bot template');
-
-    console.log('[Seed] Bot templates seeded successfully');
 }

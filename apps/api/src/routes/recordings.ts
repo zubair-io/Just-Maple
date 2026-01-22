@@ -74,17 +74,11 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
 
             // Broadcast recording.started event to collaborators in the same notebook
             if (body.notebookId) {
-                console.log('[Recordings] Broadcasting recording.started:', {
-                    notebookId: body.notebookId,
-                    id: recording.id,
-                });
                 realtimeWSService.broadcastToNotebookRoom(body.notebookId, {
                     type: 'recording.started',
-                    id: recording.id, // Use the UUID, not MongoDB _id
+                    id: recording.id,
                     notebookId: body.notebookId,
                 });
-            } else {
-                console.log('[Recordings] No notebookId provided, skipping broadcast');
             }
 
             return { recording };
@@ -155,6 +149,16 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
                 // Decode base64 audio data
                 const audioBuffer = Buffer.from(body.audioData, 'base64');
 
+                // Validate file size (50MB limit)
+                const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+                if (audioBuffer.length > MAX_FILE_SIZE) {
+                    set.status = 413;
+                    return {
+                        error: 'File too large',
+                        message: `Audio file exceeds maximum size of 50MB`,
+                    };
+                }
+
                 // Upload the audio file
                 const audioUrl = await uploadRecordingFile(
                     params.id,
@@ -178,24 +182,15 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
 
                 // Broadcast recording.completed event to collaborators in the same notebook
                 if (body.notebookId) {
-                    console.log('[Recordings] Broadcasting recording.completed:', {
-                        notebookId: body.notebookId,
-                        id: recording.id,
-                    });
                     realtimeWSService.broadcastToNotebookRoom(body.notebookId, {
                         type: 'recording.completed',
                         recording,
                         notebookId: body.notebookId,
                     });
-                } else {
-                    console.log(
-                        '[Recordings] No notebookId provided for upload, skipping broadcast',
-                    );
                 }
 
                 return { recording };
-            } catch (error) {
-                console.error('[Recordings] Upload failed:', error);
+            } catch {
                 // Mark as failed
                 await updateRecordingState(params.id, auth.user._id, 'failed');
 
@@ -248,10 +243,6 @@ export const recordingRoutes = new Elysia({ prefix: '/api/recordings' })
 
             // Broadcast recording.completed event to collaborators in the same notebook
             if (body.notebookId) {
-                console.log('[Recordings] Broadcasting recording.completed (transcription):', {
-                    notebookId: body.notebookId,
-                    id: recording.id,
-                });
                 realtimeWSService.broadcastToNotebookRoom(body.notebookId, {
                     type: 'recording.completed',
                     recording,
