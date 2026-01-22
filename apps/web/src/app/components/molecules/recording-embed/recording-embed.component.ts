@@ -15,6 +15,7 @@ import { RecordingService } from '../../../services/recording.service';
 import { AuthService } from '../../../services/auth.service';
 import { RealtimeWSService } from '../../../services/realtime-ws.service';
 import { NativeBridgeService } from '../../../services/native-bridge.service';
+import { WhisperService } from '../../../services/whisper.service';
 import { AudioPlayerComponent } from '../audio-player/audio-player.component';
 import type { Recording } from '@maple/shared';
 import { firstValueFrom } from 'rxjs';
@@ -35,6 +36,7 @@ export class RecordingEmbedComponent {
   private readonly authService = inject(AuthService);
   private readonly realtimeWS = inject(RealtimeWSService);
   private readonly nativeBridge = inject(NativeBridgeService);
+  private readonly whisperService = inject(WhisperService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly recordingId = input.required<string>();
@@ -89,6 +91,12 @@ export class RecordingEmbedComponent {
   readonly showSystemAudioToggle = computed(() => {
     return this.canUseNative() && this.nativeBridge.isMacOS();
   });
+
+  /** Whether web transcription is currently in progress */
+  readonly isTranscribing = computed(() => this.whisperService.isTranscribing());
+
+  /** Transcription model loading progress */
+  readonly transcriptionProgress = this.whisperService.progress;
 
   constructor() {
     // Load recording when recordingId changes
@@ -311,11 +319,30 @@ export class RecordingEmbedComponent {
         const blob = await this.recordingService.stopWebRecording();
         if (blob) {
           const duration = this.recordingService.duration();
-          const recording = await firstValueFrom(
+
+          // Upload audio (runs in parallel with transcription)
+          const uploadPromise = firstValueFrom(
             this.recordingService.uploadRecording(recordingId, blob, duration, notebookId),
           );
+
+          // Transcribe locally (runs in parallel with upload)
+          const transcribePromise = this.whisperService.transcribe(blob);
+
+          // Wait for upload first - user sees complete state sooner
+          const recording = await uploadPromise;
           this.recording.set(recording);
           this.state.set('complete');
+
+          // Then save transcription when ready (non-blocking)
+          try {
+            const { text, segments } = await transcribePromise;
+            if (text) {
+              await this.saveTranscriptionWithRetry(recordingId, text, segments, notebookId);
+            }
+          } catch (err) {
+            // Transcription failed but recording saved - non-fatal
+            console.warn('Local transcription failed:', err);
+          }
         } else {
           throw new Error('No recording data');
         }

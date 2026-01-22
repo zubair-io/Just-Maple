@@ -100,7 +100,21 @@
         </div>
       }
 
-      @if (recording()!.transcription) {
+      @if (isTranscribing()) {
+        <div class="transcription-progress">
+          <div class="loading-spinner"></div>
+          <span class="transcription-status">
+            @if (transcriptionProgress()?.status === 'download') {
+              Downloading model...
+              @if (transcriptionProgress()?.progress) {
+                {{ transcriptionProgress()!.progress! * 100 | number: '1.0-0' }}%
+              }
+            } @else {
+              Transcribing...
+            }
+          </span>
+        </div>
+      } @else if (recording()!.transcription) {
         <div class="transcription">
           <div class="transcription-label">Transcription</div>
           <div class="transcription-text">{{ recording()!.transcription }}</div>
