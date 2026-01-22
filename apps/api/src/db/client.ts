@@ -37,7 +37,7 @@ export async function connectToDatabase(): Promise<Db> {
 }
 
 /**
- * Helper to create a unique index with error handling for duplicates
+ * Helper to create a unique index with error handling for duplicates and conflicts
  */
 async function createUniqueIndex(
     database: Db,
@@ -48,9 +48,11 @@ async function createUniqueIndex(
     try {
         await database.collection(collection).createIndex(indexSpec, { unique: true });
     } catch (e: any) {
-        if (e.code === 67) {
+        // 67 = CannotCreateIndex (duplicate data prevents unique index)
+        // 85 = IndexOptionsConflict (index exists with different options, e.g. non-unique)
+        if (e.code === 67 || e.code === 85) {
             console.warn(
-                `Warning: Could not create unique index on ${collection}.${indexName} - possible duplicate data`,
+                `Warning: Could not create unique index on ${collection}.${indexName} - ${e.code === 85 ? 'index exists with different options' : 'possible duplicate data'}`,
             );
         } else {
             throw e;
@@ -109,9 +111,9 @@ async function createIndexes(database: Db): Promise<void> {
             .collection('unread_tracking')
             .createIndex({ userId: 1, tagId: 1 }, { unique: true });
     } catch (e: any) {
-        if (e.code === 67) {
+        if (e.code === 67 || e.code === 85) {
             console.warn(
-                'Warning: Could not create unique index on unread_tracking.userId+tagId - possible duplicate data',
+                'Warning: Could not create unique index on unread_tracking.userId+tagId - possible duplicate data or index conflict',
             );
         } else {
             throw e;
@@ -127,9 +129,9 @@ async function createIndexes(database: Db): Promise<void> {
             .collection('user_bots')
             .createIndex({ userId: 1, handle: 1 }, { unique: true });
     } catch (e: any) {
-        if (e.code === 67) {
+        if (e.code === 67 || e.code === 85) {
             console.warn(
-                'Warning: Could not create unique index on user_bots.userId+handle - possible duplicate data',
+                'Warning: Could not create unique index on user_bots.userId+handle - possible duplicate data or index conflict',
             );
         } else {
             throw e;

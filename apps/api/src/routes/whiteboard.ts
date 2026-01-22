@@ -39,17 +39,17 @@ export const whiteboardRoutes = new Elysia({ prefix: '/api/whiteboards' })
      * Used for first sync of offline-created whiteboards
      */
     .post(
-        '/:documentId/init',
+        '/:id/init',
         async ({ auth, params, request, set }) => {
             if (!auth) {
                 set.status = 401;
                 return { error: 'Unauthorized' };
             }
 
-            const { documentId } = params;
+            const { id } = params;
 
             // Verify page exists and user has access
-            const page = await findPageByDocumentId(documentId, auth.user._id);
+            const page = await findPageByDocumentId(id, auth.user._id);
             if (!page) {
                 set.status = 404;
                 return { error: 'Page not found' };
@@ -67,24 +67,19 @@ export const whiteboardRoutes = new Elysia({ prefix: '/api/whiteboards' })
                 const state = new Uint8Array(arrayBuffer);
 
                 // Initialize whiteboard with the state
-                const mergedState = await yjsWhiteboardService.initializeWhiteboard(
-                    documentId,
-                    state,
-                );
+                const mergedState = await yjsWhiteboardService.initializeWhiteboard(id, state);
 
                 // Return merged state as base64
                 const base64State = Buffer.from(mergedState).toString('base64');
 
-                console.log(
-                    `[Whiteboard] Initialized whiteboard ${documentId} with ${state.length} bytes`,
-                );
+                console.log(`[Whiteboard] Initialized whiteboard ${id} with ${state.length} bytes`);
 
                 return {
                     success: true,
                     state: base64State,
                 };
             } catch (error) {
-                console.error(`[Whiteboard] Failed to initialize ${documentId}:`, error);
+                console.error(`[Whiteboard] Failed to initialize ${id}:`, error);
                 set.status = 500;
                 return { error: 'Failed to initialize whiteboard' };
             }
@@ -97,16 +92,16 @@ export const whiteboardRoutes = new Elysia({ prefix: '/api/whiteboards' })
      * Get whiteboard Y.js state
      * Used for fetching initial state when WebSocket is slow or unavailable
      */
-    .get('/:documentId/state', async ({ auth, params, set }) => {
+    .get('/:id/state', async ({ auth, params, set }) => {
         if (!auth) {
             set.status = 401;
             return { error: 'Unauthorized' };
         }
 
-        const { documentId } = params;
+        const { id } = params;
 
         // Verify page exists and user has access
-        const page = await findPageByDocumentId(documentId, auth.user._id);
+        const page = await findPageByDocumentId(id, auth.user._id);
         if (!page) {
             set.status = 404;
             return { error: 'Page not found' };
@@ -120,7 +115,7 @@ export const whiteboardRoutes = new Elysia({ prefix: '/api/whiteboards' })
 
         try {
             // Get the current state
-            const state = await yjsWhiteboardService.getStateAsUpdate(documentId);
+            const state = await yjsWhiteboardService.getStateAsUpdate(id);
 
             // Return as base64
             const base64State = Buffer.from(state).toString('base64');
@@ -129,7 +124,7 @@ export const whiteboardRoutes = new Elysia({ prefix: '/api/whiteboards' })
                 state: base64State,
             };
         } catch (error) {
-            console.error(`[Whiteboard] Failed to get state for ${documentId}:`, error);
+            console.error(`[Whiteboard] Failed to get state for ${id}:`, error);
             set.status = 500;
             return { error: 'Failed to get whiteboard state' };
         }

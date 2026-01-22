@@ -9,8 +9,7 @@ import type {
 
 interface RecordingDocument {
     _id: ObjectId;
-    recordingId: string; // Unique ID used in TipTap node (legacy)
-    documentId?: string; // Links to page.documentId (new system)
+    id: string; // Unique ID used in TipTap node (client-generated UUID)
     userId: ObjectId;
     audioUrl?: string;
     duration?: number;
@@ -31,8 +30,7 @@ function getCollection(): Collection<RecordingDocument> {
 function toRecordingResponse(doc: RecordingDocument): Recording {
     return {
         _id: doc._id.toString(),
-        recordingId: doc.recordingId,
-        documentId: doc.documentId,
+        id: doc.id,
         userId: doc.userId.toString(),
         audioUrl: doc.audioUrl,
         duration: doc.duration,
@@ -55,11 +53,8 @@ export async function createRecording(
     data: CreateRecordingInput,
 ): Promise<Recording> {
     const now = new Date();
-    // Use documentId as recordingId if no recordingId provided (for backward compatibility)
-    const recordingId = data.recordingId || data.documentId || '';
     const doc: Omit<RecordingDocument, '_id'> = {
-        recordingId,
-        documentId: data.documentId,
+        id: data.id,
         userId: new ObjectId(userId),
         state: 'empty',
         isMultiTrack: data.isMultiTrack,
@@ -71,8 +66,7 @@ export async function createRecording(
 
     return {
         _id: result.insertedId.toString(),
-        recordingId,
-        documentId: data.documentId,
+        id: data.id,
         userId: userId,
         state: 'empty',
         isMultiTrack: data.isMultiTrack,
@@ -82,34 +76,12 @@ export async function createRecording(
 }
 
 /**
- * Find recording by its unique recordingId (legacy)
+ * Find recording by its id (client-generated UUID)
  */
-export async function findRecordingByRecordingId(
-    recordingId: string,
-    userId: string,
-): Promise<Recording | null> {
+export async function findRecording(id: string, userId: string): Promise<Recording | null> {
     try {
         const doc = await getCollection().findOne({
-            recordingId,
-            userId: new ObjectId(userId),
-        });
-        if (!doc) return null;
-        return toRecordingResponse(doc);
-    } catch {
-        return null;
-    }
-}
-
-/**
- * Find recording by its documentId (new system)
- */
-export async function findRecordingByDocumentId(
-    documentId: string,
-    userId: string,
-): Promise<Recording | null> {
-    try {
-        const doc = await getCollection().findOne({
-            documentId,
+            id,
             userId: new ObjectId(userId),
         });
         if (!doc) return null;
@@ -139,14 +111,14 @@ export async function findRecordingById(id: string, userId: string): Promise<Rec
  * Update recording state
  */
 export async function updateRecordingState(
-    recordingId: string,
+    id: string,
     userId: string,
     state: RecordingState,
 ): Promise<Recording | null> {
     try {
         const result = await getCollection().findOneAndUpdate(
             {
-                recordingId,
+                id,
                 userId: new ObjectId(userId),
             },
             {
@@ -167,7 +139,7 @@ export async function updateRecordingState(
  * Update recording with audio upload details
  */
 export async function updateRecordingWithAudio(
-    recordingId: string,
+    id: string,
     userId: string,
     data: {
         audioUrl: string;
@@ -179,7 +151,7 @@ export async function updateRecordingWithAudio(
     try {
         const result = await getCollection().findOneAndUpdate(
             {
-                recordingId,
+                id,
                 userId: new ObjectId(userId),
             },
             {
@@ -204,7 +176,7 @@ export async function updateRecordingWithAudio(
  * Save transcription for a recording
  */
 export async function saveRecordingTranscription(
-    recordingId: string,
+    id: string,
     userId: string,
     transcription: string,
     segments?: TranscriptSegment[],
@@ -220,7 +192,7 @@ export async function saveRecordingTranscription(
 
         const result = await getCollection().findOneAndUpdate(
             {
-                recordingId,
+                id,
                 userId: new ObjectId(userId),
             },
             { $set: updateData },
@@ -233,89 +205,23 @@ export async function saveRecordingTranscription(
 }
 
 /**
- * Delete a recording by its recordingId (legacy)
+ * Delete a recording by its id
  */
-export async function deleteRecording(
-    recordingId: string,
-    userId: string,
-): Promise<Recording | null> {
+export async function deleteRecording(id: string, userId: string): Promise<Recording | null> {
     try {
         // First get the recording to return it and get the audioUrl for cleanup
         const doc = await getCollection().findOne({
-            recordingId,
+            id,
             userId: new ObjectId(userId),
         });
         if (!doc) return null;
 
         await getCollection().deleteOne({
-            recordingId,
+            id,
             userId: new ObjectId(userId),
         });
 
         return toRecordingResponse(doc);
-    } catch {
-        return null;
-    }
-}
-
-/**
- * Delete a recording by its documentId (new system)
- */
-export async function deleteRecordingByDocumentId(
-    documentId: string,
-    userId: string,
-): Promise<Recording | null> {
-    try {
-        // First get the recording to return it and get the audioUrl for cleanup
-        const doc = await getCollection().findOne({
-            documentId,
-            userId: new ObjectId(userId),
-        });
-        if (!doc) return null;
-
-        await getCollection().deleteOne({
-            documentId,
-            userId: new ObjectId(userId),
-        });
-
-        return toRecordingResponse(doc);
-    } catch {
-        return null;
-    }
-}
-
-/**
- * Update recording with audio upload details by documentId
- */
-export async function updateRecordingWithAudioByDocumentId(
-    documentId: string,
-    userId: string,
-    data: {
-        audioUrl: string;
-        duration: number;
-        mimeType: string;
-        fileSize: number;
-    },
-): Promise<Recording | null> {
-    try {
-        const result = await getCollection().findOneAndUpdate(
-            {
-                documentId,
-                userId: new ObjectId(userId),
-            },
-            {
-                $set: {
-                    audioUrl: data.audioUrl,
-                    duration: data.duration,
-                    mimeType: data.mimeType,
-                    fileSize: data.fileSize,
-                    state: 'complete' as RecordingState,
-                    updatedAt: new Date(),
-                },
-            },
-            { returnDocument: 'after' },
-        );
-        return result ? toRecordingResponse(result) : null;
     } catch {
         return null;
     }

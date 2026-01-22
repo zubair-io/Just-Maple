@@ -23,9 +23,9 @@ export type AppEvent =
   | { type: 'collectable.created'; collectable: Collectable; notebookId: string }
   | { type: 'collectable.updated'; collectable: Collectable; notebookId: string }
   | { type: 'collectable.deleted'; collectableId: string; notebookId: string }
-  | { type: 'recording.started'; recordingId: string; notebookId?: string }
+  | { type: 'recording.started'; id: string; notebookId?: string }
   | { type: 'recording.completed'; recording: Recording; notebookId?: string }
-  | { type: 'recording.failed'; recordingId: string; error?: string; notebookId?: string };
+  | { type: 'recording.failed'; id: string; error?: string; notebookId?: string };
 
 /**
  * Message from server

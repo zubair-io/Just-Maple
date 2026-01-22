@@ -24,8 +24,7 @@ export type TranscriptSegment = Static<typeof TranscriptSegmentSchema>;
 // Main recording schema
 export const RecordingSchema = Type.Object({
     _id: Type.String(),
-    recordingId: Type.String(), // Unique ID used in TipTap node (nanoid) - DEPRECATED, use documentId
-    documentId: Type.Optional(Type.String()), // Links to page.documentId (new system)
+    id: Type.String(), // Client-generated UUID, links TipTap node to this record
     userId: Type.String(),
     audioUrl: Type.Optional(Type.String()), // URL to audio file in storage
     duration: Type.Optional(Type.Number()), // Duration in seconds
@@ -43,8 +42,7 @@ export type Recording = Static<typeof RecordingSchema>;
 
 // Input for creating a new recording placeholder
 export const CreateRecordingSchema = Type.Object({
-    recordingId: Type.Optional(Type.String()), // Client-generated unique ID - DEPRECATED
-    documentId: Type.Optional(Type.String()), // Links to page.documentId (new system)
+    id: Type.String(), // Client-generated UUID
     isMultiTrack: Type.Optional(Type.Boolean()),
 });
 
