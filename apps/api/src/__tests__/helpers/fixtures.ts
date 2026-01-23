@@ -1,13 +1,11 @@
 import { ObjectId } from 'mongodb';
-import { randomBytes } from 'crypto';
-import { customAlphabet } from 'nanoid';
+import { randomBytes, randomUUID } from 'crypto';
 import { testDb } from '../setup';
 
-// Same documentId generator as in page.repo.ts
-const nanoidBase58 = customAlphabet(
-    '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
-    32,
-);
+// Generate UUID v4 for page IDs (same as page.repo.ts)
+function generatePageId(): string {
+    return randomUUID();
+}
 
 export interface UserDoc {
     _id: ObjectId;
@@ -374,11 +372,11 @@ export async function createBotInvocationFixture(
 
 export interface PageDoc {
     _id: ObjectId;
+    id: string; // UUID v4 for routing (was documentId)
     userId: ObjectId;
-    type: 'write' | 'collectable' | 'memo' | 'whiteboard' | 'kanban';
+    type: 'memo' | 'collectable' | 'whiteboard' | 'kanban' | 'message' | 'recording';
     title: string;
     content: any;
-    documentId: string;
     version: number;
     tagId?: ObjectId;
     isFavorite?: boolean;
@@ -391,10 +389,10 @@ export interface PageDoc {
 
 export interface CreatePageOptions {
     userId?: string;
-    type?: 'write' | 'collectable' | 'memo' | 'whiteboard' | 'kanban';
+    type?: 'memo' | 'collectable' | 'whiteboard' | 'kanban' | 'message' | 'recording';
     title?: string;
     content?: any;
-    documentId?: string;
+    id?: string;
     version?: number;
     tagId?: string;
     isFavorite?: boolean;
@@ -408,11 +406,11 @@ export async function createPageFixture(options: CreatePageOptions = {}): Promis
 
     const doc: PageDoc = {
         _id: new ObjectId(),
+        id: options.id || generatePageId(),
         userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
-        type: options.type || 'write',
+        type: options.type || 'memo',
         title: options.title || 'Test Page',
         content: options.content || { type: 'doc', content: [] },
-        documentId: options.documentId || nanoidBase58(),
         version: options.version ?? 1,
         tagId: options.tagId ? new ObjectId(options.tagId) : undefined,
         isFavorite: options.isFavorite ?? false,

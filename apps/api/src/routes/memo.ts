@@ -2,7 +2,7 @@ import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
-import { findPageByDocumentId } from '../repositories/page.repo';
+import { findPageById } from '../repositories/page.repo';
 import { yjsDocumentService } from '../services/yjs-document.service';
 import type { JWTPayload } from '@maple/shared';
 
@@ -44,7 +44,7 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
             const { noteId } = params;
 
             // Verify page exists and user has access (noteId is the documentId)
-            const page = await findPageByDocumentId(noteId, auth.user._id);
+            const page = await findPageById(noteId, auth.user._id);
             if (!page) {
                 set.status = 404;
                 return { error: 'Page not found' };
@@ -96,7 +96,7 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
         const { noteId } = params;
 
         // Verify page exists and user has access (noteId is the documentId)
-        const page = await findPageByDocumentId(noteId, auth.user._id);
+        const page = await findPageById(noteId, auth.user._id);
         if (!page) {
             set.status = 404;
             return { error: 'Page not found' };

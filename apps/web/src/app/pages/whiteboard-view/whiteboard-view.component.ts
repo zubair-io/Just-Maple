@@ -25,7 +25,7 @@ export class WhiteboardViewComponent implements OnDestroy {
 
   private routeSubscription?: Subscription;
 
-  readonly documentId = signal<string | null>(null);
+  readonly pageId = signal<string | null>(null);
   readonly notebookId = signal<string | null>(null);
 
   // Get the page from the store
@@ -39,13 +39,13 @@ export class WhiteboardViewComponent implements OnDestroy {
   constructor() {
     // Subscribe to route params
     this.routeSubscription = this.route.params.subscribe((params) => {
-      const documentId = params['documentId'] || null;
+      const id = params['id'] || null;
       const notebookId = params['tagId'] || null;
-      this.documentId.set(documentId);
+      this.pageId.set(id);
       this.notebookId.set(notebookId);
 
-      if (documentId) {
-        this.pageService.setActivePageId(documentId);
+      if (id) {
+        this.pageService.setActivePageId(id);
       }
     });
   }
@@ -56,9 +56,9 @@ export class WhiteboardViewComponent implements OnDestroy {
 
   toggleFavorite(): void {
     const page = this.selectedPage();
-    if (!page?._id) return;
+    if (!page?.id) return;
 
-    this.pageService.toggleFavorite(page._id).subscribe({
+    this.pageService.toggleFavorite(page.id).subscribe({
       error: (error) => {
         console.error('Failed to toggle favorite:', error);
       },

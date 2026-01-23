@@ -43,7 +43,7 @@ import { Subscription, filter } from 'rxjs';
       <!-- Thread messages -->
       @if (isExpanded()) {
         <div class="thread-messages space-y-3">
-          @for (message of threadMessages(); track message._id) {
+          @for (message of threadMessages(); track message.id) {
             <div class="flex gap-3">
               <!-- Avatar -->
               <div class="shrink-0">
@@ -184,7 +184,7 @@ export class ChatThreadComponent implements OnInit, OnDestroy {
           // Add the new message to the thread
           this.threadMessages.update((messages) => {
             // Avoid duplicates
-            if (messages.some((m) => m._id === newMessage._id)) {
+            if (messages.some((m) => m.id === newMessage.id)) {
               return messages;
             }
             return [...messages, newMessage];

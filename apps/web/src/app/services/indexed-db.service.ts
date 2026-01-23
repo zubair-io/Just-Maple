@@ -22,14 +22,14 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 8,
+    dbVersion: 11, // Bump version for message id migration
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.COLLECTABLE, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.NOTEBOOK, keyPath: '_id', autoIncrement: false },
-      { name: DB_STORES.PAGE, keyPath: 'documentId', autoIncrement: false },
+      { name: DB_STORES.PAGE, keyPath: 'id', autoIncrement: false },
       { name: DB_STORES.SYNC_METADATA, keyPath: 'key', autoIncrement: false },
-      { name: DB_STORES.MESSAGE, keyPath: '_id', autoIncrement: false },
+      { name: DB_STORES.MESSAGE, keyPath: 'id', autoIncrement: false },
       { name: DB_STORES.OFFLINE_QUEUE, keyPath: 'id', autoIncrement: false },
     ],
   };
@@ -47,13 +47,19 @@ export class IndexedDBService {
 
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
+
+        // Delete existing stores that need schema changes
+        // This clears cached data but ensures correct keyPaths
+        for (const storeName of db.objectStoreNames) {
+          db.deleteObjectStore(storeName);
+        }
+
+        // Recreate all stores with current schema
         this.config.stores.forEach((store) => {
-          if (!db.objectStoreNames.contains(store.name)) {
-            db.createObjectStore(store.name, {
-              keyPath: store.keyPath,
-              autoIncrement: store.autoIncrement,
-            });
-          }
+          db.createObjectStore(store.name, {
+            keyPath: store.keyPath,
+            autoIncrement: store.autoIncrement,
+          });
         });
       };
 

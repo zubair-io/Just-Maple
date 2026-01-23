@@ -1,0 +1,16 @@
+[Unit]
+Description=Just Maple Note-Taking App
+After=home.mount
+
+[Service]
+Type=simple
+ExecStart=/home/root/.local/bin/justmaple-remarkable
+Restart=on-failure
+RestartSec=5
+Environment=MAPLE_API_URL=https://api.justmaple.app
+Environment=MAPLE_WS_URL=wss://api.justmaple.app/ws
+Environment=MAPLE_STORAGE_PATH=/home/root/.local/share/justmaple
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target

@@ -6,7 +6,6 @@ import { switchMap, catchError, tap, map } from 'rxjs/operators';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { Awareness } from 'y-protocols/awareness';
-import { customAlphabet } from 'nanoid';
 import { AuthService } from './auth.service';
 import { ConnectivityService } from './connectivity.service';
 import { OfflineQueueService } from './offline-queue.service';
@@ -17,11 +16,10 @@ import { YJSWSProvider } from './yjs-ws-provider';
 import { getUserColor } from '../utils/user-colors';
 import type { Page, SyncStatus } from '@maple/shared';
 
-// Generate document IDs (base58, URL-safe)
-const nanoidBase58 = customAlphabet(
-  '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
-  32,
-);
+// Generate UUID v4 for page IDs
+function generatePageId(): string {
+  return crypto.randomUUID();
+}
 
 /**
  * Open document state
@@ -368,7 +366,7 @@ export class MemoDocumentService {
     awareness: Awareness;
   }> {
     // Generate IDs locally
-    const documentId = nanoidBase58();
+    const pageId = generatePageId();
     const now = new Date().toISOString();
 
     // Create Y.Doc
@@ -382,17 +380,17 @@ export class MemoDocumentService {
     this.setupAwareness(awareness);
 
     // Setup local persistence immediately
-    const persistence = new IndexeddbPersistence(`ydoc-${documentId}`, ydoc);
+    const persistence = new IndexeddbPersistence(`ydoc-${pageId}`, ydoc);
     await persistence.whenSynced;
 
     // Create page metadata locally
     const page: Page = {
-      _id: documentId, // Temporary, will be replaced by server
+      _id: pageId, // Temporary, will be replaced by server
+      id: pageId,
       userId: this.authService.user()?._id || '',
       type: 'memo',
       title: 'Untitled Memo',
       content: { type: 'doc', content: [] },
-      documentId,
       tagId: notebookId,
       isFavorite: false,
       isArchived: false,
@@ -407,17 +405,17 @@ export class MemoDocumentService {
     await this.pageService.persistToIndexedDB([page]);
 
     // Queue for server sync
-    await this.offlineQueue.enqueue('create-note', documentId, documentId, {
+    await this.offlineQueue.enqueue('create-note', pageId, pageId, {
       type: 'memo',
       title: page.title,
       tagId: notebookId,
-      documentId,
+      id: pageId,
     });
 
     // Queue memo Y.Doc sync
     // Store as Array for IndexedDB serialization, convert back when processing
     const state = Y.encodeStateAsUpdate(ydoc);
-    await this.offlineQueue.enqueue('sync-notebook', documentId, documentId, {
+    await this.offlineQueue.enqueue('sync-notebook', pageId, pageId, {
       state: Array.from(state),
       pageType: 'memo',
     });
@@ -429,17 +427,17 @@ export class MemoDocumentService {
       persistence,
       wsProvider: null,
     };
-    this.openDocs.set(documentId, doc);
+    this.openDocs.set(pageId, doc);
 
     // Update sync status
-    this.updateSyncStatus(documentId, 'pending');
+    this.updateSyncStatus(pageId, 'pending');
 
     // Connect if online - but wait for page to be created on server first
     if (this.connectivity.canSync()) {
       // Wait for the create-page action to complete before connecting WS
-      const created = await this.offlineQueue.waitForAction(documentId, 'create-note', 10000);
+      const created = await this.offlineQueue.waitForAction(pageId, 'create-note', 10000);
       if (created) {
-        await this.connectProviders(documentId, doc);
+        await this.connectProviders(pageId, doc);
       }
     }
 

@@ -6,7 +6,6 @@ import { switchMap, catchError, tap, map } from 'rxjs/operators';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { Awareness } from 'y-protocols/awareness';
-import { customAlphabet } from 'nanoid';
 import { AuthService } from './auth.service';
 import { ConnectivityService } from './connectivity.service';
 import { OfflineQueueService } from './offline-queue.service';
@@ -17,11 +16,10 @@ import { YJSWSProvider } from './yjs-ws-provider';
 import { getUserColor } from '../utils/user-colors';
 import type { Page, SyncStatus, Camera, Layer, WhiteboardElement } from '@maple/shared';
 
-// Generate document IDs (base58, URL-safe)
-const nanoidBase58 = customAlphabet(
-  '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
-  32,
-);
+// Generate UUID v4 for page IDs
+function generatePageId(): string {
+  return crypto.randomUUID();
+}
 
 /**
  * Open whiteboard document state
@@ -181,7 +179,7 @@ export class WhiteboardDocumentService {
     // Create default layer
     if (layers.length === 0) {
       const defaultLayer = new Y.Map<unknown>();
-      const layerId = nanoidBase58();
+      const layerId = generatePageId();
       defaultLayer.set('id', layerId);
       defaultLayer.set('name', 'Layer 1');
       defaultLayer.set('visible', true);
@@ -553,7 +551,7 @@ export class WhiteboardDocumentService {
     page: Page;
     whiteboard: WhiteboardYDoc;
   }> {
-    const documentId = nanoidBase58();
+    const pageId = generatePageId();
     const now = new Date().toISOString();
 
     // Create Y.Doc
@@ -567,17 +565,17 @@ export class WhiteboardDocumentService {
     this.setupAwareness(awareness);
 
     // Setup local persistence
-    const persistence = new IndexeddbPersistence(`ydoc-whiteboard-${documentId}`, ydoc);
+    const persistence = new IndexeddbPersistence(`ydoc-whiteboard-${pageId}`, ydoc);
     await persistence.whenSynced;
 
     // Create page metadata
     const page: Page = {
-      _id: documentId,
+      _id: pageId,
+      id: pageId,
       userId: this.authService.user()?._id || '',
       type: 'whiteboard',
       title: 'Untitled Whiteboard',
       content: { type: 'doc', content: [] },
-      documentId,
       tagId: notebookId,
       isFavorite: false,
       isArchived: false,
@@ -591,16 +589,16 @@ export class WhiteboardDocumentService {
     await this.pageService.persistToIndexedDB([page]);
 
     // Queue for server sync
-    await this.offlineQueue.enqueue('create-note', documentId, documentId, {
+    await this.offlineQueue.enqueue('create-note', pageId, pageId, {
       type: 'whiteboard',
       title: page.title,
       tagId: notebookId,
-      documentId,
+      id: pageId,
     });
 
     // Queue Y.Doc sync
     const state = Y.encodeStateAsUpdate(ydoc);
-    await this.offlineQueue.enqueue('sync-notebook', documentId, documentId, {
+    await this.offlineQueue.enqueue('sync-notebook', pageId, pageId, {
       state: Array.from(state),
       pageType: 'whiteboard',
     });
@@ -612,16 +610,16 @@ export class WhiteboardDocumentService {
       persistence,
       wsProvider: null,
     };
-    this.openDocs.set(documentId, doc);
+    this.openDocs.set(pageId, doc);
 
     // Update sync status
-    this.updateSyncStatus(documentId, 'pending');
+    this.updateSyncStatus(pageId, 'pending');
 
     // Connect if online
     if (this.connectivity.canSync()) {
-      const created = await this.offlineQueue.waitForAction(documentId, 'create-note', 10000);
+      const created = await this.offlineQueue.waitForAction(pageId, 'create-note', 10000);
       if (created) {
-        await this.connectProviders(documentId, doc);
+        await this.connectProviders(pageId, doc);
       }
     }
 

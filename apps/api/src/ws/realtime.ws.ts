@@ -9,7 +9,7 @@ import {
 } from '../repositories/notebook.repo';
 import { sendMessageReceivedNotification } from '../services/notification.service';
 import { findUserById } from '../repositories/user.repo';
-import { findPageByDocumentId } from '../repositories/page.repo';
+import { findPageById } from '../repositories/page.repo';
 import { createMessage } from '../repositories/message.repo';
 import {
     findCollectableById,
@@ -206,11 +206,11 @@ async function handleMemoMessage(
             console.log(`[Memo] Join request for noteId: ${noteId}, parentPageId: ${parentPageId}`);
 
             // Verify user has access to this page (must be notebook or whiteboard type)
-            let page = await findPageByDocumentId(noteId, context.userId);
+            let page = await findPageById(noteId, context.userId);
 
             // If no page found but parentPageId provided, check access to parent (embedded whiteboard)
             if (!page && parentPageId) {
-                const parentPage = await findPageByDocumentId(parentPageId, context.userId);
+                const parentPage = await findPageById(parentPageId, context.userId);
                 if (parentPage && parentPage.type === 'memo') {
                     console.log(
                         `[Memo] Embedded whiteboard - authorized via parent memo: ${parentPageId}`,

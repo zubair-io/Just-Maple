@@ -110,10 +110,10 @@ export class HomeComponent implements OnInit, OnDestroy {
     }
 
     if (segments.length >= 2) {
-      // Second segment is documentId - find page by documentId and set selectedPageId to _id
-      const documentId = segments[1];
-      const page = this.pageService.pages().find((n) => n.documentId === documentId);
-      this.selectedPageId.set(page?._id || null);
+      // Second segment is id - find page by id and set selectedPageId
+      const id = segments[1];
+      const page = this.pageService.pages().find((n) => n.id === id);
+      this.selectedPageId.set(page?.id || null);
     }
   }
 
@@ -146,11 +146,11 @@ export class HomeComponent implements OnInit, OnDestroy {
         (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       );
       const lastPage = sortedPages[0];
-      const urlParam = lastPage.documentId;
+      const urlParam = lastPage.id;
       if (lastPage.tagId) {
         this.router.navigate(['/', lastPage.tagId, urlParam]);
       } else {
-        this.selectedPageId.set(lastPage._id);
+        this.selectedPageId.set(lastPage.id);
       }
     }
   }
@@ -193,7 +193,7 @@ export class HomeComponent implements OnInit, OnDestroy {
       })
       .subscribe({
         next: (page) => {
-          const urlParam = page.documentId;
+          const urlParam = page.id;
           if (notebookId) {
             this.router.navigate(['/', notebookId, urlParam]);
           } else {

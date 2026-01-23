@@ -17,7 +17,7 @@ import { ChatThreadComponent } from './chat-thread.component';
   ],
   template: `
     <div
-      [id]="'message-' + message()._id"
+      [id]="'message-' + message().id"
       class="message-wrapper"
       [class.grouped]="isGrouped()"
       (click)="onMessageClick()"
@@ -56,7 +56,7 @@ import { ChatThreadComponent } from './chat-thread.component';
 
           <!-- Thread replies -->
           @if (message().hasThread) {
-            <app-chat-thread [messageId]="message()._id" [hasThread]="true" />
+            <app-chat-thread [messageId]="message().id" [hasThread]="true" />
           }
 
           <!-- Bot typing indicator -->

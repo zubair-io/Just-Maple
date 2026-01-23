@@ -18,7 +18,6 @@ import {
     movePageToTrash,
     restorePageFromTrash,
     emptyTrash,
-    findPageByDocumentId,
 } from '../repositories/page.repo';
 import { otService } from '../services/ot.service';
 import { realtimeWSService } from '../services/realtime-ws.service';
@@ -75,7 +74,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
-            const page = await findPageByDocumentId(params.id, auth.user._id);
+            const page = await findPageById(params.id, auth.user._id);
 
             if (!page) {
                 set.status = 404;
@@ -123,11 +122,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             body: t.Object({
                 type: t.Optional(
                     t.Union([
-                        t.Literal('write'),
+                        t.Literal('memo'),
                         t.Literal('collectable'),
                         t.Literal('whiteboard'),
                         t.Literal('kanban'),
-                        t.Literal('memo'),
                         t.Literal('message'),
                         t.Literal('recording'),
                     ]),
@@ -135,7 +133,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 title: t.Optional(t.String({ maxLength: 255 })),
                 content: t.Optional(t.Any()),
                 tagId: t.Optional(t.String()),
-                documentId: t.Optional(t.String()),
+                id: t.Optional(t.String()),
             }),
         },
     )
@@ -163,7 +161,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 const recipientUserIds = await getUsersWithNotebookAccess(page.tagId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'page.updated',
-                    pageId: page.documentId,
+                    pageId: page.id,
                     title: sanitizedBody.title,
                     updatedAt: page.updatedAt,
                     tagId: page.tagId,
@@ -207,7 +205,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 const recipientUserIds = await getUsersWithNotebookAccess(page.tagId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'page.trashed',
-                    pageId: page.documentId,
+                    pageId: page.id,
                     tagId: page.tagId,
                 });
             }
@@ -263,7 +261,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             }
 
             // Get page first to retrieve tagId before deletion
-            const page = await findPageByDocumentId(params.id, auth.user._id);
+            const page = await findPageById(params.id, auth.user._id);
             if (!page) {
                 set.status = 404;
                 return { error: 'Page not found' };
@@ -281,7 +279,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 const recipientUserIds = await getUsersWithNotebookAccess(page.tagId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'page.deleted',
-                    pageId: page.documentId,
+                    pageId: page.id,
                     tagId: page.tagId,
                 });
             }

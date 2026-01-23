@@ -75,14 +75,14 @@ export const routes: Routes = [
           },
           // Collectable-type page - shows collectable view
           {
-            path: ':documentId',
+            path: ':id',
             canMatch: [CollectablePageGuard],
             loadComponent: () =>
               import('./pages/lego-view/lego-view.component').then((m) => m.LegoViewComponent),
           },
           // Whiteboard-type page - shows collaborative whiteboard
           {
-            path: ':documentId',
+            path: ':id',
             canMatch: [WhiteboardPageGuard],
             loadComponent: () =>
               import('./pages/whiteboard-view/whiteboard-view.component').then(
@@ -91,7 +91,7 @@ export const routes: Routes = [
           },
           // Memo-type page - shows collaborative notebook editor (default for pages)
           {
-            path: ':documentId',
+            path: ':id',
             canMatch: [MemoPageGuard],
             loadComponent: () =>
               import('./pages/notebook/notebook.component').then((m) => m.NotebookComponent),

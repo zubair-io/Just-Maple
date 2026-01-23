@@ -160,7 +160,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   }
 
   getPageRouterLink(page: Page, notebookId: string): string[] {
-    const urlParam = page.documentId;
+    const urlParam = page.id;
     return ['/', notebookId, urlParam];
   }
 
@@ -169,12 +169,12 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   }
 
   onSelectPage(page: Page): void {
-    if (page.documentId === this.selectedPageId()) {
-      this.startEditingPage(page.documentId, page.title, new Event('click'));
+    if (page.id === this.selectedPageId()) {
+      this.startEditingPage(page.id, page.title, new Event('click'));
       return;
     }
-    // Emit pageId for backward compatibility
-    this.selectPage.emit(page._id);
+    // Emit page id
+    this.selectPage.emit(page.id);
   }
 
   onCreateNotebook(): void {
@@ -251,9 +251,9 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
       }
     } else if (pageId) {
       const pages = this.pageService.pages();
-      const page = pages.find((p) => p.documentId === pageId);
+      const page = pages.find((p) => p.id === pageId);
       if (page && page.title !== sanitizedValue) {
-        this.pageService.updatePage(page.documentId, { title: sanitizedValue }).subscribe();
+        this.pageService.updatePage(page.id, { title: sanitizedValue }).subscribe();
       }
     }
 

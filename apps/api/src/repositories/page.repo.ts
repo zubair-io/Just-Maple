@@ -1,31 +1,28 @@
 import { ObjectId, Collection } from 'mongodb';
 import * as Automerge from '@automerge/automerge';
+import { randomUUID } from 'crypto';
 import { getDb } from '../db/client';
 import type { Page, PageContent, PageType, CreatePageInput, UpdatePageInput } from '@maple/shared';
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
 import { deleteMemo } from './memo.repo';
 import { deleteWhiteboard } from './whiteboard.repo';
-import { customAlphabet } from 'nanoid';
 
 /**
- * Generate a unique documentId for routing
- * Uses base58 alphabet (compatible with Automerge URLs)
- * Excludes: 0, O, I, l (to avoid confusion)
+ * Generate a UUID v4 for page routing
  */
-const nanoidBase58 = customAlphabet(
-    '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
-    32,
-);
+function generatePageId(): string {
+    return randomUUID();
+}
 
 interface PageDocument {
     _id: ObjectId;
+    id: string; // UUID v4 for routing (was documentId)
     userId: ObjectId;
     type: PageType;
     title: string;
     // DUAL STORAGE: content for search, automergeDoc as source of truth
     content: PageContent;
     automergeDoc?: Buffer; // Binary CRDT (source of truth)
-    documentId: string; // Document ID for routing and Automerge identification
     // Automerge metadata
     version?: number; // Hash of Automerge heads (for cache validation)
     lastSyncedHeads?: string[]; // Automerge heads (for sync optimization)
@@ -45,8 +42,9 @@ function getCollection(): Collection<PageDocument> {
 function toPageResponse(doc: PageDocument): Page {
     return {
         _id: doc._id.toString(),
+        id: doc.id,
         userId: doc.userId.toString(),
-        type: doc.type || 'write', // Default for legacy pages
+        type: doc.type || 'memo', // Default for legacy pages
         title: doc.title,
         content: doc.content,
         automergeDoc: doc.automergeDoc, // Binary CRDT (normalized to array)
@@ -59,7 +57,6 @@ function toPageResponse(doc: PageDocument): Page {
         trashedAt: doc.trashedAt?.toISOString(),
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
-        documentId: doc.documentId,
     };
 }
 
@@ -131,13 +128,17 @@ export async function findPagesByUserId(
     }
 
     const docs = await getCollection().find(query).sort({ updatedAt: -1 }).toArray();
+    console.log(`[findPagesByUserId] Found ${docs.length} pages`);
+    if (docs.length > 0) {
+        console.log(`[findPagesByUserId] First page has id:`, docs[0].id, 'type:', docs[0].type);
+    }
 
     return docs.map(toPageResponse);
 }
 
-export async function findPageById(id: string, userId: string): Promise<Page | null> {
+export async function findPageByMongoId(mongoId: string, userId: string): Promise<Page | null> {
     try {
-        const doc = await getCollection().findOne({ _id: new ObjectId(id) });
+        const doc = await getCollection().findOne({ _id: new ObjectId(mongoId) });
         if (!doc) return null;
 
         // Check access based on notebook or ownership
@@ -156,12 +157,11 @@ export async function findPageById(id: string, userId: string): Promise<Page | n
     }
 }
 
-export async function findPageByDocumentId(
-    documentId: string,
-    userId: string,
-): Promise<Page | null> {
+export async function findPageById(id: string, userId: string): Promise<Page | null> {
     try {
-        const doc = await getCollection().findOne({ documentId });
+        console.log(`[findPageById] Looking for page with id: ${id}`);
+        const doc = await getCollection().findOne({ id });
+        console.log(`[findPageById] Found doc:`, doc ? `yes (type: ${doc.type})` : 'no');
         if (!doc) return null;
 
         // Check access based on notebook or ownership
@@ -183,14 +183,15 @@ export async function findPageByDocumentId(
 export async function createPage(userId: string, data: CreatePageInput): Promise<Page> {
     console.log('Creating page with data:', data);
     const now = new Date();
-    const pageType = data.type || 'write';
+    const pageType = data.type || 'memo';
     const title = data.title || 'Untitled';
+    const pageId = data.id || generatePageId();
     const doc: Omit<PageDocument, '_id'> = {
+        id: pageId,
         userId: new ObjectId(userId),
         type: pageType,
         title: title,
         content: data.content || defaultContent,
-        documentId: data.documentId || nanoidBase58(),
         version: undefined,
         lastSyncedHeads: undefined,
         tagId: data.tagId ? new ObjectId(data.tagId) : undefined,
@@ -205,6 +206,7 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
 
     return {
         _id: result.insertedId.toString(),
+        id: pageId,
         userId: userId,
         type: pageType,
         title: doc.title,
@@ -218,7 +220,6 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
         isTrashed: doc.isTrashed,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
-        documentId: doc.documentId,
     };
 }
 
@@ -229,7 +230,7 @@ export async function updatePage(
 ): Promise<Page | null> {
     try {
         // First, find the page to check access
-        const doc = await getCollection().findOne({ documentId: id });
+        const doc = await getCollection().findOne({ id });
         if (!doc) return null;
 
         // Check write access based on notebook or ownership
@@ -306,7 +307,7 @@ export async function updatePage(
 export async function deletePage(id: string, userId: string): Promise<boolean> {
     try {
         // First, find the page to check access
-        const doc = await getCollection().findOne({ documentId: id });
+        const doc = await getCollection().findOne({ id });
         if (!doc) return false;
 
         // Check write access based on notebook or ownership
@@ -325,12 +326,12 @@ export async function deletePage(id: string, userId: string): Promise<boolean> {
 
         // Cascade delete: Remove associated data based on page type
         if (doc.type === 'memo') {
-            await deleteMemo(doc.documentId);
+            await deleteMemo(doc.id);
         } else if (doc.type === 'whiteboard') {
-            await deleteWhiteboard(doc.documentId);
+            await deleteWhiteboard(doc.id);
         }
 
-        const result = await getCollection().deleteOne({ documentId: id });
+        const result = await getCollection().deleteOne({ id });
         return result.deletedCount === 1;
     } catch {
         return false;

@@ -7,8 +7,8 @@
     />
 
     <div class="whiteboard-content">
-      @if (documentId(); as docId) {
-        <app-whiteboard [pageId]="docId" />
+      @if (pageId(); as id) {
+        <app-whiteboard [pageId]="id" />
       }
     </div>
   } @else {

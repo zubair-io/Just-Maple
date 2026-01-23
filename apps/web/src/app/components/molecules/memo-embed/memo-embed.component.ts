@@ -98,7 +98,7 @@ export class MemoEmbedComponent {
   openMemo(): void {
     const p = this.page();
     if (p?.tagId) {
-      this.router.navigate(['/', p.tagId, p.documentId]);
+      this.router.navigate(['/', p.tagId, p.id]);
     }
   }
 

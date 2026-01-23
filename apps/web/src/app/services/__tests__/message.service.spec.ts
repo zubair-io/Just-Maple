@@ -17,6 +17,7 @@ describe('MessageService', () => {
 
   const mockMessage: Message = {
     _id: 'msg-1',
+    id: 'msg-1-uuid',
     tagId: 'tag-1',
     userId: 'user-1',
     content: {
@@ -117,7 +118,7 @@ describe('MessageService', () => {
 
       service.sendMessage('tag-1', content).subscribe((result) => {
         expect(result).toEqual(mockMessage);
-        expect(service.messagesForTag().some((m) => m._id === mockMessage._id)).toBe(true);
+        expect(service.messagesForTag().some((m) => m.id === mockMessage.id)).toBe(true);
         done();
       });
 
@@ -142,7 +143,7 @@ describe('MessageService', () => {
 
       // Should have temp message before response
       const messages = service.messagesForTag();
-      expect(messages.some((m) => m._id.startsWith('temp-'))).toBe(true);
+      expect(messages.some((m) => m.id.startsWith('temp-'))).toBe(true);
 
       // Complete the request
       const req = httpMock.expectOne('/api/notebooks/tag-1/messages');
@@ -164,7 +165,7 @@ describe('MessageService', () => {
         error: () => {
           // Temp message should be removed
           const messages = service.messagesForTag();
-          expect(messages.some((m) => m._id.startsWith('temp-'))).toBe(false);
+          expect(messages.some((m) => m.id.startsWith('temp-'))).toBe(false);
           done();
         },
       });
@@ -196,7 +197,7 @@ describe('MessageService', () => {
         timestamp: new Date().toISOString(),
       });
 
-      expect(service.messagesForTag().some((m) => m._id === 'msg-2')).toBe(true);
+      expect(service.messagesForTag().some((m) => m.id === 'msg-2')).toBe(true);
     });
 
     it('should ignore message from realtime event for different tag', () => {
@@ -214,7 +215,7 @@ describe('MessageService', () => {
         timestamp: new Date().toISOString(),
       });
 
-      expect(service.messagesForTag().some((m) => m._id === 'msg-2')).toBe(false);
+      expect(service.messagesForTag().some((m) => m.id === 'msg-2')).toBe(false);
     });
 
     it('should update message from realtime edited event', () => {
@@ -240,7 +241,7 @@ describe('MessageService', () => {
         timestamp: new Date().toISOString(),
       });
 
-      const message = service.messagesForTag().find((m) => m._id === mockMessage._id);
+      const message = service.messagesForTag().find((m) => m.id === mockMessage.id);
       expect(message?.editedAt).toBeDefined();
     });
 
@@ -252,13 +253,13 @@ describe('MessageService', () => {
 
       realtimeEventsSubject.next({
         action: 'deleted',
-        data: { _id: mockMessage._id },
+        data: { id: mockMessage.id },
         tagId: 'tag-1',
         userId: 'user-1',
         timestamp: new Date().toISOString(),
       });
 
-      expect(service.messagesForTag().some((m) => m._id === mockMessage._id)).toBe(false);
+      expect(service.messagesForTag().some((m) => m.id === mockMessage.id)).toBe(false);
     });
   });
 

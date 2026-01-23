@@ -146,7 +146,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             if (parentMessageId && body.parentMessageId) {
                 const threadFlagEvent: ChatEvent = {
                     action: 'message_updated',
-                    data: { _id: parentMessageId, hasThread: true },
+                    data: { id: parentMessageId, hasThread: true },
                     tagId: params.id,
                     userId: auth.user._id,
                     timestamp: new Date().toISOString(),
@@ -334,7 +334,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             // Broadcast deletion via realtime service
             const chatEvent: ChatEvent = {
                 action: 'deleted',
-                data: { _id: params.id },
+                data: { id: params.id },
                 tagId: existingMessage.tagId,
                 userId: auth.user._id,
                 timestamp: new Date().toISOString(),

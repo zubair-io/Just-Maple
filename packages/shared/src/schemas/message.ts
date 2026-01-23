@@ -24,6 +24,7 @@ export type Mention = Static<typeof MentionSchema>;
 // Message schema - chat messages per tag
 export const MessageSchema = Type.Object({
     _id: Type.String(),
+    id: Type.String(), // UUID v4 for routing
     tagId: Type.String(), // Chat is per-tag
     threadId: Type.Optional(Type.String()), // If part of a thread (null = top-level message)
     userId: Type.String(), // Sender (user ID or bot owner ID)

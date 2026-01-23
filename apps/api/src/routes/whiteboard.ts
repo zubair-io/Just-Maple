@@ -2,7 +2,7 @@ import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
-import { findPageByDocumentId } from '../repositories/page.repo';
+import { findPageById } from '../repositories/page.repo';
 import {
     getWhiteboardState,
     whiteboardExists,
@@ -49,7 +49,7 @@ export const whiteboardRoutes = new Elysia({ prefix: '/api/whiteboards' })
             const { id } = params;
 
             // Verify page exists and user has access
-            const page = await findPageByDocumentId(id, auth.user._id);
+            const page = await findPageById(id, auth.user._id);
             if (!page) {
                 set.status = 404;
                 return { error: 'Page not found' };
@@ -101,7 +101,7 @@ export const whiteboardRoutes = new Elysia({ prefix: '/api/whiteboards' })
         const { id } = params;
 
         // Verify page exists and user has access
-        const page = await findPageByDocumentId(id, auth.user._id);
+        const page = await findPageById(id, auth.user._id);
         if (!page) {
             set.status = 404;
             return { error: 'Page not found' };

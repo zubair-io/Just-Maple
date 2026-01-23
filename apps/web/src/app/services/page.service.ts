@@ -72,7 +72,7 @@ export class PageService {
   // ELF Store
   private readonly store = createStore(
     { name: STORE_NAME },
-    withEntities<Page, 'documentId'>({ idKey: 'documentId' }),
+    withEntities<Page, 'id'>({ idKey: 'id' }),
     withActiveId(),
   );
 
@@ -111,7 +111,7 @@ export class PageService {
       .on('page.created')
       .pipe(
         tap((event: Extract<AppEvent, { type: 'page.created' }>) => {
-          const documentId = event.page.documentId;
+          const documentId = event.page.id;
           if (!this.store.query(getEntity(documentId))) {
             this.store.update(addEntities(event.page));
             this.persistToIndexedDB([event.page]);
@@ -119,7 +119,7 @@ export class PageService {
         }),
         debounceTime(1000),
         switchMap((event: Extract<AppEvent, { type: 'page.created' }>) => {
-          return this.getPage(event.page.documentId);
+          return this.getPage(event.page.id);
         }),
       )
       .subscribe();
@@ -185,7 +185,7 @@ export class PageService {
    */
   selectedPageId(): string | null {
     const active = this.store.query(getActiveEntity());
-    return active?._id || null;
+    return active?.id || null;
   }
 
   /**
@@ -285,11 +285,11 @@ export class PageService {
 
     const tempPage: Page = {
       _id: tempId,
+      id: data.id || tempId,
       userId: 'temp',
-      type: data.type || 'write',
+      type: data.type || 'memo',
       title: data.title || 'Untitled',
       content: data.content || defaultContent,
-      documentId: data.documentId || tempId,
       version: 1,
       tagId: data.tagId,
       isFavorite: false,
@@ -305,7 +305,7 @@ export class PageService {
       of(tempPage),
       this.http.post<{ page: Page }>('/api/pages', data).pipe(
         tap((response) => {
-          this.store.update(updateEntities(response.page.documentId, response.page));
+          this.store.update(updateEntities(response.page.id, response.page));
           this.persistToIndexedDB([response.page]);
           this._isLoading.set(false);
         }),

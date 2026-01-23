@@ -1,0 +1,13 @@
+# Cross-compilation configuration for reMarkable
+# See: https://github.com/cross-rs/cross
+
+[build.env]
+passthrough = [
+    "MAPLE_API_URL",
+    "MAPLE_WS_URL",
+]
+
+[target.armv7-unknown-linux-gnueabihf]
+# Use custom Dockerfile for reMarkable-specific dependencies
+# dockerfile = "./Dockerfile.cross"
+image = "ghcr.io/cross-rs/armv7-unknown-linux-gnueabihf:main"

@@ -13,17 +13,17 @@ function createPageTypeGuard(expectedType: PageType): CanMatchFn {
   return (route: Route, segments: UrlSegment[]) => {
     const pageService = inject(PageService);
 
-    // documentId is the second segment (/:notebookId/:documentId)
-    const documentId = segments[0]?.path;
-    if (!documentId) return false;
+    // id is the second segment (/:notebookId/:id)
+    const id = segments[0]?.path;
+    if (!id) return false;
 
-    // Allow 'new' route ONLY for write-type pages
-    if (documentId === 'new') {
+    // Allow 'new' route to pass to NewNoteComponent
+    if (id === 'new') {
       return false;
     }
 
     // If not in store, wait briefly for it to load (max 5 seconds)
-    return pageService.select(documentId).pipe(
+    return pageService.select(id).pipe(
       timeout(5000),
       take(1),
       map((page) => {
@@ -32,7 +32,7 @@ function createPageTypeGuard(expectedType: PageType): CanMatchFn {
       }),
       tap((matches) => {
         if (matches) {
-          pageService.setActivePageId(documentId);
+          pageService.setActivePageId(id);
         }
       }),
       catchError(() => of(false)), // If timeout or error, return false

@@ -104,16 +104,16 @@ async function createNote(
     token: string,
     tagId: string,
     title: string,
-): Promise<{ _id: string; documentId: string }> {
-    const response = await page.request.post('http://localhost:7071/api/notes', {
+): Promise<{ _id: string; id: string }> {
+    const response = await page.request.post('http://localhost:7071/api/pages', {
         headers: {
             Authorization: `Bearer ${token}`,
         },
         data: {
             title,
-            content: '',
+            content: { type: 'doc', content: [] },
             tagId,
-            type: 'write',
+            type: 'memo',
         },
     });
 
@@ -122,7 +122,7 @@ async function createNote(
     }
 
     const data = await response.json();
-    return data.note;
+    return data.page;
 }
 
 // Run tests serially to avoid shared backend state conflicts
@@ -158,10 +158,10 @@ test.describe.serial('Automerge Collaboration Test (/write)', () => {
                 tag._id,
                 'Collaboration Test Note',
             );
-            console.log('Note created:', note.documentId);
+            console.log('Note created:', note.id);
 
             // Navigate both pages to the same note
-            const noteUrl = `http://localhost:4200/${tag._id}/${note.documentId}`;
+            const noteUrl = `http://localhost:4200/${tag._id}/${note.id}`;
             await page1.goto(noteUrl);
             await page2.goto(noteUrl);
 
@@ -264,7 +264,7 @@ test.describe.serial('Automerge Collaboration Test (/write)', () => {
             const note = await createNote(page1, testUser.token, tag._id, 'Rapid Typing Test');
 
             // Navigate both pages to the same note
-            const noteUrl = `http://localhost:4200/${tag._id}/${note.documentId}`;
+            const noteUrl = `http://localhost:4200/${tag._id}/${note.id}`;
             await page1.goto(noteUrl);
             await page2.goto(noteUrl);
 

@@ -49,7 +49,7 @@ export class MessageService {
   // ELF Store
   private readonly store = createStore(
     { name: STORE_NAME },
-    withEntities<Message, '_id'>({ idKey: '_id' }),
+    withEntities<Message, 'id'>({ idKey: 'id' }),
   );
 
   // Observable selectors
@@ -111,10 +111,10 @@ export class MessageService {
           this.handleEditedMessage(event.data as Message);
           break;
         case 'deleted':
-          this.handleDeletedMessage((event.data as { _id: string })._id);
+          this.handleDeletedMessage((event.data as { id: string }).id);
           break;
         case 'message_updated':
-          this.handleMessageUpdated(event.data as { _id: string; hasThread?: boolean });
+          this.handleMessageUpdated(event.data as { id: string; hasThread?: boolean });
           break;
       }
     });
@@ -122,13 +122,13 @@ export class MessageService {
 
   private handleNewMessage(message: Message): void {
     // Deduplicate: skip if we've already processed this message
-    if (this.processedMessageIds.has(message._id)) {
+    if (this.processedMessageIds.has(message.id)) {
       return;
     }
     if (this.processedMessageIds.size >= this.MAX_PROCESSED_IDS) {
       this.processedMessageIds.clear();
     }
-    this.processedMessageIds.add(message._id);
+    this.processedMessageIds.add(message.id);
 
     const currentTagId = this._currentTagId();
     const currentUserId = this.authService.user()?._id;
@@ -201,7 +201,7 @@ export class MessageService {
   }
 
   private handleEditedMessage(message: Message): void {
-    this.store.update(updateEntities(message._id, () => message));
+    this.store.update(updateEntities(message.id, () => message));
     this.persistToIndexedDB([message]);
   }
 
@@ -212,9 +212,9 @@ export class MessageService {
     }
   }
 
-  private handleMessageUpdated(data: { _id: string; hasThread?: boolean }): void {
+  private handleMessageUpdated(data: { id: string; hasThread?: boolean }): void {
     this.store.update(
-      updateEntities(data._id, (entity) => ({
+      updateEntities(data.id, (entity) => ({
         ...entity,
         hasThread: data.hasThread ?? entity.hasThread,
       })),
@@ -308,7 +308,7 @@ export class MessageService {
 
     return this.http
       .get<{ messages: Message[] }>(`/api/notebooks/${tagId}/messages`, {
-        params: { before: oldestMessage._id },
+        params: { before: oldestMessage.id },
       })
       .pipe(
         tap((response) => {
@@ -361,6 +361,7 @@ export class MessageService {
 
     const tempMessage: Message = {
       _id: tempId,
+      id: tempId,
       tagId,
       threadId: options?.threadId,
       userId: currentUser?._id || 'temp',

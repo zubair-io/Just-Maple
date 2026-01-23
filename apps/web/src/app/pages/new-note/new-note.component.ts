@@ -35,11 +35,11 @@ export class NewNoteComponent implements OnInit {
       if (type === 'memo') {
         // Create memo using the offline-first memo service
         const { page } = await this.memoService.createMemo(notebookId || undefined);
-        this.router.navigate(['/', notebookId, page.documentId], { replaceUrl: true });
+        this.router.navigate(['/', notebookId, page.id], { replaceUrl: true });
       } else if (type === 'whiteboard') {
         // Create whiteboard using the offline-first whiteboard service
         const { page } = await this.whiteboardService.createWhiteboard(notebookId || undefined);
-        this.router.navigate(['/', notebookId, page.documentId], { replaceUrl: true });
+        this.router.navigate(['/', notebookId, page.id], { replaceUrl: true });
       } else {
         // Create other page types using the regular page service
         this.pageService
@@ -51,7 +51,7 @@ export class NewNoteComponent implements OnInit {
           })
           .subscribe({
             next: (page) => {
-              this.router.navigate(['/', notebookId, page.documentId], { replaceUrl: true });
+              this.router.navigate(['/', notebookId, page.id], { replaceUrl: true });
             },
             error: (err) => {
               console.error('Failed to create page:', err);

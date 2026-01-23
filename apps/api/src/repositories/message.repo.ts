@@ -1,4 +1,5 @@
 import { ObjectId, Collection } from 'mongodb';
+import { randomUUID } from 'crypto';
 import { getDb } from '../db/client';
 import type {
     Message,
@@ -11,8 +12,16 @@ import type {
 import { findNotebookByIdWithAccess } from './notebook.repo';
 import { findUsersByIds } from './user.repo';
 
+/**
+ * Generate a UUID v4 for message routing
+ */
+function generateMessageId(): string {
+    return randomUUID();
+}
+
 interface MessageDocument {
     _id: ObjectId;
+    id: string; // UUID v4 for routing
     tagId: ObjectId;
     threadId?: ObjectId;
     userId: ObjectId;
@@ -41,6 +50,7 @@ function toMessageResponse(
 ): Message {
     return {
         _id: doc._id.toString(),
+        id: doc.id,
         tagId: doc.tagId.toString(),
         threadId: doc.threadId?.toString(),
         userId: doc.userId.toString(),
@@ -64,7 +74,7 @@ export async function findMessagesByTagId(
     tagId: string,
     options?: {
         limit?: number;
-        before?: string; // Cursor-based pagination: messages before this ID
+        before?: string; // Cursor-based pagination: messages before this UUID id
     },
 ): Promise<Message[]> {
     const query: Record<string, unknown> = {
@@ -73,12 +83,12 @@ export async function findMessagesByTagId(
         deletedAt: { $exists: false },
     };
 
-    // Cursor-based pagination
+    // Cursor-based pagination using UUID id
     if (options?.before) {
-        try {
-            query._id = { $lt: new ObjectId(options.before) };
-        } catch {
-            // Invalid ObjectId, ignore
+        // Find the message with this UUID to get its _id for pagination
+        const beforeMessage = await getCollection().findOne({ id: options.before });
+        if (beforeMessage) {
+            query._id = { $lt: beforeMessage._id };
         }
     }
 
@@ -98,10 +108,33 @@ export async function findMessagesByTagId(
     });
 }
 
+export async function findMessageByMongoId(
+    mongoId: string,
+    userId?: string,
+): Promise<Message | null> {
+    try {
+        const doc = await getCollection().findOne({
+            _id: new ObjectId(mongoId),
+            deletedAt: { $exists: false },
+        });
+        if (!doc) return null;
+
+        // If userId is provided, verify tag access
+        if (userId) {
+            const tag = await findNotebookByIdWithAccess(doc.tagId.toString(), userId, 'read');
+            if (!tag) return null; // No access to the tag
+        }
+
+        return toMessageResponse(doc);
+    } catch {
+        return null;
+    }
+}
+
 export async function findMessageById(id: string, userId?: string): Promise<Message | null> {
     try {
         const doc = await getCollection().findOne({
-            _id: new ObjectId(id),
+            id,
             deletedAt: { $exists: false },
         });
         if (!doc) return null;
@@ -128,7 +161,9 @@ export async function createMessage(
     threadId?: string,
 ): Promise<Message> {
     const now = new Date();
+    const messageId = generateMessageId();
     const doc: any = {
+        id: messageId,
         tagId: new ObjectId(tagId),
         userId: new ObjectId(userId),
         content: data.content,
@@ -149,6 +184,7 @@ export async function createMessage(
 
     return {
         _id: result.insertedId.toString(),
+        id: messageId,
         tagId: tagId,
         threadId: threadId,
         userId: userId,
@@ -171,7 +207,7 @@ export async function updateMessage(
     try {
         const result = await getCollection().findOneAndUpdate(
             {
-                _id: new ObjectId(id),
+                id,
                 userId: new ObjectId(userId), // Only owner can edit
                 deletedAt: { $exists: false },
             },
@@ -197,7 +233,7 @@ export async function softDeleteMessage(id: string, userId: string): Promise<boo
     try {
         const result = await getCollection().updateOne(
             {
-                _id: new ObjectId(id),
+                id,
                 userId: new ObjectId(userId), // Only owner can delete
                 deletedAt: { $exists: false },
             },
@@ -252,7 +288,7 @@ export async function findMessagesByThreadId(
     threadId: string,
     options?: {
         limit?: number;
-        before?: string;
+        before?: string; // UUID id for cursor-based pagination
     },
 ): Promise<Message[]> {
     const query: Record<string, unknown> = {
@@ -260,11 +296,11 @@ export async function findMessagesByThreadId(
         deletedAt: { $exists: false },
     };
 
+    // Cursor-based pagination using UUID id
     if (options?.before) {
-        try {
-            query._id = { $lt: new ObjectId(options.before) };
-        } catch {
-            // Invalid ObjectId, ignore
+        const beforeMessage = await getCollection().findOne({ id: options.before });
+        if (beforeMessage) {
+            query._id = { $lt: beforeMessage._id };
         }
     }
 
@@ -303,8 +339,10 @@ export async function createMessageInThread(data: {
     content: PageContent;
 }): Promise<Message> {
     const now = new Date();
+    const messageId = generateMessageId();
     const isBot = data.senderType === 'bot';
     const doc: Omit<MessageDocument, '_id'> = {
+        id: messageId,
         tagId: new ObjectId(data.tagId),
         threadId: new ObjectId(data.threadId),
         userId: new ObjectId(data.userId),
@@ -322,6 +360,7 @@ export async function createMessageInThread(data: {
 
     return {
         _id: result.insertedId.toString(),
+        id: messageId,
         tagId: data.tagId,
         threadId: data.threadId,
         userId: data.userId,
@@ -338,7 +377,7 @@ export async function createMessageInThread(data: {
 export async function markMessageHasThread(messageId: string): Promise<void> {
     try {
         await getCollection().updateOne(
-            { _id: new ObjectId(messageId) },
+            { id: messageId },
             { $set: { hasThread: true, updatedAt: new Date() } },
         );
     } catch {

@@ -612,17 +612,17 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
             this.invokeBots(mentions, fullText, thread.parentMessageId);
           } else {
             // Fallback to current message if thread not found
-            this.invokeBots(mentions, fullText, message._id);
+            this.invokeBots(mentions, fullText, message.id);
           }
         },
         error: () => {
           // Fallback to current message on error
-          this.invokeBots(mentions, fullText, message._id);
+          this.invokeBots(mentions, fullText, message.id);
         },
       });
     } else {
       // Top-level message - use its own ID
-      this.invokeBots(mentions, fullText, message._id);
+      this.invokeBots(mentions, fullText, message.id);
     }
   }
 
@@ -669,7 +669,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   }
 
   trackByMessage(_index: number, message: Message): string {
-    return message._id;
+    return message.id;
   }
 
   private scrollToBottom(): void {
@@ -699,7 +699,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       const botSuggestionMap = new Map(this.allNotebookBots().map((s) => [s.id, s]));
 
       // Fetch thread messages
-      this.botService.getThreadForMessage(message._id).subscribe((result) => {
+      this.botService.getThreadForMessage(message.id).subscribe((result) => {
         if (result && this.editor) {
           // Extract unique bots from thread messages
           const botHandles = new Map<string, { id: string; handle: string }>();

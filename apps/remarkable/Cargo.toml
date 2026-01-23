@@ -1,0 +1,73 @@
+[package]
+name = "justmaple-remarkable"
+version = "0.1.0"
+edition = "2021"
+authors = ["Just Maple Team"]
+description = "Just Maple reMarkable tablet application"
+license = "MIT"
+
+[features]
+default = ["desktop"]
+# Desktop mode - runs on macOS/Linux/Windows for development
+desktop = []
+# reMarkable device mode - includes device-specific dependencies
+remarkable = ["libremarkable", "evdev"]
+# Enable custom Inter font (requires assets/fonts/Inter-Regular.ttf)
+custom-font = []
+
+[dependencies]
+# UI Framework
+egui = "0.29"
+eframe = { version = "0.29", default-features = false, features = ["glow"] }
+
+# reMarkable-specific (optional, only for device builds)
+libremarkable = { version = "0.7", optional = true }
+
+# Async runtime
+tokio = { version = "1.41", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# WebSocket
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+
+# Local storage
+sled = "0.34"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+base64 = "0.22"
+
+# Image processing for e-ink dithering
+image = "0.25"
+
+# Shared types
+maple-shared = { path = "../../packages/shared-rust" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Platform-specific for reMarkable (optional)
+evdev = { version = "0.12", optional = true }
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+panic = "abort"
+
+[profile.dev]
+opt-level = 1

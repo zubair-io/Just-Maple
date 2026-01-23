@@ -164,7 +164,8 @@ const response = await fetch('/api/notebook/state', {
 
 ### Routing
 
-- Use ID-based routes: `/:tagId/:noteId`
+- Use ID-based routes: `/:tagId/:id` (page ID)
+- Page IDs can be UUID v4 or legacy base58 format
 - Keep route params simple and stable
 
 ### Page Component Separation
@@ -195,8 +196,8 @@ Each page component should handle **one concern only**. Do not combine multiple 
 ```typescript
 // app.routes.ts
 { path: ':tagId', loadComponent: () => import('./pages/chat-view/...') },
-{ path: ':tagId/:noteId', canMatch: [WriteNoteGuard], loadComponent: () => import('./pages/note-view/...') },
-{ path: ':tagId/:noteId', canMatch: [LegoNoteGuard], loadComponent: () => import('./pages/lego-view/...') },
+{ path: ':tagId/:id', canMatch: [MemoGuard], loadComponent: () => import('./pages/memo-view/...') },
+{ path: ':tagId/:id', canMatch: [WhiteboardGuard], loadComponent: () => import('./pages/whiteboard-view/...') },
 ```
 
 Route guards (`canMatch`) determine which component loads based on data (e.g., note type). Components should not need to know about other view types.
@@ -348,6 +349,69 @@ bun run test
 # Type check
 bun run typecheck
 ```
+
+---
+
+## Database Migrations
+
+### NEVER Delete Data Without Confirmation
+
+When data appears "orphaned" or mismatched:
+
+1. **First, try to reconnect it** - Create missing references (pages, users, etc.) to link the data
+2. **Never assume orphaned data is garbage** - It may be valid data with broken references
+3. **Always ask before deleting** - Even if data looks orphaned, confirm with the user first
+
+### Migration Safety Rules
+
+| Do                                                   | Don't                                      |
+| ---------------------------------------------------- | ------------------------------------------ |
+| Create missing references to reconnect orphaned data | Delete data because IDs don't match        |
+| Run read-only reports first to understand the data   | Run destructive migrations without review  |
+| Update foreign keys when primary keys change         | Change IDs without updating all references |
+| Ask user before any DELETE operation on real data    | Assume "cleanup" is safe                   |
+
+### Example: ID Migration
+
+When migrating IDs (e.g., base58 → UUID):
+
+```typescript
+// WRONG: Delete orphaned data
+if (!pageIds.has(memo.noteId)) {
+    await memos.deleteOne({ _id: memo._id }); // DATA LOSS!
+}
+
+// RIGHT: Create missing page to reconnect
+if (!pageIds.has(memo.noteId)) {
+    await pages.insertOne({
+        id: memo.noteId, // Use the memo's reference as page ID
+        type: 'memo',
+        title: 'Recovered Memo',
+        // ...
+    });
+}
+```
+
+### Y.js Content Architecture
+
+- **Pages collection**: Metadata (title, type, userId, tagId), uses `id` field (UUID v4 or legacy base58)
+- **Memos collection**: Y.js state, references page via `noteId` field
+- **Whiteboards collection**: Y.js state, references page via `id` field
+- **Messages collection**: Chat messages, uses `id` field (UUID v4)
+
+When page IDs change, memo/whiteboard references must be updated OR pages must be created with the old IDs.
+
+### ID Scheme
+
+| Collection  | Primary ID Field | Format                           |
+| ----------- | ---------------- | -------------------------------- |
+| pages       | `id`             | UUID v4 (new) or base58 (legacy) |
+| memos       | `noteId`         | References `pages.id`            |
+| whiteboards | `id`             | References `pages.id`            |
+| messages    | `id`             | UUID v4                          |
+| notebooks   | `_id`            | MongoDB ObjectId                 |
+
+**Note**: The `_id` field (MongoDB ObjectId) exists on all documents but is not used for lookups. Use the `id` field instead for pages, memos, whiteboards, and messages.
 
 ---
 

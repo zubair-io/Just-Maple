@@ -170,7 +170,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.id}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -201,7 +201,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.id}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -224,7 +224,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
                     },
                     body: JSON.stringify({
                         title: 'New Note',
-                        type: 'write',
+                        type: 'memo',
                         content: { type: 'doc', content: [] },
                     }),
                 }),
@@ -233,7 +233,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             expect(response.status).toBe(200);
             const data: any = await response.json();
             expect(data.page.title).toBe('New Note');
-            expect(data.page.type).toBe('write');
+            expect(data.page.type).toBe('memo');
             expect(data.page.userId).toBe(user._id.toString());
         });
 
@@ -301,7 +301,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.page.type).toBe('write');
+            expect(data.page.type).toBe('memo');
             expect(data.page.isFavorite).toBe(false);
             expect(data.page.isArchived).toBe(false);
             expect(data.page.isTrashed).toBe(false);
@@ -315,7 +315,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.id}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -338,7 +338,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const newContent = { type: 'doc', content: [{ type: 'text', text: 'New content' }] };
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.id}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -362,7 +362,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.id}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -388,7 +388,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.id}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -410,7 +410,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.id}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -434,7 +434,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/${note.documentId}/trash`, {
+                new Request(`http://localhost/api/pages/${note.id}/trash`, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -472,7 +472,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/${note.documentId}/restore`, {
+                new Request(`http://localhost/api/pages/${note.id}/restore`, {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -506,7 +506,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.id}`, {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -538,7 +538,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/${note.documentId}`, {
+                new Request(`http://localhost/api/pages/${note.id}`, {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),

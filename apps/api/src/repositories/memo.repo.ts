@@ -4,7 +4,7 @@ import type { Memo, CreateMemoInput } from '@maple/shared';
 
 interface MemoDocument {
     _id: ObjectId;
-    noteId: string; // documentId of the parent page
+    noteId: string; // id of the parent page
     state: Binary; // Y.Doc encoded state
     version: number;
     updatedAt: Date;

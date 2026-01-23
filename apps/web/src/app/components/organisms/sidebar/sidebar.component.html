@@ -144,28 +144,24 @@
             <ul class="ml-4 pl-3 border-l border-[var(--color-border)] mt-1 space-y-0.5 list-none">
               @for (
                 page of getPagesForNotebook()[notebook._id || 'no_notebook'] || [];
-                track page._id
+                track page.id
               ) {
                 <li>
                   <a
                     [routerLink]="
-                      editingPageId() !== page.documentId
-                        ? getPageRouterLink(page, notebook._id)
-                        : null
+                      editingPageId() !== page.id ? getPageRouterLink(page, notebook._id) : null
                     "
                     (click)="onSelectPage(page)"
                     class="flex items-center gap-1.5 px-2 py-1.5 text-sm cursor-pointer transition-colors"
-                    [class.bg-stone-100]="selectedPageId() === page.documentId"
-                    [class.text-[var(--color-text-main)]]="selectedPageId() === page.documentId"
-                    [class.font-medium]="selectedPageId() === page.documentId"
-                    [class.border-l-2]="selectedPageId() === page.documentId"
-                    [class.border-[var(--color-primary)]]="selectedPageId() === page.documentId"
-                    [class.-ml-[13px]]="selectedPageId() === page.documentId"
-                    [class.pl-3]="selectedPageId() === page.documentId"
-                    [class.text-[var(--color-text-muted)]]="selectedPageId() !== page.documentId"
-                    [class.hover:text-[var(--color-text-main)]]="
-                      selectedPageId() !== page.documentId
-                    "
+                    [class.bg-stone-100]="selectedPageId() === page.id"
+                    [class.text-[var(--color-text-main)]]="selectedPageId() === page.id"
+                    [class.font-medium]="selectedPageId() === page.id"
+                    [class.border-l-2]="selectedPageId() === page.id"
+                    [class.border-[var(--color-primary)]]="selectedPageId() === page.id"
+                    [class.-ml-[13px]]="selectedPageId() === page.id"
+                    [class.pl-3]="selectedPageId() === page.id"
+                    [class.text-[var(--color-text-muted)]]="selectedPageId() !== page.id"
+                    [class.hover:text-[var(--color-text-main)]]="selectedPageId() !== page.id"
                   >
                     <span class="material-symbols-rounded text-xs opacity-60 flex-shrink-0">
                       @if (page.type === 'collectable') {
@@ -179,7 +175,7 @@
                         article
                       }
                     </span>
-                    @if (editingPageId() === page.documentId) {
+                    @if (editingPageId() === page.id) {
                       <input
                         type="text"
                         [value]="editValue()"
@@ -196,8 +192,8 @@
                       <span
                         class="truncate"
                         (dblclick)="
-                          selectedPageId() === page.documentId &&
-                            startEditingPage(page.documentId, page.title, $event)
+                          selectedPageId() === page.id &&
+                            startEditingPage(page.id, page.title, $event)
                         "
                         >{{ page.title }}</span
                       >

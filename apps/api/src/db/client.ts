@@ -84,13 +84,13 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('pages').createIndex({ tagId: 1, updatedAt: -1 }); // For listing pages by notebook
     await database.collection('pages').createIndex({ userId: 1, updatedAt: -1 }); // For listing user's pages
 
-    // Drop old unique documentId index if it exists (CosmosDB compatibility)
+    // Drop old documentId index if it exists (migration)
     try {
         await database.collection('pages').dropIndex('documentId_1');
     } catch (e) {
         // Index doesn't exist, ignore
     }
-    await database.collection('pages').createIndex({ documentId: 1 }); // For lookup by documentId
+    await database.collection('pages').createIndex({ id: 1 }, { unique: true }); // For lookup by id
 
     // Memos collection (Y.Doc storage for notebook-type pages, formerly notebooks)
     // Drop existing index first (in case of migration issues with duplicates)

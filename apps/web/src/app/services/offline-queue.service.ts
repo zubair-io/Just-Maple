@@ -210,7 +210,7 @@ export class OfflineQueueService {
   private async processCreateNote(item: OfflineQueueItem): Promise<void> {
     await firstValueFrom(
       this.http.post('/api/pages', {
-        documentId: item.documentId,
+        id: item.documentId, // documentId in queue maps to id in API
         ...item.payload,
       }),
     );
