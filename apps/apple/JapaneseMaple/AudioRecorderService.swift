@@ -73,6 +73,18 @@ class AudioRecorderService: NSObject, ObservableObject {
             throw RecordingError.alreadyRecording
         }
 
+        // Configure audio session for recording (iOS only)
+        #if os(iOS)
+        let audioSession = AVAudioSession.sharedInstance()
+        do {
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+            try audioSession.setActive(true)
+        } catch {
+            print("[AudioRecorder] Failed to configure audio session: \(error)")
+            throw RecordingError.engineStartFailed
+        }
+        #endif
+
         // Request permission
         let hasPermission = await requestMicrophonePermission()
         guard hasPermission else {
@@ -165,6 +177,15 @@ class AudioRecorderService: NSObject, ObservableObject {
         // Stop timer
         stopDurationTimer()
 
+        // Deactivate audio session (iOS only)
+        #if os(iOS)
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            print("[AudioRecorder] Failed to deactivate audio session: \(error)")
+        }
+        #endif
+
         print("[AudioRecorder] Stopped recording. Duration: \(duration)s, Path: \(filePath.path)")
 
         return RecordingResult(path: filePath, duration: duration)
@@ -187,6 +208,15 @@ class AudioRecorderService: NSObject, ObservableObject {
             recordingStartTime = nil
 
             stopDurationTimer()
+
+            // Deactivate audio session (iOS only)
+            #if os(iOS)
+            do {
+                try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            } catch {
+                print("[AudioRecorder] Failed to deactivate audio session: \(error)")
+            }
+            #endif
         }
     }
 
