@@ -104,7 +104,10 @@ export async function findPagesByUserId(
     // No specific notebook - get all pages user has access to
     // 1. Get all notebooks the user has access to
     const accessibleNotebooks = await findNotebooksByUserId(userId);
-    const notebookIds = accessibleNotebooks.map((t) => new ObjectId(t._id));
+    // Filter out virtual notebooks (like doc-notebook) that don't have valid ObjectIds
+    const notebookIds = accessibleNotebooks
+        .filter((t) => ObjectId.isValid(t._id))
+        .map((t) => new ObjectId(t._id));
 
     // 2. Find pages that:
     //    - Have a tagId the user has access to, OR
@@ -361,7 +364,10 @@ export async function emptyTrash(userId: string): Promise<number> {
             const entry = t.sharing.sharedWith.find((e) => e.userId === userId);
             return entry && (entry.accessLevel === 'write' || entry.accessLevel === 'owner');
         });
-        const notebookIds = writeableNotebooks.map((t) => new ObjectId(t._id));
+        // Filter out virtual notebooks that don't have valid ObjectIds
+        const notebookIds = writeableNotebooks
+            .filter((t) => ObjectId.isValid(t._id))
+            .map((t) => new ObjectId(t._id));
 
         // Delete trashed pages that:
         // 1. Are in notebooks user has write access to, OR
