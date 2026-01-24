@@ -6,6 +6,7 @@ import type { Page, PageContent, PageType, CreatePageInput, UpdatePageInput } fr
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
 import { deleteMemo } from './memo.repo';
 import { deleteWhiteboard } from './whiteboard.repo';
+import { isDevMode, isDocPage, getDocPage, pageIdToSlug } from '../services/docs.service';
 
 /**
  * Generate a UUID v4 for page routing
@@ -158,6 +159,12 @@ export async function findPageByMongoId(mongoId: string, userId: string): Promis
 }
 
 export async function findPageById(id: string, userId: string): Promise<Page | null> {
+    // Handle virtual doc pages in dev mode
+    if (isDevMode() && isDocPage(id)) {
+        const slug = pageIdToSlug(id);
+        return getDocPage(slug);
+    }
+
     try {
         console.log(`[findPageById] Looking for page with id: ${id}`);
         const doc = await getCollection().findOne({ id });

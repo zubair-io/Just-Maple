@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
+import { isDevMode, isDocNotebook, getDocPages, DOC_NOTEBOOK_ID } from '../services/docs.service';
 import type { JWTPayload } from '@maple/shared';
 
 /**
@@ -49,6 +50,13 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
+
+            // Handle virtual Documentation notebook in dev mode
+            if (isDevMode() && query.tagId && isDocNotebook(query.tagId)) {
+                const pages = await getDocPages();
+                return { pages };
+            }
+
             const pages = await findPagesByUserId(auth.user._id, {
                 tagId: query.tagId,
                 isFavorite: query.favorites === 'true' ? true : undefined,
