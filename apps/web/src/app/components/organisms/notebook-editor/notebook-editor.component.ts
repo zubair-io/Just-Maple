@@ -21,12 +21,16 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
+import { marked } from 'marked';
 import { MemoDocumentService } from '../../../services/memo-document.service';
 import { PageService } from '../../../services/page.service';
 import { AuthService } from '../../../services/auth.service';
 import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
 import { SlashCommandMenuComponent } from '../../molecules/slash-command-menu/slash-command-menu.component';
 import DragHandle from '@tiptap/extension-drag-handle';
+
+// Doc page prefix for virtual documentation pages
+const DOC_PAGE_PREFIX = 'doc-';
 import {
   CustomDocument,
   EmojiReplacer,
@@ -120,9 +124,12 @@ export class NotebookEditorComponent implements OnDestroy {
     this.isReady.set(false);
     this.error.set(null);
 
+    // Check if this is a doc page (virtual documentation page)
+    const isDocPageView = pageId.startsWith(DOC_PAGE_PREFIX);
+
     try {
       // Open document via service (handles offline-first loading)
-      const { ydoc, awareness } = await this.memoService.openDocument(pageId);
+      const { ydoc, awareness, markdownContent } = await this.memoService.openDocument(pageId);
       this.ydoc = ydoc;
       this.awareness = awareness;
 
@@ -233,11 +240,21 @@ export class NotebookEditorComponent implements OnDestroy {
             },
           }),
         ],
-        editable: this.editable(),
+        // Doc pages are always read-only
+        editable: isDocPageView ? false : this.editable(),
         onFocus: () => this.isFocused.set(true),
         onBlur: () => this.isFocused.set(false),
         onUpdate: ({ editor }) => this.handleContentUpdate(editor),
       });
+
+      // For doc pages, set the markdown content as HTML
+      if (isDocPageView && markdownContent) {
+        const htmlContent = await marked.parse(markdownContent);
+        // Use setTimeout to ensure the editor is fully initialized
+        setTimeout(() => {
+          this._editor?.commands.setContent(htmlContent);
+        }, 0);
+      }
 
       // Initialize lastSyncedTitle with the current title from the document
       this.lastSyncedTitle = this.extractFirstHeadingText(this._editor)?.trim() || '';
@@ -247,11 +264,13 @@ export class NotebookEditorComponent implements OnDestroy {
         this.isInitialSync = false;
       }, 500);
 
-      // Set up recording block event listeners (legacy)
-      this.setupRecordingBlockListeners();
+      // Set up recording block event listeners (legacy) - skip for doc pages
+      if (!isDocPageView) {
+        this.setupRecordingBlockListeners();
 
-      // Set up embed event listeners (new system)
-      this.setupEmbedListeners();
+        // Set up embed event listeners (new system)
+        this.setupEmbedListeners();
+      }
 
       this.isReady.set(true);
     } catch {

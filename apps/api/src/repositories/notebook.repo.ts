@@ -10,6 +10,7 @@ import type {
     NotebookValue,
     NotebookMember,
 } from '@maple/shared';
+import { isDevMode, isDocNotebook, getDocNotebook } from '../services/docs.service';
 
 interface SharedWithEntryDocument {
     userId: string;
@@ -146,7 +147,14 @@ export async function findNotebooksByUserId(userId: string): Promise<Notebook[]>
         })
         .sort({ label: 1 })
         .toArray();
-    return docs.map(toNotebookResponse);
+    const notebooks = docs.map(toNotebookResponse);
+
+    // Inject virtual Documentation notebook in dev mode
+    if (isDevMode()) {
+        notebooks.push(getDocNotebook());
+    }
+
+    return notebooks;
 }
 
 /**
@@ -154,6 +162,11 @@ export async function findNotebooksByUserId(userId: string): Promise<Notebook[]>
  * Handles both new sharing format and legacy userId format
  */
 export async function findNotebookById(id: string, userId: string): Promise<Notebook | null> {
+    // Handle virtual Documentation notebook in dev mode
+    if (isDevMode() && isDocNotebook(id)) {
+        return getDocNotebook();
+    }
+
     try {
         const doc = await getCollection().findOne({
             _id: new ObjectId(id),

@@ -16,9 +16,19 @@ import { YJSWSProvider } from './yjs-ws-provider';
 import { getUserColor } from '../utils/user-colors';
 import type { Page, SyncStatus } from '@maple/shared';
 
+// Doc page prefix for virtual documentation pages
+const DOC_PAGE_PREFIX = 'doc-';
+
 // Generate UUID v4 for page IDs
 function generatePageId(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * Check if a page ID is a doc page (virtual documentation page)
+ */
+function isDocPage(pageId: string): boolean {
+  return pageId.startsWith(DOC_PAGE_PREFIX);
 }
 
 /**
@@ -109,11 +119,18 @@ export class MemoDocumentService {
   /**
    * Open a memo document
    * Loads from IndexedDB first (offline-first), then syncs with server
+   * For doc pages, returns markdown content instead of Y.js sync
    */
   async openDocument(pageId: string): Promise<{
     ydoc: Y.Doc;
     awareness: Awareness;
+    markdownContent?: string;
   }> {
+    // Handle doc pages differently - they're read-only virtual pages
+    if (isDocPage(pageId)) {
+      return this.openDocPage(pageId);
+    }
+
     // Check if already open
     if (this.openDocs.has(pageId)) {
       const doc = this.openDocs.get(pageId)!;
@@ -151,6 +168,62 @@ export class MemoDocumentService {
     }
 
     return { ydoc, awareness };
+  }
+
+  /**
+   * Open a doc page (virtual documentation page)
+   * Returns markdown content for rendering, no Y.js sync
+   */
+  private async openDocPage(pageId: string): Promise<{
+    ydoc: Y.Doc;
+    awareness: Awareness;
+    markdownContent?: string;
+  }> {
+    // Check if already open
+    if (this.openDocs.has(pageId)) {
+      const doc = this.openDocs.get(pageId)!;
+      // Return cached result - markdownContent might be stored separately
+      return { ydoc: doc.ydoc, awareness: doc.awareness };
+    }
+
+    // Create Y.Doc (needed for editor compatibility, but won't sync)
+    const ydoc = new Y.Doc();
+
+    // Create awareness (needed for editor compatibility)
+    const awareness = new Awareness(ydoc);
+    this.setupAwareness(awareness);
+
+    // No IndexedDB persistence for doc pages - they're virtual
+    // Create a minimal persistence that does nothing
+    const persistence = {
+      destroy: () => {},
+      whenSynced: Promise.resolve(),
+    } as unknown as IndexeddbPersistence;
+
+    // Store reference (no WebSocket provider for doc pages)
+    const doc: OpenDocument = {
+      ydoc,
+      awareness,
+      persistence,
+      wsProvider: null,
+    };
+    this.openDocs.set(pageId, doc);
+
+    // Fetch markdown content from API
+    let markdownContent: string | undefined;
+    try {
+      await this.waitForAuth();
+      const response = await firstValueFrom(
+        this.http.get<{ state: string | null; markdown?: string }>(`/api/memos/${pageId}/state`),
+      );
+      if (response.markdown) {
+        markdownContent = response.markdown;
+      }
+    } catch (error) {
+      console.error(`[MemoDocumentService] Failed to fetch doc page ${pageId}:`, error);
+    }
+
+    return { ydoc, awareness, markdownContent };
   }
 
   /**

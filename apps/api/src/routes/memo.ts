@@ -4,6 +4,7 @@ import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
 import { findPageById } from '../repositories/page.repo';
 import { yjsDocumentService } from '../services/yjs-document.service';
+import { isDevMode, isDocPage, getDocContent, pageIdToSlug } from '../services/docs.service';
 import type { JWTPayload } from '@maple/shared';
 
 /**
@@ -94,6 +95,17 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
         }
 
         const { noteId } = params;
+
+        // Handle doc pages in dev mode - return markdown directly
+        if (isDevMode() && isDocPage(noteId)) {
+            const slug = pageIdToSlug(noteId);
+            const markdown = await getDocContent(slug);
+            if (!markdown) {
+                set.status = 404;
+                return { error: 'Documentation page not found' };
+            }
+            return { state: null, markdown };
+        }
 
         // Verify page exists and user has access (noteId is the documentId)
         const page = await findPageById(noteId, auth.user._id);
