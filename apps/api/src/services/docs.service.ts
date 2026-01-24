@@ -1,4 +1,5 @@
 import { readdir, readFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join, basename } from 'path';
 import { config } from '../config';
 import type { Notebook, Page } from '@maple/shared';
@@ -8,11 +9,19 @@ export const DOC_NOTEBOOK_ID = 'doc-notebook';
 const DOC_PAGE_PREFIX = 'doc-';
 const DOCS_DIR = join(process.cwd(), '..', '..', 'docs');
 
+// Cache whether docs folder exists (checked once at startup)
+const docsExist = existsSync(DOCS_DIR);
+
 /**
  * Check if running in dev mode (excludes test environment)
+ * Also requires docs folder to exist
  */
 export function isDevMode(): boolean {
-    return config.isDev && process.env.NODE_ENV !== 'test';
+    const result = config.isDev && process.env.NODE_ENV !== 'test' && docsExist;
+    console.log(
+        `[isDevMode] NODE_ENV=${process.env.NODE_ENV}, Bun.env.NODE_ENV=${Bun.env.NODE_ENV}, config.isDev=${config.isDev}, docsExist=${docsExist}, result=${result}`,
+    );
+    return result;
 }
 
 /**
