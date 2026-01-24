@@ -9,10 +9,10 @@ const DOC_PAGE_PREFIX = 'doc-';
 const DOCS_DIR = join(process.cwd(), '..', '..', 'docs');
 
 /**
- * Check if running in dev mode
+ * Check if running in dev mode (excludes test environment)
  */
 export function isDevMode(): boolean {
-    return config.isDev;
+    return config.isDev && process.env.NODE_ENV !== 'test';
 }
 
 /**

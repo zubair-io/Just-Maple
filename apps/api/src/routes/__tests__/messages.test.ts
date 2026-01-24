@@ -373,7 +373,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const newContent = { type: 'doc', content: [{ type: 'text', text: 'Edited' }] };
 
             const response = await app.handle(
-                new Request(`http://localhost/api/messages/${message._id.toString()}`, {
+                new Request(`http://localhost/api/messages/${message.id}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -406,7 +406,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/messages/${message._id.toString()}`, {
+                new Request(`http://localhost/api/messages/${message.id}`, {
                     method: 'PUT',
                     headers: {
                         Authorization: `Bearer ${token}`,
@@ -449,7 +449,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/messages/${message._id.toString()}`, {
+                new Request(`http://localhost/api/messages/${message.id}`, {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),
@@ -477,7 +477,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/messages/${message._id.toString()}`, {
+                new Request(`http://localhost/api/messages/${message.id}`, {
                     method: 'DELETE',
                     headers: { Authorization: `Bearer ${token}` },
                 }),

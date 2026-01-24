@@ -5,7 +5,7 @@ import {
     findThreadByParentMessage,
     createThread,
     incrementThreadMessageCount,
-    findThreadsByTagId,
+    findThreadsByNotebookId,
     getOrCreateThread,
 } from '../thread.repo';
 import { createThreadFixture, createNotebookFixture } from '../../__tests__/helpers/fixtures';
@@ -105,13 +105,13 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
         });
     });
 
-    describe('findThreadsByTagId', () => {
+    describe('findThreadsByNotebookId', () => {
         it('should return threads for tag', async () => {
             const tag = await createNotebookFixture();
             await createThreadFixture({ notebookId: tag._id.toString() });
             await createThreadFixture({ notebookId: tag._id.toString() });
 
-            const threads = await findThreadsByTagId(tag._id.toString());
+            const threads = await findThreadsByNotebookId(tag._id.toString());
 
             expect(threads.length).toBe(2);
         });
@@ -122,7 +122,7 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
             await createThreadFixture({ notebookId: tag1._id.toString() });
             await createThreadFixture({ notebookId: tag2._id.toString() });
 
-            const threads = await findThreadsByTagId(tag1._id.toString());
+            const threads = await findThreadsByNotebookId(tag1._id.toString());
 
             expect(threads.length).toBe(1);
             expect(threads[0].notebookId).toBe(tag1._id.toString());
@@ -134,7 +134,7 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
             await createThreadFixture({ notebookId: tag._id.toString() });
             await createThreadFixture({ notebookId: tag._id.toString() });
 
-            const threads = await findThreadsByTagId(tag._id.toString(), { limit: 2 });
+            const threads = await findThreadsByNotebookId(tag._id.toString(), { limit: 2 });
 
             expect(threads.length).toBe(2);
         });
@@ -147,7 +147,7 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
             await new Promise((resolve) => setTimeout(resolve, 10));
             const thread2 = await createThreadFixture({ notebookId: tag._id.toString() });
 
-            const threads = await findThreadsByTagId(tag._id.toString());
+            const threads = await findThreadsByNotebookId(tag._id.toString());
 
             // Most recently updated should be first
             expect(threads[0]._id).toBe(thread2._id.toString());

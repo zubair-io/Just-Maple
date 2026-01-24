@@ -430,6 +430,7 @@ export async function createPageFixture(options: CreatePageOptions = {}): Promis
 
 export interface MessageDoc {
     _id: ObjectId;
+    id: string;
     notebookId: ObjectId;
     threadId?: ObjectId;
     userId: ObjectId;
@@ -464,6 +465,7 @@ export async function createMessageFixture(
 
     const doc: MessageDoc = {
         _id: new ObjectId(),
+        id: crypto.randomUUID(),
         notebookId: options.notebookId ? new ObjectId(options.notebookId) : new ObjectId(),
         threadId: options.threadId ? new ObjectId(options.threadId) : undefined,
         userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
