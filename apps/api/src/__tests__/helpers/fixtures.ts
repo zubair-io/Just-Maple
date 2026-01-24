@@ -230,7 +230,7 @@ export interface UserBotDoc {
     displayName?: string;
     config?: { apiKey?: string; customSettings?: Record<string, unknown> };
     isEnabled: boolean;
-    tagId?: ObjectId;
+    notebookId?: ObjectId;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -241,7 +241,7 @@ export interface CreateUserBotOptions {
     handle?: string;
     displayName?: string;
     isEnabled?: boolean;
-    tagId?: string;
+    notebookId?: string;
     config?: { apiKey?: string };
 }
 
@@ -259,7 +259,7 @@ export async function createUserBotFixture(
         displayName: options.displayName,
         config: options.config,
         isEnabled: options.isEnabled ?? true,
-        tagId: options.tagId ? new ObjectId(options.tagId) : undefined,
+        notebookId: options.notebookId ? new ObjectId(options.notebookId) : undefined,
         createdAt: now,
         updatedAt: now,
     };
@@ -274,7 +274,7 @@ export async function createUserBotFixture(
 export interface ThreadDoc {
     _id: ObjectId;
     parentMessageId: ObjectId;
-    tagId: ObjectId;
+    notebookId: ObjectId;
     botInvocationId?: ObjectId;
     messageCount: number;
     createdAt: Date;
@@ -283,7 +283,7 @@ export interface ThreadDoc {
 
 export interface CreateThreadOptions {
     parentMessageId?: string;
-    tagId?: string;
+    notebookId?: string;
     botInvocationId?: string;
     messageCount?: number;
 }
@@ -296,7 +296,7 @@ export async function createThreadFixture(options: CreateThreadOptions = {}): Pr
         parentMessageId: options.parentMessageId
             ? new ObjectId(options.parentMessageId)
             : new ObjectId(),
-        tagId: options.tagId ? new ObjectId(options.tagId) : new ObjectId(),
+        notebookId: options.notebookId ? new ObjectId(options.notebookId) : new ObjectId(),
         botInvocationId: options.botInvocationId
             ? new ObjectId(options.botInvocationId)
             : undefined,
@@ -318,7 +318,7 @@ export interface BotInvocationDoc {
     templateId: ObjectId;
     sourceType: 'message' | 'note';
     sourceId: ObjectId;
-    tagId: ObjectId;
+    notebookId: ObjectId;
     userId: ObjectId;
     context: Record<string, unknown>;
     variables: Record<string, unknown>;
@@ -337,7 +337,7 @@ export interface CreateBotInvocationOptions {
     templateId?: string;
     sourceType?: 'message' | 'note';
     sourceId?: string;
-    tagId?: string;
+    notebookId?: string;
     userId?: string;
     status?: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
     context?: Record<string, unknown>;
@@ -354,7 +354,7 @@ export async function createBotInvocationFixture(
         templateId: options.templateId ? new ObjectId(options.templateId) : new ObjectId(),
         sourceType: options.sourceType || 'message',
         sourceId: options.sourceId ? new ObjectId(options.sourceId) : new ObjectId(),
-        tagId: options.tagId ? new ObjectId(options.tagId) : new ObjectId(),
+        notebookId: options.notebookId ? new ObjectId(options.notebookId) : new ObjectId(),
         userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
         context: options.context || { mentionText: '@bot test' },
         variables: {},
@@ -378,7 +378,7 @@ export interface PageDoc {
     title: string;
     content: any;
     version: number;
-    tagId?: ObjectId;
+    notebookId?: ObjectId;
     isFavorite?: boolean;
     isArchived?: boolean;
     isTrashed?: boolean;
@@ -394,7 +394,7 @@ export interface CreatePageOptions {
     content?: any;
     id?: string;
     version?: number;
-    tagId?: string;
+    notebookId?: string;
     isFavorite?: boolean;
     isArchived?: boolean;
     isTrashed?: boolean;
@@ -412,7 +412,7 @@ export async function createPageFixture(options: CreatePageOptions = {}): Promis
         title: options.title || 'Test Page',
         content: options.content || { type: 'doc', content: [] },
         version: options.version ?? 1,
-        tagId: options.tagId ? new ObjectId(options.tagId) : undefined,
+        notebookId: options.notebookId ? new ObjectId(options.notebookId) : undefined,
         isFavorite: options.isFavorite ?? false,
         isArchived: options.isArchived ?? false,
         isTrashed: options.isTrashed ?? false,
@@ -430,7 +430,7 @@ export async function createPageFixture(options: CreatePageOptions = {}): Promis
 
 export interface MessageDoc {
     _id: ObjectId;
-    tagId: ObjectId;
+    notebookId: ObjectId;
     threadId?: ObjectId;
     userId: ObjectId;
     senderType?: 'user' | 'bot';
@@ -447,7 +447,7 @@ export interface MessageDoc {
 }
 
 export interface CreateMessageOptions {
-    tagId?: string;
+    notebookId?: string;
     threadId?: string;
     userId?: string;
     senderType?: 'user' | 'bot';
@@ -464,7 +464,7 @@ export async function createMessageFixture(
 
     const doc: MessageDoc = {
         _id: new ObjectId(),
-        tagId: options.tagId ? new ObjectId(options.tagId) : new ObjectId(),
+        notebookId: options.notebookId ? new ObjectId(options.notebookId) : new ObjectId(),
         threadId: options.threadId ? new ObjectId(options.threadId) : undefined,
         userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
         senderType: options.senderType || 'user',

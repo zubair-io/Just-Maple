@@ -67,18 +67,18 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             expect(data.pages).toHaveLength(0);
         });
 
-        it('should filter by tagId', async () => {
+        it('should filter by notebookId', async () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const note1 = await createPageFixture({
                 userId: user._id.toString(),
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
             });
             await createPageFixture({ userId: user._id.toString() }); // No tag
             const token = await getAuthToken(user._id.toString(), user.email);
 
             const response = await app.handle(
-                new Request(`http://localhost/api/pages/?tagId=${tag._id.toString()}`, {
+                new Request(`http://localhost/api/pages/?notebookId=${tag._id.toString()}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             );
@@ -251,14 +251,14 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
                     },
                     body: JSON.stringify({
                         title: 'Tagged Note',
-                        tagId: tag._id.toString(),
+                        notebookId: tag._id.toString(),
                     }),
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.page.tagId).toBe(tag._id.toString());
+            expect(data.page.notebookId).toBe(tag._id.toString());
         });
 
         it('should create lego note', async () => {
@@ -383,7 +383,7 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
             const tag2 = await createNotebookFixture({ createdBy: user._id.toString() });
             const note = await createPageFixture({
                 userId: user._id.toString(),
-                tagId: tag1._id.toString(),
+                notebookId: tag1._id.toString(),
             });
             const token = await getAuthToken(user._id.toString(), user.email);
 
@@ -394,13 +394,13 @@ describe.runIf(mongoAvailable)('Note Routes', () => {
                         Authorization: `Bearer ${token}`,
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ tagId: tag2._id.toString() }),
+                    body: JSON.stringify({ notebookId: tag2._id.toString() }),
                 }),
             );
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.page.tagId).toBe(tag2._id.toString());
+            expect(data.page.notebookId).toBe(tag2._id.toString());
         });
 
         it('should not allow updating other users note', async () => {

@@ -22,7 +22,7 @@ function generateMessageId(): string {
 interface MessageDocument {
     _id: ObjectId;
     id: string; // UUID v4 for routing
-    tagId: ObjectId;
+    notebookId: ObjectId;
     threadId?: ObjectId;
     userId: ObjectId;
     senderType?: SenderType;
@@ -51,7 +51,7 @@ function toMessageResponse(
     return {
         _id: doc._id.toString(),
         id: doc.id,
-        tagId: doc.tagId.toString(),
+        notebookId: doc.notebookId.toString(),
         threadId: doc.threadId?.toString(),
         userId: doc.userId.toString(),
         senderType: doc.senderType,
@@ -70,15 +70,15 @@ function toMessageResponse(
     };
 }
 
-export async function findMessagesByTagId(
-    tagId: string,
+export async function findMessagesByNotebookId(
+    notebookId: string,
     options?: {
         limit?: number;
         before?: string; // Cursor-based pagination: messages before this UUID id
     },
 ): Promise<Message[]> {
     const query: Record<string, unknown> = {
-        tagId: new ObjectId(tagId),
+        notebookId: new ObjectId(notebookId),
         threadId: { $in: [null] }, // Only top-level messages, not thread replies
         deletedAt: { $exists: false },
     };
@@ -121,7 +121,7 @@ export async function findMessageByMongoId(
 
         // If userId is provided, verify tag access
         if (userId) {
-            const tag = await findNotebookByIdWithAccess(doc.tagId.toString(), userId, 'read');
+            const tag = await findNotebookByIdWithAccess(doc.notebookId.toString(), userId, 'read');
             if (!tag) return null; // No access to the tag
         }
 
@@ -141,7 +141,7 @@ export async function findMessageById(id: string, userId?: string): Promise<Mess
 
         // If userId is provided, verify tag access
         if (userId) {
-            const tag = await findNotebookByIdWithAccess(doc.tagId.toString(), userId, 'read');
+            const tag = await findNotebookByIdWithAccess(doc.notebookId.toString(), userId, 'read');
             if (!tag) return null; // No access to the tag
         }
 
@@ -152,7 +152,7 @@ export async function findMessageById(id: string, userId?: string): Promise<Mess
 }
 
 export async function createMessage(
-    tagId: string,
+    notebookId: string,
     userId: string,
     data: CreateMessageInput,
     senderEmail?: string,
@@ -164,7 +164,7 @@ export async function createMessage(
     const messageId = generateMessageId();
     const doc: any = {
         id: messageId,
-        tagId: new ObjectId(tagId),
+        notebookId: new ObjectId(notebookId),
         userId: new ObjectId(userId),
         content: data.content,
         createdAt: now,
@@ -185,7 +185,7 @@ export async function createMessage(
     return {
         _id: result.insertedId.toString(),
         id: messageId,
-        tagId: tagId,
+        notebookId: notebookId,
         threadId: threadId,
         userId: userId,
         senderEmail,
@@ -251,10 +251,10 @@ export async function softDeleteMessage(id: string, userId: string): Promise<boo
     }
 }
 
-export async function countMessagesSince(tagId: string, since: Date): Promise<number> {
+export async function countMessagesSince(notebookId: string, since: Date): Promise<number> {
     try {
         return await getCollection().countDocuments({
-            tagId: new ObjectId(tagId),
+            notebookId: new ObjectId(notebookId),
             deletedAt: { $exists: false },
             createdAt: { $gt: since },
         });
@@ -263,11 +263,11 @@ export async function countMessagesSince(tagId: string, since: Date): Promise<nu
     }
 }
 
-export async function getLatestMessageTime(tagId: string): Promise<Date | null> {
+export async function getLatestMessageTime(notebookId: string): Promise<Date | null> {
     try {
         const doc = await getCollection()
             .find({
-                tagId: new ObjectId(tagId),
+                notebookId: new ObjectId(notebookId),
                 deletedAt: { $exists: false },
             })
             .sort({ createdAt: -1 })
@@ -329,7 +329,7 @@ export async function findMessagesByThreadId(
 }
 
 export async function createMessageInThread(data: {
-    tagId: string;
+    notebookId: string;
     threadId: string;
     userId: string;
     userBotId?: string;
@@ -343,7 +343,7 @@ export async function createMessageInThread(data: {
     const isBot = data.senderType === 'bot';
     const doc: Omit<MessageDocument, '_id'> = {
         id: messageId,
-        tagId: new ObjectId(data.tagId),
+        notebookId: new ObjectId(data.notebookId),
         threadId: new ObjectId(data.threadId),
         userId: new ObjectId(data.userId),
         userBotId: data.userBotId ? new ObjectId(data.userBotId) : undefined,
@@ -361,7 +361,7 @@ export async function createMessageInThread(data: {
     return {
         _id: result.insertedId.toString(),
         id: messageId,
-        tagId: data.tagId,
+        notebookId: data.notebookId,
         threadId: data.threadId,
         userId: data.userId,
         userBotId: data.userBotId,

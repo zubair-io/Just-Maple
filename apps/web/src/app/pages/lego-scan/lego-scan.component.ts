@@ -135,7 +135,7 @@ export class LegoScanComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Subscribe to route params and set ID directly - effect handles loading
     this.routeSubscription = this.route.params.subscribe((params) => {
-      this.notebookId.set(params['tagId'] || null);
+      this.notebookId.set(params['notebookId'] || null);
     });
 
     // Initialize registry data

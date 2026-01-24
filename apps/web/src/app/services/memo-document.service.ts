@@ -464,7 +464,7 @@ export class MemoDocumentService {
       type: 'memo',
       title: 'Untitled Memo',
       content: { type: 'doc', content: [] },
-      tagId: notebookId,
+      notebookId: notebookId,
       isFavorite: false,
       isArchived: false,
       isTrashed: false,
@@ -481,7 +481,7 @@ export class MemoDocumentService {
     await this.offlineQueue.enqueue('create-note', pageId, pageId, {
       type: 'memo',
       title: page.title,
-      tagId: notebookId,
+      notebookId: notebookId,
       id: pageId,
     });
 

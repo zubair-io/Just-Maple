@@ -27,7 +27,7 @@ interface PageDocument {
     // Automerge metadata
     version?: number; // Hash of Automerge heads (for cache validation)
     lastSyncedHeads?: string[]; // Automerge heads (for sync optimization)
-    tagId?: ObjectId;
+    notebookId?: ObjectId;
     isFavorite?: boolean;
     isArchived?: boolean;
     isTrashed?: boolean;
@@ -51,7 +51,7 @@ function toPageResponse(doc: PageDocument): Page {
         automergeDoc: doc.automergeDoc, // Binary CRDT (normalized to array)
         version: doc.version, // Hash of Automerge heads
         lastSyncedHeads: doc.lastSyncedHeads, // Automerge heads
-        tagId: doc.tagId?.toString(),
+        notebookId: doc.notebookId?.toString(),
         isFavorite: doc.isFavorite,
         isArchived: doc.isArchived,
         isTrashed: doc.isTrashed,
@@ -69,21 +69,21 @@ const defaultContent: PageContent = {
 export async function findPagesByUserId(
     userId: string,
     options?: {
-        tagId?: string;
+        notebookId?: string;
         isFavorite?: boolean;
         isTrashed?: boolean;
         isArchived?: boolean;
     },
 ): Promise<Page[]> {
-    // If specific tagId is provided, verify access first
-    if (options?.tagId) {
-        const notebook = await findNotebookByIdWithAccess(options.tagId, userId, 'read');
+    // If specific notebookId is provided, verify access first
+    if (options?.notebookId) {
+        const notebook = await findNotebookByIdWithAccess(options.notebookId, userId, 'read');
         if (!notebook) {
             return []; // No access to this notebook
         }
 
         const query: Record<string, unknown> = {
-            tagId: new ObjectId(options.tagId),
+            notebookId: new ObjectId(options.notebookId),
             isTrashed: { $ne: true },
         };
 
@@ -110,14 +110,14 @@ export async function findPagesByUserId(
         .map((t) => new ObjectId(t._id));
 
     // 2. Find pages that:
-    //    - Have a tagId the user has access to, OR
-    //    - Have no tagId AND belong to the user (userId)
+    //    - Have a notebookId the user has access to, OR
+    //    - Have no notebookId AND belong to the user (userId)
     const query: Record<string, unknown> = {
         isTrashed: { $ne: true },
         $or: [
-            { tagId: { $in: notebookIds } }, // Pages in accessible notebooks
-            { tagId: { $exists: false }, userId: new ObjectId(userId) }, // User's untagged pages
-            { tagId: null, userId: new ObjectId(userId) }, // User's pages with null tagId
+            { notebookId: { $in: notebookIds } }, // Pages in accessible notebooks
+            { notebookId: { $exists: false }, userId: new ObjectId(userId) }, // User's untagged pages
+            { notebookId: null, userId: new ObjectId(userId) }, // User's pages with null notebookId
         ],
     };
 
@@ -146,9 +146,13 @@ export async function findPageByMongoId(mongoId: string, userId: string): Promis
         if (!doc) return null;
 
         // Check access based on notebook or ownership
-        if (doc.tagId) {
+        if (doc.notebookId) {
             // Page has a notebook - check notebook access
-            const notebook = await findNotebookByIdWithAccess(doc.tagId.toString(), userId, 'read');
+            const notebook = await findNotebookByIdWithAccess(
+                doc.notebookId.toString(),
+                userId,
+                'read',
+            );
             if (!notebook) return null; // No access to the notebook
         } else {
             // Page has no notebook - only owner can access
@@ -175,9 +179,13 @@ export async function findPageById(id: string, userId: string): Promise<Page | n
         if (!doc) return null;
 
         // Check access based on notebook or ownership
-        if (doc.tagId) {
+        if (doc.notebookId) {
             // Page has a notebook - check notebook access
-            const notebook = await findNotebookByIdWithAccess(doc.tagId.toString(), userId, 'read');
+            const notebook = await findNotebookByIdWithAccess(
+                doc.notebookId.toString(),
+                userId,
+                'read',
+            );
             if (!notebook) return null; // No access to the notebook
         } else {
             // Page has no notebook - only owner can access
@@ -204,7 +212,7 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
         content: data.content || defaultContent,
         version: undefined,
         lastSyncedHeads: undefined,
-        tagId: data.tagId ? new ObjectId(data.tagId) : undefined,
+        notebookId: data.notebookId ? new ObjectId(data.notebookId) : undefined,
         isFavorite: false,
         isArchived: false,
         isTrashed: false,
@@ -224,7 +232,7 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
         automergeDoc: undefined,
         version: undefined,
         lastSyncedHeads: undefined,
-        tagId: data.tagId,
+        notebookId: data.notebookId,
         isFavorite: doc.isFavorite,
         isArchived: doc.isArchived,
         isTrashed: doc.isTrashed,
@@ -244,10 +252,10 @@ export async function updatePage(
         if (!doc) return null;
 
         // Check write access based on notebook or ownership
-        if (doc.tagId) {
+        if (doc.notebookId) {
             // Page has a notebook - check notebook write access
             const notebook = await findNotebookByIdWithAccess(
-                doc.tagId.toString(),
+                doc.notebookId.toString(),
                 userId,
                 'write',
             );
@@ -258,8 +266,12 @@ export async function updatePage(
         }
 
         // If moving to a new notebook, verify write access to the new notebook
-        if (data.tagId !== undefined && data.tagId && data.tagId !== doc.tagId?.toString()) {
-            const newNotebook = await findNotebookByIdWithAccess(data.tagId, userId, 'write');
+        if (
+            data.notebookId !== undefined &&
+            data.notebookId &&
+            data.notebookId !== doc.notebookId?.toString()
+        ) {
+            const newNotebook = await findNotebookByIdWithAccess(data.notebookId, userId, 'write');
             if (!newNotebook) return null; // No write access to the new notebook
         }
 
@@ -283,8 +295,8 @@ export async function updatePage(
         if (data.lastSyncedHeads !== undefined) {
             updateData.lastSyncedHeads = data.lastSyncedHeads;
         }
-        if (data.tagId !== undefined) {
-            updateData.tagId = data.tagId ? new ObjectId(data.tagId) : undefined;
+        if (data.notebookId !== undefined) {
+            updateData.notebookId = data.notebookId ? new ObjectId(data.notebookId) : undefined;
         }
         if (data.isFavorite !== undefined) {
             updateData.isFavorite = data.isFavorite;
@@ -321,10 +333,10 @@ export async function deletePage(id: string, userId: string): Promise<boolean> {
         if (!doc) return false;
 
         // Check write access based on notebook or ownership
-        if (doc.tagId) {
+        if (doc.notebookId) {
             // Page has a notebook - check notebook write access
             const notebook = await findNotebookByIdWithAccess(
-                doc.tagId.toString(),
+                doc.notebookId.toString(),
                 userId,
                 'write',
             );
@@ -375,9 +387,9 @@ export async function emptyTrash(userId: string): Promise<number> {
         const result = await getCollection().deleteMany({
             isTrashed: true,
             $or: [
-                { tagId: { $in: notebookIds } },
-                { tagId: { $exists: false }, userId: new ObjectId(userId) },
-                { tagId: null as any, userId: new ObjectId(userId) },
+                { notebookId: { $in: notebookIds } },
+                { notebookId: { $exists: false }, userId: new ObjectId(userId) },
+                { notebookId: null as any, userId: new ObjectId(userId) },
             ],
         });
         return result.deletedCount;
@@ -474,8 +486,8 @@ export async function updatePageInternal(
         if (data.automergeDoc !== undefined) updateData.automergeDoc = data.automergeDoc;
         if (data.version !== undefined) updateData.version = data.version;
         if (data.lastSyncedHeads !== undefined) updateData.lastSyncedHeads = data.lastSyncedHeads;
-        if (data.tagId !== undefined) {
-            updateData.tagId = data.tagId ? new ObjectId(data.tagId) : null;
+        if (data.notebookId !== undefined) {
+            updateData.notebookId = data.notebookId ? new ObjectId(data.notebookId) : null;
         }
         if (data.isFavorite !== undefined) updateData.isFavorite = data.isFavorite;
         if (data.isArchived !== undefined) updateData.isArchived = data.isArchived;

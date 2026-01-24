@@ -254,7 +254,7 @@ export async function sendExportReadyNotification(
  */
 export async function sendMessageReceivedNotification(
     userId: string,
-    tagId: string,
+    notebookId: string,
     messageId: string,
     senderEmail: string,
     senderName: string | undefined,
@@ -276,7 +276,7 @@ export async function sendMessageReceivedNotification(
         userId,
         'message_received',
         {
-            tagId,
+            notebookId,
             messageId,
             senderEmail,
             senderName,

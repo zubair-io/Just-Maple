@@ -43,7 +43,7 @@ export const PageSchema = Type.Object({
     // Automerge metadata
     version: Type.Optional(Type.Number()), // Hash of Automerge heads (for cache validation)
     lastSyncedHeads: Type.Optional(Type.Array(Type.String())), // Automerge heads (for sync optimization)
-    tagId: Type.Optional(Type.String()), // Associated notebook/folder
+    notebookId: Type.Optional(Type.String()), // Associated notebook/folder
     isFavorite: Type.Optional(Type.Boolean()),
     isArchived: Type.Optional(Type.Boolean()),
     isTrashed: Type.Optional(Type.Boolean()),
@@ -58,7 +58,7 @@ export const CreatePageSchema = Type.Object({
     type: Type.Optional(PageTypeSchema),
     title: Type.Optional(Type.String({ maxLength: 500 })),
     content: Type.Optional(PageContentSchema),
-    tagId: Type.Optional(Type.String()),
+    notebookId: Type.Optional(Type.String()),
     id: Type.Optional(Type.String()), // UUID v4 for routing (was documentId)
     automergeDoc: Type.Optional(Type.Any()), // Binary CRDT
 });
@@ -71,7 +71,7 @@ export const UpdatePageSchema = Type.Object({
     automergeDoc: Type.Optional(Type.Any()), // Binary CRDT
     version: Type.Optional(Type.Number()), // Automerge heads hash
     lastSyncedHeads: Type.Optional(Type.Array(Type.String())), // Automerge heads
-    tagId: Type.Optional(Type.String()),
+    notebookId: Type.Optional(Type.String()),
     isFavorite: Type.Optional(Type.Boolean()),
     isArchived: Type.Optional(Type.Boolean()),
     isTrashed: Type.Optional(Type.Boolean()),

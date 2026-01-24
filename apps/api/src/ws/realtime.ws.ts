@@ -402,7 +402,7 @@ async function handleChatMessage(
             const chatEvent: ChatEvent = {
                 action: 'message',
                 data: message,
-                tagId: notebookId,
+                notebookId: notebookId,
                 userId: context.userId,
                 timestamp: new Date().toISOString(),
             };
@@ -439,7 +439,7 @@ async function handleChatMessage(
             if (!notebookId || !context.subscribedNotebooks.has(notebookId)) return;
 
             const typingEvent: TypingEvent = {
-                tagId: notebookId,
+                notebookId: notebookId,
                 userId: context.userId,
                 isTyping: isTyping ?? true,
             };
@@ -447,7 +447,7 @@ async function handleChatMessage(
             const chatEvent: ChatEvent = {
                 action: 'typing',
                 data: typingEvent,
-                tagId: notebookId,
+                notebookId: notebookId,
                 userId: context.userId,
                 timestamp: new Date().toISOString(),
             };

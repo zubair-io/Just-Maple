@@ -38,7 +38,7 @@ export const ExportReadyDataSchema = Type.Object({
 });
 
 export const MessageReceivedDataSchema = Type.Object({
-    tagId: Type.String(),
+    notebookId: Type.String(),
     messageId: Type.String(),
     senderEmail: Type.String(),
 });

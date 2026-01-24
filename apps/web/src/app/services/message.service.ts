@@ -135,17 +135,17 @@ export class MessageService {
     const activeNotebookId = this.notificationService.activeNotebookId();
 
     // Only add to store if for current tag
-    if (message.tagId === currentTagId) {
+    if (message.notebookId === currentTagId) {
       // Use upsert to handle duplicates (e.g., sender's own message)
       this.store.update(upsertEntities(message));
       this.persistToIndexedDB([message]);
     }
 
     // If user is viewing this notebook, mark as read immediately to prevent unread count buildup
-    if (message.tagId === activeNotebookId) {
-      this.markAsRead(message.tagId).subscribe();
+    if (message.notebookId === activeNotebookId) {
+      this.markAsRead(message.notebookId).subscribe();
       // Also mark any corresponding notifications as read
-      this.notificationService.markNotebookMessagesAsRead(message.tagId);
+      this.notificationService.markNotebookMessagesAsRead(message.notebookId);
     } else if (message.userId !== currentUserId) {
       // Show toast notification if message is from another user and NOT for the active notebook
       const senderName = message.senderDisplayName || message.senderEmail || 'Someone';
@@ -163,11 +163,13 @@ export class MessageService {
 
       // Increment local unread count for this notebook
       this._unreadCounts.update((counts) => {
-        const existing = counts.find((c) => c.tagId === message.tagId);
+        const existing = counts.find((c) => c.notebookId === message.notebookId);
         if (existing) {
-          return counts.map((c) => (c.tagId === message.tagId ? { ...c, count: c.count + 1 } : c));
+          return counts.map((c) =>
+            c.notebookId === message.notebookId ? { ...c, count: c.count + 1 } : c,
+          );
         } else {
-          return [...counts, { tagId: message.tagId, count: 1 }];
+          return [...counts, { notebookId: message.notebookId, count: 1 }];
         }
       });
     }
@@ -233,33 +235,33 @@ export class MessageService {
    * Excludes thread messages (those with threadId set)
    */
   messagesForTag = computed(() => {
-    const tagId = this._currentTagId();
-    if (!tagId) return [];
+    const notebookId = this._currentTagId();
+    if (!notebookId) return [];
     return this.messages()
-      .filter((m) => m.tagId === tagId && !m.threadId)
+      .filter((m) => m.notebookId === notebookId && !m.threadId)
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   });
 
   /**
    * Get unread count for a specific tag
    */
-  getUnreadCount(tagId: string): number {
-    return this._unreadCounts().find((c) => c.tagId === tagId)?.count || 0;
+  getUnreadCount(notebookId: string): number {
+    return this._unreadCounts().find((c) => c.notebookId === notebookId)?.count || 0;
   }
 
   /**
    * Load messages for a tag
    */
-  loadMessages(tagId: string, reset: boolean = true): Observable<Message[]> {
+  loadMessages(notebookId: string, reset: boolean = true): Observable<Message[]> {
     if (reset) {
-      this._currentTagId.set(tagId);
+      this._currentTagId.set(notebookId);
       this._hasMore.set(true);
     }
 
     this._isLoading.set(true);
     this._error.set(null);
 
-    return this.http.get<{ messages: Message[] }>(`/api/notebooks/${tagId}/messages`).pipe(
+    return this.http.get<{ messages: Message[] }>(`/api/notebooks/${notebookId}/messages`).pipe(
       tap((response) => {
         if (reset) {
           this.store.update(setEntities(response.messages));
@@ -293,8 +295,8 @@ export class MessageService {
    * Load older messages (pagination)
    */
   loadMore(): Observable<Message[]> {
-    const tagId = this._currentTagId();
-    if (!tagId || !this._hasMore() || this._isLoading()) {
+    const notebookId = this._currentTagId();
+    if (!notebookId || !this._hasMore() || this._isLoading()) {
       return of([]);
     }
 
@@ -307,7 +309,7 @@ export class MessageService {
     this._isLoading.set(true);
 
     return this.http
-      .get<{ messages: Message[] }>(`/api/notebooks/${tagId}/messages`, {
+      .get<{ messages: Message[] }>(`/api/notebooks/${notebookId}/messages`, {
         params: { before: oldestMessage.id },
       })
       .pipe(
@@ -339,7 +341,7 @@ export class MessageService {
    * Send a new message via WebSocket (preferred) or HTTP fallback
    */
   sendMessage(
-    tagId: string,
+    notebookId: string,
     content: PageContent,
     options?: { threadId?: string; parentMessageId?: string },
   ): Observable<Message> {
@@ -349,7 +351,7 @@ export class MessageService {
     // For thread messages, fall back to HTTP (more complex logic needed)
     if (!options?.threadId && !options?.parentMessageId && this.realtimeWS.isConnected()) {
       // Send via WebSocket - message will come back via broadcast
-      this.realtimeWS.sendChatMessage(tagId, content);
+      this.realtimeWS.sendChatMessage(notebookId, content);
       // Return empty observable - message will appear via WebSocket
       return of(null as unknown as Message);
     }
@@ -362,7 +364,7 @@ export class MessageService {
     const tempMessage: Message = {
       _id: tempId,
       id: tempId,
-      tagId,
+      notebookId,
       threadId: options?.threadId,
       userId: currentUser?._id || 'temp',
       senderEmail: currentUser?.email,
@@ -386,7 +388,7 @@ export class MessageService {
       body.parentMessageId = options.parentMessageId;
     }
 
-    return this.http.post<{ message: Message }>(`/api/notebooks/${tagId}/messages`, body).pipe(
+    return this.http.post<{ message: Message }>(`/api/notebooks/${notebookId}/messages`, body).pipe(
       tap((response) => {
         this.store.update(deleteEntities(tempId));
         // Use upsert - message may already exist from WebSocket broadcast
@@ -472,11 +474,11 @@ export class MessageService {
   /**
    * Mark tag as read
    */
-  markAsRead(tagId: string): Observable<void> {
-    return this.http.post<{ lastReadAt: string }>(`/api/notebooks/${tagId}/read`, {}).pipe(
+  markAsRead(notebookId: string): Observable<void> {
+    return this.http.post<{ lastReadAt: string }>(`/api/notebooks/${notebookId}/read`, {}).pipe(
       tap(() => {
         // Update local unread count
-        const counts = this._unreadCounts().filter((c) => c.tagId !== tagId);
+        const counts = this._unreadCounts().filter((c) => c.notebookId !== notebookId);
         this._unreadCounts.set(counts);
       }),
       map(() => undefined),
@@ -509,8 +511,8 @@ export class MessageService {
   /**
    * Send typing indicator
    */
-  sendTyping(tagId: string, isTyping: boolean = true): void {
-    this.realtime.sendTyping(tagId, isTyping);
+  sendTyping(notebookId: string, isTyping: boolean = true): void {
+    this.realtime.sendTyping(notebookId, isTyping);
   }
 
   /**

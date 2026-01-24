@@ -24,7 +24,7 @@ import {
     shareBotToNotebook,
     unshareBotFromNotebook,
 } from '../repositories/notebook.repo';
-import { findUserBotsForTag } from '../repositories/user-bot.repo';
+import { findUserBotsForNotebook } from '../repositories/user-bot.repo';
 import { sendNotification } from '../services/notification.service';
 
 export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
@@ -335,7 +335,7 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
                 return { error: 'Notebook not found' };
             }
 
-            const enrichedBots = await findUserBotsForTag(params.id);
+            const enrichedBots = await findUserBotsForNotebook(params.id);
             return { bots: enrichedBots };
         },
         {

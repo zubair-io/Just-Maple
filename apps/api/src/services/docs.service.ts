@@ -101,7 +101,7 @@ function createDocPage(slug: string, title: string): Page {
         type: 'memo',
         title,
         content: { type: 'doc', content: [] },
-        tagId: DOC_NOTEBOOK_ID,
+        notebookId: DOC_NOTEBOOK_ID,
         isFavorite: false,
         isArchived: false,
         isTrashed: false,

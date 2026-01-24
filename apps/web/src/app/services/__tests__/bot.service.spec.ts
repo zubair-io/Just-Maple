@@ -42,7 +42,7 @@ describe('BotService', () => {
     templateId: 'template-1',
     sourceType: 'message',
     sourceId: 'msg-1',
-    tagId: 'tag-1',
+    notebookId: 'tag-1',
     userId: 'user-1',
     context: { mentionText: '@hello test' },
     variables: {},
@@ -434,7 +434,7 @@ describe('BotService', () => {
       const mockThread: Thread = {
         _id: 'thread-1',
         parentMessageId: 'msg-1',
-        tagId: 'tag-1',
+        notebookId: 'tag-1',
         messageCount: 2,
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:00.000Z',
@@ -442,7 +442,7 @@ describe('BotService', () => {
       const mockMessages: Message[] = [
         {
           _id: 'reply-1',
-          tagId: 'tag-1',
+          notebookId: 'tag-1',
           userId: 'bot-user',
           content: { type: 'doc', content: [] },
           threadId: 'thread-1',
@@ -479,7 +479,7 @@ describe('BotService', () => {
       const mockMessages: Message[] = [
         {
           _id: 'reply-1',
-          tagId: 'tag-1',
+          notebookId: 'tag-1',
           userId: 'bot-user',
           content: { type: 'doc', content: [] },
           threadId: 'thread-1',

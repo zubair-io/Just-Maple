@@ -576,7 +576,7 @@ export class WhiteboardDocumentService {
       type: 'whiteboard',
       title: 'Untitled Whiteboard',
       content: { type: 'doc', content: [] },
-      tagId: notebookId,
+      notebookId: notebookId,
       isFavorite: false,
       isArchived: false,
       isTrashed: false,
@@ -592,7 +592,7 @@ export class WhiteboardDocumentService {
     await this.offlineQueue.enqueue('create-note', pageId, pageId, {
       type: 'whiteboard',
       title: page.title,
-      tagId: notebookId,
+      notebookId: notebookId,
       id: pageId,
     });
 

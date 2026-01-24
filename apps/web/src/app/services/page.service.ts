@@ -177,7 +177,7 @@ export class PageService {
     return this._pagesSignal() ?? [];
   }
   pagesByNotebook$(notebookId: string): Observable<Page[]> {
-    return this.store.pipe(selectManyByPredicate((entity) => entity.tagId === notebookId));
+    return this.store.pipe(selectManyByPredicate((entity) => entity.notebookId === notebookId));
   }
 
   /**
@@ -291,7 +291,7 @@ export class PageService {
       title: data.title || 'Untitled',
       content: data.content || defaultContent,
       version: 1,
-      tagId: data.tagId,
+      notebookId: data.notebookId,
       isFavorite: false,
       isArchived: false,
       isTrashed: false,
@@ -537,7 +537,7 @@ export class PageService {
    * Get pages for a specific notebook
    */
   getPagesForNotebook(notebookId: string): Page[] {
-    return this.store.query(getAllEntities()).filter((n) => n.tagId === notebookId);
+    return this.store.query(getAllEntities()).filter((n) => n.notebookId === notebookId);
   }
 
   /**

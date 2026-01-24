@@ -5,7 +5,7 @@ import type { Thread } from '@maple/shared';
 interface ThreadDocument {
     _id: ObjectId;
     parentMessageId: ObjectId;
-    tagId: ObjectId;
+    notebookId: ObjectId;
     botInvocationId?: ObjectId;
     messageCount: number;
     createdAt: Date;
@@ -20,7 +20,7 @@ function toThread(doc: ThreadDocument): Thread {
     return {
         _id: doc._id.toString(),
         parentMessageId: doc.parentMessageId.toString(),
-        tagId: doc.tagId.toString(),
+        notebookId: doc.notebookId.toString(),
         botInvocationId: doc.botInvocationId?.toString(),
         messageCount: doc.messageCount,
         createdAt: doc.createdAt.toISOString(),
@@ -50,13 +50,13 @@ export async function findThreadByParentMessage(messageId: string): Promise<Thre
 
 export async function createThread(data: {
     parentMessageId: string;
-    tagId: string;
+    notebookId: string;
     botInvocationId?: string;
 }): Promise<Thread> {
     const now = new Date();
     const doc: Omit<ThreadDocument, '_id'> = {
         parentMessageId: new ObjectId(data.parentMessageId),
-        tagId: new ObjectId(data.tagId),
+        notebookId: new ObjectId(data.notebookId),
         botInvocationId: data.botInvocationId ? new ObjectId(data.botInvocationId) : undefined,
         messageCount: 0,
         createdAt: now,
@@ -77,13 +77,13 @@ export async function incrementThreadMessageCount(threadId: string): Promise<voi
     );
 }
 
-export async function findThreadsByTagId(
-    tagId: string,
+export async function findThreadsByNotebookId(
+    notebookId: string,
     options?: { limit?: number },
 ): Promise<Thread[]> {
     try {
         const docs = await getCollection()
-            .find({ tagId: new ObjectId(tagId) })
+            .find({ notebookId: new ObjectId(notebookId) })
             .sort({ updatedAt: -1 })
             .limit(options?.limit || 50)
             .toArray();
@@ -97,12 +97,12 @@ export async function findThreadsByTagId(
 // Uses atomic findOneAndUpdate with upsert to handle race conditions
 export async function getOrCreateThread(data: {
     parentMessageId: string;
-    tagId: string;
+    notebookId: string;
     botInvocationId?: string;
 }): Promise<Thread> {
     const now = new Date();
     const parentMessageOid = new ObjectId(data.parentMessageId);
-    const tagOid = new ObjectId(data.tagId);
+    const tagOid = new ObjectId(data.notebookId);
     const botInvocationOid = data.botInvocationId ? new ObjectId(data.botInvocationId) : undefined;
 
     const result = await getCollection().findOneAndUpdate(
@@ -110,7 +110,7 @@ export async function getOrCreateThread(data: {
         {
             $setOnInsert: {
                 parentMessageId: parentMessageOid,
-                tagId: tagOid,
+                notebookId: tagOid,
                 botInvocationId: botInvocationOid,
                 messageCount: 0,
                 createdAt: now,

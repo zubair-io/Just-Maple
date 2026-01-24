@@ -45,7 +45,7 @@ export class BotExecutorService {
         userBotId: string;
         sourceType: 'message' | 'note';
         sourceId: string;
-        tagId: string;
+        notebookId: string;
         userId: string;
         context: BotInvocation['context'];
     }): Promise<BotInvocation> {
@@ -62,7 +62,7 @@ export class BotExecutorService {
             templateId: template._id,
             sourceType: params.sourceType,
             sourceId: params.sourceId,
-            tagId: params.tagId,
+            notebookId: params.notebookId,
             userId: params.userId,
             context: params.context,
         });
@@ -118,7 +118,7 @@ export class BotExecutorService {
                 $selection: (invocation.context.selection || '').slice(0, 10000),
                 $previousMessages: (invocation.context.previousMessages || []).slice(0, 10), // Max 10 messages
                 $userId: invocation.userId,
-                $tagId: invocation.tagId,
+                $notebookId: invocation.notebookId,
                 $sourceType: invocation.sourceType,
                 $sourceId: invocation.sourceId,
             },
@@ -607,7 +607,7 @@ export class BotExecutorService {
         // Get or create thread for the parent message
         const thread = await getOrCreateThread({
             parentMessageId: invocation.sourceId,
-            tagId: invocation.tagId,
+            notebookId: invocation.notebookId,
             botInvocationId: invocation._id,
         });
 
@@ -616,7 +616,7 @@ export class BotExecutorService {
 
         // Create the bot's response message in the thread
         const message = await createMessageInThread({
-            tagId: invocation.tagId,
+            notebookId: invocation.notebookId,
             threadId: thread._id,
             userId: userBot.userId,
             userBotId: userBot._id,
@@ -630,14 +630,14 @@ export class BotExecutorService {
         await incrementThreadMessageCount(thread._id);
 
         // Broadcast thread message event
-        await broadcastChatEvent(invocation.tagId, {
+        await broadcastChatEvent(invocation.notebookId, {
             action: 'thread_message',
             data: {
                 threadId: thread._id,
                 parentMessageId: invocation.sourceId,
                 message,
             },
-            tagId: invocation.tagId,
+            notebookId: invocation.notebookId,
             userId: userBot.userId,
             timestamp: new Date().toISOString(),
         });
@@ -774,7 +774,7 @@ export class BotExecutorService {
                   ? 'bot_invocation_completed'
                   : 'bot_invocation_failed';
 
-        broadcastChatEvent(invocation.tagId, {
+        broadcastChatEvent(invocation.notebookId, {
             action,
             data: {
                 invocationId: invocation._id,
@@ -784,7 +784,7 @@ export class BotExecutorService {
                 output,
                 error,
             },
-            tagId: invocation.tagId,
+            notebookId: invocation.notebookId,
             userId: invocation.userId,
             timestamp: new Date().toISOString(),
         }).catch(console.error);

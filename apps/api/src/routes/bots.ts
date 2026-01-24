@@ -12,11 +12,11 @@ import {
     findUserBotsByUserId,
     findUserBotById,
     findUserBotByHandle,
-    findUserBotByHandleForTag,
+    findUserBotByHandleForNotebook,
     createUserBot,
     updateUserBot,
     deleteUserBot,
-    findUserBotsForTag,
+    findUserBotsForNotebook,
 } from '../repositories/user-bot.repo';
 import { findThreadByParentMessage, findThreadById } from '../repositories/thread.repo';
 import { findMessagesByThreadId } from '../repositories/message.repo';
@@ -231,7 +231,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Notebook not found' };
             }
 
-            const enrichedBots = await findUserBotsForTag(params.id);
+            const enrichedBots = await findUserBotsForNotebook(params.id);
 
             // Map to BotSuggestion format with owner info
             const suggestions = enrichedBots.map((bot: any) => ({
@@ -267,7 +267,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
 
             // Find the bot by handle
-            const userBot = await findUserBotByHandleForTag(body.botHandle, params.id);
+            const userBot = await findUserBotByHandleForNotebook(body.botHandle, params.id);
             if (!userBot) {
                 set.status = 404;
                 return { error: `Bot @${body.botHandle} not found` };
@@ -301,7 +301,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                     userBotId: userBot._id,
                     sourceType: body.sourceType,
                     sourceId: body.sourceId,
-                    tagId: params.id,
+                    notebookId: params.id,
                     userId: auth.user._id,
                     context,
                 });
@@ -346,7 +346,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
 
             // Verify user has access to the tag
-            const tag = await findNotebookById(invocation.tagId, auth.user._id);
+            const tag = await findNotebookById(invocation.notebookId, auth.user._id);
             if (!tag) {
                 set.status = 403;
                 return { error: 'Access denied' };
@@ -375,14 +375,14 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Thread not found' };
             }
 
-            // Verify thread has valid tagId
-            if (!thread.tagId) {
+            // Verify thread has valid notebookId
+            if (!thread.notebookId) {
                 set.status = 500;
                 return { error: 'Invalid thread data' };
             }
 
             // Verify access
-            const tag = await findNotebookById(thread.tagId, auth.user._id);
+            const tag = await findNotebookById(thread.notebookId, auth.user._id);
             if (!tag) {
                 set.status = 403;
                 return { error: 'Access denied' };
@@ -410,14 +410,14 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Thread not found' };
             }
 
-            // Verify thread has valid tagId
-            if (!thread.tagId) {
+            // Verify thread has valid notebookId
+            if (!thread.notebookId) {
                 set.status = 500;
                 return { error: 'Invalid thread data' };
             }
 
             // Verify access
-            const tag = await findNotebookById(thread.tagId, auth.user._id);
+            const tag = await findNotebookById(thread.notebookId, auth.user._id);
             if (!tag) {
                 set.status = 403;
                 return { error: 'Access denied' };
@@ -442,14 +442,14 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Thread not found' };
             }
 
-            // Verify thread has valid tagId
-            if (!thread.tagId) {
+            // Verify thread has valid notebookId
+            if (!thread.notebookId) {
                 set.status = 500;
                 return { error: 'Invalid thread data' };
             }
 
             // Verify access
-            const tag = await findNotebookById(thread.tagId, auth.user._id);
+            const tag = await findNotebookById(thread.notebookId, auth.user._id);
             if (!tag) {
                 set.status = 403;
                 return { error: 'Access denied' };

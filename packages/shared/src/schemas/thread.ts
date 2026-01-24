@@ -4,7 +4,7 @@ import { Type, Static } from '@sinclair/typebox';
 export const ThreadSchema = Type.Object({
     _id: Type.String(),
     parentMessageId: Type.String(), // The message where @bot was mentioned
-    tagId: Type.String(),
+    notebookId: Type.String(),
     botInvocationId: Type.Optional(Type.String()), // If thread was created by bot
     messageCount: Type.Number(),
     createdAt: Type.String({ format: 'date-time' }),

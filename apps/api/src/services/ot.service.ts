@@ -265,15 +265,15 @@ class OTService {
     }
 
     // Broadcast new note creation to all clients in the tag
-    async broadcastNoteCreated(tagId: string, note: any): Promise<void> {
+    async broadcastNoteCreated(notebookId: string, note: any): Promise<void> {
         const message = {
             type: 'note-created',
-            tagId,
+            notebookId,
             note,
         };
 
         // Broadcast to all clients viewing this tag
-        collabRealtimeService.broadcast(tagId, message);
+        collabRealtimeService.broadcast(notebookId, message);
     }
 
     addConnection(noteId: string, clientID: string, connection: any): void {

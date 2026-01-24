@@ -39,11 +39,11 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message1 = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
             });
             const message2 = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
             });
             const token = await getAuthToken(user._id.toString(), user.email);
@@ -64,7 +64,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const tag1 = await createNotebookFixture({ createdBy: user._id.toString() });
             const tag2 = await createNotebookFixture({ createdBy: user._id.toString() });
             await createMessageFixture({
-                tagId: tag2._id.toString(),
+                notebookId: tag2._id.toString(),
                 userId: user._id.toString(),
             });
             const token = await getAuthToken(user._id.toString(), user.email);
@@ -85,15 +85,15 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             // Create 3 messages
             await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
             });
             await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
             });
             await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
             });
             const token = await getAuthToken(user._id.toString(), user.email);
@@ -154,14 +154,14 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const data: any = await response.json();
             expect(data.message.content).toEqual(messageContent);
             expect(data.message.userId).toBe(user._id.toString());
-            expect(data.message.tagId).toBe(tag._id.toString());
+            expect(data.message.notebookId).toBe(tag._id.toString());
         });
 
         it('should create thread when replying to message', async () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const parentMessage = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
             });
             const token = await getAuthToken(user._id.toString(), user.email);
@@ -189,12 +189,12 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const parentMessage = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
             });
             const thread = await createThreadFixture({
                 parentMessageId: parentMessage._id.toString(),
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
             });
             const token = await getAuthToken(user._id.toString(), user.email);
 
@@ -313,7 +313,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
 
             expect(response.status).toBe(200);
             const data: any = await response.json();
-            expect(data.tagId).toBe(tag._id.toString());
+            expect(data.notebookId).toBe(tag._id.toString());
             expect(data.count).toBeGreaterThanOrEqual(0);
         });
 
@@ -364,7 +364,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
                 content: { type: 'doc', content: [{ type: 'text', text: 'Original' }] },
             });
@@ -400,7 +400,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
                 ],
             });
             const message = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user1._id.toString(),
             });
             const token = await getAuthToken(user2._id.toString(), user2.email);
@@ -443,7 +443,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
             });
             const token = await getAuthToken(user._id.toString(), user.email);
@@ -471,7 +471,7 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
                 ],
             });
             const message = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user1._id.toString(),
             });
             const token = await getAuthToken(user2._id.toString(), user2.email);

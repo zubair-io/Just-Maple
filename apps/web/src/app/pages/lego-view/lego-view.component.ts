@@ -153,7 +153,7 @@ export class LegoViewComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Subscribe to route params and set ID directly - effect handles loading
     this.routeSubscription = this.route.params.subscribe((params) => {
-      this.selectedNotebookId.set(params['tagId'] || null);
+      this.selectedNotebookId.set(params['notebookId'] || null);
     });
   }
 

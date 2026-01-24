@@ -40,7 +40,7 @@ export class WhiteboardViewComponent implements OnDestroy {
     // Subscribe to route params
     this.routeSubscription = this.route.params.subscribe((params) => {
       const id = params['id'] || null;
-      const notebookId = params['tagId'] || null;
+      const notebookId = params['notebookId'] || null;
       this.pageId.set(id);
       this.notebookId.set(notebookId);
 

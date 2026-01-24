@@ -196,7 +196,7 @@ export interface NotificationTapped {
   notificationId: string;
   type: string;
   apiUrl: string;
-  tagId?: string;
+  notebookId?: string;
   messageId?: string;
 }
 
@@ -204,7 +204,7 @@ export interface ForegroundNotification {
   notificationId: string;
   type: string;
   apiUrl: string;
-  tagId?: string;
+  notebookId?: string;
   messageId?: string;
 }
 

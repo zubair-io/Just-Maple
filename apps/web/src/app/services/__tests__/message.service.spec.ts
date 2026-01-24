@@ -18,7 +18,7 @@ describe('MessageService', () => {
   const mockMessage: Message = {
     _id: 'msg-1',
     id: 'msg-1-uuid',
-    tagId: 'tag-1',
+    notebookId: 'tag-1',
     userId: 'user-1',
     content: {
       type: 'doc',
@@ -192,7 +192,7 @@ describe('MessageService', () => {
       realtimeEventsSubject.next({
         action: 'message',
         data: newMessage,
-        tagId: 'tag-1',
+        notebookId: 'tag-1',
         userId: 'user-2',
         timestamp: new Date().toISOString(),
       });
@@ -204,13 +204,13 @@ describe('MessageService', () => {
       const newMessage: Message = {
         ...mockMessage,
         _id: 'msg-2',
-        tagId: 'tag-2', // Different tag
+        notebookId: 'tag-2', // Different tag
       };
 
       realtimeEventsSubject.next({
         action: 'message',
         data: newMessage,
-        tagId: 'tag-2',
+        notebookId: 'tag-2',
         userId: 'user-2',
         timestamp: new Date().toISOString(),
       });
@@ -236,7 +236,7 @@ describe('MessageService', () => {
       realtimeEventsSubject.next({
         action: 'edited',
         data: editedMessage,
-        tagId: 'tag-1',
+        notebookId: 'tag-1',
         userId: 'user-1',
         timestamp: new Date().toISOString(),
       });
@@ -254,7 +254,7 @@ describe('MessageService', () => {
       realtimeEventsSubject.next({
         action: 'deleted',
         data: { id: mockMessage.id },
-        tagId: 'tag-1',
+        notebookId: 'tag-1',
         userId: 'user-1',
         timestamp: new Date().toISOString(),
       });
@@ -266,8 +266,8 @@ describe('MessageService', () => {
   describe('unread counts', () => {
     it('should load unread counts', async () => {
       const counts = [
-        { tagId: 'tag-1', count: 5 },
-        { tagId: 'tag-2', count: 3 },
+        { notebookId: 'tag-1', count: 5 },
+        { notebookId: 'tag-2', count: 3 },
       ];
 
       service.loadUnreadCounts().subscribe((result) => {
@@ -287,7 +287,7 @@ describe('MessageService', () => {
       // First load unread counts
       service.loadUnreadCounts().subscribe();
       const countsReq = httpMock.expectOne('/api/unread');
-      countsReq.flush({ counts: [{ tagId: 'tag-1', count: 5 }] });
+      countsReq.flush({ counts: [{ notebookId: 'tag-1', count: 5 }] });
 
       service.markAsRead('tag-1').subscribe(() => {
         expect(service.getUnreadCount('tag-1')).toBe(0);

@@ -6,7 +6,7 @@ import { countMessagesSince } from './message.repo';
 interface UnreadTrackingDocument {
     _id: ObjectId;
     userId: ObjectId;
-    tagId: ObjectId;
+    notebookId: ObjectId;
     lastReadAt: Date;
 }
 
@@ -18,16 +18,16 @@ function toUnreadTrackingResponse(doc: UnreadTrackingDocument): UnreadTracking {
     return {
         _id: doc._id.toString(),
         userId: doc.userId.toString(),
-        tagId: doc.tagId.toString(),
+        notebookId: doc.notebookId.toString(),
         lastReadAt: doc.lastReadAt.toISOString(),
     };
 }
 
-export async function getLastReadAt(userId: string, tagId: string): Promise<Date | null> {
+export async function getLastReadAt(userId: string, notebookId: string): Promise<Date | null> {
     try {
         const doc = await getCollection().findOne({
             userId: new ObjectId(userId),
-            tagId: new ObjectId(tagId),
+            notebookId: new ObjectId(notebookId),
         });
         return doc?.lastReadAt || null;
     } catch {
@@ -35,13 +35,13 @@ export async function getLastReadAt(userId: string, tagId: string): Promise<Date
     }
 }
 
-export async function markAsRead(userId: string, tagId: string): Promise<UnreadTracking> {
+export async function markAsRead(userId: string, notebookId: string): Promise<UnreadTracking> {
     const now = new Date();
 
     const result = await getCollection().findOneAndUpdate(
         {
             userId: new ObjectId(userId),
-            tagId: new ObjectId(tagId),
+            notebookId: new ObjectId(notebookId),
         },
         {
             $set: {
@@ -49,7 +49,7 @@ export async function markAsRead(userId: string, tagId: string): Promise<UnreadT
             },
             $setOnInsert: {
                 userId: new ObjectId(userId),
-                tagId: new ObjectId(tagId),
+                notebookId: new ObjectId(notebookId),
             },
         },
         {
@@ -61,23 +61,26 @@ export async function markAsRead(userId: string, tagId: string): Promise<UnreadT
     return toUnreadTrackingResponse(result!);
 }
 
-export async function getUnreadCountForTag(userId: string, tagId: string): Promise<number> {
-    const lastReadAt = await getLastReadAt(userId, tagId);
+export async function getUnreadCountForNotebook(
+    userId: string,
+    notebookId: string,
+): Promise<number> {
+    const lastReadAt = await getLastReadAt(userId, notebookId);
     const since = lastReadAt || new Date(0); // If never read, count all messages
 
-    return countMessagesSince(tagId, since);
+    return countMessagesSince(notebookId, since);
 }
 
 export async function getUnreadCountsForUser(
     userId: string,
-    tagIds: string[],
+    notebookIds: string[],
 ): Promise<UnreadCount[]> {
     const counts: UnreadCount[] = [];
 
-    for (const tagId of tagIds) {
-        const count = await getUnreadCountForTag(userId, tagId);
+    for (const notebookId of notebookIds) {
+        const count = await getUnreadCountForNotebook(userId, notebookId);
         if (count > 0) {
-            counts.push({ tagId, count });
+            counts.push({ notebookId, count });
         }
     }
 

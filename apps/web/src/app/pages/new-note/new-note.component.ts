@@ -24,7 +24,7 @@ export class NewNoteComponent implements OnInit {
   private readonly whiteboardService = inject(WhiteboardDocumentService);
 
   ngOnInit(): void {
-    const notebookId = this.route.snapshot.paramMap.get('tagId');
+    const notebookId = this.route.snapshot.paramMap.get('notebookId');
     const type = (this.route.snapshot.queryParamMap.get('type') as PageType) || 'memo';
 
     this.createPage(notebookId, type);
@@ -46,7 +46,7 @@ export class NewNoteComponent implements OnInit {
           .createPage({
             title: 'Untitled',
             content: { type: 'doc', content: [] },
-            tagId: notebookId || undefined,
+            notebookId: notebookId || undefined,
             type,
           })
           .subscribe({

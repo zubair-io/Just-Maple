@@ -242,7 +242,7 @@ export class OfflineQueueService {
 
   private async processMoveNote(item: OfflineQueueItem): Promise<void> {
     await firstValueFrom(
-      this.http.put(`/api/pages/${item.documentId}`, { tagId: item.payload.tagId }),
+      this.http.put(`/api/pages/${item.documentId}`, { notebookId: item.payload.notebookId }),
     );
   }
 

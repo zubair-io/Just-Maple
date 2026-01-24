@@ -522,12 +522,12 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
             });
             const thread = await createThreadFixture({
                 parentMessageId: message._id.toString(),
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
             });
             const token = await getAuthToken(user._id.toString(), user.email);
 
@@ -548,12 +548,12 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
             const user2 = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user1._id.toString() });
             const message = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user1._id.toString(),
             });
             const thread = await createThreadFixture({
                 parentMessageId: message._id.toString(),
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
             });
             const token = await getAuthToken(user2._id.toString(), user2.email);
 
@@ -572,15 +572,15 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const parentMessage = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
             });
             const thread = await createThreadFixture({
                 parentMessageId: parentMessage._id.toString(),
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
             });
             const threadMessage = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 threadId: thread._id.toString(),
                 userId: user._id.toString(),
             });
@@ -602,26 +602,26 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const parentMessage = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
             });
             const thread = await createThreadFixture({
                 parentMessageId: parentMessage._id.toString(),
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
             });
             // Create 3 messages in thread
             await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 threadId: thread._id.toString(),
                 userId: user._id.toString(),
             });
             await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 threadId: thread._id.toString(),
                 userId: user._id.toString(),
             });
             await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 threadId: thread._id.toString(),
                 userId: user._id.toString(),
             });
@@ -647,13 +647,13 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
                 hasThread: true,
             });
             const thread = await createThreadFixture({
                 parentMessageId: message._id.toString(),
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
             });
             const token = await getAuthToken(user._id.toString(), user.email);
 
@@ -673,7 +673,7 @@ describe.runIf(mongoAvailable)('Bot Routes', () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({ createdBy: user._id.toString() });
             const message = await createMessageFixture({
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 userId: user._id.toString(),
                 hasThread: false,
             });

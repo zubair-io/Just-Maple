@@ -243,9 +243,9 @@ export class NotificationService {
    * Mark all message_received notifications for a specific notebook as read
    * Called when user views a chat to sync notification state with viewed messages
    */
-  markNotebookMessagesAsRead(tagId: string): void {
+  markNotebookMessagesAsRead(notebookId: string): void {
     const unreadMessageNotifications = this.notifications().filter(
-      (n) => !n.read && n.type === 'message_received' && n.data['tagId'] === tagId,
+      (n) => !n.read && n.type === 'message_received' && n.data['notebookId'] === notebookId,
     );
 
     unreadMessageNotifications.forEach((n) => {
@@ -301,12 +301,12 @@ export class NotificationService {
     notificationId: string;
     type: string;
     apiUrl: string;
-    tagId?: string;
+    notebookId?: string;
     messageId?: string;
   }): void {
     // Check if user is viewing this notebook's messages
     const currentNotebookId = this.activeNotebookId();
-    const notificationNotebookId = notification.tagId;
+    const notificationNotebookId = notification.notebookId;
 
     // Only show toast if NOT currently viewing this notebook
     if (!notificationNotebookId || notificationNotebookId !== currentNotebookId) {
@@ -391,20 +391,20 @@ export class NotificationService {
     // Handle navigation based on notification type
     switch (notification.type) {
       case 'share_received':
-        if (notification.data['tagId']) {
-          this.router.navigate(['/', notification.data['tagId']]);
+        if (notification.data['notebookId']) {
+          this.router.navigate(['/', notification.data['notebookId']]);
         }
         break;
 
       case 'message_received':
-        if (notification.data['tagId']) {
-          const tagId = notification.data['tagId'];
+        if (notification.data['notebookId']) {
+          const notebookId = notification.data['notebookId'];
           const messageId = notification.data['messageId'];
           // Navigate to tag with optional message ID as query param for scrolling
           if (messageId) {
-            this.router.navigate(['/', tagId], { queryParams: { messageId } });
+            this.router.navigate(['/', notebookId], { queryParams: { messageId } });
           } else {
-            this.router.navigate(['/', tagId]);
+            this.router.navigate(['/', notebookId]);
           }
         }
         break;

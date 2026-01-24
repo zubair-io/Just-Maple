@@ -98,9 +98,9 @@ describe.runIf(mongoAvailable)('UserBotRepo', () => {
 
     // NOTE: findEnabledBotsForTag function no longer exists - this test is outdated
     // Bot-to-tag relationships are now managed via tag.sharing.sharedBots array
-    // Use findUserBotsForTag(tagId) instead
+    // Use findUserBotsForTag(notebookId) instead
     describe.skip('findEnabledBotsForTag', () => {
-        it('should return global bots (no tagId)', async () => {
+        it('should return global bots (no notebookId)', async () => {
             const user = await createUserFixture();
             const tag = await createNotebookFixture({
                 createdBy: user._id.toString(),
@@ -125,7 +125,7 @@ describe.runIf(mongoAvailable)('UserBotRepo', () => {
             await createUserBotFixture({
                 userId: user._id.toString(),
                 handle: 'tag-bot',
-                tagId: tag._id.toString(),
+                notebookId: tag._id.toString(),
                 isEnabled: true,
             });
 

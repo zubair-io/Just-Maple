@@ -8,7 +8,7 @@ interface BotInvocationDocument {
     templateId: ObjectId;
     sourceType: 'message' | 'note';
     sourceId: ObjectId;
-    tagId: ObjectId;
+    notebookId: ObjectId;
     userId: ObjectId;
     context: {
         mentionText?: string;
@@ -43,7 +43,7 @@ function toInvocation(doc: BotInvocationDocument): BotInvocation {
         templateId: doc.templateId.toString(),
         sourceType: doc.sourceType,
         sourceId: doc.sourceId.toString(),
-        tagId: doc.tagId.toString(),
+        notebookId: doc.notebookId.toString(),
         userId: doc.userId.toString(),
         context: doc.context,
         variables: doc.variables as Record<string, unknown>,
@@ -72,7 +72,7 @@ export async function createInvocation(data: {
     templateId: string;
     sourceType: 'message' | 'note';
     sourceId: string;
-    tagId: string;
+    notebookId: string;
     userId: string;
     context: BotInvocation['context'];
 }): Promise<BotInvocation> {
@@ -82,7 +82,7 @@ export async function createInvocation(data: {
         templateId: new ObjectId(data.templateId),
         sourceType: data.sourceType,
         sourceId: new ObjectId(data.sourceId),
-        tagId: new ObjectId(data.tagId),
+        notebookId: new ObjectId(data.notebookId),
         userId: new ObjectId(data.userId),
         context: data.context,
         variables: {},

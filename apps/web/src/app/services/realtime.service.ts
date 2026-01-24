@@ -90,37 +90,37 @@ export class RealtimeService {
   /**
    * Send typing indicator
    */
-  sendTyping(tagId: string, isTyping: boolean = true): void {
-    this.realtimeWS.sendTyping(tagId, isTyping);
+  sendTyping(notebookId: string, isTyping: boolean = true): void {
+    this.realtimeWS.sendTyping(notebookId, isTyping);
   }
 
   /**
    * Subscribe to a notebook's chat
    */
-  subscribe(tagId: string): void {
-    if (!this._subscribedTags().includes(tagId)) {
-      this.realtimeWS.subscribeNotebook(tagId);
+  subscribe(notebookId: string): void {
+    if (!this._subscribedTags().includes(notebookId)) {
+      this.realtimeWS.subscribeNotebook(notebookId);
     }
   }
 
   /**
    * Unsubscribe from a notebook's chat
    */
-  unsubscribe(tagId: string): void {
-    this.realtimeWS.unsubscribeNotebook(tagId);
+  unsubscribe(notebookId: string): void {
+    this.realtimeWS.unsubscribeNotebook(notebookId);
   }
 
   /**
    * Get observable for messages in a specific tag
    */
-  messagesForTag(tagId: string): Observable<ChatEvent> {
-    return this.events$.pipe(filter((event) => event.tagId === tagId));
+  messagesForTag(notebookId: string): Observable<ChatEvent> {
+    return this.events$.pipe(filter((event) => event.notebookId === notebookId));
   }
 
   /**
    * Get observable for typing events in a specific tag
    */
-  typingForTag(tagId: string): Observable<TypingEvent> {
-    return this.typing$.pipe(filter((event) => event.tagId === tagId));
+  typingForTag(notebookId: string): Observable<TypingEvent> {
+    return this.typing$.pipe(filter((event) => event.notebookId === notebookId));
   }
 }

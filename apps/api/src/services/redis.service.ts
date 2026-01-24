@@ -109,25 +109,25 @@ class RedisPubSubService {
     /**
      * Publish chat event to a tag channel
      */
-    publishChat(tagId: string, event: ChatEvent): void {
+    publishChat(notebookId: string, event: ChatEvent): void {
         if (!this.publisher) return;
-        const channel = `${CHANNELS.CHAT}${tagId}`;
+        const channel = `${CHANNELS.CHAT}${notebookId}`;
         this.publisher.publish(channel, JSON.stringify(event));
     }
 
     /**
      * Subscribe to chat events for a tag
      */
-    async subscribeChat(tagId: string, handler: MessageHandler): Promise<void> {
-        const channel = `${CHANNELS.CHAT}${tagId}`;
+    async subscribeChat(notebookId: string, handler: MessageHandler): Promise<void> {
+        const channel = `${CHANNELS.CHAT}${notebookId}`;
         await this.subscribe(channel, handler);
     }
 
     /**
      * Unsubscribe from chat events for a tag
      */
-    async unsubscribeChat(tagId: string, handler: MessageHandler): Promise<void> {
-        const channel = `${CHANNELS.CHAT}${tagId}`;
+    async unsubscribeChat(notebookId: string, handler: MessageHandler): Promise<void> {
+        const channel = `${CHANNELS.CHAT}${notebookId}`;
         await this.unsubscribe(channel, handler);
     }
 

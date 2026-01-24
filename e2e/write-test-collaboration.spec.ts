@@ -102,7 +102,7 @@ async function createTag(
 async function createNote(
     page: Page,
     token: string,
-    tagId: string,
+    notebookId: string,
     title: string,
 ): Promise<{ _id: string; id: string }> {
     const response = await page.request.post('http://localhost:7071/api/pages', {
@@ -112,7 +112,7 @@ async function createNote(
         data: {
             title,
             content: { type: 'doc', content: [] },
-            tagId,
+            notebookId,
             type: 'memo',
         },
     });

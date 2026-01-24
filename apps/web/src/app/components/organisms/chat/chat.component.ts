@@ -60,7 +60,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private readonly botService = inject(BotService);
   private readonly destroyRef = inject(DestroyRef);
 
-  readonly tagId = input.required<string>();
+  readonly notebookId = input.required<string>();
 
   readonly messages = this.messageService.messagesForTag;
   readonly isLoading = this.messageService.isLoading;
@@ -80,7 +80,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   // Reactively load bots when notebook changes or cache is invalidated
   readonly allNotebookBots = toSignal(
     combineLatest([
-      toObservable(this.tagId),
+      toObservable(this.notebookId),
       toObservable(this.botService.notebookBotsCacheVersion),
     ]).pipe(
       switchMap(([notebookId, _cacheVersion]) =>
@@ -138,12 +138,12 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     });
 
     effect(() => {
-      const tagId = this.tagId();
-      if (tagId && tagId !== this.lastTagId) {
-        this.lastTagId = tagId;
-        this.loadMessages(tagId);
-        this.subscribeToTyping(tagId);
-        this.subscribeToBotEvents(tagId);
+      const notebookId = this.notebookId();
+      if (notebookId && notebookId !== this.lastTagId) {
+        this.lastTagId = notebookId;
+        this.loadMessages(notebookId);
+        this.subscribeToTyping(notebookId);
+        this.subscribeToBotEvents(notebookId);
       }
     });
 
@@ -332,12 +332,12 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     this.showMentionSuggestions.set(false);
   }
 
-  private loadMessages(tagId: string): void {
+  private loadMessages(notebookId: string): void {
     // Reset state for new tag
     this.lastMessageCount = 0;
     this.isAtBottom = true;
 
-    this.messageService.loadMessages(tagId).subscribe({
+    this.messageService.loadMessages(notebookId).subscribe({
       next: () => {
         // Scroll to bottom on initial load with longer delay to ensure rendering
         setTimeout(() => {
@@ -347,17 +347,17 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  private subscribeToTyping(tagId: string): void {
+  private subscribeToTyping(notebookId: string): void {
     this.typingSubscription?.unsubscribe();
-    this.typingSubscription = this.realtimeService.typingForTag(tagId).subscribe((event) => {
+    this.typingSubscription = this.realtimeService.typingForTag(notebookId).subscribe((event) => {
       this.handleTypingEvent(event);
     });
   }
 
-  private subscribeToBotEvents(tagId: string): void {
+  private subscribeToBotEvents(notebookId: string): void {
     // Subscribe to bot invocation events for this tag
     this.realtimeService
-      .messagesForTag(tagId)
+      .messagesForTag(notebookId)
       .pipe(
         filter((event) => this.isBotEvent(event)),
         takeUntil(this.destroy$),
@@ -522,11 +522,11 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     }
 
     // Send typing start
-    this.messageService.sendTyping(this.tagId(), true);
+    this.messageService.sendTyping(this.notebookId(), true);
 
     // Set timeout to send typing stop
     this.typingTimeout = setTimeout(() => {
-      this.messageService.sendTyping(this.tagId(), false);
+      this.messageService.sendTyping(this.notebookId(), false);
     }, 3000);
   }
 
@@ -549,7 +549,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     if (replyingTo) {
       // Replying to a message - backend will create thread if needed
       this.messageService
-        .sendMessage(this.tagId(), content, { parentMessageId: replyingTo._id })
+        .sendMessage(this.notebookId(), content, { parentMessageId: replyingTo._id })
         .subscribe({
           next: (message) => {
             this.editor?.commands.clearContent();
@@ -571,11 +571,11 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     if (this.typingTimeout) {
       clearTimeout(this.typingTimeout);
     }
-    this.messageService.sendTyping(this.tagId(), false);
+    this.messageService.sendTyping(this.notebookId(), false);
   }
 
   private sendRegularMessage(content: PageContent, mentions: MentionNodeAttrs[]): void {
-    this.messageService.sendMessage(this.tagId(), content).subscribe({
+    this.messageService.sendMessage(this.notebookId(), content).subscribe({
       next: (message) => {
         this.editor?.commands.clearContent();
         this.scrollToBottom();
@@ -631,7 +631,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       .filter((m) => m.type === 'bot')
       .forEach((mention) => {
         this.botService
-          .invokeBot(this.tagId(), mention.handle, 'message', sourceId, {
+          .invokeBot(this.notebookId(), mention.handle, 'message', sourceId, {
             mentionText: fullText,
             fullContent: fullText,
           })

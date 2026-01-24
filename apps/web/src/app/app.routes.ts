@@ -3,7 +3,7 @@ import { AuthGuard, PublicGuard } from './guards/auth.guard';
 import { CollectablePageGuard, WhiteboardPageGuard, MemoPageGuard } from './guards/page-type.guard';
 
 export const routes: Routes = [
-  // Auth routes - must come before the catch-all :tagId route
+  // Auth routes - must come before the catch-all :notebookId route
   {
     path: 'login',
     loadComponent: () => import('./pages/login/login.component').then((m) => m.LoginComponent),
@@ -42,10 +42,13 @@ export const routes: Routes = [
     loadComponent: () => import('./layouts/home/home.component').then((m) => m.HomeComponent),
     canMatch: [AuthGuard],
     children: [
-      // Tag routes - all routes with :tagId are nested under the tag component
+      // Tag routes - all routes with :notebookId are nested under the tag component
       {
-        path: ':tagId',
-        loadComponent: () => import('./pages/tag/tag.component').then((m) => m.TagComponent),
+        path: ':notebookId',
+        loadComponent: () =>
+          import('./pages/notebook-layout/notebook-layout.component').then(
+            (m) => m.NotebookLayoutComponent,
+          ),
         children: [
           // Tag view - shows chat/messages for the tag (default child route)
           {

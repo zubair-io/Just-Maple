@@ -100,14 +100,14 @@ export async function findUserBotByHandle(userId: string, handle: string): Promi
     }
 }
 
-async function findUserBotDocByHandleForTag(
+async function findUserBotDocByHandleForNotebook(
     handle: string,
-    tagId: string,
+    notebookId: string,
 ): Promise<UserBotDocument | null> {
     // Find a bot with this handle that is shared with this tag
     const tagDoc = await getDb()
         .collection('notebooks')
-        .findOne({ _id: new ObjectId(tagId) });
+        .findOne({ _id: new ObjectId(notebookId) });
     if (!tagDoc) return null;
 
     // Get bot IDs from tag's sharing config
@@ -127,12 +127,12 @@ async function findUserBotDocByHandleForTag(
     return doc;
 }
 
-export async function findUserBotByHandleForTag(
+export async function findUserBotByHandleForNotebook(
     handle: string,
-    tagId: string,
+    notebookId: string,
 ): Promise<UserBot | null> {
     try {
-        const doc = await findUserBotDocByHandleForTag(handle, tagId);
+        const doc = await findUserBotDocByHandleForNotebook(handle, notebookId);
         return doc ? toUserBotSafe(doc) : null;
     } catch {
         return null;
@@ -143,12 +143,12 @@ export async function findUserBotByHandleForTag(
  * Find user bot by handle for tag with full config - INTERNAL USE ONLY (for bot execution)
  * Do not expose this in API responses
  */
-export async function findUserBotByHandleForTagInternal(
+export async function findUserBotByHandleForNotebookInternal(
     handle: string,
-    tagId: string,
+    notebookId: string,
 ): Promise<UserBot | null> {
     try {
-        const doc = await findUserBotDocByHandleForTag(handle, tagId);
+        const doc = await findUserBotDocByHandleForNotebook(handle, notebookId);
         return doc ? toUserBotInternal(doc) : null;
     } catch {
         return null;
@@ -232,11 +232,11 @@ export async function deleteUserBot(id: string, userId: string): Promise<boolean
     }
 }
 
-export async function findUserBotsForTag(tagId: string): Promise<UserBot[]> {
+export async function findUserBotsForNotebook(notebookId: string): Promise<UserBot[]> {
     try {
         const tagDoc = await getDb()
             .collection('notebooks')
-            .findOne({ _id: new ObjectId(tagId) });
+            .findOne({ _id: new ObjectId(notebookId) });
         if (!tagDoc) return [];
 
         // Get bot IDs from tag's sharing config
@@ -294,7 +294,7 @@ export async function findUserBotsForTag(tagId: string): Promise<UserBot[]> {
 
 export async function searchUserBots(
     userId: string,
-    tagId: string,
+    notebookId: string,
     query: string,
 ): Promise<UserBot[]> {
     try {
@@ -312,7 +312,7 @@ export async function searchUserBots(
         // Get bots shared with the tag
         const tagDoc = await getDb()
             .collection('notebooks')
-            .findOne({ _id: new ObjectId(tagId) });
+            .findOne({ _id: new ObjectId(notebookId) });
 
         if (!tagDoc) {
             return userBots.map(toUserBotSafe);

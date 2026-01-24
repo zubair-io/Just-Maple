@@ -82,14 +82,14 @@ describe('RealtimeService', () => {
       const chatEvent = {
         action: 'message',
         data: { _id: 'msg-1', content: 'test' },
-        tagId: 'tag-1',
+        notebookId: 'tag-1',
         userId: 'user-1',
         timestamp: new Date().toISOString(),
       };
 
       service.events$.subscribe((event) => {
         expect(event.action).toBe('message');
-        expect(event.tagId).toBe('tag-1');
+        expect(event.notebookId).toBe('tag-1');
         done();
       });
 
@@ -107,14 +107,14 @@ describe('RealtimeService', () => {
 
       const typingEvent = {
         action: 'typing',
-        data: { tagId: 'tag-1', userId: 'user-1', isTyping: true },
-        tagId: 'tag-1',
+        data: { notebookId: 'tag-1', userId: 'user-1', isTyping: true },
+        notebookId: 'tag-1',
         userId: 'user-1',
         timestamp: new Date().toISOString(),
       };
 
       service.typing$.subscribe((event) => {
-        expect(event.tagId).toBe('tag-1');
+        expect(event.notebookId).toBe('tag-1');
         expect(event.isTyping).toBe(true);
         done();
       });
@@ -163,7 +163,7 @@ describe('RealtimeService', () => {
       service.sendTyping('tag-1', true);
 
       expect(mockWebSocket.send).toHaveBeenCalledWith(
-        JSON.stringify({ type: 'typing', tagId: 'tag-1', isTyping: true }),
+        JSON.stringify({ type: 'typing', notebookId: 'tag-1', isTyping: true }),
       );
     });
   });
@@ -183,7 +183,7 @@ describe('RealtimeService', () => {
       service.subscribe('tag-1');
 
       expect(mockWebSocket.send).toHaveBeenCalledWith(
-        JSON.stringify({ type: 'subscribe', tagId: 'tag-1' }),
+        JSON.stringify({ type: 'subscribe', notebookId: 'tag-1' }),
       );
     });
 
@@ -201,7 +201,7 @@ describe('RealtimeService', () => {
       service.unsubscribe('tag-1');
 
       expect(mockWebSocket.send).toHaveBeenCalledWith(
-        JSON.stringify({ type: 'unsubscribe', tagId: 'tag-1' }),
+        JSON.stringify({ type: 'unsubscribe', notebookId: 'tag-1' }),
       );
     });
   });
@@ -224,7 +224,7 @@ describe('RealtimeService', () => {
       const msg1 = {
         action: 'message',
         data: { _id: 'msg-1' },
-        tagId: 'tag-1',
+        notebookId: 'tag-1',
         userId: 'user-1',
         timestamp: new Date().toISOString(),
       };
@@ -232,7 +232,7 @@ describe('RealtimeService', () => {
       const msg2 = {
         action: 'message',
         data: { _id: 'msg-2' },
-        tagId: 'tag-2',
+        notebookId: 'tag-2',
         userId: 'user-1',
         timestamp: new Date().toISOString(),
       };
@@ -241,7 +241,7 @@ describe('RealtimeService', () => {
       service.messagesForTag('tag-1').subscribe((event) => {
         receivedMessages.push(event);
         if (receivedMessages.length === 1) {
-          expect((receivedMessages[0] as { tagId: string }).tagId).toBe('tag-1');
+          expect((receivedMessages[0] as { notebookId: string }).notebookId).toBe('tag-1');
           done();
         }
       });

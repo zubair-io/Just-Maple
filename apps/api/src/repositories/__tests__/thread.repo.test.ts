@@ -57,24 +57,24 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
     describe('createThread', () => {
         it('should create a new thread', async () => {
             const parentMessageId = new ObjectId().toString();
-            const tagId = new ObjectId().toString();
+            const notebookId = new ObjectId().toString();
 
-            const thread = await createThread({ parentMessageId, tagId });
+            const thread = await createThread({ parentMessageId, notebookId });
 
             expect(thread).toBeDefined();
             expect(thread._id).toBeDefined();
             expect(thread.parentMessageId).toBe(parentMessageId);
-            expect(thread.tagId).toBe(tagId);
+            expect(thread.notebookId).toBe(notebookId);
             expect(thread.messageCount).toBe(0);
             expect(thread.createdAt).toBeDefined();
         });
 
         it('should include botInvocationId when provided', async () => {
             const parentMessageId = new ObjectId().toString();
-            const tagId = new ObjectId().toString();
+            const notebookId = new ObjectId().toString();
             const botInvocationId = new ObjectId().toString();
 
-            const thread = await createThread({ parentMessageId, tagId, botInvocationId });
+            const thread = await createThread({ parentMessageId, notebookId, botInvocationId });
 
             expect(thread.botInvocationId).toBe(botInvocationId);
         });
@@ -108,8 +108,8 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
     describe('findThreadsByTagId', () => {
         it('should return threads for tag', async () => {
             const tag = await createNotebookFixture();
-            await createThreadFixture({ tagId: tag._id.toString() });
-            await createThreadFixture({ tagId: tag._id.toString() });
+            await createThreadFixture({ notebookId: tag._id.toString() });
+            await createThreadFixture({ notebookId: tag._id.toString() });
 
             const threads = await findThreadsByTagId(tag._id.toString());
 
@@ -119,20 +119,20 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
         it('should not return threads from other tags', async () => {
             const tag1 = await createNotebookFixture();
             const tag2 = await createNotebookFixture();
-            await createThreadFixture({ tagId: tag1._id.toString() });
-            await createThreadFixture({ tagId: tag2._id.toString() });
+            await createThreadFixture({ notebookId: tag1._id.toString() });
+            await createThreadFixture({ notebookId: tag2._id.toString() });
 
             const threads = await findThreadsByTagId(tag1._id.toString());
 
             expect(threads.length).toBe(1);
-            expect(threads[0].tagId).toBe(tag1._id.toString());
+            expect(threads[0].notebookId).toBe(tag1._id.toString());
         });
 
         it('should respect limit option', async () => {
             const tag = await createNotebookFixture();
-            await createThreadFixture({ tagId: tag._id.toString() });
-            await createThreadFixture({ tagId: tag._id.toString() });
-            await createThreadFixture({ tagId: tag._id.toString() });
+            await createThreadFixture({ notebookId: tag._id.toString() });
+            await createThreadFixture({ notebookId: tag._id.toString() });
+            await createThreadFixture({ notebookId: tag._id.toString() });
 
             const threads = await findThreadsByTagId(tag._id.toString(), { limit: 2 });
 
@@ -143,9 +143,9 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
             const tag = await createNotebookFixture();
 
             // Create threads with slight delay to ensure different timestamps
-            const thread1 = await createThreadFixture({ tagId: tag._id.toString() });
+            const thread1 = await createThreadFixture({ notebookId: tag._id.toString() });
             await new Promise((resolve) => setTimeout(resolve, 10));
-            const thread2 = await createThreadFixture({ tagId: tag._id.toString() });
+            const thread2 = await createThreadFixture({ notebookId: tag._id.toString() });
 
             const threads = await findThreadsByTagId(tag._id.toString());
 
@@ -158,19 +158,19 @@ describe.runIf(mongoAvailable)('ThreadRepo', () => {
     describe('getOrCreateThread', () => {
         it('should return existing thread if one exists', async () => {
             const parentMessageId = new ObjectId().toString();
-            const tagId = new ObjectId().toString();
-            const existing = await createThreadFixture({ parentMessageId, tagId });
+            const notebookId = new ObjectId().toString();
+            const existing = await createThreadFixture({ parentMessageId, notebookId });
 
-            const thread = await getOrCreateThread({ parentMessageId, tagId });
+            const thread = await getOrCreateThread({ parentMessageId, notebookId });
 
             expect(thread._id).toBe(existing._id.toString());
         });
 
         it('should create new thread if none exists', async () => {
             const parentMessageId = new ObjectId().toString();
-            const tagId = new ObjectId().toString();
+            const notebookId = new ObjectId().toString();
 
-            const thread = await getOrCreateThread({ parentMessageId, tagId });
+            const thread = await getOrCreateThread({ parentMessageId, notebookId });
 
             expect(thread).toBeDefined();
             expect(thread._id).toBeDefined();

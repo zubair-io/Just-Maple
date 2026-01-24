@@ -81,7 +81,7 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('notebooks').createIndex({ userId: 1 }); // Legacy format support
 
     // Pages collection (formerly notes)
-    await database.collection('pages').createIndex({ tagId: 1, updatedAt: -1 }); // For listing pages by notebook
+    await database.collection('pages').createIndex({ notebookId: 1, updatedAt: -1 }); // For listing pages by notebook
     await database.collection('pages').createIndex({ userId: 1, updatedAt: -1 }); // For listing user's pages
 
     // Drop old documentId index if it exists (migration)
@@ -102,18 +102,18 @@ async function createIndexes(database: Db): Promise<void> {
     await createUniqueIndex(database, 'memos', { noteId: 1 }, 'noteId');
 
     // Messages collection
-    await database.collection('messages').createIndex({ tagId: 1, _id: -1 }); // For paginated queries
-    await database.collection('messages').createIndex({ tagId: 1, createdAt: -1 }); // For unread counts
+    await database.collection('messages').createIndex({ notebookId: 1, _id: -1 }); // For paginated queries
+    await database.collection('messages').createIndex({ notebookId: 1, createdAt: -1 }); // For unread counts
 
     // Unread tracking collection
     try {
         await database
             .collection('unread_tracking')
-            .createIndex({ userId: 1, tagId: 1 }, { unique: true });
+            .createIndex({ userId: 1, notebookId: 1 }, { unique: true });
     } catch (e: any) {
         if (e.code === 67 || e.code === 85) {
             console.warn(
-                'Warning: Could not create unique index on unread_tracking.userId+tagId - possible duplicate data or index conflict',
+                'Warning: Could not create unique index on unread_tracking.userId+notebookId - possible duplicate data or index conflict',
             );
         } else {
             throw e;
@@ -150,7 +150,7 @@ async function createIndexes(database: Db): Promise<void> {
 
     // Threads collection
     await createUniqueIndex(database, 'threads', { parentMessageId: 1 }, 'parentMessageId');
-    await database.collection('threads').createIndex({ tagId: 1 });
+    await database.collection('threads').createIndex({ notebookId: 1 });
     await database.collection('threads').createIndex({ updatedAt: -1 }); // For sorted listing
 
     // Messages - add thread index
@@ -160,7 +160,7 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('notifications').createIndex({ userId: 1, createdAt: -1 }); // For user's notifications
 
     // Collectables collection
-    await database.collection('collectables').createIndex({ tagId: 1, updatedAt: -1 }); // For listing by notebook
+    await database.collection('collectables').createIndex({ notebookId: 1, updatedAt: -1 }); // For listing by notebook
     await database.collection('collectables').createIndex({ userId: 1, updatedAt: -1 }); // For user's collectables
 
     // Collectible registries collection

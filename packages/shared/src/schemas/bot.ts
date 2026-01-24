@@ -205,7 +205,7 @@ export const BotInvocationSchema = Type.Object({
     templateId: Type.String(), // Reference to BotTemplate
     sourceType: Type.Union([Type.Literal('message'), Type.Literal('note')]),
     sourceId: Type.String(), // Message or Note ID (parent message for threads)
-    tagId: Type.String(),
+    notebookId: Type.String(),
     userId: Type.String(), // Who triggered the bot
     context: Type.Object({
         mentionText: Type.Optional(Type.String()),

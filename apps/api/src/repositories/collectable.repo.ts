@@ -56,20 +56,20 @@ function toCollectableResponse(doc: CollectableDocument): Collectable {
 export async function findCollectablesByUserId(
     userId: string,
     options?: {
-        tagId?: string;
+        notebookId?: string;
         status?: CollectableStatus;
         updatedAfter?: string;
     },
 ): Promise<Collectable[]> {
-    // If specific tagId is provided, verify access first
-    if (options?.tagId) {
-        const notebook = await findNotebookByIdWithAccess(options.tagId, userId, 'read');
+    // If specific notebookId is provided, verify access first
+    if (options?.notebookId) {
+        const notebook = await findNotebookByIdWithAccess(options.notebookId, userId, 'read');
         if (!notebook) {
             return []; // No access to this notebook
         }
 
         const query: Record<string, unknown> = {
-            tags: new ObjectId(options.tagId),
+            tags: new ObjectId(options.notebookId),
         };
 
         if (options?.status) {
@@ -122,8 +122,12 @@ export async function findCollectableById(id: string, userId: string): Promise<C
         if (doc.tags.length > 0) {
             // Collectable has tags - check if user has access to any of them
             let hasAccess = false;
-            for (const tagId of doc.tags) {
-                const notebook = await findNotebookByIdWithAccess(tagId.toString(), userId, 'read');
+            for (const notebookId of doc.tags) {
+                const notebook = await findNotebookByIdWithAccess(
+                    notebookId.toString(),
+                    userId,
+                    'read',
+                );
                 if (notebook) {
                     hasAccess = true;
                     break;
@@ -196,9 +200,9 @@ export async function updateCollectable(
         if (doc.tags.length > 0) {
             // Collectable has tags - check if user has write access to any of them
             let hasWriteAccess = false;
-            for (const tagId of doc.tags) {
+            for (const notebookId of doc.tags) {
                 const notebook = await findNotebookByIdWithAccess(
-                    tagId.toString(),
+                    notebookId.toString(),
                     userId,
                     'write',
                 );
@@ -215,8 +219,8 @@ export async function updateCollectable(
 
         // If adding new tags, verify write access to those notebooks
         if (data.tags !== undefined) {
-            for (const tagId of data.tags) {
-                const notebook = await findNotebookByIdWithAccess(tagId, userId, 'write');
+            for (const notebookId of data.tags) {
+                const notebook = await findNotebookByIdWithAccess(notebookId, userId, 'write');
                 if (!notebook) return null; // No write access to new notebook
             }
         }
@@ -260,17 +264,17 @@ export async function updateCollectable(
 
 export async function findCollectableByRegistryData(
     registryId: string,
-    tagId: string,
+    notebookId: string,
     userId: string,
 ): Promise<Collectable | null> {
     try {
         // Verify user has access to the notebook
-        const notebook = await findNotebookByIdWithAccess(tagId, userId, 'read');
+        const notebook = await findNotebookByIdWithAccess(notebookId, userId, 'read');
         if (!notebook) return null;
 
         const doc = await getCollection().findOne({
             'data.registryData': new ObjectId(registryId),
-            tags: new ObjectId(tagId),
+            tags: new ObjectId(notebookId),
         });
 
         if (!doc) return null;
@@ -291,9 +295,9 @@ export async function deleteCollectable(id: string, userId: string): Promise<boo
         if (doc.tags.length > 0) {
             // Collectable has tags - check if user has write access to any of them
             let hasWriteAccess = false;
-            for (const tagId of doc.tags) {
+            for (const notebookId of doc.tags) {
                 const notebook = await findNotebookByIdWithAccess(
-                    tagId.toString(),
+                    notebookId.toString(),
                     userId,
                     'write',
                 );

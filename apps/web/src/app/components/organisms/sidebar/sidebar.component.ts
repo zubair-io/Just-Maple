@@ -70,7 +70,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
           .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
           .reduce(
             (acc, page) => {
-              (acc[page.tagId || 'no_notebook'] ??= []).push(page);
+              (acc[page.notebookId || 'no_notebook'] ??= []).push(page);
               return acc;
             },
             {} as Record<string, Page[]>,

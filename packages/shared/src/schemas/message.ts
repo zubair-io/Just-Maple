@@ -25,7 +25,7 @@ export type Mention = Static<typeof MentionSchema>;
 export const MessageSchema = Type.Object({
     _id: Type.String(),
     id: Type.String(), // UUID v4 for routing
-    tagId: Type.String(), // Chat is per-tag
+    notebookId: Type.String(), // Chat is per-tag
     threadId: Type.Optional(Type.String()), // If part of a thread (null = top-level message)
     userId: Type.String(), // Sender (user ID or bot owner ID)
     senderType: Type.Optional(SenderTypeSchema), // 'user' | 'bot' | 'system' (defaults to 'user')
@@ -62,7 +62,7 @@ export type UpdateMessageInput = Static<typeof UpdateMessageSchema>;
 export const UnreadTrackingSchema = Type.Object({
     _id: Type.String(),
     userId: Type.String(),
-    tagId: Type.String(),
+    notebookId: Type.String(),
     lastReadAt: Type.String({ format: 'date-time' }),
 });
 
@@ -70,7 +70,7 @@ export type UnreadTracking = Static<typeof UnreadTrackingSchema>;
 
 // Unread count response
 export const UnreadCountSchema = Type.Object({
-    tagId: Type.String(),
+    notebookId: Type.String(),
     count: Type.Number(),
 });
 
@@ -99,7 +99,7 @@ export type ChatAction = Static<typeof ChatActionSchema>;
 export const ChatEventSchema = Type.Object({
     action: ChatActionSchema,
     data: Type.Any(),
-    tagId: Type.String(),
+    notebookId: Type.String(),
     userId: Type.String(),
     timestamp: Type.String({ format: 'date-time' }),
 });
@@ -108,7 +108,7 @@ export type ChatEvent = Static<typeof ChatEventSchema>;
 
 // Typing indicator event
 export const TypingEventSchema = Type.Object({
-    tagId: Type.String(),
+    notebookId: Type.String(),
     userId: Type.String(),
     isTyping: Type.Boolean(),
 });

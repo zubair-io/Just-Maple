@@ -10,7 +10,7 @@ import {
 } from '../repositories/notebook.repo';
 import type { JWTPayload, ChatEvent } from '@maple/shared';
 import {
-    findMessagesByTagId,
+    findMessagesByNotebookId,
     findMessageById,
     createMessage,
     updateMessage,
@@ -19,7 +19,7 @@ import {
 import {
     markAsRead,
     getUnreadCountsForUser,
-    getUnreadCountForTag,
+    getUnreadCountForNotebook,
 } from '../repositories/unread.repo';
 import { findThreadById } from '../repositories/thread.repo';
 import { broadcastChatEvent } from '../services/realtime.service';
@@ -62,7 +62,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 };
             }
 
-            const messages = await findMessagesByTagId(params.id, {
+            const messages = await findMessagesByNotebookId(params.id, {
                 limit: query.limit ? parseInt(query.limit) : 50,
                 before: query.before,
             });
@@ -108,7 +108,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 const { markMessageHasThread } = await import('../repositories/message.repo');
                 const thread = await getOrCreateThread({
                     parentMessageId: body.parentMessageId,
-                    tagId: params.id,
+                    notebookId: params.id,
                 });
                 threadId = thread._id;
                 parentMessageId = body.parentMessageId;
@@ -136,7 +136,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             const chatEvent: ChatEvent = {
                 action: threadId ? 'thread_message' : 'message',
                 data: threadId ? { message, parentMessageId } : message,
-                tagId: params.id,
+                notebookId: params.id,
                 userId: auth.user._id,
                 timestamp: new Date().toISOString(),
             };
@@ -147,7 +147,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 const threadFlagEvent: ChatEvent = {
                     action: 'message_updated',
                     data: { id: parentMessageId, hasThread: true },
-                    tagId: params.id,
+                    notebookId: params.id,
                     userId: auth.user._id,
                     timestamp: new Date().toISOString(),
                 };
@@ -237,9 +237,9 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 };
             }
 
-            const count = await getUnreadCountForTag(auth.user._id, params.id);
+            const count = await getUnreadCountForNotebook(auth.user._id, params.id);
 
-            return { tagId: params.id, count };
+            return { notebookId: params.id, count };
         },
         {
             params: t.Object({
@@ -256,9 +256,9 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
 
         // Get all user's tags
         const tags = await findNotebooksByUserId(auth.user._id);
-        const tagIds = tags.map((t) => t._id);
+        const notebookIds = tags.map((t) => t._id);
 
-        const counts = await getUnreadCountsForUser(auth.user._id, tagIds);
+        const counts = await getUnreadCountsForUser(auth.user._id, notebookIds);
 
         return { counts };
     })
@@ -285,11 +285,11 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             const chatEvent: ChatEvent = {
                 action: 'edited',
                 data: message,
-                tagId: message.tagId,
+                notebookId: message.notebookId,
                 userId: auth.user._id,
                 timestamp: new Date().toISOString(),
             };
-            broadcastChatEvent(message.tagId, chatEvent).catch(console.error);
+            broadcastChatEvent(message.notebookId, chatEvent).catch(console.error);
 
             return { message };
         },
@@ -311,7 +311,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Get message first to know tagId for broadcasting (verify user has access)
+            // Get message first to know notebookId for broadcasting (verify user has access)
             const existingMessage = await findMessageById(params.id, auth.user._id);
             if (!existingMessage) {
                 set.status = 404;
@@ -335,11 +335,11 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             const chatEvent: ChatEvent = {
                 action: 'deleted',
                 data: { id: params.id },
-                tagId: existingMessage.tagId,
+                notebookId: existingMessage.notebookId,
                 userId: auth.user._id,
                 timestamp: new Date().toISOString(),
             };
-            broadcastChatEvent(existingMessage.tagId, chatEvent).catch(console.error);
+            broadcastChatEvent(existingMessage.notebookId, chatEvent).catch(console.error);
 
             return { message: 'Message deleted' };
         },

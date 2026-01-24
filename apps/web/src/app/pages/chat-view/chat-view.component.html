@@ -9,7 +9,7 @@
 
 <!-- Chat Content -->
 @if (selectedNotebook()) {
-  <app-chat [tagId]="selectedNotebook()!._id" />
+  <app-chat [notebookId]="selectedNotebook()!._id" />
 } @else {
   <div class="empty-state">
     <div class="empty-icon">

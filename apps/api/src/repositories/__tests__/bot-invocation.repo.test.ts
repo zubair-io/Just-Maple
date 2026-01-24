@@ -44,7 +44,7 @@ describe.runIf(mongoAvailable)('BotInvocationRepo', () => {
             const userBotId = new ObjectId().toString();
             const templateId = new ObjectId().toString();
             const sourceId = new ObjectId().toString();
-            const tagId = new ObjectId().toString();
+            const notebookId = new ObjectId().toString();
             const userId = new ObjectId().toString();
 
             const invocation = await createInvocation({
@@ -52,7 +52,7 @@ describe.runIf(mongoAvailable)('BotInvocationRepo', () => {
                 templateId,
                 sourceType: 'message',
                 sourceId,
-                tagId,
+                notebookId,
                 userId,
                 context: { mentionText: '@bot hello' },
             });
@@ -73,7 +73,7 @@ describe.runIf(mongoAvailable)('BotInvocationRepo', () => {
                 templateId: new ObjectId().toString(),
                 sourceType: 'note',
                 sourceId: new ObjectId().toString(),
-                tagId: new ObjectId().toString(),
+                notebookId: new ObjectId().toString(),
                 userId: new ObjectId().toString(),
                 context: {},
             });

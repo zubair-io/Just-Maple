@@ -90,7 +90,7 @@ export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Subscribe to route params and set IDs directly - computed signals handle the rest
     this.routeSubscription = this.route.params.subscribe((params) => {
-      this.notebookId.set(params['tagId'] || null);
+      this.notebookId.set(params['notebookId'] || null);
       this.registryId.set(params['collectibleId'] || null);
     });
   }

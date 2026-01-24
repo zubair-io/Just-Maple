@@ -40,7 +40,7 @@ export const collectableRoutes = new Elysia({ prefix: '/api/collectables' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
             const collectables = await findCollectablesByUserId(auth.user._id, {
-                tagId: query.tagId,
+                notebookId: query.notebookId,
                 status: query.status as 'have' | 'want' | 'sold' | undefined,
                 updatedAfter: query.updatedAfter,
             });
@@ -48,7 +48,7 @@ export const collectableRoutes = new Elysia({ prefix: '/api/collectables' })
         },
         {
             query: t.Object({
-                tagId: t.Optional(t.String()),
+                notebookId: t.Optional(t.String()),
                 status: t.Optional(t.String()),
                 updatedAfter: t.Optional(t.String()),
             }),
@@ -63,14 +63,14 @@ export const collectableRoutes = new Elysia({ prefix: '/api/collectables' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            if (!query.tagId) {
+            if (!query.notebookId) {
                 set.status = 400;
-                return { error: 'Bad Request', message: 'tagId query parameter required' };
+                return { error: 'Bad Request', message: 'notebookId query parameter required' };
             }
 
             const collectable = await findCollectableByRegistryData(
                 params.registryId,
-                query.tagId,
+                query.notebookId,
                 auth.user._id,
             );
 
@@ -82,7 +82,7 @@ export const collectableRoutes = new Elysia({ prefix: '/api/collectables' })
                 registryId: t.String(),
             }),
             query: t.Object({
-                tagId: t.String(),
+                notebookId: t.String(),
             }),
         },
     )
@@ -120,15 +120,15 @@ export const collectableRoutes = new Elysia({ prefix: '/api/collectables' })
             const collectable = await createCollectable(auth.user._id, body);
 
             // Send SSE event to all users with access to each notebook
-            for (const tagId of collectable.tags) {
-                const recipientUserIds = await getUsersWithNotebookAccess(tagId);
+            for (const notebookId of collectable.tags) {
+                const recipientUserIds = await getUsersWithNotebookAccess(notebookId);
                 console.log(
-                    `[Collectables] Sending collectable.created SSE to ${recipientUserIds.length} users for notebook ${tagId}`,
+                    `[Collectables] Sending collectable.created SSE to ${recipientUserIds.length} users for notebook ${notebookId}`,
                 );
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'collectable.created',
                     collectable,
-                    tagId,
+                    notebookId,
                 });
             }
 
@@ -170,15 +170,15 @@ export const collectableRoutes = new Elysia({ prefix: '/api/collectables' })
             }
 
             // Send SSE event to all users with access to each notebook
-            for (const tagId of collectable.tags) {
-                const recipientUserIds = await getUsersWithNotebookAccess(tagId);
+            for (const notebookId of collectable.tags) {
+                const recipientUserIds = await getUsersWithNotebookAccess(notebookId);
                 console.log(
-                    `[Collectables] Sending collectable.updated SSE to ${recipientUserIds.length} users for notebook ${tagId}`,
+                    `[Collectables] Sending collectable.updated SSE to ${recipientUserIds.length} users for notebook ${notebookId}`,
                 );
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'collectable.updated',
                     collectable,
-                    tagId,
+                    notebookId,
                 });
             }
 
@@ -233,15 +233,15 @@ export const collectableRoutes = new Elysia({ prefix: '/api/collectables' })
             }
 
             // Send SSE event to all users with access to each notebook
-            for (const tagId of collectable.tags) {
-                const recipientUserIds = await getUsersWithNotebookAccess(tagId);
+            for (const notebookId of collectable.tags) {
+                const recipientUserIds = await getUsersWithNotebookAccess(notebookId);
                 console.log(
-                    `[Collectables] Sending collectable.deleted SSE to ${recipientUserIds.length} users for notebook ${tagId}`,
+                    `[Collectables] Sending collectable.deleted SSE to ${recipientUserIds.length} users for notebook ${notebookId}`,
                 );
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'collectable.deleted',
                     collectableId: params.id,
-                    tagId,
+                    notebookId,
                 });
             }
 

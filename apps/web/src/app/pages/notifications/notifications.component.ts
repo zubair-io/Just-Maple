@@ -26,18 +26,18 @@ export class NotificationsComponent {
     switch (notification.type) {
       case 'share_received':
       case 'message_received':
-        if (notification.data['tagId']) {
-          this.router.navigate(['/', notification.data['tagId']]);
+        if (notification.data['notebookId']) {
+          this.router.navigate(['/', notification.data['notebookId']]);
         }
         break;
 
       case 'transcription_complete':
       case 'reminder':
         if (notification.data['memoId']) {
-          const tagId = notification.data['tagId'];
+          const notebookId = notification.data['notebookId'];
           const memoId = notification.data['memoId'];
-          if (tagId && memoId) {
-            this.router.navigate(['/', tagId, memoId]);
+          if (notebookId && memoId) {
+            this.router.navigate(['/', notebookId, memoId]);
           }
         }
         break;

@@ -52,14 +52,14 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             }
 
             const pages = await findPagesByUserId(auth.user._id, {
-                tagId: query.tagId,
+                notebookId: query.notebookId,
                 isFavorite: query.favorites === 'true' ? true : undefined,
                 isTrashed: query.trash === 'true' ? true : undefined,
                 isArchived: query.archived === 'true' ? true : undefined,
             });
 
             // In dev mode, inject virtual doc pages into the response
-            if (isDevMode() && !query.tagId) {
+            if (isDevMode() && !query.notebookId) {
                 const docPages = await getDocPages();
                 pages.push(...docPages);
             }
@@ -68,7 +68,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
         },
         {
             query: t.Object({
-                tagId: t.Optional(t.String()),
+                notebookId: t.Optional(t.String()),
                 favorites: t.Optional(t.String()),
                 trash: t.Optional(t.String()),
                 archived: t.Optional(t.String()),
@@ -113,15 +113,15 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             const page = await createPage(auth.user._id, sanitizedBody);
 
             // Broadcast new page creation to all clients viewing this notebook
-            if (page.tagId) {
-                await otService.broadcastNoteCreated(page.tagId, page);
+            if (page.notebookId) {
+                await otService.broadcastNoteCreated(page.notebookId, page);
 
                 // Send SSE event to all users with access to this notebook
-                const recipientUserIds = await getUsersWithNotebookAccess(page.tagId);
+                const recipientUserIds = await getUsersWithNotebookAccess(page.notebookId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'page.created',
                     page,
-                    tagId: page.tagId,
+                    notebookId: page.notebookId,
                 });
             }
 
@@ -141,7 +141,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 ),
                 title: t.Optional(t.String({ maxLength: 255 })),
                 content: t.Optional(t.Any()),
-                tagId: t.Optional(t.String()),
+                notebookId: t.Optional(t.String()),
                 id: t.Optional(t.String()),
             }),
         },
@@ -166,14 +166,14 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             }
 
             // Send SSE event for title updates (real-time sidebar updates)
-            if (page.tagId && sanitizedBody.title !== undefined) {
-                const recipientUserIds = await getUsersWithNotebookAccess(page.tagId);
+            if (page.notebookId && sanitizedBody.title !== undefined) {
+                const recipientUserIds = await getUsersWithNotebookAccess(page.notebookId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'page.updated',
                     pageId: page.id,
                     title: sanitizedBody.title,
                     updatedAt: page.updatedAt,
-                    tagId: page.tagId,
+                    notebookId: page.notebookId,
                 });
             }
 
@@ -186,7 +186,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             body: t.Object({
                 title: t.Optional(t.String({ maxLength: 255 })),
                 content: t.Optional(t.Any()),
-                tagId: t.Optional(t.String()),
+                notebookId: t.Optional(t.String()),
                 isFavorite: t.Optional(t.Boolean()),
                 isArchived: t.Optional(t.Boolean()),
                 isTrashed: t.Optional(t.Boolean()),
@@ -210,12 +210,12 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             }
 
             // Send SSE event for page trashed
-            if (page.tagId) {
-                const recipientUserIds = await getUsersWithNotebookAccess(page.tagId);
+            if (page.notebookId) {
+                const recipientUserIds = await getUsersWithNotebookAccess(page.notebookId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'page.trashed',
                     pageId: page.id,
-                    tagId: page.tagId,
+                    notebookId: page.notebookId,
                 });
             }
 
@@ -243,12 +243,12 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             }
 
             // Send SSE event for page restored
-            if (page.tagId) {
-                const recipientUserIds = await getUsersWithNotebookAccess(page.tagId);
+            if (page.notebookId) {
+                const recipientUserIds = await getUsersWithNotebookAccess(page.notebookId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'page.restored',
                     page,
-                    tagId: page.tagId,
+                    notebookId: page.notebookId,
                 });
             }
 
@@ -269,7 +269,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Get page first to retrieve tagId before deletion
+            // Get page first to retrieve notebookId before deletion
             const page = await findPageById(params.id, auth.user._id);
             if (!page) {
                 set.status = 404;
@@ -284,12 +284,12 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             }
 
             // Send SSE event for page deleted
-            if (page.tagId) {
-                const recipientUserIds = await getUsersWithNotebookAccess(page.tagId);
+            if (page.notebookId) {
+                const recipientUserIds = await getUsersWithNotebookAccess(page.notebookId);
                 realtimeWSService.sendToUsers(recipientUserIds, {
                     type: 'page.deleted',
                     pageId: page.id,
-                    tagId: page.tagId,
+                    notebookId: page.notebookId,
                 });
             }
 

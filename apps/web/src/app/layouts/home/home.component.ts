@@ -147,8 +147,8 @@ export class HomeComponent implements OnInit, OnDestroy {
       );
       const lastPage = sortedPages[0];
       const urlParam = lastPage.id;
-      if (lastPage.tagId) {
-        this.router.navigate(['/', lastPage.tagId, urlParam]);
+      if (lastPage.notebookId) {
+        this.router.navigate(['/', lastPage.notebookId, urlParam]);
       } else {
         this.selectedPageId.set(lastPage.id);
       }
@@ -189,7 +189,7 @@ export class HomeComponent implements OnInit, OnDestroy {
       .createPage({
         title: 'Untitled',
         content: { type: 'doc', content: [] },
-        tagId: notebookId || undefined,
+        notebookId: notebookId || undefined,
       })
       .subscribe({
         next: (page) => {
