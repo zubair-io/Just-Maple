@@ -38,6 +38,8 @@ function getStaticDir(): string {
 async function main() {
     const STATIC_DIR = getStaticDir();
 
+    console.log(`[Boot] NODE_ENV=${process.env.NODE_ENV}, isDev=${config.isDev}`);
+
     // Connect to MongoDB
     await connectToDatabase();
 
