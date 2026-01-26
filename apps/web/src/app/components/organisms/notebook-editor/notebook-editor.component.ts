@@ -73,6 +73,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly injector = inject(EnvironmentInjector);
 
   readonly pageId = input.required<string>();
+  readonly notebookId = input.required<string>();
   readonly editable = input<boolean>(true);
 
   readonly isReady = signal(false);
@@ -542,6 +543,7 @@ export class NotebookEditorComponent implements OnDestroy {
     componentRef.setInput('widgetId', id);
     componentRef.setInput('editor', editor);
     componentRef.setInput('getPos', getPos);
+    componentRef.setInput('notebookId', this.notebookId());
     componentRef.setInput('initialPrompt', prompt || '');
     componentRef.setInput('initialStatus', status || 'idle');
 
