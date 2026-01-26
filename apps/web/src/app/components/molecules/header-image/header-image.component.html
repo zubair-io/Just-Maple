@@ -1,0 +1,56 @@
+@if (hasImage()) {
+  <!-- Display existing header image -->
+  <div
+    class="header-image-container"
+    (mouseenter)="isHovering.set(true)"
+    (mouseleave)="isHovering.set(false)"
+  >
+    <img [src]="imageUrl()" alt="Header image" class="header-image" />
+
+    @if (editable() && isHovering()) {
+      <div class="header-image-overlay">
+        <button
+          type="button"
+          class="header-image-btn"
+          (click)="onChangeImage()"
+          title="Change image"
+        >
+          <span class="material-symbols-rounded">image</span>
+          Change
+        </button>
+        <button
+          type="button"
+          class="header-image-btn header-image-btn--danger"
+          (click)="onRemoveImage()"
+          title="Remove image"
+        >
+          <span class="material-symbols-rounded">delete</span>
+          Remove
+        </button>
+      </div>
+    }
+
+    @if (isUploading()) {
+      <div class="header-image-overlay uploading">
+        <div class="upload-spinner"></div>
+        <span>Uploading...</span>
+      </div>
+    }
+  </div>
+} @else if (editable()) {
+  <!-- Add header image button -->
+  <button
+    type="button"
+    class="add-header-image-btn"
+    (click)="onAddImage()"
+    [disabled]="isUploading()"
+  >
+    @if (isUploading()) {
+      <div class="upload-spinner small"></div>
+      <span>Uploading...</span>
+    } @else {
+      <span class="material-symbols-rounded">add_photo_alternate</span>
+      <span>Add cover image</span>
+    }
+  </button>
+}

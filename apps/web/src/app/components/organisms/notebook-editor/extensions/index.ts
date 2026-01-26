@@ -18,6 +18,7 @@ export {
 export { TableOfContents, extractTocItems, type TocItem } from './table-of-contents';
 export { RecordingNode, type RecordingNodeOptions } from './recording-node';
 export { EmbedNode, type EmbedNodeOptions } from './embed-node';
+export { ImageNode, type ImageNodeOptions, type ImageSize, type MemoImageUrls } from './image-node';
 export {
   EnhancedTaskItem,
   type EnhancedTaskItemOptions,
