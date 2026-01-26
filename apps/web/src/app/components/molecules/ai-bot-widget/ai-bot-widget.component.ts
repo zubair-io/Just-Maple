@@ -14,7 +14,6 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import type { Editor } from '@tiptap/core';
-import { ActivatedRoute } from '@angular/router';
 
 export type AiBotWidgetStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -46,13 +45,13 @@ export interface AiEditResponse {
 })
 export class AiBotWidgetComponent implements AfterViewInit {
   private readonly http = inject(HttpClient);
-  private readonly route = inject(ActivatedRoute);
 
   @ViewChild('promptInput') promptInputRef?: ElementRef<HTMLInputElement>;
 
   readonly widgetId = input.required<string>();
   readonly editor = input.required<Editor>();
   readonly getPos = input.required<() => number | undefined>();
+  readonly notebookId = input.required<string>();
   readonly initialPrompt = input<string>('');
   readonly initialStatus = input<AiBotWidgetStatus>('idle');
 
@@ -119,11 +118,8 @@ export class AiBotWidgetComponent implements AfterViewInit {
       // Get document content
       const documentContent = this.getDocumentContent(editor);
 
-      // Get notebook ID from route
-      const notebookId = this.route.snapshot.paramMap.get('tagId');
-      if (!notebookId) {
-        throw new Error('Notebook ID not found');
-      }
+      // Get notebook ID from input
+      const notebookId = this.notebookId();
 
       // Call API
       const response = await firstValueFrom(
