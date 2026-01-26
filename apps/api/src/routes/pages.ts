@@ -135,7 +135,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('collectable'),
                         t.Literal('whiteboard'),
                         t.Literal('kanban'),
-                        t.Literal('message'),
+                        t.Literal('messages'),
                         t.Literal('recording'),
                     ]),
                 ),
