@@ -1,10 +1,9 @@
 import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { Subscription, switchMap, of, combineLatest, map, catchError } from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
-import { MessageService } from '../../services/message.service';
 import { NotificationService } from '../../services/notification.service';
 import { ShareModalComponent, NotebookHeaderComponent } from '../../components';
 import type { NotebookMember } from '@maple/shared';
@@ -23,9 +22,7 @@ interface NotebookSummary {
 })
 export class ChatViewComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
-  private readonly router = inject(Router);
   readonly notebookService = inject(NotebookService);
-  private readonly messageService = inject(MessageService);
   private readonly notificationService = inject(NotificationService);
 
   private routeSubscription?: Subscription;
@@ -67,16 +64,10 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   );
 
   constructor() {
-    // Track active notebook for smart notification filtering and mark messages as read
+    // Track active notebook for smart notification filtering
     effect(() => {
       const notebookId = this.selectedNotebookId();
       this.notificationService.setActiveNotebook(notebookId);
-      if (notebookId) {
-        // Mark message notifications as read (for notification bell badge)
-        this.notificationService.markNotebookMessagesAsRead(notebookId);
-        // Mark messages as read (for per-notebook unread badge)
-        this.messageService.markAsRead(notebookId).subscribe();
-      }
     });
   }
 
@@ -137,14 +128,5 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   onMembersChanged(): void {
     // Trigger members refetch after sharing/unsharing
     this.membersRefreshTrigger.update((n) => n + 1);
-  }
-
-  openMessagesPage(): void {
-    const notebookId = this.selectedNotebookId();
-    if (notebookId) {
-      // Navigate to messages page (the chat component will load messages)
-      // For now, just load messages in the chat component
-      this.messageService.loadMessages(notebookId).subscribe();
-    }
   }
 }
