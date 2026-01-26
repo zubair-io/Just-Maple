@@ -9,7 +9,6 @@ import type {
     SenderType,
     Mention,
 } from '@maple/shared';
-import { findNotebookByIdWithAccess } from './notebook.repo';
 import { findUsersByIds } from './user.repo';
 import { findPageById } from './page.repo';
 
