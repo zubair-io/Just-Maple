@@ -13,6 +13,11 @@
       <app-chat [notebookId]="selectedNotebookId()!" />
     </div>
   </div>
+} @else {
+  <div class="loading-state">
+    <span class="material-symbols-rounded spin">progress_activity</span>
+    <span>Loading messages...</span>
+  </div>
 }
 
 <!-- Share Modal -->
