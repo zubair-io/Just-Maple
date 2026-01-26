@@ -21,11 +21,12 @@ export const MentionSchema = Type.Object({
 
 export type Mention = Static<typeof MentionSchema>;
 
-// Message schema - chat messages per tag
+// Message schema - chat messages per page
 export const MessageSchema = Type.Object({
     _id: Type.String(),
     id: Type.String(), // UUID v4 for routing
-    notebookId: Type.String(), // Chat is per-tag
+    pageId: Type.String(), // Messages belong to a page (type: 'message')
+    notebookId: Type.Optional(Type.String()), // Deprecated: kept for backward compatibility during migration
     threadId: Type.Optional(Type.String()), // If part of a thread (null = top-level message)
     userId: Type.String(), // Sender (user ID or bot owner ID)
     senderType: Type.Optional(SenderTypeSchema), // 'user' | 'bot' | 'system' (defaults to 'user')
@@ -58,11 +59,12 @@ export const UpdateMessageSchema = Type.Object({
 
 export type UpdateMessageInput = Static<typeof UpdateMessageSchema>;
 
-// Unread tracking per user per tag
+// Unread tracking per user per page
 export const UnreadTrackingSchema = Type.Object({
     _id: Type.String(),
     userId: Type.String(),
-    notebookId: Type.String(),
+    pageId: Type.String(), // Tracks unread per messages page
+    notebookId: Type.Optional(Type.String()), // Deprecated: kept for backward compatibility
     lastReadAt: Type.String({ format: 'date-time' }),
 });
 
@@ -70,7 +72,8 @@ export type UnreadTracking = Static<typeof UnreadTrackingSchema>;
 
 // Unread count response
 export const UnreadCountSchema = Type.Object({
-    notebookId: Type.String(),
+    pageId: Type.String(),
+    notebookId: Type.Optional(Type.String()), // Included for convenience (page's notebookId)
     count: Type.Number(),
 });
 
@@ -99,7 +102,8 @@ export type ChatAction = Static<typeof ChatActionSchema>;
 export const ChatEventSchema = Type.Object({
     action: ChatActionSchema,
     data: Type.Any(),
-    notebookId: Type.String(),
+    pageId: Type.String(), // Messages page ID
+    notebookId: Type.Optional(Type.String()), // Included for convenience (for permission checks)
     userId: Type.String(),
     timestamp: Type.String({ format: 'date-time' }),
 });
@@ -108,7 +112,8 @@ export type ChatEvent = Static<typeof ChatEventSchema>;
 
 // Typing indicator event
 export const TypingEventSchema = Type.Object({
-    notebookId: Type.String(),
+    pageId: Type.String(), // Messages page ID
+    notebookId: Type.Optional(Type.String()), // Included for convenience
     userId: Type.String(),
     isTyping: Type.Boolean(),
 });

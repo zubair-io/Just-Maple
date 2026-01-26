@@ -403,4 +403,36 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
                 userBotId: t.String(),
             }),
         },
+    )
+
+    // Get notebook summary (page counts by type)
+    .get(
+        '/:id/summary',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const notebook = await findNotebookById(params.id, auth.user._id);
+            if (!notebook) {
+                set.status = 404;
+                return { error: 'Notebook not found' };
+            }
+
+            const { countPagesByTypeForNotebook } = await import('../repositories/page.repo');
+            const pageCounts = await countPagesByTypeForNotebook(params.id);
+
+            return {
+                notebook,
+                summary: {
+                    pageCounts,
+                    totalPages: Object.values(pageCounts).reduce((sum, count) => sum + count, 0),
+                },
+            };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+        },
     );

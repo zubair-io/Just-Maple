@@ -5,21 +5,25 @@ import {
     findNotebookById,
     findNotebooksByUserId,
     findNotebookByIdWithAccess,
-    hasAccess,
     getNotebookMembers,
 } from '../repositories/notebook.repo';
+import {
+    findPageById,
+    findOrCreateMessagesPage,
+    findMessagesPageByNotebookId,
+} from '../repositories/page.repo';
 import type { JWTPayload, ChatEvent } from '@maple/shared';
 import {
-    findMessagesByNotebookId,
+    findMessagesByPageId,
     findMessageById,
     createMessage,
     updateMessage,
     softDeleteMessage,
 } from '../repositories/message.repo';
 import {
-    markAsRead,
-    getUnreadCountsForUser,
-    getUnreadCountForNotebook,
+    markAsReadByPageId,
+    getUnreadCountsForUserByPageIds,
+    getUnreadCountForPage,
 } from '../repositories/unread.repo';
 import { findThreadById } from '../repositories/thread.repo';
 import { broadcastChatEvent } from '../services/realtime.service';
@@ -44,30 +48,42 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
         }
     })
 
-    // Get messages for a notebook (paginated)
+    // ============================================
+    // Page-based message routes (new)
+    // ============================================
+
+    // Get messages for a page (paginated)
     .get(
-        '/notebooks/:id/messages',
+        '/pages/:id/messages',
         async ({ auth, params, query, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Verify user has access to this notebook
-            const notebook = await findNotebookById(params.id, auth.user._id);
-            if (!notebook) {
+            // Verify user has access to this page
+            const page = await findPageById(params.id, auth.user._id);
+            if (!page) {
                 set.status = 404;
                 return {
-                    error: 'Notebook not found',
-                    message: 'Notebook does not exist or access denied',
+                    error: 'Page not found',
+                    message: 'Page does not exist or access denied',
                 };
             }
 
-            const messages = await findMessagesByNotebookId(params.id, {
+            if (page.type !== 'message') {
+                set.status = 400;
+                return {
+                    error: 'Invalid page type',
+                    message: 'This page is not a messages page',
+                };
+            }
+
+            const messages = await findMessagesByPageId(params.id, {
                 limit: query.limit ? parseInt(query.limit) : 50,
                 before: query.before,
             });
 
-            return { messages };
+            return { messages, page };
         },
         {
             params: t.Object({
@@ -80,22 +96,46 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
         },
     )
 
-    // Send a message to a notebook's chat
+    // Send a message to a page
     .post(
-        '/notebooks/:id/messages',
+        '/pages/:id/messages',
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Verify user has write access to this notebook
-            const notebook = await findNotebookByIdWithAccess(params.id, auth.user._id, 'write');
-            if (!notebook) {
-                set.status = 403;
+            // Verify user has access to this page
+            const page = await findPageById(params.id, auth.user._id);
+            if (!page) {
+                set.status = 404;
                 return {
-                    error: 'Forbidden',
-                    message: 'You do not have write access to this notebook',
+                    error: 'Page not found',
+                    message: 'Page does not exist or access denied',
                 };
+            }
+
+            if (page.type !== 'message') {
+                set.status = 400;
+                return {
+                    error: 'Invalid page type',
+                    message: 'This page is not a messages page',
+                };
+            }
+
+            // Verify write access via notebook
+            if (page.notebookId) {
+                const notebook = await findNotebookByIdWithAccess(
+                    page.notebookId,
+                    auth.user._id,
+                    'write',
+                );
+                if (!notebook) {
+                    set.status = 403;
+                    return {
+                        error: 'Forbidden',
+                        message: 'You do not have write access to this notebook',
+                    };
+                }
             }
 
             // Handle thread creation if replying to a parent message
@@ -103,77 +143,77 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             let parentMessageId: string | undefined;
 
             if (body.parentMessageId) {
-                // User is replying to a message - get or create thread
                 const { getOrCreateThread } = await import('../repositories/thread.repo');
                 const { markMessageHasThread } = await import('../repositories/message.repo');
                 const thread = await getOrCreateThread({
                     parentMessageId: body.parentMessageId,
-                    notebookId: params.id,
+                    notebookId: page.notebookId || '',
                 });
                 threadId = thread._id;
                 parentMessageId = body.parentMessageId;
-
-                // Mark the parent message as having a thread
                 await markMessageHasThread(body.parentMessageId);
             } else if (body.threadId) {
-                // Message is being added to existing thread
                 const thread = await findThreadById(body.threadId);
                 parentMessageId = thread?.parentMessageId;
             }
 
             const message = await createMessage(
-                params.id,
+                params.id, // pageId
                 auth.user._id,
                 body,
                 auth.user.email,
                 auth.user.displayName,
                 auth.user.profilePictureUrl,
                 threadId,
+                page.notebookId, // notebookId for backward compatibility
             );
 
             // Broadcast message via realtime service
-            // Use different action for thread messages vs top-level messages
             const chatEvent: ChatEvent = {
                 action: threadId ? 'thread_message' : 'message',
                 data: threadId ? { message, parentMessageId } : message,
-                notebookId: params.id,
+                pageId: params.id,
+                notebookId: page.notebookId,
                 userId: auth.user._id,
                 timestamp: new Date().toISOString(),
             };
-            broadcastChatEvent(params.id, chatEvent).catch(console.error);
 
-            // If we created/updated a thread, broadcast that the parent has a thread
-            if (parentMessageId && body.parentMessageId) {
+            if (page.notebookId) {
+                broadcastChatEvent(page.notebookId, chatEvent).catch(console.error);
+            }
+
+            // Broadcast thread flag update
+            if (parentMessageId && body.parentMessageId && page.notebookId) {
                 const threadFlagEvent: ChatEvent = {
                     action: 'message_updated',
                     data: { id: parentMessageId, hasThread: true },
-                    notebookId: params.id,
+                    pageId: params.id,
+                    notebookId: page.notebookId,
                     userId: auth.user._id,
                     timestamp: new Date().toISOString(),
                 };
-                broadcastChatEvent(params.id, threadFlagEvent).catch(console.error);
+                broadcastChatEvent(page.notebookId, threadFlagEvent).catch(console.error);
             }
 
-            // Send push notifications to all tag members except the author
-            const tagMembers = await getNotebookMembers(params.id, auth.user._id);
-            if (tagMembers) {
-                // Send notification to each member except the message author
-                const notificationPromises = tagMembers
-                    .filter((member) => member.userId !== auth.user._id)
-                    .map((member) =>
-                        sendMessageReceivedNotification(
-                            member.userId,
-                            params.id,
-                            message._id,
-                            auth.user.email,
-                            auth.user.displayName, // Pass sender's display name
-                            auth.user.profilePictureUrl, // Pass sender's profile picture
-                            message.content, // Pass actual message content
-                        ),
-                    );
-
-                // Send all notifications in parallel, but don't wait for them
-                Promise.allSettled(notificationPromises).catch(console.error);
+            // Send push notifications
+            if (page.notebookId) {
+                const tagMembers = await getNotebookMembers(page.notebookId, auth.user._id);
+                if (tagMembers) {
+                    const notificationPromises = tagMembers
+                        .filter((member) => member.userId !== auth.user._id)
+                        .map((member) =>
+                            sendMessageReceivedNotification(
+                                member.userId,
+                                page.notebookId!,
+                                message._id,
+                                auth.user.email,
+                                auth.user.displayName,
+                                auth.user.profilePictureUrl,
+                                message.content,
+                            ),
+                        );
+                    Promise.allSettled(notificationPromises).catch(console.error);
+                }
             }
 
             return { message };
@@ -183,34 +223,33 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 id: t.String(),
             }),
             body: t.Object({
-                content: t.Any(), // TipTap JSON content
-                threadId: t.Optional(t.String()), // If continuing an existing thread
-                parentMessageId: t.Optional(t.String()), // If starting a new thread (first reply)
+                content: t.Any(),
+                threadId: t.Optional(t.String()),
+                parentMessageId: t.Optional(t.String()),
             }),
         },
     )
 
-    // Mark notebook as read
+    // Mark page as read
     .post(
-        '/notebooks/:id/read',
+        '/pages/:id/read',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Verify user has access to this notebook
-            const notebook = await findNotebookById(params.id, auth.user._id);
-            if (!notebook) {
+            const page = await findPageById(params.id, auth.user._id);
+            if (!page) {
                 set.status = 404;
                 return {
-                    error: 'Notebook not found',
-                    message: 'Notebook does not exist or access denied',
+                    error: 'Page not found',
+                    message: 'Page does not exist or access denied',
                 };
             }
 
-            const tracking = await markAsRead(auth.user._id, params.id);
+            const tracking = await markAsReadByPageId(auth.user._id, params.id);
 
-            return { lastReadAt: tracking.lastReadAt };
+            return { lastReadAt: tracking.lastReadAt, pageId: params.id };
         },
         {
             params: t.Object({
@@ -219,15 +258,47 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
         },
     )
 
-    // Get unread count for a specific notebook
+    // Get unread count for a specific page
     .get(
-        '/notebooks/:id/unread',
+        '/pages/:id/unread',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Verify user has access to this notebook
+            const page = await findPageById(params.id, auth.user._id);
+            if (!page) {
+                set.status = 404;
+                return {
+                    error: 'Page not found',
+                    message: 'Page does not exist or access denied',
+                };
+            }
+
+            const count = await getUnreadCountForPage(auth.user._id, params.id);
+
+            return { pageId: params.id, notebookId: page.notebookId, count };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+        },
+    )
+
+    // ============================================
+    // Notebook-based routes (for backward compatibility)
+    // These routes find/create the messages page for a notebook
+    // ============================================
+
+    // Get messages for a notebook (finds messages page automatically)
+    .get(
+        '/notebooks/:id/messages',
+        async ({ auth, params, query, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
             const notebook = await findNotebookById(params.id, auth.user._id);
             if (!notebook) {
                 set.status = 404;
@@ -237,9 +308,192 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 };
             }
 
-            const count = await getUnreadCountForNotebook(auth.user._id, params.id);
+            // Find or create the messages page for this notebook
+            const messagesPage = await findOrCreateMessagesPage(params.id, auth.user._id);
 
-            return { notebookId: params.id, count };
+            const messages = await findMessagesByPageId(messagesPage.id, {
+                limit: query.limit ? parseInt(query.limit) : 50,
+                before: query.before,
+            });
+
+            return { messages, page: messagesPage };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            query: t.Object({
+                limit: t.Optional(t.String()),
+                before: t.Optional(t.String()),
+            }),
+        },
+    )
+
+    // Send a message to a notebook's chat (finds/creates messages page)
+    .post(
+        '/notebooks/:id/messages',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const notebook = await findNotebookByIdWithAccess(params.id, auth.user._id, 'write');
+            if (!notebook) {
+                set.status = 403;
+                return {
+                    error: 'Forbidden',
+                    message: 'You do not have write access to this notebook',
+                };
+            }
+
+            // Find or create the messages page for this notebook
+            const messagesPage = await findOrCreateMessagesPage(params.id, auth.user._id);
+
+            // Handle thread creation
+            let threadId = body.threadId;
+            let parentMessageId: string | undefined;
+
+            if (body.parentMessageId) {
+                const { getOrCreateThread } = await import('../repositories/thread.repo');
+                const { markMessageHasThread } = await import('../repositories/message.repo');
+                const thread = await getOrCreateThread({
+                    parentMessageId: body.parentMessageId,
+                    notebookId: params.id,
+                });
+                threadId = thread._id;
+                parentMessageId = body.parentMessageId;
+                await markMessageHasThread(body.parentMessageId);
+            } else if (body.threadId) {
+                const thread = await findThreadById(body.threadId);
+                parentMessageId = thread?.parentMessageId;
+            }
+
+            const message = await createMessage(
+                messagesPage.id, // pageId
+                auth.user._id,
+                body,
+                auth.user.email,
+                auth.user.displayName,
+                auth.user.profilePictureUrl,
+                threadId,
+                params.id, // notebookId
+            );
+
+            // Broadcast message
+            const chatEvent: ChatEvent = {
+                action: threadId ? 'thread_message' : 'message',
+                data: threadId ? { message, parentMessageId } : message,
+                pageId: messagesPage.id,
+                notebookId: params.id,
+                userId: auth.user._id,
+                timestamp: new Date().toISOString(),
+            };
+            broadcastChatEvent(params.id, chatEvent).catch(console.error);
+
+            if (parentMessageId && body.parentMessageId) {
+                const threadFlagEvent: ChatEvent = {
+                    action: 'message_updated',
+                    data: { id: parentMessageId, hasThread: true },
+                    pageId: messagesPage.id,
+                    notebookId: params.id,
+                    userId: auth.user._id,
+                    timestamp: new Date().toISOString(),
+                };
+                broadcastChatEvent(params.id, threadFlagEvent).catch(console.error);
+            }
+
+            // Send notifications
+            const tagMembers = await getNotebookMembers(params.id, auth.user._id);
+            if (tagMembers) {
+                const notificationPromises = tagMembers
+                    .filter((member) => member.userId !== auth.user._id)
+                    .map((member) =>
+                        sendMessageReceivedNotification(
+                            member.userId,
+                            params.id,
+                            message._id,
+                            auth.user.email,
+                            auth.user.displayName,
+                            auth.user.profilePictureUrl,
+                            message.content,
+                        ),
+                    );
+                Promise.allSettled(notificationPromises).catch(console.error);
+            }
+
+            return { message, page: messagesPage };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            body: t.Object({
+                content: t.Any(),
+                threadId: t.Optional(t.String()),
+                parentMessageId: t.Optional(t.String()),
+            }),
+        },
+    )
+
+    // Mark notebook as read (finds messages page)
+    .post(
+        '/notebooks/:id/read',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const notebook = await findNotebookById(params.id, auth.user._id);
+            if (!notebook) {
+                set.status = 404;
+                return {
+                    error: 'Notebook not found',
+                    message: 'Notebook does not exist or access denied',
+                };
+            }
+
+            const messagesPage = await findMessagesPageByNotebookId(params.id);
+            if (!messagesPage) {
+                // No messages page yet, nothing to mark as read
+                return { lastReadAt: new Date().toISOString() };
+            }
+
+            const tracking = await markAsReadByPageId(auth.user._id, messagesPage.id);
+
+            return { lastReadAt: tracking.lastReadAt, pageId: messagesPage.id };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+        },
+    )
+
+    // Get unread count for a notebook (finds messages page)
+    .get(
+        '/notebooks/:id/unread',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const notebook = await findNotebookById(params.id, auth.user._id);
+            if (!notebook) {
+                set.status = 404;
+                return {
+                    error: 'Notebook not found',
+                    message: 'Notebook does not exist or access denied',
+                };
+            }
+
+            const messagesPage = await findMessagesPageByNotebookId(params.id);
+            if (!messagesPage) {
+                return { notebookId: params.id, pageId: null, count: 0 };
+            }
+
+            const count = await getUnreadCountForPage(auth.user._id, messagesPage.id);
+
+            return { notebookId: params.id, pageId: messagesPage.id, count };
         },
         {
             params: t.Object({
@@ -254,14 +508,39 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             return { error: 'Unauthorized', message: 'Valid authentication required' };
         }
 
-        // Get all user's tags
-        const tags = await findNotebooksByUserId(auth.user._id);
-        const notebookIds = tags.map((t) => t._id);
+        // Get all user's notebooks
+        const notebooks = await findNotebooksByUserId(auth.user._id);
 
-        const counts = await getUnreadCountsForUser(auth.user._id, notebookIds);
+        // Find messages pages for all notebooks
+        const pagePromises = notebooks.map(async (notebook) => {
+            const page = await findMessagesPageByNotebookId(notebook._id);
+            return page ? { pageId: page.id, notebookId: notebook._id } : null;
+        });
 
-        return { counts };
+        const pageResults = await Promise.all(pagePromises);
+        const validPages = pageResults.filter((p) => p !== null) as {
+            pageId: string;
+            notebookId: string;
+        }[];
+
+        const pageIds = validPages.map((p) => p.pageId);
+        const counts = await getUnreadCountsForUserByPageIds(auth.user._id, pageIds);
+
+        // Map counts back to include notebookId for convenience
+        const countsWithNotebook = counts.map((c) => {
+            const pageInfo = validPages.find((p) => p.pageId === c.pageId);
+            return {
+                ...c,
+                notebookId: pageInfo?.notebookId,
+            };
+        });
+
+        return { counts: countsWithNotebook };
     })
+
+    // ============================================
+    // Message operations (work with pageId)
+    // ============================================
 
     // Edit a message
     .put(
@@ -285,11 +564,15 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             const chatEvent: ChatEvent = {
                 action: 'edited',
                 data: message,
+                pageId: message.pageId,
                 notebookId: message.notebookId,
                 userId: auth.user._id,
                 timestamp: new Date().toISOString(),
             };
-            broadcastChatEvent(message.notebookId, chatEvent).catch(console.error);
+
+            if (message.notebookId) {
+                broadcastChatEvent(message.notebookId, chatEvent).catch(console.error);
+            }
 
             return { message };
         },
@@ -298,7 +581,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 id: t.String(),
             }),
             body: t.Object({
-                content: t.Any(), // TipTap JSON content
+                content: t.Any(),
             }),
         },
     )
@@ -311,7 +594,6 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Get message first to know notebookId for broadcasting (verify user has access)
             const existingMessage = await findMessageById(params.id, auth.user._id);
             if (!existingMessage) {
                 set.status = 404;
@@ -331,15 +613,19 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 };
             }
 
-            // Broadcast deletion via realtime service
+            // Broadcast deletion
             const chatEvent: ChatEvent = {
                 action: 'deleted',
                 data: { id: params.id },
+                pageId: existingMessage.pageId,
                 notebookId: existingMessage.notebookId,
                 userId: auth.user._id,
                 timestamp: new Date().toISOString(),
             };
-            broadcastChatEvent(existingMessage.notebookId, chatEvent).catch(console.error);
+
+            if (existingMessage.notebookId) {
+                broadcastChatEvent(existingMessage.notebookId, chatEvent).catch(console.error);
+            }
 
             return { message: 'Message deleted' };
         },

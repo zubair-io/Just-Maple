@@ -1,6 +1,11 @@
 import { Routes } from '@angular/router';
 import { AuthGuard, PublicGuard } from './guards/auth.guard';
-import { CollectablePageGuard, WhiteboardPageGuard, MemoPageGuard } from './guards/page-type.guard';
+import {
+  CollectablePageGuard,
+  WhiteboardPageGuard,
+  MemoPageGuard,
+  MessagePageGuard,
+} from './guards/page-type.guard';
 
 export const routes: Routes = [
   // Auth routes - must come before the catch-all :notebookId route
@@ -90,6 +95,15 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/whiteboard-view/whiteboard-view.component').then(
                 (m) => m.WhiteboardViewComponent,
+              ),
+          },
+          // Message-type page - shows chat/messages
+          {
+            path: ':id',
+            canMatch: [MessagePageGuard],
+            loadComponent: () =>
+              import('./pages/message-view/message-view.component').then(
+                (m) => m.MessageViewComponent,
               ),
           },
           // Memo-type page - shows collaborative notebook editor (default for pages)

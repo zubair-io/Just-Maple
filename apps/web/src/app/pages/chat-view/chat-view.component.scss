@@ -5,6 +5,114 @@
   min-height: 0;
 }
 
+.notebook-summary {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+
+  .summary-header {
+    margin-bottom: 2rem;
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--color-text-main);
+      margin-bottom: 0.25rem;
+    }
+
+    .summary-subtitle {
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+    }
+  }
+
+  .page-counts {
+    .total-count {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.5rem;
+      background: var(--color-surface);
+      border-radius: 0.75rem;
+      margin-bottom: 1.5rem;
+
+      span.material-symbols-rounded {
+        font-size: 2rem;
+        color: var(--color-primary);
+      }
+
+      .count {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--color-text-main);
+      }
+
+      .label {
+        font-size: 1rem;
+        color: var(--color-text-muted);
+      }
+    }
+
+    .type-breakdown {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 1rem;
+
+      .type-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1.25rem;
+        background: var(--color-surface);
+        border-radius: 0.75rem;
+        text-align: center;
+        transition: transform 0.15s ease;
+
+        &:hover {
+          transform: translateY(-2px);
+        }
+
+        span.material-symbols-rounded {
+          font-size: 1.5rem;
+          color: var(--color-text-muted);
+          margin-bottom: 0.5rem;
+        }
+
+        .count {
+          font-size: 1.5rem;
+          font-weight: 600;
+          color: var(--color-text-main);
+          margin-bottom: 0.25rem;
+        }
+
+        .label {
+          font-size: 0.75rem;
+          color: var(--color-text-muted);
+        }
+      }
+    }
+  }
+
+  .loading-summary {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    color: var(--color-text-muted);
+
+    .spin {
+      font-size: 2rem;
+      animation: spin 1s linear infinite;
+    }
+
+    p {
+      margin-top: 0.5rem;
+      font-size: 0.875rem;
+    }
+  }
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -39,5 +147,14 @@
 
   p {
     font-size: 0.875rem;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }

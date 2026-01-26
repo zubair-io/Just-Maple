@@ -185,8 +185,10 @@ export class HomeComponent implements OnInit, OnDestroy {
   createNewPage(): void {
     const notebookId = this.selectedNotebookId();
     // Create a new page and navigate to it
+    const id = crypto.randomUUID();
     this.pageService
       .createPage({
+        id,
         title: 'Untitled',
         content: { type: 'doc', content: [] },
         notebookId: notebookId || undefined,

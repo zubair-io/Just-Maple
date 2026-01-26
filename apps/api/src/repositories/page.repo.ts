@@ -530,3 +530,102 @@ export async function updatePageForCollab(
 ): Promise<Page | null> {
     return updatePageInternal(id, data, INTERNAL_CAPABILITY, caller);
 }
+
+// ============================================
+// Messages Page Functions
+// ============================================
+
+/**
+ * Find the messages page for a notebook
+ */
+export async function findMessagesPageByNotebookId(notebookId: string): Promise<Page | null> {
+    try {
+        const doc = await getCollection().findOne({
+            notebookId: new ObjectId(notebookId),
+            type: 'message',
+            isTrashed: { $ne: true },
+        });
+        return doc ? toPageResponse(doc) : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Find or create a messages page for a notebook
+ * This is used when sending messages to ensure a messages page exists
+ */
+export async function findOrCreateMessagesPage(notebookId: string, userId: string): Promise<Page> {
+    // Try to find existing messages page
+    const existing = await findMessagesPageByNotebookId(notebookId);
+    if (existing) {
+        return existing;
+    }
+
+    // Create a new messages page
+    const now = new Date();
+    const pageId = generatePageId();
+    const doc: Omit<PageDocument, '_id'> = {
+        id: pageId,
+        userId: new ObjectId(userId),
+        type: 'message',
+        title: 'Messages',
+        content: { type: 'doc', content: [] },
+        notebookId: new ObjectId(notebookId),
+        isFavorite: false,
+        isArchived: false,
+        isTrashed: false,
+        createdAt: now,
+        updatedAt: now,
+    };
+
+    const result = await getCollection().insertOne(doc as PageDocument);
+
+    return {
+        _id: result.insertedId.toString(),
+        id: pageId,
+        userId: userId,
+        type: 'message',
+        title: 'Messages',
+        content: doc.content,
+        notebookId: notebookId,
+        isFavorite: false,
+        isArchived: false,
+        isTrashed: false,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+    };
+}
+
+/**
+ * Count pages by type for a notebook (for summary)
+ */
+export async function countPagesByTypeForNotebook(
+    notebookId: string,
+): Promise<Record<string, number>> {
+    try {
+        const pipeline = [
+            {
+                $match: {
+                    notebookId: new ObjectId(notebookId),
+                    isTrashed: { $ne: true },
+                },
+            },
+            {
+                $group: {
+                    _id: '$type',
+                    count: { $sum: 1 },
+                },
+            },
+        ];
+
+        const results = await getCollection().aggregate(pipeline).toArray();
+        const counts: Record<string, number> = {};
+        for (const result of results) {
+            counts[result._id as string] = result.count;
+        }
+        return counts;
+    } catch {
+        return {};
+    }
+}

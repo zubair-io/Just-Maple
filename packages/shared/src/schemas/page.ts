@@ -25,7 +25,7 @@ export const PageTypeSchema = Type.Union([
     Type.Literal('collectable'),
     Type.Literal('whiteboard'),
     Type.Literal('kanban'),
-    Type.Literal('message'),
+    Type.Literal('message'), // Chat messages container
     Type.Literal('recording'),
 ]);
 
