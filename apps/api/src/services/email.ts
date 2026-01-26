@@ -181,14 +181,14 @@ export async function sendMagicLinkEmail(options: SendMagicLinkOptions): Promise
     const { email, token, baseUrl = 'http://localhost:4200' } = options;
     const verifyUrl = `${baseUrl}/verify?token=${token}`;
 
-    // Always log in dev mode for debugging
-    if (config.isDev) {
+    // Log magic link URL when Azure is not configured (for local development)
+    if (!config.azureCommConnectionString) {
         console.log('\n========================================');
-        console.log('MAGIC LINK');
+        console.log('MAGIC LINK (no email service configured)');
         console.log('========================================');
         console.log(`Email: ${email}`);
-        console.log(`Token: ${token}`);
-        console.log(`Verify URL: ${verifyUrl}`);
+        console.log(`Code: ${options.code}`);
+        console.log(`Login URL: ${verifyUrl}`);
         console.log('========================================\n');
     }
 
