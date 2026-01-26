@@ -45,7 +45,7 @@
           type="text"
           [(ngModel)]="searchQuery"
           placeholder="Search..."
-          class="w-full pl-9 pr-3 py-1.5 text-sm bg-white border border-[var(--color-border)] focus:border-[var(--color-primary)]/50 focus:ring-1 focus:ring-[var(--color-primary)]/20 rounded-md transition-all shadow-sm placeholder-[var(--color-text-muted)]"
+          class="w-full pl-9 pr-3 py-1.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-border)] focus:border-[var(--color-primary)]/50 focus:ring-1 focus:ring-[var(--color-primary)]/20 rounded-md transition-all shadow-sm placeholder-[var(--color-text-muted)]"
         />
       </div>
       <button
@@ -80,7 +80,7 @@
           <div
             (click)="toggleNotebook(notebook._id)"
             class="group flex items-center justify-between px-2 py-1.5 text-sm cursor-pointer transition-colors"
-            [class.bg-white]="selectedNotebookId() === notebook._id"
+            [class.bg-[var(--color-surface)]]="selectedNotebookId() === notebook._id"
             [class.shadow-sm]="selectedNotebookId() === notebook._id"
             [class.ring-1]="selectedNotebookId() === notebook._id"
             [class.ring-stone-200]="selectedNotebookId() === notebook._id"
@@ -106,7 +106,7 @@
                   (keydown)="onEditKeydown($event)"
                   (blur)="onEditBlur()"
                   (focus)="onEditInputFocus($event)"
-                  class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-white border border-[var(--color-primary)] rounded outline-none"
+                  class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-primary)] rounded outline-none"
                   maxlength="255"
                   #editInput
                 />
@@ -178,7 +178,7 @@
                         (blur)="onEditBlur()"
                         (focus)="onEditInputFocus($event)"
                         (click)="$event.stopPropagation(); $event.preventDefault()"
-                        class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-white border border-[var(--color-primary)] rounded outline-none"
+                        class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-primary)] rounded outline-none"
                         maxlength="255"
                         #editInput
                       />
