@@ -1,7 +1,9 @@
-import { Component, input, output, computed } from '@angular/core';
+import { Component, input, output, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Page, Notebook } from '@maple/shared';
 import { NewPageButtonComponent } from '../../atoms/new-page-button/new-page-button.component';
+
+export type ExportFormat = 'markdown' | 'html';
 
 @Component({
   selector: 'app-note-header',
@@ -15,12 +17,28 @@ export class NoteHeaderComponent {
   readonly notebook = input<Notebook | null>(null);
 
   readonly toggleFavorite = output<void>();
+  readonly exportRequested = output<ExportFormat>();
+
+  readonly showExportMenu = signal(false);
 
   readonly formattedDate = computed(() => {
     const page = this.page();
     if (!page?.updatedAt) return '';
     return this.formatDateValue(page.updatedAt);
   });
+
+  toggleExportMenu(): void {
+    this.showExportMenu.update((v) => !v);
+  }
+
+  closeExportMenu(): void {
+    this.showExportMenu.set(false);
+  }
+
+  exportAs(format: ExportFormat): void {
+    this.exportRequested.emit(format);
+    this.closeExportMenu();
+  }
 
   private formatDateValue(dateString: string): string {
     const date = new Date(dateString);
