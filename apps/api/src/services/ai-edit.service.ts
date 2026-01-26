@@ -1,4 +1,4 @@
-import { findUserBotByHandleForNotebook } from '../repositories/user-bot.repo';
+import { findUserBotByHandleForNotebookInternal } from '../repositories/user-bot.repo';
 
 // Configuration constants
 const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL || 'claude-sonnet-4-20250514';
@@ -86,12 +86,12 @@ export class AiEditService {
      * Process an AI edit request and return operations or response text
      */
     async processEditRequest(notebookId: string, request: AiEditRequest): Promise<AiEditResponse> {
-        // Find Claude bot for this notebook
-        const userBot = await findUserBotByHandleForNotebook('claude', notebookId);
+        // Find Claude bot for this notebook (use Internal version to get full config with API key)
+        const userBot = await findUserBotByHandleForNotebookInternal('claude', notebookId);
 
         if (!userBot) {
             throw new Error(
-                'Claude bot not found. Please ensure you have registered a Claude bot with your API key.',
+                'Claude bot not found. Please ensure you have registered a Claude bot and shared it with this notebook.',
             );
         }
 
