@@ -11,6 +11,7 @@ import type {
 } from '@maple/shared';
 import { findNotebookByIdWithAccess } from './notebook.repo';
 import { findUsersByIds } from './user.repo';
+import { findPageById } from './page.repo';
 
 /**
  * Generate a UUID v4 for message routing
@@ -22,7 +23,8 @@ function generateMessageId(): string {
 interface MessageDocument {
     _id: ObjectId;
     id: string; // UUID v4 for routing
-    notebookId: ObjectId;
+    pageId: string; // Messages page ID (UUID)
+    notebookId?: ObjectId; // Deprecated: kept for backward compatibility
     threadId?: ObjectId;
     userId: ObjectId;
     senderType?: SenderType;
@@ -51,7 +53,8 @@ function toMessageResponse(
     return {
         _id: doc._id.toString(),
         id: doc.id,
-        notebookId: doc.notebookId.toString(),
+        pageId: doc.pageId,
+        notebookId: doc.notebookId?.toString(),
         threadId: doc.threadId?.toString(),
         userId: doc.userId.toString(),
         senderType: doc.senderType,
@@ -70,15 +73,15 @@ function toMessageResponse(
     };
 }
 
-export async function findMessagesByNotebookId(
-    notebookId: string,
+export async function findMessagesByPageId(
+    pageId: string,
     options?: {
         limit?: number;
         before?: string; // Cursor-based pagination: messages before this UUID id
     },
 ): Promise<Message[]> {
     const query: Record<string, unknown> = {
-        notebookId: new ObjectId(notebookId),
+        pageId: pageId,
         threadId: { $in: [null] }, // Only top-level messages, not thread replies
         deletedAt: { $exists: false },
     };
@@ -108,6 +111,40 @@ export async function findMessagesByNotebookId(
     });
 }
 
+/**
+ * @deprecated Use findMessagesByPageId instead. This is kept for backward compatibility.
+ */
+export async function findMessagesByNotebookId(
+    notebookId: string,
+    options?: {
+        limit?: number;
+        before?: string;
+    },
+): Promise<Message[]> {
+    const query: Record<string, unknown> = {
+        notebookId: new ObjectId(notebookId),
+        threadId: { $in: [null] },
+        deletedAt: { $exists: false },
+    };
+
+    if (options?.before) {
+        const beforeMessage = await getCollection().findOne({ id: options.before });
+        if (beforeMessage) {
+            query._id = { $lt: beforeMessage._id };
+        }
+    }
+
+    const limit = options?.limit || 500;
+    const docs = await getCollection().find(query).sort({ _id: -1 }).limit(limit).toArray();
+    const userIds = [...new Set(docs.map((doc) => doc.userId.toString()))];
+    const usersMap = await findUsersByIds(userIds);
+
+    return docs.reverse().map((doc) => {
+        const user = usersMap.get(doc.userId.toString());
+        return toMessageResponse(doc, user?.email, user?.displayName, user?.profilePictureUrl);
+    });
+}
+
 export async function findMessageByMongoId(
     mongoId: string,
     userId?: string,
@@ -119,10 +156,10 @@ export async function findMessageByMongoId(
         });
         if (!doc) return null;
 
-        // If userId is provided, verify tag access
+        // If userId is provided, verify access via the page
         if (userId) {
-            const tag = await findNotebookByIdWithAccess(doc.notebookId.toString(), userId, 'read');
-            if (!tag) return null; // No access to the tag
+            const page = await findPageById(doc.pageId, userId);
+            if (!page) return null; // No access to the page
         }
 
         return toMessageResponse(doc);
@@ -139,10 +176,10 @@ export async function findMessageById(id: string, userId?: string): Promise<Mess
         });
         if (!doc) return null;
 
-        // If userId is provided, verify tag access
+        // If userId is provided, verify access via the page
         if (userId) {
-            const tag = await findNotebookByIdWithAccess(doc.notebookId.toString(), userId, 'read');
-            if (!tag) return null; // No access to the tag
+            const page = await findPageById(doc.pageId, userId);
+            if (!page) return null; // No access to the page
         }
 
         return toMessageResponse(doc);
@@ -152,24 +189,30 @@ export async function findMessageById(id: string, userId?: string): Promise<Mess
 }
 
 export async function createMessage(
-    notebookId: string,
+    pageId: string,
     userId: string,
     data: CreateMessageInput,
     senderEmail?: string,
     senderDisplayName?: string,
     senderProfilePictureUrl?: string,
     threadId?: string,
+    notebookId?: string, // Optional: for backward compatibility and convenience
 ): Promise<Message> {
     const now = new Date();
     const messageId = generateMessageId();
     const doc: any = {
         id: messageId,
-        notebookId: new ObjectId(notebookId),
+        pageId: pageId,
         userId: new ObjectId(userId),
         content: data.content,
         createdAt: now,
         updatedAt: now,
     };
+
+    // Store notebookId if provided (for convenience in queries/broadcasts)
+    if (notebookId) {
+        doc.notebookId = new ObjectId(notebookId);
+    }
 
     // Only add threadId if it's provided (avoid storing null/undefined)
     if (threadId) {
@@ -185,6 +228,7 @@ export async function createMessage(
     return {
         _id: result.insertedId.toString(),
         id: messageId,
+        pageId: pageId,
         notebookId: notebookId,
         threadId: threadId,
         userId: userId,
@@ -251,6 +295,21 @@ export async function softDeleteMessage(id: string, userId: string): Promise<boo
     }
 }
 
+export async function countMessagesSinceByPageId(pageId: string, since: Date): Promise<number> {
+    try {
+        return await getCollection().countDocuments({
+            pageId: pageId,
+            deletedAt: { $exists: false },
+            createdAt: { $gt: since },
+        });
+    } catch {
+        return 0;
+    }
+}
+
+/**
+ * @deprecated Use countMessagesSinceByPageId instead
+ */
 export async function countMessagesSince(notebookId: string, since: Date): Promise<number> {
     try {
         return await getCollection().countDocuments({
@@ -263,6 +322,26 @@ export async function countMessagesSince(notebookId: string, since: Date): Promi
     }
 }
 
+export async function getLatestMessageTimeByPageId(pageId: string): Promise<Date | null> {
+    try {
+        const doc = await getCollection()
+            .find({
+                pageId: pageId,
+                deletedAt: { $exists: false },
+            })
+            .sort({ createdAt: -1 })
+            .limit(1)
+            .toArray();
+
+        return doc.length > 0 ? doc[0].createdAt : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * @deprecated Use getLatestMessageTimeByPageId instead
+ */
 export async function getLatestMessageTime(notebookId: string): Promise<Date | null> {
     try {
         const doc = await getCollection()
@@ -329,7 +408,8 @@ export async function findMessagesByThreadId(
 }
 
 export async function createMessageInThread(data: {
-    notebookId: string;
+    pageId: string;
+    notebookId?: string; // Optional: for backward compatibility
     threadId: string;
     userId: string;
     userBotId?: string;
@@ -343,7 +423,8 @@ export async function createMessageInThread(data: {
     const isBot = data.senderType === 'bot';
     const doc: Omit<MessageDocument, '_id'> = {
         id: messageId,
-        notebookId: new ObjectId(data.notebookId),
+        pageId: data.pageId,
+        notebookId: data.notebookId ? new ObjectId(data.notebookId) : undefined,
         threadId: new ObjectId(data.threadId),
         userId: new ObjectId(data.userId),
         userBotId: data.userBotId ? new ObjectId(data.userBotId) : undefined,
@@ -361,6 +442,7 @@ export async function createMessageInThread(data: {
     return {
         _id: result.insertedId.toString(),
         id: messageId,
+        pageId: data.pageId,
         notebookId: data.notebookId,
         threadId: data.threadId,
         userId: data.userId,

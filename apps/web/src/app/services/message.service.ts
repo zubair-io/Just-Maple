@@ -23,13 +23,7 @@ import { NetworkService } from './network.service';
 import { NotificationService } from './notification.service';
 import { VisibilityService } from './visibility.service';
 import { DB_STORES } from './db-stores';
-import type {
-  Message,
-  CreateMessageInput,
-  UpdateMessageInput,
-  PageContent,
-  UnreadCount,
-} from '@maple/shared';
+import type { Message, PageContent, UnreadCount, Page } from '@maple/shared';
 
 const STORE_NAME = DB_STORES.MESSAGE;
 
@@ -62,14 +56,21 @@ export class MessageService {
   private readonly _isLoading = signal(false);
   private readonly _error = signal<string | null>(null);
   private readonly _hasMore = signal(true);
-  private readonly _currentTagId = signal<string | null>(null);
+  private readonly _currentNotebookId = signal<string | null>(null);
+  private readonly _currentPageId = signal<string | null>(null);
+  private readonly _currentPage = signal<Page | null>(null);
   private readonly _unreadCounts = signal<UnreadCount[]>([]);
 
   readonly isLoading = this._isLoading.asReadonly();
   readonly error = this._error.asReadonly();
   readonly hasMore = this._hasMore.asReadonly();
-  readonly currentTagId = this._currentTagId.asReadonly();
+  readonly currentNotebookId = this._currentNotebookId.asReadonly();
+  readonly currentPageId = this._currentPageId.asReadonly();
+  readonly currentPage = this._currentPage.asReadonly();
   readonly unreadCounts = this._unreadCounts.asReadonly();
+
+  // Backward compatibility alias
+  readonly currentTagId = this._currentNotebookId.asReadonly();
 
   // Realtime subscription
   private realtimeSubscription: Subscription | null = null;
@@ -130,24 +131,27 @@ export class MessageService {
     }
     this.processedMessageIds.add(message.id);
 
-    const currentTagId = this._currentTagId();
+    const currentPageId = this._currentPageId();
+    const currentNotebookId = this._currentNotebookId();
     const currentUserId = this.authService.user()?._id;
     const activeNotebookId = this.notificationService.activeNotebookId();
 
-    // Only add to store if for current tag
-    if (message.notebookId === currentTagId) {
+    // Only add to store if for current page (or current notebook for backward compat)
+    const isCurrentPage = message.pageId === currentPageId;
+    const isCurrentNotebook = message.notebookId === currentNotebookId;
+
+    if (isCurrentPage || isCurrentNotebook) {
       // Use upsert to handle duplicates (e.g., sender's own message)
       this.store.update(upsertEntities(message));
       this.persistToIndexedDB([message]);
     }
 
-    // If user is viewing this notebook, mark as read immediately to prevent unread count buildup
-    if (message.notebookId === activeNotebookId) {
-      this.markAsRead(message.notebookId).subscribe();
-      // Also mark any corresponding notifications as read
+    // If user is viewing this notebook, mark as read immediately
+    if (message.notebookId === activeNotebookId && message.pageId) {
+      this.markAsReadByPageId(message.pageId).subscribe();
       this.notificationService.markNotebookMessagesAsRead(message.notebookId);
     } else if (message.userId !== currentUserId) {
-      // Show toast notification if message is from another user and NOT for the active notebook
+      // Show toast notification if message is from another user
       const senderName = message.senderDisplayName || message.senderEmail || 'Someone';
       const messagePreview = this.extractTextFromContent(message.content);
 
@@ -161,15 +165,15 @@ export class MessageService {
         avatarUrl: message.senderProfilePictureUrl,
       });
 
-      // Increment local unread count for this notebook
+      // Increment local unread count
       this._unreadCounts.update((counts) => {
-        const existing = counts.find((c) => c.notebookId === message.notebookId);
+        const existing = counts.find((c) => c.pageId === message.pageId);
         if (existing) {
           return counts.map((c) =>
-            c.notebookId === message.notebookId ? { ...c, count: c.count + 1 } : c,
+            c.pageId === message.pageId ? { ...c, count: c.count + 1 } : c,
           );
         } else {
-          return [...counts, { notebookId: message.notebookId, count: 1 }];
+          return [...counts, { pageId: message.pageId, notebookId: message.notebookId, count: 1 }];
         }
       });
     }
@@ -231,38 +235,104 @@ export class MessageService {
   }
 
   /**
-   * Get messages for current tag sorted by creation time
+   * Get messages for current page/tag sorted by creation time
    * Excludes thread messages (those with threadId set)
    */
   messagesForTag = computed(() => {
-    const notebookId = this._currentTagId();
-    if (!notebookId) return [];
+    const pageId = this._currentPageId();
+    const notebookId = this._currentNotebookId();
+
+    if (!pageId && !notebookId) return [];
+
     return this.messages()
-      .filter((m) => m.notebookId === notebookId && !m.threadId)
+      .filter((m) => {
+        // Filter by pageId (preferred) or notebookId (backward compat)
+        const matchesPage = pageId && m.pageId === pageId;
+        const matchesNotebook = notebookId && m.notebookId === notebookId;
+        return (matchesPage || matchesNotebook) && !m.threadId;
+      })
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   });
 
   /**
-   * Get unread count for a specific tag
+   * Get unread count for a specific notebook
    */
   getUnreadCount(notebookId: string): number {
     return this._unreadCounts().find((c) => c.notebookId === notebookId)?.count || 0;
   }
 
   /**
-   * Load messages for a tag
+   * Get unread count for a specific page
+   */
+  getUnreadCountByPageId(pageId: string): number {
+    return this._unreadCounts().find((c) => c.pageId === pageId)?.count || 0;
+  }
+
+  /**
+   * Load messages for a notebook (finds/creates messages page automatically)
    */
   loadMessages(notebookId: string, reset: boolean = true): Observable<Message[]> {
     if (reset) {
-      this._currentTagId.set(notebookId);
+      this._currentNotebookId.set(notebookId);
       this._hasMore.set(true);
     }
 
     this._isLoading.set(true);
     this._error.set(null);
 
-    return this.http.get<{ messages: Message[] }>(`/api/notebooks/${notebookId}/messages`).pipe(
+    return this.http
+      .get<{ messages: Message[]; page: Page }>(`/api/notebooks/${notebookId}/messages`)
+      .pipe(
+        tap((response) => {
+          // Store the messages page info
+          this._currentPageId.set(response.page.id);
+          this._currentPage.set(response.page);
+
+          if (reset) {
+            this.store.update(setEntities(response.messages));
+          } else {
+            this.store.update(upsertEntities(response.messages));
+          }
+          this._hasMore.set(response.messages.length >= 50);
+          this.persistToIndexedDB(response.messages);
+          this._isLoading.set(false);
+        }),
+        map((response) => response.messages),
+        catchError((err) => {
+          let message = err?.error?.error || 'Failed to load messages';
+
+          // Network-aware error message
+          if (!this.network.isOnline()) {
+            message = 'Working offline - showing cached data';
+          }
+
+          this._error.set(message);
+          this._isLoading.set(false);
+
+          // Return cached data instead of empty array
+          const cached = this.store.query(getAllEntities());
+          return of(cached);
+        }),
+      );
+  }
+
+  /**
+   * Load messages for a specific page (by pageId)
+   */
+  loadMessagesByPageId(pageId: string, reset: boolean = true): Observable<Message[]> {
+    if (reset) {
+      this._currentPageId.set(pageId);
+      this._hasMore.set(true);
+    }
+
+    this._isLoading.set(true);
+    this._error.set(null);
+
+    return this.http.get<{ messages: Message[]; page: Page }>(`/api/pages/${pageId}/messages`).pipe(
       tap((response) => {
+        this._currentPage.set(response.page);
+        this._currentNotebookId.set(response.page.notebookId || null);
+
         if (reset) {
           this.store.update(setEntities(response.messages));
         } else {
@@ -276,7 +346,6 @@ export class MessageService {
       catchError((err) => {
         let message = err?.error?.error || 'Failed to load messages';
 
-        // Network-aware error message
         if (!this.network.isOnline()) {
           message = 'Working offline - showing cached data';
         }
@@ -284,7 +353,6 @@ export class MessageService {
         this._error.set(message);
         this._isLoading.set(false);
 
-        // Return cached data instead of empty array
         const cached = this.store.query(getAllEntities());
         return of(cached);
       }),
@@ -295,8 +363,10 @@ export class MessageService {
    * Load older messages (pagination)
    */
   loadMore(): Observable<Message[]> {
-    const notebookId = this._currentTagId();
-    if (!notebookId || !this._hasMore() || this._isLoading()) {
+    const pageId = this._currentPageId();
+    const notebookId = this._currentNotebookId();
+
+    if ((!pageId && !notebookId) || !this._hasMore() || this._isLoading()) {
       return of([]);
     }
 
@@ -308,10 +378,13 @@ export class MessageService {
 
     this._isLoading.set(true);
 
+    // Use page-based endpoint if we have pageId, otherwise fall back to notebook
+    const endpoint = pageId
+      ? `/api/pages/${pageId}/messages`
+      : `/api/notebooks/${notebookId}/messages`;
+
     return this.http
-      .get<{ messages: Message[] }>(`/api/notebooks/${notebookId}/messages`, {
-        params: { before: oldestMessage.id },
-      })
+      .get<{ messages: Message[] }>(endpoint, { params: { before: oldestMessage.id } })
       .pipe(
         tap((response) => {
           this.store.update(upsertEntities(response.messages));
@@ -323,7 +396,6 @@ export class MessageService {
         catchError((err) => {
           let message = err?.error?.error || 'Failed to load more messages';
 
-          // Network-aware error message
           if (!this.network.isOnline()) {
             message = 'Working offline - cannot load older messages';
           }
@@ -331,7 +403,6 @@ export class MessageService {
           this._error.set(message);
           this._isLoading.set(false);
 
-          // Return empty array for pagination errors (can't show cached "older" messages)
           return of([]);
         }),
       );
@@ -348,11 +419,8 @@ export class MessageService {
     this._error.set(null);
 
     // For simple messages without threads, use WebSocket
-    // For thread messages, fall back to HTTP (more complex logic needed)
     if (!options?.threadId && !options?.parentMessageId && this.realtimeWS.isConnected()) {
-      // Send via WebSocket - message will come back via broadcast
       this.realtimeWS.sendChatMessage(notebookId, content);
-      // Return empty observable - message will appear via WebSocket
       return of(null as unknown as Message);
     }
 
@@ -360,10 +428,12 @@ export class MessageService {
     const tempId = `temp-${Date.now()}`;
     const now = new Date().toISOString();
     const currentUser = this.authService.user();
+    const pageId = this._currentPageId() || '';
 
     const tempMessage: Message = {
       _id: tempId,
       id: tempId,
+      pageId,
       notebookId,
       threadId: options?.threadId,
       userId: currentUser?._id || 'temp',
@@ -388,21 +458,28 @@ export class MessageService {
       body.parentMessageId = options.parentMessageId;
     }
 
-    return this.http.post<{ message: Message }>(`/api/notebooks/${notebookId}/messages`, body).pipe(
-      tap((response) => {
-        this.store.update(deleteEntities(tempId));
-        // Use upsert - message may already exist from WebSocket broadcast
-        this.store.update(upsertEntities(response.message));
-        this.persistToIndexedDB([response.message]);
-      }),
-      map((response) => response.message),
-      catchError((err) => {
-        this.store.update(deleteEntities(tempId));
-        const message = err?.error?.error || err?.error?.message || 'Failed to send message';
-        this._error.set(message);
-        return throwError(() => new Error(message));
-      }),
-    );
+    return this.http
+      .post<{ message: Message; page?: Page }>(`/api/notebooks/${notebookId}/messages`, body)
+      .pipe(
+        tap((response) => {
+          this.store.update(deleteEntities(tempId));
+          this.store.update(upsertEntities(response.message));
+          this.persistToIndexedDB([response.message]);
+
+          // Update current page if returned
+          if (response.page && !this._currentPageId()) {
+            this._currentPageId.set(response.page.id);
+            this._currentPage.set(response.page);
+          }
+        }),
+        map((response) => response.message),
+        catchError((err) => {
+          this.store.update(deleteEntities(tempId));
+          const message = err?.error?.error || err?.error?.message || 'Failed to send message';
+          this._error.set(message);
+          return throwError(() => new Error(message));
+        }),
+      );
   }
 
   /**
@@ -472,14 +549,31 @@ export class MessageService {
   }
 
   /**
-   * Mark tag as read
+   * Mark notebook as read (finds messages page automatically)
    */
   markAsRead(notebookId: string): Observable<void> {
-    return this.http.post<{ lastReadAt: string }>(`/api/notebooks/${notebookId}/read`, {}).pipe(
+    return this.http
+      .post<{ lastReadAt: string; pageId?: string }>(`/api/notebooks/${notebookId}/read`, {})
+      .pipe(
+        tap((response) => {
+          // Update local unread count by pageId or notebookId
+          const pageId = response.pageId;
+          this._unreadCounts.update((counts) =>
+            counts.filter((c) => (pageId ? c.pageId !== pageId : c.notebookId !== notebookId)),
+          );
+        }),
+        map(() => undefined),
+        catchError(() => of(undefined)),
+      );
+  }
+
+  /**
+   * Mark page as read by pageId
+   */
+  markAsReadByPageId(pageId: string): Observable<void> {
+    return this.http.post<{ lastReadAt: string }>(`/api/pages/${pageId}/read`, {}).pipe(
       tap(() => {
-        // Update local unread count
-        const counts = this._unreadCounts().filter((c) => c.notebookId !== notebookId);
-        this._unreadCounts.set(counts);
+        this._unreadCounts.update((counts) => counts.filter((c) => c.pageId !== pageId));
       }),
       map(() => undefined),
       catchError(() => of(undefined)),
@@ -504,7 +598,9 @@ export class MessageService {
    */
   clearMessages(): void {
     this.store.update(setEntities([]));
-    this._currentTagId.set(null);
+    this._currentNotebookId.set(null);
+    this._currentPageId.set(null);
+    this._currentPage.set(null);
     this._hasMore.set(true);
   }
 

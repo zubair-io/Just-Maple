@@ -451,4 +451,32 @@ export class NotebookService {
         }),
       );
   }
+
+  // ============ Summary Methods ============
+
+  /**
+   * Notebook summary response type
+   */
+  /**
+   * Get notebook summary (page counts by type)
+   */
+  getNotebookSummary(
+    notebookId: string,
+  ): Observable<{
+    notebook: Notebook;
+    summary: { pageCounts: Record<string, number>; totalPages: number };
+  }> {
+    return this.http
+      .get<{
+        notebook: Notebook;
+        summary: { pageCounts: Record<string, number>; totalPages: number };
+      }>(`/api/notebooks/${notebookId}/summary`)
+      .pipe(
+        catchError((err) => {
+          const message =
+            err?.error?.message || err?.error?.error || 'Failed to fetch notebook summary';
+          return throwError(() => new Error(message));
+        }),
+      );
+  }
 }

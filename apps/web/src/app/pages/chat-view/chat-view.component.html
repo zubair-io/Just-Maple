@@ -2,21 +2,62 @@
 <app-notebook-header
   [notebook]="selectedNotebook()!"
   [members]="members()"
-  contextIcon="chat"
-  contextLabel="Messages"
+  contextIcon="folder"
+  contextLabel="Summary"
   (shareClicked)="openShareModal()"
 />
 
-<!-- Chat Content -->
+<!-- Notebook Summary Content -->
 @if (selectedNotebook()) {
-  <app-chat [notebookId]="selectedNotebook()!._id" />
+  <div class="notebook-summary">
+    <div class="summary-header">
+      <h2>{{ selectedNotebook()!.label }}</h2>
+      <p class="summary-subtitle">Notebook Overview</p>
+    </div>
+
+    @if (summary()) {
+      <div class="page-counts">
+        <div class="total-count">
+          <span class="material-symbols-rounded">description</span>
+          <span class="count">{{ summary()!.totalPages }}</span>
+          <span class="label">Total Pages</span>
+        </div>
+
+        <div class="type-breakdown">
+          @for (entry of summary()!.pageCounts | keyvalue; track entry.key) {
+            <div class="type-card">
+              <span class="material-symbols-rounded">{{ getPageTypeIcon(entry.key) }}</span>
+              <span class="count">{{ entry.value }}</span>
+              <span class="label">{{ getPageTypeLabel(entry.key) }}</span>
+            </div>
+          }
+        </div>
+      </div>
+    } @else {
+      <div class="loading-summary">
+        <span class="material-symbols-rounded spin">progress_activity</span>
+        <p>Loading summary...</p>
+      </div>
+    }
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+      <h3>Quick Actions</h3>
+      <div class="action-buttons">
+        <button class="action-btn" (click)="openMessagesPage()">
+          <span class="material-symbols-rounded">chat</span>
+          <span>Open Messages</span>
+        </button>
+      </div>
+    </div>
+  </div>
 } @else {
   <div class="empty-state">
     <div class="empty-icon">
-      <span class="material-symbols-rounded">forum</span>
+      <span class="material-symbols-rounded">folder</span>
     </div>
-    <h2>Select a folder</h2>
-    <p>Choose a folder from the sidebar to view messages</p>
+    <h2>Select a notebook</h2>
+    <p>Choose a notebook from the sidebar to view its summary</p>
   </div>
 }
 
