@@ -3,7 +3,8 @@
     <app-note-header
       [page]="page"
       [notebook]="selectedNotebook()"
-      (favoriteClicked)="toggleFavorite()"
+      (toggleFavorite)="toggleFavorite()"
+      (exportRequested)="handleExport($event)"
     />
 
     <div class="notebook-content">

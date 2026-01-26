@@ -28,6 +28,7 @@ import { AuthService } from '../../../services/auth.service';
 import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
 import { SlashCommandMenuComponent } from '../../molecules/slash-command-menu/slash-command-menu.component';
 import DragHandle from '@tiptap/extension-drag-handle';
+import { proseMirrorToMarkdown, proseMirrorToHtmlDocument, type PageContent } from '@maple/shared';
 
 // Doc page prefix for virtual documentation pages
 const DOC_PAGE_PREFIX = 'doc-';
@@ -818,5 +819,58 @@ export class NotebookEditorComponent implements OnDestroy {
     ) {
       this._editor?.commands.focus('end');
     }
+  }
+
+  /**
+   * Export the memo content as Markdown
+   */
+  exportAsMarkdown(title?: string): void {
+    if (!this._editor) return;
+
+    const content = this._editor.getJSON() as PageContent;
+    const markdown = proseMirrorToMarkdown(content);
+    const filename = this.sanitizeFilename(title || 'memo') + '.md';
+
+    this.downloadFile(markdown, filename, 'text/markdown');
+  }
+
+  /**
+   * Export the memo content as HTML
+   */
+  exportAsHtml(title?: string): void {
+    if (!this._editor) return;
+
+    const content = this._editor.getJSON() as PageContent;
+    const html = proseMirrorToHtmlDocument(content, title);
+    const filename = this.sanitizeFilename(title || 'memo') + '.html';
+
+    this.downloadFile(html, filename, 'text/html');
+  }
+
+  /**
+   * Download content as a file
+   */
+  private downloadFile(content: string, filename: string, mimeType: string): void {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Sanitize a string for use as a filename
+   */
+  private sanitizeFilename(name: string): string {
+    return name
+      .replace(/[/\\?%*:|"<>]/g, '-')
+      .replace(/\s+/g, '_')
+      .substring(0, 100);
   }
 }

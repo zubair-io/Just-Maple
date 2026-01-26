@@ -26,33 +26,40 @@
       <span class="text-xs text-[var(--color-text-muted)] mr-2">
         Edited {{ formattedDate() }}
       </span>
-      <!-- <div class="flex items-center border-l border-[var(--color-border)] pl-2 gap-1">
-        <button
-          class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-          title="Note Info"
-        >
-          <span class="material-symbols-rounded text-lg">info</span>
-        </button>
-        <button
-          (click)="toggleFavorite.emit()"
-          class="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
-          [class.text-[var(--color-primary)]]="page()?.isFavorite"
-          [class.text-[var(--color-text-muted)]]="!page()?.isFavorite"
-          [class.hover:text-[var(--color-text-main)]]="!page()?.isFavorite"
-          [class.hover:bg-[var(--color-surface-hover)]]="true"
-          title="Favorite"
-        >
-          <span class="material-symbols-rounded text-lg">
-            {{ page()?.isFavorite ? 'star' : 'star_border' }}
-          </span>
-        </button>
-        <button
-          class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-          title="More"
-        >
-          <span class="material-symbols-rounded text-lg">more_horiz</span>
-        </button>
-      </div> -->
+      <div class="flex items-center border-l border-[var(--color-border)] pl-2 gap-1">
+        <!-- Export button with dropdown -->
+        <div class="relative">
+          <button
+            (click)="toggleExportMenu()"
+            class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+            title="Export"
+          >
+            <span class="material-symbols-rounded text-lg">download</span>
+          </button>
+          @if (showExportMenu()) {
+            <!-- Backdrop to close menu on outside click -->
+            <div class="fixed inset-0 z-40" (click)="closeExportMenu()"></div>
+            <div
+              class="absolute right-0 top-full mt-1 bg-[var(--color-bg)] rounded-lg shadow-lg border border-[var(--color-border)] py-1 min-w-[140px] z-50"
+            >
+              <button
+                (click)="exportAs('markdown')"
+                class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
+              >
+                <span class="material-symbols-rounded text-base">description</span>
+                Markdown
+              </button>
+              <button
+                (click)="exportAs('html')"
+                class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
+              >
+                <span class="material-symbols-rounded text-base">code</span>
+                HTML
+              </button>
+            </div>
+          }
+        </div>
+      </div>
       <!-- Split button for new page -->
       @if (notebook()) {
         <div class="ml-2">
