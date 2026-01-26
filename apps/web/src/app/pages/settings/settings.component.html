@@ -259,7 +259,7 @@
       <div class="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
         <div class="flex items-center gap-4">
           <div
-            class="w-10 h-10 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0"
+            class="w-10 h-10 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center flex-shrink-0"
           >
             <span class="material-symbols-rounded text-[var(--color-text-muted)]">smart_toy</span>
           </div>
@@ -362,7 +362,7 @@
         } @else if (passkeys().length === 0) {
           <div class="p-8 text-center">
             <div
-              class="w-16 h-16 mx-auto mb-4 rounded-full bg-stone-100 flex items-center justify-center"
+              class="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-surface-alt)] flex items-center justify-center"
             >
               <span class="material-symbols-rounded text-3xl text-[var(--color-text-muted)]"
                 >key</span
@@ -391,7 +391,7 @@
             @for (passkey of passkeys(); track passkey.id) {
               <li class="p-4 flex items-center gap-4">
                 <div
-                  class="w-10 h-10 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0"
+                  class="w-10 h-10 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center flex-shrink-0"
                 >
                   <span class="material-symbols-rounded text-[var(--color-text-muted)]">key</span>
                 </div>
@@ -449,7 +449,7 @@
                   class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
                   [ngClass]="{
                     'bg-[var(--color-primary-light)]': server.id === preferences.activeServer()?.id,
-                    'bg-stone-100': server.id !== preferences.activeServer()?.id,
+                    'bg-[var(--color-surface-alt)]': server.id !== preferences.activeServer()?.id,
                   }"
                 >
                   <span
@@ -594,7 +594,7 @@
           <div class="flex gap-3 mt-6">
             <button
               (click)="closeAddServerDialog()"
-              class="flex-1 px-4 py-2.5 text-[var(--color-text-main)] font-medium hover:bg-stone-100 rounded-lg transition-colors"
+              class="flex-1 px-4 py-2.5 text-[var(--color-text-main)] font-medium hover:bg-[var(--color-surface-alt)] rounded-lg transition-colors"
             >
               Cancel
             </button>
@@ -624,7 +624,7 @@
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-3">
                 <div
-                  class="w-10 h-10 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0"
+                  class="w-10 h-10 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center flex-shrink-0"
                 >
                   <span class="material-symbols-rounded text-[var(--color-text-muted)]"
                     >notifications</span

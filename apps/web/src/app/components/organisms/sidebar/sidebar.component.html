@@ -18,7 +18,7 @@
     <!-- Workspace Selector -->
     <!-- <div class="px-2 pt-2 pb-3">
       <button
-        class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-stone-200/50 transition-colors group cursor-pointer"
+        class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors group cursor-pointer"
       >
         <div class="flex items-center gap-2">
           <span
@@ -83,8 +83,8 @@
             [class.bg-[var(--color-surface)]]="selectedNotebookId() === notebook._id"
             [class.shadow-sm]="selectedNotebookId() === notebook._id"
             [class.ring-1]="selectedNotebookId() === notebook._id"
-            [class.ring-stone-200]="selectedNotebookId() === notebook._id"
-            [class.hover:bg-stone-200/50]="selectedNotebookId() !== notebook._id"
+            [class.ring-[var(--color-border)]]="selectedNotebookId() === notebook._id"
+            [class.hover:bg-[var(--color-surface-hover)]]="selectedNotebookId() !== notebook._id"
           >
             <div class="flex items-center gap-2 min-w-0 flex-1">
               <span
@@ -146,7 +146,7 @@
                     "
                     (click)="onSelectPage(page)"
                     class="flex items-center gap-1.5 px-2 py-1.5 text-sm cursor-pointer transition-colors"
-                    [class.bg-stone-100]="selectedPageId() === page.id"
+                    [class.bg-[var(--color-surface-alt)]]="selectedPageId() === page.id"
                     [class.text-[var(--color-text-main)]]="selectedPageId() === page.id"
                     [class.font-medium]="selectedPageId() === page.id"
                     [class.border-l-2]="selectedPageId() === page.id"
@@ -217,7 +217,7 @@
   <!-- User Footer -->
   <div class="p-3 border-t border-[var(--color-border)] flex items-center justify-between">
     <div
-      class="flex items-center gap-2 cursor-pointer hover:bg-stone-200/50 p-1.5 rounded-md transition-colors"
+      class="flex items-center gap-2 cursor-pointer hover:bg-[var(--color-surface-hover)] p-1.5 rounded-md transition-colors"
     >
       <app-profile-avatar
         [email]="authService.user()?.email ?? ''"

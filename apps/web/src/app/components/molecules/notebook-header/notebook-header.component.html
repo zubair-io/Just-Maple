@@ -6,12 +6,12 @@
     <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
       <div
         (click)="openSidebarOnMobile()"
-        class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-stone-100"
+        class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-[var(--color-surface-hover)]"
       >
         <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
         <span>{{ notebook().label }}</span>
       </div>
-      <span class="text-stone-300">/</span>
+      <span class="text-[var(--color-text-muted)]">/</span>
       <div class="flex items-center gap-1.5 text-[var(--color-text-muted)] font-medium p-1">
         <span class="material-symbols-rounded text-sm">{{ contextIcon() }}</span>
         <span>{{ contextLabel() }}</span>
@@ -23,7 +23,7 @@
       <!-- Shared Members -->
       @if (members().length > 1) {
         <div
-          class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-stone-100 transition-colors"
+          class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors"
           title="Click to manage sharing"
         >
           <span class="text-xs text-[var(--color-text-muted)]">Shared with</span>
@@ -41,7 +41,7 @@
         @if (members().length <= 1) {
           <button
             (click)="shareClicked.emit()"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 text-xs font-medium rounded-lg transition-colors"
+            class="flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] text-xs font-medium rounded-lg transition-colors"
             title="Manage Sharing"
           >
             <span class="material-symbols-rounded text-sm">share</span>
