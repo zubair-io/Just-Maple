@@ -1,13 +1,18 @@
 import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
-import { Subscription, switchMap, of, combineLatest } from 'rxjs';
+import { ActivatedRoute, Router } from '@angular/router';
+import { Subscription, switchMap, of, combineLatest, map, catchError } from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
 import { MessageService } from '../../services/message.service';
 import { NotificationService } from '../../services/notification.service';
 import { ChatComponent, ShareModalComponent, NotebookHeaderComponent } from '../../components';
 import type { NotebookMember } from '@maple/shared';
+
+interface NotebookSummary {
+  pageCounts: Record<string, number>;
+  totalPages: number;
+}
 
 @Component({
   selector: 'app-chat-view',
@@ -18,6 +23,7 @@ import type { NotebookMember } from '@maple/shared';
 })
 export class ChatViewComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   readonly notebookService = inject(NotebookService);
   private readonly messageService = inject(MessageService);
   private readonly notificationService = inject(NotificationService);
@@ -27,6 +33,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   readonly selectedNotebookId = signal<string | null>(null);
   readonly showShareModal = signal<boolean>(false);
   private readonly membersRefreshTrigger = signal<number>(0);
+  private readonly summaryRefreshTrigger = signal<number>(0);
 
   // Reactively load members when notebook changes or refresh is triggered
   readonly members = toSignal(
@@ -39,6 +46,24 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       ),
     ),
     { initialValue: [] as NotebookMember[] },
+  );
+
+  // Reactively load notebook summary when notebook changes
+  readonly summary = toSignal(
+    combineLatest([
+      toObservable(this.selectedNotebookId),
+      toObservable(this.summaryRefreshTrigger),
+    ]).pipe(
+      switchMap(([notebookId, _trigger]) =>
+        notebookId
+          ? this.notebookService.getNotebookSummary(notebookId).pipe(
+              map((response) => response.summary),
+              catchError(() => of(null)),
+            )
+          : of(null),
+      ),
+    ),
+    { initialValue: null as NotebookSummary | null },
   );
 
   constructor() {
@@ -61,6 +86,32 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     if (!notebookId) return null;
     return this.notebookService.notebooks().find((n) => n._id === notebookId) || null;
   });
+
+  // Helper to get page type display name
+  getPageTypeLabel(type: string): string {
+    const labels: Record<string, string> = {
+      memo: 'Memos',
+      messages: 'Messages',
+      whiteboard: 'Whiteboards',
+      collectable: 'Collectables',
+      kanban: 'Kanban Boards',
+      recording: 'Recordings',
+    };
+    return labels[type] || type;
+  }
+
+  // Helper to get page type icon
+  getPageTypeIcon(type: string): string {
+    const icons: Record<string, string> = {
+      memo: 'edit_note',
+      messages: 'chat',
+      whiteboard: 'draw',
+      collectable: 'grid_view',
+      kanban: 'view_kanban',
+      recording: 'mic',
+    };
+    return icons[type] || 'description';
+  }
 
   ngOnInit(): void {
     // Subscribe to route params and set ID directly - let computed handle the rest
@@ -86,5 +137,14 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   onMembersChanged(): void {
     // Trigger members refetch after sharing/unsharing
     this.membersRefreshTrigger.update((n) => n + 1);
+  }
+
+  openMessagesPage(): void {
+    const notebookId = this.selectedNotebookId();
+    if (notebookId) {
+      // Navigate to messages page (the chat component will load messages)
+      // For now, just load messages in the chat component
+      this.messageService.loadMessages(notebookId).subscribe();
+    }
   }
 }
