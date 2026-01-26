@@ -42,8 +42,10 @@ export class NewNoteComponent implements OnInit {
         this.router.navigate(['/', notebookId, page.id], { replaceUrl: true });
       } else {
         // Create other page types using the regular page service
+        const id = crypto.randomUUID();
         this.pageService
           .createPage({
+            id,
             title: 'Untitled',
             content: { type: 'doc', content: [] },
             notebookId: notebookId || undefined,
