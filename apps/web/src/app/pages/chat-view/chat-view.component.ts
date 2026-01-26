@@ -6,7 +6,7 @@ import { Subscription, switchMap, of, combineLatest, map, catchError } from 'rxj
 import { NotebookService } from '../../services/notebook.service';
 import { MessageService } from '../../services/message.service';
 import { NotificationService } from '../../services/notification.service';
-import { ChatComponent, ShareModalComponent, NotebookHeaderComponent } from '../../components';
+import { ShareModalComponent, NotebookHeaderComponent } from '../../components';
 import type { NotebookMember } from '@maple/shared';
 
 interface NotebookSummary {
@@ -17,7 +17,7 @@ interface NotebookSummary {
 @Component({
   selector: 'app-chat-view',
   standalone: true,
-  imports: [CommonModule, ChatComponent, ShareModalComponent, NotebookHeaderComponent],
+  imports: [CommonModule, ShareModalComponent, NotebookHeaderComponent],
   templateUrl: './chat-view.component.html',
   styleUrl: './chat-view.component.scss',
 })
