@@ -2,7 +2,14 @@ import { ObjectId, Collection } from 'mongodb';
 import * as Automerge from '@automerge/automerge';
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/client';
-import type { Page, PageContent, PageType, CreatePageInput, UpdatePageInput } from '@maple/shared';
+import type {
+    Page,
+    PageContent,
+    PageType,
+    CreatePageInput,
+    UpdatePageInput,
+    PageTodoMeta,
+} from '@maple/shared';
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
 import { deleteMemo } from './memo.repo';
 import { deleteWhiteboard } from './whiteboard.repo';
@@ -32,6 +39,8 @@ interface PageDocument {
     isArchived?: boolean;
     isTrashed?: boolean;
     trashedAt?: Date;
+    // Todo metadata for efficient querying
+    todoMeta?: PageTodoMeta;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -56,6 +65,7 @@ function toPageResponse(doc: PageDocument): Page {
         isArchived: doc.isArchived,
         isTrashed: doc.isTrashed,
         trashedAt: doc.trashedAt?.toISOString(),
+        todoMeta: doc.todoMeta, // Todo metadata
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
     };
@@ -311,6 +321,9 @@ export async function updatePage(
             } else {
                 updateData.trashedAt = undefined;
             }
+        }
+        if (data.todoMeta !== undefined) {
+            updateData.todoMeta = data.todoMeta;
         }
 
         const result = await getCollection().findOneAndUpdate(

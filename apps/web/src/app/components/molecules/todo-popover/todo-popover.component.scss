@@ -1,0 +1,228 @@
+.todo-popover {
+  position: fixed;
+  z-index: 1000;
+  min-width: 240px;
+  max-width: 300px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 12px;
+}
+
+.popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.popover-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-main);
+}
+
+.close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: var(--color-hover);
+  }
+}
+
+.popover-section {
+  margin-bottom: 12px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.section-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+}
+
+// Date Input
+.date-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-input {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text-main);
+  outline: none;
+  transition: border-color 0.15s ease;
+
+  &:focus {
+    border-color: var(--color-primary);
+  }
+
+  &::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    filter: invert(50%);
+  }
+}
+
+.date-preview {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.clear-btn,
+.clear-color-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: var(--color-hover);
+    color: var(--color-text-main);
+  }
+}
+
+// Priority Buttons
+.priority-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.priority-btn {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-main);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: var(--color-hover);
+  }
+
+  &.active {
+    border-color: transparent;
+  }
+
+  &.priority-high {
+    &.active {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+  }
+
+  &.priority-medium {
+    &.active {
+      background: #fef3c7;
+      color: #d97706;
+    }
+  }
+
+  &.priority-low {
+    &.active {
+      background: #dbeafe;
+      color: #2563eb;
+    }
+  }
+}
+
+// Color Swatches
+.color-swatches {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-swatch {
+  width: 28px;
+  height: 28px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+
+  &:hover {
+    transform: scale(1.1);
+  }
+
+  &.active {
+    border-color: var(--color-text-main);
+    box-shadow: 0 0 0 2px var(--color-bg);
+  }
+
+  svg {
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
+  }
+}
+
+// Dark mode adjustments
+:host-context(.dark-mode) {
+  .todo-popover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .date-input {
+    &::-webkit-calendar-picker-indicator {
+      filter: invert(70%);
+    }
+  }
+
+  .priority-btn {
+    &.priority-high.active {
+      background: rgba(220, 38, 38, 0.2);
+      color: #f87171;
+    }
+
+    &.priority-medium.active {
+      background: rgba(217, 119, 6, 0.2);
+      color: #fbbf24;
+    }
+
+    &.priority-low.active {
+      background: rgba(37, 99, 235, 0.2);
+      color: #60a5fa;
+    }
+  }
+}

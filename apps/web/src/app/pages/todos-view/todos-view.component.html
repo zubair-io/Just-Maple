@@ -1,0 +1,205 @@
+<div class="todos-view">
+  <!-- Header -->
+  <div class="todos-header">
+    <h1 class="todos-title">Todos</h1>
+
+    <!-- Stats -->
+    <div class="todos-stats">
+      <span class="stat">
+        <span class="stat-value">{{ stats().incomplete }}</span>
+        <span class="stat-label">remaining</span>
+      </span>
+      @if (stats().overdue > 0) {
+        <span class="stat overdue">
+          <span class="stat-value">{{ stats().overdue }}</span>
+          <span class="stat-label">overdue</span>
+        </span>
+      }
+      <span class="stat">
+        <span class="stat-value">{{ stats().completed }}</span>
+        <span class="stat-label">completed</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="todos-filters">
+    <div class="filter-row">
+      <!-- Date filter -->
+      <div class="filter-group">
+        @for (opt of filterOptions; track opt.value) {
+          <button
+            type="button"
+            class="filter-btn"
+            [class.active]="filter() === opt.value"
+            (click)="setFilter(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        }
+      </div>
+
+      <!-- Priority filter -->
+      <select
+        class="filter-select"
+        [value]="priorityFilter()"
+        (change)="setPriorityFilter($any($event.target).value || null)"
+      >
+        @for (opt of priorityOptions; track opt.value) {
+          <option [value]="opt.value || ''">{{ opt.label }}</option>
+        }
+      </select>
+
+      <!-- Color filter -->
+      <div class="color-filter">
+        @for (opt of colorOptions; track opt.value) {
+          <button
+            type="button"
+            class="color-filter-btn"
+            [class.active]="colorFilter() === opt.value"
+            [style.background-color]="opt.hex"
+            [title]="opt.label"
+            (click)="setColorFilter(opt.value)"
+          >
+            @if (colorFilter() === opt.value && opt.value !== null) {
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+                <path d="M10 3L4.5 8.5L2 6" stroke="white" stroke-width="2" fill="none" />
+              </svg>
+            }
+          </button>
+        }
+      </div>
+    </div>
+
+    <div class="filter-row">
+      <!-- Group by -->
+      <div class="filter-group-select">
+        <label>Group by:</label>
+        <select
+          class="filter-select"
+          [value]="groupBy()"
+          (change)="setGroupBy($any($event.target).value)"
+        >
+          @for (opt of groupByOptions; track opt.value) {
+            <option [value]="opt.value">{{ opt.label }}</option>
+          }
+        </select>
+      </div>
+
+      <!-- Sort by -->
+      <div class="filter-group-select">
+        <label>Sort by:</label>
+        <select
+          class="filter-select"
+          [value]="sort()"
+          (change)="setSort($any($event.target).value)"
+        >
+          @for (opt of sortOptions; track opt.value) {
+            <option [value]="opt.value">{{ opt.label }}</option>
+          }
+        </select>
+      </div>
+
+      <!-- Show completed toggle -->
+      <label class="checkbox-label">
+        <input type="checkbox" [checked]="showCompleted()" (change)="toggleShowCompleted()" />
+        Show completed
+      </label>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  @if (isLoading()) {
+    <div class="loading">
+      <div class="loading-spinner"></div>
+      <span>Loading todos...</span>
+    </div>
+  } @else if (groupedTodos().length === 0 || sortedTodos().length === 0) {
+    <!-- Empty state -->
+    <div class="empty-state">
+      <div class="empty-icon">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="currentColor">
+          <path
+            d="M24 4C12.95 4 4 12.95 4 24s8.95 20 20 20 20-8.95 20-20S35.05 4 24 4zm0 36c-8.82 0-16-7.18-16-16S15.18 8 24 8s16 7.18 16 16-7.18 16-16 16zm-2-22h4v8h-4v-8zm0 12h4v4h-4v-4z"
+          />
+        </svg>
+      </div>
+      <h3>No todos found</h3>
+      <p>Try adjusting your filters or create a new todo in a memo.</p>
+    </div>
+  } @else {
+    <!-- Todo list -->
+    <div class="todos-list">
+      @for (group of groupedTodos(); track group.label) {
+        <div class="todo-group">
+          @if (group.label) {
+            <div
+              class="group-header"
+              [class.overdue]="group.label === 'Overdue'"
+              [class.today]="group.label === 'Today'"
+            >
+              <span class="group-label">{{ group.label }}</span>
+              <span class="group-count">{{ group.todos.length }}</span>
+            </div>
+          }
+
+          <div class="group-todos">
+            @for (todo of group.todos; track todo.id) {
+              <div
+                class="todo-item"
+                [class.checked]="todo.checked"
+                [class.overdue]="!todo.checked && isOverdue(todo.dueDate)"
+                [attr.data-color]="todo.color"
+                (click)="navigateToTodo(todo)"
+              >
+                <!-- Checkbox -->
+                <label class="todo-checkbox-wrapper" (click)="$event.stopPropagation()">
+                  <input
+                    type="checkbox"
+                    class="todo-checkbox"
+                    [checked]="todo.checked"
+                    (change)="toggleTodo(todo, $event)"
+                  />
+                </label>
+
+                <!-- Content -->
+                <div class="todo-main">
+                  <span class="todo-text">{{ todo.text }}</span>
+                  <span class="todo-memo">{{ todo.memoTitle }}</span>
+                </div>
+
+                <!-- Metadata -->
+                <div class="todo-meta">
+                  @if (todo.priority) {
+                    <span class="todo-priority" [class]="'priority-' + todo.priority">
+                      {{ todo.priority.charAt(0).toUpperCase() + todo.priority.slice(1) }}
+                    </span>
+                  }
+                  @if (todo.dueDate) {
+                    <span
+                      class="todo-due-date"
+                      [class.overdue]="!todo.checked && isOverdue(todo.dueDate)"
+                    >
+                      {{ formatDueDate(todo.dueDate) }}
+                    </span>
+                  }
+                </div>
+
+                <!-- Arrow icon -->
+                <svg
+                  class="todo-arrow"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                >
+                  <path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" fill="none" />
+                </svg>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>

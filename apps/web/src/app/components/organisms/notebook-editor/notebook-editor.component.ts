@@ -14,17 +14,18 @@ import {
   EnvironmentInjector,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ActivatedRoute } from '@angular/router';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
 import { marked } from 'marked';
 import { MemoDocumentService } from '../../../services/memo-document.service';
 import { PageService } from '../../../services/page.service';
 import { AuthService } from '../../../services/auth.service';
+import { TodoSyncService } from '../../../services/todo-sync.service';
 import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
 import { SlashCommandMenuComponent } from '../../molecules/slash-command-menu/slash-command-menu.component';
 import DragHandle from '@tiptap/extension-drag-handle';
@@ -41,18 +42,21 @@ import {
   TableOfContents,
   RecordingNode,
   EmbedNode,
+  EnhancedTaskItem,
   type SlashCommandItem,
+  type EnhancedTaskItemAttrs,
 } from './extensions';
 import { RecordingBlockComponent } from '../../molecules/recording-block/recording-block.component';
 import { PaperEmbedComponent } from '../../molecules/paper-embed/paper-embed.component';
 import { EditorToolbarComponent } from '../../molecules/editor-toolbar/editor-toolbar.component';
+import { TodoPopoverComponent } from '../../molecules/todo-popover/todo-popover.component';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 
 @Component({
   selector: 'app-notebook-editor',
   standalone: true,
-  imports: [CommonModule, SyncStatusComponent, EditorToolbarComponent],
+  imports: [CommonModule, SyncStatusComponent, EditorToolbarComponent, TodoPopoverComponent],
   templateUrl: './notebook-editor.component.html',
   styleUrl: './notebook-editor.component.scss',
 })
@@ -66,6 +70,8 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly memoService = inject(MemoDocumentService);
   private readonly pageService = inject(PageService);
   private readonly authService = inject(AuthService);
+  private readonly todoSyncService = inject(TodoSyncService);
+  private readonly activatedRoute = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
@@ -77,6 +83,13 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly isFocused = signal(false);
   readonly error = signal<string | null>(null);
   readonly isFullWidth = signal(false);
+
+  // Todo settings popover state
+  readonly activeTodoPopover = signal<{
+    todoId: string;
+    attrs: EnhancedTaskItemAttrs;
+    position: DOMRect;
+  } | null>(null);
 
   private _editor: Editor | null = null;
   private ydoc: Y.Doc | null = null;
@@ -190,9 +203,9 @@ export class NotebookEditorComponent implements OnDestroy {
           }),
           // Emoji replacer (e.g., :) -> emoji)
           EmojiReplacer,
-          // Task lists
+          // Task lists with enhanced attributes (id, dueDate, priority, color)
           TaskList,
-          TaskItem.configure({
+          EnhancedTaskItem.configure({
             nested: true,
           }),
           // Table support
@@ -270,12 +283,36 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up embed event listeners (new system)
         this.setupEmbedListeners();
+
+        // Set up todo settings listeners
+        this.setupTodoListeners();
       }
 
       this.isReady.set(true);
+
+      // Handle deep linking to todos via URL fragment
+      this.handleTodoDeepLink();
     } catch {
       this.error.set('Failed to load memo');
     }
+  }
+
+  /**
+   * Handle deep linking to a specific todo via URL fragment
+   * Expects fragment format: #todo-{todoId}
+   */
+  private handleTodoDeepLink(): void {
+    // Subscribe to fragment changes
+    this.activatedRoute.fragment.subscribe((fragment) => {
+      if (fragment && fragment.startsWith('todo-') && this._editor) {
+        const todoId = fragment.replace('todo-', '');
+
+        // Wait a bit for the editor content to fully render
+        setTimeout(() => {
+          (this._editor?.commands as any).scrollToTodo(todoId);
+        }, 300);
+      }
+    });
   }
 
   /**
@@ -480,6 +517,53 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
+   * Set up listeners for todo settings popover events
+   */
+  private setupTodoListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    // Listen for todo settings click events
+    editorElement.addEventListener('todo-settings-click', ((event: CustomEvent) => {
+      const { todoId, attrs, position } = event.detail;
+      this.activeTodoPopover.set({ todoId, attrs, position });
+    }) as EventListener);
+
+    // Close popover when clicking outside
+    document.addEventListener('click', (event) => {
+      if (this.activeTodoPopover()) {
+        const target = event.target as HTMLElement;
+        // Don't close if clicking on the popover itself or the settings button
+        if (!target.closest('.todo-popover') && !target.closest('.todo-settings-btn')) {
+          this.activeTodoPopover.set(null);
+        }
+      }
+    });
+  }
+
+  /**
+   * Update todo attributes from the popover
+   */
+  updateTodoAttrs(todoId: string, attrs: Partial<Omit<EnhancedTaskItemAttrs, 'id'>>): void {
+    (this._editor?.commands as any).updateTodoAttrs(todoId, attrs);
+    // Update the popover state to reflect changes
+    const current = this.activeTodoPopover();
+    if (current && current.todoId === todoId) {
+      this.activeTodoPopover.set({
+        ...current,
+        attrs: { ...current.attrs, ...attrs },
+      });
+    }
+  }
+
+  /**
+   * Close the todo popover
+   */
+  closeTodoPopover(): void {
+    this.activeTodoPopover.set(null);
+  }
+
+  /**
    * Handle editor content updates - extract first heading and sync as title
    */
   private handleContentUpdate(editor: Editor): void {
@@ -507,6 +591,10 @@ export class NotebookEditorComponent implements OnDestroy {
         this.pageService.updatePage(pageId, { title }).subscribe();
       }, 500);
     }
+
+    // Sync todo metadata (debounced internally by TodoSyncService)
+    const pageId = this.pageId();
+    this.todoSyncService.syncTodoMeta(pageId, editor);
   }
 
   /**
@@ -639,6 +727,14 @@ export class NotebookEditorComponent implements OnDestroy {
       clearTimeout(this.titleUpdateTimeout);
       this.titleUpdateTimeout = null;
     }
+
+    // Clear any pending todo sync
+    if (this.lastPageId) {
+      this.todoSyncService.clearPendingSync(this.lastPageId);
+    }
+
+    // Close todo popover
+    this.activeTodoPopover.set(null);
 
     // Clean up recording components (legacy)
     this.recordingComponents.forEach((component) => {

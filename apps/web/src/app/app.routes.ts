@@ -73,6 +73,12 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/lego-scan/lego-scan.component').then((m) => m.LegoScanComponent),
           },
+          // Todos view route
+          {
+            path: 'todos',
+            loadComponent: () =>
+              import('./pages/todos-view/todos-view.component').then((m) => m.TodosViewComponent),
+          },
           // Collectible registry view
           {
             path: 'collectible/:collectibleId',

@@ -52,5 +52,16 @@
         <span>Loading notebook...</span>
       </div>
     }
+
+    <!-- Todo Settings Popover -->
+    @if (activeTodoPopover()) {
+      <app-todo-popover
+        [todoId]="activeTodoPopover()!.todoId"
+        [attrs]="activeTodoPopover()!.attrs"
+        [position]="activeTodoPopover()!.position"
+        (attrsChange)="updateTodoAttrs(activeTodoPopover()!.todoId, $event)"
+        (close)="closeTodoPopover()"
+      />
+    }
   }
 </div>
