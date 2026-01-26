@@ -460,9 +460,7 @@ export class NotebookService {
   /**
    * Get notebook summary (page counts by type)
    */
-  getNotebookSummary(
-    notebookId: string,
-  ): Observable<{
+  getNotebookSummary(notebookId: string): Observable<{
     notebook: Notebook;
     summary: { pageCounts: Record<string, number>; totalPages: number };
   }> {

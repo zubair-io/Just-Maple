@@ -1,0 +1,26 @@
+@if (selectedNotebook(); as notebook) {
+  <div class="message-view">
+    <app-notebook-header
+      [notebook]="notebook"
+      [members]="members()"
+      [contextIcon]="'chat'"
+      [contextLabel]="selectedPage()?.title || 'Messages'"
+      [showNewButton]="true"
+      (shareClicked)="openShareModal()"
+    />
+
+    <div class="chat-container">
+      <app-chat [notebookId]="selectedNotebookId()!" />
+    </div>
+  </div>
+}
+
+<!-- Share Modal -->
+@if (showShareModal() && selectedNotebook()) {
+  <app-share-modal
+    [notebook]="selectedNotebook()!"
+    [members]="members()"
+    (closed)="closeShareModal()"
+    (membersChanged)="onMembersChanged()"
+  />
+}

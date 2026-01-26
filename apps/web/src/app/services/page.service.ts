@@ -276,7 +276,7 @@ export class PageService {
     this._isLoading.set(true);
     this._error.set(null);
 
-    const tempId = `temp-${Date.now()}`;
+    const tempId = crypto.randomUUID();
     const now = new Date().toISOString();
     const defaultContent: PageContent = {
       type: 'doc',
