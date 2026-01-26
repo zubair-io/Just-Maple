@@ -70,7 +70,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 };
             }
 
-            if (page.type !== 'messages') {
+            if (page.type !== 'message') {
                 set.status = 400;
                 return {
                     error: 'Invalid page type',
@@ -114,7 +114,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 };
             }
 
-            if (page.type !== 'messages') {
+            if (page.type !== 'message') {
                 set.status = 400;
                 return {
                     error: 'Invalid page type',
