@@ -32,50 +32,53 @@ export interface AiEditResponse {
     responseText?: string;
 }
 
-const SYSTEM_PROMPT = `You are an AI document editor assistant. Your task is to help edit documents based on user instructions.
+const SYSTEM_PROMPT = `You are an AI document editor assistant. Return JSON operations to edit documents.
 
-When given a document and an editing instruction, analyze the request and return EITHER:
+IMPORTANT RULES:
+1. Almost all requests should return edit operations, not plain text
+2. Only respond with plain text for explicit questions ("what does X mean?", "is this correct?")
 
-1. A JSON array of edit operations if the request involves modifying the document
-2. A plain text response if the request is a question or doesn't require document edits
-
-For edit operations, use this format:
+Return a JSON array of operations:
 \`\`\`json
 [
   {
     "type": "insert",
-    "position": { "type": "search", "query": "text to find", "occurrence": 1 },
-    "content": "text to insert"
-  },
-  {
-    "type": "delete",
-    "from": { "type": "search", "query": "start text", "occurrence": 1 },
-    "to": { "type": "search", "query": "end text", "occurrence": 1 }
+    "position": { "type": "relative", "anchor": "widget", "offset": 1 },
+    "content": "## New Heading\\n\\nNew paragraph with **bold** text."
   },
   {
     "type": "replace",
-    "from": { "type": "search", "query": "old text", "occurrence": 1 },
-    "to": { "type": "search", "query": "old text", "occurrence": 1 },
-    "content": "new text"
+    "from": { "type": "search", "query": "exact text to find", "occurrence": 1 },
+    "content": "replacement text with **formatting**"
   }
 ]
 \`\`\`
 
-Position types:
-- \`absolute\`: { "type": "absolute", "pos": 123 } - Exact character position
-- \`relative\`: { "type": "relative", "anchor": "widget|start|end", "offset": 0 } - Relative to widget, document start, or end
-- \`search\`: { "type": "search", "query": "text to find", "occurrence": 1 } - Find nth occurrence of text
+CRITICAL - Search query rules:
+- Search queries must be PLAIN TEXT ONLY - no markdown formatting
+- DO NOT include: # for headings, ** for bold, * for italic, > for quotes, - for lists
+- DO NOT include newlines (\\n) in search queries - text is stored without line breaks
+- Search for the actual visible text content only
+- Example: To find "# My Heading", search for "My Heading" (without the #)
+- Example: To find "**bold text**", search for "bold text" (without the **)
+- Minimum 10 characters for search queries to ensure unique matches
 
-Guidelines:
-1. Prefer "search" positions over "absolute" for more reliable edits
-2. For simple text additions after the widget, use: { "type": "relative", "anchor": "widget", "offset": 1 }
-3. When replacing text, ensure the "from" and "to" search queries uniquely identify the target
-4. If the instruction is unclear, ask for clarification in plain text
-5. If the request is a question about the document, respond in plain text
+Operation types:
+1. INSERT - Add new content at widget position:
+   { "type": "insert", "position": { "type": "relative", "anchor": "widget", "offset": 1 }, "content": "markdown content" }
 
-Start your response with either:
-- \`[{"type":\` if returning operations
-- Plain text for questions/clarifications`;
+2. REPLACE - Change existing text (search query is plain text, content can have markdown):
+   { "type": "replace", "from": { "type": "search", "query": "plain text to find", "occurrence": 1 }, "content": "new **formatted** content" }
+
+3. DELETE - Avoid using delete operations. Use replace with empty content instead.
+
+Examples:
+- "write a summary" → insert operation
+- "fix spelling of 'teh'" → replace "teh" with "the"
+- "make this bold" → replace the text with **text**
+- "add bullet points" → insert formatted list
+
+Start response with \`[{"type":\` for operations.`;
 
 /**
  * AI Document Edit Service

@@ -28,6 +28,9 @@
       [value]="prompt()"
       (input)="onPromptChange($any($event.target).value)"
       (keydown)="onKeydown($event)"
+      (mousedown)="$event.stopPropagation()"
+      (click)="$event.stopPropagation()"
+      (focus)="$event.stopPropagation()"
       [disabled]="status() === 'loading'"
     />
     <button
@@ -93,8 +96,17 @@
       >
         <polyline points="20 6 9 17 4 12"></polyline>
       </svg>
-      <span>Applied successfully</span>
+      @if (operationsApplied() > 0) {
+        <span>Applied {{ operationsApplied() }} operation(s)</span>
+      } @else {
+        <span>Completed</span>
+      }
     </div>
+    @if (responseText()) {
+      <div class="widget-response">
+        <div class="response-text">{{ responseText() }}</div>
+      </div>
+    }
   }
 
   @if (status() === 'loading') {

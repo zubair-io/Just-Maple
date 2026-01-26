@@ -163,3 +163,19 @@
 .widget-success {
   color: var(--color-success, #28a745);
 }
+
+.widget-response {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--color-bg, #fff);
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: 6px;
+}
+
+.response-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-main, #333);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
