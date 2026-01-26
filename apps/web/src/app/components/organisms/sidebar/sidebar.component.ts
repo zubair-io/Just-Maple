@@ -140,6 +140,10 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
     return this.messageService.getUnreadCount(notebookId);
   }
 
+  getUnreadCountByPageId(pageId: string): number {
+    return this.messageService.getUnreadCountByPageId(pageId);
+  }
+
   toggleNotebook(notebookId: string): void {
     if (notebookId === this.selectedNotebookId()) {
       const notebook = this.notebookService.getNotebookById(notebookId);

@@ -123,14 +123,7 @@
                   >{{ notebook.label }}</span
                 >
               }
-              <!-- Unread badge -->
-              @if (getUnreadCount(notebook._id) > 0) {
-                <span
-                  class="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-primary)] text-white rounded-full min-w-[18px] text-center"
-                >
-                  {{ getUnreadCount(notebook._id) > 99 ? '99+' : getUnreadCount(notebook._id) }}
-                </span>
-              }
+              <!-- Unread badge removed from notebook - now on message pages -->
             </div>
             @if ((getPagesForNotebook()[notebook._id || 'no_notebook'] || []).length > 0) {
               <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">
@@ -198,6 +191,18 @@
                         "
                         >{{ page.title }}</span
                       >
+                    }
+                    <!-- Unread badge for message pages -->
+                    @if (page.type === 'message' && getUnreadCountByPageId(page.id) > 0) {
+                      <span
+                        class="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-primary)] text-white rounded-full min-w-[18px] text-center flex-shrink-0"
+                      >
+                        {{
+                          getUnreadCountByPageId(page.id) > 99
+                            ? '99+'
+                            : getUnreadCountByPageId(page.id)
+                        }}
+                      </span>
                     }
                   </a>
                 </li>

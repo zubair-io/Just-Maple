@@ -86,6 +86,7 @@ export class MessageViewComponent implements OnInit, OnDestroy {
     this.routeSubscription?.unsubscribe();
     // Clear active notebook when leaving
     this.notificationService.setActiveNotebook(null);
+    this.messageService.clearMessages();
   }
 
   openShareModal(): void {
