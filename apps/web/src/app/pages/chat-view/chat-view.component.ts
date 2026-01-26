@@ -82,7 +82,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   getPageTypeLabel(type: string): string {
     const labels: Record<string, string> = {
       memo: 'Memos',
-      messages: 'Messages',
+      message: 'Messages',
       whiteboard: 'Whiteboards',
       collectable: 'Collectables',
       kanban: 'Kanban Boards',
@@ -95,7 +95,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   getPageTypeIcon(type: string): string {
     const icons: Record<string, string> = {
       memo: 'edit_note',
-      messages: 'chat',
+      message: 'chat',
       whiteboard: 'draw',
       collectable: 'grid_view',
       kanban: 'view_kanban',

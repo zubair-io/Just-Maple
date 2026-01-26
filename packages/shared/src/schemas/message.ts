@@ -25,7 +25,7 @@ export type Mention = Static<typeof MentionSchema>;
 export const MessageSchema = Type.Object({
     _id: Type.String(),
     id: Type.String(), // UUID v4 for routing
-    pageId: Type.String(), // Messages belong to a page (type: 'messages')
+    pageId: Type.String(), // Messages belong to a page (type: 'message')
     notebookId: Type.Optional(Type.String()), // Deprecated: kept for backward compatibility during migration
     threadId: Type.Optional(Type.String()), // If part of a thread (null = top-level message)
     userId: Type.String(), // Sender (user ID or bot owner ID)

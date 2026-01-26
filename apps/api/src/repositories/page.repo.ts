@@ -542,7 +542,7 @@ export async function findMessagesPageByNotebookId(notebookId: string): Promise<
     try {
         const doc = await getCollection().findOne({
             notebookId: new ObjectId(notebookId),
-            type: 'messages',
+            type: 'message',
             isTrashed: { $ne: true },
         });
         return doc ? toPageResponse(doc) : null;
@@ -568,7 +568,7 @@ export async function findOrCreateMessagesPage(notebookId: string, userId: strin
     const doc: Omit<PageDocument, '_id'> = {
         id: pageId,
         userId: new ObjectId(userId),
-        type: 'messages',
+        type: 'message',
         title: 'Messages',
         content: { type: 'doc', content: [] },
         notebookId: new ObjectId(notebookId),
@@ -585,7 +585,7 @@ export async function findOrCreateMessagesPage(notebookId: string, userId: strin
         _id: result.insertedId.toString(),
         id: pageId,
         userId: userId,
-        type: 'messages',
+        type: 'message',
         title: 'Messages',
         content: doc.content,
         notebookId: notebookId,

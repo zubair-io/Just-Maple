@@ -89,7 +89,7 @@ async function migrate() {
     // Step 3: Check for existing messages pages
     const existingMessagesPages = await pagesCollection
         .find({
-            type: 'messages',
+            type: 'message',
             notebookId: { $in: notebookIdsWithMessages },
         })
         .toArray();
@@ -142,7 +142,7 @@ async function migrate() {
                 const pageDoc = {
                     id: pageId,
                     userId: new ObjectId(ownerEntry.userId),
-                    type: 'messages',
+                    type: 'message',
                     title: 'Messages',
                     content: { type: 'doc', content: [] },
                     notebookId: notebookId,
@@ -187,7 +187,7 @@ async function migrate() {
     const messagesWithoutPageIdAfter = await messagesCollection.countDocuments({
         pageId: { $exists: false },
     });
-    const messagesPagesCount = await pagesCollection.countDocuments({ type: 'messages' });
+    const messagesPagesCount = await pagesCollection.countDocuments({ type: 'message' });
 
     console.log(
         `Messages with pageId: ${messagesWithPageIdAfter} (was ${messagesWithPageIdBefore})`,
