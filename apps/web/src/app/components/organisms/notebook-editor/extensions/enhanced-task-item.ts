@@ -110,6 +110,7 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
       ...this.parent?.(),
       onTodoClick: undefined,
       nested: true,
+      HTMLAttributes: {},
     };
   },
 
