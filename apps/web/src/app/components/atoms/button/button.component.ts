@@ -57,11 +57,11 @@ export class ButtonComponent {
 
     const variants: Record<ButtonVariant, string> = {
       primary:
-        'bg-[var(--color-maple)] text-white hover:bg-[var(--color-maple-hover)] focus:ring-[var(--color-maple)] hover:-translate-y-0.5 active:translate-y-0',
+        'bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-hover)] focus:ring-[var(--color-primary)] hover:-translate-y-0.5 active:translate-y-0',
       secondary:
-        'bg-white text-[var(--color-charcoal)] border border-[var(--color-pearl)] hover:bg-gray-50 focus:ring-gray-200',
+        'bg-[var(--color-surface)] text-[var(--color-text-main)] border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] focus:ring-[var(--color-border)]',
       outline:
-        'bg-transparent text-[var(--color-maple)] border border-[var(--color-maple)] hover:bg-[var(--color-maple)] hover:text-white focus:ring-[var(--color-maple)]',
+        'bg-transparent text-[var(--color-primary)] border border-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white focus:ring-[var(--color-primary)]',
     };
 
     const sizes: Record<ButtonSize, string> = {

@@ -75,7 +75,7 @@
               />
               <label
                 for="profilePicture"
-                class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-[var(--color-border)] rounded-lg cursor-pointer hover:bg-[var(--color-surface-hover)] transition-colors"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded-lg cursor-pointer hover:bg-[var(--color-surface-hover)] transition-colors"
                 [class.opacity-50]="isUploadingPicture()"
                 [class.cursor-not-allowed]="isUploadingPicture()"
               >
@@ -120,7 +120,7 @@
             type="text"
             [(ngModel)]="displayName"
             placeholder="Enter your name"
-            class="w-full px-3 py-2 bg-white border border-[var(--color-border)] focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] rounded-lg text-[var(--color-text-main)] placeholder-[var(--color-text-muted)] transition-all"
+            class="w-full px-3 py-2 bg-[var(--color-input-bg)] border border-[var(--color-border)] focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] rounded-lg text-[var(--color-text-main)] placeholder-[var(--color-text-muted)] transition-all"
           />
         </div>
 

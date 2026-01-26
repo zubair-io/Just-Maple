@@ -47,12 +47,13 @@ export class InputComponent implements ControlValueAccessor {
 
   get inputClasses(): string {
     const base =
-      'block w-full px-4 py-3 rounded-lg text-sm transition-all duration-200 placeholder-[var(--color-mist)]';
+      'block w-full px-4 py-3 rounded-lg text-sm transition-all duration-200 placeholder-[var(--color-text-muted)]';
     const normal =
-      'border border-[var(--color-pearl)] bg-gray-50 text-[var(--color-charcoal)] focus:border-[var(--color-maple)] focus:ring-2 focus:ring-[var(--color-maple)]/20 focus:bg-white';
+      'border border-[var(--color-border)] bg-[var(--color-input-bg)] text-[var(--color-text-main)] focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20';
     const errorStyle =
       'border-[var(--color-error)] focus:border-[var(--color-error)] focus:ring-[var(--color-error)]/20';
-    const disabledStyle = 'disabled:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60';
+    const disabledStyle =
+      'disabled:bg-[var(--color-surface-alt)] disabled:cursor-not-allowed disabled:opacity-60';
 
     return `${base} ${this.error() ? errorStyle : normal} ${disabledStyle}`;
   }

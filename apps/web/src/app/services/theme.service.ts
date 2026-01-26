@@ -1,6 +1,17 @@
-import { Injectable, signal, effect, computed } from '@angular/core';
+import { Injectable, signal, effect, computed, OnDestroy } from '@angular/core';
 
-export type ThemeId = 'light' | 'dark' | 'solarized' | 'warm' | 'cool' | 'rose' | 'forest';
+export type ThemeId =
+  | 'system'
+  | 'light'
+  | 'dark'
+  | 'solarized'
+  | 'warm'
+  | 'cool'
+  | 'rose'
+  | 'forest';
+
+/** Theme IDs that can be applied to the DOM (excludes 'system') */
+export type AppliedThemeId = Exclude<ThemeId, 'system'>;
 
 export interface Theme {
   id: ThemeId;
@@ -16,6 +27,13 @@ export interface Theme {
 }
 
 const THEMES: Theme[] = [
+  {
+    id: 'system',
+    name: 'System',
+    description: 'Follows your device settings',
+    icon: 'contrast',
+    preview: { bg: '#fdfbf7', surface: '#ffffff', primary: '#d94e3b', text: '#292524' },
+  },
   {
     id: 'light',
     name: 'Light',
@@ -70,12 +88,24 @@ const THEMES: Theme[] = [
 const STORAGE_KEY = 'maple-theme';
 
 @Injectable({ providedIn: 'root' })
-export class ThemeService {
+export class ThemeService implements OnDestroy {
   /** All available themes */
   readonly themes = THEMES;
 
-  /** Currently selected theme ID */
+  /** Currently selected theme ID (may be 'system') */
   readonly currentThemeId = signal<ThemeId>(this.loadTheme());
+
+  /** System preference for dark mode */
+  readonly systemPrefersDark = signal(this.getSystemPreference());
+
+  /** The actual theme being applied (resolves 'system' to light/dark) */
+  readonly effectiveThemeId = computed<AppliedThemeId>(() => {
+    const selected = this.currentThemeId();
+    if (selected === 'system') {
+      return this.systemPrefersDark() ? 'dark' : 'light';
+    }
+    return selected;
+  });
 
   /** Current theme object */
   readonly currentTheme = computed(
@@ -83,15 +113,37 @@ export class ThemeService {
   );
 
   /** Whether dark scrollbars should be used */
-  readonly isDarkTheme = computed(() => this.currentThemeId() === 'dark');
+  readonly isDarkTheme = computed(() => this.effectiveThemeId() === 'dark');
+
+  private mediaQuery: MediaQueryList | null = null;
+  private mediaQueryHandler = (e: MediaQueryListEvent) => {
+    this.systemPrefersDark.set(e.matches);
+  };
 
   constructor() {
+    // Listen to system preference changes
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      this.mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      this.mediaQuery.addEventListener('change', this.mediaQueryHandler);
+    }
+
     // Effect to apply theme to DOM and persist to localStorage
     effect(() => {
-      const themeId = this.currentThemeId();
+      const themeId = this.effectiveThemeId();
       this.applyTheme(themeId);
+    });
+
+    // Separate effect to save the selected theme (not the effective one)
+    effect(() => {
+      const themeId = this.currentThemeId();
       this.saveTheme(themeId);
     });
+  }
+
+  ngOnDestroy(): void {
+    if (this.mediaQuery) {
+      this.mediaQuery.removeEventListener('change', this.mediaQueryHandler);
+    }
   }
 
   /** Set the active theme */
@@ -101,12 +153,20 @@ export class ThemeService {
 
   /** Toggle between light and dark themes */
   toggleDarkMode(): void {
-    const current = this.currentThemeId();
-    this.currentThemeId.set(current === 'dark' ? 'light' : 'dark');
+    const effective = this.effectiveThemeId();
+    this.currentThemeId.set(effective === 'dark' ? 'light' : 'dark');
+  }
+
+  /** Get system dark mode preference */
+  private getSystemPreference(): boolean {
+    if (typeof window === 'undefined' || !window.matchMedia) {
+      return false;
+    }
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
 
   /** Apply theme to the document */
-  private applyTheme(themeId: ThemeId): void {
+  private applyTheme(themeId: AppliedThemeId): void {
     const html = document.documentElement;
 
     // Remove all theme classes
@@ -151,7 +211,7 @@ export class ThemeService {
   /** Load theme from localStorage */
   private loadTheme(): ThemeId {
     if (typeof localStorage === 'undefined') {
-      return 'light';
+      return 'system';
     }
 
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -159,15 +219,8 @@ export class ThemeService {
       return stored as ThemeId;
     }
 
-    // Check for system dark mode preference
-    if (
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(prefers-color-scheme: dark)').matches
-    ) {
-      return 'dark';
-    }
-
-    return 'light';
+    // Default to system theme
+    return 'system';
   }
 
   /** Save theme to localStorage */

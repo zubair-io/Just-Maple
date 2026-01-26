@@ -24,11 +24,11 @@
   <!-- Dropdown menu -->
   @if (isDropdownOpen()) {
     <div
-      class="absolute right-0 top-full mt-1 w-44 bg-white rounded-lg shadow-lg border border-[var(--color-border)] py-1 z-50"
+      class="absolute right-0 top-full mt-1 w-44 bg-[var(--color-surface)] rounded-lg shadow-lg border border-[var(--color-border)] py-1 z-50"
     >
       <button
         (click)="createPage('memo')"
-        class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+        class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
       >
         <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
           >article</span
@@ -37,7 +37,7 @@
       </button>
       <button
         (click)="createPage('whiteboard')"
-        class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+        class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
       >
         <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">draw</span>
         <span>New Whiteboard</span>
@@ -45,7 +45,7 @@
       @if (showConversation()) {
         <button
           (click)="createPage('message')"
-          class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+          class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
         >
           <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
             >chat</span
