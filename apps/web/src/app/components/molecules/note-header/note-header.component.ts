@@ -1,28 +1,20 @@
-import { Component, input, output, computed, inject, signal, HostListener } from '@angular/core';
+import { Component, input, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
-import type { Page, Notebook, PageType } from '@maple/shared';
-import { DEFAULT_PAGE_CONTENT } from '@maple/shared';
-import { PageService } from '../../../services/page.service';
+import type { Page, Notebook } from '@maple/shared';
+import { NewPageButtonComponent } from '../../atoms/new-page-button/new-page-button.component';
 
 @Component({
   selector: 'app-note-header',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, NewPageButtonComponent],
   templateUrl: './note-header.component.html',
   styleUrl: './note-header.component.scss',
 })
 export class NoteHeaderComponent {
-  private readonly pageService = inject(PageService);
-  private readonly router = inject(Router);
-
   readonly page = input<Page | null>(null);
   readonly notebook = input<Notebook | null>(null);
 
   readonly toggleFavorite = output<void>();
-
-  // Dropdown state
-  readonly isDropdownOpen = signal(false);
 
   readonly formattedDate = computed(() => {
     const page = this.page();
@@ -46,21 +38,5 @@ export class NoteHeaderComponent {
     if (diffDays < 7) return `${diffDays}d ago`;
 
     return date.toLocaleDateString();
-  }
-
-  createPage(type: PageType = 'memo'): void {
-    const notebookId = this.notebook()?._id;
-    this.router.navigate(['/', notebookId, 'new'], { queryParams: { type } });
-    this.isDropdownOpen.set(false);
-  }
-
-  toggleDropdown(event: Event): void {
-    event.stopPropagation();
-    this.isDropdownOpen.update((open) => !open);
-  }
-
-  @HostListener('document:click')
-  onDocumentClick(): void {
-    this.isDropdownOpen.set(false);
   }
 }
