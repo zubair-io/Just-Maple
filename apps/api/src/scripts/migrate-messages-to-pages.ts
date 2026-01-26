@@ -3,7 +3,7 @@
  *
  * This script:
  * 1. Finds all unique notebookIds that have messages
- * 2. For each notebook, creates a page with type 'messages'
+ * 2. For each notebook, creates a page with type 'message'
  * 3. Updates all messages to reference the new page via pageId
  *
  * Run with: bun run apps/api/src/scripts/migrate-messages-to-pages.ts
