@@ -6,15 +6,15 @@
     <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
       @if (notebook()) {
         <div
-          class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-stone-100"
+          class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-[var(--color-surface-hover)]"
         >
           <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">tag</span>
           <span>{{ notebook()!.label }}</span>
         </div>
-        <span class="text-stone-300">/</span>
+        <span class="text-[var(--color-text-muted)]">/</span>
       }
       <div
-        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100"
+        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-[var(--color-surface-alt)]"
       >
         <span class="material-symbols-rounded text-sm">article</span>
         <span>{{ page()!.title }}</span>
@@ -28,7 +28,7 @@
       </span>
       <!-- <div class="flex items-center border-l border-[var(--color-border)] pl-2 gap-1">
         <button
-          class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+          class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
           title="Note Info"
         >
           <span class="material-symbols-rounded text-lg">info</span>
@@ -39,7 +39,7 @@
           [class.text-[var(--color-primary)]]="page()?.isFavorite"
           [class.text-[var(--color-text-muted)]]="!page()?.isFavorite"
           [class.hover:text-[var(--color-text-main)]]="!page()?.isFavorite"
-          [class.hover:bg-stone-100]="true"
+          [class.hover:bg-[var(--color-surface-hover)]]="true"
           title="Favorite"
         >
           <span class="material-symbols-rounded text-lg">
@@ -47,7 +47,7 @@
           </span>
         </button>
         <button
-          class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+          class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
           title="More"
         >
           <span class="material-symbols-rounded text-lg">more_horiz</span>
