@@ -41,11 +41,13 @@ import {
   TableOfContents,
   RecordingNode,
   EmbedNode,
+  AiBotWidget,
   type SlashCommandItem,
 } from './extensions';
 import { RecordingBlockComponent } from '../../molecules/recording-block/recording-block.component';
 import { PaperEmbedComponent } from '../../molecules/paper-embed/paper-embed.component';
 import { EditorToolbarComponent } from '../../molecules/editor-toolbar/editor-toolbar.component';
+import { AiBotWidgetComponent } from '../../molecules/ai-bot-widget/ai-bot-widget.component';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 
@@ -90,6 +92,10 @@ export class NotebookEditorComponent implements OnDestroy {
   private slashMenuComponent: SlashCommandMenuComponent | null = null;
   private recordingComponents = new Map<string, { componentRef: any; element: HTMLElement }>();
   private embedComponents = new Map<string, { componentRef: any; element: HTMLElement }>();
+  private aiBotWidgetComponents = new Map<
+    string,
+    { componentRef: any; element: HTMLElement; editor: Editor; getPos: () => number | undefined }
+  >();
 
   constructor() {
     // Initialize editor after view is ready
@@ -203,6 +209,8 @@ export class NotebookEditorComponent implements OnDestroy {
           RecordingNode,
           // Generic embed node (new system)
           EmbedNode,
+          // AI Bot Widget for inline AI assistance
+          AiBotWidget,
           // Drag handles for blocks
           DragHandle.configure({
             render: () => {
@@ -270,6 +278,9 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up embed event listeners (new system)
         this.setupEmbedListeners();
+
+        // Set up AI bot widget event listeners
+        this.setupAiBotWidgetListeners();
       }
 
       this.isReady.set(true);
@@ -480,6 +491,98 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
+   * Set up listeners for AI bot widget mount/unmount events
+   */
+  private setupAiBotWidgetListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    // Listen for AI bot widget mount events
+    editorElement.addEventListener('ai-bot-widget-mounted', ((event: CustomEvent) => {
+      const { id, prompt, status, errorMessage, element, editor, getPos } = event.detail;
+      this.mountAiBotWidgetComponent(id, prompt, status, errorMessage, element, editor, getPos);
+    }) as EventListener);
+
+    // Listen for AI bot widget unmount events
+    editorElement.addEventListener('ai-bot-widget-unmounted', ((event: CustomEvent) => {
+      const { id } = event.detail;
+      this.unmountAiBotWidgetComponent(id);
+    }) as EventListener);
+
+    // Listen for create-ai-bot-widget event from slash command
+    editorElement.addEventListener('create-ai-bot-widget', ((event: CustomEvent) => {
+      this.createAiBotWidget();
+    }) as EventListener);
+  }
+
+  /**
+   * Mount an AI bot widget Angular component
+   */
+  private mountAiBotWidgetComponent(
+    id: string,
+    prompt: string,
+    status: string,
+    errorMessage: string | null,
+    element: HTMLElement,
+    editor: Editor,
+    getPos: () => number | undefined,
+  ): void {
+    // Check if already mounted
+    if (this.aiBotWidgetComponents.has(id)) {
+      return;
+    }
+
+    // Create Angular component
+    const componentRef = createComponent(AiBotWidgetComponent, {
+      environmentInjector: this.injector,
+      hostElement: element,
+    });
+
+    // Set inputs
+    componentRef.setInput('widgetId', id);
+    componentRef.setInput('editor', editor);
+    componentRef.setInput('getPos', getPos);
+    componentRef.setInput('initialPrompt', prompt || '');
+    componentRef.setInput('initialStatus', status || 'idle');
+
+    // Handle delete requests
+    componentRef.instance.deleteRequested.subscribe((widgetId: string) => {
+      (this._editor?.commands as any).removeAiBotWidget(widgetId);
+    });
+
+    // Attach to app
+    this.appRef.attachView(componentRef.hostView);
+
+    // Track the component
+    this.aiBotWidgetComponents.set(id, { componentRef, element, editor, getPos });
+  }
+
+  /**
+   * Unmount an AI bot widget component
+   */
+  private unmountAiBotWidgetComponent(id: string): void {
+    const component = this.aiBotWidgetComponents.get(id);
+    if (!component) return;
+
+    this.appRef.detachView(component.componentRef.hostView);
+    component.componentRef.destroy();
+    this.aiBotWidgetComponents.delete(id);
+  }
+
+  /**
+   * Create an AI bot widget
+   */
+  private createAiBotWidget(): void {
+    if (!this._editor) {
+      console.error('[NotebookEditor] Cannot create AI bot widget: no editor');
+      return;
+    }
+
+    // Insert the AI bot widget at the current position
+    (this._editor.commands as any).insertAiBotWidget();
+  }
+
+  /**
    * Handle editor content updates - extract first heading and sync as title
    */
   private handleContentUpdate(editor: Editor): void {
@@ -653,6 +756,13 @@ export class NotebookEditorComponent implements OnDestroy {
       component.componentRef.destroy();
     });
     this.embedComponents.clear();
+
+    // Clean up AI bot widget components
+    this.aiBotWidgetComponents.forEach((component) => {
+      this.appRef.detachView(component.componentRef.hostView);
+      component.componentRef.destroy();
+    });
+    this.aiBotWidgetComponents.clear();
 
     if (this._editor) {
       this._editor.destroy();
