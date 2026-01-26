@@ -544,6 +544,7 @@ export class NotebookEditorComponent implements OnDestroy {
     componentRef.setInput('editor', editor);
     componentRef.setInput('getPos', getPos);
     componentRef.setInput('notebookId', this.notebookId());
+    componentRef.setInput('pageId', this.pageId());
     componentRef.setInput('initialPrompt', prompt || '');
     componentRef.setInput('initialStatus', status || 'idle');
 

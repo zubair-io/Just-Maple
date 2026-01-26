@@ -1,4 +1,5 @@
 import { findUserBotByHandleForNotebookInternal } from '../repositories/user-bot.repo';
+import { documentEditService, type DocumentEdit } from './document-edit.service';
 
 // Configuration constants
 const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL || 'claude-sonnet-4-20250514';
@@ -18,6 +19,7 @@ export type AnchorPosition =
 
 export interface AiEditRequest {
     prompt: string;
+    pageId: string; // Page ID for server-side edit application
     document: {
         content: string;
         format: 'markdown' | 'plaintext' | 'html';
@@ -28,8 +30,14 @@ export interface AiEditRequest {
 }
 
 export interface AiEditResponse {
-    operations: AiEditOperation[];
+    success: boolean;
+    appliedCount: number;
     responseText?: string;
+    errors?: string[];
+    debug?: {
+        serverDocLength: number;
+        serverDocPreview: string;
+    };
 }
 
 const SYSTEM_PROMPT = `You are an AI document editor assistant. Return JSON operations to edit documents.
@@ -83,10 +91,11 @@ Start response with \`[{"type":\` for operations.`;
 /**
  * AI Document Edit Service
  * Handles AI-powered document editing requests
+ * Now applies edits server-side via document-edit.service
  */
 export class AiEditService {
     /**
-     * Process an AI edit request and return operations or response text
+     * Process an AI edit request - parses AI response and applies edits server-side
      */
     async processEditRequest(notebookId: string, request: AiEditRequest): Promise<AiEditResponse> {
         // Find Claude bot for this notebook (use Internal version to get full config with API key)
@@ -123,14 +132,43 @@ Instruction: ${request.prompt}`;
             maxTokens: 4096,
         });
 
-        // Parse response
-        return this.parseResponse(response);
+        // Parse the AI response to extract operations
+        const parsed = this.parseAiResponse(response);
+
+        // If no operations, return text response
+        if (parsed.operations.length === 0) {
+            return {
+                success: true,
+                appliedCount: 0,
+                responseText: parsed.responseText,
+            };
+        }
+
+        // Convert AI operations to document edits
+        const edits = this.convertToDocumentEdits(
+            parsed.operations,
+            request.context.widgetPosition,
+        );
+
+        // Apply edits server-side
+        const result = await documentEditService.applyEdits(request.pageId, edits);
+
+        return {
+            success: result.success,
+            appliedCount: result.appliedCount,
+            responseText: parsed.responseText,
+            errors: result.errors,
+            debug: result.debug,
+        };
     }
 
     /**
      * Parse Claude's response into operations or text
      */
-    private parseResponse(response: string): AiEditResponse {
+    private parseAiResponse(response: string): {
+        operations: AiEditOperation[];
+        responseText?: string;
+    } {
         const trimmed = response.trim();
 
         // Try to extract JSON array from the response
@@ -138,7 +176,7 @@ Instruction: ${request.prompt}`;
         try {
             // First, try to find JSON in a code block
             const codeBlockMatch = trimmed.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
-            if (codeBlockMatch) {
+            if (codeBlockMatch && codeBlockMatch[1]) {
                 const operations = JSON.parse(codeBlockMatch[1]) as AiEditOperation[];
                 if (Array.isArray(operations) && operations.every(this.isValidOperation)) {
                     return { operations };
@@ -164,6 +202,65 @@ Instruction: ${request.prompt}`;
             operations: [],
             responseText: trimmed,
         };
+    }
+
+    /**
+     * Convert AI edit operations to document edit format
+     */
+    private convertToDocumentEdits(
+        operations: AiEditOperation[],
+        widgetPosition: number,
+    ): DocumentEdit[] {
+        const edits: DocumentEdit[] = [];
+
+        for (const op of operations) {
+            if (op.type === 'insert' && op.content) {
+                // Convert position anchor to document position
+                let position: 'start' | 'end' | number = 'end';
+
+                if (op.position) {
+                    if (op.position.type === 'relative') {
+                        if (op.position.anchor === 'start') {
+                            position = 'start';
+                        } else if (op.position.anchor === 'end') {
+                            position = 'end';
+                        } else if (op.position.anchor === 'widget') {
+                            // Widget position + offset
+                            position = widgetPosition + (op.position.offset || 0);
+                        }
+                    } else if (op.position.type === 'absolute') {
+                        position = op.position.pos;
+                    }
+                }
+
+                edits.push({
+                    type: 'insert',
+                    position,
+                    content: op.content,
+                });
+            } else if (
+                op.type === 'replace' &&
+                op.from?.type === 'search' &&
+                op.content !== undefined
+            ) {
+                edits.push({
+                    type: 'replace',
+                    search: op.from.query,
+                    content: op.content,
+                    occurrence: op.from.occurrence || 1,
+                });
+            } else if (op.type === 'delete' && op.from?.type === 'search') {
+                // Convert delete to replace with empty string
+                edits.push({
+                    type: 'replace',
+                    search: op.from.query,
+                    content: '',
+                    occurrence: op.from.occurrence || 1,
+                });
+            }
+        }
+
+        return edits;
     }
 
     /**

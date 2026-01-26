@@ -2,7 +2,7 @@ import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
 import { findNotebookById, findNotebookByIdWithAccess } from '../repositories/notebook.repo';
-import type { JWTPayload, ChatEvent } from '@maple/shared';
+import type { JWTPayload } from '@maple/shared';
 import {
     findAllBotTemplates,
     findBotTemplateById,
@@ -21,8 +21,13 @@ import {
 import { findThreadByParentMessage, findThreadById } from '../repositories/thread.repo';
 import { findMessagesByThreadId } from '../repositories/message.repo';
 import { findInvocationById } from '../repositories/bot-invocation.repo';
+import {
+    createBotToken,
+    findTokensByUserBotId,
+    deleteToken,
+    type CreateBotTokenInput,
+} from '../repositories/bot-token.repo';
 import { botExecutor } from '../services/bot-executor.service';
-import { extractTextFromContent } from '../utils/content-utils';
 
 export const botRoutes = new Elysia({ prefix: '/api' })
     .use(jwtPlugin)
@@ -506,6 +511,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             params: t.Object({ id: t.String() }),
             body: t.Object({
                 prompt: t.String(),
+                pageId: t.String(), // Page ID for server-side edit application
                 document: t.Object({
                     content: t.String(),
                     format: t.Union([
@@ -517,6 +523,119 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 context: t.Object({
                     widgetPosition: t.Number(),
                 }),
+            }),
+        },
+    )
+
+    // ============================================
+    // Bot Access Tokens (for external services)
+    // ============================================
+
+    // Create a new access token for a user bot
+    .post(
+        '/user-bots/:id/tokens',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized' };
+            }
+
+            // Verify user owns this bot
+            const userBot = await findUserBotById(params.id);
+            if (!userBot || userBot.userId !== auth.user._id) {
+                set.status = 404;
+                return { error: 'Bot not found' };
+            }
+
+            try {
+                const input: CreateBotTokenInput = {
+                    userBotId: params.id,
+                    userId: auth.user._id,
+                    name: body.name,
+                    permissions: body.permissions,
+                    notebookScope: body.notebookScope,
+                    expiresAt: body.expiresInDays
+                        ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
+                        : undefined,
+                };
+
+                const result = await createBotToken(input);
+
+                // Return the token - plaintext is only available now!
+                return {
+                    token: result.token,
+                    plaintextToken: result.plaintextToken,
+                    message: 'Save this token securely. It will not be shown again.',
+                };
+            } catch (error) {
+                set.status = 500;
+                return {
+                    error: 'Failed to create token',
+                    message: error instanceof Error ? error.message : 'Unknown error',
+                };
+            }
+        },
+        {
+            params: t.Object({ id: t.String() }),
+            body: t.Object({
+                name: t.String({ minLength: 1, maxLength: 100 }),
+                permissions: t.Array(
+                    t.Union([t.Literal('read'), t.Literal('write'), t.Literal('invoke')]),
+                    { minItems: 1 },
+                ),
+                notebookScope: t.Optional(t.Array(t.String())),
+                expiresInDays: t.Optional(t.Number({ minimum: 1, maximum: 365 })),
+            }),
+        },
+    )
+
+    // List all tokens for a user bot (names only, no secrets)
+    .get(
+        '/user-bots/:id/tokens',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized' };
+            }
+
+            // Verify user owns this bot
+            const userBot = await findUserBotById(params.id);
+            if (!userBot || userBot.userId !== auth.user._id) {
+                set.status = 404;
+                return { error: 'Bot not found' };
+            }
+
+            const tokens = await findTokensByUserBotId(params.id);
+            return { tokens };
+        },
+        { params: t.Object({ id: t.String() }) },
+    )
+
+    // Revoke (delete) an access token
+    .delete(
+        '/user-bots/:id/tokens/:tokenId',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized' };
+            }
+
+            // Verify user owns this bot
+            const userBot = await findUserBotById(params.id);
+            if (!userBot || userBot.userId !== auth.user._id) {
+                set.status = 404;
+                return { error: 'Bot not found' };
+            }
+
+            const deleted = await deleteToken(params.tokenId, auth.user._id);
+            if (!deleted) {
+                set.status = 404;
+                return { error: 'Token not found' };
+            }
+
+            return { message: 'Token revoked' };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+                tokenId: t.String(),
             }),
         },
     );
