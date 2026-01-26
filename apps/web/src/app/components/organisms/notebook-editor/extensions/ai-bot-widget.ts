@@ -230,6 +230,22 @@ export const AiBotWidget = Node.create<AiBotWidgetOptions>({
 
       return {
         dom,
+        // Prevent ProseMirror from handling events inside the widget
+        // This allows the input to receive focus and keyboard events
+        stopEvent: (event: Event) => {
+          // Allow all events inside the widget content to be handled by the widget
+          const target = event.target as HTMLElement;
+          if (target && dom.contains(target)) {
+            // Stop ProseMirror from handling mouse and keyboard events
+            return true;
+          }
+          return false;
+        },
+        // Prevent ProseMirror from reacting to DOM mutations inside the widget
+        ignoreMutation: () => {
+          // Ignore all mutations inside the widget
+          return true;
+        },
         destroy: () => {
           // Dispatch unmount event
           const event = new CustomEvent('ai-bot-widget-unmounted', {
