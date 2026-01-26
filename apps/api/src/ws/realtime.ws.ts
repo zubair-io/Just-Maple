@@ -9,7 +9,7 @@ import {
 } from '../repositories/notebook.repo';
 import { sendMessageReceivedNotification } from '../services/notification.service';
 import { findUserById } from '../repositories/user.repo';
-import { findPageById } from '../repositories/page.repo';
+import { findPageById, findOrCreateMessagesPage } from '../repositories/page.repo';
 import { createMessage } from '../repositories/message.repo';
 import {
     findCollectableById,
@@ -388,20 +388,26 @@ async function handleChatMessage(
             // Get user info for the message
             const user = await findUserById(context.userId);
 
+            // Find or create the messages page for this notebook
+            const messagesPage = await findOrCreateMessagesPage(notebookId, context.userId);
+
             // Create the message in the database
             const message = await createMessage(
-                notebookId,
+                messagesPage.id, // pageId
                 context.userId,
                 { content },
                 user?.email,
                 user?.displayName,
                 user?.profilePictureUrl,
+                undefined, // threadId
+                notebookId, // notebookId for backward compatibility
             );
 
             // Broadcast to all users subscribed to this notebook (including sender)
             const chatEvent: ChatEvent = {
                 action: 'message',
                 data: message,
+                pageId: messagesPage.id,
                 notebookId: notebookId,
                 userId: context.userId,
                 timestamp: new Date().toISOString(),
