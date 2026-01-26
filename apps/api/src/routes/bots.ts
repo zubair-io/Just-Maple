@@ -469,4 +469,54 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 before: t.Optional(t.String()),
             }),
         },
+    )
+
+    // ============================================
+    // AI Document Editing
+    // ============================================
+
+    // AI edit endpoint for the AI Bot Widget
+    .post(
+        '/notebooks/:id/ai-edit',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized' };
+            }
+
+            // Verify notebook access
+            const notebook = await findNotebookByIdWithAccess(params.id, auth.user._id, 'write');
+            if (!notebook) {
+                set.status = 404;
+                return { error: 'Notebook not found or access denied' };
+            }
+
+            try {
+                const { aiEditService } = await import('../services/ai-edit.service');
+                const result = await aiEditService.processEditRequest(params.id, body);
+                return result;
+            } catch (error) {
+                set.status = 500;
+                return {
+                    error: 'AI edit failed',
+                    message: error instanceof Error ? error.message : 'Unknown error',
+                };
+            }
+        },
+        {
+            params: t.Object({ id: t.String() }),
+            body: t.Object({
+                prompt: t.String(),
+                document: t.Object({
+                    content: t.String(),
+                    format: t.Union([
+                        t.Literal('markdown'),
+                        t.Literal('plaintext'),
+                        t.Literal('html'),
+                    ]),
+                }),
+                context: t.Object({
+                    widgetPosition: t.Number(),
+                }),
+            }),
+        },
     );

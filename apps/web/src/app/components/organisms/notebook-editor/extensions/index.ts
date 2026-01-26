@@ -18,3 +18,11 @@ export {
 export { TableOfContents, extractTocItems, type TocItem } from './table-of-contents';
 export { RecordingNode, type RecordingNodeOptions } from './recording-node';
 export { EmbedNode, type EmbedNodeOptions } from './embed-node';
+export {
+  AiBotWidget,
+  type AiBotWidgetOptions,
+  type AiBotWidgetStatus,
+  type AiBotWidgetAttrs,
+  getDocumentAsText,
+  getDocumentAsMarkdown,
+} from './ai-bot-widget';
