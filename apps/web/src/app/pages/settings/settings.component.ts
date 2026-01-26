@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { PreferencesService } from '../../services/preferences.service';
 import { NotificationService } from '../../services/notification.service';
+import { ThemeService, ThemeId } from '../../services/theme.service';
 import { ProfileAvatarComponent, SettingsHeaderComponent } from '../../components';
 
 interface PasskeyInfo {
@@ -27,6 +28,7 @@ export class SettingsComponent implements OnInit {
   readonly authService = inject(AuthService);
   readonly preferences = inject(PreferencesService);
   readonly notifications = inject(NotificationService);
+  readonly themeService = inject(ThemeService);
 
   // Check if current user is an admin
   readonly isAdmin = computed(() => this.authService.user()?.admin === true);
@@ -131,6 +133,10 @@ export class SettingsComponent implements OnInit {
 
   goToBots(): void {
     this.router.navigate(['/settings/bots']);
+  }
+
+  setTheme(themeId: ThemeId): void {
+    this.themeService.setTheme(themeId);
   }
 
   async logout(): Promise<void> {
