@@ -138,6 +138,20 @@ export const defaultSlashCommands: SlashCommandItem[] = [
     },
   },
   {
+    title: 'Image',
+    description: 'Upload an image',
+    icon: '🖼️',
+    command: ({ editor, range }) => {
+      // Dispatch event with range info so the handler can delete and insert atomically
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('upload-image', {
+          bubbles: true,
+          detail: { range },
+        }),
+      );
+    },
+  },
+  {
     title: 'Claude',
     description: 'AI assistant for document editing',
     icon: '🤖',

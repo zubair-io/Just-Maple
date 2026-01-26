@@ -548,6 +548,121 @@
         display: block;
       }
     }
+
+    // Memo image block styles
+    .memo-image-block {
+      margin: 1.5rem 0;
+      user-select: none;
+      position: relative;
+      border-radius: 8px;
+      transition: box-shadow 0.15s ease;
+
+      &.selected {
+        box-shadow: 0 0 0 2px var(--color-primary);
+
+        .memo-image-toolbar {
+          opacity: 1;
+          visibility: visible;
+        }
+      }
+
+      .memo-image-wrapper {
+        display: flex;
+        overflow: hidden;
+        border-radius: 8px;
+
+        img {
+          max-width: 100%;
+          height: auto;
+          display: block;
+          border-radius: 8px;
+        }
+      }
+
+      // Alignment variations
+      &.align-left {
+        .memo-image-wrapper {
+          justify-content: flex-start;
+        }
+        img {
+          max-width: 60%;
+        }
+      }
+
+      &.align-center {
+        .memo-image-wrapper {
+          justify-content: center;
+        }
+        img {
+          max-width: 80%;
+        }
+      }
+
+      &.align-right {
+        .memo-image-wrapper {
+          justify-content: flex-end;
+        }
+        img {
+          max-width: 60%;
+        }
+      }
+
+      &.align-full {
+        .memo-image-wrapper {
+          justify-content: center;
+        }
+        img {
+          max-width: 100%;
+          width: 100%;
+        }
+      }
+
+      // Toolbar styles
+      .memo-image-toolbar {
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        background: var(--color-bg);
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        opacity: 0;
+        visibility: hidden;
+        transition:
+          opacity 0.15s ease,
+          visibility 0.15s ease;
+        z-index: 10;
+
+        button {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          padding: 0;
+          border: none;
+          border-radius: 4px;
+          background: transparent;
+          color: var(--color-text-muted);
+          cursor: pointer;
+          transition: all 0.15s ease;
+
+          &:hover {
+            background: var(--color-bg-hover, rgba(0, 0, 0, 0.08));
+            color: var(--color-text-main);
+          }
+
+          &.active {
+            background: var(--color-primary);
+            color: white;
+          }
+        }
+      }
+    }
   }
 }
 

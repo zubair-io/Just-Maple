@@ -27,6 +27,7 @@ import { MemoDocumentService } from '../../../services/memo-document.service';
 import { PageService } from '../../../services/page.service';
 import { AuthService } from '../../../services/auth.service';
 import { TodoSyncService } from '../../../services/todo-sync.service';
+import { MemoImageService } from '../../../services/memo-image.service';
 import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
 import { SlashCommandMenuComponent } from '../../molecules/slash-command-menu/slash-command-menu.component';
 import DragHandle from '@tiptap/extension-drag-handle';
@@ -46,6 +47,7 @@ import {
   EmbedNode,
   EnhancedTaskItem,
   AiBotWidget,
+  ImageNode,
   type SlashCommandItem,
 } from './extensions';
 import { RecordingBlockComponent } from '../../molecules/recording-block/recording-block.component';
@@ -75,6 +77,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly authService = inject(AuthService);
   private readonly todoSyncService = inject(TodoSyncService);
   private readonly activatedRoute = inject(ActivatedRoute);
+  private readonly memoImageService = inject(MemoImageService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
@@ -219,6 +222,8 @@ export class NotebookEditorComponent implements OnDestroy {
           EmbedNode,
           // AI Bot Widget for inline AI assistance
           AiBotWidget,
+          // Image node with size options
+          ImageNode,
           // Drag handles for blocks
           DragHandle.configure({
             render: () => {
@@ -410,6 +415,12 @@ export class NotebookEditorComponent implements OnDestroy {
     editorElement.addEventListener('create-whiteboard-embed', ((event: CustomEvent) => {
       const range = event.detail?.range;
       this.createWhiteboardEmbed(range);
+    }) as EventListener);
+
+    // Listen for upload-image event from slash command
+    editorElement.addEventListener('upload-image', ((event: CustomEvent) => {
+      const range = event.detail?.range;
+      this.handleImageUpload(range);
     }) as EventListener);
   }
 
@@ -622,6 +633,77 @@ export class NotebookEditorComponent implements OnDestroy {
 
     // Insert the AI bot widget at the current position
     (this._editor.commands as any).insertAiBotWidget();
+  }
+
+  /**
+   * Handle image upload from slash command
+   * Opens file picker, uploads the image with loading state, and inserts it into the editor
+   * @param range Optional range to delete before inserting (from slash command)
+   */
+  private async handleImageUpload(range?: { from: number; to: number }): Promise<void> {
+    const pageId = this.pageId();
+    if (!pageId) {
+      console.error('[NotebookEditor] Cannot upload image: no page ID');
+      return;
+    }
+
+    // Delete the slash command range first
+    if (range) {
+      this._editor?.chain().focus().deleteRange(range).run();
+    }
+
+    // Open file picker
+    const file = await this.memoImageService.selectImageFile();
+    if (!file) {
+      return; // User cancelled
+    }
+
+    // Create a local preview URL for the optimistic UI
+    const previewUrl = URL.createObjectURL(file);
+
+    // Generate a temporary image ID for tracking
+    const imageId = crypto.randomUUID();
+
+    // Create placeholder URLs structure
+    const placeholderUrls = {
+      original: '',
+      small: '',
+      medium: '',
+      large: '',
+      cover: '',
+    };
+
+    // Insert the image immediately with loading state
+    (this._editor?.chain().focus() as any)
+      .insertMemoImage({
+        id: imageId,
+        urls: placeholderUrls,
+        size: 'medium',
+        loading: true,
+        previewUrl: previewUrl,
+      })
+      .run();
+
+    // Upload the image
+    this.memoImageService.uploadImage(pageId, file).subscribe({
+      next: (result) => {
+        // Update the image node with the real URLs and remove loading state
+        (this._editor?.commands as any).updateMemoImage(imageId, {
+          urls: result.urls,
+          loading: false,
+          previewUrl: null,
+        });
+
+        // Revoke the preview URL to free memory
+        URL.revokeObjectURL(previewUrl);
+      },
+      error: (err) => {
+        console.error('[NotebookEditor] Failed to upload image:', err);
+        // Remove the loading image on error
+        // TODO: Could show an error state instead
+        URL.revokeObjectURL(previewUrl);
+      },
+    });
   }
 
   /**
