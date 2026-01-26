@@ -19,7 +19,7 @@ const docsExist = existsSync(DOCS_DIR);
 export function isDevMode(): boolean {
     const result = config.isDev && process.env.NODE_ENV !== 'test' && docsExist;
     console.log(
-        `[isDevMode] NODE_ENV=${process.env.NODE_ENV}, Bun.env.NODE_ENV=${Bun.env.NODE_ENV}, config.isDev=${config.isDev}, docsExist=${docsExist}, result=${result}`,
+        `[isDevMode] NODE_ENV=${process.env.NODE_ENV}, config.isDev=${config.isDev}, docsExist=${docsExist}, result=${result}`,
     );
     return result;
 }
