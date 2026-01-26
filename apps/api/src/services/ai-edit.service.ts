@@ -130,21 +130,30 @@ Instruction: ${request.prompt}`;
     private parseResponse(response: string): AiEditResponse {
         const trimmed = response.trim();
 
-        // Check if response is a JSON array of operations
-        if (trimmed.startsWith('[')) {
-            try {
-                // Try to extract JSON from the response
-                const jsonMatch = trimmed.match(/\[[\s\S]*\]/);
+        // Try to extract JSON array from the response
+        // It might be at the start, or inside a code block like ```json ... ```
+        try {
+            // First, try to find JSON in a code block
+            const codeBlockMatch = trimmed.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+            if (codeBlockMatch) {
+                const operations = JSON.parse(codeBlockMatch[1]) as AiEditOperation[];
+                if (Array.isArray(operations) && operations.every(this.isValidOperation)) {
+                    return { operations };
+                }
+            }
+
+            // If no code block, check if response starts with [
+            if (trimmed.startsWith('[')) {
+                const jsonMatch = trimmed.match(/^\[[\s\S]*?\]/);
                 if (jsonMatch) {
                     const operations = JSON.parse(jsonMatch[0]) as AiEditOperation[];
-                    // Validate operations structure
                     if (Array.isArray(operations) && operations.every(this.isValidOperation)) {
                         return { operations };
                     }
                 }
-            } catch {
-                // If JSON parsing fails, treat as text response
             }
+        } catch {
+            // If JSON parsing fails, treat as text response
         }
 
         // Return as plain text response
