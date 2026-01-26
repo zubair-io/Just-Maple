@@ -51,3 +51,6 @@ export const KanbanPageGuard = createPageTypeGuard('kanban');
 
 /** Guard that matches memo-type pages (rich text notebook editor) */
 export const MemoPageGuard = createPageTypeGuard('memo');
+
+/** Guard that matches message-type pages (chat/messages) */
+export const MessagePageGuard = createPageTypeGuard('message');
