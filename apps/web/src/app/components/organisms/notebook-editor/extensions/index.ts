@@ -19,6 +19,11 @@ export { TableOfContents, extractTocItems, type TocItem } from './table-of-conte
 export { RecordingNode, type RecordingNodeOptions } from './recording-node';
 export { EmbedNode, type EmbedNodeOptions } from './embed-node';
 export {
+  EnhancedTaskItem,
+  type EnhancedTaskItemOptions,
+  type EnhancedTaskItemAttrs,
+} from './enhanced-task-item';
+export {
   AiBotWidget,
   type AiBotWidgetOptions,
   type AiBotWidgetStatus,

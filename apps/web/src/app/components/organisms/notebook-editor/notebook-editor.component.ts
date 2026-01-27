@@ -12,19 +12,21 @@ import {
   ApplicationRef,
   createComponent,
   EnvironmentInjector,
+  ViewEncapsulation,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ActivatedRoute } from '@angular/router';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
 import { marked } from 'marked';
 import { MemoDocumentService } from '../../../services/memo-document.service';
 import { PageService } from '../../../services/page.service';
 import { AuthService } from '../../../services/auth.service';
+import { TodoSyncService } from '../../../services/todo-sync.service';
 import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
 import { SlashCommandMenuComponent } from '../../molecules/slash-command-menu/slash-command-menu.component';
 import DragHandle from '@tiptap/extension-drag-handle';
@@ -42,6 +44,7 @@ import {
   TableOfContents,
   RecordingNode,
   EmbedNode,
+  EnhancedTaskItem,
   AiBotWidget,
   type SlashCommandItem,
 } from './extensions';
@@ -58,6 +61,7 @@ import type { Awareness } from 'y-protocols/awareness';
   imports: [CommonModule, SyncStatusComponent, EditorToolbarComponent],
   templateUrl: './notebook-editor.component.html',
   styleUrl: './notebook-editor.component.scss',
+  // encapsulation: ViewEncapsulation.None,
 })
 export class NotebookEditorComponent implements OnDestroy {
   @ViewChild('editorElement', { static: false })
@@ -69,6 +73,8 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly memoService = inject(MemoDocumentService);
   private readonly pageService = inject(PageService);
   private readonly authService = inject(AuthService);
+  private readonly todoSyncService = inject(TodoSyncService);
+  private readonly activatedRoute = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
@@ -198,9 +204,9 @@ export class NotebookEditorComponent implements OnDestroy {
           }),
           // Emoji replacer (e.g., :) -> emoji)
           EmojiReplacer,
-          // Task lists
+          // Task lists with enhanced attributes (id, dueDate, priority, color)
           TaskList,
-          TaskItem.configure({
+          EnhancedTaskItem.configure({
             nested: true,
           }),
           // Table support
@@ -286,9 +292,30 @@ export class NotebookEditorComponent implements OnDestroy {
       }
 
       this.isReady.set(true);
+
+      // Handle deep linking to todos via URL fragment
+      this.handleTodoDeepLink();
     } catch {
       this.error.set('Failed to load memo');
     }
+  }
+
+  /**
+   * Handle deep linking to a specific todo via URL fragment
+   * Expects fragment format: #todo-{todoId}
+   */
+  private handleTodoDeepLink(): void {
+    // Subscribe to fragment changes
+    this.activatedRoute.fragment.subscribe((fragment) => {
+      if (fragment && fragment.startsWith('todo-') && this._editor) {
+        const todoId = fragment.replace('todo-', '');
+
+        // Wait a bit for the editor content to fully render
+        setTimeout(() => {
+          (this._editor?.commands as any).scrollToTodo(todoId);
+        }, 300);
+      }
+    });
   }
 
   /**
@@ -625,6 +652,10 @@ export class NotebookEditorComponent implements OnDestroy {
         this.pageService.updatePage(pageId, { title }).subscribe();
       }, 500);
     }
+
+    // Sync todo metadata (debounced internally by TodoSyncService)
+    const pageId = this.pageId();
+    this.todoSyncService.syncTodoMeta(pageId, editor);
   }
 
   /**
@@ -756,6 +787,11 @@ export class NotebookEditorComponent implements OnDestroy {
     if (this.titleUpdateTimeout) {
       clearTimeout(this.titleUpdateTimeout);
       this.titleUpdateTimeout = null;
+    }
+
+    // Clear any pending todo sync
+    if (this.lastPageId) {
+      this.todoSyncService.clearPendingSync(this.lastPageId);
     }
 
     // Clean up recording components (legacy)

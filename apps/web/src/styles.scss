@@ -384,47 +384,47 @@ blockquote {
     list-style-type: disc;
   }
 
-  /* Task Lists */
-  ul[data-type='taskList'] {
-    list-style: none;
-    padding-left: 0;
+  // /* Task Lists */
+  // ul[data-type='taskList'] {
+  //   list-style: none;
+  //   padding-left: 0;
 
-    li {
-      display: flex;
-      align-items: flex-start;
-      gap: 0.5rem;
+  //   li {
+  //     display: flex;
+  //     align-items: flex-start;
+  //     gap: 0.5rem;
 
-      &[data-checked='true'] {
-        > div > p {
-          color: var(--color-text-muted);
-          text-decoration: line-through;
-        }
-      }
+  //     &[data-checked='true'] {
+  //       > div > p {
+  //         color: var(--color-text-muted);
+  //         text-decoration: line-through;
+  //       }
+  //     }
 
-      > label {
-        display: flex;
-        align-items: center;
-        margin-top: 0.25rem;
+  //     > label {
+  //       display: flex;
+  //       align-items: center;
+  //       margin-top: 0.25rem;
 
-        input[type='checkbox'] {
-          width: 1rem;
-          height: 1rem;
-          border-radius: 0.25rem;
-          accent-color: var(--color-primary);
-          pointer-events: none;
-        }
-      }
+  //       input[type='checkbox'] {
+  //         width: 1rem;
+  //         height: 1rem;
+  //         border-radius: 0.25rem;
+  //         accent-color: var(--color-primary);
+  //         pointer-events: none;
+  //       }
+  //     }
 
-      > div {
-        flex: 1;
-        min-width: 0;
+  //     > div {
+  //       flex: 1;
+  //       min-width: 0;
 
-        p {
-          min-width: 2px;
-        }
-      }
-    }
-  }
+  //       p {
+  //         min-width: 2px;
+  //       }
+  //     }
+  //   }
+  // }
 
   /* Blockquote */
   blockquote {

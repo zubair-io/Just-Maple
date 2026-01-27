@@ -1,4 +1,5 @@
 import { Type, Static } from '@sinclair/typebox';
+import { PageTodoMetaSchema } from './todo';
 
 export const PageContentSchema = Type.Object({
     type: Type.String(),
@@ -48,6 +49,8 @@ export const PageSchema = Type.Object({
     isArchived: Type.Optional(Type.Boolean()),
     isTrashed: Type.Optional(Type.Boolean()),
     trashedAt: Type.Optional(Type.String({ format: 'date-time' })),
+    // Todo metadata for efficient querying across memos
+    todoMeta: Type.Optional(PageTodoMetaSchema),
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
 });
@@ -75,6 +78,7 @@ export const UpdatePageSchema = Type.Object({
     isFavorite: Type.Optional(Type.Boolean()),
     isArchived: Type.Optional(Type.Boolean()),
     isTrashed: Type.Optional(Type.Boolean()),
+    todoMeta: Type.Optional(PageTodoMetaSchema), // Todo metadata for efficient querying
 });
 
 export type UpdatePageInput = Static<typeof UpdatePageSchema>;

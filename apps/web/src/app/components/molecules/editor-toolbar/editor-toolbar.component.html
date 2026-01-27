@@ -1,72 +1,143 @@
-<div class="editor-toolbar" [class.disabled]="!editor()">
-  <!-- Formatting buttons -->
-  <div class="toolbar-group">
-    @for (btn of formattingButtons(); track btn.label) {
-      <button
-        type="button"
-        class="toolbar-btn"
-        [class.active]="btn.isActive?.()"
-        [disabled]="btn.disabled?.()"
-        [title]="btn.label"
-        (click)="btn.action()"
-      >
-        <span class="btn-icon" [class.bold]="btn.icon === 'B'" [class.italic]="btn.icon === 'I'">
-          {{ btn.icon }}
-        </span>
-      </button>
-    }
+<div class="toolbar-container">
+  <div class="editor-toolbar" [class.disabled]="!editor()">
+    <!-- Formatting buttons -->
+    <div class="toolbar-group">
+      @for (btn of formattingButtons(); track btn.label) {
+        <button
+          type="button"
+          class="toolbar-btn"
+          [class.active]="btn.isActive?.()"
+          [disabled]="btn.disabled?.()"
+          [title]="btn.label"
+          (click)="btn.action()"
+        >
+          <span class="btn-icon" [class.bold]="btn.icon === 'B'" [class.italic]="btn.icon === 'I'">
+            {{ btn.icon }}
+          </span>
+        </button>
+      }
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Block buttons -->
+    <div class="toolbar-group">
+      @for (btn of blockButtons(); track btn.label) {
+        <button
+          type="button"
+          class="toolbar-btn"
+          [class.active]="btn.isActive?.()"
+          [disabled]="btn.disabled?.()"
+          [title]="btn.label"
+          (click)="btn.action()"
+        >
+          <span class="btn-icon">{{ btn.icon }}</span>
+        </button>
+      }
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Insert buttons -->
+    <div class="toolbar-group">
+      @for (btn of insertButtons(); track btn.label) {
+        <button
+          type="button"
+          class="toolbar-btn"
+          [class.active]="btn.isActive?.()"
+          [disabled]="btn.disabled?.()"
+          [title]="btn.label"
+          (click)="btn.action()"
+        >
+          <span class="btn-icon">{{ btn.icon }}</span>
+        </button>
+      }
+    </div>
+
+    <div class="toolbar-spacer"></div>
+
+    <!-- History buttons -->
+    <div class="toolbar-group">
+      @for (btn of historyButtons(); track btn.label) {
+        <button
+          type="button"
+          class="toolbar-btn"
+          [disabled]="btn.disabled?.()"
+          [title]="btn.label"
+          (click)="btn.action()"
+        >
+          <span class="btn-icon">{{ btn.icon }}</span>
+        </button>
+      }
+    </div>
+
+    <!-- Slot for header actions -->
+    <ng-content></ng-content>
   </div>
 
-  <div class="toolbar-divider"></div>
+  <!-- Todo toolbar - shown when cursor is in a task item -->
+  @if (activeTaskItem()) {
+    <div class="todo-toolbar" @slideInOut>
+      <span class="todo-toolbar-label">Task:</span>
 
-  <!-- Block buttons -->
-  <div class="toolbar-group">
-    @for (btn of blockButtons(); track btn.label) {
-      <button
-        type="button"
-        class="toolbar-btn"
-        [class.active]="btn.isActive?.()"
-        [disabled]="btn.disabled?.()"
-        [title]="btn.label"
-        (click)="btn.action()"
-      >
-        <span class="btn-icon">{{ btn.icon }}</span>
-      </button>
-    }
-  </div>
+      <!-- Priority buttons -->
+      <div class="toolbar-group">
+        @for (p of priorities; track p.value) {
+          <button
+            type="button"
+            class="toolbar-btn priority-btn"
+            [class.active]="activeTaskItem()?.priority === p.value"
+            [class.priority-high]="p.value === 'high'"
+            [class.priority-medium]="p.value === 'medium'"
+            [class.priority-low]="p.value === 'low'"
+            [title]="p.label"
+            (click)="setPriority(activeTaskItem()?.priority === p.value ? null : p.value)"
+          >
+            {{ p.shortLabel }}
+          </button>
+        }
+      </div>
 
-  <div class="toolbar-divider"></div>
+      <div class="toolbar-divider"></div>
 
-  <!-- Insert buttons -->
-  <div class="toolbar-group">
-    @for (btn of insertButtons(); track btn.label) {
-      <button
-        type="button"
-        class="toolbar-btn"
-        [class.active]="btn.isActive?.()"
-        [disabled]="btn.disabled?.()"
-        [title]="btn.label"
-        (click)="btn.action()"
-      >
-        <span class="btn-icon">{{ btn.icon }}</span>
-      </button>
-    }
-  </div>
+      <!-- Color buttons -->
+      <div class="toolbar-group color-group">
+        @for (c of colors; track c.value) {
+          <button
+            type="button"
+            class="toolbar-btn color-btn"
+            [class.active]="activeTaskItem()?.color === c.value"
+            [style.--color-value]="c.hex"
+            [title]="c.label"
+            (click)="setColor(activeTaskItem()?.color === c.value ? null : c.value)"
+          >
+            <span class="color-dot" [style.background]="c.hex"></span>
+          </button>
+        }
+      </div>
 
-  <div class="toolbar-spacer"></div>
+      <div class="toolbar-divider"></div>
 
-  <!-- History buttons -->
-  <div class="toolbar-group">
-    @for (btn of historyButtons(); track btn.label) {
-      <button
-        type="button"
-        class="toolbar-btn"
-        [disabled]="btn.disabled?.()"
-        [title]="btn.label"
-        (click)="btn.action()"
-      >
-        <span class="btn-icon">{{ btn.icon }}</span>
-      </button>
-    }
-  </div>
+      <!-- Due date -->
+      <div class="toolbar-group date-group">
+        <input
+          type="date"
+          class="date-input"
+          [value]="getFormattedDate()"
+          (change)="setDueDate($any($event.target).value)"
+          title="Set due date"
+        />
+        @if (activeTaskItem()?.dueDate) {
+          <button
+            type="button"
+            class="toolbar-btn clear-date-btn"
+            title="Clear due date"
+            (click)="clearDueDate()"
+          >
+            ✕
+          </button>
+        }
+      </div>
+    </div>
+  }
 </div>

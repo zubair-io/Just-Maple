@@ -462,12 +462,20 @@ export class NotebookService {
    */
   getNotebookSummary(notebookId: string): Observable<{
     notebook: Notebook;
-    summary: { pageCounts: Record<string, number>; totalPages: number };
+    summary: {
+      pageCounts: Record<string, number>;
+      totalPages: number;
+      todoStats: { todoCount: number; completedCount: number; overdueCount: number };
+    };
   }> {
     return this.http
       .get<{
         notebook: Notebook;
-        summary: { pageCounts: Record<string, number>; totalPages: number };
+        summary: {
+          pageCounts: Record<string, number>;
+          totalPages: number;
+          todoStats: { todoCount: number; completedCount: number; overdueCount: number };
+        };
       }>(`/api/notebooks/${notebookId}/summary`)
       .pipe(
         catchError((err) => {

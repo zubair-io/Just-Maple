@@ -1,10 +1,15 @@
+.toolbar-container {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
 .editor-toolbar {
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 8px 12px;
   background: var(--color-bg);
-  border-bottom: 1px solid var(--color-border);
   flex-wrap: wrap;
 
   &.disabled {
@@ -75,4 +80,128 @@
 
 .toolbar-spacer {
   flex: 1;
+}
+
+.todo-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+  border-top: 1px solid var(--color-border);
+  overflow: hidden;
+
+  .todo-toolbar-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-right: 4px;
+  }
+}
+
+// Priority buttons with color coding
+.priority-btn {
+  width: auto !important;
+  padding: 0 8px !important;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+
+  &.priority-high.active {
+    background: #fee2e2;
+    color: #dc2626;
+  }
+
+  &.priority-medium.active {
+    background: #fef3c7;
+    color: #d97706;
+  }
+
+  &.priority-low.active {
+    background: #dbeafe;
+    color: #2563eb;
+  }
+}
+
+// Color buttons
+.color-group {
+  gap: 4px;
+}
+
+.color-btn {
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border: 2px solid transparent !important;
+
+  &.active {
+    border-color: var(--color-value) !important;
+    background: transparent !important;
+  }
+
+  .color-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+  }
+}
+
+// Date input
+.date-group {
+  gap: 4px;
+}
+
+.date-input {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text-main);
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--color-text-muted);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-primary);
+  }
+}
+
+.clear-date-btn {
+  width: 24px !important;
+  height: 24px !important;
+  font-size: 12px;
+  color: var(--color-text-muted);
+
+  &:hover {
+    color: var(--color-error, #dc2626);
+  }
+}
+
+// Dark mode adjustments
+:host-context(.dark-mode) {
+  .priority-btn {
+    &.priority-high.active {
+      background: rgba(220, 38, 38, 0.2);
+      color: #f87171;
+    }
+
+    &.priority-medium.active {
+      background: rgba(217, 119, 6, 0.2);
+      color: #fbbf24;
+    }
+
+    &.priority-low.active {
+      background: rgba(37, 99, 235, 0.2);
+      color: #60a5fa;
+    }
+  }
 }

@@ -14,6 +14,118 @@ This guide covers the Angular frontend application, including component architec
 
 ---
 
+## Core Concepts
+
+### Notebooks
+
+Notebooks are the primary organizational unit in Just Maple. They function as folders that contain pages and can be shared with other users.
+
+#### Creating a Notebook
+
+1. Click the **+** button in the sidebar
+2. Enter a name for the notebook
+3. The notebook appears in the sidebar and is ready to use
+
+#### Notebook Properties
+
+| Property    | Description                                     |
+| ----------- | ----------------------------------------------- |
+| `label`     | Display name of the notebook                    |
+| `value`     | Content type: `mixed`, `recordings`, or `notes` |
+| `sharing`   | Access permissions (owner, write, read, public) |
+| `createdAt` | Timestamp when notebook was created             |
+| `updatedAt` | Timestamp of last modification                  |
+
+#### Sharing & Permissions
+
+Notebooks support granular access control:
+
+| Access Level | Capabilities                                |
+| ------------ | ------------------------------------------- |
+| **Owner**    | Full control, can delete and manage sharing |
+| **Write**    | Can create, edit, and delete pages          |
+| **Read**     | Can view pages but not modify               |
+| **Public**   | Anyone with the link can view (read-only)   |
+
+To share a notebook:
+
+1. Open the notebook
+2. Click the share icon in the header
+3. Enter the email of the user to invite
+4. Select the access level (Read or Write)
+
+#### Notebook Summary
+
+The notebook summary page (shown when clicking a notebook in the sidebar) displays:
+
+- Total page count
+- Page breakdown by type (memos, whiteboards, recordings, etc.)
+- Task statistics (total, completed, pending, overdue)
+
+### Page Types
+
+Pages are the content units within notebooks. Each page has a specific type that determines its editor and capabilities.
+
+| Type            | Icon          | Description                                  |
+| --------------- | ------------- | -------------------------------------------- |
+| **Memo**        | `edit_note`   | Rich text documents with TipTap editor       |
+| **Whiteboard**  | `draw`        | Freeform canvas for drawing and diagrams     |
+| **Recording**   | `mic`         | Audio recordings with optional transcription |
+| **Message**     | `chat`        | Chat-style messages within the notebook      |
+| **Kanban**      | `view_kanban` | Kanban board for task management             |
+| **Collectable** | `grid_view`   | Collection items (e.g., LEGO sets)           |
+
+#### Memo Pages
+
+Memos are rich text documents powered by TipTap. They support:
+
+- **Formatting**: Bold, italic, strikethrough, code
+- **Blocks**: Headings, lists, blockquotes, code blocks
+- **Tables**: Full table support with resizable columns
+- **Task Lists**: Enhanced todos with priority, color, and due dates
+- **Embeds**: Recordings and whiteboards embedded inline
+- **Slash Commands**: Type `/` to insert blocks quickly
+- **Real-time Collaboration**: Multiple users can edit simultaneously
+
+#### Whiteboard Pages
+
+Whiteboards provide a freeform canvas for:
+
+- Freehand drawing with pressure sensitivity
+- Shape tools (rectangles, ellipses, lines)
+- Text annotations
+- Image uploads
+- Real-time collaboration with cursors
+
+#### Recording Pages
+
+Recordings capture audio with optional AI-powered features:
+
+- Audio recording with waveform visualization
+- Whisper-based transcription (local processing)
+- AI-generated summaries
+- Playback controls with speed adjustment
+
+#### Creating Pages
+
+1. Navigate to a notebook
+2. Use the sidebar **+** button or slash commands in a memo
+3. Select the page type
+4. The page opens in the appropriate editor
+
+#### Page Routing
+
+Pages use a hierarchical URL structure:
+
+```
+/:notebookId           → Notebook summary
+/:notebookId/:pageId   → Page view (type determined by route guard)
+```
+
+Route guards (`canMatch`) determine which component loads based on the page type stored in the database.
+
+---
+
 ## Project Structure
 
 ```
@@ -652,6 +764,162 @@ export class NoteEditorComponent {
 
     ngOnDestroy(): void {
         this.editor?.destroy();
+    }
+}
+```
+
+### Enhanced Todo Feature
+
+The todo/task feature extends TipTap's built-in task list with enhanced attributes for priority, color coding, and due dates.
+
+#### Task Item Attributes
+
+| Attribute  | Type                                  | Description                    |
+| ---------- | ------------------------------------- | ------------------------------ |
+| `id`       | `string`                              | Unique identifier (UUID-based) |
+| `checked`  | `boolean`                             | Completion status              |
+| `priority` | `'low' \| 'medium' \| 'high' \| null` | Priority level                 |
+| `color`    | `string \| null`                      | Color for visual organization  |
+| `dueDate`  | `string \| null`                      | ISO date string for due date   |
+
+#### Extension Files
+
+```
+apps/web/src/app/components/organisms/notebook-editor/extensions/
+├── enhanced-task-item.ts    # TipTap extension with custom NodeView
+├── enhanced-task-list.ts    # Task list container extension
+└── ...
+```
+
+#### Unique ID Handling
+
+When users press Enter to create new tasks, TipTap copies the previous node's attributes (including the ID). A ProseMirror plugin detects duplicate IDs and assigns new ones:
+
+```typescript
+// enhanced-task-item.ts
+addProseMirrorPlugins() {
+    return [
+        new Plugin({
+            key: new PluginKey('enhancedTaskItemUniqueIds'),
+            appendTransaction(transactions, oldState, newState) {
+                if (!transactions.some((tr) => tr.docChanged)) return null;
+
+                const seenIds = new Set<string>();
+                const nodesToFix: { pos: number; node: any }[] = [];
+
+                newState.doc.descendants((node, pos) => {
+                    if (node.type.name === 'taskItem') {
+                        const id = node.attrs['id'];
+                        if (seenIds.has(id)) {
+                            nodesToFix.push({ pos, node });
+                        } else {
+                            seenIds.add(id);
+                        }
+                    }
+                    return true;
+                });
+
+                if (nodesToFix.length === 0) return null;
+
+                const { tr } = newState;
+                nodesToFix.forEach(({ pos, node }) => {
+                    tr.setNodeMarkup(pos, undefined, {
+                        ...node.attrs,
+                        id: generateTodoId(),
+                    });
+                });
+                return tr;
+            },
+        }),
+    ];
+}
+```
+
+#### Todo Toolbar
+
+The editor toolbar detects when the cursor is inside a task item and shows additional controls:
+
+```typescript
+// editor-toolbar.component.ts
+private updateActiveTaskItem(editor: Editor): void {
+    const { $from } = editor.state.selection;
+
+    for (let d = $from.depth; d >= 0; d--) {
+        const node = $from.node(d);
+        if (node.type.name === 'taskItem') {
+            this.activeTaskItem.set({
+                id: node.attrs['id'],
+                checked: node.attrs['checked'],
+                priority: node.attrs['priority'],
+                color: node.attrs['color'],
+                dueDate: node.attrs['dueDate'],
+                pos: $from.before(d),
+            });
+            return;
+        }
+    }
+    this.activeTaskItem.set(null);
+}
+```
+
+The toolbar shows:
+
+- **Priority selector** - Set low/medium/high priority
+- **Color picker** - Choose a color for the task
+- **Date picker** - Set a due date
+
+#### Styling
+
+Task items use CSS custom properties for dynamic coloring:
+
+```scss
+// notebook-editor.component.scss
+.todo-item[data-todo-color] {
+    border-left: 3px solid var(--todo-color);
+}
+
+// Priority colors
+.priority-high {
+    --priority-color: #dc2626;
+}
+.priority-medium {
+    --priority-color: #f59e0b;
+}
+.priority-low {
+    --priority-color: #3b82f6;
+}
+```
+
+#### Database Schema
+
+Todo metadata is stored on the `pages` collection for aggregation:
+
+```typescript
+interface Page {
+    // ... other fields
+    todoMeta?: {
+        hasTodos: boolean;
+        todoCount: number;
+        completedCount: number;
+        overdueCount: number;
+    };
+}
+```
+
+The notebook summary endpoint aggregates todo stats:
+
+```typescript
+// GET /api/notebooks/:id/summary
+{
+    notebook: Notebook;
+    summary: {
+        pageCounts: Record<string, number>;
+        totalPages: number;
+        todoStats: {
+            todoCount: number;
+            completedCount: number;
+            overdueCount: number;
+        }
     }
 }
 ```

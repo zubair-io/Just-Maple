@@ -1,6 +1,7 @@
 import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Subscription, switchMap, of, combineLatest, map, catchError } from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
@@ -11,12 +12,13 @@ import type { NotebookMember } from '@maple/shared';
 interface NotebookSummary {
   pageCounts: Record<string, number>;
   totalPages: number;
+  todoStats: { todoCount: number; completedCount: number; overdueCount: number };
 }
 
 @Component({
   selector: 'app-chat-view',
   standalone: true,
-  imports: [CommonModule, ShareModalComponent, NotebookHeaderComponent],
+  imports: [CommonModule, FormsModule, ShareModalComponent, NotebookHeaderComponent],
   templateUrl: './chat-view.component.html',
   styleUrl: './chat-view.component.scss',
 })
@@ -29,6 +31,8 @@ export class ChatViewComponent implements OnInit, OnDestroy {
 
   readonly selectedNotebookId = signal<string | null>(null);
   readonly showShareModal = signal<boolean>(false);
+  readonly isEditingName = signal<boolean>(false);
+  readonly editingName = signal<string>('');
   private readonly membersRefreshTrigger = signal<number>(0);
   private readonly summaryRefreshTrigger = signal<number>(0);
 
@@ -128,5 +132,41 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   onMembersChanged(): void {
     // Trigger members refetch after sharing/unsharing
     this.membersRefreshTrigger.update((n) => n + 1);
+  }
+
+  startEditingName(): void {
+    const notebook = this.selectedNotebook();
+    if (notebook) {
+      this.editingName.set(notebook.label);
+      this.isEditingName.set(true);
+    }
+  }
+
+  saveNotebookName(): void {
+    const notebookId = this.selectedNotebookId();
+    const newName = this.editingName().trim();
+    if (notebookId && newName) {
+      this.notebookService.updateNotebook(notebookId, { label: newName }).subscribe({
+        next: () => {
+          this.isEditingName.set(false);
+        },
+        error: () => {
+          // Keep editing mode on error
+        },
+      });
+    }
+  }
+
+  cancelEditingName(): void {
+    this.isEditingName.set(false);
+  }
+
+  onNameKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      this.saveNotebookName();
+    } else if (event.key === 'Escape') {
+      this.cancelEditingName();
+    }
   }
 }

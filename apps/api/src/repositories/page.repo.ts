@@ -2,7 +2,14 @@ import { ObjectId, Collection } from 'mongodb';
 import * as Automerge from '@automerge/automerge';
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/client';
-import type { Page, PageContent, PageType, CreatePageInput, UpdatePageInput } from '@maple/shared';
+import type {
+    Page,
+    PageContent,
+    PageType,
+    CreatePageInput,
+    UpdatePageInput,
+    PageTodoMeta,
+} from '@maple/shared';
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
 import { deleteMemo } from './memo.repo';
 import { deleteWhiteboard } from './whiteboard.repo';
@@ -32,6 +39,8 @@ interface PageDocument {
     isArchived?: boolean;
     isTrashed?: boolean;
     trashedAt?: Date;
+    // Todo metadata for efficient querying
+    todoMeta?: PageTodoMeta;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -56,6 +65,7 @@ function toPageResponse(doc: PageDocument): Page {
         isArchived: doc.isArchived,
         isTrashed: doc.isTrashed,
         trashedAt: doc.trashedAt?.toISOString(),
+        todoMeta: doc.todoMeta, // Todo metadata
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
     };
@@ -311,6 +321,9 @@ export async function updatePage(
             } else {
                 updateData.trashedAt = undefined;
             }
+        }
+        if (data.todoMeta !== undefined) {
+            updateData.todoMeta = data.todoMeta;
         }
 
         const result = await getCollection().findOneAndUpdate(
@@ -627,5 +640,47 @@ export async function countPagesByTypeForNotebook(
         return counts;
     } catch {
         return {};
+    }
+}
+
+/**
+ * Get aggregated todo stats for a notebook
+ */
+export async function getTodoStatsForNotebook(notebookId: string): Promise<{
+    todoCount: number;
+    completedCount: number;
+    overdueCount: number;
+}> {
+    try {
+        const pipeline = [
+            {
+                $match: {
+                    notebookId: new ObjectId(notebookId),
+                    isTrashed: { $ne: true },
+                    'todoMeta.hasTodos': true,
+                },
+            },
+            {
+                $group: {
+                    _id: null,
+                    todoCount: { $sum: '$todoMeta.todoCount' },
+                    completedCount: { $sum: '$todoMeta.completedCount' },
+                    overdueCount: { $sum: '$todoMeta.overdueCount' },
+                },
+            },
+        ];
+
+        const results = await getCollection().aggregate(pipeline).toArray();
+        if (results.length === 0) {
+            return { todoCount: 0, completedCount: 0, overdueCount: 0 };
+        }
+
+        return {
+            todoCount: results[0].todoCount || 0,
+            completedCount: results[0].completedCount || 0,
+            overdueCount: results[0].overdueCount || 0,
+        };
+    } catch {
+        return { todoCount: 0, completedCount: 0, overdueCount: 0 };
     }
 }

@@ -10,3 +10,4 @@ export { SettingsHeaderComponent } from './settings-header/settings-header.compo
 export { OfflineIndicatorComponent } from './offline-indicator/offline-indicator.component';
 export { NoteHeaderComponent, type ExportFormat } from './note-header/note-header.component';
 export { NotebookHeaderComponent } from './notebook-header/notebook-header.component';
+export { TodoPopoverComponent } from './todo-popover/todo-popover.component';
