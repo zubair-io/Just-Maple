@@ -1,7 +1,7 @@
 .toolbar-container {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex-shrink: 0;
 }
 
 .editor-toolbar {

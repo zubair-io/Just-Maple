@@ -76,7 +76,7 @@
   }
 }
 
-.editor-content {
+::ng-deep.editor-content {
   flex: 1 0 auto; // Allow content to grow but not shrink
   position: relative;
 

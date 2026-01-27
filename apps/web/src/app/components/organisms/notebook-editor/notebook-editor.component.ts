@@ -58,7 +58,7 @@ import type { Awareness } from 'y-protocols/awareness';
   imports: [CommonModule, SyncStatusComponent, EditorToolbarComponent],
   templateUrl: './notebook-editor.component.html',
   styleUrl: './notebook-editor.component.scss',
-  encapsulation: ViewEncapsulation.None,
+  // encapsulation: ViewEncapsulation.None,
 })
 export class NotebookEditorComponent implements OnDestroy {
   @ViewChild('editorElement', { static: false })

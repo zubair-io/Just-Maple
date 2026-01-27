@@ -656,6 +656,162 @@ export class NoteEditorComponent {
 }
 ```
 
+### Enhanced Todo Feature
+
+The todo/task feature extends TipTap's built-in task list with enhanced attributes for priority, color coding, and due dates.
+
+#### Task Item Attributes
+
+| Attribute  | Type                                  | Description                    |
+| ---------- | ------------------------------------- | ------------------------------ |
+| `id`       | `string`                              | Unique identifier (UUID-based) |
+| `checked`  | `boolean`                             | Completion status              |
+| `priority` | `'low' \| 'medium' \| 'high' \| null` | Priority level                 |
+| `color`    | `string \| null`                      | Color for visual organization  |
+| `dueDate`  | `string \| null`                      | ISO date string for due date   |
+
+#### Extension Files
+
+```
+apps/web/src/app/components/organisms/notebook-editor/extensions/
+├── enhanced-task-item.ts    # TipTap extension with custom NodeView
+├── enhanced-task-list.ts    # Task list container extension
+└── ...
+```
+
+#### Unique ID Handling
+
+When users press Enter to create new tasks, TipTap copies the previous node's attributes (including the ID). A ProseMirror plugin detects duplicate IDs and assigns new ones:
+
+```typescript
+// enhanced-task-item.ts
+addProseMirrorPlugins() {
+    return [
+        new Plugin({
+            key: new PluginKey('enhancedTaskItemUniqueIds'),
+            appendTransaction(transactions, oldState, newState) {
+                if (!transactions.some((tr) => tr.docChanged)) return null;
+
+                const seenIds = new Set<string>();
+                const nodesToFix: { pos: number; node: any }[] = [];
+
+                newState.doc.descendants((node, pos) => {
+                    if (node.type.name === 'taskItem') {
+                        const id = node.attrs['id'];
+                        if (seenIds.has(id)) {
+                            nodesToFix.push({ pos, node });
+                        } else {
+                            seenIds.add(id);
+                        }
+                    }
+                    return true;
+                });
+
+                if (nodesToFix.length === 0) return null;
+
+                const { tr } = newState;
+                nodesToFix.forEach(({ pos, node }) => {
+                    tr.setNodeMarkup(pos, undefined, {
+                        ...node.attrs,
+                        id: generateTodoId(),
+                    });
+                });
+                return tr;
+            },
+        }),
+    ];
+}
+```
+
+#### Todo Toolbar
+
+The editor toolbar detects when the cursor is inside a task item and shows additional controls:
+
+```typescript
+// editor-toolbar.component.ts
+private updateActiveTaskItem(editor: Editor): void {
+    const { $from } = editor.state.selection;
+
+    for (let d = $from.depth; d >= 0; d--) {
+        const node = $from.node(d);
+        if (node.type.name === 'taskItem') {
+            this.activeTaskItem.set({
+                id: node.attrs['id'],
+                checked: node.attrs['checked'],
+                priority: node.attrs['priority'],
+                color: node.attrs['color'],
+                dueDate: node.attrs['dueDate'],
+                pos: $from.before(d),
+            });
+            return;
+        }
+    }
+    this.activeTaskItem.set(null);
+}
+```
+
+The toolbar shows:
+
+- **Priority selector** - Set low/medium/high priority
+- **Color picker** - Choose a color for the task
+- **Date picker** - Set a due date
+
+#### Styling
+
+Task items use CSS custom properties for dynamic coloring:
+
+```scss
+// notebook-editor.component.scss
+.todo-item[data-todo-color] {
+    border-left: 3px solid var(--todo-color);
+}
+
+// Priority colors
+.priority-high {
+    --priority-color: #dc2626;
+}
+.priority-medium {
+    --priority-color: #f59e0b;
+}
+.priority-low {
+    --priority-color: #3b82f6;
+}
+```
+
+#### Database Schema
+
+Todo metadata is stored on the `pages` collection for aggregation:
+
+```typescript
+interface Page {
+    // ... other fields
+    todoMeta?: {
+        hasTodos: boolean;
+        todoCount: number;
+        completedCount: number;
+        overdueCount: number;
+    };
+}
+```
+
+The notebook summary endpoint aggregates todo stats:
+
+```typescript
+// GET /api/notebooks/:id/summary
+{
+    notebook: Notebook;
+    summary: {
+        pageCounts: Record<string, number>;
+        totalPages: number;
+        todoStats: {
+            todoCount: number;
+            completedCount: number;
+            overdueCount: number;
+        }
+    }
+}
+```
+
 ---
 
 ## Native Bridge

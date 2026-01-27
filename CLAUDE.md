@@ -415,6 +415,137 @@ When page IDs change, memo/whiteboard references must be updated OR pages must b
 
 ---
 
+## Enhanced Todo Feature
+
+### Overview
+
+The todo/task feature extends TipTap's built-in task list with enhanced attributes and tracking. Tasks support priority levels, color coding, and due dates.
+
+### Architecture
+
+```
+apps/web/src/app/components/organisms/notebook-editor/extensions/
+├── enhanced-task-item.ts    # TipTap extension with custom NodeView
+├── enhanced-task-list.ts    # Task list container extension
+└── ...
+```
+
+### Task Item Attributes
+
+| Attribute  | Type                                  | Description                    |
+| ---------- | ------------------------------------- | ------------------------------ |
+| `id`       | `string`                              | Unique identifier (UUID-based) |
+| `checked`  | `boolean`                             | Completion status              |
+| `priority` | `'low' \| 'medium' \| 'high' \| null` | Priority level                 |
+| `color`    | `string \| null`                      | Color for visual organization  |
+| `dueDate`  | `string \| null`                      | ISO date string for due date   |
+
+### Unique ID Handling
+
+When users press Enter to create new tasks, TipTap copies the previous node's attributes (including the ID). A ProseMirror plugin in `enhanced-task-item.ts` detects duplicate IDs and assigns new ones:
+
+```typescript
+addProseMirrorPlugins() {
+    return [
+        new Plugin({
+            key: new PluginKey('enhancedTaskItemUniqueIds'),
+            appendTransaction(transactions, oldState, newState) {
+                // Scan for duplicate IDs and fix them
+                const seenIds = new Set<string>();
+                newState.doc.descendants((node, pos) => {
+                    if (node.type.name === 'taskItem') {
+                        const id = node.attrs['id'];
+                        if (seenIds.has(id)) {
+                            // Duplicate found - will be fixed
+                        }
+                        seenIds.add(id);
+                    }
+                });
+                // Return transaction with fixed IDs
+            },
+        }),
+    ];
+}
+```
+
+### Todo Toolbar
+
+When the cursor is inside a task item, the editor toolbar shows additional controls:
+
+- **Priority selector** - Set low/medium/high priority
+- **Color picker** - Choose a color for the task
+- **Date picker** - Set a due date
+
+The toolbar detects the active task using `editor.state.selection.$from` and traversing up the node tree.
+
+### Database Schema
+
+Tasks are stored as part of memo Y.js content. The `pages` collection stores aggregated todo metadata:
+
+```typescript
+interface Page {
+    // ... other fields
+    todoMeta?: {
+        hasTodos: boolean;
+        todoCount: number;
+        completedCount: number;
+        overdueCount: number;
+    };
+}
+```
+
+### API Endpoints
+
+| Endpoint                         | Method | Description                                  |
+| -------------------------------- | ------ | -------------------------------------------- |
+| `GET /api/notebooks/:id/summary` | GET    | Returns notebook summary including todoStats |
+
+The summary endpoint returns:
+
+```typescript
+{
+    notebook: Notebook;
+    summary: {
+        pageCounts: Record<string, number>;
+        totalPages: number;
+        todoStats: {
+            todoCount: number;
+            completedCount: number;
+            overdueCount: number;
+        }
+    }
+}
+```
+
+### Styling
+
+Task items use CSS custom properties for dynamic coloring:
+
+```scss
+.todo-item[data-todo-color] {
+    --todo-color: attr(data-todo-color);
+    border-left-color: var(--todo-color);
+}
+```
+
+Priority indicators use color coding:
+
+- **High**: Red (`#dc2626`)
+- **Medium**: Amber (`#f59e0b`)
+- **Low**: Blue (`#3b82f6`)
+
+### Key Files
+
+| File                                       | Purpose                              |
+| ------------------------------------------ | ------------------------------------ |
+| `enhanced-task-item.ts`                    | TipTap extension with NodeView       |
+| `editor-toolbar.component.ts`              | Detects active task, shows controls  |
+| `notebook-editor.component.scss`           | Task item styling                    |
+| `page.repo.ts` (`getTodoStatsForNotebook`) | Aggregates todo stats from MongoDB   |
+| `chat-view.component.ts`                   | Displays notebook summary with todos |
+
+---
+
 ## Quick Reference
 
 | Do                             | Don't                               |
