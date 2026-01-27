@@ -87,7 +87,6 @@
 .editor-content {
   flex: 1 0 auto; // Allow content to grow but not shrink
   position: relative;
-  padding-left: 40px; // Space for drag handles
 
   &.loading {
     opacity: 0.5;
@@ -221,14 +220,64 @@
         // Checkbox wrapper
         .todo-checkbox-wrapper {
           flex-shrink: 0;
-          margin-top: 0.15rem;
         }
 
+        // Round checkbox (32px touch-friendly)
         .todo-checkbox {
-          width: 18px;
-          height: 18px;
+          appearance: none;
+          -webkit-appearance: none;
+          width: 32px;
+          height: 32px;
+          min-width: 32px;
+          border: 2px solid var(--todo-color, #374151);
+          border-radius: 50%;
           cursor: pointer;
-          accent-color: var(--color-primary);
+          transition: all 0.2s ease;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          background: transparent;
+
+          &:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+          }
+
+          &:checked {
+            background-color: var(--todo-color, #374151);
+            border-color: var(--todo-color, #374151);
+          }
+
+          &:checked::after {
+            content: '✓';
+            color: white;
+            font-size: 18px;
+            line-height: 1;
+          }
+
+          &:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+          }
+        }
+
+        // Default color (dark gray)
+        --todo-color: #374151;
+
+        // Color variants for checkbox
+        &[data-color='red'] {
+          --todo-color: #ef4444;
+        }
+        &[data-color='orange'] {
+          --todo-color: #f97316;
+        }
+        &[data-color='yellow'] {
+          --todo-color: #eab308;
+        }
+        &[data-color='green'] {
+          --todo-color: #22c55e;
+        }
+        &[data-color='blue'] {
+          --todo-color: #3b82f6;
         }
 
         // Content area
