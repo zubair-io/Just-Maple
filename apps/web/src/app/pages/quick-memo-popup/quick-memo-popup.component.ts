@@ -91,9 +91,10 @@ export class QuickMemoPopupComponent implements OnDestroy, AfterViewInit {
       this.isAuthReady.set(true);
 
       if (this.authService.isAuthenticated()) {
-        // Load notebooks once authenticated
-        this.notebookService.loadNotebooks().subscribe();
-        this.loadLastNotebook();
+        // Load notebooks once authenticated, then select default
+        this.notebookService.loadNotebooks().subscribe(() => {
+          this.loadLastNotebook();
+        });
       }
     });
   }
