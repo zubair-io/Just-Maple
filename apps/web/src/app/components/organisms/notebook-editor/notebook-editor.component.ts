@@ -12,6 +12,7 @@ import {
   ApplicationRef,
   createComponent,
   EnvironmentInjector,
+  ViewEncapsulation,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
@@ -59,6 +60,7 @@ import type { Awareness } from 'y-protocols/awareness';
   imports: [CommonModule, SyncStatusComponent, EditorToolbarComponent, TodoPopoverComponent],
   templateUrl: './notebook-editor.component.html',
   styleUrl: './notebook-editor.component.scss',
+  encapsulation: ViewEncapsulation.None,
 })
 export class NotebookEditorComponent implements OnDestroy {
   @ViewChild('editorElement', { static: false })
