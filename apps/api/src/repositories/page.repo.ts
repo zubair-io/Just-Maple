@@ -642,3 +642,45 @@ export async function countPagesByTypeForNotebook(
         return {};
     }
 }
+
+/**
+ * Get aggregated todo stats for a notebook
+ */
+export async function getTodoStatsForNotebook(notebookId: string): Promise<{
+    todoCount: number;
+    completedCount: number;
+    overdueCount: number;
+}> {
+    try {
+        const pipeline = [
+            {
+                $match: {
+                    notebookId: new ObjectId(notebookId),
+                    isTrashed: { $ne: true },
+                    'todoMeta.hasTodos': true,
+                },
+            },
+            {
+                $group: {
+                    _id: null,
+                    todoCount: { $sum: '$todoMeta.todoCount' },
+                    completedCount: { $sum: '$todoMeta.completedCount' },
+                    overdueCount: { $sum: '$todoMeta.overdueCount' },
+                },
+            },
+        ];
+
+        const results = await getCollection().aggregate(pipeline).toArray();
+        if (results.length === 0) {
+            return { todoCount: 0, completedCount: 0, overdueCount: 0 };
+        }
+
+        return {
+            todoCount: results[0].todoCount || 0,
+            completedCount: results[0].completedCount || 0,
+            overdueCount: results[0].overdueCount || 0,
+        };
+    } catch {
+        return { todoCount: 0, completedCount: 0, overdueCount: 0 };
+    }
+}

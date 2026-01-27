@@ -11,7 +11,31 @@
 @if (selectedNotebook()) {
   <div class="notebook-summary">
     <div class="summary-header">
-      <h2>{{ selectedNotebook()!.label }}</h2>
+      @if (isEditingName()) {
+        <div class="name-edit-container">
+          <input
+            type="text"
+            class="name-input"
+            [ngModel]="editingName()"
+            (ngModelChange)="editingName.set($event)"
+            (keydown)="onNameKeydown($event)"
+            (blur)="saveNotebookName()"
+            autofocus
+          />
+        </div>
+      } @else {
+        <div class="name-display">
+          <h2>{{ selectedNotebook()!.label }}</h2>
+          <button
+            type="button"
+            class="edit-name-btn"
+            title="Edit notebook name"
+            (click)="startEditingName()"
+          >
+            <span class="material-symbols-rounded">edit</span>
+          </button>
+        </div>
+      }
       <p class="summary-subtitle">Notebook Overview</p>
     </div>
 
@@ -33,6 +57,41 @@
           }
         </div>
       </div>
+
+      <!-- Todo Stats -->
+      @if (summary()!.todoStats.todoCount > 0) {
+        <div class="todo-stats">
+          <h3>
+            <span class="material-symbols-rounded">check_circle</span>
+            Tasks
+          </h3>
+          <div class="todo-cards">
+            <div class="todo-card">
+              <span class="count">{{ summary()!.todoStats.todoCount }}</span>
+              <span class="label">Total</span>
+            </div>
+            <div class="todo-card completed">
+              <span class="count">{{ summary()!.todoStats.completedCount }}</span>
+              <span class="label">Completed</span>
+            </div>
+            <div
+              class="todo-card pending"
+              [class.has-overdue]="summary()!.todoStats.overdueCount > 0"
+            >
+              <span class="count">{{
+                summary()!.todoStats.todoCount - summary()!.todoStats.completedCount
+              }}</span>
+              <span class="label">Pending</span>
+            </div>
+            @if (summary()!.todoStats.overdueCount > 0) {
+              <div class="todo-card overdue">
+                <span class="count">{{ summary()!.todoStats.overdueCount }}</span>
+                <span class="label">Overdue</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
     } @else {
       <div class="loading-summary">
         <span class="material-symbols-rounded spin">progress_activity</span>

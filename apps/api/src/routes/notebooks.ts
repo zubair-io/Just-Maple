@@ -419,14 +419,19 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
                 return { error: 'Notebook not found' };
             }
 
-            const { countPagesByTypeForNotebook } = await import('../repositories/page.repo');
-            const pageCounts = await countPagesByTypeForNotebook(params.id);
+            const { countPagesByTypeForNotebook, getTodoStatsForNotebook } =
+                await import('../repositories/page.repo');
+            const [pageCounts, todoStats] = await Promise.all([
+                countPagesByTypeForNotebook(params.id),
+                getTodoStatsForNotebook(params.id),
+            ]);
 
             return {
                 notebook,
                 summary: {
                     pageCounts,
                     totalPages: Object.values(pageCounts).reduce((sum, count) => sum + count, 0),
+                    todoStats,
                 },
             };
         },

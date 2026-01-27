@@ -141,11 +141,11 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   }
 
   toggleNotebook(notebookId: string): void {
-    if (notebookId === this.selectedNotebookId()) {
-      const notebook = this.notebookService.getNotebookById(notebookId);
-      this.startEditingNotebook(notebookId, notebook?.label || '', new Event('click'));
-      return;
-    }
+    // if (notebookId === this.selectedNotebookId()) {
+    //   const notebook = this.notebookService.getNotebookById(notebookId);
+    //   this.startEditingNotebook(notebookId, notebook?.label || '', new Event('click'));
+    //   return;
+    // }
     this.expandedNotebooks.update((notebooks) => {
       const newNotebooks = new Set(notebooks);
       if (newNotebooks.has(notebookId)) {
@@ -156,6 +156,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
       return newNotebooks;
     });
     this.selectNotebook.emit(notebookId);
+    this.pageService.setActivePageId(null);
     this.router.navigate(['/', notebookId]);
   }
 
