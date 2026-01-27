@@ -335,16 +335,11 @@
           }
         }
 
-        // Options bar (below todo, shown on focus)
+        // Options bar (below todo, always visible)
         .todo-options-bar {
-          display: none;
-          padding: 0.5rem 0 0 calc(32px + 0.75rem); // Align with content
-          gap: 0.5rem;
-        }
-
-        // Show options bar on focus
-        &.todo-focused .todo-options-bar {
           display: flex;
+          padding: 0.25rem 0 0 calc(32px + 0.75rem); // Align with content
+          gap: 0.5rem;
         }
 
         // Options button

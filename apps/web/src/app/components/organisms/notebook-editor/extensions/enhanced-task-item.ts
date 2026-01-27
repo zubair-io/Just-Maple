@@ -554,7 +554,16 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
       mainRow.appendChild(content);
       mainRow.appendChild(metaWrapper);
 
-      // Create options bar (shown below todo on focus)
+      // Mutable state object that gets updated - used by click handlers
+      const currentAttrs = {
+        id: nodeId,
+        checked: node.attrs['checked'] || false,
+        dueDate: node.attrs['dueDate'],
+        priority: node.attrs['priority'],
+        color: node.attrs['color'],
+      };
+
+      // Create options bar (always visible)
       const optionsBar = document.createElement('div');
       optionsBar.classList.add('todo-options-bar');
       optionsBar.contentEditable = 'false';
@@ -576,13 +585,7 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
           bubbles: true,
           detail: {
             todoId: nodeId,
-            attrs: {
-              id: nodeId,
-              checked: node.attrs['checked'],
-              dueDate: node.attrs['dueDate'],
-              priority: node.attrs['priority'],
-              color: node.attrs['color'],
-            },
+            attrs: { ...currentAttrs }, // Use mutable state
             element: dom,
             position: settingsBtn.getBoundingClientRect(),
           },
@@ -689,34 +692,12 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
             metaWrapper.appendChild(dueDateChip);
           }
 
-          // Update options bar event handler with new attrs
-          const newSettingsBtn = optionsBar.querySelector('.todo-options-btn');
-          if (newSettingsBtn) {
-            const newHandler = (e: Event) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const event = new CustomEvent('todo-settings-click', {
-                bubbles: true,
-                detail: {
-                  todoId: updatedNode.attrs['id'] || nodeId,
-                  attrs: {
-                    id: updatedNode.attrs['id'] || nodeId,
-                    checked: updatedNode.attrs['checked'],
-                    dueDate: updatedNode.attrs['dueDate'],
-                    priority: updatedNode.attrs['priority'],
-                    color: updatedNode.attrs['color'],
-                  },
-                  element: dom,
-                  position: newSettingsBtn.getBoundingClientRect(),
-                },
-              });
-              dom.dispatchEvent(event);
-            };
-            // Clone and replace to remove old listeners
-            const clone = newSettingsBtn.cloneNode(true);
-            clone.addEventListener('click', newHandler);
-            newSettingsBtn.parentNode?.replaceChild(clone, newSettingsBtn);
-          }
+          // Update the mutable attrs object (used by click handlers)
+          currentAttrs.id = updatedNode.attrs['id'] || nodeId;
+          currentAttrs.checked = updatedNode.attrs['checked'] || false;
+          currentAttrs.dueDate = updatedNode.attrs['dueDate'];
+          currentAttrs.priority = updatedNode.attrs['priority'];
+          currentAttrs.color = updatedNode.attrs['color'];
 
           return true;
         },
