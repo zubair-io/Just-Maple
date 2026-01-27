@@ -433,7 +433,10 @@ export class MemoDocumentService {
    * Create a new memo (offline-capable)
    * Creates locally first, queues server sync
    */
-  async createMemo(notebookId?: string): Promise<{
+  async createMemo(
+    notebookId?: string,
+    title?: string,
+  ): Promise<{
     page: Page;
     ydoc: Y.Doc;
     awareness: Awareness;
@@ -462,7 +465,7 @@ export class MemoDocumentService {
       id: pageId,
       userId: this.authService.user()?._id || '',
       type: 'memo',
-      title: 'Untitled Memo',
+      title: title || 'Untitled Memo',
       content: { type: 'doc', content: [] },
       notebookId: notebookId,
       isFavorite: false,

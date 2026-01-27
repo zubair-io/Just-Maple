@@ -288,8 +288,8 @@ export class QuickMemoPopupComponent implements OnDestroy, AfterViewInit {
       const title = lines[0]?.trim() || this.generateAutoTitle();
       const bodyLines = lines.slice(1);
 
-      // Create the memo
-      const { page, ydoc } = await this.memoDocumentService.createMemo(notebookId);
+      // Create the memo with title
+      const { ydoc } = await this.memoDocumentService.createMemo(notebookId, title);
 
       // Build content in TipTap JSON format
       const contentNodes: ContentNode[] = [];
@@ -351,9 +351,6 @@ export class QuickMemoPopupComponent implements OnDestroy, AfterViewInit {
           this.insertYjsNode(prosemirror, node);
         }
       });
-
-      // Update page title
-      page.title = title;
 
       // Show success state briefly, then close
       this.isSuccess.set(true);
