@@ -8,6 +8,6 @@ export {
 export { MemberAvatarGroupComponent } from './member-avatar-group/member-avatar-group.component';
 export { SettingsHeaderComponent } from './settings-header/settings-header.component';
 export { OfflineIndicatorComponent } from './offline-indicator/offline-indicator.component';
-export { NoteHeaderComponent } from './note-header/note-header.component';
+export { NoteHeaderComponent, type ExportFormat } from './note-header/note-header.component';
 export { NotebookHeaderComponent } from './notebook-header/notebook-header.component';
 export { TodoPopoverComponent } from './todo-popover/todo-popover.component';

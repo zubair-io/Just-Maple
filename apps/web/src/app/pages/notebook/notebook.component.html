@@ -3,12 +3,15 @@
     <app-note-header
       [page]="page"
       [notebook]="selectedNotebook()"
-      (favoriteClicked)="toggleFavorite()"
+      (toggleFavorite)="toggleFavorite()"
+      (exportRequested)="handleExport($event)"
     />
 
     <div class="notebook-content">
       @if (pageId(); as id) {
-        <app-notebook-editor [pageId]="id" />
+        @if (notebookId(); as nbId) {
+          <app-notebook-editor [pageId]="id" [notebookId]="nbId" />
+        }
       }
     </div>
   } @else {

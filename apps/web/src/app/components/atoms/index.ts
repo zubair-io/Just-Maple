@@ -9,3 +9,4 @@ export { ProfileAvatarComponent } from './profile-avatar/profile-avatar.componen
 export type { AvatarSize } from './profile-avatar/profile-avatar.component';
 export { BotOutputComponent } from './bot-output/bot-output.component';
 export { SyncStatusComponent } from './sync-status/sync-status.component';
+export { NewPageButtonComponent } from './new-page-button/new-page-button.component';

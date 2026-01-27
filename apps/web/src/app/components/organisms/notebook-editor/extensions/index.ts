@@ -23,3 +23,11 @@ export {
   type EnhancedTaskItemOptions,
   type EnhancedTaskItemAttrs,
 } from './enhanced-task-item';
+export {
+  AiBotWidget,
+  type AiBotWidgetOptions,
+  type AiBotWidgetStatus,
+  type AiBotWidgetAttrs,
+  getDocumentAsText,
+  getDocumentAsMarkdown,
+} from './ai-bot-widget';

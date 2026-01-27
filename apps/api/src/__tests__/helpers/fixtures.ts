@@ -431,6 +431,7 @@ export async function createPageFixture(options: CreatePageOptions = {}): Promis
 export interface MessageDoc {
     _id: ObjectId;
     id: string;
+    pageId: string;
     notebookId: ObjectId;
     threadId?: ObjectId;
     userId: ObjectId;
@@ -449,6 +450,7 @@ export interface MessageDoc {
 
 export interface CreateMessageOptions {
     notebookId?: string;
+    pageId?: string;
     threadId?: string;
     userId?: string;
     senderType?: 'user' | 'bot';
@@ -462,11 +464,46 @@ export async function createMessageFixture(
     options: CreateMessageOptions = {},
 ): Promise<MessageDoc> {
     const now = new Date();
+    const notebookId = options.notebookId ? new ObjectId(options.notebookId) : new ObjectId();
+
+    // If pageId is not provided, find or create a messages page for the notebook
+    let pageId = options.pageId;
+    if (!pageId) {
+        // Look for existing messages page for this notebook
+        const existingPage = await testDb!.collection('pages').findOne({
+            notebookId: notebookId,
+            type: 'message',
+            isTrashed: { $ne: true },
+        });
+
+        if (existingPage) {
+            pageId = existingPage.id;
+        } else {
+            // Create a new messages page
+            const newPageId = randomUUID();
+            await testDb!.collection('pages').insertOne({
+                _id: new ObjectId(),
+                id: newPageId,
+                userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
+                type: 'message',
+                title: 'Messages',
+                content: { type: 'doc', content: [] },
+                notebookId: notebookId,
+                isFavorite: false,
+                isArchived: false,
+                isTrashed: false,
+                createdAt: now,
+                updatedAt: now,
+            });
+            pageId = newPageId;
+        }
+    }
 
     const doc: MessageDoc = {
         _id: new ObjectId(),
         id: crypto.randomUUID(),
-        notebookId: options.notebookId ? new ObjectId(options.notebookId) : new ObjectId(),
+        pageId: pageId,
+        notebookId: notebookId,
         threadId: options.threadId ? new ObjectId(options.threadId) : undefined,
         userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
         senderType: options.senderType || 'user',

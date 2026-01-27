@@ -137,6 +137,22 @@ export const defaultSlashCommands: SlashCommandItem[] = [
       );
     },
   },
+  {
+    title: 'Claude',
+    description: 'AI assistant for document editing',
+    icon: '🤖',
+    command: ({ editor, range }) => {
+      // Delete the slash command text and insert AI bot widget
+      editor.chain().focus().deleteRange(range).run();
+      // Dispatch event to insert AI bot widget
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('create-ai-bot-widget', {
+          bubbles: true,
+          detail: { range },
+        }),
+      );
+    },
+  },
 ];
 
 export interface SlashCommandsOptions {

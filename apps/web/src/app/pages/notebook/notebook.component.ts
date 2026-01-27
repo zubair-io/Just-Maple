@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, OnDestroy } from '@angular/core';
+import { Component, inject, signal, effect, OnDestroy, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -7,7 +7,7 @@ import { PageService } from '../../services/page.service';
 import { NotebookService } from '../../services/notebook.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { NotebookEditorComponent } from '../../components/organisms/notebook-editor/notebook-editor.component';
-import { NoteHeaderComponent } from '../../components';
+import { NoteHeaderComponent, type ExportFormat } from '../../components';
 
 @Component({
   selector: 'app-notebook',
@@ -17,6 +17,8 @@ import { NoteHeaderComponent } from '../../components';
   styleUrl: './notebook.component.scss',
 })
 export class NotebookComponent implements OnDestroy {
+  @ViewChild(NotebookEditorComponent) private editorComponent?: NotebookEditorComponent;
+
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly pageService = inject(PageService);
@@ -68,6 +70,17 @@ export class NotebookComponent implements OnDestroy {
   openSidebarOnMobile(): void {
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
       this.uiStateService.openSidebar();
+    }
+  }
+
+  handleExport(format: ExportFormat): void {
+    const page = this.selectedPage();
+    const title = page?.title;
+
+    if (format === 'markdown') {
+      this.editorComponent?.exportAsMarkdown(title);
+    } else if (format === 'html') {
+      this.editorComponent?.exportAsHtml(title);
     }
   }
 }

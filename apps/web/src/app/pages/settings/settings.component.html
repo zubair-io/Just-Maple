@@ -75,7 +75,7 @@
               />
               <label
                 for="profilePicture"
-                class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-[var(--color-border)] rounded-lg cursor-pointer hover:bg-[var(--color-surface-hover)] transition-colors"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded-lg cursor-pointer hover:bg-[var(--color-surface-hover)] transition-colors"
                 [class.opacity-50]="isUploadingPicture()"
                 [class.cursor-not-allowed]="isUploadingPicture()"
               >
@@ -120,7 +120,7 @@
             type="text"
             [(ngModel)]="displayName"
             placeholder="Enter your name"
-            class="w-full px-3 py-2 bg-white border border-[var(--color-border)] focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] rounded-lg text-[var(--color-text-main)] placeholder-[var(--color-text-muted)] transition-all"
+            class="w-full px-3 py-2 bg-[var(--color-input-bg)] border border-[var(--color-border)] focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] rounded-lg text-[var(--color-text-main)] placeholder-[var(--color-text-muted)] transition-all"
           />
         </div>
 
@@ -153,6 +153,102 @@
       </div>
     </section>
 
+    <!-- Theme Section -->
+    <section>
+      <h2
+        class="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-4"
+      >
+        Appearance
+      </h2>
+      <div class="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+        <p class="text-sm text-[var(--color-text-muted)] mb-4">
+          Choose a theme that works best for you
+        </p>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          @for (theme of themeService.themes; track theme.id) {
+            <button
+              (click)="setTheme(theme.id)"
+              class="group relative flex flex-col items-center p-3 rounded-xl border-2 transition-all"
+              [class.border-[var(--color-primary)]]="themeService.currentThemeId() === theme.id"
+              [class.border-[var(--color-border)]]="themeService.currentThemeId() !== theme.id"
+              [class.bg-[var(--color-surface-alt)]]="themeService.currentThemeId() === theme.id"
+            >
+              <!-- Theme Preview -->
+              <div
+                class="w-full aspect-[4/3] rounded-lg overflow-hidden border border-[var(--color-border)] mb-2"
+                [style.background-color]="theme.preview.bg"
+              >
+                <div class="h-full flex flex-col p-1.5">
+                  <!-- Mini sidebar -->
+                  <div class="flex gap-1 h-full">
+                    <div
+                      class="w-1/4 rounded"
+                      [style.background-color]="theme.preview.surface"
+                    ></div>
+                    <!-- Mini content -->
+                    <div
+                      class="flex-1 rounded p-1 flex flex-col gap-1"
+                      [style.background-color]="theme.preview.surface"
+                    >
+                      <div
+                        class="h-1.5 w-3/4 rounded-full"
+                        [style.background-color]="theme.preview.text"
+                        style="opacity: 0.3"
+                      ></div>
+                      <div
+                        class="h-1 w-full rounded-full"
+                        [style.background-color]="theme.preview.text"
+                        style="opacity: 0.15"
+                      ></div>
+                      <div
+                        class="h-1 w-2/3 rounded-full"
+                        [style.background-color]="theme.preview.text"
+                        style="opacity: 0.15"
+                      ></div>
+                      <div class="flex-1"></div>
+                      <div
+                        class="h-2 w-1/3 rounded self-end"
+                        [style.background-color]="theme.preview.primary"
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Theme Info -->
+              <div class="flex items-center gap-1.5">
+                <span
+                  class="material-symbols-rounded text-base"
+                  [class.text-[var(--color-primary)]]="themeService.currentThemeId() === theme.id"
+                  [class.text-[var(--color-text-muted)]]="
+                    themeService.currentThemeId() !== theme.id
+                  "
+                >
+                  {{ theme.icon }}
+                </span>
+                <span
+                  class="text-sm font-medium"
+                  [class.text-[var(--color-primary)]]="themeService.currentThemeId() === theme.id"
+                  [class.text-[var(--color-text-main)]]="themeService.currentThemeId() !== theme.id"
+                >
+                  {{ theme.name }}
+                </span>
+              </div>
+
+              <!-- Selected indicator -->
+              @if (themeService.currentThemeId() === theme.id) {
+                <span
+                  class="absolute top-2 right-2 w-5 h-5 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center"
+                >
+                  <span class="material-symbols-rounded text-sm">check</span>
+                </span>
+              }
+            </button>
+          }
+        </div>
+      </div>
+    </section>
+
     <!-- Bots Section -->
     <section>
       <h2
@@ -163,7 +259,7 @@
       <div class="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
         <div class="flex items-center gap-4">
           <div
-            class="w-10 h-10 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0"
+            class="w-10 h-10 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center flex-shrink-0"
           >
             <span class="material-symbols-rounded text-[var(--color-text-muted)]">smart_toy</span>
           </div>
@@ -266,7 +362,7 @@
         } @else if (passkeys().length === 0) {
           <div class="p-8 text-center">
             <div
-              class="w-16 h-16 mx-auto mb-4 rounded-full bg-stone-100 flex items-center justify-center"
+              class="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--color-surface-alt)] flex items-center justify-center"
             >
               <span class="material-symbols-rounded text-3xl text-[var(--color-text-muted)]"
                 >key</span
@@ -295,7 +391,7 @@
             @for (passkey of passkeys(); track passkey.id) {
               <li class="p-4 flex items-center gap-4">
                 <div
-                  class="w-10 h-10 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0"
+                  class="w-10 h-10 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center flex-shrink-0"
                 >
                   <span class="material-symbols-rounded text-[var(--color-text-muted)]">key</span>
                 </div>
@@ -353,7 +449,7 @@
                   class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
                   [ngClass]="{
                     'bg-[var(--color-primary-light)]': server.id === preferences.activeServer()?.id,
-                    'bg-stone-100': server.id !== preferences.activeServer()?.id,
+                    'bg-[var(--color-surface-alt)]': server.id !== preferences.activeServer()?.id,
                   }"
                 >
                   <span
@@ -498,7 +594,7 @@
           <div class="flex gap-3 mt-6">
             <button
               (click)="closeAddServerDialog()"
-              class="flex-1 px-4 py-2.5 text-[var(--color-text-main)] font-medium hover:bg-stone-100 rounded-lg transition-colors"
+              class="flex-1 px-4 py-2.5 text-[var(--color-text-main)] font-medium hover:bg-[var(--color-surface-alt)] rounded-lg transition-colors"
             >
               Cancel
             </button>
@@ -528,7 +624,7 @@
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-3">
                 <div
-                  class="w-10 h-10 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0"
+                  class="w-10 h-10 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center flex-shrink-0"
                 >
                   <span class="material-symbols-rounded text-[var(--color-text-muted)]"
                     >notifications</span

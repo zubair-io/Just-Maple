@@ -5,14 +5,14 @@
   >
     <button
       (click)="goBack()"
-      class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+      class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
     >
       <span class="material-symbols-rounded">arrow_back</span>
     </button>
 
     @if (selectedNotebook()) {
       <div
-        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium text-sm p-1 px-2 rounded bg-stone-100"
+        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium text-sm p-1 px-2 rounded bg-[var(--color-surface-alt)]"
       >
         <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
         <span>{{ selectedNotebook()!.label }}</span>
@@ -34,7 +34,9 @@
         @if (registry()!.images.length > 0) {
           <div class="mb-6">
             <!-- Main Image -->
-            <div class="aspect-square bg-stone-100 rounded-lg overflow-hidden mb-2">
+            <div
+              class="aspect-square bg-[var(--color-surface-alt)] rounded-lg overflow-hidden mb-2"
+            >
               <img
                 [src]="registry()!.images[selectedImageIndex()]"
                 [alt]="registry()!.title"
@@ -84,7 +86,7 @@
           <div class="flex flex-wrap gap-2 mb-6">
             @for (tag of registry()!.tags; track tag.value) {
               <span
-                class="px-2 py-1 text-xs rounded-full bg-stone-100 text-[var(--color-text-muted)]"
+                class="px-2 py-1 text-xs rounded-full bg-[var(--color-surface-alt)] text-[var(--color-text-muted)]"
               >
                 {{ tag.label }}: {{ tag.value }}
               </span>
@@ -103,7 +105,7 @@
         }
 
         <!-- Collection Status -->
-        <div class="bg-stone-50 rounded-lg p-4 mb-6">
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 mb-6">
           <h2 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">Collection Status</h2>
 
           <div class="grid grid-cols-2 gap-2">
@@ -114,7 +116,7 @@
               [class.border-green-500]="collectionStatus() === 'have'"
               [class.bg-green-50]="collectionStatus() === 'have'"
               [class.text-green-700]="collectionStatus() === 'have'"
-              [class.border-stone-200]="collectionStatus() !== 'have'"
+              [class.border-[var(--color-border)]]="collectionStatus() !== 'have'"
               [class.hover:border-green-300]="collectionStatus() !== 'have'"
             >
               <span class="material-symbols-rounded text-lg">check_circle</span>
@@ -128,7 +130,7 @@
               [class.border-red-500]="collectionStatus() === 'want'"
               [class.bg-red-50]="collectionStatus() === 'want'"
               [class.text-red-700]="collectionStatus() === 'want'"
-              [class.border-stone-200]="collectionStatus() !== 'want'"
+              [class.border-[var(--color-border)]]="collectionStatus() !== 'want'"
               [class.hover:border-red-300]="collectionStatus() !== 'want'"
             >
               <span class="material-symbols-rounded text-lg">favorite</span>
@@ -142,7 +144,7 @@
               [class.border-amber-500]="collectionStatus() === 'sold'"
               [class.bg-amber-50]="collectionStatus() === 'sold'"
               [class.text-amber-700]="collectionStatus() === 'sold'"
-              [class.border-stone-200]="collectionStatus() !== 'sold'"
+              [class.border-[var(--color-border)]]="collectionStatus() !== 'sold'"
               [class.hover:border-amber-300]="collectionStatus() !== 'sold'"
             >
               <span class="material-symbols-rounded text-lg">sell</span>
@@ -153,11 +155,11 @@
               (click)="setStatus('none')"
               [disabled]="isSaving()"
               class="flex items-center justify-center gap-2 py-3 px-4 rounded-lg border-2 transition-all"
-              [class.border-stone-400]="collectionStatus() === 'none'"
-              [class.bg-stone-100]="collectionStatus() === 'none'"
-              [class.text-stone-600]="collectionStatus() === 'none'"
-              [class.border-stone-200]="collectionStatus() !== 'none'"
-              [class.hover:border-stone-300]="collectionStatus() !== 'none'"
+              [class.border-[var(--color-text-muted)]]="collectionStatus() === 'none'"
+              [class.bg-[var(--color-surface-alt)]]="collectionStatus() === 'none'"
+              [class.text-[var(--color-text-muted)]]="collectionStatus() === 'none'"
+              [class.border-[var(--color-border)]]="collectionStatus() !== 'none'"
+              [class.hover:border-[var(--color-text-muted)]]="collectionStatus() !== 'none'"
             >
               <span class="material-symbols-rounded text-lg">remove_circle_outline</span>
               <span class="font-medium">None</span>
@@ -166,14 +168,14 @@
 
           <!-- Quantity (only show if in collection) -->
           @if (collectionStatus() !== 'none') {
-            <div class="mt-4 pt-4 border-t border-stone-200">
+            <div class="mt-4 pt-4 border-t border-[var(--color-border)]">
               <div class="flex items-center justify-between">
                 <span class="text-sm text-[var(--color-text-muted)]">Quantity</span>
                 <div class="flex items-center gap-3">
                   <button
                     (click)="updateQuantity(-1)"
                     [disabled]="isSaving() || quantity() <= 1"
-                    class="w-8 h-8 flex items-center justify-center rounded-full bg-stone-200 hover:bg-stone-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    class="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--color-surface-alt)] hover:bg-[var(--color-surface-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     <span class="material-symbols-rounded text-lg">remove</span>
                   </button>
@@ -181,7 +183,7 @@
                   <button
                     (click)="updateQuantity(1)"
                     [disabled]="isSaving()"
-                    class="w-8 h-8 flex items-center justify-center rounded-full bg-stone-200 hover:bg-stone-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    class="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--color-surface-alt)] hover:bg-[var(--color-surface-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     <span class="material-symbols-rounded text-lg">add</span>
                   </button>
@@ -193,7 +195,7 @@
 
         <!-- Provider Data (if available)
         @if (registry()!.providerData) {
-          <div class="bg-stone-50 rounded-lg p-4">
+          <div class="bg-[var(--color-surface)] rounded-lg p-4">
             <h2 class="text-sm font-medium text-[var(--color-text-muted)] mb-3">Details</h2>
             <dl class="grid grid-cols-2 gap-2 text-sm">
               @if (registry()!.providerData.year) {

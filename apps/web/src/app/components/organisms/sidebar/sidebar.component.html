@@ -18,7 +18,7 @@
     <!-- Workspace Selector -->
     <!-- <div class="px-2 pt-2 pb-3">
       <button
-        class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-stone-200/50 transition-colors group cursor-pointer"
+        class="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors group cursor-pointer"
       >
         <div class="flex items-center gap-2">
           <span
@@ -45,7 +45,7 @@
           type="text"
           [(ngModel)]="searchQuery"
           placeholder="Search..."
-          class="w-full pl-9 pr-3 py-1.5 text-sm bg-white border border-[var(--color-border)] focus:border-[var(--color-primary)]/50 focus:ring-1 focus:ring-[var(--color-primary)]/20 rounded-md transition-all shadow-sm placeholder-[var(--color-text-muted)]"
+          class="w-full pl-9 pr-3 py-1.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-border)] focus:border-[var(--color-primary)]/50 focus:ring-1 focus:ring-[var(--color-primary)]/20 rounded-md transition-all shadow-sm placeholder-[var(--color-text-muted)]"
         />
       </div>
       <button
@@ -80,11 +80,11 @@
           <div
             (click)="toggleNotebook(notebook._id)"
             class="group flex items-center justify-between px-2 py-1.5 text-sm cursor-pointer transition-colors"
-            [class.bg-white]="selectedNotebookId() === notebook._id"
+            [class.bg-[var(--color-surface)]]="selectedNotebookId() === notebook._id"
             [class.shadow-sm]="selectedNotebookId() === notebook._id"
             [class.ring-1]="selectedNotebookId() === notebook._id"
-            [class.ring-stone-200]="selectedNotebookId() === notebook._id"
-            [class.hover:bg-stone-200/50]="selectedNotebookId() !== notebook._id"
+            [class.ring-[var(--color-border)]]="selectedNotebookId() === notebook._id"
+            [class.hover:bg-[var(--color-surface-hover)]]="selectedNotebookId() !== notebook._id"
           >
             <div class="flex items-center gap-2 min-w-0 flex-1">
               <span
@@ -106,7 +106,7 @@
                   (keydown)="onEditKeydown($event)"
                   (blur)="onEditBlur()"
                   (focus)="onEditInputFocus($event)"
-                  class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-white border border-[var(--color-primary)] rounded outline-none"
+                  class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-primary)] rounded outline-none"
                   maxlength="255"
                   #editInput
                 />
@@ -123,14 +123,7 @@
                   >{{ notebook.label }}</span
                 >
               }
-              <!-- Unread badge -->
-              @if (getUnreadCount(notebook._id) > 0) {
-                <span
-                  class="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-primary)] text-white rounded-full min-w-[18px] text-center"
-                >
-                  {{ getUnreadCount(notebook._id) > 99 ? '99+' : getUnreadCount(notebook._id) }}
-                </span>
-              }
+              <!-- Unread badge removed from notebook - now on message pages -->
             </div>
             @if ((getPagesForNotebook()[notebook._id || 'no_notebook'] || []).length > 0) {
               <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">
@@ -153,7 +146,7 @@
                     "
                     (click)="onSelectPage(page)"
                     class="flex items-center gap-1.5 px-2 py-1.5 text-sm cursor-pointer transition-colors"
-                    [class.bg-stone-100]="selectedPageId() === page.id"
+                    [class.bg-[var(--color-surface-alt)]]="selectedPageId() === page.id"
                     [class.text-[var(--color-text-main)]]="selectedPageId() === page.id"
                     [class.font-medium]="selectedPageId() === page.id"
                     [class.border-l-2]="selectedPageId() === page.id"
@@ -185,7 +178,7 @@
                         (blur)="onEditBlur()"
                         (focus)="onEditInputFocus($event)"
                         (click)="$event.stopPropagation(); $event.preventDefault()"
-                        class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-white border border-[var(--color-primary)] rounded outline-none"
+                        class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-primary)] rounded outline-none"
                         maxlength="255"
                         #editInput
                       />
@@ -198,6 +191,18 @@
                         "
                         >{{ page.title }}</span
                       >
+                    }
+                    <!-- Unread badge for message pages -->
+                    @if (page.type === 'message' && getUnreadCountByPageId(page.id) > 0) {
+                      <span
+                        class="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-primary)] text-white rounded-full min-w-[18px] text-center flex-shrink-0"
+                      >
+                        {{
+                          getUnreadCountByPageId(page.id) > 99
+                            ? '99+'
+                            : getUnreadCountByPageId(page.id)
+                        }}
+                      </span>
                     }
                   </a>
                 </li>
@@ -212,7 +217,7 @@
   <!-- User Footer -->
   <div class="p-3 border-t border-[var(--color-border)] flex items-center justify-between">
     <div
-      class="flex items-center gap-2 cursor-pointer hover:bg-stone-200/50 p-1.5 rounded-md transition-colors"
+      class="flex items-center gap-2 cursor-pointer hover:bg-[var(--color-surface-hover)] p-1.5 rounded-md transition-colors"
     >
       <app-profile-avatar
         [email]="authService.user()?.email ?? ''"

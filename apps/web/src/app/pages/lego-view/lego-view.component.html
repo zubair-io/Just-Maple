@@ -6,7 +6,7 @@
     @if (selectedNotebook()) {
       <div
         (click)="openSidebarOnMobile()"
-        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-stone-100 cursor-pointer hover:bg-stone-200 transition-colors"
+        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-[var(--color-surface-alt)] cursor-pointer hover:bg-[var(--color-surface-hover)] transition-colors"
       >
         <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
         <span>{{ selectedNotebook()!.label }}</span>
@@ -27,7 +27,7 @@
         [class.bg-[var(--color-primary-light)]]="hasActiveFilters()"
         [class.text-[var(--color-text-muted)]]="!hasActiveFilters()"
         [class.hover:text-[var(--color-text-main)]]="!hasActiveFilters()"
-        [class.hover:bg-stone-100]="!hasActiveFilters()"
+        [class.hover:bg-[var(--color-surface-alt)]]="!hasActiveFilters()"
         title="Filter"
       >
         <span class="material-symbols-rounded text-lg">filter_list</span>
@@ -39,7 +39,7 @@
       </button>
       <button
         (click)="openScanner()"
-        class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+        class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-alt)] transition-colors"
         title="Scan Barcode"
       >
         <span class="material-symbols-rounded text-lg">qr_code_scanner</span>
@@ -50,7 +50,9 @@
 
 <!-- Filter Panel -->
 @if (showFilterPanel()) {
-  <div class="bg-white border-b border-[var(--color-border)] px-4 py-3 shadow-sm animate-slideDown">
+  <div
+    class="bg-[var(--color-surface)] border-b border-[var(--color-border)] px-4 py-3 shadow-sm animate-slideDown"
+  >
     <!-- Search Input -->
     <div class="relative mb-3">
       <span
@@ -86,7 +88,7 @@
               [class.bg-[var(--color-primary)]]="selectedRegistryTags().includes(tag.value)"
               [class.text-white]="selectedRegistryTags().includes(tag.value)"
               [class.border-[var(--color-primary)]]="selectedRegistryTags().includes(tag.value)"
-              [class.bg-white]="!selectedRegistryTags().includes(tag.value)"
+              [class.bg-[var(--color-surface)]]="!selectedRegistryTags().includes(tag.value)"
               [class.text-[var(--color-text-main)]]="!selectedRegistryTags().includes(tag.value)"
               [class.border-[var(--color-border)]]="!selectedRegistryTags().includes(tag.value)"
               [class.hover:border-[var(--color-primary)]]="
