@@ -500,8 +500,17 @@ export class NotebookEditorComponent implements OnDestroy {
 
     // Listen for AI bot widget mount events
     editorElement.addEventListener('ai-bot-widget-mounted', ((event: CustomEvent) => {
-      const { id, prompt, status, errorMessage, element, editor, getPos } = event.detail;
-      this.mountAiBotWidgetComponent(id, prompt, status, errorMessage, element, editor, getPos);
+      const { id, prompt, status, errorMessage, history, element, editor, getPos } = event.detail;
+      this.mountAiBotWidgetComponent(
+        id,
+        prompt,
+        status,
+        errorMessage,
+        history,
+        element,
+        editor,
+        getPos,
+      );
     }) as EventListener);
 
     // Listen for AI bot widget unmount events
@@ -524,6 +533,7 @@ export class NotebookEditorComponent implements OnDestroy {
     prompt: string,
     status: string,
     errorMessage: string | null,
+    history: unknown[],
     element: HTMLElement,
     editor: Editor,
     getPos: () => number | undefined,
@@ -547,6 +557,7 @@ export class NotebookEditorComponent implements OnDestroy {
     componentRef.setInput('pageId', this.pageId());
     componentRef.setInput('initialPrompt', prompt || '');
     componentRef.setInput('initialStatus', status || 'idle');
+    componentRef.setInput('initialHistory', history || []);
 
     // Handle delete requests
     componentRef.instance.deleteRequested.subscribe((widgetId: string) => {

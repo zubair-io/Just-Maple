@@ -1,29 +1,12 @@
 import { findUserBotByHandleForNotebookInternal } from '../repositories/user-bot.repo';
-import { documentEditService, type DocumentEdit } from './document-edit.service';
+import { documentEditService, type AIEdit } from './document-edit.service';
 
 // Configuration constants
 const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL || 'claude-sonnet-4-20250514';
 
-export interface AiEditOperation {
-    type: 'insert' | 'delete' | 'replace';
-    position?: AnchorPosition;
-    from?: AnchorPosition;
-    to?: AnchorPosition;
-    content?: string;
-}
-
-export type AnchorPosition =
-    | { type: 'absolute'; pos: number }
-    | { type: 'relative'; anchor: 'widget' | 'start' | 'end'; offset: number }
-    | { type: 'search'; query: string; occurrence: number };
-
 export interface AiEditRequest {
     prompt: string;
     pageId: string; // Page ID for server-side edit application
-    document: {
-        content: string;
-        format: 'markdown' | 'plaintext' | 'html';
-    };
     context: {
         widgetPosition: number;
     };
@@ -34,68 +17,108 @@ export interface AiEditResponse {
     appliedCount: number;
     responseText?: string;
     errors?: string[];
-    debug?: {
-        serverDocLength: number;
-        serverDocPreview: string;
-    };
 }
 
-const SYSTEM_PROMPT = `You are an AI document editor assistant. Return JSON operations to edit documents.
+const SYSTEM_PROMPT = `You are an AI document editor. You edit documents using PATH-BASED operations.
 
-IMPORTANT RULES:
-1. Almost all requests should return edit operations, not plain text
-2. Only respond with plain text for explicit questions ("what does X mean?", "is this correct?")
+## Document Structure
+The document is a ProseMirror JSON tree. Each node has:
+- type: "paragraph", "heading", "bulletList", "listItem", "text", etc.
+- content: array of child nodes
+- attrs: node attributes (like heading level)
+- text: for text nodes, the actual text content
+- marks: formatting like bold, italic
 
-Return a JSON array of operations:
+## Path Navigation
+Paths are arrays of integers navigating the tree:
+- [0] = first child of root (usually first paragraph)
+- [1] = second child of root
+- [2, 0] = third child's first child
+- [2, 0, 0] = third child's first grandchild
+
+Example document:
+{
+  "type": "doc",
+  "content": [
+    { "type": "heading", "content": [{ "type": "text", "text": "Title" }] },     // path [0]
+    { "type": "paragraph", "content": [{ "type": "text", "text": "Hello" }] },   // path [1]
+    { "type": "bulletList", "content": [                                         // path [2]
+      { "type": "listItem", "content": [{ "type": "paragraph", "content": [...] }] }  // path [2, 0]
+    ]}
+  ]
+}
+
+## Response Format
+Return JSON with "edits" array. For questions, return "response" instead.
+
 \`\`\`json
-[
-  {
-    "type": "insert",
-    "position": { "type": "relative", "anchor": "widget", "offset": 1 },
-    "content": "## New Heading\\n\\nNew paragraph with **bold** text."
-  },
-  {
-    "type": "replace",
-    "from": { "type": "search", "query": "exact text to find", "occurrence": 1 },
-    "content": "replacement text with **formatting**"
-  }
-]
+{
+  "edits": [
+    { "path": [1], "op": { "type": "replace-text", "offset": 0, "length": 5, "text": "Hi there" } }
+  ]
+}
 \`\`\`
 
-CRITICAL - Search query rules:
-- Search queries must be PLAIN TEXT ONLY - no markdown formatting
-- DO NOT include: # for headings, ** for bold, * for italic, > for quotes, - for lists
-- DO NOT include newlines (\\n) in search queries - text is stored without line breaks
-- Search for the actual visible text content only
-- Example: To find "# My Heading", search for "My Heading" (without the #)
-- Example: To find "**bold text**", search for "bold text" (without the **)
-- Minimum 10 characters for search queries to ensure unique matches
+Or for questions:
+\`\`\`json
+{ "response": "The answer to your question is..." }
+\`\`\`
 
-Operation types:
-1. INSERT - Add new content at widget position:
-   { "type": "insert", "position": { "type": "relative", "anchor": "widget", "offset": 1 }, "content": "markdown content" }
+## Operation Types
 
-2. REPLACE - Change existing text (search query is plain text, content can have markdown):
-   { "type": "replace", "from": { "type": "search", "query": "plain text to find", "occurrence": 1 }, "content": "new **formatted** content" }
+### Text Operations (for nodes containing text)
+- search-replace: Find and replace text (RECOMMENDED for fixing typos/text changes)
+  { "path": [1], "op": { "type": "search-replace", "search": "teh", "replace": "the" } }
 
-3. DELETE - Avoid using delete operations. Use replace with empty content instead.
+- replace-text: Replace text at exact offset with length (use search-replace instead when possible)
+  { "path": [1], "op": { "type": "replace-text", "offset": 0, "length": 3, "text": "new" } }
 
-Examples:
-- "write a summary" → insert operation
-- "fix spelling of 'teh'" → replace "teh" with "the"
-- "make this bold" → replace the text with **text**
-- "add bullet points" → insert formatted list
+- insert-text: Insert text at offset
+  { "path": [1], "op": { "type": "insert-text", "offset": 5, "text": " world" } }
 
-Start response with \`[{"type":\` for operations.`;
+- delete-text: Delete text at offset
+  { "path": [1], "op": { "type": "delete-text", "offset": 0, "length": 5 } }
+
+### Node Operations
+- replace-node: Replace entire node with new content
+  { "path": [1], "op": { "type": "replace-node", "content": { "type": "paragraph", "content": [{ "type": "text", "text": "New paragraph" }] } } }
+
+- insert-node: Insert new node at index (path points to parent, index is insertion position)
+  { "path": [0], "op": { "type": "insert-node", "index": 1, "content": { "type": "paragraph", "content": [{ "type": "text", "text": "Inserted" }] } } }
+
+- delete-node: Delete the node at path
+  { "path": [2], "op": { "type": "delete-node" } }
+
+### Formatting Operations
+- set-attrs: Set attributes on element (like heading level)
+  { "path": [0], "op": { "type": "set-attrs", "attrs": { "level": 2 } } }
+
+- format-text: Apply mark to text range
+  { "path": [1], "op": { "type": "format-text", "offset": 0, "length": 5, "mark": "bold", "value": true } }
+
+## Rules
+1. Make minimal edits - only change what's necessary
+2. Preserve existing formatting unless asked to change it
+3. For text in paragraphs/headings, the text node is inside content array
+4. When fixing typos or replacing text, use search-replace (NOT replace-text with offsets)
+5. When adding content, prefer insert-node to add new paragraphs
+
+## Examples
+- "fix typo 'teh'" → use search-replace: { "path": [1], "op": { "type": "search-replace", "search": "teh", "replace": "the" } }
+- "change 'Hello' to 'Hi'" → use search-replace on the node containing that text
+- "make title bold" → use format-text on the heading's text
+- "add a paragraph about X" → use insert-node to add new paragraph
+- "delete the second bullet" → use delete-node on path to that list item
+
+Start response with \`{"edits":\` for operations or \`{"response":\` for questions.`;
 
 /**
  * AI Document Edit Service
- * Handles AI-powered document editing requests
- * Now applies edits server-side via document-edit.service
+ * Handles AI-powered document editing requests using path-based operations
  */
 export class AiEditService {
     /**
-     * Process an AI edit request - parses AI response and applies edits server-side
+     * Process an AI edit request - gets document JSON, calls AI, applies path-based edits
      */
     async processEditRequest(notebookId: string, request: AiEditRequest): Promise<AiEditResponse> {
         // Find Claude bot for this notebook (use Internal version to get full config with API key)
@@ -114,10 +137,13 @@ export class AiEditService {
 
         const isOAuthToken = userBot.config?.isOAuthToken || false;
 
-        // Build the user prompt
-        const userPrompt = `Document:
-\`\`\`
-${request.document.content}
+        // Get document as JSON (path-based approach)
+        const documentJson = await documentEditService.getDocumentAsJSON(request.pageId);
+
+        // Build the user prompt with JSON document
+        const userPrompt = `Document (ProseMirror JSON):
+\`\`\`json
+${JSON.stringify(documentJson, null, 2)}
 \`\`\`
 
 Instruction: ${request.prompt}`;
@@ -132,11 +158,11 @@ Instruction: ${request.prompt}`;
             maxTokens: 4096,
         });
 
-        // Parse the AI response to extract operations
+        // Parse the AI response
         const parsed = this.parseAiResponse(response);
 
-        // If no operations, return text response
-        if (parsed.operations.length === 0) {
+        // If text response (question answer), return it
+        if (parsed.responseText) {
             return {
                 success: true,
                 appliedCount: 0,
@@ -144,135 +170,109 @@ Instruction: ${request.prompt}`;
             };
         }
 
-        // Convert AI operations to document edits
-        const edits = this.convertToDocumentEdits(
-            parsed.operations,
-            request.context.widgetPosition,
-        );
+        // If no edits, return success with no changes
+        if (parsed.edits.length === 0) {
+            return {
+                success: true,
+                appliedCount: 0,
+            };
+        }
 
-        // Apply edits server-side
-        const result = await documentEditService.applyEdits(request.pageId, edits);
+        // Apply path-based edits
+        const result = await documentEditService.applyAIEdits(request.pageId, parsed.edits);
 
         return {
             success: result.success,
             appliedCount: result.appliedCount,
-            responseText: parsed.responseText,
             errors: result.errors,
-            debug: result.debug,
         };
     }
 
     /**
-     * Parse Claude's response into operations or text
+     * Parse Claude's response into path-based edits or text response
      */
     private parseAiResponse(response: string): {
-        operations: AiEditOperation[];
+        edits: AIEdit[];
         responseText?: string;
     } {
         const trimmed = response.trim();
 
-        // Try to extract JSON array from the response
-        // It might be at the start, or inside a code block like ```json ... ```
         try {
-            // First, try to find JSON in a code block
-            const codeBlockMatch = trimmed.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+            // Try to extract JSON object from code block
+            const codeBlockMatch = trimmed.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
             if (codeBlockMatch && codeBlockMatch[1]) {
-                const operations = JSON.parse(codeBlockMatch[1]) as AiEditOperation[];
-                if (Array.isArray(operations) && operations.every(this.isValidOperation)) {
-                    return { operations };
+                const parsed = JSON.parse(codeBlockMatch[1]) as {
+                    edits?: AIEdit[];
+                    response?: string;
+                };
+
+                if (parsed.response) {
+                    return { edits: [], responseText: parsed.response };
+                }
+
+                if (parsed.edits && Array.isArray(parsed.edits)) {
+                    const validEdits = parsed.edits.filter((e) => this.isValidAIEdit(e));
+                    return { edits: validEdits };
                 }
             }
 
-            // If no code block, check if response starts with [
-            if (trimmed.startsWith('[')) {
-                const jsonMatch = trimmed.match(/^\[[\s\S]*?\]/);
+            // Check if response starts with { (direct JSON object)
+            if (trimmed.startsWith('{')) {
+                // Match a complete JSON object
+                const jsonMatch = trimmed.match(/^\{[\s\S]*\}/);
                 if (jsonMatch) {
-                    const operations = JSON.parse(jsonMatch[0]) as AiEditOperation[];
-                    if (Array.isArray(operations) && operations.every(this.isValidOperation)) {
-                        return { operations };
+                    const parsed = JSON.parse(jsonMatch[0]) as {
+                        edits?: AIEdit[];
+                        response?: string;
+                    };
+
+                    if (parsed.response) {
+                        return { edits: [], responseText: parsed.response };
+                    }
+
+                    if (parsed.edits && Array.isArray(parsed.edits)) {
+                        const validEdits = parsed.edits.filter((e) => this.isValidAIEdit(e));
+                        return { edits: validEdits };
                     }
                 }
             }
-        } catch {
+        } catch (error) {
+            console.log('[AiEdit] JSON parse error:', error);
             // If JSON parsing fails, treat as text response
         }
 
         // Return as plain text response
         return {
-            operations: [],
+            edits: [],
             responseText: trimmed,
         };
     }
 
     /**
-     * Convert AI edit operations to document edit format
+     * Validate an AIEdit structure
      */
-    private convertToDocumentEdits(
-        operations: AiEditOperation[],
-        widgetPosition: number,
-    ): DocumentEdit[] {
-        const edits: DocumentEdit[] = [];
+    private isValidAIEdit(edit: unknown): edit is AIEdit {
+        if (typeof edit !== 'object' || edit === null) return false;
+        const e = edit as Record<string, unknown>;
 
-        for (const op of operations) {
-            if (op.type === 'insert' && op.content) {
-                // Convert position anchor to document position
-                let position: 'start' | 'end' | number = 'end';
+        // Must have path array and op object
+        if (!Array.isArray(e['path'])) return false;
+        if (typeof e['op'] !== 'object' || e['op'] === null) return false;
 
-                if (op.position) {
-                    if (op.position.type === 'relative') {
-                        if (op.position.anchor === 'start') {
-                            position = 'start';
-                        } else if (op.position.anchor === 'end') {
-                            position = 'end';
-                        } else if (op.position.anchor === 'widget') {
-                            // Widget position + offset
-                            position = widgetPosition + (op.position.offset || 0);
-                        }
-                    } else if (op.position.type === 'absolute') {
-                        position = op.position.pos;
-                    }
-                }
+        const op = e['op'] as Record<string, unknown>;
+        const validTypes = [
+            'replace-text',
+            'insert-text',
+            'delete-text',
+            'search-replace',
+            'replace-node',
+            'insert-node',
+            'delete-node',
+            'set-attrs',
+            'format-text',
+        ];
 
-                edits.push({
-                    type: 'insert',
-                    position,
-                    content: op.content,
-                });
-            } else if (
-                op.type === 'replace' &&
-                op.from?.type === 'search' &&
-                op.content !== undefined
-            ) {
-                edits.push({
-                    type: 'replace',
-                    search: op.from.query,
-                    content: op.content,
-                    occurrence: op.from.occurrence || 1,
-                });
-            } else if (op.type === 'delete' && op.from?.type === 'search') {
-                // Convert delete to replace with empty string
-                edits.push({
-                    type: 'replace',
-                    search: op.from.query,
-                    content: '',
-                    occurrence: op.from.occurrence || 1,
-                });
-            }
-        }
-
-        return edits;
-    }
-
-    /**
-     * Validate an operation structure
-     */
-    private isValidOperation(op: unknown): op is AiEditOperation {
-        if (typeof op !== 'object' || op === null) return false;
-        const operation = op as Record<string, unknown>;
-
-        if (!['insert', 'delete', 'replace'].includes(operation['type'] as string)) {
-            return false;
-        }
+        if (!validTypes.includes(op['type'] as string)) return false;
 
         return true;
     }

@@ -5,7 +5,7 @@ import {
     checkBotPermission,
     checkRateLimit,
 } from '../middleware/bot-auth';
-import { documentEditService, type DocumentEdit } from '../services/document-edit.service';
+import { documentEditService, type AIEdit, type AIEditOp } from '../services/document-edit.service';
 import { findPageById } from '../repositories/page.repo';
 import { canAccessNotebook } from '../repositories/bot-token.repo';
 import { findUserBotById } from '../repositories/user-bot.repo';
@@ -76,14 +76,14 @@ export const externalRoutes = new Elysia({ prefix: '/api/external' })
                     }
                 }
 
-                // Get document content
-                const content = await documentEditService.getDocumentContent(params.pageId);
+                // Get document as JSON (ProseMirror structure)
+                const document = await documentEditService.getDocumentAsJSON(params.pageId);
 
                 return {
                     pageId: page.id,
                     title: page.title,
                     type: page.type,
-                    content,
+                    document,
                     updatedAt: page.updatedAt,
                 };
             } catch (error) {
@@ -159,28 +159,14 @@ export const externalRoutes = new Elysia({ prefix: '/api/external' })
                     }
                 }
 
-                // Convert body edits to DocumentEdit type
-                const edits: DocumentEdit[] = body.edits.map((edit) => {
-                    if (edit.type === 'append') {
-                        return { type: 'append', content: edit.content };
-                    } else if (edit.type === 'insert') {
-                        return {
-                            type: 'insert',
-                            position: edit.position ?? 'end',
-                            content: edit.content,
-                        };
-                    } else {
-                        return {
-                            type: 'replace',
-                            search: edit.search!,
-                            content: edit.content,
-                            occurrence: edit.occurrence ?? 1,
-                        };
-                    }
-                });
+                // Convert body edits to AIEdit type
+                const edits: AIEdit[] = body.edits.map((edit) => ({
+                    path: edit.path,
+                    op: edit.op as AIEditOp,
+                }));
 
-                // Apply edits
-                const result = await documentEditService.applyEdits(params.pageId, edits);
+                // Apply path-based edits
+                const result = await documentEditService.applyAIEdits(params.pageId, edits);
 
                 return {
                     success: result.success,
@@ -200,17 +186,53 @@ export const externalRoutes = new Elysia({ prefix: '/api/external' })
             body: t.Object({
                 edits: t.Array(
                     t.Object({
-                        type: t.Union([
-                            t.Literal('insert'),
-                            t.Literal('replace'),
-                            t.Literal('append'),
+                        path: t.Array(t.Number()),
+                        op: t.Union([
+                            t.Object({
+                                type: t.Literal('replace-text'),
+                                offset: t.Number(),
+                                length: t.Number(),
+                                text: t.String(),
+                            }),
+                            t.Object({
+                                type: t.Literal('insert-text'),
+                                offset: t.Number(),
+                                text: t.String(),
+                            }),
+                            t.Object({
+                                type: t.Literal('delete-text'),
+                                offset: t.Number(),
+                                length: t.Number(),
+                            }),
+                            t.Object({
+                                type: t.Literal('search-replace'),
+                                search: t.String(),
+                                replace: t.String(),
+                            }),
+                            t.Object({
+                                type: t.Literal('replace-node'),
+                                content: t.Any(),
+                            }),
+                            t.Object({
+                                type: t.Literal('insert-node'),
+                                index: t.Number(),
+                                content: t.Any(),
+                            }),
+                            t.Object({
+                                type: t.Literal('delete-node'),
+                            }),
+                            t.Object({
+                                type: t.Literal('set-attrs'),
+                                attrs: t.Record(t.String(), t.Any()),
+                            }),
+                            t.Object({
+                                type: t.Literal('format-text'),
+                                offset: t.Number(),
+                                length: t.Number(),
+                                mark: t.String(),
+                                value: t.Any(),
+                            }),
                         ]),
-                        content: t.String(),
-                        position: t.Optional(
-                            t.Union([t.Literal('start'), t.Literal('end'), t.Number()]),
-                        ),
-                        search: t.Optional(t.String()),
-                        occurrence: t.Optional(t.Number()),
                     }),
                     { minItems: 1 },
                 ),

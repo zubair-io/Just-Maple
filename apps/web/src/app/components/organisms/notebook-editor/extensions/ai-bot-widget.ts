@@ -2,6 +2,16 @@ import { Node, mergeAttributes, type Editor, type Range } from '@tiptap/core';
 
 export type AiBotWidgetStatus = 'idle' | 'loading' | 'success' | 'error';
 
+export interface AiBotWidgetHistoryEntry {
+  prompt: string;
+  result: {
+    appliedCount: number;
+    responseText?: string;
+    error?: string;
+  };
+  timestamp: number;
+}
+
 export interface AiBotWidgetOptions {
   HTMLAttributes: Record<string, unknown>;
 }
@@ -11,6 +21,7 @@ export interface AiBotWidgetAttrs {
   prompt: string;
   status: AiBotWidgetStatus;
   errorMessage: string | null;
+  history: AiBotWidgetHistoryEntry[];
 }
 
 declare module '@tiptap/core' {
@@ -94,6 +105,27 @@ export const AiBotWidget = Node.create<AiBotWidgetOptions>({
           };
         },
       },
+      history: {
+        default: [] as AiBotWidgetHistoryEntry[],
+        parseHTML: (element) => {
+          const historyStr = element.getAttribute('data-history');
+          if (!historyStr) return [];
+          try {
+            return JSON.parse(historyStr) as AiBotWidgetHistoryEntry[];
+          } catch {
+            return [];
+          }
+        },
+        renderHTML: (attributes) => {
+          const history = attributes['history'] as AiBotWidgetHistoryEntry[];
+          if (!history || history.length === 0) {
+            return {};
+          }
+          return {
+            'data-history': JSON.stringify(history),
+          };
+        },
+      },
     };
   },
 
@@ -128,6 +160,7 @@ export const AiBotWidget = Node.create<AiBotWidgetOptions>({
               prompt: '',
               status: 'idle',
               errorMessage: null,
+              history: [],
             },
           });
         },
@@ -195,6 +228,7 @@ export const AiBotWidget = Node.create<AiBotWidgetOptions>({
       const prompt = node.attrs['prompt'] as string;
       const status = node.attrs['status'] as AiBotWidgetStatus;
       const errorMessage = node.attrs['errorMessage'] as string | null;
+      const history = (node.attrs['history'] as AiBotWidgetHistoryEntry[]) || [];
 
       // Create container
       const dom = document.createElement('div');
@@ -220,6 +254,7 @@ export const AiBotWidget = Node.create<AiBotWidgetOptions>({
             prompt,
             status,
             errorMessage,
+            history,
             element: content,
             editor,
             getPos,
@@ -278,6 +313,7 @@ export const AiBotWidget = Node.create<AiBotWidgetOptions>({
               prompt: updatedNode.attrs['prompt'],
               status: newStatus,
               errorMessage: updatedNode.attrs['errorMessage'],
+              history: updatedNode.attrs['history'] || [],
             },
           });
           dom.dispatchEvent(updateEvent);

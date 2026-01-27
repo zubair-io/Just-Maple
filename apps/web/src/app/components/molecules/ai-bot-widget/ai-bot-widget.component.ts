@@ -27,6 +27,19 @@ export interface AiEditResponse {
   errors?: string[];
 }
 
+/**
+ * History entry for tracking prompts and results
+ */
+export interface HistoryEntry {
+  prompt: string;
+  result: {
+    appliedCount: number;
+    responseText?: string;
+    error?: string;
+  };
+  timestamp: number;
+}
+
 @Component({
   selector: 'app-ai-bot-widget',
   standalone: true,
@@ -47,6 +60,7 @@ export class AiBotWidgetComponent implements AfterViewInit {
   readonly pageId = input.required<string>();
   readonly initialPrompt = input<string>('');
   readonly initialStatus = input<AiBotWidgetStatus>('idle');
+  readonly initialHistory = input<HistoryEntry[]>([]);
 
   readonly deleteRequested = output<string>();
 
@@ -56,11 +70,14 @@ export class AiBotWidgetComponent implements AfterViewInit {
   readonly errorMessage = signal<string | null>(null);
   readonly responseText = signal<string | null>(null);
   readonly operationsApplied = signal<number>(0);
+  readonly history = signal<HistoryEntry[]>([]);
+  readonly historyExpanded = signal(false);
 
   ngAfterViewInit(): void {
     // Initialize from inputs
     this.prompt.set(this.initialPrompt());
     this.status.set(this.initialStatus());
+    this.history.set(this.initialHistory() || []);
 
     // Focus the input after a short delay
     setTimeout(() => {
@@ -97,7 +114,6 @@ export class AiBotWidgetComponent implements AfterViewInit {
       return;
     }
 
-    const editor = this.editor();
     const getPos = this.getPos();
     const widgetPos = getPos();
 
@@ -113,22 +129,15 @@ export class AiBotWidgetComponent implements AfterViewInit {
     this.operationsApplied.set(0);
 
     try {
-      // Get document content for AI context
-      const documentContent = this.getDocumentContent(editor);
-
       // Get IDs from inputs
       const notebookId = this.notebookId();
       const pageId = this.pageId();
 
-      // Call API - server applies edits directly to Y.js document
+      // Call API - server fetches document and applies edits directly to Y.js
       const response = await firstValueFrom(
         this.http.post<AiEditResponse>(`/api/notebooks/${notebookId}/ai-edit`, {
           prompt: promptText,
-          pageId, // Server uses this to apply edits
-          document: {
-            content: documentContent,
-            format: 'markdown',
-          },
+          pageId, // Server uses this to fetch document and apply edits
           context: {
             widgetPosition: widgetPos,
           },
@@ -151,11 +160,60 @@ export class AiBotWidgetComponent implements AfterViewInit {
       }
 
       this.status.set(response.success ? 'success' : 'error');
+
+      // Add to history
+      const historyEntry: HistoryEntry = {
+        prompt: promptText,
+        result: {
+          appliedCount: response.appliedCount,
+          responseText: response.responseText,
+          error: response.errors?.join(', '),
+        },
+        timestamp: Date.now(),
+      };
+      const newHistory = [...this.history(), historyEntry];
+      this.history.set(newHistory);
+
+      // Update widget attrs to persist history
+      this.updateWidgetAttrs(newHistory);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to execute AI prompt';
       this.errorMessage.set(message);
       this.status.set('error');
+
+      // Add failed attempt to history
+      const historyEntry: HistoryEntry = {
+        prompt: promptText,
+        result: {
+          appliedCount: 0,
+          error: message,
+        },
+        timestamp: Date.now(),
+      };
+      const newHistory = [...this.history(), historyEntry];
+      this.history.set(newHistory);
+
+      // Update widget attrs to persist history
+      this.updateWidgetAttrs(newHistory);
     }
+  }
+
+  /**
+   * Toggle history panel visibility
+   */
+  toggleHistory(): void {
+    this.historyExpanded.set(!this.historyExpanded());
+  }
+
+  /**
+   * Update the widget node attrs to persist history
+   */
+  private updateWidgetAttrs(history: HistoryEntry[]): void {
+    const editor = this.editor();
+    const widgetId = this.widgetId();
+
+    // Use the editor command to update widget attrs
+    (editor.commands as any).updateAiBotWidget(widgetId, { history });
   }
 
   /**
@@ -167,43 +225,5 @@ export class AiBotWidgetComponent implements AfterViewInit {
 
     // Use the editor command to remove the widget
     (editor.commands as any).removeAiBotWidget(widgetId);
-  }
-
-  /**
-   * Get document content as text/markdown for AI context
-   * This is read-only - used to provide context to the AI
-   */
-  private getDocumentContent(editor: Editor): string {
-    const doc = editor.state.doc;
-    const parts: string[] = [];
-
-    doc.descendants((node) => {
-      // Skip the AI widget node itself
-      if (node.type.name === 'aiBotWidget') {
-        return false;
-      }
-
-      if (node.isText) {
-        parts.push(node.text || '');
-      } else if (node.type.name === 'paragraph') {
-        parts.push('\n');
-      } else if (node.type.name === 'heading') {
-        const level = node.attrs['level'] || 1;
-        parts.push('\n' + '#'.repeat(level) + ' ');
-      } else if (node.type.name === 'bulletList' || node.type.name === 'orderedList') {
-        // Lists are handled by their children
-      } else if (node.type.name === 'listItem') {
-        parts.push('\n- ');
-      } else if (node.type.name === 'codeBlock') {
-        parts.push('\n```\n');
-      } else if (node.type.name === 'blockquote') {
-        parts.push('\n> ');
-      } else if (node.type.name === 'horizontalRule') {
-        parts.push('\n---\n');
-      }
-      return true;
-    });
-
-    return parts.join('').trim();
   }
 }
