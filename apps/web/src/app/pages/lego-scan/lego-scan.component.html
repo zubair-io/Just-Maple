@@ -5,7 +5,7 @@
   >
     <button
       (click)="goBack()"
-      class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-stone-100 transition-colors"
+      class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
     >
       <span class="material-symbols-rounded">arrow_back</span>
     </button>
@@ -14,7 +14,7 @@
 
     @if (selectedNotebook()) {
       <div
-        class="ml-auto flex items-center gap-1.5 text-sm p-1 px-2 rounded bg-stone-100 text-[var(--color-text-muted)]"
+        class="ml-auto flex items-center gap-1.5 text-sm p-1 px-2 rounded bg-[var(--color-surface-alt)] text-[var(--color-text-muted)]"
       >
         <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
         <span>{{ selectedNotebook()!.label }}</span>
@@ -23,7 +23,7 @@
   </header>
 
   <!-- Search Bar -->
-  <div class="px-4 py-3 bg-white border-b border-[var(--color-border)]">
+  <div class="px-4 py-3 bg-[var(--color-surface)] border-b border-[var(--color-border)]">
     <div class="flex items-center gap-2">
       <div class="relative flex-1">
         <span
@@ -52,7 +52,7 @@
         [class.bg-[var(--color-primary)]]="cameraEnabled()"
         [class.text-white]="cameraEnabled()"
         [class.border-[var(--color-primary)]]="cameraEnabled()"
-        [class.bg-white]="!cameraEnabled()"
+        [class.bg-[var(--color-surface)]]="!cameraEnabled()"
         [class.text-[var(--color-text-muted)]]="!cameraEnabled()"
         [class.border-[var(--color-border)]]="!cameraEnabled()"
         [class.hover:border-[var(--color-primary)]]="!cameraEnabled()"
@@ -107,11 +107,11 @@
         class="flex items-center p-3 cursor-pointer transition-colors border-b border-[var(--color-border)] max-w-full"
         [class.bg-green-50]="getCollectionStatus(registry._id) === 'have'"
         [class.bg-yellow-50]="getCollectionStatus(registry._id) === 'want'"
-        [class.bg-gray-100]="getCollectionStatus(registry._id) === 'sold'"
-        [class.hover:bg-stone-50]="!isInCollection(registry._id)"
+        [class.bg-[var(--color-surface-alt)]]="getCollectionStatus(registry._id) === 'sold'"
+        [class.hover:bg-[var(--color-surface-hover)]]="!isInCollection(registry._id)"
         [class.hover:bg-green-100]="getCollectionStatus(registry._id) === 'have'"
         [class.hover:bg-yellow-100]="getCollectionStatus(registry._id) === 'want'"
-        [class.hover:bg-gray-200]="getCollectionStatus(registry._id) === 'sold'"
+        [class.hover:bg-[var(--color-surface-hover)]]="getCollectionStatus(registry._id) === 'sold'"
       >
         <!-- Image -->
         <div class="flex-shrink-0 mr-3">
@@ -119,13 +119,13 @@
             <img
               [src]="registry.images[0]"
               [alt]="registry.title"
-              class="w-14 h-14 rounded-lg object-cover bg-stone-100"
+              class="w-14 h-14 rounded-lg object-cover bg-[var(--color-surface-alt)]"
               loading="lazy"
               (error)="$any($event.target).style.display = 'none'"
             />
           } @else {
             <div
-              class="w-14 h-14 rounded-lg bg-stone-100 flex items-center justify-center text-[var(--color-text-muted)]"
+              class="w-14 h-14 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center text-[var(--color-text-muted)]"
             >
               <span class="material-symbols-rounded">image</span>
             </div>
@@ -194,13 +194,13 @@
             <!-- Dropdown Menu -->
             @if (openDropdown() === registry._id) {
               <div
-                class="absolute right-0 w-36 bg-white rounded-lg shadow-lg border border-[var(--color-border)] z-20 overflow-hidden"
+                class="absolute right-0 w-36 bg-[var(--color-surface)] rounded-lg shadow-lg border border-[var(--color-border)] z-20 overflow-hidden"
                 [class.bottom-12]="dropdownPosition() === 'above'"
                 [class.top-12]="dropdownPosition() === 'below'"
               >
                 <button
                   (click)="setStatus($event, registry, 'have')"
-                  class="w-full px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-stone-50 transition-colors"
+                  class="w-full px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-[var(--color-surface-hover)] transition-colors"
                   [class.bg-green-50]="getCollectionStatus(registry._id) === 'have'"
                 >
                   <span class="material-symbols-rounded text-green-500 text-lg">check_circle</span>
@@ -208,7 +208,7 @@
                 </button>
                 <button
                   (click)="setStatus($event, registry, 'want')"
-                  class="w-full px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-stone-50 transition-colors"
+                  class="w-full px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-[var(--color-surface-hover)] transition-colors"
                   [class.bg-yellow-50]="getCollectionStatus(registry._id) === 'want'"
                 >
                   <span class="material-symbols-rounded text-yellow-500 text-lg">favorite</span>
@@ -216,8 +216,10 @@
                 </button>
                 <button
                   (click)="setStatus($event, registry, 'sold')"
-                  class="w-full px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-stone-50 transition-colors"
-                  [class.bg-gray-100]="getCollectionStatus(registry._id) === 'sold'"
+                  class="w-full px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-[var(--color-surface-hover)] transition-colors"
+                  [class.bg-[var(--color-surface-alt)]]="
+                    getCollectionStatus(registry._id) === 'sold'
+                  "
                 >
                   <span class="material-symbols-rounded text-gray-500 text-lg">sell</span>
                   <span>Sold</span>
@@ -237,7 +239,7 @@
             <button
               (click)="toggleCollection($event, registry)"
               [disabled]="isSaving() === registry._id"
-              class="w-10 h-10 flex items-center justify-center rounded-full bg-stone-100 text-[var(--color-text-muted)] hover:bg-stone-200 hover:text-[var(--color-text-main)] transition-colors"
+              class="w-10 h-10 flex items-center justify-center rounded-full bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)] transition-colors"
             >
               @if (isSaving() === registry._id) {
                 <div
