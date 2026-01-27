@@ -77,7 +77,7 @@
 
   <!-- Todo toolbar - shown when cursor is in a task item -->
   @if (activeTaskItem()) {
-    <div class="todo-toolbar">
+    <div class="todo-toolbar" @slideInOut>
       <span class="todo-toolbar-label">Task:</span>
 
       <!-- Priority buttons -->

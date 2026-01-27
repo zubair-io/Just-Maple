@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { trigger, state, style, animate, transition } from '@angular/animations';
 import type { Editor } from '@tiptap/core';
 import type { TodoPriority, TodoColor } from '@maple/shared';
 
@@ -38,6 +39,20 @@ interface ActiveTaskItem {
   templateUrl: './editor-toolbar.component.html',
   styleUrl: './editor-toolbar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  animations: [
+    trigger('slideInOut', [
+      transition(':enter', [
+        style({ opacity: 0, height: 0, paddingTop: 0, paddingBottom: 0 }),
+        animate(
+          '150ms ease-out',
+          style({ opacity: 1, height: '*', paddingTop: '6px', paddingBottom: '6px' }),
+        ),
+      ]),
+      transition(':leave', [
+        animate('150ms ease-in', style({ opacity: 0, height: 0, paddingTop: 0, paddingBottom: 0 })),
+      ]),
+    ]),
+  ],
 })
 export class EditorToolbarComponent {
   private readonly cdr = inject(ChangeDetectorRef);
