@@ -409,6 +409,23 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         }, 0);
       }
 
+      // Color map for checkbox border colors
+      const colorMap: Record<string, string> = {
+        red: '#ef4444',
+        orange: '#f97316',
+        yellow: '#eab308',
+        green: '#22c55e',
+        blue: '#3b82f6',
+      };
+
+      // Get checkbox border color based on todo color
+      const getCheckboxColor = (color: string | null | undefined) => {
+        if (color && colorMap[color]) {
+          return colorMap[color];
+        }
+        return '#1f2937'; // Default dark border (almost black)
+      };
+
       // Create the list item container
       const dom = document.createElement('li');
       dom.setAttribute('data-type', 'taskItem');
@@ -430,16 +447,36 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         dom.classList.add('todo-overdue');
       }
 
+      // Create main row wrapper (checkbox + content + meta)
+      const mainRow = document.createElement('div');
+      mainRow.classList.add('todo-main-row');
+
       // Create checkbox wrapper
       const checkboxWrapper = document.createElement('label');
       checkboxWrapper.classList.add('todo-checkbox-wrapper');
       checkboxWrapper.contentEditable = 'false';
 
-      // Create checkbox
+      // Create custom round checkbox (hidden native + custom visual)
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = node.attrs['checked'] || false;
-      checkbox.classList.add('todo-checkbox');
+      checkbox.classList.add('todo-checkbox-input');
+
+      // Create custom checkbox visual (round, 32px)
+      const checkboxVisual = document.createElement('span');
+      checkboxVisual.classList.add('todo-checkbox');
+      checkboxVisual.style.borderColor = getCheckboxColor(node.attrs['color']);
+      if (node.attrs['checked']) {
+        checkboxVisual.style.backgroundColor = getCheckboxColor(node.attrs['color']);
+      }
+
+      // Add checkmark SVG inside visual
+      checkboxVisual.innerHTML = `
+        <svg class="todo-checkmark" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M3.5 8L6.5 11L12.5 5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      `;
+
       checkbox.addEventListener('change', () => {
         const pos = typeof getPos === 'function' ? getPos() : null;
         if (pos !== null && pos !== undefined) {
@@ -454,12 +491,13 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         }
       });
       checkboxWrapper.appendChild(checkbox);
+      checkboxWrapper.appendChild(checkboxVisual);
 
       // Create content wrapper
       const content = document.createElement('div');
       content.classList.add('todo-content');
 
-      // Create metadata wrapper for priority badge and due date
+      // Create metadata wrapper for priority badge and due date (inline)
       const metaWrapper = document.createElement('div');
       metaWrapper.classList.add('todo-meta');
       metaWrapper.contentEditable = 'false';
@@ -484,21 +522,29 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         metaWrapper.appendChild(dueDateChip);
       }
 
-      // Add settings button
+      // Assemble main row
+      mainRow.appendChild(checkboxWrapper);
+      mainRow.appendChild(content);
+      mainRow.appendChild(metaWrapper);
+
+      // Create options bar (shown below todo on focus)
+      const optionsBar = document.createElement('div');
+      optionsBar.classList.add('todo-options-bar');
+      optionsBar.contentEditable = 'false';
+
+      // Settings/options button
       const settingsBtn = document.createElement('button');
-      settingsBtn.classList.add('todo-settings-btn');
+      settingsBtn.classList.add('todo-options-btn');
       settingsBtn.type = 'button';
       settingsBtn.innerHTML = `
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                    <circle cx="8" cy="3" r="1.5"/>
-                    <circle cx="8" cy="8" r="1.5"/>
-                    <circle cx="8" cy="13" r="1.5"/>
-                </svg>
-            `;
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 4.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM8 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM8 14.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>
+        </svg>
+        <span>Options</span>
+      `;
       settingsBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        // Dispatch custom event for Angular to handle
         const event = new CustomEvent('todo-settings-click', {
           bubbles: true,
           detail: {
@@ -516,12 +562,34 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         });
         dom.dispatchEvent(event);
       });
-      metaWrapper.appendChild(settingsBtn);
+      optionsBar.appendChild(settingsBtn);
 
       // Assemble the structure
-      dom.appendChild(checkboxWrapper);
-      dom.appendChild(content);
-      dom.appendChild(metaWrapper);
+      dom.appendChild(mainRow);
+      dom.appendChild(optionsBar);
+
+      // Handle focus/blur for options visibility
+      const handleFocusIn = () => {
+        dom.classList.add('todo-focused');
+      };
+
+      const handleFocusOut = (e: FocusEvent) => {
+        // Check if focus is moving to another element within the same todo
+        const relatedTarget = e.relatedTarget as HTMLElement | null;
+        if (relatedTarget && dom.contains(relatedTarget)) {
+          return; // Don't hide if focus stays within the todo
+        }
+        // Check if focus is moving to the options popover
+        if (relatedTarget && relatedTarget.closest('.todo-popover')) {
+          return;
+        }
+        dom.classList.remove('todo-focused');
+      };
+
+      content.addEventListener('focusin', handleFocusIn);
+      content.addEventListener('focusout', handleFocusOut);
+      optionsBar.addEventListener('focusin', handleFocusIn);
+      optionsBar.addEventListener('focusout', handleFocusOut);
 
       return {
         dom,
@@ -535,7 +603,16 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
           checkbox.checked = updatedNode.attrs['checked'] || false;
           dom.setAttribute('data-checked', String(updatedNode.attrs['checked'] || false));
 
-          // Update color
+          // Update checkbox visual color
+          const newColor = getCheckboxColor(updatedNode.attrs['color']);
+          checkboxVisual.style.borderColor = newColor;
+          if (updatedNode.attrs['checked']) {
+            checkboxVisual.style.backgroundColor = newColor;
+          } else {
+            checkboxVisual.style.backgroundColor = '#f9fafb'; // Off-white background
+          }
+
+          // Update color attribute
           if (updatedNode.attrs['color']) {
             dom.setAttribute('data-color', updatedNode.attrs['color']);
           } else {
@@ -585,38 +662,34 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
             metaWrapper.appendChild(dueDateChip);
           }
 
-          // Re-add settings button
-          const newSettingsBtn = document.createElement('button');
-          newSettingsBtn.classList.add('todo-settings-btn');
-          newSettingsBtn.type = 'button';
-          newSettingsBtn.innerHTML = `
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                            <circle cx="8" cy="3" r="1.5"/>
-                            <circle cx="8" cy="8" r="1.5"/>
-                            <circle cx="8" cy="13" r="1.5"/>
-                        </svg>
-                    `;
-          newSettingsBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const event = new CustomEvent('todo-settings-click', {
-              bubbles: true,
-              detail: {
-                todoId: updatedNode.attrs['id'] || nodeId,
-                attrs: {
-                  id: updatedNode.attrs['id'] || nodeId,
-                  checked: updatedNode.attrs['checked'],
-                  dueDate: updatedNode.attrs['dueDate'],
-                  priority: updatedNode.attrs['priority'],
-                  color: updatedNode.attrs['color'],
+          // Update options bar event handler with new attrs
+          const newSettingsBtn = optionsBar.querySelector('.todo-options-btn');
+          if (newSettingsBtn) {
+            const newHandler = (e: Event) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const event = new CustomEvent('todo-settings-click', {
+                bubbles: true,
+                detail: {
+                  todoId: updatedNode.attrs['id'] || nodeId,
+                  attrs: {
+                    id: updatedNode.attrs['id'] || nodeId,
+                    checked: updatedNode.attrs['checked'],
+                    dueDate: updatedNode.attrs['dueDate'],
+                    priority: updatedNode.attrs['priority'],
+                    color: updatedNode.attrs['color'],
+                  },
+                  element: dom,
+                  position: newSettingsBtn.getBoundingClientRect(),
                 },
-                element: dom,
-                position: newSettingsBtn.getBoundingClientRect(),
-              },
-            });
-            dom.dispatchEvent(event);
-          });
-          metaWrapper.appendChild(newSettingsBtn);
+              });
+              dom.dispatchEvent(event);
+            };
+            // Clone and replace to remove old listeners
+            const clone = newSettingsBtn.cloneNode(true);
+            clone.addEventListener('click', newHandler);
+            newSettingsBtn.parentNode?.replaceChild(clone, newSettingsBtn);
+          }
 
           return true;
         },

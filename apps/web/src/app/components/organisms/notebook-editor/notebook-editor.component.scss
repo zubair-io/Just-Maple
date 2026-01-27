@@ -70,6 +70,11 @@
   padding: 1.5rem;
   cursor: text;
 
+  // Mobile: reduce left/right padding
+  @media (max-width: 640px) {
+    padding: 1rem 0.5rem;
+  }
+
   &:not(.full-width) {
     .editor-content {
       max-width: 800px;
@@ -192,39 +197,84 @@
 
       li[data-type='taskItem'] {
         display: flex;
-        align-items: flex-start;
-        gap: 0.5rem;
+        flex-direction: column;
         margin: 0.5rem 0;
         padding: 0.5rem 0.75rem;
         border-radius: 6px;
         transition: background 0.15s ease;
         position: relative;
 
+        // Mobile: reduce padding
+        @media (max-width: 640px) {
+          padding: 0.5rem 0.25rem;
+        }
+
         &:hover {
           background: var(--color-bg-hover, rgba(0, 0, 0, 0.03));
+        }
 
-          .todo-settings-btn {
-            opacity: 1;
-          }
+        // Main row: checkbox + content + meta
+        .todo-main-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.75rem;
         }
 
         // Checkbox wrapper
         .todo-checkbox-wrapper {
           flex-shrink: 0;
-          margin-top: 0.15rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
         }
 
+        // Hide native checkbox
+        .todo-checkbox-input {
+          position: absolute;
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+
+        // Custom round checkbox (32px touch target)
         .todo-checkbox {
-          width: 18px;
-          height: 18px;
+          width: 32px;
+          height: 32px;
+          border: 2px solid #1f2937; // Dark almost black
+          border-radius: 50%;
+          background: #f9fafb; // Off-white
+          display: flex;
+          align-items: center;
+          justify-content: center;
           cursor: pointer;
-          accent-color: var(--color-primary);
+          transition: all 0.15s ease;
+
+          .todo-checkmark {
+            opacity: 0;
+            transition: opacity 0.15s ease;
+          }
+        }
+
+        // Checked state
+        &[data-checked='true'] {
+          .todo-checkbox {
+            .todo-checkmark {
+              opacity: 1;
+            }
+          }
+
+          .todo-content {
+            text-decoration: line-through;
+            opacity: 0.6;
+          }
         }
 
         // Content area
         .todo-content {
           flex: 1;
           min-width: 0;
+          padding-top: 4px; // Align with checkbox center
         }
 
         // Metadata wrapper
@@ -233,6 +283,7 @@
           align-items: center;
           gap: 6px;
           flex-shrink: 0;
+          padding-top: 4px;
         }
 
         // Priority badge
@@ -274,33 +325,39 @@
           }
         }
 
-        // Settings button
-        .todo-settings-btn {
+        // Options bar (below todo, shown on focus)
+        .todo-options-bar {
+          display: none;
+          padding: 0.5rem 0 0 calc(32px + 0.75rem); // Align with content
+          gap: 0.5rem;
+        }
+
+        // Show options bar on focus
+        &.todo-focused .todo-options-bar {
+          display: flex;
+        }
+
+        // Options button
+        .todo-options-btn {
           display: flex;
           align-items: center;
-          justify-content: center;
-          width: 24px;
-          height: 24px;
-          padding: 0;
-          border: none;
-          background: transparent;
+          gap: 4px;
+          padding: 4px 8px;
+          border: 1px solid var(--color-border);
+          background: var(--color-bg);
           color: var(--color-text-muted);
-          cursor: pointer;
+          font-size: 12px;
           border-radius: 4px;
-          opacity: 0;
+          cursor: pointer;
           transition: all 0.15s ease;
 
           &:hover {
-            background: var(--color-bg-secondary, rgba(0, 0, 0, 0.08));
+            background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
             color: var(--color-text-main);
           }
-        }
 
-        // Completed state
-        &[data-checked='true'] {
-          .todo-content {
-            text-decoration: line-through;
-            opacity: 0.6;
+          svg {
+            flex-shrink: 0;
           }
         }
 
@@ -354,6 +411,11 @@
     // Dark mode adjustments for todos
     :host-context(.dark-mode) & {
       li[data-type='taskItem'] {
+        .todo-checkbox {
+          background: #374151; // Dark off-white
+          border-color: #9ca3af; // Lighter border in dark mode
+        }
+
         .todo-priority {
           &.priority-high {
             background: rgba(220, 38, 38, 0.2);
