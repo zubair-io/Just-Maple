@@ -228,7 +228,7 @@ class QuickMemoPanel: NSObject {
         // Get active server URL and append quick-memo-popup route
         let activeServer = ServerConfigService.shared.getActiveServer()
         let baseURL = activeServer.url.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let quickMemoURL = "\(baseURL)/#/quick-memo-popup"
+        let quickMemoURL = "\(baseURL)/quick-memo-popup"
 
         if let url = URL(string: quickMemoURL) {
             let request = URLRequest(url: url)
