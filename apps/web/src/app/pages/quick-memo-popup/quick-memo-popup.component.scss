@@ -1,0 +1,49 @@
+// Quick Memo Popup Styles
+
+.quick-memo-popup {
+  // Transparent title bar area for dragging
+  -webkit-app-region: drag;
+
+  // Make interactive elements non-draggable
+  button,
+  textarea,
+  input,
+  select {
+    -webkit-app-region: no-drag;
+  }
+}
+
+// Recording indicator pulse
+.recording-indicator {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.1);
+  }
+}
+
+// Auto-resize textarea
+textarea {
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 2px;
+  }
+}

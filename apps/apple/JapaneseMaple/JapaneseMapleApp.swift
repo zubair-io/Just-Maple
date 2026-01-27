@@ -193,6 +193,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Set notification center delegate
         UNUserNotificationCenter.current().delegate = self
+
+        // Setup Quick Memo global shortcut (Cmd+Shift+M)
+        QuickMemoPanel.shared.setup()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Cleanup Quick Memo panel
+        QuickMemoPanel.shared.cleanup()
     }
 
     // Handle successful device token registration
