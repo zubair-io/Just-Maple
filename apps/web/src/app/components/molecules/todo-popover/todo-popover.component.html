@@ -1,8 +1,16 @@
-<div class="todo-popover" [style.top]="popoverStyle().top" [style.left]="popoverStyle().left">
+<div
+  class="fixed z-[1000] min-w-60 max-w-[300px] bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg shadow-lg p-3"
+  [style.top]="popoverStyle().top"
+  [style.left]="popoverStyle().left"
+>
   <!-- Header -->
-  <div class="popover-header">
-    <span class="popover-title">Todo Settings</span>
-    <button type="button" class="close-btn" (click)="onClose()">
+  <div class="flex justify-between items-center mb-3 pb-2 border-b border-[var(--color-border)]">
+    <span class="text-sm font-semibold text-[var(--color-text-main)]">Todo Settings</span>
+    <button
+      type="button"
+      class="flex items-center justify-center w-6 h-6 p-0 border-none bg-transparent text-[var(--color-text-muted)] cursor-pointer rounded hover:bg-[var(--color-hover)]"
+      (click)="onClose()"
+    >
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
         <path
           d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"
@@ -12,18 +20,22 @@
   </div>
 
   <!-- Due Date Section -->
-  <div class="popover-section">
-    <label class="section-label">Due Date</label>
-    <div class="date-input-wrapper">
+  <div class="mb-3">
+    <label class="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Due Date</label>
+    <div class="flex items-center gap-2">
       <input
         #dateInput
         type="date"
-        class="date-input"
+        class="flex-1 px-2.5 py-1.5 text-[13px] border border-[var(--color-border)] rounded-md bg-[var(--color-bg)] text-[var(--color-text-main)] outline-none focus:border-[var(--color-primary)]"
         [value]="dateInputValue()"
         (change)="onDateInputChange($event)"
       />
       @if (currentDueDate()) {
-        <button type="button" class="clear-btn" (click)="clearDueDate()">
+        <button
+          type="button"
+          class="flex items-center justify-center w-6 h-6 p-0 border-none bg-transparent text-[var(--color-text-muted)] cursor-pointer rounded hover:bg-[var(--color-hover)] hover:text-[var(--color-text-main)]"
+          (click)="clearDueDate()"
+        >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
             <path
               d="M4.646 4.646a.5.5 0 0 1 .708 0L7 6.293l1.646-1.647a.5.5 0 0 1 .708.708L7.707 7l1.647 1.646a.5.5 0 0 1-.708.708L7 7.707 5.354 9.354a.5.5 0 0 1-.708-.708L6.293 7 4.646 5.354a.5.5 0 0 1 0-.708z"
@@ -33,22 +45,21 @@
       }
     </div>
     @if (formattedDueDate()) {
-      <span class="date-preview">{{ formattedDueDate() }}</span>
+      <span class="block text-xs text-[var(--color-text-muted)] mt-1">{{
+        formattedDueDate()
+      }}</span>
     }
   </div>
 
   <!-- Priority Section -->
-  <div class="popover-section">
-    <label class="section-label">Priority</label>
-    <div class="priority-buttons">
+  <div class="mb-3">
+    <label class="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Priority</label>
+    <div class="flex gap-1.5">
       @for (p of priorities; track p.value) {
         <button
           type="button"
-          class="priority-btn"
-          [class.active]="currentPriority() === p.value"
-          [class.priority-high]="p.value === 'high'"
-          [class.priority-medium]="p.value === 'medium'"
-          [class.priority-low]="p.value === 'low'"
+          class="flex-1 px-2.5 py-1.5 text-xs font-medium border rounded-md cursor-pointer transition-all"
+          [class]="getPriorityClasses(p.value)"
           (click)="setPriority(currentPriority() === p.value ? null : p.value)"
         >
           {{ p.label }}
@@ -58,15 +69,19 @@
   </div>
 
   <!-- Color Section -->
-  <div class="popover-section">
-    <label class="section-label">Color</label>
-    <div class="color-swatches">
+  <div>
+    <label class="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">Color</label>
+    <div class="flex items-center gap-2">
       @for (c of colors; track c.value) {
         <button
           type="button"
-          class="color-swatch"
+          class="w-7 h-7 rounded-full cursor-pointer transition-all flex items-center justify-center p-0 hover:scale-110"
+          [class]="
+            currentColor() === c.value
+              ? 'border-2 border-[var(--color-text-main)] shadow-[0_0_0_2px_var(--color-bg)]'
+              : 'border-2 border-transparent'
+          "
           [style.background-color]="c.hex"
-          [class.active]="currentColor() === c.value"
           [title]="c.label"
           (click)="setColor(currentColor() === c.value ? null : c.value)"
         >
@@ -78,7 +93,11 @@
         </button>
       }
       @if (currentColor()) {
-        <button type="button" class="clear-color-btn" (click)="clearColor()">
+        <button
+          type="button"
+          class="flex items-center justify-center w-6 h-6 p-0 border-none bg-transparent text-[var(--color-text-muted)] cursor-pointer rounded hover:bg-[var(--color-hover)] hover:text-[var(--color-text-main)]"
+          (click)="clearColor()"
+        >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
             <path
               d="M4.646 4.646a.5.5 0 0 1 .708 0L7 6.293l1.646-1.647a.5.5 0 0 1 .708.708L7.707 7l1.647 1.646a.5.5 0 0 1-.708.708L7 7.707 5.354 9.354a.5.5 0 0 1-.708-.708L6.293 7 4.646 5.354a.5.5 0 0 1 0-.708z"

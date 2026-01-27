@@ -171,6 +171,28 @@ export class TodoPopoverComponent {
   }
 
   /**
+   * Get Tailwind classes for priority buttons
+   */
+  getPriorityClasses(priority: TodoPriority | null): string {
+    const isActive = this.currentPriority() === priority;
+
+    if (!isActive) {
+      return 'border-[var(--color-border)] bg-transparent text-[var(--color-text-main)] hover:bg-[var(--color-hover)]';
+    }
+
+    switch (priority) {
+      case 'high':
+        return 'border-transparent bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400';
+      case 'medium':
+        return 'border-transparent bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400';
+      case 'low':
+        return 'border-transparent bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400';
+      default:
+        return 'border-[var(--color-border)] bg-transparent text-[var(--color-text-main)]';
+    }
+  }
+
+  /**
    * Parse natural language date input
    * Supports: "today", "tomorrow", "next week", "in X days", day names, dates
    */
