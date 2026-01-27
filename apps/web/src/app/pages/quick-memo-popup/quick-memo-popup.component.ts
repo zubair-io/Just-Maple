@@ -46,6 +46,7 @@ export class QuickMemoPopupComponent implements OnDestroy, AfterViewInit {
   private readonly authService = inject(AuthService);
 
   @ViewChild('textInput') textInput!: ElementRef<HTMLTextAreaElement>;
+  @ViewChild('notebookSelector') notebookSelector!: ElementRef<HTMLDivElement>;
 
   // Auth state
   readonly isAuthReady = signal(false);
@@ -116,7 +117,11 @@ export class QuickMemoPopupComponent implements OnDestroy, AfterViewInit {
     // Escape to close (native panel handles this, but also support it here)
     if (event.key === 'Escape') {
       event.preventDefault();
-      this.closePopup();
+      if (this.showNotebookDropdown()) {
+        this.showNotebookDropdown.set(false);
+      } else {
+        this.closePopup();
+      }
     }
 
     // Cmd/Ctrl + Enter to submit
@@ -124,6 +129,17 @@ export class QuickMemoPopupComponent implements OnDestroy, AfterViewInit {
       event.preventDefault();
       if (this.canSubmit()) {
         this.submit();
+      }
+    }
+  }
+
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    // Close notebook dropdown when clicking outside
+    if (this.showNotebookDropdown() && this.notebookSelector) {
+      const clickedInside = this.notebookSelector.nativeElement.contains(event.target as Node);
+      if (!clickedInside) {
+        this.showNotebookDropdown.set(false);
       }
     }
   }
