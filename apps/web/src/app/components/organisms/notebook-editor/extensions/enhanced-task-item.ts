@@ -1,4 +1,5 @@
 import TaskItem from '@tiptap/extension-task-item';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { TodoPriority, TodoColor } from '@maple/shared';
 
 export interface EnhancedTaskItemOptions {
@@ -388,6 +389,57 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         return false;
       },
     };
+  },
+
+  addProseMirrorPlugins() {
+    const extensionThis = this;
+
+    return [
+      new Plugin({
+        key: new PluginKey('enhancedTaskItemUniqueIds'),
+        appendTransaction(transactions, oldState, newState) {
+          // Only process if there were actual changes
+          if (!transactions.some((tr) => tr.docChanged)) {
+            return null;
+          }
+
+          const { tr } = newState;
+          const seenIds = new Set<string>();
+          const nodesToFix: { pos: number; node: any }[] = [];
+
+          // First pass: collect all task item IDs and find duplicates
+          newState.doc.descendants((node, pos) => {
+            if (node.type.name === extensionThis.name) {
+              const id = node.attrs['id'];
+              if (id) {
+                if (seenIds.has(id)) {
+                  // Duplicate ID found
+                  nodesToFix.push({ pos, node });
+                } else {
+                  seenIds.add(id);
+                }
+              }
+            }
+            return true;
+          });
+
+          // If no duplicates, no need for a transaction
+          if (nodesToFix.length === 0) {
+            return null;
+          }
+
+          // Fix duplicate IDs
+          nodesToFix.forEach(({ pos, node }) => {
+            tr.setNodeMarkup(pos, undefined, {
+              ...node.attrs,
+              id: generateTodoId(),
+            });
+          });
+
+          return tr;
+        },
+      }),
+    ];
   },
 
   addNodeView() {
