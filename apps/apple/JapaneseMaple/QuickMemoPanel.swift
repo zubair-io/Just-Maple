@@ -12,13 +12,24 @@ import WebKit
 import AppKit
 import Carbon.HIToolbox
 
+// Global hotkey callback - must be at file scope
+private func hotKeyHandler(
+    nextHandler: EventHandlerCallRef?,
+    event: EventRef?,
+    userData: UnsafeMutableRawPointer?
+) -> OSStatus {
+    QuickMemoPanel.shared.togglePanel()
+    return noErr
+}
+
 class QuickMemoPanel: NSObject {
     static let shared = QuickMemoPanel()
 
     private var panel: NSPanel?
     private var webView: WKWebView?
     private var bridge: NativeBridge?
-    private var globalMonitor: Any?
+    private var hotKeyRef: EventHotKeyRef?
+    private var eventHandlerRef: EventHandlerRef?
     private var localMonitor: Any?
 
     // Panel dimensions
@@ -32,49 +43,89 @@ class QuickMemoPanel: NSObject {
     // MARK: - Setup
 
     func setup() {
-        setupGlobalShortcut()
+        registerGlobalHotKey()
+        setupLocalMonitor()
         print("[QuickMemoPanel] Setup complete - Use Cmd+Shift+M to open Quick Memo")
     }
 
-    private func setupGlobalShortcut() {
-        // Global monitor - works when app is in background
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleKeyEvent(event)
+    private func registerGlobalHotKey() {
+        // Register Cmd+Shift+M as global hotkey using Carbon API
+        // This works without requiring Accessibility permissions
+
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+
+        // Install event handler
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            hotKeyHandler,
+            1,
+            &eventType,
+            nil,
+            &eventHandlerRef
+        )
+
+        guard status == noErr else {
+            print("[QuickMemoPanel] Failed to install event handler: \(status)")
+            return
         }
 
-        // Local monitor - works when app is in foreground
+        // Register the hotkey: Cmd+Shift+M
+        // keyCode for M is 46 (kVK_ANSI_M)
+        var hotKeyID = EventHotKeyID(
+            signature: OSType(0x4A4D_514D), // "JMQM" - Just Maple Quick Memo
+            id: 1
+        )
+
+        let modifiers: UInt32 = UInt32(cmdKey | shiftKey)
+
+        let registerStatus = RegisterEventHotKey(
+            UInt32(kVK_ANSI_M),
+            modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+
+        if registerStatus == noErr {
+            print("[QuickMemoPanel] Global hotkey registered: Cmd+Shift+M")
+        } else {
+            print("[QuickMemoPanel] Failed to register hotkey: \(registerStatus)")
+        }
+    }
+
+    private func setupLocalMonitor() {
+        // Local monitor for when app is in foreground (backup)
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if self?.handleKeyEvent(event) == true {
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let isCmd = flags.contains(.command)
+            let isShift = flags.contains(.shift)
+            let isM = event.keyCode == UInt16(kVK_ANSI_M)
+
+            if isCmd && isShift && isM {
+                DispatchQueue.main.async {
+                    self?.togglePanel()
+                }
                 return nil // Consume the event
             }
             return event
         }
     }
 
-    @discardableResult
-    private func handleKeyEvent(_ event: NSEvent) -> Bool {
-        // Check for Cmd+Shift+M
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let isCmd = flags.contains(.command)
-        let isShift = flags.contains(.shift)
-        let isM = event.keyCode == kVK_ANSI_M
-
-        if isCmd && isShift && isM {
-            DispatchQueue.main.async { [weak self] in
-                self?.togglePanel()
-            }
-            return true
-        }
-        return false
-    }
-
     // MARK: - Panel Management
 
     func togglePanel() {
-        if let panel = panel, panel.isVisible {
-            hidePanel()
-        } else {
-            showPanel()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            if let panel = self.panel, panel.isVisible {
+                self.hidePanel()
+            } else {
+                self.showPanel()
+            }
         }
     }
 
@@ -93,9 +144,9 @@ class QuickMemoPanel: NSObject {
             panel.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: true)
         }
 
-        // Show and focus
-        panel.makeKeyAndOrderFront(nil)
+        // Activate app and show panel
         NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
 
         // Load or reload the quick memo page
         loadQuickMemoPage()
@@ -112,7 +163,7 @@ class QuickMemoPanel: NSObject {
         // Create floating panel
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
-            styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel],
+            styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel, .hudWindow],
             backing: .buffered,
             defer: false
         )
@@ -125,8 +176,12 @@ class QuickMemoPanel: NSObject {
         panel.titlebarAppearsTransparent = true
         panel.titleVisibility = .hidden
         panel.isMovableByWindowBackground = true
-        panel.backgroundColor = .clear
+        panel.backgroundColor = NSColor.windowBackgroundColor
         panel.isOpaque = false
+        panel.hasShadow = true
+
+        // Allow panel to receive key events
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         // Create WebView
         let config = WKWebViewConfiguration()
@@ -141,6 +196,9 @@ class QuickMemoPanel: NSObject {
 
         let webView = WKWebView(frame: panel.contentView!.bounds, configuration: config)
         webView.autoresizingMask = [.width, .height]
+
+        // Make webview background match system
+        webView.setValue(false, forKey: "drawsBackground")
 
         #if DEBUG
         if #available(macOS 13.3, *) {
@@ -194,16 +252,27 @@ class QuickMemoPanel: NSObject {
     // MARK: - Cleanup
 
     func cleanup() {
-        if let globalMonitor = globalMonitor {
-            NSEvent.removeMonitor(globalMonitor)
+        // Unregister hotkey
+        if let hotKeyRef = hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
         }
+
+        // Remove event handler
+        if let eventHandlerRef = eventHandlerRef {
+            RemoveEventHandler(eventHandlerRef)
+        }
+
+        // Remove local monitor
         if let localMonitor = localMonitor {
             NSEvent.removeMonitor(localMonitor)
         }
+
         panel?.close()
         panel = nil
         webView = nil
         bridge = nil
+
+        print("[QuickMemoPanel] Cleaned up")
     }
 }
 
