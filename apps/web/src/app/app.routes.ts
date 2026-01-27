@@ -9,13 +9,13 @@ import {
 
 export const routes: Routes = [
   // Quick Memo popup - standalone route for native popup window
+  // No AuthGuard - popup handles auth via native bridge token
   {
     path: 'quick-memo-popup',
     loadComponent: () =>
       import('./pages/quick-memo-popup/quick-memo-popup.component').then(
         (m) => m.QuickMemoPopupComponent,
       ),
-    canActivate: [AuthGuard],
   },
   // Auth routes - must come before the catch-all :notebookId route
   {

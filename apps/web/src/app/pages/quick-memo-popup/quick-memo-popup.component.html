@@ -1,7 +1,41 @@
 <!-- Quick Memo Popup - Standalone view for native popup window -->
 <div class="quick-memo-popup h-screen flex flex-col bg-white dark:bg-stone-900">
+  <!-- Loading State -->
+  @if (!isAuthReady()) {
+    <div class="flex-1 flex items-center justify-center">
+      <div class="text-center">
+        <span class="material-symbols-rounded text-4xl text-stone-400 animate-spin"
+          >progress_activity</span
+        >
+        <p class="mt-2 text-stone-500 dark:text-stone-400">Loading...</p>
+      </div>
+    </div>
+  }
+
+  <!-- Not Authenticated State -->
+  @else if (!isAuthenticated()) {
+    <div class="flex-1 flex items-center justify-center p-4">
+      <div class="text-center">
+        <span class="material-symbols-rounded text-5xl text-stone-400 dark:text-stone-500"
+          >lock</span
+        >
+        <p class="mt-3 text-stone-600 dark:text-stone-300 font-medium">Not signed in</p>
+        <p class="mt-1 text-sm text-stone-500 dark:text-stone-400">
+          Open the main app to sign in first
+        </p>
+        <button
+          type="button"
+          class="mt-4 px-4 py-2 text-sm text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors"
+          (click)="closePopup()"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  }
+
   <!-- Success State -->
-  @if (isSuccess()) {
+  @else if (isSuccess()) {
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center">
         <span class="material-symbols-rounded text-5xl text-green-500 animate-bounce"
@@ -10,7 +44,10 @@
         <p class="mt-2 text-stone-800 dark:text-stone-200 font-medium">Saved!</p>
       </div>
     </div>
-  } @else {
+  }
+
+  <!-- Main Content -->
+  @else {
     <!-- Input Area -->
     <div class="flex-1 p-4 overflow-auto">
       <!-- Text Input -->

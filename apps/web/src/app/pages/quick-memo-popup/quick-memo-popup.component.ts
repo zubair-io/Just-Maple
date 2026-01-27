@@ -43,9 +43,13 @@ export class QuickMemoPopupComponent implements OnDestroy, AfterViewInit {
   private readonly recordingService = inject(RecordingService);
   private readonly nativeBridge = inject(NativeBridgeService);
   private readonly themeService = inject(ThemeService); // Ensure theme is initialized
-  private readonly authService = inject(AuthService); // Ensure auth is initialized
+  private readonly authService = inject(AuthService);
 
   @ViewChild('textInput') textInput!: ElementRef<HTMLTextAreaElement>;
+
+  // Auth state
+  readonly isAuthReady = signal(false);
+  readonly isAuthenticated = this.authService.isAuthenticated;
 
   // State
   readonly content = signal('');
@@ -81,11 +85,16 @@ export class QuickMemoPopupComponent implements OnDestroy, AfterViewInit {
   });
 
   constructor() {
-    // Load notebooks if not already loaded
-    this.notebookService.loadNotebooks().subscribe();
+    // Wait for auth to initialize
+    this.authService.initReady$.subscribe(() => {
+      this.isAuthReady.set(true);
 
-    // Load last used notebook from localStorage
-    this.loadLastNotebook();
+      if (this.authService.isAuthenticated()) {
+        // Load notebooks once authenticated
+        this.notebookService.loadNotebooks().subscribe();
+        this.loadLastNotebook();
+      }
+    });
   }
 
   ngAfterViewInit(): void {
