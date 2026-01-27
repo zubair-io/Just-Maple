@@ -3,38 +3,41 @@ import { yjsDocumentService } from './yjs-document.service';
 import { realtimeWSService } from './realtime-ws.service';
 
 /**
- * Document edit operation types
+ * ProseMirror JSON content type (subset of TipTap's JSONContent)
  */
-export type DocumentEdit =
-    | {
-          type: 'insert';
-          position: 'start' | 'end' | number;
-          content: string;
-      }
-    | {
-          type: 'replace';
-          search: string;
-          content: string;
-          occurrence?: number; // Which occurrence to replace (default: 1)
-      }
-    | {
-          type: 'append';
-          content: string;
-      };
-
-export interface DocumentEditRequest {
-    pageId: string;
-    edits: DocumentEdit[];
+export interface JSONContent {
+    type: string;
+    attrs?: Record<string, unknown>;
+    content?: JSONContent[];
+    marks?: Array<{ type: string; attrs?: Record<string, unknown> }>;
+    text?: string;
 }
 
-export interface DocumentEditResult {
+/**
+ * Path-based AI edit operations
+ * Path is an array of indices navigating the document tree
+ * e.g., [2, 0] = 3rd child (index 2), then 1st grandchild (index 0)
+ */
+export type AIEditOp =
+    | { type: 'replace-text'; offset: number; length: number; text: string }
+    | { type: 'insert-text'; offset: number; text: string }
+    | { type: 'delete-text'; offset: number; length: number }
+    | { type: 'search-replace'; search: string; replace: string } // Easier for AI - just specify what to find and replace
+    | { type: 'replace-node'; content: JSONContent }
+    | { type: 'insert-node'; index: number; content: JSONContent }
+    | { type: 'delete-node' }
+    | { type: 'set-attrs'; attrs: Record<string, unknown> }
+    | { type: 'format-text'; offset: number; length: number; mark: string; value: unknown };
+
+export interface AIEdit {
+    path: number[];
+    op: AIEditOp;
+}
+
+export interface AIEditResult {
     success: boolean;
     appliedCount: number;
     errors?: string[];
-    debug?: {
-        serverDocLength: number;
-        serverDocPreview: string;
-    };
 }
 
 /**
@@ -43,53 +46,44 @@ export interface DocumentEditResult {
  * Changes are automatically persisted and broadcast to connected clients
  */
 class DocumentEditService {
+    // ============================================================
+    // PATH-BASED AI EDIT METHODS (new approach)
+    // ============================================================
+
     /**
-     * Apply edits to a document
+     * Apply path-based AI edits to a document
      * @param pageId - The page/memo ID
-     * @param edits - Array of edit operations
+     * @param edits - Array of path-based AI edit operations
      * @returns Result with success status and applied count
      */
-    async applyEdits(pageId: string, edits: DocumentEdit[]): Promise<DocumentEditResult> {
+    async applyAIEdits(pageId: string, edits: AIEdit[]): Promise<AIEditResult> {
         const errors: string[] = [];
         let appliedCount = 0;
 
         try {
-            // Get the Y.Doc for this page
             const ydoc = await yjsDocumentService.getOrCreateDoc(pageId);
-
-            // Get the prosemirror XmlFragment (TipTap's document root)
             const fragment = ydoc.getXmlFragment('prosemirror');
 
-            // Extract current text content for search operations
-            const currentText = this.extractTextContent(fragment);
-
-            // Apply each edit in a single transaction for efficiency
+            // Apply all edits in a single transaction with 'ai-editor' origin
             ydoc.transact(() => {
                 for (const edit of edits) {
                     try {
-                        const applied = this.applyEdit(fragment, edit, currentText);
+                        const applied = this.applyAIEdit(fragment, edit);
                         if (applied) {
                             appliedCount++;
                         } else {
-                            // More descriptive error message
-                            if (edit.type === 'replace') {
-                                const searchPreview = edit.search.substring(0, 30);
-                                errors.push(
-                                    `Replace failed: text "${searchPreview}..." not found in document`,
-                                );
-                            } else {
-                                errors.push(`Failed to apply ${edit.type} operation`);
-                            }
+                            errors.push(
+                                `Failed to apply ${edit.op.type} at path [${edit.path.join(', ')}]`,
+                            );
                         }
                     } catch (error) {
                         const message = error instanceof Error ? error.message : 'Unknown error';
-                        errors.push(`${edit.type} operation failed: ${message}`);
+                        errors.push(`${edit.op.type} at [${edit.path.join(', ')}]: ${message}`);
                     }
                 }
-            }, 'server-edit');
+            }, 'ai-editor');
 
-            // Broadcast the update to connected clients
-            // The Y.js update listener in yjs-document.service.ts will handle persistence
+            // Broadcast update to connected clients
             const update = Y.encodeStateAsUpdate(ydoc);
             realtimeWSService.broadcastUpdate(pageId, update, 'server');
 
@@ -97,11 +91,6 @@ class DocumentEditService {
                 success: appliedCount > 0,
                 appliedCount,
                 errors: errors.length > 0 ? errors : undefined,
-                // Include debug info to help diagnose sync issues
-                debug: {
-                    serverDocLength: currentText.length,
-                    serverDocPreview: currentText.substring(0, 200),
-                },
             };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown error';
@@ -114,24 +103,80 @@ class DocumentEditService {
     }
 
     /**
-     * Apply a single edit operation
+     * Apply a single path-based AI edit operation
      */
-    private applyEdit(fragment: Y.XmlFragment, edit: DocumentEdit, currentText: string): boolean {
-        switch (edit.type) {
-            case 'append':
-                return this.applyAppend(fragment, edit.content);
+    private applyAIEdit(fragment: Y.XmlFragment, edit: AIEdit): boolean {
+        const { path, op } = edit;
 
-            case 'insert':
-                return this.applyInsert(fragment, edit.position, edit.content);
+        // Handle operations at root level (empty path)
+        if (path.length === 0) {
+            if (op.type === 'insert-node') {
+                const node = this.jsonToYXml(op.content);
+                fragment.insert(op.index, [node]);
+                return true;
+            }
+            return false;
+        }
 
-            case 'replace':
-                return this.applyReplace(
-                    fragment,
-                    edit.search,
-                    edit.content,
-                    edit.occurrence || 1,
-                    currentText,
-                );
+        // Navigate to parent node (all path elements except last)
+        const parentPath = path.slice(0, -1);
+        const targetIndex = path[path.length - 1];
+
+        const parent =
+            parentPath.length === 0 ? fragment : this.getNodeAtPath(fragment, parentPath);
+        if (!parent || !(parent instanceof Y.XmlFragment || parent instanceof Y.XmlElement)) {
+            console.log(`[AIEdit] Parent not found at path [${parentPath.join(', ')}]`);
+            return false;
+        }
+
+        // Get target node
+        const target = parent.get(targetIndex);
+        if (!target && op.type !== 'insert-node') {
+            console.log(`[AIEdit] Target not found at index ${targetIndex}`);
+            return false;
+        }
+
+        switch (op.type) {
+            case 'replace-text':
+                return this.applyReplaceText(target, op.offset, op.length, op.text);
+
+            case 'insert-text':
+                return this.applyInsertText(target, op.offset, op.text);
+
+            case 'delete-text':
+                return this.applyDeleteText(target, op.offset, op.length);
+
+            case 'replace-node': {
+                const newNode = this.jsonToYXml(op.content);
+                parent.delete(targetIndex, 1);
+                parent.insert(targetIndex, [newNode]);
+                return true;
+            }
+
+            case 'insert-node': {
+                const newNode = this.jsonToYXml(op.content);
+                parent.insert(op.index, [newNode]);
+                return true;
+            }
+
+            case 'delete-node':
+                parent.delete(targetIndex, 1);
+                return true;
+
+            case 'set-attrs':
+                if (target instanceof Y.XmlElement) {
+                    for (const [key, value] of Object.entries(op.attrs)) {
+                        target.setAttribute(key, value);
+                    }
+                    return true;
+                }
+                return false;
+
+            case 'format-text':
+                return this.applyFormatText(target, op.offset, op.length, op.mark, op.value);
+
+            case 'search-replace':
+                return this.applySearchReplace(target, op.search, op.replace);
 
             default:
                 return false;
@@ -139,375 +184,269 @@ class DocumentEditService {
     }
 
     /**
-     * Append content to the end of the document
-     * Creates a new paragraph with the content
+     * Replace text within a text node at specified offset and length
      */
-    private applyAppend(fragment: Y.XmlFragment, content: string): boolean {
-        // Create paragraph element for TipTap
-        const paragraph = new Y.XmlElement('paragraph');
-        const textNode = new Y.XmlText(content);
-        paragraph.insert(0, [textNode]);
-
-        // Append to the fragment
-        fragment.insert(fragment.length, [paragraph]);
-
-        return true;
-    }
-
-    /**
-     * Insert content at a specific position
-     * Position can be 'start', 'end', or a character offset
-     */
-    private applyInsert(
-        fragment: Y.XmlFragment,
-        position: 'start' | 'end' | number,
-        content: string,
+    private applyReplaceText(
+        node: Y.XmlElement | Y.XmlText | undefined,
+        offset: number,
+        length: number,
+        text: string,
     ): boolean {
-        const paragraph = new Y.XmlElement('paragraph');
-        const textNode = new Y.XmlText(content);
-        paragraph.insert(0, [textNode]);
+        const textNode = this.findTextNode(node);
+        if (!textNode) return false;
 
-        if (position === 'start') {
-            // Insert after the first heading (preserve document structure)
-            const insertPos = fragment.length > 0 ? 1 : 0;
-            fragment.insert(insertPos, [paragraph]);
-        } else if (position === 'end') {
-            fragment.insert(fragment.length, [paragraph]);
-        } else {
-            // For numeric positions, find the appropriate element
-            // Convert character offset to element index (simplified)
-            let charCount = 0;
-            let elementIndex = 0;
-
-            for (let i = 0; i < fragment.length; i++) {
-                const child = fragment.get(i);
-                if (child instanceof Y.XmlElement) {
-                    const text = this.extractTextFromElement(child);
-                    if (charCount + text.length >= position) {
-                        elementIndex = i + 1;
-                        break;
-                    }
-                    charCount += text.length + 1; // +1 for newline between paragraphs
-                }
-                if (i === fragment.length - 1) {
-                    elementIndex = fragment.length;
-                }
-            }
-
-            fragment.insert(elementIndex, [paragraph]);
-        }
-
+        textNode.delete(offset, length);
+        textNode.insert(offset, text);
         return true;
     }
 
     /**
-     * Normalize text for searching - strip markdown, collapse whitespace
+     * Search and replace text within a node (easier for AI to use)
+     * Finds the search string and replaces it with the replacement
      */
-    private normalizeForSearch(text: string): string {
-        return (
-            text
-                // Remove heading markers: # ## ### etc
-                .replace(/^#{1,6}\s*/gm, '')
-                // Remove bold/italic markers
-                .replace(/\*\*([^*]+)\*\*/g, '$1')
-                .replace(/\*([^*]+)\*/g, '$1')
-                .replace(/__([^_]+)__/g, '$1')
-                .replace(/_([^_]+)_/g, '$1')
-                // Remove inline code backticks
-                .replace(/`([^`]+)`/g, '$1')
-                // Remove blockquote markers
-                .replace(/^>\s*/gm, '')
-                // Remove list markers
-                .replace(/^[-*]\s+/gm, '')
-                .replace(/^\d+\.\s+/gm, '')
-                // Remove <italic> and other HTML-like tags
-                .replace(/<[^>]+>/g, '')
-                // Collapse all whitespace to single space
-                .replace(/\s+/g, ' ')
-                .trim()
-        );
-    }
-
-    /**
-     * Replace text in the document
-     * Searches for the text and replaces the specified occurrence
-     * Uses normalized (whitespace-collapsed) matching for better reliability
-     */
-    private applyReplace(
-        fragment: Y.XmlFragment,
+    private applySearchReplace(
+        node: Y.XmlElement | Y.XmlText | undefined,
         search: string,
-        replacement: string,
-        occurrence: number,
-        _currentText: string,
+        replace: string,
     ): boolean {
-        const normalizedSearch = this.normalizeForSearch(search);
+        const textNode = this.findTextNode(node);
+        if (!textNode) return false;
 
-        console.log(
-            '[DocumentEdit] Replace search:',
-            JSON.stringify(normalizedSearch.substring(0, 50)),
-        );
+        const currentText = textNode.toString();
+        const index = currentText.indexOf(search);
 
-        // Search through each element for the normalized text
-        let foundCount = 0;
-
-        for (let i = 0; i < fragment.length; i++) {
-            const child = fragment.get(i);
-            if (child instanceof Y.XmlElement) {
-                const elementText = this.extractTextFromElement(child);
-                const normalizedElement = this.normalizeForSearch(elementText);
-
-                // Try exact match first
-                let searchPos = 0;
-                while (true) {
-                    const idx = normalizedElement.indexOf(normalizedSearch, searchPos);
-                    if (idx === -1) break;
-
-                    foundCount++;
-                    if (foundCount === occurrence) {
-                        const actualPos = this.findActualPosition(
-                            elementText,
-                            normalizedSearch,
-                            idx,
-                        );
-                        if (actualPos !== -1) {
-                            const actualLength = this.findActualLength(
-                                elementText,
-                                actualPos,
-                                normalizedSearch,
-                            );
-                            this.replaceTextInElement(child, actualPos, actualLength, replacement);
-                            console.log(
-                                `[DocumentEdit] Exact match at pos ${actualPos}, len ${actualLength}`,
-                            );
-                            return true;
-                        }
-                    }
-                    searchPos = idx + 1;
-                }
-
-                // Try fuzzy match if exact not found and looking for first occurrence
-                if (foundCount === 0 && occurrence === 1) {
-                    const fuzzy = this.fuzzyFind(normalizedElement, normalizedSearch);
-                    if (fuzzy) {
-                        const actualPos = this.findActualPosition(
-                            elementText,
-                            fuzzy.matched,
-                            fuzzy.index,
-                        );
-                        if (actualPos !== -1) {
-                            const actualLength = this.findActualLength(
-                                elementText,
-                                actualPos,
-                                fuzzy.matched,
-                            );
-                            this.replaceTextInElement(child, actualPos, actualLength, replacement);
-                            console.log(
-                                `[DocumentEdit] Fuzzy match: "${fuzzy.matched.substring(0, 30)}..."`,
-                            );
-                            return true;
-                        }
-                    }
-                }
-            }
+        if (index === -1) {
+            console.log(`[AIEdit] search-replace: "${search}" not found in "${currentText}"`);
+            return false;
         }
 
-        console.log(
-            `[DocumentEdit] Search text not found. Found ${foundCount} occurrences, needed ${occurrence}`,
-        );
-        return false;
+        textNode.delete(index, search.length);
+        textNode.insert(index, replace);
+        return true;
     }
 
     /**
-     * Fuzzy find - looks for text similar to search (allows small differences)
+     * Insert text at specified offset
      */
-    private fuzzyFind(text: string, search: string): { index: number; matched: string } | null {
-        if (search.length < 10) return null;
+    private applyInsertText(
+        node: Y.XmlElement | Y.XmlText | undefined,
+        offset: number,
+        text: string,
+    ): boolean {
+        const textNode = this.findTextNode(node);
+        if (!textNode) return false;
 
-        // Try finding progressively shorter prefixes (70% minimum)
-        const minLen = Math.floor(search.length * 0.7);
+        textNode.insert(offset, text);
+        return true;
+    }
 
-        for (let len = search.length; len >= minLen; len--) {
-            const prefix = search.substring(0, len);
-            const idx = text.indexOf(prefix);
-            if (idx !== -1) {
-                // Extend to word boundary
-                let endIdx = idx + prefix.length;
-                while (endIdx < text.length && !/\s|[.,!?;:]/.test(text[endIdx])) {
-                    endIdx++;
-                }
-                const matched = text.substring(idx, endIdx);
-                console.log(
-                    `[DocumentEdit] Fuzzy: "${prefix.substring(0, 20)}..." -> "${matched.substring(0, 20)}..."`,
-                );
-                return { index: idx, matched };
+    /**
+     * Delete text at specified offset and length
+     */
+    private applyDeleteText(
+        node: Y.XmlElement | Y.XmlText | undefined,
+        offset: number,
+        length: number,
+    ): boolean {
+        const textNode = this.findTextNode(node);
+        if (!textNode) return false;
+
+        textNode.delete(offset, length);
+        return true;
+    }
+
+    /**
+     * Apply formatting mark to text
+     */
+    private applyFormatText(
+        node: Y.XmlElement | Y.XmlText | undefined,
+        offset: number,
+        length: number,
+        mark: string,
+        value: unknown,
+    ): boolean {
+        const textNode = this.findTextNode(node);
+        if (!textNode) return false;
+
+        textNode.format(offset, length, { [mark]: value });
+        return true;
+    }
+
+    /**
+     * Find the first XmlText node within a node (may be nested)
+     */
+    private findTextNode(node: Y.XmlElement | Y.XmlText | undefined): Y.XmlText | null {
+        if (!node) return null;
+        if (node instanceof Y.XmlText) return node;
+
+        // Search in children
+        if (node instanceof Y.XmlElement) {
+            for (let i = 0; i < node.length; i++) {
+                const child = node.get(i);
+                const found = this.findTextNode(child);
+                if (found) return found;
             }
         }
-
         return null;
     }
 
     /**
-     * Find actual position in original text that corresponds to normalized position
+     * Navigate the Y.js tree to find a node at the given path
+     * Path is an array of indices, e.g., [2, 0] = 3rd child, 1st grandchild
      */
-    private findActualPosition(
-        original: string,
-        normalizedSearch: string,
-        normalizedPos: number,
-    ): number {
-        // Walk through original text, tracking normalized position
-        let normalizedIdx = 0;
-        let inWhitespace = false;
+    getNodeAtPath(
+        root: Y.XmlFragment | Y.XmlElement,
+        path: number[],
+    ): Y.XmlElement | Y.XmlText | null {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let current: any = root;
 
-        for (let i = 0; i < original.length; i++) {
-            const char = original[i];
-            const isWhitespace = /\s/.test(char);
-
-            if (isWhitespace) {
-                if (!inWhitespace) {
-                    // First whitespace char - counts as one space in normalized
-                    if (normalizedIdx === normalizedPos) {
-                        return i;
-                    }
-                    normalizedIdx++;
-                    inWhitespace = true;
-                }
-                // Additional whitespace chars are skipped in normalized
+        for (const index of path) {
+            if (current.get) {
+                const child = current.get(index);
+                if (!child) return null;
+                current = child;
             } else {
-                if (normalizedIdx === normalizedPos) {
-                    return i;
-                }
-                normalizedIdx++;
-                inWhitespace = false;
+                return null;
             }
         }
 
-        return -1;
+        return current;
     }
 
     /**
-     * Find actual length of text to replace (accounting for whitespace differences)
+     * Convert Y.XmlFragment to ProseMirror JSON format
+     * This is what we send to the AI for context
      */
-    private findActualLength(original: string, startPos: number, normalizedSearch: string): number {
-        let normalizedIdx = 0;
-        let inWhitespace = false;
-
-        for (
-            let i = startPos;
-            i < original.length && normalizedIdx < normalizedSearch.length;
-            i++
-        ) {
-            const char = original[i];
-            const isWhitespace = /\s/.test(char);
-
-            if (isWhitespace) {
-                if (!inWhitespace) {
-                    normalizedIdx++;
-                    inWhitespace = true;
-                }
-            } else {
-                normalizedIdx++;
-                inWhitespace = false;
-            }
-
-            if (normalizedIdx >= normalizedSearch.length) {
-                return i - startPos + 1;
-            }
-        }
-
-        return normalizedSearch.length; // Fallback
-    }
-
-    /**
-     * Replace text within a Y.XmlElement
-     */
-    private replaceTextInElement(
-        element: Y.XmlElement,
-        start: number,
-        length: number,
-        replacement: string,
-    ): void {
-        // Find the text node within the element
-        let currentPos = 0;
-
-        for (let i = 0; i < element.length; i++) {
-            const child = element.get(i);
-
-            if (child instanceof Y.XmlText) {
-                const text = child.toString();
-                const nodeStart = currentPos;
-                const nodeEnd = currentPos + text.length;
-
-                // Check if replacement starts in this text node
-                if (start >= nodeStart && start < nodeEnd) {
-                    const localStart = start - nodeStart;
-
-                    // Check if entire replacement is in this node
-                    if (localStart + length <= text.length) {
-                        child.delete(localStart, length);
-                        child.insert(localStart, replacement);
-                        return;
-                    }
-                }
-
-                currentPos += text.length;
-            } else if (child instanceof Y.XmlElement) {
-                // Recursively handle nested elements
-                const childText = this.extractTextFromElement(child);
-                const nodeStart = currentPos;
-                const nodeEnd = currentPos + childText.length;
-
-                if (start >= nodeStart && start < nodeEnd) {
-                    this.replaceTextInElement(child, start - nodeStart, length, replacement);
-                    return;
-                }
-
-                currentPos += childText.length;
-            }
-        }
-    }
-
-    /**
-     * Extract plain text content from the Y.XmlFragment
-     */
-    private extractTextContent(fragment: Y.XmlFragment): string {
-        const parts: string[] = [];
+    yXmlFragmentToJSON(fragment: Y.XmlFragment): JSONContent {
+        const content: JSONContent[] = [];
 
         for (let i = 0; i < fragment.length; i++) {
             const child = fragment.get(i);
             if (child instanceof Y.XmlElement) {
-                parts.push(this.extractTextFromElement(child));
+                content.push(this.yXmlElementToJSON(child));
+            } else if (child instanceof Y.XmlText) {
+                content.push(this.yXmlTextToJSON(child));
             }
         }
 
-        return parts.join('\n');
+        return {
+            type: 'doc',
+            content,
+        };
     }
 
     /**
-     * Extract text from a single Y.XmlElement
+     * Convert Y.XmlElement to JSON
      */
-    private extractTextFromElement(element: Y.XmlElement): string {
-        const parts: string[] = [];
+    private yXmlElementToJSON(element: Y.XmlElement): JSONContent {
+        const result: JSONContent = {
+            type: element.nodeName,
+        };
 
+        // Get attributes
+        const attrs = element.getAttributes();
+        if (Object.keys(attrs).length > 0) {
+            result.attrs = attrs;
+        }
+
+        // Get children
+        const content: JSONContent[] = [];
         for (let i = 0; i < element.length; i++) {
             const child = element.get(i);
-            if (child instanceof Y.XmlText) {
-                parts.push(child.toString());
-            } else if (child instanceof Y.XmlElement) {
-                parts.push(this.extractTextFromElement(child));
+            if (child instanceof Y.XmlElement) {
+                content.push(this.yXmlElementToJSON(child));
+            } else if (child instanceof Y.XmlText) {
+                content.push(this.yXmlTextToJSON(child));
             }
         }
 
-        return parts.join('');
+        if (content.length > 0) {
+            result.content = content;
+        }
+
+        return result;
     }
 
     /**
-     * Get current document content as plain text
-     * Useful for AI context or debugging
+     * Convert Y.XmlText to JSON with marks
      */
-    async getDocumentContent(pageId: string): Promise<string> {
+    private yXmlTextToJSON(textNode: Y.XmlText): JSONContent {
+        const result: JSONContent = {
+            type: 'text',
+            text: textNode.toString(),
+        };
+
+        // Get marks/formatting from the text node
+        // Y.XmlText stores formatting as deltas
+        const delta = textNode.toDelta();
+        if (delta.length > 0 && delta[0].attributes) {
+            const marks: Array<{ type: string; attrs?: Record<string, unknown> }> = [];
+            const attrs = delta[0].attributes;
+            for (const [key, value] of Object.entries(attrs)) {
+                if (value === true) {
+                    marks.push({ type: key });
+                } else if (value !== null && value !== false) {
+                    marks.push({ type: key, attrs: { [key]: value } });
+                }
+            }
+            if (marks.length > 0) {
+                result.marks = marks;
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Convert ProseMirror JSON to Y.Xml nodes
+     */
+    jsonToYXml(json: JSONContent): Y.XmlElement | Y.XmlText {
+        if (json.type === 'text') {
+            const text = new Y.XmlText();
+            text.insert(0, json.text || '');
+
+            // Apply marks
+            if (json.marks && json.marks.length > 0) {
+                const format: Record<string, unknown> = {};
+                for (const mark of json.marks) {
+                    if (mark.attrs) {
+                        Object.assign(format, mark.attrs);
+                    } else {
+                        format[mark.type] = true;
+                    }
+                }
+                text.format(0, (json.text || '').length, format);
+            }
+
+            return text;
+        }
+
+        const element = new Y.XmlElement(json.type);
+
+        // Set attributes
+        if (json.attrs) {
+            for (const [key, value] of Object.entries(json.attrs)) {
+                element.setAttribute(key, value);
+            }
+        }
+
+        // Add children
+        if (json.content) {
+            const children = json.content.map((child) => this.jsonToYXml(child));
+            element.insert(0, children);
+        }
+
+        return element;
+    }
+
+    /**
+     * Get document as JSON (for AI context)
+     */
+    async getDocumentAsJSON(pageId: string): Promise<JSONContent> {
         const ydoc = await yjsDocumentService.getOrCreateDoc(pageId);
         const fragment = ydoc.getXmlFragment('prosemirror');
-        return this.extractTextContent(fragment);
+        return this.yXmlFragmentToJSON(fragment);
     }
 }
 

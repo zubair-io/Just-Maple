@@ -512,14 +512,6 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             body: t.Object({
                 prompt: t.String(),
                 pageId: t.String(), // Page ID for server-side edit application
-                document: t.Object({
-                    content: t.String(),
-                    format: t.Union([
-                        t.Literal('markdown'),
-                        t.Literal('plaintext'),
-                        t.Literal('html'),
-                    ]),
-                }),
                 context: t.Object({
                     widgetPosition: t.Number(),
                 }),

@@ -107,6 +107,57 @@
         <div class="response-text">{{ responseText() }}</div>
       </div>
     }
+
+    <!-- History Section -->
+    @if (history().length > 0) {
+      <div class="widget-history">
+        <button
+          type="button"
+          class="history-toggle"
+          (click)="toggleHistory()"
+          (mousedown)="$event.stopPropagation()"
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            [class.expanded]="historyExpanded()"
+          >
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+          <span>History ({{ history().length }})</span>
+        </button>
+
+        @if (historyExpanded()) {
+          <div class="history-list">
+            @for (entry of history(); track entry.timestamp; let i = $index) {
+              <div class="history-entry" [class.has-error]="entry.result.error">
+                <div class="history-entry-header">
+                  <span class="history-index">#{{ i + 1 }}</span>
+                  <span class="history-prompt">{{ entry.prompt }}</span>
+                </div>
+                <div class="history-entry-result">
+                  @if (entry.result.error) {
+                    <span class="history-error">{{ entry.result.error }}</span>
+                  } @else if (entry.result.appliedCount > 0) {
+                    <span class="history-success"
+                      >Applied {{ entry.result.appliedCount }} edit(s)</span
+                    >
+                  } @else if (entry.result.responseText) {
+                    <span class="history-response">{{ entry.result.responseText }}</span>
+                  } @else {
+                    <span class="history-success">Completed</span>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
   }
 
   @if (status() === 'loading') {
