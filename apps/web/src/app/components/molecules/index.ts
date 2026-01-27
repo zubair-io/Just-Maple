@@ -11,3 +11,4 @@ export { OfflineIndicatorComponent } from './offline-indicator/offline-indicator
 export { NoteHeaderComponent, type ExportFormat } from './note-header/note-header.component';
 export { NotebookHeaderComponent } from './notebook-header/notebook-header.component';
 export { TodoPopoverComponent } from './todo-popover/todo-popover.component';
+export { QuickMemoOverlayComponent } from './quick-memo-overlay/quick-memo-overlay.component';

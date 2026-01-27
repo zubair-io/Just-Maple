@@ -1,0 +1,169 @@
+<!-- Backdrop -->
+<div
+  class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center pt-[15vh] px-4"
+  (click)="onBackdropClick()"
+>
+  <!-- Quick Memo Container -->
+  <div
+    class="quick-memo-container bg-[var(--color-surface)] rounded-xl shadow-2xl w-full max-w-[600px] overflow-hidden"
+    (click)="$event.stopPropagation()"
+  >
+    <!-- Input Area -->
+    <div class="p-4">
+      <!-- Text Input -->
+      <div class="relative">
+        <textarea
+          #textInput
+          class="w-full bg-transparent text-[var(--color-text-main)] text-xl font-medium resize-none outline-none placeholder:text-[var(--color-text-muted)] min-h-[48px] max-h-[200px]"
+          [placeholder]="inputPlaceholder()"
+          [value]="content()"
+          (input)="content.set($any($event.target).value)"
+          rows="1"
+          [disabled]="isSubmitting()"
+        ></textarea>
+
+        <!-- Record Button -->
+        <button
+          type="button"
+          class="absolute right-0 top-1 p-2 rounded-full transition-colors"
+          [class.text-red-500]="isRecording()"
+          [class.animate-pulse]="isRecording()"
+          [class.text-[var(--color-text-muted)]]="!isRecording()"
+          [class.hover:text-[var(--color-primary)]]="!isRecording()"
+          [class.hover:bg-[var(--color-surface-hover)]]="!isRecording()"
+          (click)="toggleRecording()"
+          [disabled]="isSubmitting()"
+          [title]="isRecording() ? 'Stop recording' : 'Start recording'"
+        >
+          <span class="material-symbols-rounded text-2xl">
+            {{ isRecording() ? 'stop_circle' : 'mic' }}
+          </span>
+        </button>
+      </div>
+
+      <!-- Recording Indicator -->
+      @if (isRecording()) {
+        <div
+          class="flex items-center gap-3 mt-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800"
+        >
+          <div class="recording-indicator w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+          <span class="text-sm text-red-600 dark:text-red-400 font-medium">Recording...</span>
+          <span class="text-sm text-red-500 dark:text-red-400 font-mono">{{
+            formatDuration(recordingDuration())
+          }}</span>
+
+          <!-- Audio Level Indicator -->
+          <div class="flex-1 h-2 bg-red-100 dark:bg-red-900/30 rounded-full overflow-hidden">
+            <div
+              class="h-full bg-red-500 transition-all duration-75"
+              [style.width.%]="audioLevel() * 100"
+            ></div>
+          </div>
+        </div>
+      }
+
+      <!-- Recording Chips -->
+      @if (recordings().length > 0 && !isRecording()) {
+        <div class="flex flex-wrap gap-2 mt-3">
+          @for (recording of recordings(); track recording.id) {
+            @if (!recording.isRecording) {
+              <div
+                class="flex items-center gap-2 px-3 py-1.5 bg-[var(--color-surface-alt)] rounded-full text-sm"
+              >
+                <span class="material-symbols-rounded text-base text-[var(--color-primary)]"
+                  >mic</span
+                >
+                <span class="text-[var(--color-text-main)]">{{
+                  formatDuration(recording.duration)
+                }}</span>
+                <button
+                  type="button"
+                  class="p-0.5 rounded-full hover:bg-[var(--color-surface-hover)] text-[var(--color-text-muted)] hover:text-red-500 transition-colors"
+                  (click)="removeRecording(recording.id)"
+                  title="Remove recording"
+                >
+                  <span class="material-symbols-rounded text-base">close</span>
+                </button>
+              </div>
+            }
+          }
+        </div>
+      }
+
+      <!-- Error Message -->
+      @if (error()) {
+        <div class="mt-3 p-2 bg-red-50 dark:bg-red-900/20 rounded-lg">
+          <p class="text-sm text-red-600 dark:text-red-400">{{ error() }}</p>
+        </div>
+      }
+    </div>
+
+    <!-- Options Bar -->
+    <div
+      class="flex items-center justify-between gap-4 px-4 py-3 border-t border-[var(--color-border)] bg-[var(--color-surface-alt)]"
+    >
+      <!-- Notebook Selector -->
+      <div class="relative flex-1">
+        <button
+          type="button"
+          class="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors text-sm w-full max-w-[250px]"
+          (click)="toggleNotebookDropdown()"
+          [disabled]="isSubmitting()"
+        >
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+            >folder</span
+          >
+          <span class="text-[var(--color-text-main)] truncate">
+            {{ selectedNotebook()?.label || 'Select notebook' }}
+          </span>
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)] ml-auto"
+            >expand_more</span
+          >
+        </button>
+
+        <!-- Notebook Dropdown -->
+        @if (showNotebookDropdown()) {
+          <div
+            class="absolute bottom-full left-0 mb-2 w-full max-w-[250px] bg-[var(--color-surface)] rounded-lg shadow-lg border border-[var(--color-border)] py-1 max-h-[200px] overflow-y-auto z-10"
+          >
+            @for (notebook of notebooks(); track notebook._id) {
+              <button
+                type="button"
+                class="w-full flex items-center gap-2 px-3 py-2 hover:bg-[var(--color-surface-hover)] transition-colors text-left"
+                [class.bg-[var(--color-primary-light)]]="notebook._id === selectedNotebookId()"
+                (click)="selectNotebook(notebook)"
+              >
+                <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                  >folder</span
+                >
+                <span class="text-sm text-[var(--color-text-main)] truncate">{{
+                  notebook.label
+                }}</span>
+              </button>
+            } @empty {
+              <div class="px-3 py-2 text-sm text-[var(--color-text-muted)]">
+                No notebooks available
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Submit Button -->
+      <button
+        type="button"
+        class="flex items-center gap-2 px-4 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+        [disabled]="!canSubmit()"
+        (click)="submit()"
+      >
+        @if (isSubmitting()) {
+          <span class="material-symbols-rounded text-base animate-spin">progress_activity</span>
+          <span>Saving...</span>
+        } @else {
+          <span>Save</span>
+          <span class="text-xs opacity-75">⌘↵</span>
+        }
+      </button>
+    </div>
+  </div>
+</div>

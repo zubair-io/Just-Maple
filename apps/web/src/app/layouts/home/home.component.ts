@@ -1,4 +1,12 @@
-import { Component, inject, signal, OnInit, OnDestroy, computed } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  OnInit,
+  OnDestroy,
+  computed,
+  HostListener,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
 import { Subscription, filter, fromEvent } from 'rxjs';
@@ -8,12 +16,12 @@ import { PageService } from '../../services/page.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { RealtimeWSService } from '../../services/realtime-ws.service';
-import { SidebarComponent } from '../../components';
+import { SidebarComponent, QuickMemoOverlayComponent } from '../../components';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent],
+  imports: [CommonModule, RouterOutlet, SidebarComponent, QuickMemoOverlayComponent],
   templateUrl: './home.component.html',
   styleUrl: './home.component.scss',
 })
@@ -31,6 +39,9 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly sidebarOpen = this.uiStateService.sidebarOpen;
   readonly chatInputFocused = this.uiStateService.chatInputFocused;
   private readonly isMobile = signal(false);
+
+  // Quick Memo overlay state
+  readonly quickMemoOpen = signal(false);
 
   // Swipe gesture tracking
   private touchStartX = 0;
@@ -89,6 +100,24 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.routerSubscription?.unsubscribe();
     this.resizeSubscription?.unsubscribe();
     this.realtimeWS.disconnect();
+  }
+
+  // Quick Memo keyboard shortcut: Cmd/Ctrl + Shift + M
+  @HostListener('document:keydown', ['$event'])
+  onGlobalKeyDown(event: KeyboardEvent): void {
+    // Check for Cmd/Ctrl + Shift + M
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === 'm') {
+      event.preventDefault();
+      this.openQuickMemo();
+    }
+  }
+
+  openQuickMemo(): void {
+    this.quickMemoOpen.set(true);
+  }
+
+  closeQuickMemo(): void {
+    this.quickMemoOpen.set(false);
   }
 
   private checkIsMobile(): void {

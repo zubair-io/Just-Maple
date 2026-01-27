@@ -4,6 +4,11 @@
     <div class="fixed inset-0 bg-black/50 z-40 md:hidden" (click)="closeSidebar()"></div>
   }
 
+  <!-- Quick Memo Overlay -->
+  @if (quickMemoOpen()) {
+    <app-quick-memo-overlay (close)="closeQuickMemo()" />
+  }
+
   <!-- Sidebar -->
   <div
     class="fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:h-full"
