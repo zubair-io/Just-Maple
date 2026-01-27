@@ -529,6 +529,14 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
             return false;
           }
 
+          // Verify this is the same node by checking the ID
+          // Only reject if both nodes have IDs and they don't match
+          const updatedNodeId = updatedNode.attrs['id'];
+          if (updatedNodeId && nodeId && updatedNodeId !== nodeId) {
+            // This update is for a different task item, reject it
+            return false;
+          }
+
           // Update checkbox state
           checkbox.checked = updatedNode.attrs['checked'] || false;
           dom.setAttribute('data-checked', String(updatedNode.attrs['checked'] || false));
