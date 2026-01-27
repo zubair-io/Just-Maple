@@ -18,6 +18,8 @@ import { NotebookService } from '../../services/notebook.service';
 import { MemoDocumentService } from '../../services/memo-document.service';
 import { RecordingService } from '../../services/recording.service';
 import { NativeBridgeService } from '../../services/native-bridge.service';
+import { ThemeService } from '../../services/theme.service';
+import { AuthService } from '../../services/auth.service';
 import type { Notebook } from '@maple/shared';
 
 interface RecordingChip {
@@ -40,6 +42,8 @@ export class QuickMemoPopupComponent implements OnDestroy, AfterViewInit {
   private readonly memoDocumentService = inject(MemoDocumentService);
   private readonly recordingService = inject(RecordingService);
   private readonly nativeBridge = inject(NativeBridgeService);
+  private readonly themeService = inject(ThemeService); // Ensure theme is initialized
+  private readonly authService = inject(AuthService); // Ensure auth is initialized
 
   @ViewChild('textInput') textInput!: ElementRef<HTMLTextAreaElement>;
 
