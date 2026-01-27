@@ -16,6 +16,7 @@
           <input
             type="text"
             class="name-input"
+            placeholder="Notebook name"
             [ngModel]="editingName()"
             (ngModelChange)="editingName.set($event)"
             (keydown)="onNameKeydown($event)"
