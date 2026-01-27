@@ -2,6 +2,7 @@ import {
   Component,
   input,
   computed,
+  signal,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   inject,
@@ -9,7 +10,9 @@ import {
   DestroyRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import type { Editor } from '@tiptap/core';
+import type { TodoPriority, TodoColor } from '@maple/shared';
 
 interface ToolbarButton {
   icon: string;
@@ -19,10 +22,19 @@ interface ToolbarButton {
   disabled?: () => boolean;
 }
 
+interface ActiveTaskItem {
+  id: string;
+  checked: boolean;
+  priority?: TodoPriority;
+  color?: TodoColor;
+  dueDate?: string;
+  pos: number;
+}
+
 @Component({
   selector: 'app-editor-toolbar',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './editor-toolbar.component.html',
   styleUrl: './editor-toolbar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,6 +45,25 @@ export class EditorToolbarComponent {
   private unsubscribeEditor: (() => void) | null = null;
 
   readonly editor = input.required<Editor | null>();
+
+  // Active task item when cursor is in a task
+  readonly activeTaskItem = signal<ActiveTaskItem | null>(null);
+
+  // Priority options
+  readonly priorities: { value: TodoPriority; label: string; shortLabel: string }[] = [
+    { value: 'high', label: 'High Priority', shortLabel: 'High' },
+    { value: 'medium', label: 'Medium Priority', shortLabel: 'Med' },
+    { value: 'low', label: 'Low Priority', shortLabel: 'Low' },
+  ];
+
+  // Color options
+  readonly colors: { value: TodoColor; hex: string; label: string }[] = [
+    { value: 'red', hex: '#EF4444', label: 'Red' },
+    { value: 'orange', hex: '#F97316', label: 'Orange' },
+    { value: 'yellow', hex: '#EAB308', label: 'Yellow' },
+    { value: 'green', hex: '#22C55E', label: 'Green' },
+    { value: 'blue', hex: '#3B82F6', label: 'Blue' },
+  ];
 
   constructor() {
     // Subscribe to editor transactions to update toolbar state
@@ -46,7 +77,10 @@ export class EditorToolbarComponent {
       }
 
       if (ed) {
-        const handler = () => this.cdr.markForCheck();
+        const handler = () => {
+          this.updateActiveTaskItem(ed);
+          this.cdr.markForCheck();
+        };
         ed.on('transaction', handler);
         ed.on('selectionUpdate', handler);
 
@@ -62,6 +96,92 @@ export class EditorToolbarComponent {
         this.unsubscribeEditor();
       }
     });
+  }
+
+  /**
+   * Check if cursor is in a task item and get its attributes
+   */
+  private updateActiveTaskItem(ed: Editor): void {
+    const { $from } = ed.state.selection;
+
+    // Walk up the document tree to find a taskItem
+    for (let d = $from.depth; d >= 0; d--) {
+      const node = $from.node(d);
+      if (node.type.name === 'taskItem') {
+        const pos = $from.before(d);
+        this.activeTaskItem.set({
+          id: node.attrs['id'],
+          checked: node.attrs['checked'] || false,
+          priority: node.attrs['priority'],
+          color: node.attrs['color'],
+          dueDate: node.attrs['dueDate'],
+          pos,
+        });
+        return;
+      }
+    }
+
+    // Not in a task item
+    this.activeTaskItem.set(null);
+  }
+
+  /**
+   * Set priority on the active task item
+   */
+  setPriority(priority: TodoPriority | null): void {
+    const task = this.activeTaskItem();
+    const ed = this.editor();
+    if (!task || !ed) return;
+
+    (ed.commands as any).updateTodoAttrs(task.id, { priority: priority || undefined });
+  }
+
+  /**
+   * Set color on the active task item
+   */
+  setColor(color: TodoColor | null): void {
+    const task = this.activeTaskItem();
+    const ed = this.editor();
+    if (!task || !ed) return;
+
+    (ed.commands as any).updateTodoAttrs(task.id, { color: color || undefined });
+  }
+
+  /**
+   * Set due date on the active task item
+   */
+  setDueDate(dateStr: string): void {
+    const task = this.activeTaskItem();
+    const ed = this.editor();
+    if (!task || !ed) return;
+
+    if (dateStr) {
+      const date = new Date(dateStr + 'T00:00:00');
+      (ed.commands as any).updateTodoAttrs(task.id, { dueDate: date.toISOString() });
+    } else {
+      (ed.commands as any).updateTodoAttrs(task.id, { dueDate: undefined });
+    }
+  }
+
+  /**
+   * Clear due date on the active task item
+   */
+  clearDueDate(): void {
+    const task = this.activeTaskItem();
+    const ed = this.editor();
+    if (!task || !ed) return;
+
+    (ed.commands as any).updateTodoAttrs(task.id, { dueDate: undefined });
+  }
+
+  /**
+   * Get formatted date for the date input
+   */
+  getFormattedDate(): string {
+    const task = this.activeTaskItem();
+    if (!task?.dueDate) return '';
+    const date = new Date(task.dueDate);
+    return date.toISOString().split('T')[0];
   }
 
   readonly formattingButtons = computed<ToolbarButton[]>(() => {

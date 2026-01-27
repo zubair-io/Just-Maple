@@ -531,43 +531,6 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         metaWrapper.appendChild(dueDateChip);
       }
 
-      // Add settings button
-      const settingsBtn = document.createElement('button');
-      settingsBtn.classList.add('todo-settings-btn');
-      settingsBtn.type = 'button';
-      settingsBtn.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-          <circle cx="8" cy="3" r="1.5"/>
-          <circle cx="8" cy="8" r="1.5"/>
-          <circle cx="8" cy="13" r="1.5"/>
-        </svg>
-      `;
-
-      // Mutable state for click handler
-      const currentAttrs = {
-        id: nodeId,
-        checked: node.attrs['checked'] || false,
-        dueDate: node.attrs['dueDate'],
-        priority: node.attrs['priority'],
-        color: node.attrs['color'],
-      };
-
-      settingsBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const event = new CustomEvent('todo-settings-click', {
-          bubbles: true,
-          detail: {
-            todoId: nodeId,
-            attrs: { ...currentAttrs },
-            element: dom,
-            position: settingsBtn.getBoundingClientRect(),
-          },
-        });
-        dom.dispatchEvent(event);
-      });
-      metaWrapper.appendChild(settingsBtn);
-
       // Assemble flat structure: li > [checkbox, content, meta]
       dom.appendChild(checkboxWrapper);
       dom.appendChild(content);
@@ -642,41 +605,6 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
             dueDateChip.textContent = getRelativeDateText(updatedNode.attrs['dueDate']);
             metaWrapper.appendChild(dueDateChip);
           }
-
-          // Re-add settings button
-          const newSettingsBtn = document.createElement('button');
-          newSettingsBtn.classList.add('todo-settings-btn');
-          newSettingsBtn.type = 'button';
-          newSettingsBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <circle cx="8" cy="3" r="1.5"/>
-              <circle cx="8" cy="8" r="1.5"/>
-              <circle cx="8" cy="13" r="1.5"/>
-            </svg>
-          `;
-
-          // Update mutable state
-          currentAttrs.id = updatedNode.attrs['id'] || nodeId;
-          currentAttrs.checked = updatedNode.attrs['checked'] || false;
-          currentAttrs.dueDate = updatedNode.attrs['dueDate'];
-          currentAttrs.priority = updatedNode.attrs['priority'];
-          currentAttrs.color = updatedNode.attrs['color'];
-
-          newSettingsBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const event = new CustomEvent('todo-settings-click', {
-              bubbles: true,
-              detail: {
-                todoId: currentAttrs.id,
-                attrs: { ...currentAttrs },
-                element: dom,
-                position: newSettingsBtn.getBoundingClientRect(),
-              },
-            });
-            dom.dispatchEvent(event);
-          });
-          metaWrapper.appendChild(newSettingsBtn);
 
           return true;
         },

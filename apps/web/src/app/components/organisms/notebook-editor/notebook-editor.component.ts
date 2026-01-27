@@ -45,19 +45,17 @@ import {
   EmbedNode,
   EnhancedTaskItem,
   type SlashCommandItem,
-  type EnhancedTaskItemAttrs,
 } from './extensions';
 import { RecordingBlockComponent } from '../../molecules/recording-block/recording-block.component';
 import { PaperEmbedComponent } from '../../molecules/paper-embed/paper-embed.component';
 import { EditorToolbarComponent } from '../../molecules/editor-toolbar/editor-toolbar.component';
-import { TodoPopoverComponent } from '../../molecules/todo-popover/todo-popover.component';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 
 @Component({
   selector: 'app-notebook-editor',
   standalone: true,
-  imports: [CommonModule, SyncStatusComponent, EditorToolbarComponent, TodoPopoverComponent],
+  imports: [CommonModule, SyncStatusComponent, EditorToolbarComponent],
   templateUrl: './notebook-editor.component.html',
   styleUrl: './notebook-editor.component.scss',
   encapsulation: ViewEncapsulation.None,
@@ -85,13 +83,6 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly isFocused = signal(false);
   readonly error = signal<string | null>(null);
   readonly isFullWidth = signal(false);
-
-  // Todo settings popover state
-  readonly activeTodoPopover = signal<{
-    todoId: string;
-    attrs: EnhancedTaskItemAttrs;
-    position: DOMRect;
-  } | null>(null);
 
   private _editor: Editor | null = null;
   private ydoc: Y.Doc | null = null;
@@ -285,9 +276,6 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up embed event listeners (new system)
         this.setupEmbedListeners();
-
-        // Set up todo settings listeners
-        this.setupTodoListeners();
       }
 
       this.isReady.set(true);
@@ -519,53 +507,6 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
-   * Set up listeners for todo settings popover events
-   */
-  private setupTodoListeners(): void {
-    const editorElement = this.editorRef?.nativeElement;
-    if (!editorElement) return;
-
-    // Listen for todo settings click events
-    editorElement.addEventListener('todo-settings-click', ((event: CustomEvent) => {
-      const { todoId, attrs, position } = event.detail;
-      this.activeTodoPopover.set({ todoId, attrs, position });
-    }) as EventListener);
-
-    // Close popover when clicking outside
-    document.addEventListener('click', (event) => {
-      if (this.activeTodoPopover()) {
-        const target = event.target as HTMLElement;
-        // Don't close if clicking on the popover itself or the settings button
-        if (!target.closest('.todo-popover') && !target.closest('.todo-settings-btn')) {
-          this.activeTodoPopover.set(null);
-        }
-      }
-    });
-  }
-
-  /**
-   * Update todo attributes from the popover
-   */
-  updateTodoAttrs(todoId: string, attrs: Partial<Omit<EnhancedTaskItemAttrs, 'id'>>): void {
-    (this._editor?.commands as any).updateTodoAttrs(todoId, attrs);
-    // Update the popover state to reflect changes
-    const current = this.activeTodoPopover();
-    if (current && current.todoId === todoId) {
-      this.activeTodoPopover.set({
-        ...current,
-        attrs: { ...current.attrs, ...attrs },
-      });
-    }
-  }
-
-  /**
-   * Close the todo popover
-   */
-  closeTodoPopover(): void {
-    this.activeTodoPopover.set(null);
-  }
-
-  /**
    * Handle editor content updates - extract first heading and sync as title
    */
   private handleContentUpdate(editor: Editor): void {
@@ -734,9 +675,6 @@ export class NotebookEditorComponent implements OnDestroy {
     if (this.lastPageId) {
       this.todoSyncService.clearPendingSync(this.lastPageId);
     }
-
-    // Close todo popover
-    this.activeTodoPopover.set(null);
 
     // Clean up recording components (legacy)
     this.recordingComponents.forEach((component) => {

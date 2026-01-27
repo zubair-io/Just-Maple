@@ -7,28 +7,28 @@
   } @else {
     <!-- Toolbar -->
     <div class="editor-header">
-      <app-editor-toolbar [editor]="getEditor()" />
-
-      <div class="header-actions">
-        <button
-          type="button"
-          class="width-toggle"
-          [class.active]="isFullWidth()"
-          title="{{ isFullWidth() ? 'Narrow width' : 'Full width' }}"
-          (click)="toggleFullWidth()"
-        >
-          @if (isFullWidth()) {
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M2 4h12v1H2V4zm2 3h8v1H4V7zm2 3h4v1H6v-1z" />
-            </svg>
-          } @else {
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M1 4h14v1H1V4zm0 3h14v1H1V7zm0 3h14v1H1v-1z" />
-            </svg>
-          }
-        </button>
-        <app-sync-status [pageId]="pageId()" />
-      </div>
+      <app-editor-toolbar [editor]="getEditor()">
+        <div class="header-actions">
+          <button
+            type="button"
+            class="width-toggle"
+            [class.active]="isFullWidth()"
+            title="{{ isFullWidth() ? 'Narrow width' : 'Full width' }}"
+            (click)="toggleFullWidth()"
+          >
+            @if (isFullWidth()) {
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M2 4h12v1H2V4zm2 3h8v1H4V7zm2 3h4v1H6v-1z" />
+              </svg>
+            } @else {
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M1 4h14v1H1V4zm0 3h14v1H1V7zm0 3h14v1H1v-1z" />
+              </svg>
+            }
+          </button>
+          <app-sync-status [pageId]="pageId()" />
+        </div>
+      </app-editor-toolbar>
     </div>
 
     <!-- Editor wrapper for centering and max-width -->
@@ -51,17 +51,6 @@
         <div class="loading-spinner"></div>
         <span>Loading notebook...</span>
       </div>
-    }
-
-    <!-- Todo Settings Popover -->
-    @if (activeTodoPopover()) {
-      <app-todo-popover
-        [todoId]="activeTodoPopover()!.todoId"
-        [attrs]="activeTodoPopover()!.attrs"
-        [position]="activeTodoPopover()!.position"
-        (attrsChange)="updateTodoAttrs(activeTodoPopover()!.todoId, $event)"
-        (close)="closeTodoPopover()"
-      />
     }
   }
 </div>
