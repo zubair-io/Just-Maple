@@ -267,6 +267,7 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
 
   addKeyboardShortcuts() {
     return {
+      ...this.parent?.(),
       // Cmd/Ctrl + Enter: Toggle todo completion
       'Mod-Enter': () => {
         const { state, dispatch } = this.editor.view;
