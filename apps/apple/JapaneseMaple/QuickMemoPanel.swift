@@ -163,7 +163,7 @@ class QuickMemoPanel: NSObject {
         // Create floating panel
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
-            styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel, .hudWindow],
+            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel, .hudWindow],
             backing: .buffered,
             defer: false
         )
