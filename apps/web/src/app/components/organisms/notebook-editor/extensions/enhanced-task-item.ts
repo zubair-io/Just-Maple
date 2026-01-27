@@ -394,7 +394,6 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
       // Ensure the node has an ID (generate one if missing)
       const nodeId = node.attrs['id'] || generateTodoId();
       if (!node.attrs['id']) {
-        // Set the ID on the node
         setTimeout(() => {
           const pos = typeof getPos === 'function' ? getPos() : null;
           if (pos !== null && pos !== undefined) {
@@ -409,100 +408,32 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         }, 0);
       }
 
-      // Color map for checkbox border colors
-      const colorMap: Record<string, string> = {
-        red: '#ef4444',
-        orange: '#f97316',
-        yellow: '#eab308',
-        green: '#22c55e',
-        blue: '#3b82f6',
-      };
-
-      // Get checkbox border color based on todo color
-      const getCheckboxColor = (color: string | null | undefined) => {
-        if (color && colorMap[color]) {
-          return colorMap[color];
-        }
-        return '#1f2937'; // Default dark border (almost black)
-      };
-
       // Create the list item container
       const dom = document.createElement('li');
       dom.setAttribute('data-type', 'taskItem');
       dom.setAttribute('data-todo-id', nodeId);
       dom.setAttribute('data-checked', String(node.attrs['checked'] || false));
 
-      // Add color class if set
       if (node.attrs['color']) {
         dom.setAttribute('data-color', node.attrs['color']);
       }
-
-      // Add priority class if set
       if (node.attrs['priority']) {
         dom.setAttribute('data-priority', node.attrs['priority']);
       }
-
-      // Add overdue class if applicable
       if (node.attrs['dueDate'] && !node.attrs['checked'] && isOverdue(node.attrs['dueDate'])) {
         dom.classList.add('todo-overdue');
       }
-
-      // Create main row wrapper (checkbox + content + meta)
-      const mainRow = document.createElement('div');
-      mainRow.classList.add('todo-main-row');
 
       // Create checkbox wrapper
       const checkboxWrapper = document.createElement('label');
       checkboxWrapper.classList.add('todo-checkbox-wrapper');
       checkboxWrapper.contentEditable = 'false';
 
-      // Create custom round checkbox (hidden native + custom visual)
+      // Create checkbox
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = node.attrs['checked'] || false;
-      checkbox.classList.add('todo-checkbox-input');
-
-      // Create custom checkbox visual (round, 32px)
-      const checkboxVisual = document.createElement('span');
-      checkboxVisual.classList.add('todo-checkbox');
-      checkboxVisual.style.borderColor = getCheckboxColor(node.attrs['color']);
-      if (node.attrs['checked']) {
-        checkboxVisual.style.backgroundColor = getCheckboxColor(node.attrs['color']);
-      }
-
-      // Add checkmark SVG inside visual
-      checkboxVisual.innerHTML = `
-        <svg class="todo-checkmark" width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M3.5 8L6.5 11L12.5 5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      `;
-
-      // Toggle function for the checkbox
-      const toggleCheckbox = () => {
-        const newChecked = !checkbox.checked;
-        checkbox.checked = newChecked;
-
-        const pos = typeof getPos === 'function' ? getPos() : null;
-        if (pos !== null && pos !== undefined) {
-          editor.commands.command(({ tr }) => {
-            tr.setNodeMarkup(pos, undefined, {
-              ...node.attrs,
-              id: nodeId,
-              checked: newChecked,
-            });
-            return true;
-          });
-        }
-      };
-
-      // Click handler on the visual checkbox
-      checkboxVisual.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleCheckbox();
-      });
-
-      // Also handle change on the native checkbox (for accessibility)
+      checkbox.classList.add('todo-checkbox');
       checkbox.addEventListener('change', () => {
         const pos = typeof getPos === 'function' ? getPos() : null;
         if (pos !== null && pos !== undefined) {
@@ -516,15 +447,13 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
           });
         }
       });
-
       checkboxWrapper.appendChild(checkbox);
-      checkboxWrapper.appendChild(checkboxVisual);
 
       // Create content wrapper
       const content = document.createElement('div');
       content.classList.add('todo-content');
 
-      // Create metadata wrapper for priority badge and due date (inline)
+      // Create metadata wrapper
       const metaWrapper = document.createElement('div');
       metaWrapper.classList.add('todo-meta');
       metaWrapper.contentEditable = 'false';
@@ -549,12 +478,19 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         metaWrapper.appendChild(dueDateChip);
       }
 
-      // Assemble main row
-      mainRow.appendChild(checkboxWrapper);
-      mainRow.appendChild(content);
-      mainRow.appendChild(metaWrapper);
+      // Add settings button
+      const settingsBtn = document.createElement('button');
+      settingsBtn.classList.add('todo-settings-btn');
+      settingsBtn.type = 'button';
+      settingsBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <circle cx="8" cy="3" r="1.5"/>
+          <circle cx="8" cy="8" r="1.5"/>
+          <circle cx="8" cy="13" r="1.5"/>
+        </svg>
+      `;
 
-      // Mutable state object that gets updated - used by click handlers
+      // Mutable state for click handler
       const currentAttrs = {
         id: nodeId,
         checked: node.attrs['checked'] || false,
@@ -563,21 +499,6 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         color: node.attrs['color'],
       };
 
-      // Create options bar (always visible)
-      const optionsBar = document.createElement('div');
-      optionsBar.classList.add('todo-options-bar');
-      optionsBar.contentEditable = 'false';
-
-      // Settings/options button
-      const settingsBtn = document.createElement('button');
-      settingsBtn.classList.add('todo-options-btn');
-      settingsBtn.type = 'button';
-      settingsBtn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 4.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM8 9.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM8 14.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>
-        </svg>
-        <span>Options</span>
-      `;
       settingsBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -585,41 +506,19 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
           bubbles: true,
           detail: {
             todoId: nodeId,
-            attrs: { ...currentAttrs }, // Use mutable state
+            attrs: { ...currentAttrs },
             element: dom,
             position: settingsBtn.getBoundingClientRect(),
           },
         });
         dom.dispatchEvent(event);
       });
-      optionsBar.appendChild(settingsBtn);
+      metaWrapper.appendChild(settingsBtn);
 
-      // Assemble the structure
-      dom.appendChild(mainRow);
-      dom.appendChild(optionsBar);
-
-      // Handle focus/blur for options visibility
-      const handleFocusIn = () => {
-        dom.classList.add('todo-focused');
-      };
-
-      const handleFocusOut = (e: FocusEvent) => {
-        // Check if focus is moving to another element within the same todo
-        const relatedTarget = e.relatedTarget as HTMLElement | null;
-        if (relatedTarget && dom.contains(relatedTarget)) {
-          return; // Don't hide if focus stays within the todo
-        }
-        // Check if focus is moving to the options popover
-        if (relatedTarget && relatedTarget.closest('.todo-popover')) {
-          return;
-        }
-        dom.classList.remove('todo-focused');
-      };
-
-      content.addEventListener('focusin', handleFocusIn);
-      content.addEventListener('focusout', handleFocusOut);
-      optionsBar.addEventListener('focusin', handleFocusIn);
-      optionsBar.addEventListener('focusout', handleFocusOut);
+      // Assemble flat structure: li > [checkbox, content, meta]
+      dom.appendChild(checkboxWrapper);
+      dom.appendChild(content);
+      dom.appendChild(metaWrapper);
 
       return {
         dom,
@@ -633,16 +532,7 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
           checkbox.checked = updatedNode.attrs['checked'] || false;
           dom.setAttribute('data-checked', String(updatedNode.attrs['checked'] || false));
 
-          // Update checkbox visual color
-          const newColor = getCheckboxColor(updatedNode.attrs['color']);
-          checkboxVisual.style.borderColor = newColor;
-          if (updatedNode.attrs['checked']) {
-            checkboxVisual.style.backgroundColor = newColor;
-          } else {
-            checkboxVisual.style.backgroundColor = '#f9fafb'; // Off-white background
-          }
-
-          // Update color attribute
+          // Update color
           if (updatedNode.attrs['color']) {
             dom.setAttribute('data-color', updatedNode.attrs['color']);
           } else {
@@ -692,12 +582,40 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
             metaWrapper.appendChild(dueDateChip);
           }
 
-          // Update the mutable attrs object (used by click handlers)
+          // Re-add settings button
+          const newSettingsBtn = document.createElement('button');
+          newSettingsBtn.classList.add('todo-settings-btn');
+          newSettingsBtn.type = 'button';
+          newSettingsBtn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <circle cx="8" cy="3" r="1.5"/>
+              <circle cx="8" cy="8" r="1.5"/>
+              <circle cx="8" cy="13" r="1.5"/>
+            </svg>
+          `;
+
+          // Update mutable state
           currentAttrs.id = updatedNode.attrs['id'] || nodeId;
           currentAttrs.checked = updatedNode.attrs['checked'] || false;
           currentAttrs.dueDate = updatedNode.attrs['dueDate'];
           currentAttrs.priority = updatedNode.attrs['priority'];
           currentAttrs.color = updatedNode.attrs['color'];
+
+          newSettingsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const event = new CustomEvent('todo-settings-click', {
+              bubbles: true,
+              detail: {
+                todoId: currentAttrs.id,
+                attrs: { ...currentAttrs },
+                element: dom,
+                position: newSettingsBtn.getBoundingClientRect(),
+              },
+            });
+            dom.dispatchEvent(event);
+          });
+          metaWrapper.appendChild(newSettingsBtn);
 
           return true;
         },
