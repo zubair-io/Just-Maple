@@ -38,7 +38,9 @@
     @if (tags().length > 0) {
       <div class="flex flex-wrap gap-2 mb-4">
         @for (tag of tags(); track $index) {
-          <span class="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-700">
+          <span
+            class="px-2 py-1 text-xs font-medium rounded-full bg-[var(--color-surface-alt)] text-[var(--color-text-main)]"
+          >
             {{ tag.value }}
           </span>
         }
@@ -62,9 +64,9 @@
           [class.bg-green-500]="isHave()"
           [class.text-white]="isHave()"
           [class.shadow-md]="isHave()"
-          [class.bg-gray-100]="!isHave()"
-          [class.text-gray-700]="!isHave()"
-          [class.hover:bg-gray-200]="!isHave()"
+          [class.bg-[var(--color-surface-alt)]]="!isHave()"
+          [class.text-[var(--color-text-main)]]="!isHave()"
+          [class.hover:bg-[var(--color-surface-hover)]]="!isHave()"
         >
           <span class="material-symbols-rounded text-lg">check_circle</span>
           Have
@@ -75,9 +77,9 @@
           [class.bg-yellow-500]="isWant()"
           [class.text-white]="isWant()"
           [class.shadow-md]="isWant()"
-          [class.bg-gray-100]="!isWant()"
-          [class.text-gray-700]="!isWant()"
-          [class.hover:bg-gray-200]="!isWant()"
+          [class.bg-[var(--color-surface-alt)]]="!isWant()"
+          [class.text-[var(--color-text-main)]]="!isWant()"
+          [class.hover:bg-[var(--color-surface-hover)]]="!isWant()"
         >
           <span class="material-symbols-rounded text-lg">favorite</span>
           Want
@@ -94,11 +96,11 @@
             (click)="decrementQuantity()"
             [disabled]="quantity() <= 1"
             class="w-12 h-12 rounded-xl font-bold text-xl transition-all flex items-center justify-center"
-            [class.bg-gray-100]="quantity() > 1"
-            [class.text-gray-700]="quantity() > 1"
-            [class.hover:bg-gray-200]="quantity() > 1"
-            [class.bg-gray-50]="quantity() <= 1"
-            [class.text-gray-300]="quantity() <= 1"
+            [class.bg-[var(--color-surface-alt)]]="quantity() > 1"
+            [class.text-[var(--color-text-main)]]="quantity() > 1"
+            [class.hover:bg-[var(--color-surface-hover)]]="quantity() > 1"
+            [class.bg-[var(--color-surface)]]="quantity() <= 1"
+            [class.text-[var(--color-text-muted)]]="quantity() <= 1"
             [class.cursor-not-allowed]="quantity() <= 1"
           >
             <span class="material-symbols-rounded">remove</span>
@@ -108,7 +110,7 @@
           </span>
           <button
             (click)="incrementQuantity()"
-            class="w-12 h-12 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold text-xl transition-all flex items-center justify-center"
+            class="w-12 h-12 rounded-xl bg-[var(--color-surface-alt)] text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] font-bold text-xl transition-all flex items-center justify-center"
           >
             <span class="material-symbols-rounded">add</span>
           </button>
@@ -135,7 +137,7 @@
     }
 
     <!-- Item ID -->
-    <div class="text-xs text-gray-400 mt-8">
+    <div class="text-xs text-[var(--color-text-muted)] mt-8">
       Item ID: {{ collectable().data.itemId }} &bull; Provider: {{ collectable().data.provider }}
     </div>
   </div>
