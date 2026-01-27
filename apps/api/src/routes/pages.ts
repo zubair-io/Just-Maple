@@ -147,7 +147,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
         },
     )
 
-    // Update a page
+    // Update a page (PUT - full update)
     .put(
         '/:id',
         async ({ auth, params, body, set }) => {
@@ -191,6 +191,56 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 isArchived: t.Optional(t.Boolean()),
                 isTrashed: t.Optional(t.Boolean()),
                 automergeDoc: t.Optional(t.Any()),
+                todoMeta: t.Optional(t.Any()),
+            }),
+        },
+    )
+
+    // Update a page (PATCH - partial update)
+    .patch(
+        '/:id',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+            const sanitizedBody = {
+                ...body,
+                title: body.title ? sanitizeName(body.title) : undefined,
+            };
+            const page = await updatePage(params.id, auth.user._id, sanitizedBody);
+
+            if (!page) {
+                set.status = 404;
+                return { error: 'Page not found' };
+            }
+
+            // Send SSE event for title updates (real-time sidebar updates)
+            if (page.notebookId && sanitizedBody.title !== undefined) {
+                const recipientUserIds = await getUsersWithNotebookAccess(page.notebookId);
+                realtimeWSService.sendToUsers(recipientUserIds, {
+                    type: 'page.updated',
+                    pageId: page.id,
+                    title: sanitizedBody.title,
+                    updatedAt: page.updatedAt,
+                    notebookId: page.notebookId,
+                });
+            }
+
+            return { page };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            body: t.Object({
+                title: t.Optional(t.String({ maxLength: 255 })),
+                content: t.Optional(t.Any()),
+                notebookId: t.Optional(t.String()),
+                isFavorite: t.Optional(t.Boolean()),
+                isArchived: t.Optional(t.Boolean()),
+                isTrashed: t.Optional(t.Boolean()),
+                automergeDoc: t.Optional(t.Any()),
+                todoMeta: t.Optional(t.Any()),
             }),
         },
     )

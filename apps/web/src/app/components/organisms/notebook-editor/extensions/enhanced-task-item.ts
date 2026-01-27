@@ -477,6 +477,32 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         </svg>
       `;
 
+      // Toggle function for the checkbox
+      const toggleCheckbox = () => {
+        const newChecked = !checkbox.checked;
+        checkbox.checked = newChecked;
+
+        const pos = typeof getPos === 'function' ? getPos() : null;
+        if (pos !== null && pos !== undefined) {
+          editor.commands.command(({ tr }) => {
+            tr.setNodeMarkup(pos, undefined, {
+              ...node.attrs,
+              id: nodeId,
+              checked: newChecked,
+            });
+            return true;
+          });
+        }
+      };
+
+      // Click handler on the visual checkbox
+      checkboxVisual.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleCheckbox();
+      });
+
+      // Also handle change on the native checkbox (for accessibility)
       checkbox.addEventListener('change', () => {
         const pos = typeof getPos === 'function' ? getPos() : null;
         if (pos !== null && pos !== undefined) {
@@ -490,6 +516,7 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
           });
         }
       });
+
       checkboxWrapper.appendChild(checkbox);
       checkboxWrapper.appendChild(checkboxVisual);
 

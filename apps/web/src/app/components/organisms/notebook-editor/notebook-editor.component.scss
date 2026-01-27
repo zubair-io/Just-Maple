@@ -249,6 +249,16 @@
           justify-content: center;
           cursor: pointer;
           transition: all 0.15s ease;
+          user-select: none;
+
+          &:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          }
+
+          &:active {
+            transform: scale(0.95);
+          }
 
           .todo-checkmark {
             opacity: 0;
