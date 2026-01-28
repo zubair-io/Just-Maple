@@ -833,7 +833,7 @@ export class NotebookEditorComponent implements OnDestroy {
       timeInput.type = 'time';
       timeInput.value = currentValue;
       const rect = element.getBoundingClientRect();
-      timeInput.style.position = 'absolute';
+      timeInput.style.position = 'fixed';
       timeInput.style.left = `${rect.left}px`;
       timeInput.style.top = `${rect.bottom + 4}px`;
       timeInput.style.zIndex = '1000';
@@ -864,7 +864,7 @@ export class NotebookEditorComponent implements OnDestroy {
       dateInput.type = 'date';
       dateInput.value = currentValue;
       const rect = element.getBoundingClientRect();
-      dateInput.style.position = 'absolute';
+      dateInput.style.position = 'fixed';
       dateInput.style.left = `${rect.left}px`;
       dateInput.style.top = `${rect.bottom + 4}px`;
       dateInput.style.zIndex = '1000';
