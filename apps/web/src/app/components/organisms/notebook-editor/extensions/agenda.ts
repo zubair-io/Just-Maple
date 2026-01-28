@@ -89,6 +89,37 @@ export function getRelativeDateText(dateStr: string): string {
 }
 
 /**
+ * Get next day's date from current date
+ */
+function getNextDayDate(currentDate: string): string {
+  const date = new Date(currentDate + 'T00:00:00');
+  date.setDate(date.getDate() + 1);
+  return date.toISOString().split('T')[0];
+}
+
+/**
+ * Insert next day agenda after current one
+ */
+function insertNextDayAgenda(editor: any, afterPos: number, currentAgenda: any): boolean {
+  const nextDateStr = getNextDayDate(currentAgenda.attrs['date']);
+
+  editor
+    .chain()
+    .insertContentAt(afterPos + currentAgenda.nodeSize, {
+      type: 'agenda',
+      attrs: {
+        id: generateAgendaId(),
+        date: nextDateStr,
+      },
+      content: [{ type: 'paragraph' }],
+    })
+    .focus()
+    .run();
+
+  return true;
+}
+
+/**
  * Agenda Node Extension
  * A collapsible container element that associates content with a specific date.
  */
@@ -275,7 +306,7 @@ export const Agenda = Node.create<AgendaOptions>({
 
         if (isCollapsed) {
           // Insert next day agenda after current one
-          return this.insertNextDayAgenda(editor, agendaPos, agendaNode);
+          return insertNextDayAgenda(editor, agendaPos, agendaNode);
         }
 
         // Check if at end of content and current block is empty paragraph
@@ -294,7 +325,7 @@ export const Agenda = Node.create<AgendaOptions>({
                 type: 'agenda',
                 attrs: {
                   id: generateAgendaId(),
-                  date: this.getNextDayDate(agendaNode.attrs['date']),
+                  date: getNextDayDate(agendaNode.attrs['date']),
                 },
                 content: [{ type: 'paragraph' }],
               })
@@ -564,38 +595,13 @@ export const Agenda = Node.create<AgendaOptions>({
         },
         ignoreMutation: (mutation) => {
           // Ignore mutations on header elements
-          if (mutation.target === header || header.contains(mutation.target as Node)) {
+          const target = mutation.target;
+          if (target === header || (target instanceof window.Node && header.contains(target))) {
             return true;
           }
           return false;
         },
       };
     };
-  },
-
-  // Helper method for next day calculation
-  insertNextDayAgenda(editor: any, afterPos: number, currentAgenda: any): boolean {
-    const nextDateStr = this.getNextDayDate(currentAgenda.attrs['date']);
-
-    editor
-      .chain()
-      .insertContentAt(afterPos + currentAgenda.nodeSize, {
-        type: 'agenda',
-        attrs: {
-          id: generateAgendaId(),
-          date: nextDateStr,
-        },
-        content: [{ type: 'paragraph' }],
-      })
-      .focus()
-      .run();
-
-    return true;
-  },
-
-  getNextDayDate(currentDate: string): string {
-    const date = new Date(currentDate + 'T00:00:00');
-    date.setDate(date.getDate() + 1);
-    return date.toISOString().split('T')[0];
   },
 });
