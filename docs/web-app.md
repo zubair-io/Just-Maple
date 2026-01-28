@@ -924,6 +924,122 @@ The notebook summary endpoint aggregates todo stats:
 }
 ```
 
+### Agenda Node
+
+The Agenda node is a collapsible container element that associates content with a specific date. It enables date-based organization within documents—useful for meeting notes, daily journals, sprint planning, and event documentation.
+
+#### Creating an Agenda
+
+- Type `/agenda` in a memo to insert via slash command
+- The agenda node is inserted with today's date and an empty content area
+- Click the date to open a date picker and change the date
+
+#### Agenda Attributes
+
+| Attribute | Type             | Description                          |
+| --------- | ---------------- | ------------------------------------ |
+| `id`      | `string`         | Unique identifier (UUID) for linking |
+| `date`    | `string`         | ISO date (YYYY-MM-DD)                |
+| `time`    | `string \| null` | Optional HH:mm (reserved for future) |
+| `summary` | `string \| null` | AI-generated or user-edited summary  |
+
+#### Date Display Format
+
+Dates are displayed using relative formatting:
+
+| Condition     | Display                   |
+| ------------- | ------------------------- |
+| Today         | "Today"                   |
+| Tomorrow      | "Tomorrow"                |
+| Yesterday     | "Yesterday"               |
+| Within 7 days | "Monday", "Tuesday", etc. |
+| This year     | "Jan 28"                  |
+| Other years   | "Jan 28, 2025"            |
+
+#### Visual Design
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ▼ Tomorrow, Jan 28                                    ✨    │  ← header: toggle, date, AI button
+│   Sprint planning discussion                                │  ← AI summary (optional)
+├─────────────────────────────────────────────────────────────┤
+│   Meeting notes go here...                                  │  ← content area
+│   - Action item 1                                           │
+│   - [ ] Todo item                                           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Collapsed state shows only the header with date and summary.
+
+#### Keyboard Shortcuts
+
+| Context                          | Action      | Result                                  |
+| -------------------------------- | ----------- | --------------------------------------- |
+| Collapsed agenda                 | `Enter`     | Create new agenda below with next day   |
+| Expanded, empty paragraph at end | `Enter`     | Delete empty paragraph, create next day |
+| Expanded, empty paragraph        | `Shift+Tab` | Delete empty paragraph                  |
+
+#### AI Summary
+
+- Click the sparkle (✨) icon to generate an AI summary
+- Summary appears in the header after the date
+- Click the refresh icon to regenerate
+- Summary is limited to 256 characters in the UI
+
+#### Extension Files
+
+```
+apps/web/src/app/components/organisms/notebook-editor/extensions/
+├── agenda.ts           # TipTap extension with NodeView
+└── ...
+```
+
+#### Commands
+
+The Agenda extension provides these editor commands:
+
+```typescript
+// Insert a new agenda node
+editor.commands.insertAgenda({ date: '2026-01-28' });
+
+// Update agenda attributes
+editor.commands.updateAgendaAttrs(agendaId, { summary: 'Team meeting' });
+
+// Set agenda date
+editor.commands.setAgendaDate(agendaId, '2026-01-29');
+
+// Set agenda summary
+editor.commands.setAgendaSummary(agendaId, 'Sprint planning');
+
+// Scroll to and highlight a specific agenda
+editor.commands.scrollToAgenda(agendaId);
+```
+
+#### Deep Linking
+
+Navigate directly to an agenda item using URL fragments:
+
+```
+/notebook/:notebookId/:pageId#agenda-{agendaId}
+```
+
+#### Styling
+
+Agenda blocks use CSS custom properties for theming:
+
+```scss
+div[data-type='agenda'] {
+    border-left: 3px solid var(--color-primary);
+    background: var(--color-bg-secondary);
+    border-radius: 0 8px 8px 0;
+}
+
+// Collapsed state
+&.collapsed .agenda-content {
+    display: none;
+}
+```
+
 ---
 
 ## Native Bridge
