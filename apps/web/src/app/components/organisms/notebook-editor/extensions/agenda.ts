@@ -55,7 +55,7 @@ function getTodayDate(): string {
 
 /**
  * Get relative date text for agenda dates
- * Formats dates as: Today, Tomorrow, Yesterday, weekday name, or "Jan 28" format
+ * Formats dates as: Today, Tomorrow, Yesterday, weekday name, or "Tue, Jan 28" format
  */
 export function getRelativeDateText(dateStr: string): string {
   const date = new Date(dateStr + 'T00:00:00');
@@ -80,11 +80,16 @@ export function getRelativeDateText(dateStr: string): string {
     // Within next 7 days - show weekday
     return date.toLocaleDateString('en-US', { weekday: 'long' });
   } else if (date.getFullYear() === now.getFullYear()) {
-    // This year - show "Jan 28" format
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    // This year - show "Tue, Jan 28" format
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   } else {
-    // Other years - show "Jan 28, 2025" format
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    // Other years - show "Tue, Jan 28, 2025" format
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
   }
 }
 
