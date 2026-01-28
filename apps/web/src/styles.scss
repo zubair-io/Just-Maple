@@ -642,3 +642,63 @@ img.ProseMirror-separator {
 .cdk-virtual-scroll-content-wrapper {
   width: 100%;
 }
+
+// Inline mention popup styles
+.inline-mention-popup {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  max-width: 280px;
+  overflow: hidden;
+}
+
+.inline-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+
+  &:hover,
+  &.active {
+    background: var(--color-surface-hover, #f3f4f6);
+  }
+
+  .material-symbols-rounded {
+    font-size: 20px;
+    color: var(--color-text-muted);
+  }
+}
+
+.inline-mention-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inline-mention-item-label {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-text-main);
+}
+
+.inline-mention-item-desc {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+// Dark mode for inline mention popup
+.dark-mode .inline-mention-popup {
+  background: var(--color-surface, #1f2937);
+  border-color: var(--color-border, #374151);
+}
+
+.dark-mode .inline-mention-item {
+  &:hover,
+  &.active {
+    background: var(--color-surface-hover, #374151);
+  }
+}
