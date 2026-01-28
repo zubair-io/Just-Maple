@@ -90,15 +90,6 @@
   background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
   border-top: 1px solid var(--color-border);
   overflow: hidden;
-
-  .todo-toolbar-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    margin-right: 4px;
-  }
 }
 
 // Priority buttons with color coding
@@ -186,6 +177,70 @@
   }
 }
 
+// Responsive visibility
+.desktop-only {
+  display: flex;
+
+  @media (max-width: 767px) {
+    display: none;
+  }
+}
+
+.mobile-only {
+  display: none;
+
+  @media (max-width: 767px) {
+    display: flex;
+  }
+}
+
+// Mobile select dropdowns
+.mobile-select {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text-main);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 24px;
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-primary);
+  }
+}
+
+.priority-select {
+  &.priority-high {
+    background-color: #fee2e2;
+    color: #dc2626;
+    border-color: #fecaca;
+  }
+
+  &.priority-medium {
+    background-color: #fef3c7;
+    color: #d97706;
+    border-color: #fde68a;
+  }
+
+  &.priority-low {
+    background-color: #dbeafe;
+    color: #2563eb;
+    border-color: #bfdbfe;
+  }
+}
+
+.color-select {
+  border-left: 4px solid var(--selected-color, transparent);
+}
+
 // Dark mode adjustments
 :host-context(.dark-mode) {
   .priority-btn {
@@ -202,6 +257,26 @@
     &.priority-low.active {
       background: rgba(37, 99, 235, 0.2);
       color: #60a5fa;
+    }
+  }
+
+  .priority-select {
+    &.priority-high {
+      background-color: rgba(220, 38, 38, 0.2);
+      color: #f87171;
+      border-color: rgba(220, 38, 38, 0.4);
+    }
+
+    &.priority-medium {
+      background-color: rgba(217, 119, 6, 0.2);
+      color: #fbbf24;
+      border-color: rgba(217, 119, 6, 0.4);
+    }
+
+    &.priority-low {
+      background-color: rgba(37, 99, 235, 0.2);
+      color: #60a5fa;
+      border-color: rgba(37, 99, 235, 0.4);
     }
   }
 }

@@ -78,10 +78,8 @@
   <!-- Todo toolbar - shown when cursor is in a task item -->
   @if (activeTaskItem()) {
     <div class="todo-toolbar" @slideInOut>
-      <span class="todo-toolbar-label">Task:</span>
-
-      <!-- Priority buttons -->
-      <div class="toolbar-group">
+      <!-- Priority buttons (desktop) -->
+      <div class="toolbar-group desktop-only">
         @for (p of priorities; track p.value) {
           <button
             type="button"
@@ -98,10 +96,27 @@
         }
       </div>
 
-      <div class="toolbar-divider"></div>
+      <!-- Priority dropdown (mobile) -->
+      <div class="toolbar-group mobile-only">
+        <select
+          class="mobile-select priority-select"
+          [class.priority-high]="activeTaskItem()?.priority === 'high'"
+          [class.priority-medium]="activeTaskItem()?.priority === 'medium'"
+          [class.priority-low]="activeTaskItem()?.priority === 'low'"
+          [value]="activeTaskItem()?.priority || ''"
+          (change)="setPriority($any($event.target).value || null)"
+        >
+          <option value="">Priority</option>
+          @for (p of priorities; track p.value) {
+            <option [value]="p.value">{{ p.shortLabel }}</option>
+          }
+        </select>
+      </div>
 
-      <!-- Color buttons -->
-      <div class="toolbar-group color-group">
+      <div class="toolbar-divider desktop-only"></div>
+
+      <!-- Color buttons (desktop) -->
+      <div class="toolbar-group color-group desktop-only">
         @for (c of colors; track c.value) {
           <button
             type="button"
@@ -114,6 +129,21 @@
             <span class="color-dot" [style.background]="c.hex"></span>
           </button>
         }
+      </div>
+
+      <!-- Color dropdown (mobile) -->
+      <div class="toolbar-group mobile-only">
+        <select
+          class="mobile-select color-select"
+          [style.--selected-color]="getSelectedColorHex()"
+          [value]="activeTaskItem()?.color || ''"
+          (change)="setColor($any($event.target).value || null)"
+        >
+          <option value="">Color</option>
+          @for (c of colors; track c.value) {
+            <option [value]="c.value">{{ c.label }}</option>
+          }
+        </select>
       </div>
 
       <div class="toolbar-divider"></div>

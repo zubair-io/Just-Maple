@@ -199,6 +199,16 @@ export class EditorToolbarComponent {
     return date.toISOString().split('T')[0];
   }
 
+  /**
+   * Get hex color for the currently selected color (for mobile dropdown styling)
+   */
+  getSelectedColorHex(): string {
+    const task = this.activeTaskItem();
+    if (!task?.color) return 'transparent';
+    const colorObj = this.colors.find((c) => c.value === task.color);
+    return colorObj?.hex || 'transparent';
+  }
+
   readonly formattingButtons = computed<ToolbarButton[]>(() => {
     const ed = this.editor();
     if (!ed) return [];

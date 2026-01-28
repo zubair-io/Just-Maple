@@ -27,6 +27,7 @@ import { MemoDocumentService } from '../../../services/memo-document.service';
 import { PageService } from '../../../services/page.service';
 import { AuthService } from '../../../services/auth.service';
 import { TodoSyncService } from '../../../services/todo-sync.service';
+import { UiStateService } from '../../../services/ui-state.service';
 import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
 import { SlashCommandMenuComponent } from '../../molecules/slash-command-menu/slash-command-menu.component';
 import DragHandle from '@tiptap/extension-drag-handle';
@@ -74,6 +75,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly pageService = inject(PageService);
   private readonly authService = inject(AuthService);
   private readonly todoSyncService = inject(TodoSyncService);
+  private readonly uiStateService = inject(UiStateService);
   private readonly activatedRoute = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
@@ -258,9 +260,23 @@ export class NotebookEditorComponent implements OnDestroy {
         ],
         // Doc pages are always read-only
         editable: isDocPageView ? false : this.editable(),
-        onFocus: () => this.isFocused.set(true),
-        onBlur: () => this.isFocused.set(false),
+        onFocus: () => {
+          this.isFocused.set(true);
+          this.uiStateService.setChatInputFocused(true);
+          // Scroll cursor into view after keyboard appears (mobile)
+          this.scrollSelectionIntoView();
+        },
+        onBlur: () => {
+          this.isFocused.set(false);
+          this.uiStateService.setChatInputFocused(false);
+        },
         onUpdate: ({ editor }) => this.handleContentUpdate(editor),
+        onSelectionUpdate: () => {
+          // On mobile, scroll selection into view when cursor moves
+          if (this.isFocused() && this.isMobileDevice()) {
+            this.scrollSelectionIntoView();
+          }
+        },
       });
 
       // For doc pages, set the markdown content as HTML
@@ -789,6 +805,9 @@ export class NotebookEditorComponent implements OnDestroy {
       this.titleUpdateTimeout = null;
     }
 
+    // Reset focus state when cleaning up
+    this.uiStateService.setChatInputFocused(false);
+
     // Clear any pending todo sync
     if (this.lastPageId) {
       this.todoSyncService.clearPendingSync(this.lastPageId);
@@ -855,6 +874,50 @@ export class NotebookEditorComponent implements OnDestroy {
     ) {
       this._editor?.commands.focus('end');
     }
+  }
+
+  /**
+   * Check if we're on a mobile device
+   */
+  private isMobileDevice(): boolean {
+    return typeof window !== 'undefined' && window.innerWidth < 768;
+  }
+
+  /**
+   * Scroll the current selection into view, especially useful on mobile
+   * when the virtual keyboard appears and may obscure the cursor
+   */
+  private scrollSelectionIntoView(): void {
+    // Wait for keyboard to appear and layout to settle
+    setTimeout(() => {
+      if (!this._editor) return;
+
+      // Get the DOM selection
+      const { view } = this._editor;
+      const { from } = view.state.selection;
+
+      // Get the coordinates of the cursor position
+      const coords = view.coordsAtPos(from);
+      if (!coords) return;
+
+      // Find the editor wrapper element for scrolling
+      const editorWrapper = this.editorWrapperRef?.nativeElement;
+      if (!editorWrapper) return;
+
+      // Calculate if cursor is visible in the viewport
+      const viewportHeight = window.visualViewport?.height || window.innerHeight;
+      const cursorY = coords.top;
+
+      // If cursor is below the visible area (accounting for some padding)
+      if (cursorY > viewportHeight - 100) {
+        // Scroll the cursor into view with smooth behavior
+        const scrollAmount = cursorY - viewportHeight + 150;
+        window.scrollBy({
+          top: scrollAmount,
+          behavior: 'smooth',
+        });
+      }
+    }, 300); // Delay to allow keyboard animation to complete
   }
 
   /**
