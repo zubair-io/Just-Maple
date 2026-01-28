@@ -24,8 +24,9 @@ import {
     shareBotToNotebook,
     unshareBotFromNotebook,
 } from '../repositories/notebook.repo';
-import { findUserBotsForNotebook } from '../repositories/user-bot.repo';
+import { findUserBotsForNotebook, findUserBotByIdInternal } from '../repositories/user-bot.repo';
 import { sendNotification } from '../services/notification.service';
+import { findBotTemplateById } from '../repositories/bot-template.repo';
 
 export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
     .use(jwtPlugin)
@@ -438,6 +439,101 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
         {
             params: t.Object({
                 id: t.String(),
+            }),
+        },
+    )
+
+    // AI Summarize content using notebook's Claude bot
+    .post(
+        '/:id/ai-summarize',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const notebook = await findNotebookById(params.id, auth.user._id);
+            if (!notebook) {
+                set.status = 404;
+                return { error: 'Notebook not found' };
+            }
+
+            // Find Claude bot shared with this notebook
+            const sharedBots = await findUserBotsForNotebook(params.id);
+            const claudeBot = sharedBots.find(
+                (bot) =>
+                    bot.handle?.toLowerCase() === 'claude' ||
+                    bot.handle?.toLowerCase() === 'ai' ||
+                    bot.templateName?.toLowerCase().includes('claude'),
+            );
+
+            if (!claudeBot) {
+                set.status = 400;
+                return { error: 'No Claude bot configured for this notebook' };
+            }
+
+            // Get full bot config including API key
+            const userBot = await findUserBotByIdInternal(claudeBot._id);
+            if (!userBot?.config?.apiKey) {
+                set.status = 400;
+                return { error: 'Claude bot API key not configured' };
+            }
+
+            // Call Claude API to summarize
+            const systemPrompt =
+                'You are a helpful assistant that creates brief summaries. ' +
+                'Respond with ONLY a short summary (1-2 sentences, max 100 characters). ' +
+                'No explanations, no quotes, just the summary text.';
+
+            const userPrompt = `Summarize this ${body.type || 'content'} in one brief sentence:\n\n${body.content}`;
+
+            try {
+                const response = await fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'anthropic-version': '2023-06-01',
+                        'x-api-key': userBot.config.apiKey,
+                    },
+                    body: JSON.stringify({
+                        model: 'claude-sonnet-4-20250514',
+                        max_tokens: 150,
+                        system: systemPrompt,
+                        messages: [{ role: 'user', content: userPrompt }],
+                    }),
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('[AI Summarize] Claude API error:', response.status, errorText);
+                    set.status = 500;
+                    return { error: 'Failed to generate summary' };
+                }
+
+                const data = (await response.json()) as {
+                    content: Array<{ type: string; text?: string }>;
+                };
+                const textContent = data.content.find((c) => c.type === 'text');
+                const summary = textContent?.text?.trim() || '';
+
+                // Truncate to maxLength if specified
+                const maxLength = body.maxLength || 256;
+                const truncatedSummary = summary.slice(0, maxLength);
+
+                return { summary: truncatedSummary };
+            } catch (error) {
+                console.error('[AI Summarize] Error:', error);
+                set.status = 500;
+                return { error: 'Failed to generate summary' };
+            }
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            body: t.Object({
+                content: t.String(),
+                type: t.Optional(t.String()),
+                maxLength: t.Optional(t.Number()),
             }),
         },
     );
