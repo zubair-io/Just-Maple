@@ -52,6 +52,8 @@ import {
   ImageNode,
   Agenda,
   InlineMention,
+  formatTime,
+  formatDate,
   type SlashCommandItem,
   type InlineMentionSuggestion,
   type MentionableUser,
@@ -1096,11 +1098,44 @@ export class NotebookEditorComponent implements OnDestroy {
     const { doc } = this._editor.state;
     let agendaContent = '';
 
+    // Helper to extract text with proper inline mention rendering
+    const extractNodeText = (node: any): string => {
+      if (node.type.name === 'inlineMention') {
+        const type = node.attrs['type'];
+        const value = node.attrs['value'];
+        if (type === 'time') {
+          return formatTime(value);
+        } else if (type === 'date') {
+          return formatDate(value);
+        } else if (type === 'user') {
+          return node.attrs['displayName'] || 'User';
+        }
+        return '';
+      }
+
+      if (node.isText) {
+        return node.text || '';
+      }
+
+      // Recursively extract from children
+      let text = '';
+      node.content?.forEach((child: any) => {
+        text += extractNodeText(child);
+      });
+
+      // Add newline for block nodes
+      if (node.isBlock && text) {
+        text += '\n';
+      }
+
+      return text;
+    };
+
     doc.descendants((node) => {
       if (node.type.name === 'agenda' && node.attrs['id'] === agendaId) {
-        // Extract text content from the agenda
+        // Extract text content from the agenda with proper inline mention rendering
         node.content.forEach((child) => {
-          agendaContent += child.textContent + '\n';
+          agendaContent += extractNodeText(child);
         });
         return false;
       }
