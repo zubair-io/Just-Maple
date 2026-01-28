@@ -48,32 +48,44 @@ export type InlineMentionType = 'time' | 'date' | 'user';
 export interface InlineMentionAttrs {
   type: InlineMentionType;
   value: string; // time: HH:mm, date: YYYY-MM-DD, user: userId
-  displayName?: string; // For user: first name
+  displayName?: string; // For user: display name
   avatarUrl?: string; // For user: profile picture URL
 }
 
+// User data for @ mentions
+export interface MentionableUser {
+  id: string;
+  displayName: string;
+  avatarUrl?: string;
+}
+
+// Suggestion item that can be time, date, or a specific user
 export interface InlineMentionSuggestion {
-  id: InlineMentionType;
+  id: string; // 'time', 'date', or a user ID
+  type: InlineMentionType;
   label: string;
-  icon: string;
+  icon?: string; // For time/date
+  avatarUrl?: string; // For users
   description: string;
 }
 
-export const inlineMentionSuggestions: InlineMentionSuggestion[] = [
-  { id: 'time', label: 'Time', icon: 'schedule', description: 'Insert current time' },
-  { id: 'date', label: 'Date', icon: 'calendar_today', description: 'Insert current date' },
-  { id: 'user', label: 'User', icon: 'person', description: 'Insert your name' },
+// Base suggestions for time and date (users are added dynamically)
+export const baseMentionSuggestions: InlineMentionSuggestion[] = [
+  { id: 'time', type: 'time', label: 'Time', icon: 'schedule', description: 'Insert current time' },
+  {
+    id: 'date',
+    type: 'date',
+    label: 'Date',
+    icon: 'calendar_today',
+    description: 'Insert current date',
+  },
 ];
 
 export interface InlineMentionOptions {
   HTMLAttributes: Record<string, unknown>;
   suggestion: Omit<SuggestionOptions<InlineMentionSuggestion>, 'editor'>;
-  // User info for @user mentions
-  currentUser?: {
-    id: string;
-    firstName: string;
-    avatarUrl?: string;
-  };
+  // List of mentionable users (notebook members)
+  users: MentionableUser[];
 }
 
 export const InlineMentionPluginKey = new PluginKey('inlineMention');
@@ -98,16 +110,12 @@ export const InlineMention = Node.create<InlineMentionOptions>({
       suggestion: {
         char: '@',
         pluginKey: InlineMentionPluginKey,
-        items: ({ query }) => {
-          return inlineMentionSuggestions.filter((item) =>
-            item.label.toLowerCase().includes(query.toLowerCase()),
-          );
-        },
-        // command and allow are defined in addProseMirrorPlugins to access this.options
+        // items, command and allow are defined in addProseMirrorPlugins to access this.options
+        items: () => [],
         command: () => {},
         allow: () => true,
       },
-      currentUser: undefined,
+      users: [],
     };
   },
 
@@ -340,16 +348,42 @@ export const InlineMention = Node.create<InlineMentionOptions>({
   addProseMirrorPlugins() {
     const extensionThis = this;
 
+    // Generate all suggestions: base (time, date) + users
+    const generateSuggestions = (query: string): InlineMentionSuggestion[] => {
+      // Start with base suggestions (time, date)
+      const allSuggestions = [...baseMentionSuggestions];
+
+      // Add user suggestions from options
+      const users = extensionThis.options.users || [];
+      for (const user of users) {
+        allSuggestions.push({
+          id: user.id,
+          type: 'user',
+          label: user.displayName,
+          avatarUrl: user.avatarUrl,
+          description: 'Mention user',
+        });
+      }
+
+      // Filter by query
+      if (!query) return allSuggestions;
+      return allSuggestions.filter((item) =>
+        item.label.toLowerCase().includes(query.toLowerCase()),
+      );
+    };
+
     return [
       Suggestion({
         editor: this.editor,
         ...this.options.suggestion,
-        // Override command to have access to this.options.currentUser
+        // Override items to include dynamic user list
+        items: ({ query }) => generateSuggestions(query),
+        // Override command to handle all suggestion types
         command: ({ editor, range, props }) => {
           const suggestion = props as InlineMentionSuggestion;
           let attrs: InlineMentionAttrs;
 
-          switch (suggestion.id) {
+          switch (suggestion.type) {
             case 'time':
               attrs = { type: 'time', value: getCurrentTime() };
               break;
@@ -357,12 +391,11 @@ export const InlineMention = Node.create<InlineMentionOptions>({
               attrs = { type: 'date', value: getCurrentDate() };
               break;
             case 'user':
-              const user = extensionThis.options.currentUser;
               attrs = {
                 type: 'user',
-                value: user?.id || '',
-                displayName: user?.firstName || 'User',
-                avatarUrl: user?.avatarUrl,
+                value: suggestion.id,
+                displayName: suggestion.label,
+                avatarUrl: suggestion.avatarUrl,
               };
               break;
             default:

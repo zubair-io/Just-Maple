@@ -36,11 +36,12 @@ export { Agenda, getRelativeDateText, type AgendaAttrs, type AgendaOptions } fro
 export {
   InlineMention,
   InlineMentionPluginKey,
-  inlineMentionSuggestions,
+  baseMentionSuggestions,
   formatTime,
   formatDate,
   type InlineMentionType,
   type InlineMentionAttrs,
   type InlineMentionSuggestion,
   type InlineMentionOptions,
+  type MentionableUser,
 } from './inline-mention';
