@@ -551,18 +551,13 @@ export const Agenda = Node.create<AgendaOptions>({
       aiButton.appendChild(aiIcon);
       header.appendChild(aiButton);
 
-      // Content wrapper (we control this for hiding)
-      const contentWrapper = document.createElement('div');
-      contentWrapper.classList.add('agenda-content-wrapper');
-
-      // Content area (ProseMirror's contentDOM)
+      // Content area
       const content = document.createElement('div');
       content.classList.add('agenda-content');
-      contentWrapper.appendChild(content);
 
       // Assemble
       dom.appendChild(header);
-      dom.appendChild(contentWrapper);
+      dom.appendChild(content);
 
       // Toggle collapse on header click (but not on AI button or date)
       header.addEventListener('click', (event) => {
@@ -574,8 +569,8 @@ export const Agenda = Node.create<AgendaOptions>({
         dom.classList.toggle('collapsed');
         chevron.textContent = isCollapsing ? 'chevron_right' : 'expand_more';
 
-        // Hide/show the content wrapper
-        contentWrapper.style.display = isCollapsing ? 'none' : 'block';
+        // Use inline style for reliable collapsing (CSS backup)
+        content.style.display = isCollapsing ? 'none' : '';
 
         // Show content preview when collapsed and no AI summary
         if (isCollapsing && !node.attrs['summary']) {
