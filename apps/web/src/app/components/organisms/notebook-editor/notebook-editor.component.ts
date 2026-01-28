@@ -52,11 +52,12 @@ import {
   ImageNode,
   Agenda,
   InlineMention,
-  inlineMentionSuggestions,
   type SlashCommandItem,
   type InlineMentionSuggestion,
+  type MentionableUser,
 } from './extensions';
 import { BotService } from '../../../services/bot.service';
+import { NotebookService } from '../../../services/notebook.service';
 import { RecordingBlockComponent } from '../../molecules/recording-block/recording-block.component';
 import { PaperEmbedComponent } from '../../molecules/paper-embed/paper-embed.component';
 import { EditorToolbarComponent } from '../../molecules/editor-toolbar/editor-toolbar.component';
@@ -84,6 +85,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly authService = inject(AuthService);
   private readonly todoSyncService = inject(TodoSyncService);
   private readonly botService = inject(BotService);
+  private readonly notebookService = inject(NotebookService);
   private readonly http = inject(HttpClient);
   private readonly activatedRoute = inject(ActivatedRoute);
   private readonly memoImageService = inject(MemoImageService);
@@ -100,6 +102,7 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly error = signal<string | null>(null);
   readonly isFullWidth = signal(false);
   readonly hasClaudeBot = signal(false);
+  readonly mentionableUsers = signal<MentionableUser[]>([]);
 
   private _editor: Editor | null = null;
   private ydoc: Y.Doc | null = null;
@@ -238,16 +241,8 @@ export class NotebookEditorComponent implements OnDestroy {
           Agenda,
           // Inline mentions (@time, @date, @user)
           InlineMention.configure({
-            currentUser: {
-              id: this.authService.user()?._id || '',
-              firstName: this.authService.user()?.email?.split('@')[0] || 'User',
-              avatarUrl: undefined,
-            },
+            users: this.mentionableUsers(),
             suggestion: {
-              items: ({ query }: { query: string }) =>
-                inlineMentionSuggestions.filter((item) =>
-                  item.label.toLowerCase().includes(query.toLowerCase()),
-                ),
               render: () => this.createInlineMentionRenderer(),
             },
           }),
@@ -330,6 +325,9 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Check for Claude bot availability
         this.checkClaudeBotAvailability();
+
+        // Fetch notebook members for @mentions
+        this.fetchNotebookMembers();
       }
 
       this.isReady.set(true);
@@ -988,10 +986,26 @@ export class NotebookEditorComponent implements OnDestroy {
       div.classList.add('inline-mention-item');
       if (index === 0) div.classList.add('active');
 
-      const icon = document.createElement('span');
-      icon.classList.add('material-symbols-rounded');
-      icon.textContent = item.icon;
-      div.appendChild(icon);
+      // Show avatar for users, icon for time/date
+      if (item.type === 'user' && item.avatarUrl) {
+        const avatar = document.createElement('img');
+        avatar.src = item.avatarUrl;
+        avatar.alt = '';
+        avatar.classList.add('inline-mention-item-avatar');
+        div.appendChild(avatar);
+      } else if (item.type === 'user') {
+        // User without avatar - show person icon
+        const icon = document.createElement('span');
+        icon.classList.add('material-symbols-rounded');
+        icon.textContent = 'person';
+        div.appendChild(icon);
+      } else {
+        // Time/date - show icon
+        const icon = document.createElement('span');
+        icon.classList.add('material-symbols-rounded');
+        icon.textContent = item.icon || '';
+        div.appendChild(icon);
+      }
 
       const content = document.createElement('div');
       content.classList.add('inline-mention-item-content');
@@ -1035,6 +1049,32 @@ export class NotebookEditorComponent implements OnDestroy {
 
       // Update existing agenda nodes to show/hide AI button
       this.updateAgendaAiButtons(hasClaudeBot);
+    });
+  }
+
+  /**
+   * Fetch notebook members for @mentions
+   */
+  private fetchNotebookMembers(): void {
+    const notebookId = this.notebookId();
+    if (!notebookId) return;
+
+    this.notebookService.fetchNotebookMembers(notebookId).subscribe((members) => {
+      const users: MentionableUser[] = members.map((member) => ({
+        id: member.userId,
+        displayName: member.displayName || member.email.split('@')[0],
+        avatarUrl: member.profilePictureUrl,
+      }));
+      this.mentionableUsers.set(users);
+
+      // Update the InlineMention extension with new users
+      if (this._editor) {
+        this._editor.extensionManager.extensions
+          .filter((ext) => ext.name === 'inlineMention')
+          .forEach((ext) => {
+            ext.options.users = users;
+          });
+      }
     });
   }
 
