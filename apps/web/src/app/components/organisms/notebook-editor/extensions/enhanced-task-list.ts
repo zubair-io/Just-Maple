@@ -1,5 +1,7 @@
 import TaskList from '@tiptap/extension-task-list';
 import { mergeAttributes } from '@tiptap/core';
+import type { Editor } from '@tiptap/core';
+import type { TodoPriority, TodoColor } from '@maple/shared';
 
 export interface EnhancedTaskListAttrs {
   id: string;
@@ -10,6 +12,28 @@ export interface EnhancedTaskListAttrs {
 export interface EnhancedTaskListOptions {
   HTMLAttributes: Record<string, unknown>;
   itemTypeName: string;
+}
+
+// Priority and color options
+const PRIORITIES: { value: TodoPriority; icon: string; title: string }[] = [
+  { value: 'high', icon: 'keyboard_double_arrow_up', title: 'High priority' },
+  { value: 'medium', icon: 'remove', title: 'Medium priority' },
+  { value: 'low', icon: 'keyboard_double_arrow_down', title: 'Low priority' },
+];
+
+const COLORS: { value: TodoColor; hex: string }[] = [
+  { value: 'red', hex: '#EF4444' },
+  { value: 'orange', hex: '#F97316' },
+  { value: 'yellow', hex: '#EAB308' },
+  { value: 'green', hex: '#22C55E' },
+  { value: 'blue', hex: '#3B82F6' },
+];
+
+interface ActiveTask {
+  id: string;
+  priority?: TodoPriority;
+  color?: TodoColor;
+  dueDate?: string;
 }
 
 declare module '@tiptap/core' {
@@ -143,6 +167,7 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
     return ({ node: initialNode, getPos, editor }) => {
       let node = initialNode;
       const listId = node.attrs['id'] || generateTaskListId();
+      let activeTask: ActiveTask | null = null;
 
       // Ensure the node has an ID
       if (!node.attrs['id']) {
@@ -208,11 +233,186 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
       header.appendChild(nameInput);
       header.appendChild(statusDisplay);
 
+      // Create floating toolbar for task item editing
+      const toolbar = document.createElement('div');
+      toolbar.classList.add('task-list-toolbar');
+      toolbar.contentEditable = 'false';
+      toolbar.style.display = 'none';
+
+      // Priority buttons
+      const priorityGroup = document.createElement('div');
+      priorityGroup.classList.add('toolbar-group', 'priority-group');
+
+      PRIORITIES.forEach((p) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.classList.add('toolbar-btn', 'priority-btn', `priority-${p.value}`);
+        btn.title = p.title;
+        btn.setAttribute('data-priority', p.value);
+        const icon = document.createElement('span');
+        icon.classList.add('material-symbols-rounded');
+        icon.textContent = p.icon;
+        btn.appendChild(icon);
+        btn.addEventListener('click', () => {
+          if (!activeTask) return;
+          const newPriority = activeTask.priority === p.value ? null : p.value;
+          (editor.commands as any).updateTodoAttrs(activeTask.id, {
+            priority: newPriority || undefined,
+          });
+        });
+        priorityGroup.appendChild(btn);
+      });
+
+      // Divider
+      const divider1 = document.createElement('div');
+      divider1.classList.add('toolbar-divider');
+
+      // Color buttons
+      const colorGroup = document.createElement('div');
+      colorGroup.classList.add('toolbar-group', 'color-group');
+
+      COLORS.forEach((c) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.classList.add('toolbar-btn', 'color-btn');
+        btn.setAttribute('data-color', c.value);
+        const dot = document.createElement('span');
+        dot.classList.add('color-dot');
+        dot.style.background = c.hex;
+        btn.appendChild(dot);
+        btn.addEventListener('click', () => {
+          if (!activeTask) return;
+          const newColor = activeTask.color === c.value ? null : c.value;
+          (editor.commands as any).updateTodoAttrs(activeTask.id, {
+            color: newColor || undefined,
+          });
+        });
+        colorGroup.appendChild(btn);
+      });
+
+      // Divider
+      const divider2 = document.createElement('div');
+      divider2.classList.add('toolbar-divider');
+
+      // Date picker
+      const dateGroup = document.createElement('div');
+      dateGroup.classList.add('toolbar-group', 'date-group');
+
+      const dateInput = document.createElement('input');
+      dateInput.type = 'date';
+      dateInput.classList.add('date-input');
+      dateInput.addEventListener('change', () => {
+        if (!activeTask) return;
+        if (dateInput.value) {
+          const date = new Date(dateInput.value + 'T00:00:00');
+          (editor.commands as any).updateTodoAttrs(activeTask.id, {
+            dueDate: date.toISOString(),
+          });
+        } else {
+          (editor.commands as any).updateTodoAttrs(activeTask.id, {
+            dueDate: undefined,
+          });
+        }
+      });
+
+      const clearDateBtn = document.createElement('button');
+      clearDateBtn.type = 'button';
+      clearDateBtn.classList.add('toolbar-btn', 'clear-date-btn');
+      clearDateBtn.textContent = '✕';
+      clearDateBtn.title = 'Clear date';
+      clearDateBtn.style.display = 'none';
+      clearDateBtn.addEventListener('click', () => {
+        if (!activeTask) return;
+        (editor.commands as any).updateTodoAttrs(activeTask.id, { dueDate: undefined });
+        dateInput.value = '';
+        clearDateBtn.style.display = 'none';
+      });
+
+      dateGroup.appendChild(dateInput);
+      dateGroup.appendChild(clearDateBtn);
+
+      toolbar.appendChild(priorityGroup);
+      toolbar.appendChild(divider1);
+      toolbar.appendChild(colorGroup);
+      toolbar.appendChild(divider2);
+      toolbar.appendChild(dateGroup);
+
       // Create the actual UL for task items
       const ul = document.createElement('ul');
       ul.setAttribute('data-type', 'taskList');
       ul.setAttribute('data-list-id', listId);
       ul.classList.add('task-list-content');
+
+      // Helper to update toolbar state
+      const updateToolbar = () => {
+        if (!activeTask) {
+          toolbar.style.display = 'none';
+          return;
+        }
+
+        toolbar.style.display = 'flex';
+
+        // Update priority buttons
+        priorityGroup.querySelectorAll('.priority-btn').forEach((btn) => {
+          const btnPriority = btn.getAttribute('data-priority');
+          btn.classList.toggle('active', btnPriority === activeTask?.priority);
+        });
+
+        // Update color buttons
+        colorGroup.querySelectorAll('.color-btn').forEach((btn) => {
+          const btnColor = btn.getAttribute('data-color');
+          btn.classList.toggle('active', btnColor === activeTask?.color);
+        });
+
+        // Update date input
+        if (activeTask.dueDate) {
+          const date = new Date(activeTask.dueDate);
+          dateInput.value = date.toISOString().split('T')[0];
+          clearDateBtn.style.display = 'flex';
+        } else {
+          dateInput.value = '';
+          clearDateBtn.style.display = 'none';
+        }
+      };
+
+      // Helper to find active task in this list
+      const findActiveTask = (ed: Editor): ActiveTask | null => {
+        const { $from } = ed.state.selection;
+
+        // Walk up the tree to find taskItem
+        for (let d = $from.depth; d >= 0; d--) {
+          const n = $from.node(d);
+          if (n.type.name === 'taskItem') {
+            // Check if this task item is within our list
+            for (let pd = d - 1; pd >= 0; pd--) {
+              const parent = $from.node(pd);
+              if (parent.type.name === 'taskList') {
+                const parentId = parent.attrs['id'];
+                if (parentId === listId || (!parentId && !listId)) {
+                  return {
+                    id: n.attrs['id'],
+                    priority: n.attrs['priority'],
+                    color: n.attrs['color'],
+                    dueDate: n.attrs['dueDate'],
+                  };
+                }
+                break;
+              }
+            }
+            break;
+          }
+        }
+        return null;
+      };
+
+      // Subscribe to editor selection changes
+      const handleSelectionUpdate = () => {
+        activeTask = findActiveTask(editor);
+        updateToolbar();
+      };
+
+      editor.on('selectionUpdate', handleSelectionUpdate);
+      editor.on('transaction', handleSelectionUpdate);
 
       // Helper to count todos and update UI
       const updateStatus = () => {
@@ -255,6 +455,7 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
 
       // Assemble
       wrapper.appendChild(header);
+      wrapper.appendChild(toolbar);
       wrapper.appendChild(ul);
 
       return {
@@ -285,6 +486,10 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
           wrapper.setAttribute('data-show-completed', String(showCompleted));
           statusChevron.textContent = showCompleted ? 'expand_more' : 'chevron_right';
 
+          // Update toolbar in case task attributes changed
+          activeTask = findActiveTask(editor);
+          updateToolbar();
+
           return true;
         },
         stopEvent: (event) => {
@@ -297,7 +502,14 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
           if (target === header || (target instanceof window.Node && header.contains(target))) {
             return true;
           }
+          if (target === toolbar || (target instanceof window.Node && toolbar.contains(target))) {
+            return true;
+          }
           return false;
+        },
+        destroy: () => {
+          editor.off('selectionUpdate', handleSelectionUpdate);
+          editor.off('transaction', handleSelectionUpdate);
         },
       };
     };

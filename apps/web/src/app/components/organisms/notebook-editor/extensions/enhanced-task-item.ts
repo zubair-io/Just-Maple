@@ -473,9 +473,6 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
       if (node.attrs['priority']) {
         dom.setAttribute('data-priority', node.attrs['priority']);
       }
-      if (node.attrs['dueDate'] && !node.attrs['checked'] && isOverdue(node.attrs['dueDate'])) {
-        dom.classList.add('todo-overdue');
-      }
 
       // Create checkbox wrapper
       const checkboxWrapper = document.createElement('label');
@@ -568,17 +565,6 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
             dom.setAttribute('data-priority', updatedNode.attrs['priority']);
           } else {
             dom.removeAttribute('data-priority');
-          }
-
-          // Update overdue class
-          if (
-            updatedNode.attrs['dueDate'] &&
-            !updatedNode.attrs['checked'] &&
-            isOverdue(updatedNode.attrs['dueDate'])
-          ) {
-            dom.classList.add('todo-overdue');
-          } else {
-            dom.classList.remove('todo-overdue');
           }
 
           // Update metadata
