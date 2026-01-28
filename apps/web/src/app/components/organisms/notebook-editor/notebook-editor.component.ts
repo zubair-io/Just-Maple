@@ -48,6 +48,7 @@ import {
   EnhancedTaskItem,
   AiBotWidget,
   ImageNode,
+  Agenda,
   type SlashCommandItem,
 } from './extensions';
 import { RecordingBlockComponent } from '../../molecules/recording-block/recording-block.component';
@@ -224,6 +225,8 @@ export class NotebookEditorComponent implements OnDestroy {
           AiBotWidget,
           // Image node with size options
           ImageNode,
+          // Agenda node for date-based content organization
+          Agenda,
           // Drag handles for blocks
           DragHandle.configure({
             render: () => {
@@ -294,6 +297,9 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up AI bot widget event listeners
         this.setupAiBotWidgetListeners();
+
+        // Set up agenda event listeners
+        this.setupAgendaListeners();
       }
 
       this.isReady.set(true);
@@ -306,20 +312,24 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
-   * Handle deep linking to a specific todo via URL fragment
-   * Expects fragment format: #todo-{todoId}
+   * Handle deep linking to a specific todo or agenda via URL fragment
+   * Expects fragment format: #todo-{todoId} or #agenda-{agendaId}
    */
   private handleTodoDeepLink(): void {
     // Subscribe to fragment changes
     this.activatedRoute.fragment.subscribe((fragment) => {
-      if (fragment && fragment.startsWith('todo-') && this._editor) {
-        const todoId = fragment.replace('todo-', '');
+      if (!fragment || !this._editor) return;
 
-        // Wait a bit for the editor content to fully render
-        setTimeout(() => {
+      // Wait a bit for the editor content to fully render
+      setTimeout(() => {
+        if (fragment.startsWith('todo-')) {
+          const todoId = fragment.replace('todo-', '');
           (this._editor?.commands as any).scrollToTodo(todoId);
-        }, 300);
-      }
+        } else if (fragment.startsWith('agenda-')) {
+          const agendaId = fragment.replace('agenda-', '');
+          (this._editor?.commands as any).scrollToAgenda(agendaId);
+        }
+      }, 300);
     });
   }
 
@@ -707,6 +717,103 @@ export class NotebookEditorComponent implements OnDestroy {
 
     // Insert the AI bot widget at the current position
     (this._editor.commands as any).insertAiBotWidget();
+  }
+
+  /**
+   * Set up listeners for agenda events
+   */
+  private setupAgendaListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    // Listen for agenda date click events - show date picker
+    editorElement.addEventListener('agenda-date-click', ((event: CustomEvent) => {
+      const { agendaId, currentDate, position } = event.detail;
+      this.showAgendaDatePicker(agendaId, currentDate, position);
+    }) as EventListener);
+
+    // Listen for agenda AI click events - generate summary
+    editorElement.addEventListener('agenda-ai-click', ((event: CustomEvent) => {
+      const { agendaId, pos, editor, getPos } = event.detail;
+      this.generateAgendaSummary(agendaId, pos, editor, getPos);
+    }) as EventListener);
+  }
+
+  /**
+   * Show date picker for agenda
+   */
+  private showAgendaDatePicker(agendaId: string, currentDate: string, position: DOMRect): void {
+    // Create a temporary date input to use native date picker
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.value = currentDate;
+    dateInput.style.position = 'absolute';
+    dateInput.style.left = `${position.left}px`;
+    dateInput.style.top = `${position.bottom + 4}px`;
+    dateInput.style.zIndex = '1000';
+    dateInput.style.opacity = '0';
+    dateInput.style.pointerEvents = 'none';
+    document.body.appendChild(dateInput);
+
+    dateInput.addEventListener('change', () => {
+      const newDate = dateInput.value;
+      if (newDate && this._editor) {
+        (this._editor.commands as any).setAgendaDate(agendaId, newDate);
+      }
+      dateInput.remove();
+    });
+
+    dateInput.addEventListener('blur', () => {
+      setTimeout(() => dateInput.remove(), 100);
+    });
+
+    // Open the date picker
+    dateInput.showPicker?.();
+    dateInput.focus();
+    dateInput.click();
+  }
+
+  /**
+   * Generate AI summary for agenda content
+   */
+  private async generateAgendaSummary(
+    agendaId: string,
+    pos: number,
+    editor: Editor,
+    getPos: () => number | undefined,
+  ): Promise<void> {
+    if (!this._editor) return;
+
+    // Find the agenda node and extract its content
+    const { doc } = this._editor.state;
+    let agendaContent = '';
+
+    doc.descendants((node, nodePos) => {
+      if (node.type.name === 'agenda' && node.attrs['id'] === agendaId) {
+        // Extract text content from the agenda
+        node.content.forEach((child) => {
+          agendaContent += child.textContent + '\n';
+        });
+        return false;
+      }
+      return true;
+    });
+
+    if (!agendaContent.trim()) {
+      console.log('[NotebookEditor] No content to summarize for agenda:', agendaId);
+      return;
+    }
+
+    try {
+      // TODO: Call AI service to generate summary
+      // For now, use a placeholder that truncates the content
+      const summary = agendaContent.trim().split('\n')[0].slice(0, 100);
+
+      // Update the agenda with the summary
+      (this._editor.commands as any).setAgendaSummary(agendaId, summary);
+    } catch (error) {
+      console.error('[NotebookEditor] Failed to generate agenda summary:', error);
+    }
   }
 
   /**

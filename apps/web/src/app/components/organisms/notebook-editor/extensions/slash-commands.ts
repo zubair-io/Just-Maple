@@ -110,6 +110,14 @@ export const defaultSlashCommands: SlashCommandItem[] = [
     },
   },
   {
+    title: 'Agenda',
+    description: 'Add a date-based section',
+    icon: '📅',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).insertAgenda().run();
+    },
+  },
+  {
     title: 'Voice Recording',
     description: 'Record audio with your microphone',
     icon: '🎙️',

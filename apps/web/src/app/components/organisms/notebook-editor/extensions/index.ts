@@ -32,3 +32,4 @@ export {
   getDocumentAsText,
   getDocumentAsMarkdown,
 } from './ai-bot-widget';
+export { Agenda, getRelativeDateText, type AgendaAttrs, type AgendaOptions } from './agenda';
