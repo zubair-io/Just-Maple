@@ -531,6 +531,80 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
+   * Handle image upload from slash command
+   * Opens file picker, uploads the image, and inserts it into the editor
+   * Shows image immediately with loading state, then updates when upload completes
+   * @param range Optional range to delete before inserting (from slash command)
+   */
+  private async handleImageUpload(range?: { from: number; to: number }): Promise<void> {
+    const pageId = this.pageId();
+    if (!pageId) {
+      console.error('[NotebookEditor] Cannot upload image: no page ID');
+      return;
+    }
+
+    // Delete the slash command range first
+    if (range) {
+      this._editor?.chain().focus().deleteRange(range).run();
+    }
+
+    // Open file picker
+    const file = await this.memoImageService.selectImageFile();
+    if (!file) {
+      return; // User cancelled
+    }
+
+    // Create a local blob URL for preview
+    const previewUrl = URL.createObjectURL(file);
+
+    // Generate a temporary placeholder URL that will be replaced
+    const tempId = crypto.randomUUID();
+    const placeholderUrl = `placeholder://${tempId}`;
+
+    // Create placeholder URLs object - will be replaced when upload completes
+    const placeholderUrls = {
+      original: placeholderUrl,
+      small: placeholderUrl,
+      medium: placeholderUrl,
+      large: placeholderUrl,
+      cover: placeholderUrl,
+    };
+
+    // Insert image immediately with loading state and preview
+    (this._editor?.chain().focus() as any)
+      .insertMemoImage({
+        urls: placeholderUrls,
+        size: 'medium',
+        loading: true,
+        previewUrl: previewUrl,
+      })
+      .run();
+
+    // Upload the image in background
+    this.memoImageService.uploadImage(pageId, file).subscribe({
+      next: (result) => {
+        // Update the image with real URLs and remove loading state
+        (this._editor?.chain() as any)
+          .updateMemoImage(placeholderUrl, {
+            urls: result.urls,
+            loading: false,
+          })
+          .run();
+
+        // Clean up blob URL
+        URL.revokeObjectURL(previewUrl);
+      },
+      error: (err) => {
+        console.error('[NotebookEditor] Failed to upload image:', err);
+        // Remove the failed image from editor
+        (this._editor?.chain() as any).deleteMemoImage(placeholderUrl).run();
+        // Clean up blob URL
+        URL.revokeObjectURL(previewUrl);
+      },
+    });
+  }
+
+  /**
    * Set up listeners for AI bot widget mount/unmount events
    */
   private setupAiBotWidgetListeners(): void {
@@ -633,77 +707,6 @@ export class NotebookEditorComponent implements OnDestroy {
 
     // Insert the AI bot widget at the current position
     (this._editor.commands as any).insertAiBotWidget();
-  }
-
-  /**
-   * Handle image upload from slash command
-   * Opens file picker, uploads the image with loading state, and inserts it into the editor
-   * @param range Optional range to delete before inserting (from slash command)
-   */
-  private async handleImageUpload(range?: { from: number; to: number }): Promise<void> {
-    const pageId = this.pageId();
-    if (!pageId) {
-      console.error('[NotebookEditor] Cannot upload image: no page ID');
-      return;
-    }
-
-    // Delete the slash command range first
-    if (range) {
-      this._editor?.chain().focus().deleteRange(range).run();
-    }
-
-    // Open file picker
-    const file = await this.memoImageService.selectImageFile();
-    if (!file) {
-      return; // User cancelled
-    }
-
-    // Create a local preview URL for the optimistic UI
-    const previewUrl = URL.createObjectURL(file);
-
-    // Generate a temporary image ID for tracking
-    const imageId = crypto.randomUUID();
-
-    // Create placeholder URLs structure
-    const placeholderUrls = {
-      original: '',
-      small: '',
-      medium: '',
-      large: '',
-      cover: '',
-    };
-
-    // Insert the image immediately with loading state
-    (this._editor?.chain().focus() as any)
-      .insertMemoImage({
-        id: imageId,
-        urls: placeholderUrls,
-        size: 'medium',
-        loading: true,
-        previewUrl: previewUrl,
-      })
-      .run();
-
-    // Upload the image
-    this.memoImageService.uploadImage(pageId, file).subscribe({
-      next: (result) => {
-        // Update the image node with the real URLs and remove loading state
-        (this._editor?.commands as any).updateMemoImage(imageId, {
-          urls: result.urls,
-          loading: false,
-          previewUrl: null,
-        });
-
-        // Revoke the preview URL to free memory
-        URL.revokeObjectURL(previewUrl);
-      },
-      error: (err) => {
-        console.error('[NotebookEditor] Failed to upload image:', err);
-        // Remove the loading image on error
-        // TODO: Could show an error state instead
-        URL.revokeObjectURL(previewUrl);
-      },
-    });
   }
 
   /**

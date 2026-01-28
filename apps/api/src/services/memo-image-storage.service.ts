@@ -7,9 +7,27 @@ import sharp from 'sharp';
 // Container name for memo images
 const MEMO_IMAGES_CONTAINER = 'memo-images';
 
+// Size configurations
+const IMAGE_SIZES = {
+    small: { width: 200 },
+    medium: { width: 400 },
+    large: { width: 800 },
+    cover: { width: 1200, height: 300 },
+} as const;
+
+export type ImageSizeKey = keyof typeof IMAGE_SIZES;
+
 export interface ProcessedMemoImage {
-    /** Full resolution image buffer with metadata stripped */
-    full: Buffer;
+    /** Original image buffer with metadata stripped */
+    original: Buffer;
+    /** Small version (200px width) */
+    small: Buffer;
+    /** Medium version (400px width) */
+    medium: Buffer;
+    /** Large version (800px width) */
+    large: Buffer;
+    /** Cover version (1200x300 cropped) */
+    cover: Buffer;
     /** Image format (jpeg, png, webp) */
     format: string;
     /** Original width */
@@ -18,62 +36,131 @@ export interface ProcessedMemoImage {
     height: number;
 }
 
+export interface MemoImageUrls {
+    original: string;
+    small: string;
+    medium: string;
+    large: string;
+    cover: string;
+}
+
+export interface MemoImageUploadResult {
+    urls: MemoImageUrls;
+    width: number;
+    height: number;
+}
+
 // ============================================================================
 // Image Processing
 // ============================================================================
 
 /**
+ * Strip all metadata from an image buffer
+ */
+async function stripMetadata(
+    imageBuffer: Buffer,
+    format: 'jpeg' | 'png' | 'webp',
+): Promise<Buffer> {
+    let pipeline = sharp(imageBuffer).rotate(); // Auto-rotate based on EXIF orientation
+
+    // Use withMetadata with empty object to strip all metadata
+    pipeline = pipeline.withMetadata({});
+
+    if (format === 'jpeg') {
+        return pipeline.jpeg({ quality: 85, mozjpeg: true }).toBuffer();
+    } else if (format === 'png') {
+        return pipeline.png({ compressionLevel: 9 }).toBuffer();
+    } else {
+        return pipeline.webp({ quality: 85 }).toBuffer();
+    }
+}
+
+/**
+ * Resize an image by width, maintaining aspect ratio
+ */
+async function resizeByWidth(
+    imageBuffer: Buffer,
+    width: number,
+    format: 'jpeg' | 'png' | 'webp',
+): Promise<Buffer> {
+    let pipeline = sharp(imageBuffer)
+        .rotate() // Auto-rotate based on EXIF
+        .withMetadata({}) // Strip all metadata
+        .resize({
+            width,
+            withoutEnlargement: true, // Don't upscale if image is smaller
+        });
+
+    if (format === 'jpeg') {
+        return pipeline.jpeg({ quality: 85, mozjpeg: true }).toBuffer();
+    } else if (format === 'png') {
+        return pipeline.png({ compressionLevel: 9 }).toBuffer();
+    } else {
+        return pipeline.webp({ quality: 85 }).toBuffer();
+    }
+}
+
+/**
+ * Create a cover image (1200x300, cropped to fit)
+ */
+async function createCoverImage(
+    imageBuffer: Buffer,
+    format: 'jpeg' | 'png' | 'webp',
+): Promise<Buffer> {
+    let pipeline = sharp(imageBuffer)
+        .rotate() // Auto-rotate based on EXIF
+        .withMetadata({}) // Strip all metadata
+        .resize({
+            width: IMAGE_SIZES.cover.width,
+            height: IMAGE_SIZES.cover.height,
+            fit: 'cover',
+            position: 'center',
+        });
+
+    if (format === 'jpeg') {
+        return pipeline.jpeg({ quality: 85, mozjpeg: true }).toBuffer();
+    } else if (format === 'png') {
+        return pipeline.png({ compressionLevel: 9 }).toBuffer();
+    } else {
+        return pipeline.webp({ quality: 85 }).toBuffer();
+    }
+}
+
+/**
  * Process a memo image:
- * - Strip all metadata (EXIF, IPTC, XMP, etc.)
+ * - Strip all metadata (EXIF, IPTC, XMP, etc.) from all versions
  * - Auto-rotate based on EXIF orientation
- * - Resize if larger than 2000px on any dimension
- * - Optimize for web
+ * - Create sized versions: original, small (200px), medium (400px), large (800px), cover (1200x300)
  */
 export async function processMemoImage(imageBuffer: Buffer): Promise<ProcessedMemoImage> {
     const metadata = await sharp(imageBuffer).metadata();
 
-    // Determine output format - keep PNG for transparency, otherwise JPEG
+    // Determine output format - keep PNG for transparency, WebP for WebP, otherwise JPEG
     const hasAlpha = metadata.channels === 4;
-    const format = hasAlpha ? 'png' : 'jpeg';
+    const isWebp = metadata.format === 'webp';
+    const format: 'jpeg' | 'png' | 'webp' = hasAlpha ? 'png' : isWebp ? 'webp' : 'jpeg';
 
-    // Calculate resize dimensions (max 2000px on any side)
-    const maxDimension = 2000;
-    let resizeOptions: sharp.ResizeOptions | undefined;
-    if (metadata.width && metadata.height) {
-        if (metadata.width > maxDimension || metadata.height > maxDimension) {
-            resizeOptions = {
-                width: maxDimension,
-                height: maxDimension,
-                fit: 'inside',
-                withoutEnlargement: true,
-            };
-        }
-    }
+    // Process all versions in parallel
+    const [original, small, medium, large, cover] = await Promise.all([
+        stripMetadata(imageBuffer, format),
+        resizeByWidth(imageBuffer, IMAGE_SIZES.small.width, format),
+        resizeByWidth(imageBuffer, IMAGE_SIZES.medium.width, format),
+        resizeByWidth(imageBuffer, IMAGE_SIZES.large.width, format),
+        createCoverImage(imageBuffer, format),
+    ]);
 
-    // Process image
-    let pipeline = sharp(imageBuffer)
-        .rotate() // Auto-rotate based on EXIF orientation
-        .withMetadata({ orientation: undefined }); // Remove all metadata
-
-    if (resizeOptions) {
-        pipeline = pipeline.resize(resizeOptions);
-    }
-
-    let fullBuffer: Buffer;
-    if (format === 'jpeg') {
-        fullBuffer = await pipeline.jpeg({ quality: 85, mozjpeg: true }).toBuffer();
-    } else {
-        fullBuffer = await pipeline.png({ compressionLevel: 9 }).toBuffer();
-    }
-
-    // Get final dimensions
-    const finalMetadata = await sharp(fullBuffer).metadata();
+    // Get original dimensions (after rotation)
+    const originalMetadata = await sharp(original).metadata();
 
     return {
-        full: fullBuffer,
+        original,
+        small,
+        medium,
+        large,
+        cover,
         format,
-        width: finalMetadata.width || 0,
-        height: finalMetadata.height || 0,
+        width: originalMetadata.width || 0,
+        height: originalMetadata.height || 0,
     };
 }
 
@@ -117,17 +204,30 @@ async function uploadMemoImageLocal(
     pageId: string,
     buffer: Buffer,
     mimeType: string,
-): Promise<{ url: string; width: number; height: number }> {
+): Promise<MemoImageUploadResult> {
     // Process the image
     const processed = await processMemoImage(buffer);
-    const extension = processed.format === 'png' ? 'png' : 'jpg';
-    const timestamp = Date.now();
-    const filename = `${userId}-${pageId}-${imageId}-${timestamp}.${extension}`;
+    const extension =
+        processed.format === 'png' ? 'png' : processed.format === 'webp' ? 'webp' : 'jpg';
+    const baseFilename = `${userId}-${pageId}-${imageId}`;
 
-    const url = await saveLocalFile(filename, processed.full);
+    // Save all versions in parallel
+    const [originalUrl, smallUrl, mediumUrl, largeUrl, coverUrl] = await Promise.all([
+        saveLocalFile(`${baseFilename}-original.${extension}`, processed.original),
+        saveLocalFile(`${baseFilename}-small.${extension}`, processed.small),
+        saveLocalFile(`${baseFilename}-medium.${extension}`, processed.medium),
+        saveLocalFile(`${baseFilename}-large.${extension}`, processed.large),
+        saveLocalFile(`${baseFilename}-cover.${extension}`, processed.cover),
+    ]);
 
     return {
-        url,
+        urls: {
+            original: originalUrl,
+            small: smallUrl,
+            medium: mediumUrl,
+            large: largeUrl,
+            cover: coverUrl,
+        },
         width: processed.width,
         height: processed.height,
     };
@@ -137,19 +237,42 @@ async function uploadMemoImageLocal(
 // Azure Blob Storage Functions
 // ============================================================================
 
+async function uploadBlobToAzure(
+    containerClient: ReturnType<BlobServiceClient['getContainerClient']>,
+    blobName: string,
+    buffer: Buffer,
+    contentType: string,
+): Promise<string> {
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+
+    await blockBlobClient.upload(buffer, buffer.length, {
+        blobHTTPHeaders: {
+            blobContentType: contentType,
+            blobCacheControl: 'public, max-age=31536000',
+        },
+    });
+
+    return blockBlobClient.url;
+}
+
 async function uploadMemoImageAzure(
     imageId: string,
     userId: string,
     pageId: string,
     buffer: Buffer,
     mimeType: string,
-): Promise<{ url: string; width: number; height: number }> {
+): Promise<MemoImageUploadResult> {
     // Process the image
     const processed = await processMemoImage(buffer);
-    const extension = processed.format === 'png' ? 'png' : 'jpg';
-    const contentType = processed.format === 'png' ? 'image/png' : 'image/jpeg';
-    const timestamp = Date.now();
-    const blobName = `${userId}/${pageId}/${imageId}-${timestamp}.${extension}`;
+    const extension =
+        processed.format === 'png' ? 'png' : processed.format === 'webp' ? 'webp' : 'jpg';
+    const contentType =
+        processed.format === 'png'
+            ? 'image/png'
+            : processed.format === 'webp'
+              ? 'image/webp'
+              : 'image/jpeg';
+    const basePath = `${userId}/${pageId}/${imageId}`;
 
     // Create BlobServiceClient
     const blobServiceClient = BlobServiceClient.fromConnectionString(
@@ -164,19 +287,48 @@ async function uploadMemoImageAzure(
         access: 'blob',
     });
 
-    // Get block blob client
-    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-
-    // Upload the blob
-    await blockBlobClient.upload(processed.full, processed.full.length, {
-        blobHTTPHeaders: {
-            blobContentType: contentType,
-            blobCacheControl: 'public, max-age=31536000',
-        },
-    });
+    // Upload all versions in parallel
+    const [originalUrl, smallUrl, mediumUrl, largeUrl, coverUrl] = await Promise.all([
+        uploadBlobToAzure(
+            containerClient,
+            `${basePath}-original.${extension}`,
+            processed.original,
+            contentType,
+        ),
+        uploadBlobToAzure(
+            containerClient,
+            `${basePath}-small.${extension}`,
+            processed.small,
+            contentType,
+        ),
+        uploadBlobToAzure(
+            containerClient,
+            `${basePath}-medium.${extension}`,
+            processed.medium,
+            contentType,
+        ),
+        uploadBlobToAzure(
+            containerClient,
+            `${basePath}-large.${extension}`,
+            processed.large,
+            contentType,
+        ),
+        uploadBlobToAzure(
+            containerClient,
+            `${basePath}-cover.${extension}`,
+            processed.cover,
+            contentType,
+        ),
+    ]);
 
     return {
-        url: blockBlobClient.url,
+        urls: {
+            original: originalUrl,
+            small: smallUrl,
+            medium: mediumUrl,
+            large: largeUrl,
+            cover: coverUrl,
+        },
         width: processed.width,
         height: processed.height,
     };
@@ -214,7 +366,7 @@ export function isUsingAzureStorage(): boolean {
 
 /**
  * Upload a memo image to storage
- * Processes the image to strip metadata and optimize for web
+ * Processes the image to strip metadata and create sized versions
  * Uses Azure Blob Storage if configured, otherwise falls back to local storage
  */
 export async function uploadMemoImage(
@@ -223,7 +375,7 @@ export async function uploadMemoImage(
     pageId: string,
     buffer: Buffer,
     mimeType: string,
-): Promise<{ url: string; width: number; height: number }> {
+): Promise<MemoImageUploadResult> {
     if (config.hornbeamConnectionString) {
         return uploadMemoImageAzure(imageId, userId, pageId, buffer, mimeType);
     }
@@ -232,6 +384,7 @@ export async function uploadMemoImage(
 
 /**
  * Delete a memo image from storage
+ * This deletes a single URL - caller should delete all size variants
  */
 export async function deleteMemoImage(imageUrl: string): Promise<void> {
     const isLocalUrl = imageUrl.startsWith('/api/storage/');
@@ -249,6 +402,19 @@ export async function deleteMemoImage(imageUrl: string): Promise<void> {
     }
 
     return deleteMemoImageAzure(imageUrl);
+}
+
+/**
+ * Delete all size variants of a memo image
+ */
+export async function deleteMemoImageAllSizes(urls: MemoImageUrls): Promise<void> {
+    await Promise.all([
+        deleteMemoImage(urls.original),
+        deleteMemoImage(urls.small),
+        deleteMemoImage(urls.medium),
+        deleteMemoImage(urls.large),
+        deleteMemoImage(urls.cover),
+    ]);
 }
 
 /**

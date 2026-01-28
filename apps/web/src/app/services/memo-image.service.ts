@@ -3,15 +3,17 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
 import { map, catchError } from 'rxjs/operators';
 
-export interface MemoImageUploadResult {
-  id: string;
-  url: string;
-  width: number;
-  height: number;
+export interface MemoImageUrls {
+  original: string;
+  small: string;
+  medium: string;
+  large: string;
+  cover: string;
 }
 
-export interface HeaderImageUploadResult {
-  url: string;
+export interface MemoImageUploadResult {
+  id: string;
+  urls: MemoImageUrls;
   width: number;
   height: number;
 }
@@ -41,10 +43,10 @@ export class MemoImageService {
       return throwError(() => new Error('Invalid file type'));
     }
 
-    // Validate file size (10MB limit)
-    const maxSize = 10 * 1024 * 1024;
+    // Validate file size (150MB limit)
+    const maxSize = 150 * 1024 * 1024;
     if (file.size > maxSize) {
-      this._error.set('Image file exceeds maximum size of 10MB');
+      this._error.set('Image file exceeds maximum size of 150MB');
       return throwError(() => new Error('File too large'));
     }
 
@@ -97,12 +99,12 @@ export class MemoImageService {
    * Delete an image from a memo
    * @param pageId - The page/memo ID
    * @param imageId - The image ID
-   * @param url - The image URL
+   * @param urls - The image URLs (all size variants will be deleted)
    */
-  deleteImage(pageId: string, imageId: string, url: string): Observable<void> {
+  deleteImage(pageId: string, imageId: string, urls: MemoImageUrls): Observable<void> {
     return this.http
       .delete(`/api/memos/${pageId}/images/${imageId}`, {
-        body: { url },
+        body: { urls },
       })
       .pipe(
         map(() => undefined),
@@ -112,85 +114,6 @@ export class MemoImageService {
           return throwError(() => new Error(message));
         }),
       );
-  }
-
-  /**
-   * Upload a header/cover image for a memo
-   * @param pageId - The page/memo ID
-   * @param file - The image file to upload
-   */
-  uploadHeaderImage(pageId: string, file: File): Observable<HeaderImageUploadResult> {
-    // Validate file type
-    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
-      this._error.set('Invalid file type. Only JPEG, PNG, GIF, and WebP images are supported.');
-      return throwError(() => new Error('Invalid file type'));
-    }
-
-    // Validate file size (10MB limit)
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      this._error.set('Image file exceeds maximum size of 10MB');
-      return throwError(() => new Error('File too large'));
-    }
-
-    this._uploading.set(true);
-    this._error.set(null);
-
-    return new Observable<HeaderImageUploadResult>((subscriber) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const arrayBuffer = reader.result as ArrayBuffer;
-
-        this.http
-          .post<HeaderImageUploadResult>(`/api/memos/${pageId}/header-image`, arrayBuffer, {
-            headers: {
-              'Content-Type': file.type,
-            },
-          })
-          .pipe(
-            map((response) => response),
-            catchError((err) => {
-              const message = err?.error?.error || 'Failed to upload header image';
-              this._error.set(message);
-              this._uploading.set(false);
-              return throwError(() => new Error(message));
-            }),
-          )
-          .subscribe({
-            next: (result) => {
-              this._uploading.set(false);
-              subscriber.next(result);
-              subscriber.complete();
-            },
-            error: (err) => {
-              this._uploading.set(false);
-              subscriber.error(err);
-            },
-          });
-      };
-      reader.onerror = () => {
-        this._uploading.set(false);
-        this._error.set('Failed to read image file');
-        subscriber.error(new Error('Failed to read image file'));
-      };
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  /**
-   * Delete the header/cover image from a memo
-   * @param pageId - The page/memo ID
-   */
-  deleteHeaderImage(pageId: string): Observable<void> {
-    return this.http.delete(`/api/memos/${pageId}/header-image`).pipe(
-      map(() => undefined),
-      catchError((err) => {
-        const message = err?.error?.error || 'Failed to delete header image';
-        this._error.set(message);
-        return throwError(() => new Error(message));
-      }),
-    );
   }
 
   /**
