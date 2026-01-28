@@ -554,11 +554,12 @@
       margin: 1.5rem 0;
       user-select: none;
       position: relative;
-      border-radius: 8px;
       transition: box-shadow 0.15s ease;
 
       &.selected {
-        box-shadow: 0 0 0 2px var(--color-primary);
+        .memo-image-wrapper {
+          box-shadow: 0 0 0 2px var(--color-primary);
+        }
 
         .memo-image-toolbar {
           opacity: 1;
@@ -567,53 +568,110 @@
       }
 
       .memo-image-wrapper {
-        display: flex;
         overflow: hidden;
         border-radius: 8px;
+        margin: 0 auto; // Center the wrapper
 
         img {
-          max-width: 100%;
-          height: auto;
           display: block;
+          height: auto;
           border-radius: 8px;
         }
       }
 
-      // Alignment variations
-      &.align-left {
-        .memo-image-wrapper {
-          justify-content: flex-start;
-        }
-        img {
-          max-width: 60%;
-        }
-      }
+      // Size: Small (200px)
+      &.size-small .memo-image-wrapper {
+        width: 200px;
+        max-width: 100%;
 
-      &.align-center {
-        .memo-image-wrapper {
-          justify-content: center;
-        }
         img {
-          max-width: 80%;
-        }
-      }
-
-      &.align-right {
-        .memo-image-wrapper {
-          justify-content: flex-end;
-        }
-        img {
-          max-width: 60%;
-        }
-      }
-
-      &.align-full {
-        .memo-image-wrapper {
-          justify-content: center;
-        }
-        img {
-          max-width: 100%;
           width: 100%;
+        }
+      }
+
+      // Size: Medium (400px)
+      &.size-medium .memo-image-wrapper {
+        width: 400px;
+        max-width: 100%;
+
+        img {
+          width: 100%;
+        }
+      }
+
+      // Size: Large (100%, max 800px)
+      &.size-large .memo-image-wrapper {
+        width: 100%;
+        max-width: 800px;
+
+        img {
+          width: 100%;
+        }
+      }
+
+      // Size: Cover (full viewport width minus sidebar)
+      // Sidebar is w-72 = 288px
+      &.size-cover .memo-image-wrapper {
+        width: calc(100vw - 300px);
+        max-width: none;
+        margin: 0; // Remove auto margin for cover
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
+        border-radius: 0;
+
+        img {
+          width: 100%;
+          height: 300px;
+          object-fit: cover;
+          object-position: center;
+          border-radius: 0;
+        }
+      }
+
+      // Mobile adjustments for cover
+      @media (max-width: 768px) {
+        &.size-cover .memo-image-wrapper {
+          width: 100vw;
+        }
+      }
+
+      // Loading state
+      &.loading {
+        .memo-image-wrapper {
+          position: relative;
+
+          img {
+            opacity: 0.5;
+          }
+        }
+      }
+
+      // Loading overlay
+      .memo-image-loading {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.7);
+        border-radius: 8px;
+
+        .loading-spinner {
+          width: 24px;
+          height: 24px;
+          border: 3px solid var(--color-border);
+          border-top-color: var(--color-primary);
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+
+        span {
+          font-size: 12px;
+          color: var(--color-text-muted);
+          font-weight: 500;
         }
       }
 

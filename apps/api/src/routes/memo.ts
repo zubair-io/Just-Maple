@@ -2,10 +2,14 @@ import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
 import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
-import { findPageById, updatePage } from '../repositories/page.repo';
+import { findPageById } from '../repositories/page.repo';
 import { yjsDocumentService } from '../services/yjs-document.service';
 import { isDevMode, isDocPage, getDocContent, pageIdToSlug } from '../services/docs.service';
-import { uploadMemoImage, deleteMemoImage } from '../services/memo-image-storage.service';
+import {
+    uploadMemoImage,
+    deleteMemoImageAllSizes,
+    type MemoImageUrls,
+} from '../services/memo-image-storage.service';
 import type { JWTPayload } from '@maple/shared';
 
 /**
@@ -169,13 +173,13 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                 const arrayBuffer = await request.arrayBuffer();
                 const buffer = Buffer.from(arrayBuffer);
 
-                // Validate file size (10MB limit for images)
-                const MAX_FILE_SIZE = 10 * 1024 * 1024;
+                // Validate file size (150MB limit for images)
+                const MAX_FILE_SIZE = 150 * 1024 * 1024;
                 if (buffer.length > MAX_FILE_SIZE) {
                     set.status = 413;
                     return {
                         error: 'File too large',
-                        message: 'Image file exceeds maximum size of 10MB',
+                        message: 'Image file exceeds maximum size of 150MB',
                     };
                 }
 
@@ -195,7 +199,7 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                 // Generate image ID
                 const imageId = crypto.randomUUID();
 
-                // Upload the image
+                // Upload the image (creates all size variants)
                 const result = await uploadMemoImage(
                     imageId,
                     auth.user._id,
@@ -210,7 +214,7 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
 
                 return {
                     id: imageId,
-                    url: result.url,
+                    urls: result.urls,
                     width: result.width,
                     height: result.height,
                 };
@@ -225,7 +229,7 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
         },
     )
     /**
-     * Delete an image from a memo
+     * Delete an image from a memo (all size variants)
      */
     .delete(
         '/:noteId/images/:imageId',
@@ -245,9 +249,9 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
             }
 
             try {
-                // Delete the image file
-                if (body.url) {
-                    await deleteMemoImage(body.url);
+                // Delete all size variants
+                if (body.urls) {
+                    await deleteMemoImageAllSizes(body.urls as MemoImageUrls);
                 }
 
                 console.log(`[Memo] Deleted image ${params.imageId} from memo ${noteId}`);
@@ -265,141 +269,13 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                 imageId: t.String(),
             }),
             body: t.Object({
-                url: t.String(),
+                urls: t.Object({
+                    original: t.String(),
+                    small: t.String(),
+                    medium: t.String(),
+                    large: t.String(),
+                    cover: t.String(),
+                }),
             }),
         },
-    )
-    /**
-     * Upload a header/cover image for a memo
-     * Updates the page's headerImageUrl field
-     */
-    .post(
-        '/:noteId/header-image',
-        async ({ auth, params, request, set }) => {
-            if (!auth) {
-                set.status = 401;
-                return { error: 'Unauthorized' };
-            }
-
-            const { noteId } = params;
-
-            // Verify page exists and user has access
-            const page = await findPageById(noteId, auth.user._id);
-            if (!page) {
-                set.status = 404;
-                return { error: 'Page not found' };
-            }
-
-            // Verify it's a memo type
-            if (page.type !== 'memo') {
-                set.status = 400;
-                return { error: 'Page type does not support header image' };
-            }
-
-            try {
-                // Read binary body
-                const arrayBuffer = await request.arrayBuffer();
-                const buffer = Buffer.from(arrayBuffer);
-
-                // Validate file size (10MB limit for images)
-                const MAX_FILE_SIZE = 10 * 1024 * 1024;
-                if (buffer.length > MAX_FILE_SIZE) {
-                    set.status = 413;
-                    return {
-                        error: 'File too large',
-                        message: 'Image file exceeds maximum size of 10MB',
-                    };
-                }
-
-                // Get content type from header
-                const contentType = request.headers.get('content-type') || 'image/jpeg';
-
-                // Validate content type
-                const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-                if (!validTypes.includes(contentType)) {
-                    set.status = 400;
-                    return {
-                        error: 'Invalid content type',
-                        message: 'Only JPEG, PNG, GIF, and WebP images are supported',
-                    };
-                }
-
-                // Delete old header image if exists
-                if (page.headerImageUrl) {
-                    try {
-                        await deleteMemoImage(page.headerImageUrl);
-                    } catch (e) {
-                        console.warn(`[Memo] Failed to delete old header image:`, e);
-                    }
-                }
-
-                // Generate image ID
-                const imageId = `header-${crypto.randomUUID()}`;
-
-                // Upload the image
-                const result = await uploadMemoImage(
-                    imageId,
-                    auth.user._id,
-                    noteId,
-                    buffer,
-                    contentType,
-                );
-
-                // Update page with header image URL
-                await updatePage(noteId, auth.user._id, { headerImageUrl: result.url });
-
-                console.log(
-                    `[Memo] Uploaded header image for memo ${noteId} (${buffer.length} bytes)`,
-                );
-
-                return {
-                    url: result.url,
-                    width: result.width,
-                    height: result.height,
-                };
-            } catch (error) {
-                console.error(`[Memo] Failed to upload header image for ${noteId}:`, error);
-                set.status = 500;
-                return { error: 'Failed to upload header image' };
-            }
-        },
-        {
-            type: 'arrayBuffer',
-        },
-    )
-    /**
-     * Delete the header/cover image from a memo
-     */
-    .delete('/:noteId/header-image', async ({ auth, params, set }) => {
-        if (!auth) {
-            set.status = 401;
-            return { error: 'Unauthorized' };
-        }
-
-        const { noteId } = params;
-
-        // Verify page exists and user has access
-        const page = await findPageById(noteId, auth.user._id);
-        if (!page) {
-            set.status = 404;
-            return { error: 'Page not found' };
-        }
-
-        try {
-            // Delete the header image file if exists
-            if (page.headerImageUrl) {
-                await deleteMemoImage(page.headerImageUrl);
-            }
-
-            // Clear header image URL from page
-            await updatePage(noteId, auth.user._id, { headerImageUrl: null });
-
-            console.log(`[Memo] Deleted header image from memo ${noteId}`);
-
-            return { success: true };
-        } catch (error) {
-            console.error(`[Memo] Failed to delete header image for ${noteId}:`, error);
-            set.status = 500;
-            return { error: 'Failed to delete header image' };
-        }
-    });
+    );

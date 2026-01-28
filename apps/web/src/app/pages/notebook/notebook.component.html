@@ -7,11 +7,6 @@
       (exportRequested)="handleExport($event)"
     />
 
-    <!-- Header/cover image -->
-    @if (pageId(); as id) {
-      <app-header-image [pageId]="id" [imageUrl]="page.headerImageUrl ?? null" />
-    }
-
     <div class="notebook-content">
       @if (pageId(); as id) {
         @if (notebookId(); as nbId) {
