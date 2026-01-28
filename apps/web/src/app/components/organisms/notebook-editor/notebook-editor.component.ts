@@ -15,7 +15,9 @@ import {
   ViewEncapsulation,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -49,8 +51,12 @@ import {
   AiBotWidget,
   ImageNode,
   Agenda,
+  InlineMention,
+  inlineMentionSuggestions,
   type SlashCommandItem,
+  type InlineMentionSuggestion,
 } from './extensions';
+import { BotService } from '../../../services/bot.service';
 import { RecordingBlockComponent } from '../../molecules/recording-block/recording-block.component';
 import { PaperEmbedComponent } from '../../molecules/paper-embed/paper-embed.component';
 import { EditorToolbarComponent } from '../../molecules/editor-toolbar/editor-toolbar.component';
@@ -77,6 +83,8 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly pageService = inject(PageService);
   private readonly authService = inject(AuthService);
   private readonly todoSyncService = inject(TodoSyncService);
+  private readonly botService = inject(BotService);
+  private readonly http = inject(HttpClient);
   private readonly activatedRoute = inject(ActivatedRoute);
   private readonly memoImageService = inject(MemoImageService);
   private readonly destroyRef = inject(DestroyRef);
@@ -91,6 +99,7 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly isFocused = signal(false);
   readonly error = signal<string | null>(null);
   readonly isFullWidth = signal(false);
+  readonly hasClaudeBot = signal(false);
 
   private _editor: Editor | null = null;
   private ydoc: Y.Doc | null = null;
@@ -227,6 +236,21 @@ export class NotebookEditorComponent implements OnDestroy {
           ImageNode,
           // Agenda node for date-based content organization
           Agenda,
+          // Inline mentions (@time, @date, @user)
+          InlineMention.configure({
+            currentUser: {
+              id: this.authService.user()?._id || '',
+              firstName: this.authService.user()?.email?.split('@')[0] || 'User',
+              avatarUrl: undefined,
+            },
+            suggestion: {
+              items: ({ query }: { query: string }) =>
+                inlineMentionSuggestions.filter((item) =>
+                  item.label.toLowerCase().includes(query.toLowerCase()),
+                ),
+              render: () => this.createInlineMentionRenderer(),
+            },
+          }),
           // Drag handles for blocks
           DragHandle.configure({
             render: () => {
@@ -300,6 +324,12 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up agenda event listeners
         this.setupAgendaListeners();
+
+        // Set up inline mention listeners
+        this.setupInlineMentionListeners();
+
+        // Check for Claude bot availability
+        this.checkClaudeBotAvailability();
       }
 
       this.isReady.set(true);
@@ -734,8 +764,8 @@ export class NotebookEditorComponent implements OnDestroy {
 
     // Listen for agenda AI click events - generate summary
     editorElement.addEventListener('agenda-ai-click', ((event: CustomEvent) => {
-      const { agendaId, pos, editor, getPos } = event.detail;
-      this.generateAgendaSummary(agendaId, pos, editor, getPos);
+      const { agendaId } = event.detail;
+      this.generateAgendaSummary(agendaId);
     }) as EventListener);
   }
 
@@ -774,21 +804,267 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
+   * Set up listeners for inline mention click events (to edit time/date)
+   */
+  private setupInlineMentionListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    editorElement.addEventListener('inline-mention-click', ((event: CustomEvent) => {
+      const { type, value, pos, element } = event.detail;
+      this.handleInlineMentionClick(type, value, pos, element);
+    }) as EventListener);
+  }
+
+  /**
+   * Handle click on inline mention to edit value
+   */
+  private handleInlineMentionClick(
+    type: 'time' | 'date' | 'user',
+    currentValue: string,
+    pos: number,
+    element: HTMLElement,
+  ): void {
+    if (!this._editor) return;
+
+    if (type === 'time') {
+      // Show time picker
+      const timeInput = document.createElement('input');
+      timeInput.type = 'time';
+      timeInput.value = currentValue;
+      const rect = element.getBoundingClientRect();
+      timeInput.style.position = 'absolute';
+      timeInput.style.left = `${rect.left}px`;
+      timeInput.style.top = `${rect.bottom + 4}px`;
+      timeInput.style.zIndex = '1000';
+      document.body.appendChild(timeInput);
+
+      timeInput.addEventListener('change', () => {
+        const newTime = timeInput.value;
+        if (newTime && this._editor) {
+          const { tr } = this._editor.state;
+          tr.setNodeMarkup(pos, undefined, {
+            type: 'time',
+            value: newTime,
+          });
+          this._editor.view.dispatch(tr);
+        }
+        timeInput.remove();
+      });
+
+      timeInput.addEventListener('blur', () => {
+        setTimeout(() => timeInput.remove(), 100);
+      });
+
+      timeInput.showPicker?.();
+      timeInput.focus();
+    } else if (type === 'date') {
+      // Show date picker
+      const dateInput = document.createElement('input');
+      dateInput.type = 'date';
+      dateInput.value = currentValue;
+      const rect = element.getBoundingClientRect();
+      dateInput.style.position = 'absolute';
+      dateInput.style.left = `${rect.left}px`;
+      dateInput.style.top = `${rect.bottom + 4}px`;
+      dateInput.style.zIndex = '1000';
+      document.body.appendChild(dateInput);
+
+      dateInput.addEventListener('change', () => {
+        const newDate = dateInput.value;
+        if (newDate && this._editor) {
+          const { tr } = this._editor.state;
+          tr.setNodeMarkup(pos, undefined, {
+            type: 'date',
+            value: newDate,
+          });
+          this._editor.view.dispatch(tr);
+        }
+        dateInput.remove();
+      });
+
+      dateInput.addEventListener('blur', () => {
+        setTimeout(() => dateInput.remove(), 100);
+      });
+
+      dateInput.showPicker?.();
+      dateInput.focus();
+    }
+    // User mentions are not editable
+  }
+
+  /**
+   * Create renderer for inline mention suggestions popup
+   */
+  private createInlineMentionRenderer() {
+    let popup: HTMLElement | null = null;
+    let currentProps: any = null;
+
+    return {
+      onStart: (props: any) => {
+        currentProps = props;
+
+        popup = document.createElement('div');
+        popup.classList.add('inline-mention-popup');
+        popup.style.position = 'absolute';
+        popup.style.zIndex = '1000';
+        document.body.appendChild(popup);
+
+        this.renderInlineMentionMenu(popup, props.items, (item: InlineMentionSuggestion) => {
+          if (currentProps) {
+            currentProps.command(item);
+          }
+        });
+
+        this.updatePopupPosition(popup, props.clientRect);
+      },
+
+      onUpdate: (props: any) => {
+        currentProps = props;
+
+        if (popup) {
+          popup.innerHTML = '';
+          this.renderInlineMentionMenu(popup, props.items, (item: InlineMentionSuggestion) => {
+            if (currentProps) {
+              currentProps.command(item);
+            }
+          });
+          if (props.clientRect) {
+            this.updatePopupPosition(popup, props.clientRect);
+          }
+        }
+      },
+
+      onKeyDown: (props: any) => {
+        if (props.event.key === 'Escape') {
+          popup?.remove();
+          return true;
+        }
+
+        // Handle arrow keys and enter for menu navigation
+        if (['ArrowUp', 'ArrowDown', 'Enter'].includes(props.event.key)) {
+          const items = popup?.querySelectorAll('.inline-mention-item');
+          if (!items?.length) return false;
+
+          const active = popup?.querySelector('.inline-mention-item.active');
+          let activeIndex = active ? Array.from(items).indexOf(active) : -1;
+
+          if (props.event.key === 'ArrowDown') {
+            activeIndex = (activeIndex + 1) % items.length;
+          } else if (props.event.key === 'ArrowUp') {
+            activeIndex = activeIndex <= 0 ? items.length - 1 : activeIndex - 1;
+          } else if (props.event.key === 'Enter' && active) {
+            (active as HTMLElement).click();
+            return true;
+          }
+
+          items.forEach((item, i) => {
+            item.classList.toggle('active', i === activeIndex);
+          });
+
+          return true;
+        }
+
+        return false;
+      },
+
+      onExit: () => {
+        popup?.remove();
+        popup = null;
+      },
+    };
+  }
+
+  /**
+   * Render inline mention menu items
+   */
+  private renderInlineMentionMenu(
+    container: HTMLElement,
+    items: InlineMentionSuggestion[],
+    onSelect: (item: InlineMentionSuggestion) => void,
+  ): void {
+    items.forEach((item, index) => {
+      const div = document.createElement('div');
+      div.classList.add('inline-mention-item');
+      if (index === 0) div.classList.add('active');
+
+      const icon = document.createElement('span');
+      icon.classList.add('material-symbols-rounded');
+      icon.textContent = item.icon;
+      div.appendChild(icon);
+
+      const content = document.createElement('div');
+      content.classList.add('inline-mention-item-content');
+
+      const label = document.createElement('span');
+      label.classList.add('inline-mention-item-label');
+      label.textContent = item.label;
+      content.appendChild(label);
+
+      const desc = document.createElement('span');
+      desc.classList.add('inline-mention-item-desc');
+      desc.textContent = item.description;
+      content.appendChild(desc);
+
+      div.appendChild(content);
+
+      div.addEventListener('click', () => onSelect(item));
+      div.addEventListener('mouseenter', () => {
+        container
+          .querySelectorAll('.inline-mention-item')
+          .forEach((el) => el.classList.remove('active'));
+        div.classList.add('active');
+      });
+
+      container.appendChild(div);
+    });
+  }
+
+  /**
+   * Check if Claude bot is available for the current notebook
+   */
+  private checkClaudeBotAvailability(): void {
+    const notebookId = this.notebookId();
+    if (!notebookId) return;
+
+    this.botService.getNotebookBots(notebookId).subscribe((bots) => {
+      const hasClaudeBot = bots.some(
+        (bot) => bot.handle.toLowerCase() === 'claude' || bot.handle.toLowerCase() === 'ai',
+      );
+      this.hasClaudeBot.set(hasClaudeBot);
+
+      // Update existing agenda nodes to show/hide AI button
+      this.updateAgendaAiButtons(hasClaudeBot);
+    });
+  }
+
+  /**
+   * Update AI button visibility on all agenda nodes
+   */
+  private updateAgendaAiButtons(show: boolean): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    const agendaNodes = editorElement.querySelectorAll('[data-type="agenda"]');
+    agendaNodes.forEach((node) => {
+      const aiButton = node.querySelector('.agenda-ai-btn') as HTMLElement;
+      if (aiButton) {
+        aiButton.style.display = show ? '' : 'none';
+      }
+    });
+  }
+
+  /**
    * Generate AI summary for agenda content
    */
-  private async generateAgendaSummary(
-    agendaId: string,
-    pos: number,
-    editor: Editor,
-    getPos: () => number | undefined,
-  ): Promise<void> {
-    if (!this._editor) return;
+  private async generateAgendaSummary(agendaId: string): Promise<void> {
+    if (!this._editor || !this.hasClaudeBot()) return;
 
     // Find the agenda node and extract its content
     const { doc } = this._editor.state;
     let agendaContent = '';
 
-    doc.descendants((node, nodePos) => {
+    doc.descendants((node) => {
       if (node.type.name === 'agenda' && node.attrs['id'] === agendaId) {
         // Extract text content from the agenda
         node.content.forEach((child) => {
@@ -805,14 +1081,29 @@ export class NotebookEditorComponent implements OnDestroy {
     }
 
     try {
-      // TODO: Call AI service to generate summary
-      // For now, use a placeholder that truncates the content
-      const summary = agendaContent.trim().split('\n')[0].slice(0, 100);
+      // Call AI service to generate summary
+      const response = await firstValueFrom(
+        this.http.post<{ summary?: string; response?: string }>(
+          `/api/notebooks/${this.notebookId()}/ai-summarize`,
+          {
+            content: agendaContent,
+            type: 'agenda',
+            maxLength: 100,
+          },
+        ),
+      );
 
-      // Update the agenda with the summary
-      (this._editor.commands as any).setAgendaSummary(agendaId, summary);
+      const summary = response.summary || response.response;
+      if (summary) {
+        // Truncate to 256 characters as per spec
+        const truncatedSummary = summary.slice(0, 256);
+        (this._editor.commands as any).setAgendaSummary(agendaId, truncatedSummary);
+      }
     } catch (error) {
       console.error('[NotebookEditor] Failed to generate agenda summary:', error);
+      // Fallback to simple first line extraction
+      const fallbackSummary = agendaContent.trim().split('\n')[0].slice(0, 100);
+      (this._editor?.commands as any).setAgendaSummary(agendaId, fallbackSummary);
     }
   }
 

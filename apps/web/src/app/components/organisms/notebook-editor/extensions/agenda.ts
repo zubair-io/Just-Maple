@@ -476,10 +476,11 @@ export const Agenda = Node.create<AgendaOptions>({
         header.appendChild(summaryContainer);
       }
 
-      // AI button
+      // AI button (hidden by default, shown when Claude bot is available)
       const aiButton = document.createElement('button');
       aiButton.classList.add('agenda-ai-btn');
       aiButton.type = 'button';
+      aiButton.style.display = 'none'; // Hidden by default, shown by component if Claude bot is available
       const aiIcon = document.createElement('span');
       aiIcon.classList.add('material-symbols-rounded');
       aiIcon.textContent = node.attrs['summary'] ? 'refresh' : 'auto_awesome';

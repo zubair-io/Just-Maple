@@ -678,6 +678,71 @@
       }
     }
 
+    // Inline mention styles (@time, @date, @user)
+    .inline-mention {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      background: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: var(--color-text-main);
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background 0.15s ease;
+
+      &:hover {
+        background: var(--color-bg-hover, rgba(0, 0, 0, 0.1));
+      }
+
+      .inline-mention-icon {
+        font-size: 14px;
+        color: var(--color-text-muted);
+      }
+
+      .inline-mention-avatar {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        object-fit: cover;
+      }
+
+      .inline-mention-value {
+        color: var(--color-text-main);
+      }
+    }
+
+    .inline-mention-time {
+      .inline-mention-icon {
+        color: var(--color-primary);
+      }
+    }
+
+    .inline-mention-date {
+      .inline-mention-icon {
+        color: #22c55e;
+      }
+    }
+
+    .inline-mention-user {
+      .inline-mention-icon {
+        color: #3b82f6;
+      }
+    }
+
+    // Dark mode adjustments for inline mentions
+    :host-context(.dark-mode) & {
+      .inline-mention {
+        background: rgba(255, 255, 255, 0.08);
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.12);
+        }
+      }
+    }
+
     // Recording block styles (legacy)
     .recording-block {
       margin: 1rem 0;

@@ -33,3 +33,14 @@ export {
   getDocumentAsMarkdown,
 } from './ai-bot-widget';
 export { Agenda, getRelativeDateText, type AgendaAttrs, type AgendaOptions } from './agenda';
+export {
+  InlineMention,
+  InlineMentionPluginKey,
+  inlineMentionSuggestions,
+  formatTime,
+  formatDate,
+  type InlineMentionType,
+  type InlineMentionAttrs,
+  type InlineMentionSuggestion,
+  type InlineMentionOptions,
+} from './inline-mention';
