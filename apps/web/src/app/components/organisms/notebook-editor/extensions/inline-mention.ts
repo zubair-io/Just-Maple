@@ -84,8 +84,8 @@ export const baseMentionSuggestions: InlineMentionSuggestion[] = [
 export interface InlineMentionOptions {
   HTMLAttributes: Record<string, unknown>;
   suggestion: Omit<SuggestionOptions<InlineMentionSuggestion>, 'editor'>;
-  // List of mentionable users (notebook members)
-  users: MentionableUser[];
+  // Getter function for mentionable users (allows dynamic updates)
+  getUsers: () => MentionableUser[];
 }
 
 export const InlineMentionPluginKey = new PluginKey('inlineMention');
@@ -115,7 +115,7 @@ export const InlineMention = Node.create<InlineMentionOptions>({
         command: () => {},
         allow: () => true,
       },
-      users: [],
+      getUsers: () => [],
     };
   },
 
@@ -353,8 +353,8 @@ export const InlineMention = Node.create<InlineMentionOptions>({
       // Start with base suggestions (time, date)
       const allSuggestions = [...baseMentionSuggestions];
 
-      // Add user suggestions from options
-      const users = extensionThis.options.users || [];
+      // Add user suggestions from options (call getter to get latest value)
+      const users = extensionThis.options.getUsers?.() || [];
       for (const user of users) {
         allSuggestions.push({
           id: user.id,

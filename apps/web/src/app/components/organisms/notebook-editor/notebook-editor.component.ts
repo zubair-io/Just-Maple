@@ -241,7 +241,7 @@ export class NotebookEditorComponent implements OnDestroy {
           Agenda,
           // Inline mentions (@time, @date, @user)
           InlineMention.configure({
-            users: this.mentionableUsers(),
+            getUsers: () => this.mentionableUsers(),
             suggestion: {
               render: () => this.createInlineMentionRenderer(),
             },
@@ -1066,15 +1066,7 @@ export class NotebookEditorComponent implements OnDestroy {
         avatarUrl: member.profilePictureUrl,
       }));
       this.mentionableUsers.set(users);
-
-      // Update the InlineMention extension with new users
-      if (this._editor) {
-        this._editor.extensionManager.extensions
-          .filter((ext) => ext.name === 'inlineMention')
-          .forEach((ext) => {
-            ext.options.users = users;
-          });
-      }
+      // The getUsers() getter in InlineMention will automatically read from the signal
     });
   }
 
