@@ -133,6 +133,9 @@
 
     li {
       margin: 0.25em 0;
+      &:focus {
+        outline: red solid 2px;
+      }
     }
 
     blockquote {
@@ -338,11 +341,6 @@
           }
         }
 
-        // Overdue state
-        &.todo-overdue {
-          border-left: 3px solid #ef4444;
-        }
-
         // // Color variants - left border indicator
         // &[data-color='red'] {
         //   border-left: 3px solid #ef4444;
@@ -466,6 +464,143 @@
         }
       }
 
+      // Floating toolbar for task items
+      .task-list-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        background: var(--color-bg);
+        border-bottom: 1px solid var(--color-border);
+
+        .toolbar-group {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .toolbar-divider {
+          width: 1px;
+          height: 20px;
+          background: var(--color-border);
+          margin: 0 4px;
+        }
+
+        .toolbar-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          padding: 0;
+          border: none;
+          border-radius: 4px;
+          background: transparent;
+          color: var(--color-text-muted);
+          cursor: pointer;
+          transition: all 0.15s ease;
+
+          .material-symbols-rounded {
+            font-size: 18px;
+          }
+
+          &:hover {
+            background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+            color: var(--color-text-main);
+          }
+
+          &.active {
+            background: var(--color-bg-secondary, rgba(0, 0, 0, 0.08));
+            color: var(--color-text-main);
+          }
+        }
+
+        // Priority buttons with icons
+        .priority-btn {
+          .material-symbols-rounded {
+            font-size: 18px;
+          }
+        }
+
+        .priority-high.active {
+          color: #dc2626;
+          background: rgba(220, 38, 38, 0.1);
+        }
+
+        .priority-medium.active {
+          color: #d97706;
+          background: rgba(217, 119, 6, 0.1);
+        }
+
+        .priority-low.active {
+          color: #2563eb;
+          background: rgba(37, 99, 235, 0.1);
+        }
+
+        // Color buttons
+        .color-btn {
+          width: 24px;
+          height: 24px;
+          min-width: 24px;
+          padding: 0;
+          border-radius: 50%;
+          border: 2px solid transparent;
+          background: transparent;
+          transition:
+            border-color 0.15s ease,
+            transform 0.15s ease;
+
+          .color-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+          }
+
+          &:hover {
+            border-color: var(--color-text-muted);
+          }
+
+          &.active {
+            border-color: currentColor;
+          }
+        }
+
+        // Date input
+        .date-input {
+          height: 28px;
+          padding: 0 8px;
+          border: 1px solid var(--color-border);
+          border-radius: 4px;
+          background: var(--color-bg);
+          color: var(--color-text-main);
+          font-size: 12px;
+          cursor: pointer;
+
+          &:hover {
+            border-color: var(--color-text-muted);
+          }
+
+          &:focus {
+            outline: none;
+            border-color: var(--color-primary);
+          }
+        }
+
+        // Clear date button
+        .clear-date-btn {
+          width: 20px;
+          height: 20px;
+          min-width: 20px;
+          font-size: 10px;
+          color: var(--color-text-muted);
+
+          &:hover {
+            color: #dc2626;
+            background: rgba(220, 38, 38, 0.1);
+          }
+        }
+      }
+
       .task-list-content {
         padding: 0.5rem;
         margin: 0;
@@ -503,6 +638,31 @@
         .task-list-status {
           &:hover {
             background: rgba(255, 255, 255, 0.05);
+          }
+        }
+
+        .task-list-toolbar {
+          background: var(--color-bg);
+          border-color: rgba(255, 255, 255, 0.1);
+
+          .toolbar-group:not(:last-child) {
+            border-color: rgba(255, 255, 255, 0.1);
+          }
+
+          .toolbar-btn {
+            &:hover {
+              background: rgba(255, 255, 255, 0.08);
+            }
+
+            &.active {
+              background: rgba(255, 255, 255, 0.12);
+            }
+          }
+
+          .color-btn.active {
+            box-shadow:
+              0 0 0 2px var(--color-bg),
+              0 0 0 4px var(--btn-color);
           }
         }
       }
