@@ -138,7 +138,7 @@ export const ImageNode = Node.create<ImageNodeOptions>({
         'data-type': 'memo-image',
         class: 'memo-image-block',
       }),
-      ['img', { src: HTMLAttributes.src, alt: HTMLAttributes.alt || '' }],
+      ['img', { src: HTMLAttributes['src'], alt: HTMLAttributes['alt'] || '' }],
     ];
   },
 
@@ -275,7 +275,9 @@ export const ImageNode = Node.create<ImageNodeOptions>({
           const newAlignment = button.getAttribute('data-alignment') as ImageAlignment;
           if (newAlignment && typeof getPos === 'function') {
             const pos = getPos();
-            editor.chain().focus().setNodeSelection(pos).setImageAlignment(newAlignment).run();
+            if (pos !== undefined) {
+              editor.chain().focus().setNodeSelection(pos).setImageAlignment(newAlignment).run();
+            }
           }
         });
       });
