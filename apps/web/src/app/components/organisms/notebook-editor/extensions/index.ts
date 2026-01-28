@@ -45,3 +45,8 @@ export {
   type InlineMentionOptions,
   type MentionableUser,
 } from './inline-mention';
+export {
+  EnhancedTaskList,
+  type EnhancedTaskListAttrs,
+  type EnhancedTaskListOptions,
+} from './enhanced-task-list';

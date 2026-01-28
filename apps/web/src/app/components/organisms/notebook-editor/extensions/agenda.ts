@@ -6,6 +6,7 @@ export interface AgendaAttrs {
   date: string; // ISO date (YYYY-MM-DD)
   time?: string; // Optional HH:mm (future use)
   summary?: string; // AI-generated or user-edited summary
+  collapsed?: boolean; // Whether the agenda is collapsed
 }
 
 export interface AgendaOptions {
@@ -31,6 +32,10 @@ declare module '@tiptap/core' {
        * Set agenda summary
        */
       setAgendaSummary: (agendaId: string, summary: string | null) => ReturnType;
+      /**
+       * Toggle agenda collapsed state
+       */
+      toggleAgendaCollapsed: (agendaId: string) => ReturnType;
       /**
        * Scroll to a specific agenda by ID
        */
@@ -182,6 +187,16 @@ export const Agenda = Node.create<AgendaOptions>({
           return { 'data-summary': attributes['summary'] };
         },
       },
+      collapsed: {
+        default: false,
+        parseHTML: (element) => element.getAttribute('data-collapsed') === 'true',
+        renderHTML: (attributes) => {
+          if (!attributes['collapsed']) {
+            return {};
+          }
+          return { 'data-collapsed': 'true' };
+        },
+      },
     };
   },
 
@@ -248,6 +263,31 @@ export const Agenda = Node.create<AgendaOptions>({
         (agendaId: string, summary: string | null) =>
         ({ commands }) => {
           return commands.updateAgendaAttrs(agendaId, { summary: summary || undefined });
+        },
+      toggleAgendaCollapsed:
+        (agendaId: string) =>
+        ({ state, dispatch }) => {
+          const { doc, tr } = state;
+          let found = false;
+
+          doc.descendants((node, pos) => {
+            if (node.type.name === this.name && node.attrs['id'] === agendaId) {
+              const newCollapsed = !node.attrs['collapsed'];
+              tr.setNodeMarkup(pos, undefined, {
+                ...node.attrs,
+                collapsed: newCollapsed,
+              });
+              found = true;
+              return false;
+            }
+            return true;
+          });
+
+          if (found && dispatch) {
+            dispatch(tr);
+            return true;
+          }
+          return false;
         },
       scrollToAgenda:
         (agendaId: string) =>
@@ -467,6 +507,10 @@ export const Agenda = Node.create<AgendaOptions>({
       if (node.attrs['summary']) {
         dom.setAttribute('data-summary', node.attrs['summary']);
       }
+      // Set initial collapsed state
+      if (node.attrs['collapsed']) {
+        dom.setAttribute('data-collapsed', 'true');
+      }
 
       // Create header
       const header = document.createElement('div');
@@ -476,7 +520,7 @@ export const Agenda = Node.create<AgendaOptions>({
       // Chevron icon
       const chevron = document.createElement('span');
       chevron.classList.add('material-symbols-rounded', 'agenda-chevron');
-      chevron.textContent = 'expand_more';
+      chevron.textContent = node.attrs['collapsed'] ? 'chevron_right' : 'expand_more';
       header.appendChild(chevron);
 
       // Date display
@@ -527,20 +571,8 @@ export const Agenda = Node.create<AgendaOptions>({
         }
       };
 
-      // Initial summary/preview setup
-      if (node.attrs['summary']) {
-        separatorElement = document.createElement('span');
-        separatorElement.classList.add('agenda-summary-separator');
-        separatorElement.textContent = '·';
-        header.appendChild(separatorElement);
-
-        summaryContainer = document.createElement('span');
-        summaryContainer.classList.add('agenda-summary');
-        summaryContainer.textContent = node.attrs['summary'];
-        header.appendChild(summaryContainer);
-      }
-
       // AI button (hidden by default, shown when Claude bot is available)
+      // Created first so updateSummaryDisplay can insert before it
       const aiButton = document.createElement('button');
       aiButton.classList.add('agenda-ai-btn');
       aiButton.type = 'button';
@@ -551,9 +583,22 @@ export const Agenda = Node.create<AgendaOptions>({
       aiButton.appendChild(aiIcon);
       header.appendChild(aiButton);
 
+      // Initial summary/preview setup
+      if (node.attrs['summary']) {
+        // Show summary
+        updateSummaryDisplay(node.attrs['summary'], false);
+      } else if (node.attrs['collapsed']) {
+        // Show content preview if collapsed with no summary
+        updateSummaryDisplay(null, true);
+      }
+
       // Content area
       const content = document.createElement('div');
       content.classList.add('agenda-content');
+      // Hide content if collapsed
+      if (node.attrs['collapsed']) {
+        content.style.display = 'none';
+      }
 
       // Assemble
       dom.appendChild(header);
@@ -565,20 +610,8 @@ export const Agenda = Node.create<AgendaOptions>({
         if (target.closest('.agenda-ai-btn') || target.closest('.agenda-date')) {
           return;
         }
-        const isCollapsing = !dom.classList.contains('collapsed');
-        dom.classList.toggle('collapsed');
-        chevron.textContent = isCollapsing ? 'chevron_right' : 'expand_more';
-
-        // Use inline style for reliable collapsing (CSS backup)
-        content.style.display = isCollapsing ? 'none' : '';
-
-        // Show content preview when collapsed and no AI summary
-        if (isCollapsing && !node.attrs['summary']) {
-          updateSummaryDisplay(null, true);
-        } else if (!isCollapsing && !node.attrs['summary']) {
-          // Hide preview when expanding (if no summary)
-          updateSummaryDisplay(null, false);
-        }
+        // Use command to toggle collapsed state (persisted in document)
+        (editor.commands as any).toggleAgendaCollapsed(nodeId);
       });
 
       // Date click - dispatch event for date picker
@@ -636,8 +669,17 @@ export const Agenda = Node.create<AgendaOptions>({
           dom.setAttribute('data-date', updatedNode.attrs['date']);
           dateDisplay.textContent = getRelativeDateText(updatedNode.attrs['date']);
 
+          // Update collapsed state
+          const isCollapsed = !!updatedNode.attrs['collapsed'];
+          if (isCollapsed) {
+            dom.setAttribute('data-collapsed', 'true');
+          } else {
+            dom.removeAttribute('data-collapsed');
+          }
+          chevron.textContent = isCollapsed ? 'chevron_right' : 'expand_more';
+          content.style.display = isCollapsed ? 'none' : '';
+
           // Update summary/preview
-          const isCollapsed = dom.classList.contains('collapsed');
           if (updatedNode.attrs['summary']) {
             dom.setAttribute('data-summary', updatedNode.attrs['summary']);
             aiIcon.textContent = 'refresh';

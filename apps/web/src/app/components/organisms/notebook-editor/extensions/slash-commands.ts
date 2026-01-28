@@ -64,6 +64,14 @@ export const defaultSlashCommands: SlashCommandItem[] = [
     },
   },
   {
+    title: 'To-do Box',
+    description: 'Named todo list with status tracking',
+    icon: '📋',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).insertTodoBox().run();
+    },
+  },
+  {
     title: 'Quote',
     description: 'Capture a quote',
     icon: '"',
