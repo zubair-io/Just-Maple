@@ -682,19 +682,24 @@
     .inline-mention {
       display: inline-flex;
       align-items: center;
+      vertical-align: middle;
       gap: 4px;
       padding: 2px 8px;
       background: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+      border: 1px solid var(--color-border);
       border-radius: 4px;
       font-size: 0.9em;
       color: var(--color-text-main);
       font-weight: 500;
       white-space: nowrap;
       cursor: pointer;
-      transition: background 0.15s ease;
+      transition:
+        background 0.15s ease,
+        border-color 0.15s ease;
 
       &:hover {
         background: var(--color-bg-hover, rgba(0, 0, 0, 0.1));
+        border-color: var(--color-text-muted);
       }
 
       .inline-mention-icon {
@@ -736,9 +741,11 @@
     :host-context(.dark-mode) & {
       .inline-mention {
         background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.15);
 
         &:hover {
           background: rgba(255, 255, 255, 0.12);
+          border-color: rgba(255, 255, 255, 0.25);
         }
       }
     }
