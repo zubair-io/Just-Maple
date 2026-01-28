@@ -36,7 +36,7 @@ export class HeaderImageComponent {
         this.isUploading.set(false);
         this.headerImageChanged.emit(result.url);
         // Refresh the page to get the updated header image
-        this.pageService.loadPage(this.pageId()).subscribe();
+        this.pageService.getPage(this.pageId()).subscribe();
       },
       error: (err) => {
         this.isUploading.set(false);
@@ -50,7 +50,7 @@ export class HeaderImageComponent {
       next: () => {
         this.headerImageChanged.emit(null);
         // Refresh the page to get the updated header image
-        this.pageService.loadPage(this.pageId()).subscribe();
+        this.pageService.getPage(this.pageId()).subscribe();
       },
       error: (err) => {
         console.error('[HeaderImage] Failed to delete:', err);

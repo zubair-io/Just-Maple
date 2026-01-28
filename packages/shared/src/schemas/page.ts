@@ -45,7 +45,7 @@ export const PageSchema = Type.Object({
     version: Type.Optional(Type.Number()), // Hash of Automerge heads (for cache validation)
     lastSyncedHeads: Type.Optional(Type.Array(Type.String())), // Automerge heads (for sync optimization)
     notebookId: Type.Optional(Type.String()), // Associated notebook/folder
-    headerImageUrl: Type.Optional(Type.String()), // Header/cover image URL
+    headerImageUrl: Type.Optional(Type.Union([Type.String(), Type.Null()])), // Header/cover image URL
     isFavorite: Type.Optional(Type.Boolean()),
     isArchived: Type.Optional(Type.Boolean()),
     isTrashed: Type.Optional(Type.Boolean()),
