@@ -612,10 +612,6 @@
         }
       }
 
-      .agenda-content-wrapper {
-        display: block;
-      }
-
       .agenda-content {
         padding: 0 1rem 1rem 2rem;
 
@@ -630,8 +626,8 @@
           border-radius: 0 8px 8px 0;
         }
 
-        .agenda-content-wrapper {
-          display: none !important;
+        .agenda-content {
+          display: none;
         }
       }
 
