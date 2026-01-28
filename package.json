@@ -49,6 +49,7 @@
     "@automerge/prosemirror": "0.1.0",
     "mongodb": "^7.0.0",
     "nanoid": "^5.1.6",
-    "prettier": "^3.7.4"
+    "prettier": "^3.7.4",
+    "yjs": "^13.6.29"
   }
 }

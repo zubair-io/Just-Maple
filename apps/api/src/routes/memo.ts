@@ -4,6 +4,7 @@ import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
 import { findPageById } from '../repositories/page.repo';
 import { yjsDocumentService } from '../services/yjs-document.service';
+import { deleteMemo } from '../repositories/memo.repo';
 import { isDevMode, isDocPage, getDocContent, pageIdToSlug } from '../services/docs.service';
 import {
     uploadMemoImage,
@@ -278,4 +279,38 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                 }),
             }),
         },
-    );
+    )
+    /**
+     * Reset memo - delete the Y.js state to recover from corruption
+     * A new empty document will be created on next load
+     */
+    .delete('/:noteId/reset', async ({ auth, params, set }) => {
+        if (!auth) {
+            set.status = 401;
+            return { error: 'Unauthorized' };
+        }
+
+        const { noteId } = params;
+
+        // Verify page exists and user has access
+        const page = await findPageById(noteId, auth.user._id);
+        if (!page) {
+            set.status = 404;
+            return { error: 'Page not found' };
+        }
+
+        try {
+            // Clear from YJS service cache first (don't save the corrupted state)
+            yjsDocumentService.discardDocument(noteId);
+            // Delete the memo document - a fresh one will be created on next load
+            await deleteMemo(noteId);
+
+            console.log(`[Memo] Reset memo ${noteId}`);
+
+            return { success: true, message: 'Memo reset successfully' };
+        } catch (error) {
+            console.error(`[Memo] Failed to reset ${noteId}:`, error);
+            set.status = 500;
+            return { error: 'Failed to reset memo' };
+        }
+    });

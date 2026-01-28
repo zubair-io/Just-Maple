@@ -385,6 +385,129 @@
       }
     }
 
+    // Enhanced Task List wrapper styles
+    .task-list-wrapper {
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      margin: 1rem 0;
+      background: var(--color-bg);
+
+      .task-list-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+        border-radius: 8px 8px 0 0;
+      }
+
+      .task-list-name {
+        flex: 1;
+        border: none;
+        background: transparent;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--color-text-main);
+        outline: none;
+        padding: 4px 8px;
+        margin: -4px -8px;
+        border-radius: 4px;
+        transition: background 0.15s ease;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        }
+
+        &:focus {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        }
+
+        &::placeholder {
+          color: var(--color-text-muted);
+          font-weight: 400;
+        }
+      }
+
+      .task-list-status {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 4px 8px;
+        margin: -4px 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background 0.15s ease;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        }
+
+        .status-chevron {
+          font-size: 18px;
+          transition: transform 0.15s ease;
+        }
+
+        &.all-done {
+          color: #22c55e;
+
+          .status-text {
+            font-weight: 500;
+          }
+        }
+
+        &.has-remaining {
+          color: var(--color-text-muted);
+        }
+      }
+
+      .task-list-content {
+        padding: 0.5rem;
+        margin: 0;
+        list-style: none;
+      }
+
+      // Hide completed items when showCompleted is false
+      &[data-show-completed='false'] {
+        .task-list-content {
+          li[data-type='taskItem'][data-checked='true'] {
+            display: none;
+          }
+        }
+      }
+    }
+
+    // Dark mode adjustments for enhanced task list wrapper
+    :host-context(.dark-mode) & {
+      .task-list-wrapper {
+        background: rgba(255, 255, 255, 0.02);
+        border-color: rgba(255, 255, 255, 0.1);
+
+        .task-list-header {
+          background: rgba(255, 255, 255, 0.03);
+          border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .task-list-name {
+          &:hover,
+          &:focus {
+            background: rgba(255, 255, 255, 0.05);
+          }
+        }
+
+        .task-list-status {
+          &:hover {
+            background: rgba(255, 255, 255, 0.05);
+          }
+        }
+      }
+    }
+
     // Dark mode adjustments for todos
     :host-context(.dark-mode) & {
       li[data-type='taskItem'] {
@@ -620,14 +743,14 @@
         }
       }
 
-      // Collapsed state
-      &.collapsed {
+      // Collapsed state (using data attribute)
+      &[data-collapsed='true'] {
         .agenda-header {
           border-radius: 0 8px 8px 0;
         }
 
         .agenda-content {
-          display: none;
+          display: none !important;
         }
       }
 
@@ -746,6 +869,146 @@
         &:hover {
           background: rgba(255, 255, 255, 0.12);
           border-color: rgba(255, 255, 255, 0.25);
+        }
+      }
+    }
+
+    // Todo Box styles
+    .todo-box {
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      margin: 1rem 0;
+      background: var(--color-bg);
+
+      .todo-box-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+        border-radius: 8px 8px 0 0;
+      }
+
+      .todo-box-name {
+        flex: 1;
+        border: none;
+        background: transparent;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--color-text-main);
+        outline: none;
+        padding: 4px 8px;
+        margin: -4px -8px;
+        border-radius: 4px;
+        transition: background 0.15s ease;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        }
+
+        &:focus {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        }
+
+        &::placeholder {
+          color: var(--color-text-muted);
+          font-weight: 400;
+        }
+      }
+
+      .todo-box-status {
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+
+        &.all-done {
+          color: #22c55e;
+          font-weight: 500;
+        }
+
+        &.has-remaining {
+          color: var(--color-text-muted);
+        }
+      }
+
+      .todo-box-content {
+        padding: 0.5rem;
+
+        // Style the task list inside
+        ul[data-type='taskList'] {
+          margin: 0;
+        }
+      }
+
+      // Hide completed items when showCompleted is false
+      &[data-show-completed='false'] {
+        .todo-box-content {
+          li[data-type='taskItem'][data-checked='true'] {
+            display: none;
+          }
+        }
+      }
+
+      .todo-box-completed-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-top: 1px solid var(--color-border);
+        cursor: pointer;
+        user-select: none;
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+        transition: background 0.15s ease;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.03));
+        }
+
+        .material-symbols-rounded {
+          font-size: 18px;
+          transition: transform 0.15s ease;
+        }
+
+        .completed-count {
+          margin-left: auto;
+          font-size: 0.75rem;
+          background: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+          padding: 2px 6px;
+          border-radius: 10px;
+        }
+      }
+    }
+
+    // Dark mode adjustments for todo box
+    :host-context(.dark-mode) & {
+      .todo-box {
+        background: rgba(255, 255, 255, 0.02);
+        border-color: rgba(255, 255, 255, 0.1);
+
+        .todo-box-header {
+          background: rgba(255, 255, 255, 0.03);
+          border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .todo-box-name {
+          &:hover,
+          &:focus {
+            background: rgba(255, 255, 255, 0.05);
+          }
+        }
+
+        .todo-box-completed-toggle {
+          border-color: rgba(255, 255, 255, 0.1);
+
+          &:hover {
+            background: rgba(255, 255, 255, 0.05);
+          }
+
+          .completed-count {
+            background: rgba(255, 255, 255, 0.08);
+          }
         }
       }
     }

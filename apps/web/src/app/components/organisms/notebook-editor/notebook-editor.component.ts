@@ -23,7 +23,6 @@ import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
-import TaskList from '@tiptap/extension-task-list';
 import { marked } from 'marked';
 import { MemoDocumentService } from '../../../services/memo-document.service';
 import { PageService } from '../../../services/page.service';
@@ -48,6 +47,7 @@ import {
   RecordingNode,
   EmbedNode,
   EnhancedTaskItem,
+  EnhancedTaskList,
   AiBotWidget,
   ImageNode,
   Agenda,
@@ -222,8 +222,8 @@ export class NotebookEditorComponent implements OnDestroy {
           }),
           // Emoji replacer (e.g., :) -> emoji)
           EmojiReplacer,
-          // Task lists with enhanced attributes (id, dueDate, priority, color)
-          TaskList,
+          // Task lists with enhanced attributes (id, name, showCompleted, dueDate, priority, color)
+          EnhancedTaskList,
           EnhancedTaskItem.configure({
             nested: true,
           }),

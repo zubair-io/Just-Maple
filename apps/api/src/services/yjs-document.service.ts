@@ -276,6 +276,31 @@ class YJSDocumentService {
     }
 
     /**
+     * Discard document from memory without saving
+     * Used for recovery from corrupted documents
+     */
+    discardDocument(noteId: string): void {
+        // Cancel pending save timer
+        const timer = this.saveTimers.get(noteId);
+        if (timer) {
+            clearTimeout(timer);
+            this.saveTimers.delete(noteId);
+        }
+
+        // Destroy Y.Doc without saving
+        const ydoc = this.documents.get(noteId);
+        if (ydoc) {
+            ydoc.destroy();
+        }
+
+        // Remove from memory
+        this.documents.delete(noteId);
+        this.lastActivity.delete(noteId);
+
+        console.log(`[YJS] Discarded document from memory (no save): ${noteId}`);
+    }
+
+    /**
      * Get stats about loaded documents
      */
     getStats(): {
