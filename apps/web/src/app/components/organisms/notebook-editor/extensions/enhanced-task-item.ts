@@ -106,6 +106,8 @@ function isOverdue(dueDate: string): boolean {
 export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
   name: 'taskItem',
 
+  draggable: true,
+
   addOptions() {
     return {
       ...this.parent?.(),
@@ -474,6 +476,15 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         dom.setAttribute('data-priority', node.attrs['priority']);
       }
 
+      // Create drag handle - TipTap uses this for native dragging
+      const dragHandleEl = document.createElement('span');
+      dragHandleEl.classList.add('todo-drag-handle');
+      dragHandleEl.contentEditable = 'false';
+      const dragIcon = document.createElement('span');
+      dragIcon.classList.add('material-symbols-rounded');
+      dragIcon.textContent = 'drag_indicator';
+      dragHandleEl.appendChild(dragIcon);
+
       // Create checkbox wrapper
       const checkboxWrapper = document.createElement('label');
       checkboxWrapper.classList.add('todo-checkbox-wrapper');
@@ -528,7 +539,8 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         metaWrapper.appendChild(dueDateChip);
       }
 
-      // Assemble flat structure: li > [checkbox, content, meta]
+      // Assemble flat structure: li > [dragHandle, checkbox, content, meta]
+      dom.appendChild(dragHandleEl);
       dom.appendChild(checkboxWrapper);
       dom.appendChild(content);
       dom.appendChild(metaWrapper);
@@ -536,6 +548,7 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
       return {
         dom,
         contentDOM: content,
+        dragHandle: dragHandleEl,
         update: (updatedNode) => {
           if (updatedNode.type.name !== this.name) {
             return false;
