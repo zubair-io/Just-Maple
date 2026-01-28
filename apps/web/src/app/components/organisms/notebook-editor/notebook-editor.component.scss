@@ -529,6 +529,155 @@
       margin: 1.5rem 0;
     }
 
+    // Agenda block styles
+    div[data-type='agenda'] {
+      border-left: 3px solid var(--color-primary);
+      margin: 1rem 0;
+      background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+      border-radius: 0 8px 8px 0;
+
+      .agenda-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.15s ease;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        }
+      }
+
+      .agenda-chevron {
+        font-size: 20px;
+        color: var(--color-text-muted);
+        transition: transform 0.15s ease;
+      }
+
+      .agenda-date {
+        font-weight: 600;
+        color: var(--color-text-main);
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: background 0.15s ease;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.08));
+        }
+      }
+
+      .agenda-summary-separator {
+        color: var(--color-text-muted);
+      }
+
+      .agenda-summary {
+        color: var(--color-text-muted);
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.9rem;
+      }
+
+      .agenda-ai-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--color-text-muted);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        margin-left: auto;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.08));
+          color: var(--color-primary);
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .material-symbols-rounded {
+          font-size: 18px;
+        }
+      }
+
+      .agenda-content {
+        padding: 0 1rem 1rem 2rem;
+
+        > *:first-child {
+          margin-top: 0;
+        }
+      }
+
+      // Collapsed state
+      &.collapsed {
+        .agenda-header {
+          border-radius: 0 8px 8px 0;
+        }
+
+        .agenda-content {
+          display: none;
+        }
+      }
+
+      // Highlight animation for deep linking
+      &.agenda-highlight {
+        animation: agendaHighlight 1.5s ease-out;
+      }
+
+      @keyframes agendaHighlight {
+        0% {
+          background: rgba(217, 78, 59, 0.3);
+        }
+        100% {
+          background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+        }
+      }
+    }
+
+    // Dark mode adjustments for agenda
+    :host-context(.dark-mode) & {
+      div[data-type='agenda'] {
+        background: rgba(255, 255, 255, 0.03);
+
+        .agenda-header:hover {
+          background: rgba(255, 255, 255, 0.05);
+        }
+
+        .agenda-date:hover {
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .agenda-ai-btn:hover {
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        &.agenda-highlight {
+          animation: agendaHighlightDark 1.5s ease-out;
+        }
+
+        @keyframes agendaHighlightDark {
+          0% {
+            background: rgba(217, 78, 59, 0.3);
+          }
+          100% {
+            background: rgba(255, 255, 255, 0.03);
+          }
+        }
+      }
+    }
+
     // Recording block styles (legacy)
     .recording-block {
       margin: 1rem 0;
