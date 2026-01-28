@@ -1,5 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 
 export interface AgendaAttrs {
   id: string;
@@ -317,20 +317,35 @@ export const Agenda = Node.create<AgendaOptions>({
           const selectionEnd = $from.pos + 1; // +1 to account for paragraph end
 
           if (selectionEnd >= agendaEnd - 1) {
-            // Delete empty paragraph and insert next day agenda
-            editor
-              .chain()
-              .deleteNode('paragraph')
-              .insertContentAt(agendaEnd, {
-                type: 'agenda',
-                attrs: {
-                  id: generateAgendaId(),
-                  date: getNextDayDate(agendaNode.attrs['date']),
-                },
-                content: [{ type: 'paragraph' }],
-              })
-              .focus()
-              .run();
+            // Get the position of the empty paragraph to delete
+            const paragraphPos = $from.before($from.depth);
+
+            // Use a single transaction to avoid position issues
+            const { tr } = editor.state;
+
+            // First, insert the new agenda at the end of the current one
+            const newAgendaContent = editor.state.schema.nodes['agenda'].create(
+              {
+                id: generateAgendaId(),
+                date: getNextDayDate(agendaNode.attrs['date']),
+              },
+              editor.state.schema.nodes['paragraph'].create(),
+            );
+
+            // Insert after the agenda
+            tr.insert(agendaEnd, newAgendaContent);
+
+            // Delete the empty paragraph (position is still valid since we inserted AFTER it)
+            tr.delete(paragraphPos, paragraphPos + currentNode.nodeSize);
+
+            // Set cursor inside the new agenda's paragraph
+            // After deletion, positions shift. The new agenda starts at agendaEnd - currentNode.nodeSize
+            const newAgendaStart = agendaEnd - currentNode.nodeSize;
+            // Position inside the paragraph: newAgendaStart + 1 (agenda open) + 1 (paragraph open)
+            const cursorPos = tr.doc.resolve(newAgendaStart + 2);
+            tr.setSelection(TextSelection.near(cursorPos));
+
+            editor.view.dispatch(tr);
             return true;
           }
         }
