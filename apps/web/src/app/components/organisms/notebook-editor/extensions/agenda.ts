@@ -438,7 +438,10 @@ export const Agenda = Node.create<AgendaOptions>({
   },
 
   addNodeView() {
-    return ({ node, getPos, editor }) => {
+    return ({ node: initialNode, getPos, editor }) => {
+      // Track current node (updated in update callback)
+      let node = initialNode;
+
       // Ensure the node has an ID
       const nodeId = node.attrs['id'] || generateAgendaId();
       if (!node.attrs['id']) {
@@ -482,13 +485,54 @@ export const Agenda = Node.create<AgendaOptions>({
       dateDisplay.textContent = getRelativeDateText(node.attrs['date']);
       header.appendChild(dateDisplay);
 
-      // Summary separator and text (if exists)
+      // Summary/preview separator and text
+      let separatorElement: HTMLElement | null = null;
       let summaryContainer: HTMLElement | null = null;
+
+      // Helper to extract preview text from node content
+      const getContentPreview = (): string => {
+        let preview = '';
+        node.content.forEach((child) => {
+          if (preview.length < 100) {
+            // Use textContent but also handle inline mentions by calling their renderText
+            const text = child.textContent || '';
+            preview += text + ' ';
+          }
+        });
+        return preview.trim().slice(0, 100) || '';
+      };
+
+      // Helper to update summary/preview display
+      const updateSummaryDisplay = (summaryText: string | null, showPreview: boolean) => {
+        const displayText = summaryText || (showPreview ? getContentPreview() : '');
+
+        if (displayText) {
+          if (!separatorElement) {
+            separatorElement = document.createElement('span');
+            separatorElement.classList.add('agenda-summary-separator');
+            separatorElement.textContent = '·';
+            header.insertBefore(separatorElement, aiButton);
+          }
+          if (!summaryContainer) {
+            summaryContainer = document.createElement('span');
+            summaryContainer.classList.add('agenda-summary');
+            header.insertBefore(summaryContainer, aiButton);
+          }
+          summaryContainer.textContent = displayText;
+          separatorElement.style.display = '';
+          summaryContainer.style.display = '';
+        } else {
+          if (separatorElement) separatorElement.style.display = 'none';
+          if (summaryContainer) summaryContainer.style.display = 'none';
+        }
+      };
+
+      // Initial summary/preview setup
       if (node.attrs['summary']) {
-        const separator = document.createElement('span');
-        separator.classList.add('agenda-summary-separator');
-        separator.textContent = '·';
-        header.appendChild(separator);
+        separatorElement = document.createElement('span');
+        separatorElement.classList.add('agenda-summary-separator');
+        separatorElement.textContent = '·';
+        header.appendChild(separatorElement);
 
         summaryContainer = document.createElement('span');
         summaryContainer.classList.add('agenda-summary');
@@ -521,8 +565,20 @@ export const Agenda = Node.create<AgendaOptions>({
         if (target.closest('.agenda-ai-btn') || target.closest('.agenda-date')) {
           return;
         }
+        const isCollapsing = !dom.classList.contains('collapsed');
         dom.classList.toggle('collapsed');
-        chevron.textContent = dom.classList.contains('collapsed') ? 'chevron_right' : 'expand_more';
+        chevron.textContent = isCollapsing ? 'chevron_right' : 'expand_more';
+
+        // Use inline style for reliable collapsing (CSS backup)
+        content.style.display = isCollapsing ? 'none' : '';
+
+        // Show content preview when collapsed and no AI summary
+        if (isCollapsing && !node.attrs['summary']) {
+          updateSummaryDisplay(null, true);
+        } else if (!isCollapsing && !node.attrs['summary']) {
+          // Hide preview when expanding (if no summary)
+          updateSummaryDisplay(null, false);
+        }
       });
 
       // Date click - dispatch event for date picker
@@ -573,38 +629,24 @@ export const Agenda = Node.create<AgendaOptions>({
             return false;
           }
 
+          // Update node reference for content preview
+          node = updatedNode;
+
           // Update date display
           dom.setAttribute('data-date', updatedNode.attrs['date']);
           dateDisplay.textContent = getRelativeDateText(updatedNode.attrs['date']);
 
-          // Update summary
+          // Update summary/preview
+          const isCollapsed = dom.classList.contains('collapsed');
           if (updatedNode.attrs['summary']) {
             dom.setAttribute('data-summary', updatedNode.attrs['summary']);
             aiIcon.textContent = 'refresh';
-
-            // Add summary elements if not present
-            if (!summaryContainer) {
-              const separator = document.createElement('span');
-              separator.classList.add('agenda-summary-separator');
-              separator.textContent = '·';
-              header.insertBefore(separator, aiButton);
-
-              summaryContainer = document.createElement('span');
-              summaryContainer.classList.add('agenda-summary');
-              header.insertBefore(summaryContainer, aiButton);
-            }
-            summaryContainer.textContent = updatedNode.attrs['summary'];
+            updateSummaryDisplay(updatedNode.attrs['summary'], false);
           } else {
             dom.removeAttribute('data-summary');
             aiIcon.textContent = 'auto_awesome';
-
-            // Remove summary elements if present
-            if (summaryContainer) {
-              const separator = header.querySelector('.agenda-summary-separator');
-              if (separator) separator.remove();
-              summaryContainer.remove();
-              summaryContainer = null;
-            }
+            // Show preview if collapsed, hide if expanded
+            updateSummaryDisplay(null, isCollapsed);
           }
 
           return true;
