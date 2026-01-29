@@ -1,4 +1,6 @@
-<div class="h-dvh flex overflow-hidden bg-[var(--color-bg)]">
+<div
+  class="h-screen pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] flex overflow-hidden bg-[var(--color-bg)]"
+>
   <!-- Mobile Overlay -->
   @if (sidebarOpen()) {
     <div class="fixed inset-0 bg-black/50 z-40 md:hidden" (click)="closeSidebar()"></div>
