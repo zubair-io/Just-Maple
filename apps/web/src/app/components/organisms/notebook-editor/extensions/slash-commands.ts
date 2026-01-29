@@ -305,6 +305,21 @@ export const defaultSlashCommands: SlashCommandItem[] = [
       );
     },
   },
+  {
+    title: 'New Page',
+    description: 'Create a new page and link to it',
+    icon: '📄+',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      // Dispatch event to create new page and auto-link
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('create-new-page-link', {
+          bubbles: true,
+          detail: { range },
+        }),
+      );
+    },
+  },
 ];
 
 export interface SlashCommandsOptions {

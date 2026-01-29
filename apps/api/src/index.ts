@@ -87,6 +87,10 @@ async function main() {
         .use(mcpRoutes)
         .use(realtimeWebSocket); // Unified WebSocket for app events + notebook sync + chat
 
+    // App version for client version checking
+    const APP_VERSION = process.env.APP_VERSION || '0.9.0';
+    const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
+
     app.get('/api/health', async ({ set }) => {
         try {
             // Check database connection
@@ -96,6 +100,8 @@ async function main() {
                 status: 'healthy',
                 timestamp: new Date().toISOString(),
                 database: 'connected',
+                version: APP_VERSION,
+                buildTime: BUILD_TIME,
             };
         } catch {
             set.status = 503;
