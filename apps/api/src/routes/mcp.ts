@@ -1017,6 +1017,6 @@ export const mcpRoutes = new Elysia({ prefix: '/mcp' })
             return { error: 'Session not found' };
         }
 
-        set.status = 204;
-        return;
+        // Return empty response for 204 No Content
+        return new Response(null, { status: 204 });
     });
