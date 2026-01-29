@@ -1,54 +1,51 @@
 <div class="ai-command-backdrop" (click)="onBackdropClick($event)">
   <div
     class="ai-command-menu"
-    tabindex="0"
     [style.top.px]="position().top"
     [style.left.px]="position().left"
+    tabindex="0"
   >
-    <div class="ai-command-header">
-      <span class="ai-command-title">AI Writing Assistant</span>
-      <span class="ai-command-hint">Use arrow keys</span>
-    </div>
-
     @if (showCustomPrompt()) {
-      <div class="ai-command-custom">
-        <input
-          type="text"
-          class="ai-command-input"
-          placeholder="Enter your instruction..."
-          [ngModel]="customInstruction()"
-          (ngModelChange)="customInstruction.set($event)"
-          autofocus
-        />
-        <div class="ai-command-custom-actions">
-          <button
-            class="ai-btn ai-btn-primary"
-            [disabled]="!customInstruction()"
-            (click)="submitCustomPrompt()"
-          >
-            Generate
-          </button>
-          <button class="ai-btn ai-btn-secondary" (click)="showCustomPrompt.set(false)">
-            Back
-          </button>
+      <div class="ai-custom-prompt">
+        <div class="ai-custom-prompt-header">
+          <span>Custom AI Instructions</span>
+          <button class="ai-back-btn" (click)="showCustomPrompt.set(false)">Back</button>
         </div>
-      </div>
-    } @else if (showLanguageSelect()) {
-      <div class="ai-command-languages">
-        <div class="ai-command-languages-header">Select language:</div>
-        @for (lang of languages; track lang) {
-          <button class="ai-command-language-item" (click)="selectLanguage(lang)">
-            {{ lang }}
-          </button>
-        }
+        <textarea
+          class="ai-custom-textarea"
+          placeholder="Enter your instructions for the AI..."
+          [value]="customInstruction()"
+          (input)="customInstruction.set($any($event.target).value)"
+          rows="3"
+          autofocus
+        ></textarea>
         <button
-          class="ai-btn ai-btn-secondary ai-command-back"
-          (click)="showLanguageSelect.set(false)"
+          class="ai-submit-btn"
+          [disabled]="!customInstruction().trim()"
+          (click)="submitCustomPrompt()"
         >
-          Back
+          Generate
         </button>
       </div>
+    } @else if (showLanguageSelect()) {
+      <div class="ai-language-select">
+        <div class="ai-language-header">
+          <span>Select Language</span>
+          <button class="ai-back-btn" (click)="showLanguageSelect.set(false)">Back</button>
+        </div>
+        <div class="ai-language-list">
+          @for (lang of languages; track lang) {
+            <button class="ai-language-item" (click)="selectLanguage(lang)">
+              {{ lang }}
+            </button>
+          }
+        </div>
+      </div>
     } @else {
+      <div class="ai-command-header">
+        <span class="ai-command-title">AI Writing Assistant</span>
+        <span class="ai-command-shortcut">Ctrl+J</span>
+      </div>
       <div class="ai-command-list">
         @for (command of filteredCommands; track command.type; let i = $index) {
           <button
@@ -64,6 +61,12 @@
             </div>
           </button>
         }
+      </div>
+      <div class="ai-command-footer">
+        <span class="ai-hint">
+          <span class="hint-key">↑↓</span> Navigate <span class="hint-key">Enter</span> Select
+          <span class="hint-key">Esc</span> Close
+        </span>
       </div>
     }
   </div>
