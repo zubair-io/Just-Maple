@@ -24,6 +24,7 @@ import { otService } from '../services/ot.service';
 import { realtimeWSService } from '../services/realtime-ws.service';
 import { getUsersWithNotebookAccess } from '../repositories/notebook.repo';
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
+import { indexPage, removeFromIndex } from '../repositories/search.repo';
 
 export const pageRoutes = new Elysia({ prefix: '/api/pages' })
     .use(jwtPlugin)
@@ -126,6 +127,11 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 });
             }
 
+            // Index page for search (background, don't block response)
+            indexPage(page.id).catch((err) =>
+                console.error(`[Search] Failed to index page ${page.id}:`, err),
+            );
+
             return { page };
         },
         {
@@ -186,6 +192,13 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 await updateLinksForPage(page.id, sanitizedBody.content, page.title);
             }
 
+            // Reindex page for search if title or content changed (background)
+            if (sanitizedBody.title !== undefined || sanitizedBody.content !== undefined) {
+                indexPage(page.id).catch((err) =>
+                    console.error(`[Search] Failed to index page ${page.id}:`, err),
+                );
+            }
+
             return { page };
         },
         {
@@ -244,6 +257,13 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 await updateLinksForPage(page.id, sanitizedBody.content, page.title);
             }
 
+            // Reindex page for search if title or content changed (background)
+            if (sanitizedBody.title !== undefined || sanitizedBody.content !== undefined) {
+                indexPage(page.id).catch((err) =>
+                    console.error(`[Search] Failed to index page ${page.id}:`, err),
+                );
+            }
+
             return { page };
         },
         {
@@ -288,6 +308,11 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 });
             }
 
+            // Remove from search index (background)
+            removeFromIndex(page.id).catch((err) =>
+                console.error(`[Search] Failed to remove page ${page.id} from index:`, err),
+            );
+
             return { page };
         },
         {
@@ -320,6 +345,11 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                     notebookId: page.notebookId,
                 });
             }
+
+            // Re-add to search index (background)
+            indexPage(page.id).catch((err) =>
+                console.error(`[Search] Failed to index restored page ${page.id}:`, err),
+            );
 
             return { page };
         },
@@ -364,6 +394,11 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                     notebookId: page.notebookId,
                 });
             }
+
+            // Remove from search index (background)
+            removeFromIndex(page.id).catch((err) =>
+                console.error(`[Search] Failed to remove deleted page ${page.id} from index:`, err),
+            );
 
             return { message: 'Page deleted permanently' };
         },

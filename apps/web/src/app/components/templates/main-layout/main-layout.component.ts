@@ -1,11 +1,11 @@
-import { Component } from '@angular/core';
+import { Component, HostListener, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { SidebarComponent } from '../../organisms';
+import { SidebarComponent, SearchModalComponent } from '../../organisms';
 
 @Component({
   selector: 'app-main-layout',
   standalone: true,
-  imports: [CommonModule, SidebarComponent],
+  imports: [CommonModule, SidebarComponent, SearchModalComponent],
   template: `
     <div class="h-screen flex overflow-hidden bg-[var(--color-bg)]">
       <app-sidebar
@@ -19,9 +19,31 @@ import { SidebarComponent } from '../../organisms';
         <ng-content />
       </main>
     </div>
+
+    @if (showSearchModal()) {
+      <app-search-modal (closed)="closeSearchModal()" />
+    }
   `,
 })
 export class MainLayoutComponent {
+  readonly showSearchModal = signal(false);
+
+  @HostListener('document:keydown', ['$event'])
+  onKeyDown(event: KeyboardEvent): void {
+    // Cmd+K (Mac) or Ctrl+K (Windows/Linux) to open search
+    if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+      event.preventDefault();
+      this.showSearchModal.set(true);
+    }
+  }
+
+  openSearchModal(): void {
+    this.showSearchModal.set(true);
+  }
+
+  closeSearchModal(): void {
+    this.showSearchModal.set(false);
+  }
   onNewPage(): void {
     // TODO: Implement page creation
   }

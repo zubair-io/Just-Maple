@@ -185,6 +185,19 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('memo_versions').createIndex({ noteId: 1, createdAt: -1 }); // Primary query: versions for a memo, newest first
     await database.collection('memo_versions').createIndex({ noteId: 1, version: 1 }); // For cleanup/retention policy
 
+    // Search index collection
+    await database.collection('search_index').createIndex(
+        { title: 'text', plainText: 'text' },
+        {
+            weights: { title: 10, plainText: 1 },
+            name: 'search_text_index',
+        },
+    );
+    await createUniqueIndex(database, 'search_index', { pageId: 1 }, 'pageId');
+    await database.collection('search_index').createIndex({ notebookId: 1 });
+    await database.collection('search_index').createIndex({ type: 1 });
+    await database.collection('search_index').createIndex({ updatedAt: -1 });
+
     console.log('Database indexes created');
 }
 
