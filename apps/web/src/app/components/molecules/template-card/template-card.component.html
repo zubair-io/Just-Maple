@@ -1,0 +1,66 @@
+<div
+  class="template-card group relative flex flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 cursor-pointer transition-all hover:border-[var(--color-primary)] hover:shadow-md"
+  [class.opacity-50]="isApplying()"
+  [class.pointer-events-none]="isApplying()"
+  (click)="onApply($event)"
+>
+  <!-- Header with icon and delete button -->
+  <div class="flex items-start justify-between mb-2">
+    <span class="text-2xl">{{ template().icon ?? '📄' }}</span>
+    @if (showDelete()) {
+      <button
+        class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[var(--color-bg-hover)] text-[var(--color-text-muted)] hover:text-red-500 transition-all"
+        (click)="onDelete($event)"
+        title="Delete template"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path
+            d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+          ></path>
+        </svg>
+      </button>
+    }
+  </div>
+
+  <!-- Title and description -->
+  <div class="flex-1">
+    <h4 class="text-sm font-medium text-[var(--color-text-main)] mb-1 line-clamp-1">
+      {{ template().title }}
+    </h4>
+    <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">
+      {{ template().description }}
+    </p>
+  </div>
+
+  <!-- Footer with category badge and usage count -->
+  <div class="flex items-center justify-between mt-3 pt-3 border-t border-[var(--color-border)]">
+    <span class="text-xs px-2 py-0.5 rounded-full capitalize" [ngClass]="getCategoryClasses()">
+      {{ template().category }}
+    </span>
+    @if (template().usageCount && template().usageCount > 0) {
+      <span class="text-xs text-[var(--color-text-muted)]"> {{ template().usageCount }} uses </span>
+    }
+  </div>
+
+  <!-- Loading indicator -->
+  @if (isApplying()) {
+    <div
+      class="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)]/80 rounded-lg"
+    >
+      <div
+        class="w-5 h-5 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"
+      ></div>
+    </div>
+  }
+</div>

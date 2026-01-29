@@ -15,6 +15,7 @@
     <app-sidebar
       [selectedNotebookId]="selectedNotebookId()"
       (newPage)="onNewPage($event)"
+      (newFromTemplate)="onNewFromTemplate()"
       (selectPage)="onSelectPage($event); closeSidebar()"
       (selectNotebook)="onSelectNotebook($event)"
       (createNotebook)="onCreateNotebook()"
@@ -32,3 +33,13 @@
     <router-outlet />
   </main>
 </div>
+
+<!-- Template Gallery Modal -->
+@if (showTemplateGallery()) {
+  <app-template-gallery-modal
+    [notebookId]="selectedNotebookId() || notebookService.notebooks()[0]?._id || ''"
+    [notebookName]="getSelectedNotebookName()"
+    (closed)="onTemplateGalleryClosed()"
+    (created)="onTemplateCreated($event)"
+  />
+}
