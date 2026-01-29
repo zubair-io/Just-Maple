@@ -52,12 +52,17 @@ import {
   Agenda,
   InlineMention,
   CodeBlockWithLanguage,
+  PageLink,
+  PageLinkBlock,
   formatTime,
   formatDate,
   type SlashCommandItem,
   type InlineMentionSuggestion,
   type MentionableUser,
+  type PageLinkSuggestion,
 } from './extensions';
+import { PageLinkSearchComponent } from '../../molecules/page-link-search/page-link-search.component';
+import { Router } from '@angular/router';
 import { BotService } from '../../../services/bot.service';
 import { NotebookService } from '../../../services/notebook.service';
 import { RecordingBlockComponent } from '../../molecules/recording-block/recording-block.component';
@@ -74,7 +79,7 @@ import type { Awareness } from 'y-protocols/awareness';
 @Component({
   selector: 'app-notebook-editor',
   standalone: true,
-  imports: [CommonModule, EditorToolbarComponent],
+  imports: [CommonModule, EditorToolbarComponent, PageLinkSearchComponent],
   templateUrl: './notebook-editor.component.html',
   styleUrl: './notebook-editor.component.scss',
   // encapsulation: ViewEncapsulation.None,
@@ -99,6 +104,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
+  private readonly router = inject(Router);
 
   readonly pageId = input.required<string>();
   readonly notebookId = input.required<string>();
@@ -110,6 +116,10 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly isFullWidth = signal(false);
   readonly hasClaudeBot = signal(false);
   readonly mentionableUsers = signal<MentionableUser[]>([]);
+
+  // Page link search state
+  readonly pageLinkSearchOpen = signal(false);
+  readonly pageLinkSearchMode = signal<'inline' | 'block'>('inline');
 
   private _editor: Editor | null = null;
   private ydoc: Y.Doc | null = null;
@@ -268,6 +278,18 @@ export class NotebookEditorComponent implements OnDestroy {
               render: () => this.createInlineMentionRenderer(),
             },
           }),
+          // Page links ([[Page Name]] style)
+          PageLink.configure({
+            searchPages: (query: string) => this.searchPagesForLink(query),
+            onLinkClick: (pageId: string) => this.navigateToPage(pageId),
+            suggestion: {
+              render: () => this.createPageLinkSuggestionRenderer(),
+            },
+          }),
+          // Page link blocks (embed-style)
+          PageLinkBlock.configure({
+            onLinkClick: (pageId: string) => this.navigateToPage(pageId),
+          }),
           // Drag handles for blocks
           DragHandle.configure({
             render: () => {
@@ -347,6 +369,9 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up AI writing assistant listeners
         this.setupAIWritingListeners();
+
+        // Set up page link listeners
+        this.setupPageLinkListeners();
 
         // Check for Claude bot availability
         this.checkClaudeBotAvailability();
@@ -1680,5 +1705,269 @@ export class NotebookEditorComponent implements OnDestroy {
       .replace(/[/\\?%*:|"<>]/g, '-')
       .replace(/\s+/g, '_')
       .substring(0, 100);
+  }
+
+  // ==========================================
+  // Page Link Methods
+  // ==========================================
+
+  /**
+   * Set up event listeners for page link interactions
+   */
+  private setupPageLinkListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    // Listen for slash command to open page link search
+    editorElement.addEventListener('open-page-link-search', ((event: CustomEvent) => {
+      const { mode } = event.detail;
+      this.pageLinkSearchMode.set(mode || 'inline');
+      this.pageLinkSearchOpen.set(true);
+    }) as EventListener);
+
+    // Listen for page link clicks
+    editorElement.addEventListener('page-link-click', ((event: CustomEvent) => {
+      const { pageId } = event.detail;
+      this.navigateToPage(pageId);
+    }) as EventListener);
+
+    // Listen for page link block clicks
+    editorElement.addEventListener('page-link-block-click', ((event: CustomEvent) => {
+      const { pageId } = event.detail;
+      this.navigateToPage(pageId);
+    }) as EventListener);
+  }
+
+  /**
+   * Search pages for linking autocomplete
+   */
+  async searchPagesForLink(query: string): Promise<PageLinkSuggestion[]> {
+    if (!query || query.length < 1) {
+      return [];
+    }
+
+    try {
+      const params: Record<string, string> = {
+        q: query,
+        limit: '8',
+        excludePageId: this.pageId(),
+      };
+
+      const notebookId = this.notebookId();
+      if (notebookId) {
+        params['notebookId'] = notebookId;
+      }
+
+      const response = await firstValueFrom(
+        this.http.get<{ pages: PageLinkSuggestion[] }>('/api/links/search', { params }),
+      );
+
+      return response.pages || [];
+    } catch (error) {
+      console.error('[NotebookEditor] Page search failed:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Navigate to a linked page
+   */
+  navigateToPage(pageId: string): void {
+    const notebookId = this.notebookId();
+    this.router.navigate(['/', notebookId, pageId]);
+  }
+
+  /**
+   * Handle page link selection from search modal
+   */
+  onPageLinkSelected(event: { pageId: string; title: string; mode: 'inline' | 'block' }): void {
+    if (!this._editor) return;
+
+    if (event.mode === 'inline') {
+      this._editor
+        .chain()
+        .focus()
+        .insertPageLink({ pageId: event.pageId, title: event.title })
+        .run();
+    } else {
+      this._editor
+        .chain()
+        .focus()
+        .insertPageLinkBlock({ pageId: event.pageId, title: event.title })
+        .run();
+    }
+  }
+
+  /**
+   * Handle creating a new page from link search
+   */
+  async onPageLinkCreateNew(event: { title: string; mode: 'inline' | 'block' }): Promise<void> {
+    if (!this._editor) return;
+
+    try {
+      // Create new page
+      const notebookId = this.notebookId();
+      const response = await firstValueFrom(
+        this.http.post<{ page: { id: string; title: string } }>('/api/pages', {
+          title: event.title,
+          notebookId,
+          type: 'memo',
+        }),
+      );
+
+      if (response.page) {
+        // Insert link to new page
+        if (event.mode === 'inline') {
+          this._editor
+            .chain()
+            .focus()
+            .insertPageLink({ pageId: response.page.id, title: response.page.title })
+            .run();
+        } else {
+          this._editor
+            .chain()
+            .focus()
+            .insertPageLinkBlock({ pageId: response.page.id, title: response.page.title })
+            .run();
+        }
+      }
+    } catch (error) {
+      console.error('[NotebookEditor] Failed to create page:', error);
+    }
+  }
+
+  /**
+   * Close the page link search modal
+   */
+  closePageLinkSearch(): void {
+    this.pageLinkSearchOpen.set(false);
+  }
+
+  /**
+   * Create renderer for page link suggestions popup
+   */
+  private createPageLinkSuggestionRenderer() {
+    let popup: HTMLElement | null = null;
+    let currentProps: any = null;
+
+    return {
+      onStart: (props: any) => {
+        currentProps = props;
+
+        popup = document.createElement('div');
+        popup.classList.add('page-link-suggestion-popup');
+        popup.style.position = 'absolute';
+        popup.style.zIndex = '1000';
+        document.body.appendChild(popup);
+
+        this.renderPageLinkMenu(popup, props.items, (item: PageLinkSuggestion) => {
+          if (currentProps) {
+            currentProps.command(item);
+          }
+        });
+
+        this.updatePopupPosition(popup, props.clientRect);
+      },
+
+      onUpdate: (props: any) => {
+        currentProps = props;
+
+        if (popup) {
+          popup.innerHTML = '';
+          this.renderPageLinkMenu(popup, props.items, (item: PageLinkSuggestion) => {
+            if (currentProps) {
+              currentProps.command(item);
+            }
+          });
+          if (props.clientRect) {
+            this.updatePopupPosition(popup, props.clientRect);
+          }
+        }
+      },
+
+      onKeyDown: (props: any) => {
+        if (props.event.key === 'Escape') {
+          popup?.remove();
+          return true;
+        }
+
+        // Handle arrow keys and enter for menu navigation
+        if (['ArrowUp', 'ArrowDown', 'Enter'].includes(props.event.key)) {
+          const items = popup?.querySelectorAll('.page-link-item');
+          if (!items?.length) return false;
+
+          const active = popup?.querySelector('.page-link-item.active');
+          let activeIndex = active ? Array.from(items).indexOf(active) : -1;
+
+          if (props.event.key === 'ArrowDown') {
+            activeIndex = (activeIndex + 1) % items.length;
+          } else if (props.event.key === 'ArrowUp') {
+            activeIndex = activeIndex <= 0 ? items.length - 1 : activeIndex - 1;
+          } else if (props.event.key === 'Enter' && active) {
+            (active as HTMLElement).click();
+            return true;
+          }
+
+          items.forEach((item, i) => {
+            item.classList.toggle('active', i === activeIndex);
+          });
+
+          return true;
+        }
+
+        return false;
+      },
+
+      onExit: () => {
+        popup?.remove();
+        popup = null;
+      },
+    };
+  }
+
+  /**
+   * Render page link suggestion menu items
+   */
+  private renderPageLinkMenu(
+    popup: HTMLElement,
+    items: PageLinkSuggestion[],
+    onSelect: (item: PageLinkSuggestion) => void,
+  ): void {
+    if (items.length === 0) {
+      popup.innerHTML = '<div class="page-link-empty">No pages found</div>';
+      return;
+    }
+
+    items.forEach((item, index) => {
+      const div = document.createElement('div');
+      div.classList.add('page-link-item');
+      if (index === 0) div.classList.add('active');
+
+      const icon = document.createElement('span');
+      icon.classList.add('page-link-item-icon');
+      icon.textContent = item.type === 'memo' ? '📝' : item.type === 'whiteboard' ? '🎨' : '📄';
+
+      const title = document.createElement('span');
+      title.classList.add('page-link-item-title');
+      title.textContent = item.title;
+
+      div.appendChild(icon);
+      div.appendChild(title);
+
+      if (item.notebookName) {
+        const notebook = document.createElement('span');
+        notebook.classList.add('page-link-item-notebook');
+        notebook.textContent = item.notebookName;
+        div.appendChild(notebook);
+      }
+
+      div.addEventListener('click', () => onSelect(item));
+      div.addEventListener('mouseenter', () => {
+        popup.querySelectorAll('.page-link-item').forEach((el) => el.classList.remove('active'));
+        div.classList.add('active');
+      });
+
+      popup.appendChild(div);
+    });
   }
 }
