@@ -45,17 +45,32 @@ function toTemplateResponse(doc: TemplateDocument): Template {
 }
 
 /**
+ * Sort templates: system first, then by updatedAt descending
+ * Note: Cosmos DB doesn't support $or with sorting, so we sort in application code
+ */
+function sortTemplates(docs: TemplateDocument[]): TemplateDocument[] {
+    return docs.sort((a, b) => {
+        // System templates first
+        if (a.isSystem !== b.isSystem) {
+            return a.isSystem ? -1 : 1;
+        }
+        // Then by updatedAt descending
+        return b.updatedAt.getTime() - a.updatedAt.getTime();
+    });
+}
+
+/**
  * Get all templates (system + user's custom)
  */
 export async function findTemplates(userId: string): Promise<Template[]> {
     const collection = getCollection();
+    // Note: Cosmos DB doesn't support $or with sorting, so we fetch without sort
     const docs = await collection
         .find({
             $or: [{ isSystem: true }, { userId: new ObjectId(userId) }],
         })
-        .sort({ isSystem: -1, updatedAt: -1 })
         .toArray();
-    return docs.map(toTemplateResponse);
+    return sortTemplates(docs).map(toTemplateResponse);
 }
 
 /**
@@ -66,14 +81,14 @@ export async function findTemplatesByCategory(
     category: TemplateCategory,
 ): Promise<Template[]> {
     const collection = getCollection();
+    // Note: Cosmos DB doesn't support $or with sorting, so we fetch without sort
     const docs = await collection
         .find({
             category,
             $or: [{ isSystem: true }, { userId: new ObjectId(userId) }],
         })
-        .sort({ isSystem: -1, updatedAt: -1 })
         .toArray();
-    return docs.map(toTemplateResponse);
+    return sortTemplates(docs).map(toTemplateResponse);
 }
 
 /**

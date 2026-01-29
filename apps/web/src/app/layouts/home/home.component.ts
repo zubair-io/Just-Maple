@@ -1,7 +1,7 @@
 import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
-import { Subscription, filter } from 'rxjs';
+import { Subscription, filter, firstValueFrom, timeout, catchError, of } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { NotebookService } from '../../services/notebook.service';
 import { PageService } from '../../services/page.service';
@@ -149,10 +149,18 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.showTemplateGallery.set(false);
   }
 
-  onTemplateCreated(event: { pageId: string }): void {
+  async onTemplateCreated(event: { pageId: string }): Promise<void> {
     this.showTemplateGallery.set(false);
     const notebookId = this.selectedNotebookId() || this.notebookService.notebooks()[0]?._id;
     if (notebookId) {
+      // Wait for the page to appear in the store (server broadcasts page.created event)
+      // Use timeout to avoid waiting forever if something goes wrong
+      await firstValueFrom(
+        this.pageService.select(event.pageId).pipe(
+          timeout(5000),
+          catchError(() => of(null)), // Navigate anyway after timeout
+        ),
+      );
       this.router.navigate(['/', notebookId, event.pageId]);
     }
   }

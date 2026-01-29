@@ -133,8 +133,14 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
             // Return as base64
             const base64State = Buffer.from(state).toString('base64');
 
+            // Check if this is a new/empty memo - if so, include page content for initialization
+            // This allows templates and other page creation flows to populate the editor
+            const isEmptyMemo = state.length < 50; // Empty Y.js doc is very small
+            const initialContent = isEmptyMemo && page.content ? page.content : undefined;
+
             return {
                 state: base64State,
+                initialContent, // ProseMirror JSON to initialize empty memos
             };
         } catch (error) {
             console.error(`[Memo] Failed to get state for ${noteId}:`, error);
