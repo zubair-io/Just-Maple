@@ -65,7 +65,28 @@ function highlightSnippet(text: string, query: string, contextLength = 100): str
 }
 
 /**
- * Search notes using Cosmos DB text index
+ * Calculate a simple relevance score based on term frequency
+ */
+function calculateScore(title: string, plainText: string, terms: string[]): number {
+    let score = 0;
+    const lowerTitle = (title || '').toLowerCase();
+    const lowerText = (plainText || '').toLowerCase();
+
+    for (const term of terms) {
+        // Title matches are worth more (10x weight)
+        const titleMatches = (lowerTitle.match(new RegExp(escapeRegex(term), 'gi')) || []).length;
+        score += titleMatches * 10;
+
+        // Content matches
+        const textMatches = (lowerText.match(new RegExp(escapeRegex(term), 'gi')) || []).length;
+        score += textMatches;
+    }
+
+    return score;
+}
+
+/**
+ * Search notes using regex-based search (Cosmos DB compatible)
  */
 export async function searchNotes(query: string, options: SearchOptions): Promise<SearchResult[]> {
     const db = getDb();
@@ -77,10 +98,24 @@ export async function searchNotes(query: string, options: SearchOptions): Promis
         return [];
     }
 
-    // Build MongoDB filter
+    // Parse search terms
+    const terms = query
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((t) => t.length > 0);
+
+    if (terms.length === 0) {
+        return [];
+    }
+
+    // Build regex pattern for OR matching (any term matches)
+    const regexPattern = terms.map((t) => escapeRegex(t)).join('|');
+    const searchRegex = { $regex: regexPattern, $options: 'i' };
+
+    // Build filter
     const filter: Record<string, unknown> = {
         notebookId: { $in: accessibleNotebookIds },
-        $text: { $search: query },
+        $or: [{ title: searchRegex }, { plainText: searchRegex }],
     };
 
     // Additional user-requested filters
@@ -104,16 +139,25 @@ export async function searchNotes(query: string, options: SearchOptions): Promis
         filter.updatedAt = dateFilter;
     }
 
+    // Fetch more results than needed to allow for scoring and sorting
+    const fetchLimit = (options.limit || 20) * 3;
     const results = await db
         .collection('search_index')
-        .find(filter, { projection: { score: { $meta: 'textScore' } } })
-        .sort({ score: { $meta: 'textScore' } })
-        .limit(options.limit || 20)
-        .skip(options.offset || 0)
+        .find(filter)
+        .limit(fetchLimit + (options.offset || 0))
         .toArray();
 
+    // Calculate scores and sort by relevance
+    const scoredResults = results
+        .map((r) => ({
+            ...r,
+            score: calculateScore(r.title as string, r.plainText as string, terms),
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(options.offset || 0, (options.offset || 0) + (options.limit || 20));
+
     // Add highlighted snippets
-    return results.map((r) => ({
+    return scoredResults.map((r) => ({
         pageId: r.pageId as string,
         title: r.title as string,
         type: r.type as PageType,
@@ -121,7 +165,7 @@ export async function searchNotes(query: string, options: SearchOptions): Promis
         notebookLabel: r.notebookLabel as string | undefined,
         preview: r.preview as string,
         snippet: highlightSnippet(r.plainText as string, query),
-        score: (r.score as number) || 0,
+        score: r.score,
         updatedAt: r.updatedAt as string,
     }));
 }

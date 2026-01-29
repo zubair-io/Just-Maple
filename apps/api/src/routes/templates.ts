@@ -12,7 +12,9 @@ import {
     incrementUsageCount,
 } from '../repositories/template.repo';
 import { findPageById, createPage } from '../repositories/page.repo';
-import { findNotebookById } from '../repositories/notebook.repo';
+import { findNotebookById, getUsersWithNotebookAccess } from '../repositories/notebook.repo';
+import { realtimeWSService } from '../services/realtime-ws.service';
+import { indexPage } from '../repositories/search.repo';
 
 /**
  * Process template variables like {{date}}, {{notebook}}, {{title}}
@@ -276,6 +278,21 @@ export const templateRoutes = new Elysia({ prefix: '/api/templates' })
 
             // Track usage
             await incrementUsageCount(params.id);
+
+            // Broadcast new page creation to all clients viewing this notebook
+            if (page.notebookId) {
+                const recipientUserIds = await getUsersWithNotebookAccess(page.notebookId);
+                realtimeWSService.sendToUsers(recipientUserIds, {
+                    type: 'page.created',
+                    page,
+                    notebookId: page.notebookId,
+                });
+            }
+
+            // Index page for search (background, don't block response)
+            indexPage(page.id).catch((err) =>
+                console.error(`[Search] Failed to index page ${page.id}:`, err),
+            );
 
             return { page };
         },

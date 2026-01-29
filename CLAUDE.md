@@ -21,9 +21,16 @@ just-maple/
 ### Tech Stack
 
 - **Runtime**: Bun
-- **API**: Elysia + MongoDB
+- **API**: Elysia + Azure Cosmos DB (MongoDB API)
 - **Web**: Angular 19 + Tailwind CSS
 - **Shared**: TypeBox schemas
+
+> **Note**: We use Azure Cosmos DB with MongoDB API, not native MongoDB. Key limitations:
+>
+> - **Text indexes not supported** - Use regex-based search (`$regex`) instead of `$text`
+> - **No `weights` option** - Scoring must be done in application code
+> - **`$or` with `.sort()` not supported** - Do sorting in application code after fetching
+> - Always check Cosmos DB compatibility before using advanced MongoDB features
 
 ---
 

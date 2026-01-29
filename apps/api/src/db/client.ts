@@ -178,21 +178,18 @@ async function createIndexes(database: Db): Promise<void> {
     // Templates collection
     await createUniqueIndex(database, 'templates', { id: 1 }, 'id');
     await database.collection('templates').createIndex({ userId: 1, updatedAt: -1 }); // For user's templates
-    await database.collection('templates').createIndex({ isSystem: 1 }); // For system templates
-    await database.collection('templates').createIndex({ category: 1 }); // For filtering by category
+    await database.collection('templates').createIndex({ isSystem: 1, updatedAt: -1 }); // Composite index for sorted queries
+    await database
+        .collection('templates')
+        .createIndex({ category: 1, isSystem: -1, updatedAt: -1 }); // For category filter with sort
 
     // Memo versions collection (version history for memos)
     await database.collection('memo_versions').createIndex({ noteId: 1, createdAt: -1 }); // Primary query: versions for a memo, newest first
     await database.collection('memo_versions').createIndex({ noteId: 1, version: 1 }); // For cleanup/retention policy
 
     // Search index collection
-    await database.collection('search_index').createIndex(
-        { title: 'text', plainText: 'text' },
-        {
-            weights: { title: 10, plainText: 1 },
-            name: 'search_text_index',
-        },
-    );
+    // Note: Text indexes are not supported on Azure Cosmos DB, so we skip the text index
+    // and rely on regex-based search in the search repository instead
     await createUniqueIndex(database, 'search_index', { pageId: 1 }, 'pageId');
     await database.collection('search_index').createIndex({ notebookId: 1 });
     await database.collection('search_index').createIndex({ type: 1 });

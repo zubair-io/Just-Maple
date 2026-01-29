@@ -138,6 +138,9 @@ export class NotebookEditorComponent implements OnDestroy {
     { componentRef: any; element: HTMLElement; editor: Editor; getPos: () => number | undefined }
   >();
 
+  // Event listener cleanup - store bound handlers for removal
+  private pageLinkListeners: { event: string; handler: EventListener }[] = [];
+
   // AI Writing Assistant state
   private aiPreviewComponent: { componentRef: any; element: HTMLElement } | null = null;
   private aiCommandMenuComponent: { componentRef: any; element: HTMLElement } | null = null;
@@ -188,7 +191,8 @@ export class NotebookEditorComponent implements OnDestroy {
 
     try {
       // Open document via service (handles offline-first loading)
-      const { ydoc, awareness, markdownContent } = await this.memoService.openDocument(pageId);
+      const { ydoc, awareness, markdownContent, initialContent } =
+        await this.memoService.openDocument(pageId);
       this.ydoc = ydoc;
       this.awareness = awareness;
 
@@ -343,6 +347,18 @@ export class NotebookEditorComponent implements OnDestroy {
         setTimeout(() => {
           this._editor?.commands.setContent(htmlContent);
         }, 0);
+      }
+
+      // For new memos with initial content (e.g., from templates), set the content
+      // Check if Y.js document is empty and we have initial content
+      if (!isDocPageView && initialContent && this._editor) {
+        const prosemirror = ydoc.getXmlFragment('prosemirror');
+        if (prosemirror.length === 0) {
+          // Y.js doc is empty, set initial content from template
+          setTimeout(() => {
+            this._editor?.commands.setContent(initialContent);
+          }, 0);
+        }
       }
 
       // Initialize lastSyncedTitle with the current title from the document
@@ -1614,6 +1630,9 @@ export class NotebookEditorComponent implements OnDestroy {
     this.closeAIPreviewPanel();
     this.closeAICommandMenu();
 
+    // Clean up page link listeners
+    this.cleanupPageLinkListeners();
+
     if (this._editor) {
       this._editor.destroy();
       this._editor = null;
@@ -1720,29 +1739,55 @@ export class NotebookEditorComponent implements OnDestroy {
     const editorElement = this.editorRef?.nativeElement;
     if (!editorElement) return;
 
+    // Clean up any existing listeners first
+    this.cleanupPageLinkListeners();
+
+    // Helper to add listener and track for cleanup
+    const addListener = (event: string, handler: EventListener) => {
+      editorElement.addEventListener(event, handler);
+      this.pageLinkListeners.push({ event, handler });
+    };
+
     // Listen for slash command to open page link search
-    editorElement.addEventListener('open-page-link-search', ((event: CustomEvent) => {
+    addListener('open-page-link-search', ((event: CustomEvent) => {
+      event.stopPropagation();
       const { mode } = event.detail;
       this.pageLinkSearchMode.set(mode || 'inline');
       this.pageLinkSearchOpen.set(true);
     }) as EventListener);
 
     // Listen for page link clicks
-    editorElement.addEventListener('page-link-click', ((event: CustomEvent) => {
+    addListener('page-link-click', ((event: CustomEvent) => {
+      event.stopPropagation();
       const { pageId } = event.detail;
       this.navigateToPage(pageId);
     }) as EventListener);
 
     // Listen for page link block clicks
-    editorElement.addEventListener('page-link-block-click', ((event: CustomEvent) => {
+    addListener('page-link-block-click', ((event: CustomEvent) => {
+      event.stopPropagation();
       const { pageId } = event.detail;
       this.navigateToPage(pageId);
     }) as EventListener);
 
     // Listen for create new page and link command
-    editorElement.addEventListener('create-new-page-link', (async () => {
-      await this.createNewPageAndLink();
+    addListener('create-new-page-link', ((event: CustomEvent) => {
+      event.stopPropagation();
+      this.createNewPageAndLink();
     }) as EventListener);
+  }
+
+  /**
+   * Clean up page link event listeners
+   */
+  private cleanupPageLinkListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    for (const { event, handler } of this.pageLinkListeners) {
+      editorElement.removeEventListener(event, handler);
+    }
+    this.pageLinkListeners = [];
   }
 
   /**

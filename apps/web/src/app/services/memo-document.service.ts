@@ -125,6 +125,7 @@ export class MemoDocumentService {
     ydoc: Y.Doc;
     awareness: Awareness;
     markdownContent?: string;
+    initialContent?: any; // ProseMirror JSON for new memos (e.g., from templates)
   }> {
     // Handle doc pages differently - they're read-only virtual pages
     if (isDocPage(pageId)) {
@@ -161,13 +162,34 @@ export class MemoDocumentService {
     const prosemirror = ydoc.getXmlFragment('prosemirror');
     const isDocEmpty = prosemirror.length === 0;
 
+    // If document is empty and we're online, fetch initial content from server
+    // This handles templates and other server-side page creation
+    let initialContent: any;
+    if (isDocEmpty && this.connectivity.canSync()) {
+      try {
+        await this.waitForAuth();
+        const response = await firstValueFrom(
+          this.http.get<{ state: string; initialContent?: any }>(`/api/memos/${pageId}/state`),
+        );
+        if (response.state) {
+          const state = this.base64ToUint8Array(response.state);
+          Y.applyUpdate(ydoc, state, 'remote');
+        }
+        if (response.initialContent) {
+          initialContent = response.initialContent;
+        }
+      } catch (error) {
+        console.error(`[MemoDocumentService] Failed to fetch initial state for ${pageId}:`, error);
+      }
+    }
+
     // Connect to server if online (don't block on this - can work offline)
     if (this.connectivity.canSync()) {
-      // Start sync process after auth is ready
+      // Start sync process after auth is ready (continues WebSocket connection)
       this.syncDocument(pageId, doc, ydoc, isDocEmpty);
     }
 
-    return { ydoc, awareness };
+    return { ydoc, awareness, initialContent };
   }
 
   /**
