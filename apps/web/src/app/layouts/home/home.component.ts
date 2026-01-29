@@ -8,12 +8,12 @@ import { PageService } from '../../services/page.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { RealtimeWSService } from '../../services/realtime-ws.service';
-import { SidebarComponent } from '../../components';
+import { SidebarComponent, TemplateGalleryModalComponent } from '../../components';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent],
+  imports: [CommonModule, RouterOutlet, SidebarComponent, TemplateGalleryModalComponent],
   templateUrl: './home.component.html',
   styleUrl: './home.component.scss',
 })
@@ -29,6 +29,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly selectedPageId = signal<string | null>(null);
   readonly selectedNotebookId = signal<string | null>(null);
   readonly sidebarOpen = this.uiStateService.sidebarOpen;
+  readonly showTemplateGallery = signal(false);
 
   // Swipe gesture tracking
   private touchStartX = 0;
@@ -137,6 +138,30 @@ export class HomeComponent implements OnInit, OnDestroy {
       this.closeSidebar();
       this.router.navigate(['/', notebookId, 'new'], { queryParams: { type } });
     }
+  }
+
+  onNewFromTemplate(): void {
+    this.closeSidebar();
+    this.showTemplateGallery.set(true);
+  }
+
+  onTemplateGalleryClosed(): void {
+    this.showTemplateGallery.set(false);
+  }
+
+  onTemplateCreated(event: { pageId: string }): void {
+    this.showTemplateGallery.set(false);
+    const notebookId = this.selectedNotebookId() || this.notebookService.notebooks()[0]?._id;
+    if (notebookId) {
+      this.router.navigate(['/', notebookId, event.pageId]);
+    }
+  }
+
+  getSelectedNotebookName(): string {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return '';
+    const notebook = this.notebookService.notebooks().find((n) => n._id === notebookId);
+    return notebook?.label ?? '';
   }
 
   onSelectPage(pageId: string): void {
