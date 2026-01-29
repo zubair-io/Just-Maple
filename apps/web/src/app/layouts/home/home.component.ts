@@ -1,7 +1,7 @@
-import { Component, inject, signal, OnInit, OnDestroy, computed } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
-import { Subscription, filter, fromEvent } from 'rxjs';
+import { Subscription, filter } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { NotebookService } from '../../services/notebook.service';
 import { PageService } from '../../services/page.service';
@@ -29,21 +29,13 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly selectedPageId = signal<string | null>(null);
   readonly selectedNotebookId = signal<string | null>(null);
   readonly sidebarOpen = this.uiStateService.sidebarOpen;
-  readonly chatInputFocused = this.uiStateService.chatInputFocused;
-  private readonly isMobile = signal(false);
 
   // Swipe gesture tracking
   private touchStartX = 0;
   private touchStartY = 0;
   private touchStartTime = 0;
 
-  // Computed: should show mobile footer padding
-  readonly shouldShowFooterPadding = computed(() => {
-    return this.isMobile() && !this.chatInputFocused();
-  });
-
   private routerSubscription?: Subscription;
-  private resizeSubscription?: Subscription;
 
   ngOnInit(): void {
     // Ensure default notebook exists (notebooks auto-load via visibility service)
@@ -73,28 +65,11 @@ export class HomeComponent implements OnInit, OnDestroy {
       .subscribe(() => {
         this.syncFromRoute();
       });
-
-    // Check if mobile on init
-    this.checkIsMobile();
-
-    // Listen for window resize
-    if (typeof window !== 'undefined') {
-      this.resizeSubscription = fromEvent(window, 'resize').subscribe(() => {
-        this.checkIsMobile();
-      });
-    }
   }
 
   ngOnDestroy(): void {
     this.routerSubscription?.unsubscribe();
-    this.resizeSubscription?.unsubscribe();
     this.realtimeWS.disconnect();
-  }
-
-  private checkIsMobile(): void {
-    if (typeof window !== 'undefined') {
-      this.isMobile.set(window.innerWidth < 768);
-    }
   }
 
   private syncFromRoute(): void {
