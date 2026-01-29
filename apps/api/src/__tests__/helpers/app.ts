@@ -7,6 +7,7 @@ import { messageRoutes } from '../../routes/messages';
 import { botRoutes } from '../../routes/bots';
 import { aiRoutes } from '../../routes/ai';
 import { templateRoutes } from '../../routes/templates';
+import { linkRoutes } from '../../routes/links';
 
 export function createTestApp() {
     return new Elysia()
@@ -23,6 +24,7 @@ export function createTestApp() {
         .use(botRoutes)
         .use(aiRoutes)
         .use(templateRoutes)
+        .use(linkRoutes)
         .get('/api/health', () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 }
 
