@@ -8,6 +8,35 @@
 
 Implement full-text search across all notes in Just Maple using MongoDB text indexes with architecture that supports future Atlas Search upgrade. Includes offline search capability via IndexedDB.
 
+**Reference**: See `docs/product-features-spec.md` Section 2 for user stories and requirements.
+
+**Production Database**: Azure Cosmos DB (MongoDB API)
+
+---
+
+## Requirements from Product Spec
+
+### User Stories
+
+- Search all content from one search bar
+- Filter search by content type (memo, whiteboard, message)
+- Filter search by notebook
+- Filter search by date range
+- See matching text snippets in results
+- Keyboard navigation in search results
+
+### Functional Requirements
+
+| Requirement       | Description                                             |
+| ----------------- | ------------------------------------------------------- |
+| Global Search Bar | Cmd/Ctrl+K to open search overlay                       |
+| Instant Results   | <200ms perceived latency after debounce                 |
+| Content Types     | Search memos, whiteboards (text), messages, page titles |
+| Filters           | Filter by type, notebook, date range                    |
+| Snippets          | Show matching text with highlighted keywords            |
+| Keyboard Nav      | Arrow keys to navigate, Enter to open                   |
+| Recent Searches   | Show recent search queries (localStorage)               |
+
 ---
 
 ## Architecture Overview
@@ -29,19 +58,44 @@ Implement full-text search across all notes in Just Maple using MongoDB text ind
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Cosmos DB Considerations
+
+Azure Cosmos DB (MongoDB API) supports text indexes but with limitations:
+
+- **Supported**: Basic text indexes with `$text` queries
+- **Not supported**: MongoDB Atlas Search, `$search` aggregation
+- **Workaround**: Use text index with `$text` operator, implement snippet highlighting server-side
+
+If more advanced search is needed later, consider:
+
+- Azure Cognitive Search (separate service integration)
+- Algolia or Meilisearch as external search service
+
 ### Search Index Collection Schema
 
 ```typescript
+// Matches product spec SearchResult type
 interface SearchIndex {
     _id: string; // MongoDB ObjectId
     pageId: string; // Links to pages.id
     userId: string; // Owner for access control
     notebookId?: string;
-    type: PageType;
+    type: 'memo' | 'whiteboard' | 'message' | 'page'; // Content type
     title: string;
     plainText: string; // Extracted searchable text
     preview: string; // First 200 chars for display
     updatedAt: Date;
+}
+
+// Request model (from product spec)
+interface SearchRequest {
+    query: string;
+    types?: ('memo' | 'whiteboard' | 'message')[];
+    notebookIds?: string[];
+    dateFrom?: Date;
+    dateTo?: Date;
+    limit?: number;
+    offset?: number;
 }
 ```
 
@@ -164,19 +218,100 @@ await database.collection('search_index').createIndex({ updatedAt: -1 });
 export const searchRoutes = new Elysia({ prefix: '/api/search' })
     .use(jwtPlugin)
     .get('/', async ({ auth, query }) => {
-        // GET /api/search?q=query&notebookId=xxx&types=memo,whiteboard&limit=20
+        // GET /api/search?q=query&notebookIds=xxx,yyy&types=memo,whiteboard&dateFrom=2024-01-01&dateTo=2024-12-31&limit=20
         const results = await searchPages(auth.user._id, query.q, {
-            notebookId: query.notebookId,
+            notebookIds: query.notebookIds?.split(','),
             types: query.types?.split(','),
+            dateFrom: query.dateFrom ? new Date(query.dateFrom) : undefined,
+            dateTo: query.dateTo ? new Date(query.dateTo) : undefined,
             limit: parseInt(query.limit) || 20,
             offset: parseInt(query.offset) || 0,
         });
         return { results };
     })
-    .post('/reindex', async ({ auth }) => {
+    .post('/index', async ({ auth }) => {
+        // Admin endpoint to trigger re-indexing
         await reindexAllForUser(auth.user._id);
         return { message: 'Reindex started' };
     });
+```
+
+**Snippet Highlighting**: Since Cosmos DB doesn't support native snippet highlighting, implement server-side:
+
+```typescript
+function highlightSnippet(text: string, query: string, contextLength = 100): string {
+    const terms = query.toLowerCase().split(/\s+/);
+    const lowerText = text.toLowerCase();
+
+    // Find first matching term position
+    let matchPos = -1;
+    for (const term of terms) {
+        const pos = lowerText.indexOf(term);
+        if (pos !== -1 && (matchPos === -1 || pos < matchPos)) {
+            matchPos = pos;
+        }
+    }
+
+    if (matchPos === -1) return text.slice(0, contextLength * 2);
+
+    // Extract context around match
+    const start = Math.max(0, matchPos - contextLength);
+    const end = Math.min(text.length, matchPos + contextLength);
+    let snippet = text.slice(start, end);
+
+    // Wrap matches in <mark> tags
+    for (const term of terms) {
+        const regex = new RegExp(`(${escapeRegex(term)})`, 'gi');
+        snippet = snippet.replace(regex, '<mark>$1</mark>');
+    }
+
+    return (start > 0 ? '...' : '') + snippet + (end < text.length ? '...' : '');
+}
+```
+
+---
+
+### Phase 3 (continued): Search Repository
+
+```typescript
+// apps/api/src/repositories/search.repo.ts
+export async function searchPages(
+    userId: string,
+    query: string,
+    options?: SearchRequest,
+): Promise<SearchResult[]> {
+    const filter: any = {
+        userId,
+        $text: { $search: query },
+    };
+
+    if (options?.types?.length) {
+        filter.type = { $in: options.types };
+    }
+    if (options?.notebookIds?.length) {
+        filter.notebookId = { $in: options.notebookIds };
+    }
+    if (options?.dateFrom || options?.dateTo) {
+        filter.updatedAt = {};
+        if (options.dateFrom) filter.updatedAt.$gte = options.dateFrom;
+        if (options.dateTo) filter.updatedAt.$lte = options.dateTo;
+    }
+
+    const results = await db
+        .collection('search_index')
+        .find(filter, { score: { $meta: 'textScore' } })
+        .sort({ score: { $meta: 'textScore' } })
+        .limit(options?.limit || 20)
+        .skip(options?.offset || 0)
+        .toArray();
+
+    // Add highlighted snippets
+    return results.map((r) => ({
+        ...r,
+        snippet: highlightSnippet(r.plainText, query),
+        score: r.score,
+    }));
+}
 ```
 
 #### 3.2 Real-time Index Updates
@@ -225,37 +360,100 @@ export class SearchService {
 Features:
 
 - Triggered by Cmd+K / Ctrl+K
-- Debounced input (300ms)
+- Debounced input (300ms) with <200ms perceived latency goal
 - Keyboard navigation (up/down/enter/esc)
-- Recent searches
-- Filter by type and notebook
-- Highlight matching text in results
+- Recent searches (stored in localStorage)
+- Filter by type, notebook, and date range
+- Results grouped by type (per product spec)
+- Highlight matching text with `<mark>` tags in results
 
 ```html
-<div class="search-modal">
+<div class="search-modal" (keydown)="handleKeydown($event)">
     <div class="search-input-container">
         <span class="material-symbols-rounded">search</span>
-        <input type="text" placeholder="Search notes..." autofocus />
+        <input type="text" [(ngModel)]="searchQuery" placeholder="Search notes..." autofocus />
         <kbd>ESC</kbd>
     </div>
 
     <div class="search-filters">
         <!-- Type filters: All, Notes, Whiteboards, Messages -->
+        <button [class.active]="!typeFilter()" (click)="setTypeFilter(null)">All</button>
+        <button [class.active]="typeFilter() === 'memo'" (click)="setTypeFilter('memo')">
+            Notes
+        </button>
+        <button
+            [class.active]="typeFilter() === 'whiteboard'"
+            (click)="setTypeFilter('whiteboard')"
+        >
+            Whiteboards
+        </button>
+        <button [class.active]="typeFilter() === 'message'" (click)="setTypeFilter('message')">
+            Messages
+        </button>
     </div>
 
+    <!-- Recent searches when query is empty -->
+    @if (!searchQuery() && recentSearches().length) {
+    <div class="recent-searches">
+        <span class="section-label">Recent</span>
+        @for (recent of recentSearches(); track recent) {
+        <button (click)="searchQuery.set(recent)">{{ recent }}</button>
+        }
+    </div>
+    }
+
+    <!-- Results grouped by type (per product spec) -->
     <div class="search-results">
-        @for (result of searchResults(); track result.pageId) {
-        <a [routerLink]="getResultLink(result)" class="search-result-item">
-            <span class="result-icon"><!-- type icon --></span>
-            <div class="result-content">
-                <span class="result-title">{{ result.title }}</span>
-                <span class="result-preview" [innerHTML]="result.highlightedPreview"></span>
-                <span class="result-meta">{{ result.notebookLabel }}</span>
-            </div>
-        </a>
+        @for (group of groupedResults(); track group.type) {
+        <div class="result-group">
+            <span class="group-label">{{ group.label }}</span>
+            @for (result of group.results; track result.pageId; let i = $index) {
+            <a
+                [routerLink]="getResultLink(result)"
+                class="search-result-item"
+                [class.selected]="selectedIndex() === getGlobalIndex(group, i)"
+                (click)="close()"
+            >
+                <span class="result-icon material-symbols-rounded"
+                    >{{ getTypeIcon(result.type) }}</span
+                >
+                <div class="result-content">
+                    <span class="result-title">{{ result.title }}</span>
+                    <span class="result-preview" [innerHTML]="result.snippet"></span>
+                    <span class="result-meta"
+                        >{{ result.notebookLabel }} · {{ result.updatedAt | date }}</span
+                    >
+                </div>
+            </a>
+            }
+        </div>
+        } @if (isSearching()) {
+        <div class="loading">Searching...</div>
+        } @if (!isSearching() && searchQuery() && !groupedResults().length) {
+        <div class="no-results">No results found</div>
         }
     </div>
 </div>
+```
+
+**Component Logic for Grouping**:
+
+```typescript
+readonly groupedResults = computed(() => {
+    const results = this.searchResults();
+    const groups = [
+        { type: 'memo', label: 'Notes', results: [] as SearchResult[] },
+        { type: 'whiteboard', label: 'Whiteboards', results: [] as SearchResult[] },
+        { type: 'message', label: 'Messages', results: [] as SearchResult[] },
+    ];
+
+    for (const result of results) {
+        const group = groups.find(g => g.type === result.type);
+        if (group) group.results.push(result);
+    }
+
+    return groups.filter(g => g.results.length > 0);
+});
 ```
 
 #### 4.3 Keyboard Shortcut Integration
