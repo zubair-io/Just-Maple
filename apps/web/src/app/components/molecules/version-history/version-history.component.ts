@@ -96,6 +96,8 @@ export class VersionHistoryComponent {
       this.closePreview();
     } else {
       this.selectedVersionId.set(versionId);
+      // Auto-open preview when selecting a version
+      this.openPreview();
     }
   }
 
@@ -248,14 +250,23 @@ export class VersionHistoryComponent {
       .replace(/'/g, '&#039;');
   }
 
-  restoreVersion(): void {
+  async restoreVersion(): Promise<void> {
     const versionId = this.selectedVersionId();
+    const noteId = this.noteId();
     if (!versionId || this.isRestoring()) return;
 
     this.isRestoring.set(true);
 
-    this.versionService.restoreVersion(this.noteId(), versionId).subscribe({
-      next: () => {
+    this.versionService.restoreVersion(noteId, versionId).subscribe({
+      next: async () => {
+        // Clear IndexedDB cache for this document before reload
+        // This ensures the restored version from server is loaded fresh
+        try {
+          await this.clearIndexedDBCache(noteId);
+        } catch (err) {
+          console.warn('Failed to clear IndexedDB cache:', err);
+        }
+
         this.isRestoring.set(false);
         this.restored.emit();
         this.close.emit();
@@ -265,6 +276,31 @@ export class VersionHistoryComponent {
         this.error.set('Failed to restore version');
         this.isRestoring.set(false);
       },
+    });
+  }
+
+  /**
+   * Clear IndexedDB cache for a document
+   * This ensures restored versions are loaded fresh from server
+   */
+  private clearIndexedDBCache(noteId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const dbName = `ydoc-${noteId}`;
+      const request = indexedDB.deleteDatabase(dbName);
+
+      request.onsuccess = () => {
+        console.log(`[VersionHistory] Cleared IndexedDB cache for ${noteId}`);
+        resolve();
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+
+      request.onblocked = () => {
+        console.warn(`[VersionHistory] IndexedDB delete blocked for ${noteId}`);
+        resolve(); // Still proceed even if blocked
+      };
     });
   }
 

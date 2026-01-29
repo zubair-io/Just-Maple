@@ -1736,6 +1736,49 @@ export class NotebookEditorComponent implements OnDestroy {
       const { pageId } = event.detail;
       this.navigateToPage(pageId);
     }) as EventListener);
+
+    // Listen for create new page and link command
+    editorElement.addEventListener('create-new-page-link', (async () => {
+      await this.createNewPageAndLink();
+    }) as EventListener);
+  }
+
+  /**
+   * Create a new page and insert a link to it
+   * Used by the /new page slash command
+   */
+  private async createNewPageAndLink(): Promise<void> {
+    if (!this._editor) return;
+
+    try {
+      const notebookId = this.notebookId();
+      const title = 'Untitled';
+
+      // Create new page
+      const response = await firstValueFrom(
+        this.http.post<{ page: { id: string; title: string } }>('/api/pages', {
+          title,
+          notebookId,
+          type: 'memo',
+        }),
+      );
+
+      if (response.page) {
+        // Insert inline link to the new page
+        this._editor
+          .chain()
+          .focus()
+          .insertPageLink({ pageId: response.page.id, title: response.page.title })
+          .run();
+
+        // Navigate to the new page after a short delay
+        setTimeout(() => {
+          this.navigateToPage(response.page.id);
+        }, 100);
+      }
+    } catch (error) {
+      console.error('[NotebookEditor] Failed to create new page:', error);
+    }
   }
 
   /**
