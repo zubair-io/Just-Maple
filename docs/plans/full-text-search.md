@@ -87,6 +87,35 @@ Implement full-text search across all notes in Just Maple using **Azure AI Searc
 1. **Write path**: User edits memo → Y.js saved to `memos` → API decodes Y.js → Upserts to `search_index` → Azure AI Search indexer syncs
 2. **Read path**: User searches → API queries Azure AI Search → Returns results with snippets
 
+### Access Control Model
+
+Search must respect notebook sharing permissions:
+
+```typescript
+// Notebooks have sharing structure:
+interface NotebookSharing {
+    sharedWith: { userId: string; accessLevel: 'owner' | 'edit' | 'read' }[];
+    isPublic: boolean;
+}
+```
+
+**User can search content from:**
+
+1. Notebooks where they are in `sharedWith` (any access level)
+2. Public notebooks (`isPublic: true`)
+
+**Implementation:**
+
+```typescript
+// Before searching, get accessible notebook IDs
+const accessibleNotebookIds = await getAccessibleNotebookIds(userId);
+
+// Then filter Azure AI Search by these notebook IDs
+const filter = buildAccessFilter(userId, accessibleNotebookIds);
+```
+
+This is handled in Phase 3 (API Endpoints) below.
+
 ### Search Index Collection Schema
 
 ```typescript
@@ -304,6 +333,7 @@ await database.collection('search_index').createIndex({ _ts: 1 }); // For change
 
 ```typescript
 import { SearchClient, AzureKeyCredential } from '@azure/search-documents';
+import { findNotebooksForUser } from '../repositories/notebook.repo';
 
 const searchClient = new SearchClient(
     process.env.AZURE_SEARCH_ENDPOINT!,
@@ -314,25 +344,50 @@ const searchClient = new SearchClient(
 export interface SearchOptions {
     userId: string;
     types?: string[];
-    notebookIds?: string[];
+    notebookIds?: string[]; // User-requested filter (optional)
     dateFrom?: Date;
     dateTo?: Date;
     limit?: number;
     offset?: number;
 }
 
-export async function searchNotes(query: string, options: SearchOptions) {
-    // Build filter for access control and filters
-    const filters: string[] = [`userId eq '${options.userId}'`];
+/**
+ * Get all notebook IDs the user has access to (owned, shared, or public)
+ */
+async function getAccessibleNotebookIds(userId: string): Promise<string[]> {
+    const notebooks = await findNotebooksForUser(userId);
+    return notebooks.map((n) => n._id);
+}
 
+export async function searchNotes(query: string, options: SearchOptions) {
+    // CRITICAL: Get all notebooks user has access to for access control
+    const accessibleNotebookIds = await getAccessibleNotebookIds(options.userId);
+
+    if (accessibleNotebookIds.length === 0) {
+        return []; // User has no accessible notebooks
+    }
+
+    // Build access control filter - user can only see content from accessible notebooks
+    const accessFilter = accessibleNotebookIds.map((id) => `notebookId eq '${id}'`).join(' or ');
+
+    const filters: string[] = [`(${accessFilter})`];
+
+    // Additional user-requested filters
     if (options.types?.length) {
         const typeFilter = options.types.map((t) => `type eq '${t}'`).join(' or ');
         filters.push(`(${typeFilter})`);
     }
+
+    // If user specifies notebookIds, intersect with accessible notebooks
     if (options.notebookIds?.length) {
-        const nbFilter = options.notebookIds.map((id) => `notebookId eq '${id}'`).join(' or ');
+        const requestedIds = options.notebookIds.filter((id) => accessibleNotebookIds.includes(id));
+        if (requestedIds.length === 0) {
+            return []; // User requested notebooks they don't have access to
+        }
+        const nbFilter = requestedIds.map((id) => `notebookId eq '${id}'`).join(' or ');
         filters.push(`(${nbFilter})`);
     }
+
     if (options.dateFrom) {
         filters.push(`updatedAt ge ${options.dateFrom.toISOString()}`);
     }
@@ -730,10 +785,30 @@ export const DB_STORES = {
 
 ## Security Considerations
 
-1. **Access control**: Search results respect notebook sharing permissions
-2. **Query sanitization**: Escape special characters in search queries
-3. **Rate limiting**: 30 requests/minute per user
-4. **Result limiting**: Maximum 100 results per query
+### Access Control (Critical)
+
+Search results MUST respect notebook sharing permissions:
+
+1. **Pre-query access check**: Before searching, fetch all notebook IDs the user has access to via `findNotebooksForUser(userId)`
+2. **Filter by accessible notebooks**: Azure AI Search filter includes `notebookId in (accessible IDs)`
+3. **No userId-only filtering**: Never filter only by `userId` - this misses shared notebooks and exposes private content
+4. **Intersection validation**: If user requests specific `notebookIds`, validate they have access before including in filter
+
+```typescript
+// WRONG - exposes only user's own content, misses shared notebooks
+const filter = `userId eq '${userId}'`;
+
+// CORRECT - includes all accessible notebooks (owned + shared + public)
+const accessibleIds = await getAccessibleNotebookIds(userId);
+const filter = accessibleIds.map((id) => `notebookId eq '${id}'`).join(' or ');
+```
+
+### Other Security Measures
+
+1. **Query sanitization**: Escape special characters in search queries to prevent injection
+2. **Rate limiting**: 30 requests/minute per user
+3. **Result limiting**: Maximum 100 results per query
+4. **API key security**: Azure Search admin key stored in environment variables, never exposed to client
 
 ---
 
