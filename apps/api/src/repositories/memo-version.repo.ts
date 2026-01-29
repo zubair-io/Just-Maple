@@ -2,18 +2,62 @@ import { ObjectId, Collection, Binary } from 'mongodb';
 import { getDb } from '../db/client';
 import type { MemoVersionListItem, MemoVersion, VersionTrigger } from '@maple/shared';
 
+// Compression threshold - only compress if state is larger than this
+const COMPRESSION_THRESHOLD = 1024; // 1KB
+
 interface MemoVersionDocument {
     _id: ObjectId;
     noteId: string;
     state: Binary;
     version: number;
-    byteSize: number;
+    byteSize: number; // Original uncompressed size
+    compressedSize?: number; // Compressed size (if compressed)
+    compressed?: boolean; // Whether state is compressed
     trigger: VersionTrigger;
     label?: string;
     createdAt: Date;
     contentPreview?: string;
     wordCount?: number;
     headingText?: string;
+}
+
+/**
+ * Compress data using gzip
+ */
+async function compressState(
+    data: Uint8Array,
+): Promise<{ compressed: Uint8Array; wasCompressed: boolean }> {
+    if (data.length < COMPRESSION_THRESHOLD) {
+        return { compressed: data, wasCompressed: false };
+    }
+
+    try {
+        const compressed = Bun.gzipSync(data);
+        // Only use compression if it actually saves space
+        if (compressed.length < data.length * 0.9) {
+            return { compressed, wasCompressed: true };
+        }
+        return { compressed: data, wasCompressed: false };
+    } catch {
+        return { compressed: data, wasCompressed: false };
+    }
+}
+
+/**
+ * Decompress data if it was compressed
+ */
+async function decompressState(data: Uint8Array, isCompressed: boolean): Promise<Uint8Array> {
+    if (!isCompressed) {
+        return data;
+    }
+
+    try {
+        return Bun.gunzipSync(data);
+    } catch (err) {
+        console.error('[MemoVersion] Failed to decompress state:', err);
+        // Return as-is if decompression fails
+        return data;
+    }
 }
 
 function getCollection(): Collection<MemoVersionDocument> {
@@ -35,11 +79,15 @@ function toListItem(doc: MemoVersionDocument): MemoVersionListItem {
     };
 }
 
-function toFullVersion(doc: MemoVersionDocument): MemoVersion {
+async function toFullVersion(doc: MemoVersionDocument): Promise<MemoVersion> {
+    // Decompress state if it was compressed
+    const rawState = new Uint8Array(doc.state.buffer);
+    const state = await decompressState(rawState, doc.compressed ?? false);
+
     return {
         _id: doc._id.toString(),
         noteId: doc.noteId,
-        state: doc.state.buffer, // Will be converted to base64 in API layer
+        state: state.buffer, // Will be converted to base64 in API layer
         version: doc.version,
         byteSize: doc.byteSize,
         trigger: doc.trigger,
@@ -66,11 +114,17 @@ export interface CreateVersionInput {
  * Create a new version snapshot
  */
 export async function createMemoVersion(input: CreateVersionInput): Promise<MemoVersionListItem> {
+    // Compress the state
+    const { compressed, wasCompressed } = await compressState(input.state);
+    const originalSize = input.state.length;
+
     const doc: Omit<MemoVersionDocument, '_id'> = {
         noteId: input.noteId,
-        state: new Binary(Buffer.from(input.state)),
+        state: new Binary(Buffer.from(compressed)),
         version: input.version,
-        byteSize: input.state.length,
+        byteSize: originalSize, // Store original size for display
+        compressedSize: wasCompressed ? compressed.length : undefined,
+        compressed: wasCompressed,
         trigger: input.trigger,
         label: input.label,
         createdAt: new Date(),
@@ -80,6 +134,13 @@ export async function createMemoVersion(input: CreateVersionInput): Promise<Memo
     };
 
     const result = await getCollection().insertOne(doc as MemoVersionDocument);
+
+    if (wasCompressed) {
+        const ratio = ((1 - compressed.length / originalSize) * 100).toFixed(1);
+        console.log(
+            `[MemoVersion] Compressed ${originalSize} -> ${compressed.length} bytes (${ratio}% savings)`,
+        );
+    }
 
     return {
         _id: result.insertedId.toString(),
@@ -137,7 +198,7 @@ export async function getMemoVersion(
             _id: new ObjectId(versionId),
             noteId,
         });
-        return doc ? toFullVersion(doc) : null;
+        return doc ? await toFullVersion(doc) : null;
     } catch {
         return null;
     }
@@ -158,7 +219,7 @@ export async function getLatestMemoVersion(noteId: string): Promise<MemoVersionL
 }
 
 /**
- * Get version state as Uint8Array
+ * Get version state as Uint8Array (decompressed)
  */
 export async function getMemoVersionState(
     noteId: string,
@@ -167,10 +228,12 @@ export async function getMemoVersionState(
     try {
         const doc = await getCollection().findOne(
             { _id: new ObjectId(versionId), noteId },
-            { projection: { state: 1 } },
+            { projection: { state: 1, compressed: 1 } },
         );
         if (!doc) return null;
-        return new Uint8Array(doc.state.buffer);
+
+        const rawState = new Uint8Array(doc.state.buffer);
+        return decompressState(rawState, doc.compressed ?? false);
     } catch {
         return null;
     }

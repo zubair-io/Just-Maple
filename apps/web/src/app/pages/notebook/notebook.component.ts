@@ -1,4 +1,12 @@
-import { Component, inject, signal, effect, OnDestroy, ViewChild, NgZone } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  OnDestroy,
+  ViewChild,
+  NgZone,
+  HostListener,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -6,6 +14,8 @@ import { Subscription } from 'rxjs';
 import { PageService } from '../../services/page.service';
 import { NotebookService } from '../../services/notebook.service';
 import { UiStateService } from '../../services/ui-state.service';
+import { MemoVersionService } from '../../services/memo-version.service';
+import { NotificationService } from '../../services/notification.service';
 import { NotebookEditorComponent } from '../../components/organisms/notebook-editor/notebook-editor.component';
 import { NoteHeaderComponent, type ExportFormat } from '../../components';
 
@@ -24,7 +34,11 @@ export class NotebookComponent implements OnDestroy {
   private readonly pageService = inject(PageService);
   private readonly notebookService = inject(NotebookService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly memoVersionService = inject(MemoVersionService);
+  private readonly notificationService = inject(NotificationService);
   private readonly ngZone = inject(NgZone);
+
+  private isSavingCheckpoint = false;
 
   private routeSubscription?: Subscription;
   private editorUpdateInterval?: ReturnType<typeof setInterval>;
@@ -127,5 +141,49 @@ export class NotebookComponent implements OnDestroy {
     // Reload the page to get the restored version
     // This ensures all Y.js state is properly reset
     window.location.reload();
+  }
+
+  /**
+   * Handle Cmd/Ctrl+S to save a manual checkpoint
+   */
+  @HostListener('document:keydown', ['$event'])
+  handleKeyboardShortcut(event: KeyboardEvent): void {
+    // Check for Cmd+S (Mac) or Ctrl+S (Windows/Linux)
+    if ((event.metaKey || event.ctrlKey) && event.key === 's') {
+      event.preventDefault();
+      this.saveCheckpoint();
+    }
+  }
+
+  /**
+   * Save a manual checkpoint (version snapshot)
+   */
+  private saveCheckpoint(): void {
+    const id = this.pageId();
+    if (!id || this.isSavingCheckpoint) return;
+
+    this.isSavingCheckpoint = true;
+
+    this.memoVersionService.createCheckpoint(id).subscribe({
+      next: () => {
+        this.notificationService.showToast({
+          title: 'Checkpoint saved',
+          message: 'You can restore this version from the history panel',
+          type: 'success',
+          duration: 3000,
+        });
+        this.isSavingCheckpoint = false;
+      },
+      error: (err) => {
+        console.error('Failed to save checkpoint:', err);
+        this.notificationService.showToast({
+          title: 'Failed to save checkpoint',
+          message: 'Please try again',
+          type: 'error',
+          duration: 3000,
+        });
+        this.isSavingCheckpoint = false;
+      },
+    });
   }
 }
