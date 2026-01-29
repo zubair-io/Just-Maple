@@ -19,6 +19,7 @@ import { recordingRoutes } from './routes/recordings';
 import { externalRoutes } from './routes/external';
 import { aiRoutes } from './routes/ai';
 import { templateRoutes } from './routes/templates';
+import { linkRoutes } from './routes/links';
 import { realtimeWebSocket } from './ws/realtime.ws';
 import { redisPubSub } from './services/redis.service';
 import { config } from './config';
@@ -77,6 +78,7 @@ async function main() {
         .use(externalRoutes)
         .use(aiRoutes)
         .use(templateRoutes)
+        .use(linkRoutes)
         .use(realtimeWebSocket); // Unified WebSocket for app events + notebook sync + chat
 
     app.get('/api/health', async ({ set }) => {

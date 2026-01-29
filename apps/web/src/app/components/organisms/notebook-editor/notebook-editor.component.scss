@@ -1165,6 +1165,120 @@
       }
     }
 
+    // Page Link styles (inline [[Page Name]] links)
+    .page-link {
+      display: inline-flex;
+      align-items: center;
+      vertical-align: middle;
+      gap: 4px;
+      padding: 1px 6px;
+      background: rgba(217, 78, 59, 0.1);
+      border: 1px solid rgba(217, 78, 59, 0.3);
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: var(--color-primary, #d94e3b);
+      font-weight: 500;
+      white-space: nowrap;
+      cursor: pointer;
+      text-decoration: none;
+      transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+
+      &:hover {
+        background: rgba(217, 78, 59, 0.18);
+        border-color: rgba(217, 78, 59, 0.5);
+        box-shadow: 0 1px 3px rgba(217, 78, 59, 0.15);
+      }
+
+      .page-link-icon {
+        font-size: 12px;
+        opacity: 0.8;
+      }
+
+      .page-link-title {
+        color: inherit;
+      }
+    }
+
+    // Page Link Block styles (embed-style preview blocks)
+    .page-link-block {
+      display: block;
+      margin: 1rem 0;
+      padding: 0.75rem 1rem;
+      background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+      border: 1px solid var(--color-border);
+      border-left: 3px solid var(--color-primary, #d94e3b);
+      border-radius: 6px;
+      cursor: pointer;
+      transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+
+      &:hover {
+        background: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
+        border-color: var(--color-text-muted);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+
+      .page-link-block-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+
+      .page-link-block-icon {
+        font-size: 16px;
+        opacity: 0.8;
+      }
+
+      .page-link-block-title {
+        font-weight: 600;
+        color: var(--color-primary, #d94e3b);
+        font-size: 1rem;
+      }
+
+      .page-link-block-preview {
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+        line-height: 1.5;
+        max-height: 4.5em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      &.loading {
+        opacity: 0.6;
+        pointer-events: none;
+      }
+    }
+
+    // Dark mode adjustments for page links
+    :host-context(.dark-mode) & {
+      .page-link {
+        background: rgba(217, 78, 59, 0.15);
+        border-color: rgba(217, 78, 59, 0.35);
+
+        &:hover {
+          background: rgba(217, 78, 59, 0.25);
+          border-color: rgba(217, 78, 59, 0.5);
+        }
+      }
+
+      .page-link-block {
+        background: rgba(255, 255, 255, 0.03);
+        border-color: rgba(255, 255, 255, 0.1);
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.06);
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+      }
+    }
+
     // Todo Box styles
     .todo-box {
       border: 1px solid var(--color-border);

@@ -1,0 +1,517 @@
+import { ObjectId } from 'mongodb';
+import { getDb } from '../db/client';
+import type {
+    PageContent,
+    PageLink,
+    PageLinksMeta,
+    LinkSearchResult,
+    UnlinkedMention,
+    GraphData,
+    GraphNode,
+    GraphEdge,
+} from '@maple/shared';
+
+/**
+ * Link Service
+ * Handles bi-directional link extraction, tracking, and graph queries
+ */
+
+/**
+ * Extract all page links from ProseMirror/TipTap content
+ */
+export function extractLinksFromContent(content: PageContent): PageLink[] {
+    const links: PageLink[] = [];
+
+    const traverse = (node: any): void => {
+        if (!node) return;
+
+        // Check for pageLink nodes (inline links)
+        if (node.type === 'pageLink') {
+            links.push({
+                pageId: node.attrs?.pageId,
+                title: node.attrs?.title || 'Untitled',
+                type: 'inline',
+            });
+        }
+
+        // Check for pageLinkBlock nodes (block embeds)
+        if (node.type === 'pageLinkBlock') {
+            links.push({
+                pageId: node.attrs?.pageId,
+                title: node.attrs?.title || 'Untitled',
+                type: 'block',
+            });
+        }
+
+        // Check for tagLink marks (future: #tag references)
+        if (node.marks) {
+            for (const mark of node.marks) {
+                if (mark.type === 'tagLink') {
+                    links.push({
+                        pageId: mark.attrs?.tagId,
+                        title: mark.attrs?.label || '',
+                        type: 'tag',
+                    });
+                }
+            }
+        }
+
+        // Recurse into children
+        if (node.content && Array.isArray(node.content)) {
+            for (const child of node.content) {
+                traverse(child);
+            }
+        }
+    };
+
+    traverse(content);
+
+    // Deduplicate links by pageId
+    const seen = new Set<string>();
+    return links.filter((link) => {
+        if (!link.pageId || seen.has(link.pageId)) return false;
+        seen.add(link.pageId);
+        return true;
+    });
+}
+
+/**
+ * Update forward and back links when a page's content changes
+ */
+export async function updateLinksForPage(
+    pageId: string,
+    content: PageContent,
+    pageTitle: string,
+): Promise<void> {
+    const db = getDb();
+    const pages = db.collection('pages');
+
+    // Extract new forward links from content
+    const newLinks = extractLinksFromContent(content);
+    const newLinkIds = new Set(newLinks.map((l) => l.pageId));
+
+    // Get current page with old forward links
+    const currentPage = await pages.findOne({ id: pageId });
+    const oldLinks = currentPage?.linksMeta?.forwardLinks || [];
+    const oldLinkIds = new Set(oldLinks.map((l: PageLink) => l.pageId));
+
+    // Find added and removed links
+    const addedLinks = newLinks.filter((l) => !oldLinkIds.has(l.pageId));
+    const removedLinkIds = [...oldLinkIds].filter((id) => !newLinkIds.has(id));
+
+    // Update this page's forward links
+    await pages.updateOne(
+        { id: pageId },
+        {
+            $set: {
+                'linksMeta.forwardLinks': newLinks,
+                'linksMeta.lastIndexedAt': new Date().toISOString(),
+            },
+        },
+    );
+
+    // Add backlinks to newly linked pages
+    for (const link of addedLinks) {
+        await pages.updateOne({ id: link.pageId }, {
+            $push: {
+                'linksMeta.backlinks': {
+                    pageId: pageId,
+                    title: pageTitle,
+                    type: link.type,
+                } as PageLink,
+            },
+        } as any);
+    }
+
+    // Remove backlinks from pages we no longer link to
+    if (removedLinkIds.length > 0) {
+        await pages.updateMany({ id: { $in: removedLinkIds as string[] } }, {
+            $pull: {
+                'linksMeta.backlinks': { pageId: pageId },
+            },
+        } as any);
+    }
+}
+
+/**
+ * Get all backlinks for a page
+ */
+export async function getBacklinks(pageId: string): Promise<PageLink[]> {
+    const db = getDb();
+    const page = await db.collection('pages').findOne({ id: pageId });
+    return page?.linksMeta?.backlinks || [];
+}
+
+/**
+ * Get all forward links for a page
+ */
+export async function getForwardLinks(pageId: string): Promise<PageLink[]> {
+    const db = getDb();
+    const page = await db.collection('pages').findOne({ id: pageId });
+    return page?.linksMeta?.forwardLinks || [];
+}
+
+/**
+ * Find unlinked mentions of a page's title in other pages
+ */
+export async function findUnlinkedMentions(
+    pageId: string,
+    userId: string,
+    notebookId?: string,
+): Promise<UnlinkedMention[]> {
+    const db = getDb();
+    const pages = db.collection('pages');
+
+    // Get the target page
+    const targetPage = await pages.findOne({ id: pageId });
+    if (!targetPage?.title || targetPage.title.length < 2) {
+        return [];
+    }
+
+    // Build query for pages that might contain the title
+    const query: any = {
+        id: { $ne: pageId },
+        userId: new ObjectId(userId),
+        isTrashed: { $ne: true },
+    };
+
+    if (notebookId) {
+        query.notebookId = new ObjectId(notebookId);
+    }
+
+    // Find pages and check for title mentions in content
+    const candidatePages = await pages.find(query).toArray();
+    const mentions: UnlinkedMention[] = [];
+    const linkedPageIds = new Set(
+        targetPage?.linksMeta?.backlinks?.map((l: PageLink) => l.pageId) || [],
+    );
+
+    for (const page of candidatePages) {
+        // Skip if already linked
+        if (linkedPageIds.has(page.id)) continue;
+
+        // Check if page content contains the title
+        const contentText = extractTextFromContent(page.content);
+        const titleLower = targetPage.title.toLowerCase();
+        const contentLower = contentText.toLowerCase();
+
+        if (contentLower.includes(titleLower)) {
+            // Extract context around the mention
+            const index = contentLower.indexOf(titleLower);
+            const start = Math.max(0, index - 50);
+            const end = Math.min(contentText.length, index + titleLower.length + 50);
+            const context =
+                (start > 0 ? '...' : '') +
+                contentText.slice(start, end) +
+                (end < contentText.length ? '...' : '');
+
+            mentions.push({
+                pageId: page.id,
+                title: page.title,
+                context,
+            });
+        }
+    }
+
+    return mentions.slice(0, 20); // Limit results
+}
+
+/**
+ * Extract plain text from content for search
+ */
+function extractTextFromContent(content: PageContent): string {
+    const texts: string[] = [];
+
+    const traverse = (node: any): void => {
+        if (!node) return;
+
+        if (node.text) {
+            texts.push(node.text);
+        }
+
+        if (node.content && Array.isArray(node.content)) {
+            for (const child of node.content) {
+                traverse(child);
+            }
+        }
+    };
+
+    traverse(content);
+    return texts.join(' ');
+}
+
+/**
+ * Search pages for linking autocomplete
+ */
+export async function searchPagesForLinking(
+    query: string,
+    userId: string,
+    options?: {
+        notebookId?: string;
+        excludePageId?: string;
+        limit?: number;
+    },
+): Promise<LinkSearchResult[]> {
+    const db = getDb();
+    const pages = db.collection('pages');
+    const notebooks = db.collection('notebooks');
+
+    const limit = options?.limit || 10;
+
+    // Build search query
+    const searchQuery: any = {
+        userId: new ObjectId(userId),
+        isTrashed: { $ne: true },
+        title: { $regex: query, $options: 'i' },
+    };
+
+    if (options?.notebookId) {
+        searchQuery.notebookId = new ObjectId(options.notebookId);
+    }
+
+    if (options?.excludePageId) {
+        searchQuery.id = { $ne: options.excludePageId };
+    }
+
+    const results = await pages
+        .find(searchQuery)
+        .project({
+            id: 1,
+            title: 1,
+            type: 1,
+            notebookId: 1,
+            updatedAt: 1,
+        })
+        .sort({ updatedAt: -1 })
+        .limit(limit)
+        .toArray();
+
+    // Get notebook names for display
+    const notebookIds = [...new Set(results.filter((r) => r.notebookId).map((r) => r.notebookId))];
+    const notebookDocs = await notebooks
+        .find({ _id: { $in: notebookIds } })
+        .project({ _id: 1, name: 1 })
+        .toArray();
+    const notebookMap = new Map(notebookDocs.map((n) => [n._id.toString(), n.name]));
+
+    return results.map((doc) => ({
+        id: doc.id,
+        title: doc.title,
+        type: doc.type,
+        notebookId: doc.notebookId?.toString(),
+        notebookName: doc.notebookId ? notebookMap.get(doc.notebookId.toString()) : undefined,
+        updatedAt: doc.updatedAt?.toISOString() || new Date().toISOString(),
+    }));
+}
+
+/**
+ * Handle page title rename - update all links that reference this page
+ */
+export async function handlePageRename(pageId: string, newTitle: string): Promise<void> {
+    const db = getDb();
+    const pages = db.collection('pages');
+
+    // Get pages that link to this page
+    const page = await pages.findOne({ id: pageId });
+    const backlinkPageIds = page?.linksMeta?.backlinks?.map((l: PageLink) => l.pageId) || [];
+
+    if (backlinkPageIds.length === 0) return;
+
+    // Update the title in all forward links pointing to this page
+    await pages.updateMany(
+        {
+            id: { $in: backlinkPageIds },
+            'linksMeta.forwardLinks.pageId': pageId,
+        },
+        {
+            $set: {
+                'linksMeta.forwardLinks.$[link].title': newTitle,
+            },
+        },
+        {
+            arrayFilters: [{ 'link.pageId': pageId }],
+        } as any,
+    );
+}
+
+/**
+ * Handle page deletion - clean up all link references
+ */
+export async function handlePageDeletion(pageId: string): Promise<void> {
+    const db = getDb();
+    const pages = db.collection('pages');
+
+    // Get the page being deleted
+    const page = await pages.findOne({ id: pageId });
+    if (!page) return;
+
+    // Remove backlinks from pages this page linked to
+    const forwardLinkIds = page.linksMeta?.forwardLinks?.map((l: PageLink) => l.pageId) || [];
+    if (forwardLinkIds.length > 0) {
+        await pages.updateMany({ id: { $in: forwardLinkIds } }, {
+            $pull: {
+                'linksMeta.backlinks': { pageId: pageId },
+            },
+        } as any);
+    }
+
+    // Note: We don't remove the backlinks from other pages pointing to this page
+    // They will show as "Page not found" which preserves the user's intent
+}
+
+/**
+ * Get graph data for knowledge graph visualization
+ */
+export async function getGraphData(userId: string, notebookId?: string): Promise<GraphData> {
+    const db = getDb();
+    const pages = db.collection('pages');
+
+    // Build query
+    const query: any = {
+        userId: new ObjectId(userId),
+        isTrashed: { $ne: true },
+    };
+
+    if (notebookId) {
+        query.notebookId = new ObjectId(notebookId);
+    }
+
+    // Get all pages
+    const allPages = await pages
+        .find(query)
+        .project({
+            id: 1,
+            title: 1,
+            type: 1,
+            'linksMeta.forwardLinks': 1,
+            'linksMeta.backlinks': 1,
+        })
+        .toArray();
+
+    // Build nodes
+    const nodes: GraphNode[] = allPages.map((page) => ({
+        id: page.id,
+        label: page.title || 'Untitled',
+        type: page.type || 'memo',
+        linkCount:
+            (page.linksMeta?.forwardLinks?.length || 0) + (page.linksMeta?.backlinks?.length || 0),
+    }));
+
+    // Build edges (deduplicated)
+    const edges: GraphEdge[] = [];
+    const edgeSet = new Set<string>();
+    const pageIdSet = new Set(allPages.map((p) => p.id));
+
+    for (const page of allPages) {
+        const forwardLinks = page.linksMeta?.forwardLinks || [];
+        for (const link of forwardLinks) {
+            // Only include edges where both nodes exist in the result set
+            if (!pageIdSet.has(link.pageId)) continue;
+
+            const edgeId = `${page.id}-${link.pageId}`;
+            if (!edgeSet.has(edgeId)) {
+                edges.push({
+                    source: page.id,
+                    target: link.pageId,
+                    type: link.type || 'inline',
+                });
+                edgeSet.add(edgeId);
+            }
+        }
+    }
+
+    return { nodes, edges };
+}
+
+/**
+ * Get local graph centered on a specific page
+ */
+export async function getLocalGraph(
+    pageId: string,
+    userId: string,
+    depth: number = 1,
+): Promise<GraphData> {
+    const db = getDb();
+    const pages = db.collection('pages');
+
+    // BFS to get nodes within depth
+    const visited = new Set<string>();
+    const queue: Array<{ id: string; level: number }> = [{ id: pageId, level: 0 }];
+    const nodes: GraphNode[] = [];
+    const edges: GraphEdge[] = [];
+
+    while (queue.length > 0) {
+        const { id, level } = queue.shift()!;
+        if (visited.has(id) || level > depth) continue;
+        visited.add(id);
+
+        const page = await pages.findOne({
+            id,
+            userId: new ObjectId(userId),
+        });
+        if (!page) continue;
+
+        nodes.push({
+            id: page.id,
+            label: page.title || 'Untitled',
+            type: page.type || 'memo',
+            linkCount:
+                (page.linksMeta?.forwardLinks?.length || 0) +
+                (page.linksMeta?.backlinks?.length || 0),
+            isCenter: id === pageId,
+        });
+
+        // Add connected pages to queue
+        const allLinks = [
+            ...(page.linksMeta?.forwardLinks || []),
+            ...(page.linksMeta?.backlinks || []),
+        ];
+
+        for (const link of allLinks) {
+            if (!visited.has(link.pageId)) {
+                queue.push({ id: link.pageId, level: level + 1 });
+
+                // Add edge
+                const isForward = page.linksMeta?.forwardLinks?.some(
+                    (l: PageLink) => l.pageId === link.pageId,
+                );
+                edges.push({
+                    source: isForward ? id : link.pageId,
+                    target: isForward ? link.pageId : id,
+                    type: link.type || 'inline',
+                });
+            }
+        }
+    }
+
+    return { nodes, edges };
+}
+
+/**
+ * Bulk reindex links for all pages (migration/repair)
+ */
+export async function reindexAllLinks(userId: string, notebookId?: string): Promise<number> {
+    const db = getDb();
+    const pages = db.collection('pages');
+
+    const query: any = {
+        userId: new ObjectId(userId),
+        isTrashed: { $ne: true },
+    };
+
+    if (notebookId) {
+        query.notebookId = new ObjectId(notebookId);
+    }
+
+    const allPages = await pages.find(query).toArray();
+    let count = 0;
+
+    for (const page of allPages) {
+        if (page.content) {
+            await updateLinksForPage(page.id, page.content, page.title);
+            count++;
+        }
+    }
+
+    return count;
+}

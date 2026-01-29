@@ -275,6 +275,36 @@ export const defaultSlashCommands: SlashCommandItem[] = [
       );
     },
   },
+  {
+    title: 'Page Link',
+    description: 'Link to another page',
+    icon: '🔗',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      // Dispatch event to open page link search
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('open-page-link-search', {
+          bubbles: true,
+          detail: { range, mode: 'inline' },
+        }),
+      );
+    },
+  },
+  {
+    title: 'Page Embed',
+    description: 'Embed a page with preview',
+    icon: '📎',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      // Dispatch event to open page link search for embed
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('open-page-link-search', {
+          bubbles: true,
+          detail: { range, mode: 'block' },
+        }),
+      );
+    },
+  },
 ];
 
 export interface SlashCommandsOptions {
