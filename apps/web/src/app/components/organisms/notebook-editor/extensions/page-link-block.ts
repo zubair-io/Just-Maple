@@ -1,4 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core';
+import type { Observable, Subscription } from 'rxjs';
 
 // ============================================
 // Page Link Block Types
@@ -15,6 +16,8 @@ export interface PageLinkBlockOptions {
   HTMLAttributes: Record<string, unknown>;
   // Callback when a link is clicked
   onLinkClick?: (pageId: string) => void;
+  // Callback to get a reactive page title observable
+  getPageTitle$?: (pageId: string) => Observable<string>;
 }
 
 declare module '@tiptap/core' {
@@ -51,6 +54,7 @@ export const PageLinkBlock = Node.create<PageLinkBlockOptions>({
     return {
       HTMLAttributes: {},
       onLinkClick: undefined,
+      getPageTitle$: undefined,
     };
   },
 
@@ -147,14 +151,14 @@ export const PageLinkBlock = Node.create<PageLinkBlockOptions>({
   addNodeView() {
     return ({ node }) => {
       const pageId = node.attrs['pageId'] as string;
-      const title = node.attrs['title'] as string;
+      const initialTitle = node.attrs['title'] as string;
       const showPreview = node.attrs['showPreview'] as boolean;
 
       // Create container
       const dom = document.createElement('div');
       dom.setAttribute('data-type', 'page-link-block');
       dom.setAttribute('data-page-id', pageId);
-      dom.setAttribute('data-title', title);
+      dom.setAttribute('data-title', initialTitle);
       dom.classList.add('page-link-block');
       dom.contentEditable = 'false';
 
@@ -171,10 +175,19 @@ export const PageLinkBlock = Node.create<PageLinkBlockOptions>({
       // Title
       const titleEl = document.createElement('span');
       titleEl.classList.add('page-link-block-title');
-      titleEl.textContent = title || 'Untitled';
+      titleEl.textContent = initialTitle || 'Untitled';
       header.appendChild(titleEl);
 
       dom.appendChild(header);
+
+      // Subscribe to live title updates from the store
+      let subscription: Subscription | undefined;
+      if (this.options.getPageTitle$) {
+        subscription = this.options.getPageTitle$(pageId).subscribe((liveTitle) => {
+          titleEl.textContent = liveTitle || 'Untitled';
+          dom.setAttribute('data-title', liveTitle);
+        });
+      }
 
       // Preview container (will be populated by Angular)
       if (showPreview) {
@@ -190,11 +203,14 @@ export const PageLinkBlock = Node.create<PageLinkBlockOptions>({
         event.preventDefault();
         event.stopPropagation();
 
+        // Get current title from the DOM (which is kept up to date by subscription)
+        const currentTitle = titleEl.textContent || initialTitle;
+
         // Dispatch custom event for Angular to handle
         dom.dispatchEvent(
           new CustomEvent('page-link-block-click', {
             bubbles: true,
-            detail: { pageId, title },
+            detail: { pageId, title: currentTitle },
           }),
         );
 
@@ -208,7 +224,7 @@ export const PageLinkBlock = Node.create<PageLinkBlockOptions>({
         dom.dispatchEvent(
           new CustomEvent('page-link-block-mounted', {
             bubbles: true,
-            detail: { pageId, title, element: dom },
+            detail: { pageId, title: initialTitle, element: dom },
           }),
         );
       }, 0);
@@ -216,6 +232,9 @@ export const PageLinkBlock = Node.create<PageLinkBlockOptions>({
       return {
         dom,
         destroy: () => {
+          // Clean up subscription when node is removed
+          subscription?.unsubscribe();
+
           dom.dispatchEvent(
             new CustomEvent('page-link-block-unmounted', {
               bubbles: true,
@@ -228,10 +247,13 @@ export const PageLinkBlock = Node.create<PageLinkBlockOptions>({
             return false;
           }
 
-          const newTitle = updatedNode.attrs['title'] as string;
-          titleEl.textContent = newTitle || 'Untitled';
-          dom.setAttribute('data-title', newTitle);
+          // If pageId changed, we need to resubscribe
+          const newPageId = updatedNode.attrs['pageId'] as string;
+          if (newPageId !== pageId) {
+            return false;
+          }
 
+          // Note: We don't update from node attrs anymore since we get live updates from store
           return true;
         },
       };

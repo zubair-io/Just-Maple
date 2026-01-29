@@ -181,6 +181,25 @@ export class PageService {
   }
 
   /**
+   * Get a page's title as an Observable (reactive)
+   * Used by page links to show live updated titles
+   */
+  getPageTitle$(pageId: string): Observable<string> {
+    return this.store.pipe(
+      selectEntity(pageId),
+      map((page) => page?.title ?? 'Untitled'),
+    );
+  }
+
+  /**
+   * Get a page's title synchronously from the store
+   */
+  getPageTitleSync(pageId: string): string {
+    const page = this.store.query(getEntity(pageId));
+    return page?.title ?? 'Untitled';
+  }
+
+  /**
    * Get selected page ID synchronously
    */
   selectedPageId(): string | null {
