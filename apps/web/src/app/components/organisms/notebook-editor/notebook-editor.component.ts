@@ -64,6 +64,10 @@ import { RecordingBlockComponent } from '../../molecules/recording-block/recordi
 import { PaperEmbedComponent } from '../../molecules/paper-embed/paper-embed.component';
 import { EditorToolbarComponent } from '../../molecules/editor-toolbar/editor-toolbar.component';
 import { AiBotWidgetComponent } from '../../molecules/ai-bot-widget/ai-bot-widget.component';
+import { AIPreviewPanelComponent } from '../../molecules/ai-preview-panel/ai-preview-panel.component';
+import { AICommandMenuComponent } from '../../molecules/ai-command-menu/ai-command-menu.component';
+import { AIWritingService } from '../../../services/ai-writing.service';
+import type { AIWritingType } from '@maple/shared';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 
@@ -91,6 +95,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly activatedRoute = inject(ActivatedRoute);
   private readonly memoImageService = inject(MemoImageService);
+  private readonly aiWritingService = inject(AIWritingService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
@@ -122,6 +127,18 @@ export class NotebookEditorComponent implements OnDestroy {
     string,
     { componentRef: any; element: HTMLElement; editor: Editor; getPos: () => number | undefined }
   >();
+
+  // AI Writing Assistant state
+  private aiPreviewComponent: { componentRef: any; element: HTMLElement } | null = null;
+  private aiCommandMenuComponent: { componentRef: any; element: HTMLElement } | null = null;
+  private pendingAICommand: {
+    type: AIWritingType;
+    selection: string;
+    context: string;
+    instruction?: string;
+    targetLanguage?: string;
+    insertPosition: number;
+  } | null = null;
 
   constructor() {
     // Initialize editor after view is ready
@@ -327,6 +344,9 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up inline mention listeners
         this.setupInlineMentionListeners();
+
+        // Set up AI writing assistant listeners
+        this.setupAIWritingListeners();
 
         // Check for Claude bot availability
         this.checkClaudeBotAvailability();
@@ -1040,6 +1060,201 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
+   * Set up listeners for AI writing assistant events
+   */
+  private setupAIWritingListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    // Listen for AI writing command events from slash commands
+    editorElement.addEventListener('ai-writing-command', ((event: CustomEvent) => {
+      const { type } = event.detail as { type: AIWritingType };
+      this.handleAIWritingCommand(type);
+    }) as EventListener);
+
+    // Listen for keyboard shortcut (Cmd/Ctrl+J) to open AI menu
+    editorElement.addEventListener('keydown', ((event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'j') {
+        event.preventDefault();
+        this.openAICommandMenu();
+      }
+    }) as EventListener);
+  }
+
+  /**
+   * Handle an AI writing command
+   */
+  private handleAIWritingCommand(
+    type: AIWritingType,
+    instruction?: string,
+    targetLanguage?: string,
+  ): void {
+    if (!this._editor) return;
+
+    // Get selected text and context
+    const { state } = this._editor;
+    const { from, to, empty } = state.selection;
+    const selectedText = empty ? '' : state.doc.textBetween(from, to, ' ');
+
+    // Get surrounding context (up to 2000 chars before cursor)
+    const contextEnd = from;
+    const contextStart = Math.max(0, contextEnd - 2000);
+    const context = state.doc.textBetween(contextStart, contextEnd, '\n', ' ');
+
+    // Store the command info
+    this.pendingAICommand = {
+      type,
+      selection: selectedText,
+      context,
+      instruction,
+      targetLanguage,
+      insertPosition: empty ? from : to,
+    };
+
+    // Show the AI preview panel
+    this.showAIPreviewPanel();
+  }
+
+  /**
+   * Open the AI command menu
+   */
+  private openAICommandMenu(): void {
+    if (!this._editor || this.aiCommandMenuComponent) return;
+
+    const { state, view } = this._editor;
+    const { from, to, empty } = state.selection;
+
+    // Get cursor position for menu placement
+    const coords = view.coordsAtPos(from);
+
+    // Create menu element
+    const menuElement = document.createElement('div');
+    menuElement.classList.add('ai-command-menu-container');
+    document.body.appendChild(menuElement);
+
+    // Create Angular component
+    const componentRef = createComponent(AICommandMenuComponent, {
+      environmentInjector: this.injector,
+      hostElement: menuElement,
+    });
+
+    // Set inputs
+    componentRef.setInput('position', { top: coords.bottom + 8, left: coords.left });
+    componentRef.setInput('hasSelection', !empty);
+
+    // Handle command selection
+    componentRef.instance.commandSelected.subscribe(
+      (cmd: { type: AIWritingType; instruction?: string; targetLanguage?: string }) => {
+        this.closeAICommandMenu();
+        this.handleAIWritingCommand(cmd.type, cmd.instruction, cmd.targetLanguage);
+      },
+    );
+
+    // Handle close
+    componentRef.instance.closed.subscribe(() => {
+      this.closeAICommandMenu();
+    });
+
+    this.appRef.attachView(componentRef.hostView);
+    this.aiCommandMenuComponent = { componentRef, element: menuElement };
+  }
+
+  /**
+   * Close the AI command menu
+   */
+  private closeAICommandMenu(): void {
+    if (!this.aiCommandMenuComponent) return;
+
+    this.appRef.detachView(this.aiCommandMenuComponent.componentRef.hostView);
+    this.aiCommandMenuComponent.componentRef.destroy();
+    this.aiCommandMenuComponent.element.remove();
+    this.aiCommandMenuComponent = null;
+  }
+
+  /**
+   * Show the AI preview panel for streaming generation
+   */
+  private showAIPreviewPanel(): void {
+    if (!this._editor || !this.pendingAICommand || this.aiPreviewComponent) return;
+
+    const { view } = this._editor;
+    const coords = view.coordsAtPos(this.pendingAICommand.insertPosition);
+
+    // Create panel element
+    const panelElement = document.createElement('div');
+    panelElement.classList.add('ai-preview-panel-container');
+    document.body.appendChild(panelElement);
+
+    // Create Angular component
+    const componentRef = createComponent(AIPreviewPanelComponent, {
+      environmentInjector: this.injector,
+      hostElement: panelElement,
+    });
+
+    // Set inputs
+    componentRef.setInput('notebookId', this.notebookId());
+    componentRef.setInput('position', { top: coords.bottom + 8, left: coords.left });
+    componentRef.setInput('actionType', this.pendingAICommand.type);
+    componentRef.setInput('selection', this.pendingAICommand.selection);
+    componentRef.setInput('context', this.pendingAICommand.context);
+    componentRef.setInput('instruction', this.pendingAICommand.instruction || '');
+    componentRef.setInput('targetLanguage', this.pendingAICommand.targetLanguage || '');
+
+    // Handle accept
+    componentRef.instance.accepted.subscribe((text: string) => {
+      this.insertAIGeneratedText(text);
+      this.closeAIPreviewPanel();
+    });
+
+    // Handle reject/close
+    componentRef.instance.rejected.subscribe(() => {
+      this.closeAIPreviewPanel();
+    });
+
+    componentRef.instance.closed.subscribe(() => {
+      this.closeAIPreviewPanel();
+    });
+
+    this.appRef.attachView(componentRef.hostView);
+    this.aiPreviewComponent = { componentRef, element: panelElement };
+  }
+
+  /**
+   * Close the AI preview panel
+   */
+  private closeAIPreviewPanel(): void {
+    if (!this.aiPreviewComponent) return;
+
+    this.appRef.detachView(this.aiPreviewComponent.componentRef.hostView);
+    this.aiPreviewComponent.componentRef.destroy();
+    this.aiPreviewComponent.element.remove();
+    this.aiPreviewComponent = null;
+    this.pendingAICommand = null;
+  }
+
+  /**
+   * Insert AI-generated text into the editor
+   */
+  private insertAIGeneratedText(text: string): void {
+    if (!this._editor || !this.pendingAICommand) return;
+
+    const { type, selection, insertPosition } = this.pendingAICommand;
+    const { state } = this._editor;
+    const { from, to, empty } = state.selection;
+
+    if (type === 'continue' || type === 'summarize' || type === 'custom') {
+      // Insert at cursor position
+      this._editor.chain().focus().insertContentAt(insertPosition, text).run();
+    } else if (selection && !empty) {
+      // Replace selected text
+      this._editor.chain().focus().deleteSelection().insertContent(text).run();
+    } else {
+      // Insert at cursor
+      this._editor.chain().focus().insertContent(text).run();
+    }
+  }
+
+  /**
    * Check if Claude bot is available for the current notebook
    */
   private checkClaudeBotAvailability(): void {
@@ -1367,6 +1582,10 @@ export class NotebookEditorComponent implements OnDestroy {
       component.componentRef.destroy();
     });
     this.aiBotWidgetComponents.clear();
+
+    // Clean up AI writing assistant components
+    this.closeAIPreviewPanel();
+    this.closeAICommandMenu();
 
     if (this._editor) {
       this._editor.destroy();
