@@ -1620,3 +1620,221 @@ async function migrateLinkIndexes() {
 - `Cmd+K`: Insert page link
 - `Cmd+Shift+K`: Insert block link
 - `#`: Insert tag (auto-detected)
+
+---
+
+## Appendix B: Spec Alignment
+
+### Alignment with Product Features Spec (docs/product-features-spec.md)
+
+This plan implements **Feature #5 (Bi-directional Linking)** and **Feature #6 (Tags/Labels)** from the product roadmap.
+
+#### Feature #5 Coverage
+
+| Spec Requirement           | Implementation                                         |
+| -------------------------- | ------------------------------------------------------ |
+| Wiki Links `[[Page Name]]` | Phase 1: WikiLinkInput extension                       |
+| Autocomplete               | Phase 1: PageLinkSearchComponent                       |
+| Backlinks Panel            | Phase 3: BacklinksPanelComponent                       |
+| Unlinked Mentions          | Phase 2: LinkService.findUnlinkedMentions()            |
+| Create from Link           | Phase 1: createNew output in search modal              |
+| Hover Preview              | Phase 3: LinkHoverPreview component (see below)        |
+| Graph View                 | Phase 5: KnowledgeGraphComponent                       |
+| Link Rename                | Phase 6: handlePageRename() service method (see below) |
+
+#### Feature #6 Coverage
+
+| Spec Requirement       | Implementation                             |
+| ---------------------- | ------------------------------------------ |
+| Add/remove tags        | Phase 4: TagLink mark extension            |
+| Filter sidebar by tags | Phase 4: Tag filter in sidebar (see below) |
+| Tag management UI      | Phase 4: Tag pages + tag view              |
+
+---
+
+## Appendix C: Additional Components (Spec Alignment)
+
+### C.1 Link Hover Preview Component
+
+**New File: `apps/web/src/app/components/atoms/link-hover-preview/link-hover-preview.component.ts`**
+
+```typescript
+@Component({
+    selector: 'app-link-hover-preview',
+    standalone: true,
+    imports: [CommonModule],
+    template: `
+        <div
+            class="hover-preview"
+            [style.top.px]="position().y"
+            [style.left.px]="position().x"
+            *ngIf="isVisible()"
+        >
+            <div class="preview-header">
+                <span class="page-icon">📄</span>
+                <span class="page-title">{{ pageData()?.title }}</span>
+            </div>
+            <div class="preview-content">
+                {{ pageData()?.preview }}
+            </div>
+            <div class="preview-meta">Updated {{ pageData()?.updatedAt | date: 'short' }}</div>
+        </div>
+    `,
+    styleUrl: './link-hover-preview.component.scss',
+})
+export class LinkHoverPreviewComponent {
+    private readonly http = inject(HttpClient);
+
+    readonly pageId = input<string>();
+    readonly position = input<{ x: number; y: number }>({ x: 0, y: 0 });
+    readonly isVisible = signal(false);
+
+    readonly pageData = signal<{
+        title: string;
+        preview: string;
+        updatedAt: string;
+    } | null>(null);
+
+    private hoverTimeout: any;
+
+    showPreview(pageId: string, position: { x: number; y: number }) {
+        this.hoverTimeout = setTimeout(async () => {
+            const res = await firstValueFrom(this.http.get<{ page: Page }>(`/api/pages/${pageId}`));
+            const text = extractText(res.page.content);
+            this.pageData.set({
+                title: res.page.title,
+                preview: text.slice(0, 200) + (text.length > 200 ? '...' : ''),
+                updatedAt: res.page.updatedAt,
+            });
+            this.isVisible.set(true);
+        }, 300); // 300ms delay before showing
+    }
+
+    hidePreview() {
+        clearTimeout(this.hoverTimeout);
+        this.isVisible.set(false);
+    }
+}
+```
+
+### C.2 Page Rename Handler (Updates All Links)
+
+**Add to: `apps/api/src/services/link.service.ts`**
+
+```typescript
+/**
+ * Handle page title rename - update all backlinks with new title
+ */
+async handlePageRename(pageId: string, newTitle: string): Promise<void> {
+    const db = getDb();
+    const pages = db.collection('pages');
+
+    // Get pages that link to this page
+    const page = await pages.findOne({ id: pageId });
+    const backlinkPageIds = page?.linksMeta?.backlinks?.map((l) => l.pageId) || [];
+
+    if (backlinkPageIds.length === 0) return;
+
+    // Update the title in all forward links pointing to this page
+    await pages.updateMany(
+        {
+            id: { $in: backlinkPageIds },
+            'linksMeta.forwardLinks.pageId': pageId,
+        },
+        {
+            $set: {
+                'linksMeta.forwardLinks.$[link].title': newTitle,
+            },
+        },
+        {
+            arrayFilters: [{ 'link.pageId': pageId }],
+        }
+    );
+
+    // Update this page's backlinks array with new title
+    await pages.updateOne(
+        { id: pageId },
+        {
+            $set: {
+                'linksMeta.backlinks.$[].title': newTitle,
+            },
+        }
+    );
+}
+```
+
+**Integration in page update route:**
+
+```typescript
+// In PUT /api/pages/:id handler
+.put('/:id', async ({ params, body, auth, set }) => {
+    const existingPage = await findPageById(params.id);
+
+    // Check if title changed
+    if (body.title && body.title !== existingPage?.title) {
+        await linkService.handlePageRename(params.id, body.title);
+    }
+
+    // ... rest of update logic
+})
+```
+
+### C.3 Sidebar Tag Filter
+
+**Add to: `apps/web/src/app/components/organisms/sidebar/sidebar.component.ts`**
+
+```typescript
+// Add to existing sidebar component
+readonly selectedTags = signal<string[]>([]);
+readonly availableTags = signal<Tag[]>([]);
+
+readonly filteredPages = computed(() => {
+    const tags = this.selectedTags();
+    const pages = this.allPages();
+
+    if (tags.length === 0) return pages;
+
+    return pages.filter((page) => {
+        const pageTags = page.linksMeta?.forwardLinks
+            ?.filter((l) => l.type === 'tag')
+            .map((l) => l.pageId) || [];
+        return tags.some((tagId) => pageTags.includes(tagId));
+    });
+});
+
+toggleTagFilter(tagId: string) {
+    this.selectedTags.update((tags) => {
+        if (tags.includes(tagId)) {
+            return tags.filter((t) => t !== tagId);
+        }
+        return [...tags, tagId];
+    });
+}
+```
+
+**Template addition:**
+
+```html
+<!-- Tag filter chips in sidebar header -->
+<div class="tag-filters" *ngIf="availableTags().length > 0">
+    @for (tag of availableTags(); track tag.id) {
+    <button
+        class="tag-chip"
+        [class.active]="selectedTags().includes(tag.id)"
+        (click)="toggleTagFilter(tag.id)"
+    >
+        #{{ tag.label }}
+    </button>
+    }
+</div>
+```
+
+---
+
+## Appendix D: Spec Deviations (Intentional)
+
+| Spec Design                          | Plan Design                               | Rationale                                                                      |
+| ------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------ |
+| Separate `page_links` collection     | Denormalized `linksMeta` on Page          | Matches existing `todoMeta` pattern; faster reads; atomic updates with content |
+| `outgoingLinks: string[]` (IDs only) | `forwardLinks: PageLink[]` (full objects) | Includes type, title, context for richer UI without extra queries              |
+| Tags as separate system              | Tags as pages with bidirectional links    | Enables notes about tags, Roam/Obsidian-style knowledge management             |
