@@ -1,4 +1,5 @@
 import * as Y from 'yjs';
+import { ObjectId } from 'mongodb';
 import { getDb } from '../db/client';
 import { findPageByIdForCollab } from './page.repo';
 import { getMemoState } from './memo.repo';
@@ -131,7 +132,11 @@ export async function reindexAllForUser(userId: string): Promise<void> {
     const db = getDb();
 
     // Get all pages for the user
-    const pages = await db.collection('pages').find({ userId }).project({ id: 1 }).toArray();
+    const pages = await db
+        .collection('pages')
+        .find({ userId: new ObjectId(userId) })
+        .project({ id: 1 })
+        .toArray();
 
     console.log(`[SearchIndex] Reindexing ${pages.length} pages for user ${userId}`);
 
