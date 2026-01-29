@@ -16,3 +16,4 @@ export * from './whiteboard';
 export * from './recording';
 export * from './todo';
 export * from './ai-writing';
+export * from './template';

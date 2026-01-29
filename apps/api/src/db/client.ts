@@ -1,6 +1,7 @@
 import { MongoClient, Db } from 'mongodb';
 import { config } from '../config';
 import { seedBotTemplates } from './seed-bots';
+import { seedSystemTemplates } from './seed-templates';
 
 let client: MongoClient | null = null;
 let db: Db | null = null;
@@ -28,6 +29,9 @@ export async function connectToDatabase(): Promise<Db> {
 
         // Seed bot templates
         await seedBotTemplates();
+
+        // Seed system templates
+        await seedSystemTemplates();
 
         return db;
     } catch (error) {
@@ -170,6 +174,12 @@ async function createIndexes(database: Db): Promise<void> {
     // Recordings collection
     await database.collection('recordings').createIndex({ id: 1, userId: 1 }); // For lookup by client-generated ID
     await database.collection('recordings').createIndex({ userId: 1, createdAt: -1 }); // For user's recordings
+
+    // Templates collection
+    await createUniqueIndex(database, 'templates', { id: 1 }, 'id');
+    await database.collection('templates').createIndex({ userId: 1, updatedAt: -1 }); // For user's templates
+    await database.collection('templates').createIndex({ isSystem: 1 }); // For system templates
+    await database.collection('templates').createIndex({ category: 1 }); // For filtering by category
 
     console.log('Database indexes created');
 }
