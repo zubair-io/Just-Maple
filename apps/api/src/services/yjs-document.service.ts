@@ -6,6 +6,7 @@ import {
     memoExists,
 } from '../repositories/memo.repo';
 import { realtimeWSService } from './realtime-ws.service';
+import { maybeCreateSnapshot } from './memo-version.service';
 
 /**
  * YJS Document Manager Service
@@ -191,6 +192,11 @@ class YJSDocumentService {
         try {
             await this.persistDocument(noteId, ydoc);
             console.log(`[YJS] Saved document to database: ${noteId}`);
+
+            // Check if we should create a version snapshot
+            maybeCreateSnapshot(noteId, ydoc).catch((err) => {
+                console.error(`[YJS] Failed to create version snapshot for ${noteId}:`, err);
+            });
         } catch (error) {
             console.error(`[YJS] Failed to save document ${noteId}:`, error);
         } finally {
