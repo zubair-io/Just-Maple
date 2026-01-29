@@ -13,6 +13,7 @@ import { botRoutes } from './routes/bots';
 import { legoRoutes } from './routes/lego';
 import { collabRoutes } from './routes/collab';
 import { memoRoutes } from './routes/memo';
+import { memoVersionRoutes } from './routes/memo-versions';
 import { storageRoutes } from './routes/storage';
 import { whiteboardRoutes } from './routes/whiteboard';
 import { recordingRoutes } from './routes/recordings';
@@ -69,6 +70,7 @@ async function main() {
         .use(legoRoutes)
         .use(collabRoutes)
         .use(memoRoutes)
+        .use(memoVersionRoutes)
         .use(storageRoutes)
         .use(whiteboardRoutes)
         .use(recordingRoutes)

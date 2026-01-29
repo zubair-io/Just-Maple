@@ -1,0 +1,156 @@
+@if (isOpen()) {
+  <!-- Backdrop -->
+  <div class="fixed inset-0 bg-black/20 z-40 md:bg-transparent" (click)="close.emit()"></div>
+
+  <!-- Panel -->
+  <div
+    class="fixed right-0 top-0 h-full w-full max-w-sm bg-[var(--color-bg)] border-l border-[var(--color-border)] shadow-xl z-50 flex flex-col"
+  >
+    <!-- Header -->
+    <div class="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-rounded text-lg text-[var(--color-text-muted)]">history</span>
+        <h2 class="font-medium text-[var(--color-text-main)]">Version History</h2>
+      </div>
+      <button
+        (click)="close.emit()"
+        class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+      >
+        <span class="material-symbols-rounded text-xl">close</span>
+      </button>
+    </div>
+
+    <!-- Error message -->
+    @if (error()) {
+      <div
+        class="mx-4 mt-3 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm"
+      >
+        {{ error() }}
+      </div>
+    }
+
+    <!-- Version list -->
+    <div class="flex-1 overflow-y-auto">
+      @if (isLoading() && versions().length === 0) {
+        <!-- Loading state -->
+        <div class="flex items-center justify-center py-12">
+          <div
+            class="w-6 h-6 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"
+          ></div>
+        </div>
+      } @else if (versions().length === 0) {
+        <!-- Empty state -->
+        <div class="flex flex-col items-center justify-center py-12 px-4 text-center">
+          <span class="material-symbols-rounded text-4xl text-[var(--color-text-muted)] mb-2"
+            >history</span
+          >
+          <p class="text-[var(--color-text-muted)] text-sm">No versions yet</p>
+          <p class="text-[var(--color-text-muted)] text-xs mt-1">
+            Versions are created automatically as you edit
+          </p>
+        </div>
+      } @else {
+        <!-- Version items -->
+        <div class="py-2">
+          @for (version of versions(); track version._id) {
+            <button
+              (click)="selectVersion(version._id)"
+              class="w-full px-4 py-3 text-left hover:bg-[var(--color-surface-hover)] transition-colors"
+              [class.bg-[var(--color-primary)]/10]="selectedVersionId() === version._id"
+            >
+              <div class="flex items-start gap-3">
+                <!-- Icon -->
+                <div
+                  class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                  [class.bg-[var(--color-primary)]/10]="version.trigger === 'manual'"
+                  [class.bg-[var(--color-surface-hover)]]="version.trigger !== 'manual'"
+                >
+                  <span
+                    class="material-symbols-rounded text-base"
+                    [class.text-[var(--color-primary)]]="version.trigger === 'manual'"
+                    [class.text-[var(--color-text-muted)]]="version.trigger !== 'manual'"
+                  >
+                    {{ getTriggerIcon(version.trigger) }}
+                  </span>
+                </div>
+
+                <!-- Content -->
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-[var(--color-text-main)]">
+                      {{ formatTimeAgo(version.createdAt) }}
+                    </span>
+                    <span
+                      class="text-xs px-1.5 py-0.5 rounded bg-[var(--color-surface-hover)] text-[var(--color-text-muted)]"
+                    >
+                      {{ formatTrigger(version.trigger) }}
+                    </span>
+                  </div>
+
+                  @if (version.label) {
+                    <p class="text-sm text-[var(--color-primary)] mt-0.5 truncate">
+                      {{ version.label }}
+                    </p>
+                  }
+
+                  @if (version.contentPreview) {
+                    <p class="text-xs text-[var(--color-text-muted)] mt-1 line-clamp-2">
+                      {{ version.contentPreview }}
+                    </p>
+                  }
+
+                  @if (version.wordCount) {
+                    <p class="text-xs text-[var(--color-text-muted)] mt-1">
+                      {{ version.wordCount }} words
+                    </p>
+                  }
+                </div>
+              </div>
+            </button>
+          }
+
+          <!-- Load more button -->
+          @if (hasMore()) {
+            <div class="px-4 py-2">
+              <button
+                (click)="loadMore()"
+                [disabled]="isLoading()"
+                class="w-full py-2 text-sm text-[var(--color-primary)] hover:bg-[var(--color-surface-hover)] rounded-lg transition-colors disabled:opacity-50"
+              >
+                @if (isLoading()) {
+                  Loading...
+                } @else {
+                  Load more
+                }
+              </button>
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- Footer with restore button -->
+    @if (selectedVersion()) {
+      <div class="border-t border-[var(--color-border)] px-4 py-3">
+        <button
+          (click)="restoreVersion()"
+          [disabled]="isRestoring()"
+          class="w-full py-2.5 px-4 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          @if (isRestoring()) {
+            <div
+              class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
+            ></div>
+            Restoring...
+          } @else {
+            <span class="material-symbols-rounded text-lg">restore</span>
+            Restore this version
+          }
+        </button>
+        <p class="text-xs text-[var(--color-text-muted)] text-center mt-2">
+          A backup will be created before restoring
+        </p>
+      </div>
+    }
+  </div>
+}

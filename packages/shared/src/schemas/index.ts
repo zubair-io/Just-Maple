@@ -10,6 +10,7 @@ export * from './collectible-registry';
 export * from './notification';
 export * from './collab';
 export * from './memo';
+export * from './memo-version';
 export * from './offline-queue';
 export * from './signaling';
 export * from './whiteboard';

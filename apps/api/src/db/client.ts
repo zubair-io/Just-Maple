@@ -171,6 +171,10 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('recordings').createIndex({ id: 1, userId: 1 }); // For lookup by client-generated ID
     await database.collection('recordings').createIndex({ userId: 1, createdAt: -1 }); // For user's recordings
 
+    // Memo versions collection (version history for memos)
+    await database.collection('memo_versions').createIndex({ noteId: 1, createdAt: -1 }); // Primary query: versions for a memo, newest first
+    await database.collection('memo_versions').createIndex({ noteId: 1, version: 1 }); // For cleanup/retention policy
+
     console.log('Database indexes created');
 }
 
