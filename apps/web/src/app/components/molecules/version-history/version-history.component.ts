@@ -186,7 +186,7 @@ export class VersionHistoryComponent {
         className = 'mb-2';
         break;
       case 'heading':
-        const level = attrs['level'] || 1;
+        const level = Number(attrs['level']) || 1;
         tagName = `h${level}`;
         className = `font-bold mb-2 ${level === 1 ? 'text-xl' : level === 2 ? 'text-lg' : 'text-base'}`;
         break;
