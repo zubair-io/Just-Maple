@@ -71,6 +71,10 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
 
         webView = WKWebView(frame: .zero, configuration: config)
 
+        #if os(iOS)
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        #endif
+
         #if DEBUG
         // Enable Web Inspector immediately in debug mode
         if #available(macOS 13.3, *) {
