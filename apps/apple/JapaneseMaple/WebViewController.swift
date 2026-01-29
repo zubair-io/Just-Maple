@@ -77,8 +77,7 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
 
         #if DEBUG
         // Enable Web Inspector immediately in debug mode
-        if #available(macOS 13.3, *) {
-            webView.layer?.borderWidth = 0
+        if #available(iOS 16.4, macOS 13.3, *) {
             webView.isInspectable = true
         }
         #endif
