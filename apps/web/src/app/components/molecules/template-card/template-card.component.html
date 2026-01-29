@@ -48,7 +48,7 @@
     <span class="text-xs px-2 py-0.5 rounded-full capitalize" [ngClass]="getCategoryClasses()">
       {{ template().category }}
     </span>
-    @if (template().usageCount && template().usageCount > 0) {
+    @if ((template().usageCount ?? 0) > 0) {
       <span class="text-xs text-[var(--color-text-muted)]"> {{ template().usageCount }} uses </span>
     }
   </div>
