@@ -129,9 +129,19 @@
       }
     </div>
 
-    <!-- Footer with restore button -->
+    <!-- Footer with preview and restore buttons -->
     @if (selectedVersion()) {
-      <div class="border-t border-[var(--color-border)] px-4 py-3">
+      <div class="border-t border-[var(--color-border)] px-4 py-3 space-y-2">
+        <!-- Preview button -->
+        <button
+          (click)="openPreview()"
+          class="w-full py-2 px-4 border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-main)] rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2"
+        >
+          <span class="material-symbols-rounded text-lg">visibility</span>
+          Preview version
+        </button>
+
+        <!-- Restore button -->
         <button
           (click)="restoreVersion()"
           [disabled]="isRestoring()"
@@ -147,10 +157,77 @@
             Restore this version
           }
         </button>
-        <p class="text-xs text-[var(--color-text-muted)] text-center mt-2">
+        <p class="text-xs text-[var(--color-text-muted)] text-center">
           A backup will be created before restoring
         </p>
       </div>
     }
   </div>
+
+  <!-- Preview Panel (slides in from left of version history panel) -->
+  @if (showPreview()) {
+    <div
+      class="fixed right-[24rem] top-0 h-full w-full max-w-xl bg-[var(--color-bg)] border-l border-[var(--color-border)] shadow-xl z-50 flex flex-col"
+    >
+      <!-- Preview Header -->
+      <div
+        class="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]"
+      >
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-rounded text-lg text-[var(--color-text-muted)]"
+            >preview</span
+          >
+          <h2 class="font-medium text-[var(--color-text-main)]">Version Preview</h2>
+        </div>
+        <button
+          (click)="closePreview()"
+          class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        >
+          <span class="material-symbols-rounded text-xl">close</span>
+        </button>
+      </div>
+
+      <!-- Preview metadata -->
+      @if (previewVersion()) {
+        <div
+          class="px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface-hover)]"
+        >
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-[var(--color-text-muted)]">
+              {{ formatTimeAgo(previewVersion()!.createdAt) }}
+            </span>
+            <span
+              class="text-xs px-1.5 py-0.5 rounded bg-[var(--color-bg)] text-[var(--color-text-muted)]"
+            >
+              {{ formatTrigger(previewVersion()!.trigger) }}
+            </span>
+            @if (previewVersion()!.wordCount) {
+              <span class="text-[var(--color-text-muted)]">
+                · {{ previewVersion()!.wordCount }} words
+              </span>
+            }
+          </div>
+          @if (previewVersion()!.label) {
+            <p class="text-sm text-[var(--color-primary)] mt-1">{{ previewVersion()!.label }}</p>
+          }
+        </div>
+      }
+
+      <!-- Preview content -->
+      <div class="flex-1 overflow-y-auto p-4">
+        @if (isLoadingPreview()) {
+          <div class="flex items-center justify-center py-12">
+            <div
+              class="w-6 h-6 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"
+            ></div>
+          </div>
+        } @else if (previewContent()) {
+          <div
+            class="prose prose-sm max-w-none text-[var(--color-text-main)]"
+            [innerHTML]="previewContent()"
+          ></div>
+        }
+      </div>
+    </div>
+  }
 }
