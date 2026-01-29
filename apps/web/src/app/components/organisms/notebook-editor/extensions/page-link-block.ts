@@ -181,11 +181,12 @@ export const PageLinkBlock = Node.create<PageLinkBlockOptions>({
       dom.appendChild(header);
 
       // Subscribe to live title updates from the store
+      // Only update text content - don't update data-title attribute
+      // The store is the single source of truth, no need to sync DOM attributes
       let subscription: Subscription | undefined;
       if (this.options.getPageTitle$) {
         subscription = this.options.getPageTitle$(pageId).subscribe((liveTitle) => {
           titleEl.textContent = liveTitle || 'Untitled';
-          dom.setAttribute('data-title', liveTitle);
         });
       }
 

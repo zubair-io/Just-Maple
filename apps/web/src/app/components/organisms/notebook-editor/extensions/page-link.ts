@@ -184,7 +184,6 @@ export const PageLink = Node.create<PageLinkOptions>({
       if (this.options.getPageTitle$) {
         subscription = this.options.getPageTitle$(pageId).subscribe((liveTitle) => {
           titleSpan.textContent = liveTitle || 'Untitled';
-          dom.setAttribute('data-title', liveTitle);
         });
       }
 
