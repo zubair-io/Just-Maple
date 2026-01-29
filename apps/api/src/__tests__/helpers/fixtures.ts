@@ -517,3 +517,60 @@ export async function createMessageFixture(
     await testDb!.collection('messages').insertOne(doc);
     return doc;
 }
+
+// ============================================
+// Template Fixtures
+// ============================================
+
+export interface TemplateDoc {
+    _id: ObjectId;
+    id: string;
+    userId: ObjectId | null;
+    title: string;
+    description: string;
+    category: 'meeting' | 'planning' | 'personal' | 'work' | 'custom';
+    content: any;
+    icon?: string;
+    isSystem: boolean;
+    usageCount: number;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateTemplateOptions {
+    userId?: string | null;
+    title?: string;
+    description?: string;
+    category?: 'meeting' | 'planning' | 'personal' | 'work' | 'custom';
+    content?: any;
+    icon?: string;
+    isSystem?: boolean;
+    usageCount?: number;
+}
+
+export async function createTemplateFixture(
+    options: CreateTemplateOptions = {},
+): Promise<TemplateDoc> {
+    const now = new Date();
+
+    const doc: TemplateDoc = {
+        _id: new ObjectId(),
+        id: randomUUID(),
+        userId: options.userId
+            ? new ObjectId(options.userId)
+            : options.isSystem
+              ? null
+              : new ObjectId(),
+        title: options.title || `Test Template ${Date.now()}`,
+        description: options.description || 'Test template description',
+        category: options.category || 'custom',
+        content: options.content || { type: 'doc', content: [] },
+        icon: options.icon,
+        isSystem: options.isSystem ?? false,
+        usageCount: options.usageCount ?? 0,
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb!.collection('templates').insertOne(doc);
+    return doc;
+}

@@ -4,6 +4,7 @@ import { findUserById } from '../repositories/user.repo';
 import type { JWTPayload, PageContent } from '@maple/shared';
 import {
     findTemplates,
+    findTemplatesByCategory,
     findTemplateById,
     createTemplate,
     updateTemplate,
@@ -60,13 +61,31 @@ export const templateRoutes = new Elysia({ prefix: '/api/templates' })
     })
 
     // List all templates (system + user's custom)
-    .get('/', async ({ auth, set }) => {
-        if (!checkAuth(auth, set)) {
-            return { error: 'Unauthorized', message: 'Valid authentication required' };
-        }
-        const templates = await findTemplates(auth.user._id);
-        return { templates };
-    })
+    .get(
+        '/',
+        async ({ auth, set, query }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+            const templates = query.category
+                ? await findTemplatesByCategory(auth.user._id, query.category)
+                : await findTemplates(auth.user._id);
+            return { templates };
+        },
+        {
+            query: t.Object({
+                category: t.Optional(
+                    t.Union([
+                        t.Literal('work'),
+                        t.Literal('personal'),
+                        t.Literal('planning'),
+                        t.Literal('meeting'),
+                        t.Literal('custom'),
+                    ]),
+                ),
+            }),
+        },
+    )
 
     // Get single template by ID
     .get(
