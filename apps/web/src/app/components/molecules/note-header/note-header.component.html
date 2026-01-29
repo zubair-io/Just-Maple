@@ -67,6 +67,15 @@
       <!-- Divider -->
       <div class="w-px h-5 bg-[var(--color-border)] mx-1"></div>
 
+      <!-- History button -->
+      <button
+        (click)="toggleVersionHistory()"
+        class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        title="Version history"
+      >
+        <span class="material-symbols-rounded text-lg">history</span>
+      </button>
+
       <!-- Export button with dropdown -->
       <div class="relative">
         <button
@@ -101,4 +110,12 @@
       </div>
     </div>
   </header>
+
+  <!-- Version History Panel -->
+  <app-version-history
+    [noteId]="pageId()"
+    [isOpen]="showVersionHistory()"
+    (close)="closeVersionHistory()"
+    (restored)="onVersionRestored()"
+  />
 }

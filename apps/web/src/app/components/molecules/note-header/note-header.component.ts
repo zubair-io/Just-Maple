@@ -2,6 +2,7 @@ import { Component, input, output, computed, signal, inject } from '@angular/cor
 import { CommonModule } from '@angular/common';
 import type { Page, Notebook } from '@maple/shared';
 import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
+import { VersionHistoryComponent } from '../version-history/version-history.component';
 import { UiStateService } from '../../../services/ui-state.service';
 
 export type ExportFormat = 'markdown' | 'html';
@@ -9,7 +10,7 @@ export type ExportFormat = 'markdown' | 'html';
 @Component({
   selector: 'app-note-header',
   standalone: true,
-  imports: [CommonModule, SyncStatusComponent],
+  imports: [CommonModule, SyncStatusComponent, VersionHistoryComponent],
   templateUrl: './note-header.component.html',
   styleUrl: './note-header.component.scss',
 })
@@ -30,8 +31,10 @@ export class NoteHeaderComponent {
   readonly undoRequested = output<void>();
   readonly redoRequested = output<void>();
   readonly toggleWidthRequested = output<void>();
+  readonly versionRestored = output<void>();
 
   readonly showExportMenu = signal(false);
+  readonly showVersionHistory = signal(false);
 
   openSidebarOnMobile(): void {
     this.uiStateService.openSidebar();
@@ -54,6 +57,18 @@ export class NoteHeaderComponent {
   exportAs(format: ExportFormat): void {
     this.exportRequested.emit(format);
     this.closeExportMenu();
+  }
+
+  toggleVersionHistory(): void {
+    this.showVersionHistory.update((v) => !v);
+  }
+
+  closeVersionHistory(): void {
+    this.showVersionHistory.set(false);
+  }
+
+  onVersionRestored(): void {
+    this.versionRestored.emit();
   }
 
   private formatDateValue(dateString: string): string {

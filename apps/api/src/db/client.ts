@@ -181,6 +181,10 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('templates').createIndex({ isSystem: 1 }); // For system templates
     await database.collection('templates').createIndex({ category: 1 }); // For filtering by category
 
+    // Memo versions collection (version history for memos)
+    await database.collection('memo_versions').createIndex({ noteId: 1, createdAt: -1 }); // Primary query: versions for a memo, newest first
+    await database.collection('memo_versions').createIndex({ noteId: 1, version: 1 }); // For cleanup/retention policy
+
     console.log('Database indexes created');
 }
 

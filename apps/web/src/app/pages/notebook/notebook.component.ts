@@ -122,4 +122,10 @@ export class NotebookComponent implements OnDestroy {
     this.editorComponent?.toggleFullWidth();
     this.isFullWidth.set(this.editorComponent?.isFullWidth() ?? false);
   }
+
+  handleVersionRestored(): void {
+    // Reload the page to get the restored version
+    // This ensures all Y.js state is properly reset
+    window.location.reload();
+  }
 }
