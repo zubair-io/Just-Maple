@@ -1,4 +1,4 @@
-import { Component, inject, signal, effect, OnDestroy, ViewChild } from '@angular/core';
+import { Component, inject, signal, effect, OnDestroy, ViewChild, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -24,11 +24,18 @@ export class NotebookComponent implements OnDestroy {
   private readonly pageService = inject(PageService);
   private readonly notebookService = inject(NotebookService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly ngZone = inject(NgZone);
 
   private routeSubscription?: Subscription;
+  private editorUpdateInterval?: ReturnType<typeof setInterval>;
 
   readonly pageId = signal<string | null>(null);
   readonly notebookId = signal<string | null>(null);
+
+  // Editor state signals for header
+  readonly canUndo = signal(false);
+  readonly canRedo = signal(false);
+  readonly isFullWidth = signal(false);
 
   // Get the page from the store
   readonly selectedPage = toSignal(this.pageService.activePage$, { initialValue: null });
@@ -50,10 +57,29 @@ export class NotebookComponent implements OnDestroy {
         this.pageService.setActivePageId(id);
       }
     });
+
+    // Poll editor state for undo/redo capability
+    this.editorUpdateInterval = setInterval(() => {
+      this.updateEditorState();
+    }, 200);
   }
 
   ngOnDestroy(): void {
     this.routeSubscription?.unsubscribe();
+    if (this.editorUpdateInterval) {
+      clearInterval(this.editorUpdateInterval);
+    }
+  }
+
+  private updateEditorState(): void {
+    const editor = this.editorComponent?.getEditor();
+    if (editor) {
+      this.ngZone.run(() => {
+        this.canUndo.set(editor.can().undo());
+        this.canRedo.set(editor.can().redo());
+        this.isFullWidth.set(this.editorComponent?.isFullWidth() ?? false);
+      });
+    }
   }
 
   toggleFavorite(): void {
@@ -82,5 +108,18 @@ export class NotebookComponent implements OnDestroy {
     } else if (format === 'html') {
       this.editorComponent?.exportAsHtml(title);
     }
+  }
+
+  handleUndo(): void {
+    this.editorComponent?.getEditor()?.commands.undo();
+  }
+
+  handleRedo(): void {
+    this.editorComponent?.getEditor()?.commands.redo();
+  }
+
+  handleToggleWidth(): void {
+    this.editorComponent?.toggleFullWidth();
+    this.isFullWidth.set(this.editorComponent?.isFullWidth() ?? false);
   }
 }

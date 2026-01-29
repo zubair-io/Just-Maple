@@ -3,11 +3,11 @@
     <!-- Main button -->
     <button
       (click)="createPage('memo')"
-      class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-l-lg transition-colors"
+      class="flex items-center gap-1.5 px-2 md:px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-l-lg transition-colors"
       title="New Note"
     >
       <span class="material-symbols-rounded text-sm">add</span>
-      <span>New Note</span>
+      <span class="!hidden md:!inline">New Note</span>
     </button>
     <!-- Dropdown toggle -->
     <button

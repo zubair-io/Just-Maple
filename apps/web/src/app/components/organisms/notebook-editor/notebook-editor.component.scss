@@ -15,43 +15,6 @@
   overflow: hidden;
 }
 
-.editor-header {
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-  background: var(--color-bg);
-  z-index: 10;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.width-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-
-  &:hover {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.08));
-    color: var(--color-text-main);
-  }
-
-  &.active {
-    color: var(--color-primary);
-  }
-}
-
 .editor-wrapper {
   flex: 1;
   min-height: 0; // Important for flex children to scroll
@@ -153,15 +116,147 @@
       font-size: 0.9em;
     }
 
-    pre {
-      background: var(--color-bg-secondary);
+    // Code block container with language selector
+    .code-block-container {
+      position: relative;
+      margin: 0.75rem 0;
+
+      .code-block-language {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.7rem;
+        color: #808080;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        font-family: var(--font-sans);
+        z-index: 1;
+        appearance: none;
+        -webkit-appearance: none;
+
+        &:hover,
+        &:focus {
+          background: rgba(255, 255, 255, 0.2);
+          color: #d4d4d4;
+          outline: none;
+        }
+
+        option {
+          background: #1e1e1e;
+          color: #d4d4d4;
+        }
+      }
+
+      pre {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 1rem;
+        padding-top: 2.5rem;
+        border-radius: 8px;
+        overflow-x: auto;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        margin: 0;
+
+        code {
+          background: none;
+          padding: 0;
+          color: inherit;
+          font-family: inherit;
+          font-size: inherit;
+        }
+
+        // Lowlight/Highlight.js syntax highlighting (VS Code Dark+ theme)
+        .hljs-comment,
+        .hljs-quote {
+          color: #6a9955;
+          font-style: italic;
+        }
+
+        .hljs-keyword,
+        .hljs-selector-tag,
+        .hljs-addition {
+          color: #569cd6;
+        }
+
+        .hljs-number,
+        .hljs-string,
+        .hljs-meta .hljs-meta-string,
+        .hljs-literal,
+        .hljs-doctag,
+        .hljs-regexp {
+          color: #ce9178;
+        }
+
+        .hljs-title,
+        .hljs-section,
+        .hljs-name,
+        .hljs-selector-id,
+        .hljs-selector-class {
+          color: #dcdcaa;
+        }
+
+        .hljs-attribute,
+        .hljs-attr,
+        .hljs-variable,
+        .hljs-template-variable,
+        .hljs-class .hljs-title,
+        .hljs-type {
+          color: #4ec9b0;
+        }
+
+        .hljs-symbol,
+        .hljs-bullet,
+        .hljs-subst,
+        .hljs-meta,
+        .hljs-meta .hljs-keyword,
+        .hljs-selector-attr,
+        .hljs-selector-pseudo,
+        .hljs-link {
+          color: #d7ba7d;
+        }
+
+        .hljs-built_in,
+        .hljs-deletion {
+          color: #c586c0;
+        }
+
+        .hljs-formula {
+          color: #c586c0;
+        }
+
+        .hljs-emphasis {
+          font-style: italic;
+        }
+
+        .hljs-strong {
+          font-weight: bold;
+        }
+      }
+    }
+
+    // Standalone pre (fallback)
+    pre:not(.code-block-container pre) {
+      background: #1e1e1e;
+      color: #d4d4d4;
       padding: 1rem;
       border-radius: 8px;
       overflow-x: auto;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.875rem;
+      line-height: 1.5;
 
       code {
         background: none;
         padding: 0;
+        color: inherit;
+        font-family: inherit;
+        font-size: inherit;
       }
     }
 

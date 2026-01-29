@@ -14,7 +14,6 @@ import {
   QueryList,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../services/auth.service';
 import { NotebookService } from '../../../services/notebook.service';
@@ -30,7 +29,7 @@ import { filter, map, switchMap } from 'rxjs';
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, ProfileAvatarComponent],
+  imports: [CommonModule, RouterLink, ProfileAvatarComponent],
   templateUrl: './sidebar.component.html',
   styleUrl: './sidebar.component.scss',
 })
@@ -50,14 +49,14 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   readonly selectedNotebookId = input<string | null>(null);
   readonly selectedPageId = toSignal(this.pageService.activeId$, { initialValue: null });
 
-  readonly newPage = output<void>();
+  readonly newPage = output<'memo' | 'whiteboard' | 'message'>();
   readonly selectPage = output<string>();
   readonly selectNotebook = output<string>();
   readonly createNotebook = output<void>();
   readonly settings = output<void>();
 
-  readonly searchQuery = signal('');
   readonly expandedNotebooks = signal<Set<string>>(new Set());
+  readonly isNewDropdownOpen = signal(false);
 
   // Inline editing state
   readonly editingNotebookId = signal<string | null>(null);
@@ -169,8 +168,17 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
     return ['/', notebookId, urlParam];
   }
 
-  onNewPage(): void {
-    this.newPage.emit();
+  onNewPage(type: 'memo' | 'whiteboard' | 'message' = 'memo'): void {
+    this.isNewDropdownOpen.set(false);
+    this.newPage.emit(type);
+  }
+
+  toggleNewDropdown(): void {
+    this.isNewDropdownOpen.update((v) => !v);
+  }
+
+  closeNewDropdown(): void {
+    this.isNewDropdownOpen.set(false);
   }
 
   onSelectPage(page: Page): void {

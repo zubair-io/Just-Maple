@@ -1,4 +1,12 @@
-import { Component, input, computed, ChangeDetectionStrategy } from '@angular/core';
+import {
+  Component,
+  input,
+  computed,
+  signal,
+  ChangeDetectionStrategy,
+  OnInit,
+  OnDestroy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Editor } from '@tiptap/core';
 
@@ -17,9 +25,69 @@ interface ToolbarButton {
   templateUrl: './editor-toolbar.component.html',
   styleUrl: './editor-toolbar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[style.bottom]': 'toolbarBottom()',
+  },
 })
-export class EditorToolbarComponent {
+export class EditorToolbarComponent implements OnInit, OnDestroy {
   readonly editor = input.required<Editor | null>();
+
+  // Keyboard offset for mobile browsers (not iOS native app)
+  readonly keyboardOffset = signal(0);
+
+  // Computed bottom position
+  readonly toolbarBottom = computed(() => {
+    const offset = this.keyboardOffset();
+    if (offset > 0) {
+      return `${offset}px`;
+    }
+    return `calc(1rem + env(safe-area-inset-bottom))`;
+  });
+
+  // Check if running in iOS native app (WebView)
+  private isNativeApp(): boolean {
+    // Check for native bridge or specific markers set by the native app
+    return (
+      !!(window as any).webkit?.messageHandlers?.nativeBridge ||
+      navigator.userAgent.includes('JapaneseMaple')
+    );
+  }
+
+  // Check if mobile browser
+  private isMobileBrowser(): boolean {
+    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) && !this.isNativeApp();
+  }
+
+  private handleViewportResize = (): void => {
+    if (!this.isMobileBrowser()) return;
+
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    // Calculate keyboard height
+    const keyboardHeight = window.innerHeight - viewport.height;
+
+    // Only apply offset if keyboard is likely open (height > 100px)
+    if (keyboardHeight > 100) {
+      this.keyboardOffset.set(keyboardHeight);
+    } else {
+      this.keyboardOffset.set(0);
+    }
+  };
+
+  ngOnInit(): void {
+    if (typeof window !== 'undefined' && window.visualViewport && this.isMobileBrowser()) {
+      window.visualViewport.addEventListener('resize', this.handleViewportResize);
+      window.visualViewport.addEventListener('scroll', this.handleViewportResize);
+    }
+  }
+
+  ngOnDestroy(): void {
+    if (typeof window !== 'undefined' && window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', this.handleViewportResize);
+      window.visualViewport.removeEventListener('scroll', this.handleViewportResize);
+    }
+  }
 
   readonly formattingButtons = computed<ToolbarButton[]>(() => {
     const ed = this.editor();

@@ -1,20 +1,25 @@
 @if (notebook()) {
   <header
-    class="h-14 flex items-center justify-between px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
+    class="h-14 flex items-center justify-between px-4 md:px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
   >
-    <!-- Breadcrumb -->
-    <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-      <div
+    <!-- Left side: Menu + Notebook name -->
+    <div class="flex items-center gap-2 text-sm text-[var(--color-text-main)] min-w-0">
+      <!-- Menu button (mobile only) -->
+      <button
         (click)="openSidebarOnMobile()"
-        class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-[var(--color-surface-hover)]"
+        class="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors flex-shrink-0"
+        title="Open menu"
       >
-        <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
-        <span>{{ notebook().label }}</span>
-      </div>
-      <span class="text-[var(--color-text-muted)]">/</span>
-      <div class="flex items-center gap-1.5 text-[var(--color-text-muted)] font-medium p-1">
-        <span class="material-symbols-rounded text-sm">{{ contextIcon() }}</span>
-        <span>{{ contextLabel() }}</span>
+        <span class="material-symbols-rounded text-xl">menu</span>
+      </button>
+
+      <!-- Notebook name -->
+      <div class="flex items-center gap-1.5 font-medium truncate">
+        <span
+          class="material-symbols-rounded text-base text-[var(--color-primary)] flex-shrink-0 !hidden md:!block"
+          >book_2</span
+        >
+        <span class="truncate">{{ notebook().label }}</span>
       </div>
     </div>
 
@@ -26,7 +31,7 @@
           class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors"
           title="Click to manage sharing"
         >
-          <span class="text-xs text-[var(--color-text-muted)]">Shared with</span>
+          <span class="text-xs text-[var(--color-text-muted)] !hidden md:!inline">Shared with</span>
           <app-member-avatar-group
             [members]="members()"
             [maxDisplay]="3"
@@ -41,11 +46,11 @@
         @if (members().length <= 1) {
           <button
             (click)="shareClicked.emit()"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] text-xs font-medium rounded-lg transition-colors"
+            class="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] text-xs font-medium rounded-lg transition-colors"
             title="Manage Sharing"
           >
             <span class="material-symbols-rounded text-sm">share</span>
-            <span>Share</span>
+            <span class="!hidden md:!inline">Share</span>
           </button>
         }
 

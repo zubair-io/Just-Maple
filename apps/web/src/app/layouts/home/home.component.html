@@ -14,7 +14,7 @@
   >
     <app-sidebar
       [selectedNotebookId]="selectedNotebookId()"
-      (newPage)="onNewPage()"
+      (newPage)="onNewPage($event)"
       (selectPage)="onSelectPage($event); closeSidebar()"
       (selectNotebook)="onSelectNotebook($event)"
       (createNotebook)="onCreateNotebook()"

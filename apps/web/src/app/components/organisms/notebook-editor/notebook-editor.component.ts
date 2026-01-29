@@ -29,7 +29,6 @@ import { PageService } from '../../../services/page.service';
 import { AuthService } from '../../../services/auth.service';
 import { TodoSyncService } from '../../../services/todo-sync.service';
 import { MemoImageService } from '../../../services/memo-image.service';
-import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
 import { SlashCommandMenuComponent } from '../../molecules/slash-command-menu/slash-command-menu.component';
 import DragHandle from '@tiptap/extension-drag-handle';
 import { proseMirrorToMarkdown, proseMirrorToHtmlDocument, type PageContent } from '@maple/shared';
@@ -52,6 +51,7 @@ import {
   ImageNode,
   Agenda,
   InlineMention,
+  CodeBlockWithLanguage,
   formatTime,
   formatDate,
   type SlashCommandItem,
@@ -70,7 +70,7 @@ import type { Awareness } from 'y-protocols/awareness';
 @Component({
   selector: 'app-notebook-editor',
   standalone: true,
-  imports: [CommonModule, SyncStatusComponent, EditorToolbarComponent],
+  imports: [CommonModule, EditorToolbarComponent],
   templateUrl: './notebook-editor.component.html',
   styleUrl: './notebook-editor.component.scss',
   // encapsulation: ViewEncapsulation.None,
@@ -182,11 +182,14 @@ export class NotebookEditorComponent implements OnDestroy {
         extensions: [
           // Custom document that enforces heading first
           CustomDocument,
-          // StarterKit without document (we use CustomDocument) and undoRedo (Collaboration has its own)
+          // StarterKit without document (we use CustomDocument), undoRedo (Collaboration has its own), and codeBlock (we use CodeBlockWithLanguage)
           StarterKit.configure({
             document: false,
             undoRedo: false,
+            codeBlock: false,
           } as any),
+          // Code block with syntax highlighting and language selector
+          CodeBlockWithLanguage,
           // Placeholder with different text for headings
           // Placeholder.configure({
           //   placeholder: ({ node }) => {

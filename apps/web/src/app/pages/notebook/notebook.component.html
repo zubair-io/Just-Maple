@@ -3,8 +3,15 @@
     <app-note-header
       [page]="page"
       [notebook]="selectedNotebook()"
+      [canUndo]="canUndo()"
+      [canRedo]="canRedo()"
+      [isFullWidth]="isFullWidth()"
+      [pageId]="pageId() ?? ''"
       (toggleFavorite)="toggleFavorite()"
       (exportRequested)="handleExport($event)"
+      (undoRequested)="handleUndo()"
+      (redoRequested)="handleRedo()"
+      (toggleWidthRequested)="handleToggleWidth()"
     />
 
     <div class="notebook-content">

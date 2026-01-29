@@ -88,6 +88,14 @@ export const defaultSlashCommands: SlashCommandItem[] = [
     },
   },
   {
+    title: 'Inline Code',
+    description: 'Mark text as code',
+    icon: '`',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).toggleCode().run();
+    },
+  },
+  {
     title: 'Divider',
     description: 'Visual divider line',
     icon: '—',

@@ -35,8 +35,6 @@ export class NotebookHeaderComponent {
   }
 
   openSidebarOnMobile(): void {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
-      this.uiStateService.openSidebar();
-    }
+    this.uiStateService.openSidebar();
   }
 }

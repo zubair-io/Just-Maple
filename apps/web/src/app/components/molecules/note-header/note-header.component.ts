@@ -1,25 +1,41 @@
-import { Component, input, output, computed, signal } from '@angular/core';
+import { Component, input, output, computed, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Page, Notebook } from '@maple/shared';
-import { NewPageButtonComponent } from '../../atoms/new-page-button/new-page-button.component';
+import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
+import { UiStateService } from '../../../services/ui-state.service';
 
 export type ExportFormat = 'markdown' | 'html';
 
 @Component({
   selector: 'app-note-header',
   standalone: true,
-  imports: [CommonModule, NewPageButtonComponent],
+  imports: [CommonModule, SyncStatusComponent],
   templateUrl: './note-header.component.html',
   styleUrl: './note-header.component.scss',
 })
 export class NoteHeaderComponent {
+  private readonly uiStateService = inject(UiStateService);
+
   readonly page = input<Page | null>(null);
   readonly notebook = input<Notebook | null>(null);
 
+  // Editor state inputs
+  readonly canUndo = input<boolean>(false);
+  readonly canRedo = input<boolean>(false);
+  readonly isFullWidth = input<boolean>(false);
+  readonly pageId = input<string>('');
+
   readonly toggleFavorite = output<void>();
   readonly exportRequested = output<ExportFormat>();
+  readonly undoRequested = output<void>();
+  readonly redoRequested = output<void>();
+  readonly toggleWidthRequested = output<void>();
 
   readonly showExportMenu = signal(false);
+
+  openSidebarOnMobile(): void {
+    this.uiStateService.openSidebar();
+  }
 
   readonly formattedDate = computed(() => {
     const page = this.page();

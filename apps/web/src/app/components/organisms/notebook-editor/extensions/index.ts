@@ -50,3 +50,4 @@ export {
   type EnhancedTaskListAttrs,
   type EnhancedTaskListOptions,
 } from './enhanced-task-list';
+export { CodeBlockWithLanguage, lowlight, supportedLanguages } from './code-block-with-language';

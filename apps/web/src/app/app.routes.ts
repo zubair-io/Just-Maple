@@ -18,35 +18,38 @@ export const routes: Routes = [
     path: 'verify',
     loadComponent: () => import('./pages/verify/verify.component').then((m) => m.VerifyComponent),
   },
-  // Settings route - must come before the home route
-  {
-    path: 'settings',
-    canActivate: [AuthGuard],
-    children: [
-      {
-        path: '',
-        loadComponent: () =>
-          import('./pages/settings/settings.component').then((m) => m.SettingsComponent),
-      },
-      {
-        path: 'bots',
-        loadComponent: () => import('./pages/bots/bots.component').then((m) => m.BotsComponent),
-      },
-    ],
-  },
-  // Notifications route
-  {
-    path: 'notifications',
-    loadComponent: () =>
-      import('./pages/notifications/notifications.component').then((m) => m.NotificationsComponent),
-    canActivate: [AuthGuard],
-  },
+
   // Authenticated app routes - matched first if user is authenticated
   {
     path: '',
     loadComponent: () => import('./layouts/home/home.component').then((m) => m.HomeComponent),
     canMatch: [AuthGuard],
     children: [
+      // Settings route - must come before the home route
+      {
+        path: 'settings',
+        canActivate: [AuthGuard],
+        children: [
+          {
+            path: '',
+            loadComponent: () =>
+              import('./pages/settings/settings.component').then((m) => m.SettingsComponent),
+          },
+          {
+            path: 'bots',
+            loadComponent: () => import('./pages/bots/bots.component').then((m) => m.BotsComponent),
+          },
+        ],
+      },
+      // Notifications route
+      {
+        path: 'notifications',
+        loadComponent: () =>
+          import('./pages/notifications/notifications.component').then(
+            (m) => m.NotificationsComponent,
+          ),
+        canActivate: [AuthGuard],
+      },
       // Tag routes - all routes with :notebookId are nested under the tag component
       {
         path: ':notebookId',

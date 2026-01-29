@@ -34,27 +34,65 @@
       </button>
     </div> -->
 
-    <!-- Search & New Note -->
-    <div class="px-4 pb-4 flex gap-2">
-      <div class="relative flex-1">
-        <span
-          class="material-symbols-rounded absolute left-2.5 top-1.5 text-[var(--color-text-muted)] text-lg"
-          >search</span
+    <!-- New Note Button with Dropdown -->
+    <div class="px-4 pb-4 relative">
+      <div class="flex">
+        <!-- Main button -->
+        <button
+          (click)="onNewPage('memo')"
+          class="flex-1 flex items-center justify-center gap-2 py-2 bg-[var(--color-primary)] text-white rounded-l-md hover:bg-[var(--color-primary-hover)] transition-all text-sm font-medium"
+          title="New Note"
         >
-        <input
-          type="text"
-          [(ngModel)]="searchQuery"
-          placeholder="Search..."
-          class="w-full pl-9 pr-3 py-1.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-border)] focus:border-[var(--color-primary)]/50 focus:ring-1 focus:ring-[var(--color-primary)]/20 rounded-md transition-all shadow-sm placeholder-[var(--color-text-muted)]"
-        />
+          <span class="material-symbols-rounded text-base">add</span>
+          <span>New</span>
+        </button>
+        <!-- Dropdown toggle -->
+        <button
+          (click)="toggleNewDropdown()"
+          class="flex items-center px-2 py-2 bg-[var(--color-primary)] text-white rounded-r-md hover:bg-[var(--color-primary-hover)] transition-all border-l border-white/20"
+          title="More options"
+        >
+          <span class="material-symbols-rounded text-base">
+            {{ isNewDropdownOpen() ? 'expand_less' : 'expand_more' }}
+          </span>
+        </button>
       </div>
-      <button
-        (click)="onNewPage()"
-        class="w-8 h-8 flex items-center justify-center bg-[var(--color-primary)] text-white rounded-md shadow-sm hover:bg-[var(--color-primary-hover)] hover:shadow transition-all"
-        title="New Page"
-      >
-        <span class="material-symbols-rounded text-lg">edit</span>
-      </button>
+
+      <!-- Dropdown menu -->
+      @if (isNewDropdownOpen()) {
+        <div class="fixed inset-0 z-40" (click)="closeNewDropdown()"></div>
+        <div
+          class="absolute left-4 right-4 top-full mt-1 bg-[var(--color-surface)] rounded-lg shadow-lg border border-[var(--color-border)] py-1 z-50"
+        >
+          <button
+            (click)="onNewPage('memo')"
+            class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+          >
+            <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+              >article</span
+            >
+            <span>New Note</span>
+          </button>
+          <button
+            (click)="onNewPage('whiteboard')"
+            class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+          >
+            <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+              >draw</span
+            >
+            <span>New Whiteboard</span>
+          </button>
+          <button
+            (click)="onNewPage('message')"
+            class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+          >
+            <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+              >chat</span
+            >
+            <span>New Conversation</span>
+          </button>
+        </div>
+      }
     </div>
   </div>
 

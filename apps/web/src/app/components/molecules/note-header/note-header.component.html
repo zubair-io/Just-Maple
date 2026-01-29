@@ -1,71 +1,104 @@
 @if (page()) {
   <header
-    class="h-14 flex items-center justify-between px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
+    class="h-14 flex items-center justify-between px-4 md:px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
   >
-    <!-- Breadcrumb -->
-    <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-      @if (notebook()) {
-        <div
-          class="flex items-center gap-1.5 hover:text-[var(--color-text-main)] cursor-pointer transition-colors p-1 rounded hover:bg-[var(--color-surface-hover)]"
-        >
-          <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">tag</span>
-          <span>{{ notebook()!.label }}</span>
-        </div>
-        <span class="text-[var(--color-text-muted)]">/</span>
-      }
-      <div
-        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-[var(--color-surface-alt)]"
+    <!-- Left side: Menu + Page name -->
+    <div class="flex items-center gap-2 text-sm text-[var(--color-text-main)] min-w-0">
+      <!-- Menu button (mobile only) -->
+      <button
+        (click)="openSidebarOnMobile()"
+        class="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors flex-shrink-0"
+        title="Open menu"
       >
-        <span class="material-symbols-rounded text-sm">article</span>
-        <span>{{ page()!.title }}</span>
+        <span class="material-symbols-rounded text-xl">menu</span>
+      </button>
+
+      <!-- Page name -->
+      <div class="flex items-center gap-1.5 font-medium truncate">
+        <span
+          class="material-symbols-rounded text-base text-[var(--color-primary)] flex-shrink-0 !hidden md:!block"
+          >article</span
+        >
+        <span class="truncate">{{ page()!.title }}</span>
       </div>
     </div>
 
-    <!-- Actions -->
+    <!-- Right side: Actions -->
     <div class="flex items-center gap-1">
-      <span class="text-xs text-[var(--color-text-muted)] mr-2">
-        Edited {{ formattedDate() }}
-      </span>
-      <div class="flex items-center border-l border-[var(--color-border)] pl-2 gap-1">
-        <!-- Export button with dropdown -->
-        <div class="relative">
-          <button
-            (click)="toggleExportMenu()"
-            class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-            title="Export"
-          >
-            <span class="material-symbols-rounded text-lg">download</span>
-          </button>
-          @if (showExportMenu()) {
-            <!-- Backdrop to close menu on outside click -->
-            <div class="fixed inset-0 z-40" (click)="closeExportMenu()"></div>
-            <div
-              class="absolute right-0 top-full mt-1 bg-[var(--color-bg)] rounded-lg shadow-lg border border-[var(--color-border)] py-1 min-w-[140px] z-50"
-            >
-              <button
-                (click)="exportAs('markdown')"
-                class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
-              >
-                <span class="material-symbols-rounded text-base">description</span>
-                Markdown
-              </button>
-              <button
-                (click)="exportAs('html')"
-                class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
-              >
-                <span class="material-symbols-rounded text-base">code</span>
-                HTML
-              </button>
-            </div>
-          }
-        </div>
+      <!-- Undo/Redo -->
+      <div class="flex items-center">
+        <button
+          (click)="undoRequested.emit()"
+          [disabled]="!canUndo()"
+          class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Undo"
+        >
+          <span class="material-symbols-rounded text-lg">undo</span>
+        </button>
+        <button
+          (click)="redoRequested.emit()"
+          [disabled]="!canRedo()"
+          class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Redo"
+        >
+          <span class="material-symbols-rounded text-lg">redo</span>
+        </button>
       </div>
-      <!-- Split button for new page -->
-      @if (notebook()) {
-        <div class="ml-2">
-          <app-new-page-button [notebookId]="notebook()!._id" [showConversation]="false" />
-        </div>
-      }
+
+      <!-- Width toggle (hidden on mobile) -->
+      <button
+        (click)="toggleWidthRequested.emit()"
+        class="hidden md:flex w-8 h-8 items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        [title]="isFullWidth() ? 'Narrow width' : 'Full width'"
+      >
+        @if (isFullWidth()) {
+          <span class="material-symbols-rounded text-lg">width_normal</span>
+        } @else {
+          <span class="material-symbols-rounded text-lg">width_wide</span>
+        }
+      </button>
+
+      <!-- Divider -->
+      <div class="w-px h-5 bg-[var(--color-border)] mx-1"></div>
+
+      <!-- Sync status -->
+      <app-sync-status [pageId]="pageId()" />
+
+      <!-- Divider -->
+      <div class="w-px h-5 bg-[var(--color-border)] mx-1"></div>
+
+      <!-- Export button with dropdown -->
+      <div class="relative">
+        <button
+          (click)="toggleExportMenu()"
+          class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+          title="Export"
+        >
+          <span class="material-symbols-rounded text-lg">download</span>
+        </button>
+        @if (showExportMenu()) {
+          <!-- Backdrop to close menu on outside click -->
+          <div class="fixed inset-0 z-40" (click)="closeExportMenu()"></div>
+          <div
+            class="absolute right-0 top-full mt-1 bg-[var(--color-bg)] rounded-lg shadow-lg border border-[var(--color-border)] py-1 min-w-[140px] z-50"
+          >
+            <button
+              (click)="exportAs('markdown')"
+              class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
+            >
+              <span class="material-symbols-rounded text-base">description</span>
+              Markdown
+            </button>
+            <button
+              (click)="exportAs('html')"
+              class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
+            >
+              <span class="material-symbols-rounded text-base">code</span>
+              HTML
+            </button>
+          </div>
+        }
+      </div>
     </div>
   </header>
 }
