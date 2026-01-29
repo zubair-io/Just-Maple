@@ -23,6 +23,7 @@ import {
 import { otService } from '../services/ot.service';
 import { realtimeWSService } from '../services/realtime-ws.service';
 import { getUsersWithNotebookAccess } from '../repositories/notebook.repo';
+import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
 
 export const pageRoutes = new Elysia({ prefix: '/api/pages' })
     .use(jwtPlugin)
@@ -175,6 +176,14 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                     updatedAt: page.updatedAt,
                     notebookId: page.notebookId,
                 });
+
+                // Update backlinks when title changes
+                await handlePageRename(page.id, sanitizedBody.title);
+            }
+
+            // Extract and update links when content changes
+            if (sanitizedBody.content) {
+                await updateLinksForPage(page.id, sanitizedBody.content, page.title);
             }
 
             return { page };
@@ -192,6 +201,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 isTrashed: t.Optional(t.Boolean()),
                 automergeDoc: t.Optional(t.Any()),
                 todoMeta: t.Optional(t.Any()),
+                linksMeta: t.Optional(t.Any()),
             }),
         },
     )
@@ -224,6 +234,14 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                     updatedAt: page.updatedAt,
                     notebookId: page.notebookId,
                 });
+
+                // Update backlinks when title changes
+                await handlePageRename(page.id, sanitizedBody.title);
+            }
+
+            // Extract and update links when content changes
+            if (sanitizedBody.content) {
+                await updateLinksForPage(page.id, sanitizedBody.content, page.title);
             }
 
             return { page };
@@ -241,6 +259,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 isTrashed: t.Optional(t.Boolean()),
                 automergeDoc: t.Optional(t.Any()),
                 todoMeta: t.Optional(t.Any()),
+                linksMeta: t.Optional(t.Any()),
             }),
         },
     )
@@ -325,6 +344,9 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 set.status = 404;
                 return { error: 'Page not found' };
             }
+
+            // Clean up link references before deletion
+            await handlePageDeletion(params.id);
 
             const deleted = await deletePage(params.id, auth.user._id);
 

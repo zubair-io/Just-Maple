@@ -51,3 +51,15 @@ export {
   type EnhancedTaskListOptions,
 } from './enhanced-task-list';
 export { CodeBlockWithLanguage, lowlight, supportedLanguages } from './code-block-with-language';
+export {
+  PageLink,
+  PageLinkPluginKey,
+  type PageLinkAttrs,
+  type PageLinkSuggestion,
+  type PageLinkOptions,
+} from './page-link';
+export {
+  PageLinkBlock,
+  type PageLinkBlockAttrs,
+  type PageLinkBlockOptions,
+} from './page-link-block';
