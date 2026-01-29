@@ -574,3 +574,64 @@ export async function createTemplateFixture(
     await testDb!.collection('templates').insertOne(doc);
     return doc;
 }
+
+// ============================================
+// Memo Version Fixtures
+// ============================================
+
+export interface MemoVersionDoc {
+    _id: ObjectId;
+    noteId: string;
+    state: Buffer;
+    version: number;
+    byteSize: number;
+    compressedSize?: number;
+    compressed?: boolean;
+    trigger: 'auto-interval' | 'auto-idle' | 'manual' | 'ai-edit' | 'significant-change' | 'import';
+    label?: string;
+    createdAt: Date;
+    contentPreview?: string;
+    wordCount?: number;
+    headingText?: string;
+}
+
+export interface CreateMemoVersionOptions {
+    noteId?: string;
+    state?: Uint8Array;
+    version?: number;
+    trigger?:
+        | 'auto-interval'
+        | 'auto-idle'
+        | 'manual'
+        | 'ai-edit'
+        | 'significant-change'
+        | 'import';
+    label?: string;
+    contentPreview?: string;
+    wordCount?: number;
+    headingText?: string;
+    createdAt?: Date;
+}
+
+export async function createMemoVersionFixture(
+    options: CreateMemoVersionOptions = {},
+): Promise<MemoVersionDoc> {
+    const state = options.state || new Uint8Array([1, 2, 3, 4, 5]);
+
+    const doc: MemoVersionDoc = {
+        _id: new ObjectId(),
+        noteId: options.noteId || generatePageId(),
+        state: Buffer.from(state),
+        version: options.version ?? 1,
+        byteSize: state.length,
+        compressed: false,
+        trigger: options.trigger || 'auto-interval',
+        label: options.label,
+        createdAt: options.createdAt || new Date(),
+        contentPreview: options.contentPreview,
+        wordCount: options.wordCount,
+        headingText: options.headingText,
+    };
+    await testDb!.collection('memo_versions').insertOne(doc);
+    return doc;
+}
