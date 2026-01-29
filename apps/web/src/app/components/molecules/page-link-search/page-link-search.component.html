@@ -1,0 +1,69 @@
+@if (isOpen()) {
+  <div class="page-link-search-overlay" (click)="onOverlayClick($event)">
+    <div class="page-link-search-modal">
+      <div class="search-header">
+        <span class="search-icon">🔗</span>
+        <input
+          #searchInput
+          type="text"
+          [value]="searchQuery()"
+          (input)="onSearchInput($event)"
+          (keydown)="handleKeydown($event)"
+          [placeholder]="mode() === 'inline' ? 'Link to page...' : 'Embed page...'"
+          class="search-input"
+        />
+        <button class="close-btn" (click)="close()">×</button>
+      </div>
+
+      <div class="search-results">
+        @if (isLoading()) {
+          <div class="search-loading">
+            <span class="loading-spinner"></span>
+            Searching...
+          </div>
+        } @else if (searchResults().length === 0 && searchQuery().length >= 1) {
+          <div class="search-empty">
+            <span class="empty-icon">🔍</span>
+            <span>No pages found</span>
+          </div>
+        }
+        @for (page of searchResults(); track page.id; let i = $index) {
+          <div
+            class="search-result"
+            [class.selected]="selectedIndex() === i"
+            (click)="selectPage(page)"
+            (mouseenter)="selectedIndex.set(i)"
+          >
+            <span class="result-icon">{{ getPageIcon(page.type) }}</span>
+            <div class="result-content">
+              <span class="result-title">{{ page.title }}</span>
+              @if (page.notebookName) {
+                <span class="result-notebook">{{ page.notebookName }}</span>
+              }
+            </div>
+          </div>
+        }
+        @if (searchQuery().length >= 2 && !isLoading()) {
+          <div
+            class="search-result create-new"
+            [class.selected]="selectedIndex() === searchResults().length"
+            (click)="createNewPage()"
+            (mouseenter)="selectedIndex.set(searchResults().length)"
+          >
+            <span class="result-icon">➕</span>
+            <div class="result-content">
+              <span class="result-title">Create "{{ searchQuery() }}"</span>
+              <span class="result-hint">New page</span>
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="search-footer">
+        <span class="hint">↑↓ to navigate</span>
+        <span class="hint">↵ to select</span>
+        <span class="hint">esc to close</span>
+      </div>
+    </div>
+  </div>
+}

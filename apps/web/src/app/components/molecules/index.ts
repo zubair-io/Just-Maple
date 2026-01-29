@@ -12,3 +12,5 @@ export { NoteHeaderComponent, type ExportFormat } from './note-header/note-heade
 export { NotebookHeaderComponent } from './notebook-header/notebook-header.component';
 export { TodoPopoverComponent } from './todo-popover/todo-popover.component';
 export { TemplateCardComponent } from './template-card/template-card.component';
+export { PageLinkSearchComponent } from './page-link-search/page-link-search.component';
+export { BacklinksPanelComponent } from './backlinks-panel/backlinks-panel.component';

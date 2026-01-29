@@ -29,5 +29,16 @@
         <span>Loading notebook...</span>
       </div>
     }
+
+    <!-- Page Link Search Modal -->
+    <app-page-link-search
+      [isOpen]="pageLinkSearchOpen()"
+      [mode]="pageLinkSearchMode()"
+      [notebookId]="notebookId()"
+      [excludePageId]="pageId()"
+      (closed)="closePageLinkSearch()"
+      (selected)="onPageLinkSelected($event)"
+      (createNew)="onPageLinkCreateNew($event)"
+    />
   }
 </div>

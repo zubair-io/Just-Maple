@@ -1,0 +1,70 @@
+<div class="backlinks-panel">
+  <div class="panel-header" (click)="toggleExpanded()">
+    <span class="material-symbols-rounded toggle-icon" [class.collapsed]="!isExpanded()">
+      expand_more
+    </span>
+    <span class="panel-title">Linked References</span>
+    @if (backlinks().length > 0) {
+      <span class="count-badge">{{ backlinks().length }}</span>
+    }
+  </div>
+
+  @if (isExpanded()) {
+    <div class="panel-content">
+      @if (isLoading()) {
+        <div class="loading">
+          <span class="loading-spinner"></span>
+          <span>Loading backlinks...</span>
+        </div>
+      } @else if (backlinks().length === 0) {
+        <div class="empty-state">
+          <span class="material-symbols-rounded empty-icon">link_off</span>
+          <span>No pages link to this page yet.</span>
+        </div>
+      } @else {
+        @for (link of backlinks(); track link.pageId) {
+          <div class="backlink-item" (click)="navigateToPage(link.pageId)">
+            <span class="material-symbols-rounded link-icon">
+              {{ getLinkIcon(link.type) }}
+            </span>
+            <div class="link-content">
+              <span class="link-title">{{ link.title }}</span>
+              @if (link.context) {
+                <p class="link-context">{{ link.context }}</p>
+              }
+            </div>
+          </div>
+        }
+      }
+
+      <!-- Unlinked Mentions Section -->
+      @if (unlinkedMentions().length > 0) {
+        <div class="unlinked-section">
+          <div class="section-header" (click)="toggleUnlinked()">
+            <span class="material-symbols-rounded toggle-icon" [class.collapsed]="!showUnlinked()">
+              expand_more
+            </span>
+            <span>Unlinked Mentions</span>
+            <span class="count-badge muted">{{ unlinkedMentions().length }}</span>
+          </div>
+
+          @if (showUnlinked()) {
+            <div class="unlinked-content">
+              @for (mention of unlinkedMentions(); track mention.pageId) {
+                <div class="mention-item" (click)="navigateToPage(mention.pageId)">
+                  <span class="material-symbols-rounded mention-icon"> description </span>
+                  <div class="mention-content">
+                    <span class="mention-title">{{ mention.title }}</span>
+                    @if (mention.context) {
+                      <p class="mention-context">{{ mention.context }}</p>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>
