@@ -5,6 +5,7 @@ import { notebookRoutes } from '../../routes/notebooks';
 import { pageRoutes } from '../../routes/pages';
 import { messageRoutes } from '../../routes/messages';
 import { botRoutes } from '../../routes/bots';
+import { mcpRoutes } from '../../routes/mcp';
 
 export function createTestApp() {
     return new Elysia()
@@ -19,6 +20,7 @@ export function createTestApp() {
         .use(pageRoutes)
         .use(messageRoutes)
         .use(botRoutes)
+        .use(mcpRoutes)
         .get('/api/health', () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 }
 
