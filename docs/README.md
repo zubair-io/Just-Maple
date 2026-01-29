@@ -43,6 +43,10 @@ Just Maple is a self-hosted note-taking and collaboration platform featuring:
 - [**Testing Guide**](./testing.md) - Unit, integration, and E2E testing
 - [**Best Practices**](./best-practices.md) - Code style, patterns, and conventions
 
+### Feature Documentation
+
+- [**v0.9 Features**](./v0.9-features.md) - AI Writing Assistant, Templates, Bi-directional Linking, Memo Versioning, Full-text Search, MCP Server
+
 ### Additional Resources
 
 - [**Bot System Integration**](./bot-system-integration-plan.md) - AI bot integration
