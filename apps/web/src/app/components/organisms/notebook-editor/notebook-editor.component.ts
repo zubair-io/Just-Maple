@@ -282,6 +282,7 @@ export class NotebookEditorComponent implements OnDestroy {
           PageLink.configure({
             searchPages: (query: string) => this.searchPagesForLink(query),
             onLinkClick: (pageId: string) => this.navigateToPage(pageId),
+            getPageTitle$: (pageId: string) => this.pageService.getPageTitle$(pageId),
             suggestion: {
               render: () => this.createPageLinkSuggestionRenderer(),
             },
@@ -289,6 +290,7 @@ export class NotebookEditorComponent implements OnDestroy {
           // Page link blocks (embed-style)
           PageLinkBlock.configure({
             onLinkClick: (pageId: string) => this.navigateToPage(pageId),
+            getPageTitle$: (pageId: string) => this.pageService.getPageTitle$(pageId),
           }),
           // Drag handles for blocks
           DragHandle.configure({

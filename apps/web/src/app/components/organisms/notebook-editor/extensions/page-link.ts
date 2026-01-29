@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { PluginKey } from '@tiptap/pm/state';
 import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion';
+import type { Observable, Subscription } from 'rxjs';
 
 // ============================================
 // Page Link Types
@@ -27,6 +28,8 @@ export interface PageLinkOptions {
   createPage?: (title: string) => Promise<PageLinkSuggestion | null>;
   // Callback when a link is clicked
   onLinkClick?: (pageId: string) => void;
+  // Callback to get a reactive page title observable
+  getPageTitle$?: (pageId: string) => Observable<string>;
 }
 
 export const PageLinkPluginKey = new PluginKey('pageLink');
@@ -62,6 +65,7 @@ export const PageLink = Node.create<PageLinkOptions>({
       searchPages: async () => [],
       createPage: undefined,
       onLinkClick: undefined,
+      getPageTitle$: undefined,
     };
   },
 
@@ -155,12 +159,12 @@ export const PageLink = Node.create<PageLinkOptions>({
   addNodeView() {
     return ({ node, getPos }) => {
       const pageId = node.attrs['pageId'] as string;
-      const title = node.attrs['title'] as string;
+      const initialTitle = node.attrs['title'] as string;
 
       const dom = document.createElement('span');
       dom.setAttribute('data-type', 'page-link');
       dom.setAttribute('data-page-id', pageId);
-      dom.setAttribute('data-title', title);
+      dom.setAttribute('data-title', initialTitle);
       dom.classList.add('page-link');
 
       // Icon
@@ -172,8 +176,17 @@ export const PageLink = Node.create<PageLinkOptions>({
       // Title
       const titleSpan = document.createElement('span');
       titleSpan.classList.add('page-link-title');
-      titleSpan.textContent = title || 'Untitled';
+      titleSpan.textContent = initialTitle || 'Untitled';
       dom.appendChild(titleSpan);
+
+      // Subscribe to live title updates from the store
+      let subscription: Subscription | undefined;
+      if (this.options.getPageTitle$) {
+        subscription = this.options.getPageTitle$(pageId).subscribe((liveTitle) => {
+          titleSpan.textContent = liveTitle || 'Untitled';
+          dom.setAttribute('data-title', liveTitle);
+        });
+      }
 
       // Click handler
       dom.style.cursor = 'pointer';
@@ -181,11 +194,14 @@ export const PageLink = Node.create<PageLinkOptions>({
         event.preventDefault();
         event.stopPropagation();
 
+        // Get current title from the DOM (which is kept up to date by subscription)
+        const currentTitle = titleSpan.textContent || initialTitle;
+
         // Dispatch custom event for Angular to handle
         dom.dispatchEvent(
           new CustomEvent('page-link-click', {
             bubbles: true,
-            detail: { pageId, title },
+            detail: { pageId, title: currentTitle },
           }),
         );
 
@@ -202,11 +218,20 @@ export const PageLink = Node.create<PageLinkOptions>({
             return false;
           }
 
-          const newTitle = updatedNode.attrs['title'] as string;
-          titleSpan.textContent = newTitle || 'Untitled';
-          dom.setAttribute('data-title', newTitle);
+          // If pageId changed, we need to resubscribe
+          const newPageId = updatedNode.attrs['pageId'] as string;
+          if (newPageId !== pageId) {
+            // This shouldn't happen often, but handle it
+            return false;
+          }
 
+          // Note: We don't update from node attrs anymore since we get live updates from store
+          // But we still handle the update to keep TipTap happy
           return true;
+        },
+        destroy: () => {
+          // Clean up subscription when node is removed
+          subscription?.unsubscribe();
         },
         stopEvent: () => true,
       };
