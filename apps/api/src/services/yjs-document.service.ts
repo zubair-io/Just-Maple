@@ -7,6 +7,7 @@ import {
 } from '../repositories/memo.repo';
 import { realtimeWSService } from './realtime-ws.service';
 import { maybeCreateSnapshot } from './memo-version.service';
+import { indexPage } from '../repositories/search.repo';
 
 /**
  * YJS Document Manager Service
@@ -197,6 +198,11 @@ class YJSDocumentService {
             maybeCreateSnapshot(noteId, ydoc).catch((err) => {
                 console.error(`[YJS] Failed to create version snapshot for ${noteId}:`, err);
             });
+
+            // Update search index (background, debounced by save already)
+            indexPage(noteId).catch((err) =>
+                console.error(`[Search] Failed to index memo ${noteId}:`, err),
+            );
         } catch (error) {
             console.error(`[YJS] Failed to save document ${noteId}:`, error);
         } finally {

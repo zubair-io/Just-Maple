@@ -19,3 +19,4 @@ export * from './todo';
 export * from './ai-writing';
 export * from './template';
 export * from './link';
+export * from './search';
