@@ -3,6 +3,8 @@
   flex-direction: column;
   height: 100%;
   background: var(--color-bg);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .page-content {

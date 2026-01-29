@@ -1,12 +1,14 @@
 .page-wrapper {
   min-height: 100vh;
   background: var(--color-bg);
+  padding-top: env(safe-area-inset-top);
 }
 
 .page-content {
   max-width: 800px;
   margin: 0 auto;
   padding: 24px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
 }
 
 .section {

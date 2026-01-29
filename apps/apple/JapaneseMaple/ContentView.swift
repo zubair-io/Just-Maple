@@ -16,7 +16,7 @@ struct ContentView: View {
             WebViewContainer(webViewController: webViewController)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .ignoresSafeArea()
+        .ignoresSafeArea(.container)
     }
 }
 
