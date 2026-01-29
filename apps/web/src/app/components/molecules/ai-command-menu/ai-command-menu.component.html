@@ -1,0 +1,70 @@
+<div class="ai-command-backdrop" (click)="onBackdropClick($event)">
+  <div
+    class="ai-command-menu"
+    tabindex="0"
+    [style.top.px]="position().top"
+    [style.left.px]="position().left"
+  >
+    <div class="ai-command-header">
+      <span class="ai-command-title">AI Writing Assistant</span>
+      <span class="ai-command-hint">Use arrow keys</span>
+    </div>
+
+    @if (showCustomPrompt()) {
+      <div class="ai-command-custom">
+        <input
+          type="text"
+          class="ai-command-input"
+          placeholder="Enter your instruction..."
+          [ngModel]="customInstruction()"
+          (ngModelChange)="customInstruction.set($event)"
+          autofocus
+        />
+        <div class="ai-command-custom-actions">
+          <button
+            class="ai-btn ai-btn-primary"
+            [disabled]="!customInstruction()"
+            (click)="submitCustomPrompt()"
+          >
+            Generate
+          </button>
+          <button class="ai-btn ai-btn-secondary" (click)="showCustomPrompt.set(false)">
+            Back
+          </button>
+        </div>
+      </div>
+    } @else if (showLanguageSelect()) {
+      <div class="ai-command-languages">
+        <div class="ai-command-languages-header">Select language:</div>
+        @for (lang of languages; track lang) {
+          <button class="ai-command-language-item" (click)="selectLanguage(lang)">
+            {{ lang }}
+          </button>
+        }
+        <button
+          class="ai-btn ai-btn-secondary ai-command-back"
+          (click)="showLanguageSelect.set(false)"
+        >
+          Back
+        </button>
+      </div>
+    } @else {
+      <div class="ai-command-list">
+        @for (command of filteredCommands; track command.type; let i = $index) {
+          <button
+            class="ai-command-item"
+            [class.selected]="i === selectedIndex()"
+            (click)="selectCommand(command)"
+            (mouseenter)="selectedIndex.set(i)"
+          >
+            <span class="ai-command-icon">{{ command.icon }}</span>
+            <div class="ai-command-content">
+              <span class="ai-command-name">{{ command.title }}</span>
+              <span class="ai-command-desc">{{ command.description }}</span>
+            </div>
+          </button>
+        }
+      </div>
+    }
+  </div>
+</div>

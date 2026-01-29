@@ -15,3 +15,4 @@ export * from './signaling';
 export * from './whiteboard';
 export * from './recording';
 export * from './todo';
+export * from './ai-writing';
