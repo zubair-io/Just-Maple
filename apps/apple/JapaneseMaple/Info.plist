@@ -8,6 +8,10 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Japanese Maple needs access to your camera to scan barcodes.</string>
 	<key>NSMicrophoneUsageDescription</key>
