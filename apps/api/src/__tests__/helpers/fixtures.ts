@@ -425,6 +425,70 @@ export async function createPageFixture(options: CreatePageOptions = {}): Promis
 }
 
 // ============================================
+// Memo Fixtures
+// ============================================
+
+export interface MemoDoc {
+    _id: ObjectId;
+    noteId: string;
+    state: Buffer;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateMemoOptions {
+    noteId: string;
+    state?: Buffer;
+}
+
+export async function createMemoFixture(options: CreateMemoOptions): Promise<MemoDoc> {
+    const now = new Date();
+
+    const doc: MemoDoc = {
+        _id: new ObjectId(),
+        noteId: options.noteId,
+        state: options.state || Buffer.from([]),
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb!.collection('memos').insertOne(doc);
+    return doc;
+}
+
+// ============================================
+// Whiteboard Fixtures
+// ============================================
+
+export interface WhiteboardDoc {
+    _id: ObjectId;
+    id: string;
+    state: Buffer;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateWhiteboardOptions {
+    id: string;
+    state?: Buffer;
+}
+
+export async function createWhiteboardFixture(
+    options: CreateWhiteboardOptions,
+): Promise<WhiteboardDoc> {
+    const now = new Date();
+
+    const doc: WhiteboardDoc = {
+        _id: new ObjectId(),
+        id: options.id,
+        state: options.state || Buffer.from([]),
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb!.collection('whiteboards').insertOne(doc);
+    return doc;
+}
+
+// ============================================
 // Message Fixtures
 // ============================================
 
