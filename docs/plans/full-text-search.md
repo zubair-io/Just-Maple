@@ -6,12 +6,11 @@
 
 ## Executive Summary
 
-Implement full-text search across all notes in Just Maple using **Azure AI Search** with a `search_index` collection in Cosmos DB for Y.js content extraction. This provides enterprise-grade search with fuzzy matching, relevance tuning, and native snippet highlighting.
+Implement full-text search across all notes in Just Maple using **Cosmos DB text indexes** with a `search_index` collection for Y.js content extraction. Server-side snippet highlighting provides search result previews.
 
 **Reference**: See `docs/product-features-spec.md` Section 2 for user stories and requirements.
 
 **Production Database**: Azure Cosmos DB (MongoDB API)
-**Search Service**: Azure AI Search (formerly Azure Cognitive Search)
 
 ---
 
@@ -48,14 +47,9 @@ Implement full-text search across all notes in Just Maple using **Azure AI Searc
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                               │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐                   │
-│  │  Frontend   │───▶│   Search    │───▶│  Azure AI Search │                  │
-│  │  Search UI  │    │    API      │    │  (fuzzy, snippets)│                  │
-│  └─────────────┘    └─────────────┘    └─────────────────┘                   │
-│         │                                       ▲                             │
-│         │                                       │ Indexer                     │
-│         │                              ┌────────┴────────┐                    │
-│         │                              │  search_index   │                    │
-│         │                              │  (Cosmos DB)    │                    │
+│  │  Frontend   │───▶│   Search    │───▶│  search_index   │                   │
+│  │  Search UI  │    │    API      │    │  (Cosmos DB)    │                   │
+│  └─────────────┘    └─────────────┘    │  $text query    │                   │
 │         │                              └────────┬────────┘                    │
 │         │                                       ▲                             │
 │         │                                       │ Y.js decode                 │
@@ -71,21 +65,10 @@ Implement full-text search across all notes in Just Maple using **Azure AI Searc
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Why Azure AI Search
-
-| Feature              | Cosmos DB Text Index | Azure AI Search |
-| -------------------- | -------------------- | --------------- |
-| Fuzzy matching       | ❌                   | ✅              |
-| Snippet highlighting | ❌ Manual            | ✅ Native       |
-| Relevance tuning     | Basic                | Advanced (BM25) |
-| Synonyms             | ❌                   | ✅              |
-| Autocomplete         | ❌                   | ✅              |
-| Filters + Facets     | Limited              | ✅ Full support |
-
 ### Data Flow
 
-1. **Write path**: User edits memo → Y.js saved to `memos` → API decodes Y.js → Upserts to `search_index` → Azure AI Search indexer syncs
-2. **Read path**: User searches → API queries Azure AI Search → Returns results with snippets
+1. **Write path**: User edits memo → Y.js saved to `memos` → API decodes Y.js → Upserts to `search_index`
+2. **Read path**: User searches → API queries `search_index` with `$text` → Server highlights snippets → Returns results
 
 ### Access Control Model
 
@@ -220,100 +203,28 @@ export async function reindexAllForUser(userId: string): Promise<void>;
 
 ---
 
-### Phase 2: Azure AI Search Setup
+### Phase 2: Database Indexes
 
-#### 2.1 Create Azure AI Search Resource
-
-1. Create Azure AI Search service in Azure Portal (Basic tier ~$75/mo for production)
-2. Note the service endpoint and admin API key
-
-**Environment Variables** (add to `.env`):
-
-```bash
-AZURE_SEARCH_ENDPOINT=https://justmaple-search.search.windows.net
-AZURE_SEARCH_ADMIN_KEY=your-admin-key
-AZURE_SEARCH_INDEX_NAME=justmaple-notes
-```
-
-#### 2.2 Create Search Index Schema
-
-**File**: `apps/api/src/services/azure-search.service.ts`
-
-```typescript
-import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/search-documents';
-
-const indexDefinition = {
-    name: 'justmaple-notes',
-    fields: [
-        { name: 'id', type: 'Edm.String', key: true, filterable: true },
-        { name: 'pageId', type: 'Edm.String', filterable: true },
-        { name: 'userId', type: 'Edm.String', filterable: true },
-        { name: 'notebookId', type: 'Edm.String', filterable: true, facetable: true },
-        { name: 'type', type: 'Edm.String', filterable: true, facetable: true },
-        { name: 'title', type: 'Edm.String', searchable: true, analyzer: 'en.microsoft' },
-        { name: 'plainText', type: 'Edm.String', searchable: true, analyzer: 'en.microsoft' },
-        { name: 'preview', type: 'Edm.String' },
-        { name: 'notebookLabel', type: 'Edm.String' },
-        { name: 'updatedAt', type: 'Edm.DateTimeOffset', filterable: true, sortable: true },
-    ],
-    suggesters: [{ name: 'sg', searchMode: 'analyzingInfixMatching', sourceFields: ['title'] }],
-    scoringProfiles: [
-        {
-            name: 'titleBoost',
-            text: { weights: { title: 5, plainText: 1 } },
-        },
-    ],
-    defaultScoringProfile: 'titleBoost',
-};
-```
-
-#### 2.3 Cosmos DB Indexer (Auto-sync)
-
-Create an indexer in Azure AI Search that automatically syncs from `search_index` collection:
-
-```json
-{
-    "name": "cosmosdb-indexer",
-    "dataSourceName": "cosmos-search-index",
-    "targetIndexName": "justmaple-notes",
-    "schedule": { "interval": "PT5M" },
-    "fieldMappings": [
-        { "sourceFieldName": "_id", "targetFieldName": "id" },
-        { "sourceFieldName": "pageId", "targetFieldName": "pageId" },
-        { "sourceFieldName": "userId", "targetFieldName": "userId" },
-        { "sourceFieldName": "notebookId", "targetFieldName": "notebookId" },
-        { "sourceFieldName": "type", "targetFieldName": "type" },
-        { "sourceFieldName": "title", "targetFieldName": "title" },
-        { "sourceFieldName": "plainText", "targetFieldName": "plainText" },
-        { "sourceFieldName": "preview", "targetFieldName": "preview" },
-        { "sourceFieldName": "updatedAt", "targetFieldName": "updatedAt" }
-    ]
-}
-```
-
-**Data Source** for Cosmos DB:
-
-```json
-{
-    "name": "cosmos-search-index",
-    "type": "cosmosdb",
-    "credentials": { "connectionString": "AccountEndpoint=..." },
-    "container": { "name": "search_index", "query": null }
-}
-```
-
-#### 2.4 Cosmos DB Collection Indexes
+#### 2.1 Create Cosmos DB Text Index
 
 **File**: `apps/api/src/db/client.ts`
 
 ```typescript
 // Add to initDatabase() - indexes for the search_index collection
+await database.collection('search_index').createIndex(
+    { title: 'text', plainText: 'text' },
+    {
+        weights: { title: 10, plainText: 1 },
+        name: 'search_text_index',
+    },
+);
 await database.collection('search_index').createIndex({ pageId: 1 }, { unique: true });
-await database.collection('search_index').createIndex({ userId: 1 });
-await database.collection('search_index').createIndex({ _ts: 1 }); // For change tracking
+await database.collection('search_index').createIndex({ notebookId: 1 });
+await database.collection('search_index').createIndex({ type: 1 });
+await database.collection('search_index').createIndex({ updatedAt: -1 });
 ```
 
-#### 2.5 Migration Script
+#### 2.2 Migration Script
 
 **File**: `apps/api/scripts/migrations/007-create-search-index.ts`
 
@@ -321,34 +232,39 @@ await database.collection('search_index').createIndex({ _ts: 1 }); // For change
 - Extracts text from memos using Y.js decoding
 - Upserts to `search_index` collection
 - Processes in batches of 100-500 documents
-- Azure AI Search indexer will auto-sync within 5 minutes
 
 ---
 
 ### Phase 3: API Endpoints
 
-#### 3.1 Azure Search Service
+#### 3.1 Search Service
 
-**File**: `apps/api/src/services/azure-search.service.ts`
+**File**: `apps/api/src/services/search.service.ts`
 
 ```typescript
-import { SearchClient, AzureKeyCredential } from '@azure/search-documents';
 import { findNotebooksForUser } from '../repositories/notebook.repo';
-
-const searchClient = new SearchClient(
-    process.env.AZURE_SEARCH_ENDPOINT!,
-    process.env.AZURE_SEARCH_INDEX_NAME!,
-    new AzureKeyCredential(process.env.AZURE_SEARCH_ADMIN_KEY!),
-);
+import { getDatabase } from '../db/client';
 
 export interface SearchOptions {
     userId: string;
     types?: string[];
-    notebookIds?: string[]; // User-requested filter (optional)
+    notebookIds?: string[];
     dateFrom?: Date;
     dateTo?: Date;
     limit?: number;
     offset?: number;
+}
+
+export interface SearchResult {
+    pageId: string;
+    title: string;
+    type: string;
+    notebookId?: string;
+    notebookLabel?: string;
+    preview: string;
+    snippet: string;
+    score: number;
+    updatedAt: Date;
 }
 
 /**
@@ -359,95 +275,100 @@ async function getAccessibleNotebookIds(userId: string): Promise<string[]> {
     return notebooks.map((n) => n._id);
 }
 
-export async function searchNotes(query: string, options: SearchOptions) {
+/**
+ * Highlight search terms in text and extract snippet
+ */
+function highlightSnippet(text: string, query: string, contextLength = 100): string {
+    const terms = query
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((t) => t.length > 0);
+    const lowerText = text.toLowerCase();
+
+    // Find first matching term position
+    let matchPos = -1;
+    for (const term of terms) {
+        const pos = lowerText.indexOf(term);
+        if (pos !== -1 && (matchPos === -1 || pos < matchPos)) {
+            matchPos = pos;
+        }
+    }
+
+    if (matchPos === -1) return text.slice(0, contextLength * 2);
+
+    // Extract context around match
+    const start = Math.max(0, matchPos - contextLength);
+    const end = Math.min(text.length, matchPos + contextLength);
+    let snippet = text.slice(start, end);
+
+    // Wrap matches in <mark> tags
+    for (const term of terms) {
+        const regex = new RegExp(`(${escapeRegex(term)})`, 'gi');
+        snippet = snippet.replace(regex, '<mark>$1</mark>');
+    }
+
+    return (start > 0 ? '...' : '') + snippet + (end < text.length ? '...' : '');
+}
+
+function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export async function searchNotes(query: string, options: SearchOptions): Promise<SearchResult[]> {
+    const db = getDatabase();
+
     // CRITICAL: Get all notebooks user has access to for access control
     const accessibleNotebookIds = await getAccessibleNotebookIds(options.userId);
 
     if (accessibleNotebookIds.length === 0) {
-        return []; // User has no accessible notebooks
+        return [];
     }
 
-    // Build access control filter - user can only see content from accessible notebooks
-    const accessFilter = accessibleNotebookIds.map((id) => `notebookId eq '${id}'`).join(' or ');
-
-    const filters: string[] = [`(${accessFilter})`];
+    // Build MongoDB filter
+    const filter: Record<string, unknown> = {
+        notebookId: { $in: accessibleNotebookIds },
+        $text: { $search: query },
+    };
 
     // Additional user-requested filters
     if (options.types?.length) {
-        const typeFilter = options.types.map((t) => `type eq '${t}'`).join(' or ');
-        filters.push(`(${typeFilter})`);
+        filter.type = { $in: options.types };
     }
 
     // If user specifies notebookIds, intersect with accessible notebooks
     if (options.notebookIds?.length) {
         const requestedIds = options.notebookIds.filter((id) => accessibleNotebookIds.includes(id));
         if (requestedIds.length === 0) {
-            return []; // User requested notebooks they don't have access to
+            return [];
         }
-        const nbFilter = requestedIds.map((id) => `notebookId eq '${id}'`).join(' or ');
-        filters.push(`(${nbFilter})`);
+        filter.notebookId = { $in: requestedIds };
     }
 
-    if (options.dateFrom) {
-        filters.push(`updatedAt ge ${options.dateFrom.toISOString()}`);
-    }
-    if (options.dateTo) {
-        filters.push(`updatedAt le ${options.dateTo.toISOString()}`);
-    }
-
-    const results = await searchClient.search(query, {
-        filter: filters.join(' and '),
-        top: options.limit || 20,
-        skip: options.offset || 0,
-        highlightFields: 'title,plainText',
-        highlightPreTag: '<mark>',
-        highlightPostTag: '</mark>',
-        queryType: 'simple', // Use 'full' for Lucene syntax
-        searchMode: 'any',
-    });
-
-    const items: SearchResult[] = [];
-    for await (const result of results.results) {
-        items.push({
-            pageId: result.document.pageId,
-            title: result.document.title,
-            type: result.document.type,
-            notebookId: result.document.notebookId,
-            notebookLabel: result.document.notebookLabel,
-            preview: result.document.preview,
-            score: result.score || 0,
-            highlights: [
-                ...(result.highlights?.title?.map((h) => ({ field: 'title', snippet: h })) || []),
-                ...(result.highlights?.plainText?.map((h) => ({ field: 'content', snippet: h })) ||
-                    []),
-            ],
-            updatedAt: result.document.updatedAt,
-        });
+    if (options.dateFrom || options.dateTo) {
+        filter.updatedAt = {};
+        if (options.dateFrom) (filter.updatedAt as Record<string, Date>).$gte = options.dateFrom;
+        if (options.dateTo) (filter.updatedAt as Record<string, Date>).$lte = options.dateTo;
     }
 
-    return items;
-}
+    const results = await db
+        .collection('search_index')
+        .find(filter, { projection: { score: { $meta: 'textScore' } } })
+        .sort({ score: { $meta: 'textScore' } })
+        .limit(options.limit || 20)
+        .skip(options.offset || 0)
+        .toArray();
 
-export async function suggestNotes(query: string, userId: string) {
-    // CRITICAL: Use same access control as searchNotes
-    const accessibleNotebookIds = await getAccessibleNotebookIds(userId);
-
-    if (accessibleNotebookIds.length === 0) {
-        return [];
-    }
-
-    const accessFilter = accessibleNotebookIds.map((id) => `notebookId eq '${id}'`).join(' or ');
-
-    const results = await searchClient.suggest(query, 'sg', {
-        filter: `(${accessFilter})`,
-        top: 5,
-        highlightPreTag: '<mark>',
-        highlightPostTag: '</mark>',
-    });
-
-    return results.results.map((r) => ({
-        text: r.text,
-        pageId: r.document.pageId,
+    // Add highlighted snippets
+    return results.map((r) => ({
+        pageId: r.pageId,
+        title: r.title,
+        type: r.type,
+        notebookId: r.notebookId,
+        notebookLabel: r.notebookLabel,
+        preview: r.preview,
+        snippet: highlightSnippet(r.plainText, query),
+        score: r.score || 0,
+        updatedAt: r.updatedAt,
     }));
 }
 ```
@@ -457,10 +378,15 @@ export async function suggestNotes(query: string, userId: string) {
 **File**: `apps/api/src/routes/search.ts`
 
 ```typescript
+import { Elysia } from 'elysia';
+import { jwtPlugin } from '../middleware/jwt';
+import { searchNotes } from '../services/search.service';
+import { reindexAllForUser } from '../repositories/search.repo';
+
 export const searchRoutes = new Elysia({ prefix: '/api/search' })
     .use(jwtPlugin)
     .get('/', async ({ auth, query }) => {
-        // GET /api/search?q=query&notebookIds=xxx,yyy&types=memo,whiteboard&dateFrom=2024-01-01&dateTo=2024-12-31&limit=20
+        // GET /api/search?q=query&notebookIds=xxx,yyy&types=memo,whiteboard&limit=20
         const results = await searchNotes(query.q, {
             userId: auth.user._id,
             notebookIds: query.notebookIds?.split(','),
@@ -472,11 +398,6 @@ export const searchRoutes = new Elysia({ prefix: '/api/search' })
         });
         return { results };
     })
-    .get('/suggest', async ({ auth, query }) => {
-        // GET /api/search/suggest?q=partial
-        const suggestions = await suggestNotes(query.q, auth.user._id);
-        return { suggestions };
-    })
     .post('/reindex', async ({ auth }) => {
         // Admin endpoint to trigger re-indexing
         await reindexAllForUser(auth.user._id);
@@ -484,15 +405,9 @@ export const searchRoutes = new Elysia({ prefix: '/api/search' })
     });
 ```
 
-#### 3.3 Install Azure SDK
+#### 3.3 Real-time Index Updates
 
-```bash
-bun add @azure/search-documents
-```
-
-#### 3.4 Real-time Index Updates
-
-When content changes, update the `search_index` collection. The Azure AI Search indexer will sync automatically every 5 minutes. For faster updates, you can also push directly to Azure AI Search.
+When content changes, update the `search_index` collection immediately.
 
 **File**: `apps/api/src/repositories/search.repo.ts`
 
@@ -734,7 +649,7 @@ export const DB_STORES = {
 | File                                                     | Purpose                                 |
 | -------------------------------------------------------- | --------------------------------------- |
 | `packages/shared/src/schemas/search.ts`                  | Search index and result TypeBox schemas |
-| `apps/api/src/services/azure-search.service.ts`          | Azure AI Search SDK integration         |
+| `apps/api/src/services/search.service.ts`                | Search service with Cosmos DB $text     |
 | `apps/api/src/repositories/search.repo.ts`               | search_index collection + Y.js decoding |
 | `apps/api/src/routes/search.ts`                          | Search API endpoints                    |
 | `apps/api/scripts/migrations/007-create-search-index.ts` | Initial index migration                 |
@@ -749,20 +664,10 @@ export const DB_STORES = {
 | `apps/api/src/index.ts`                               | Register search routes              |
 | `apps/api/src/routes/pages.ts`                        | Add index update hooks              |
 | `apps/api/src/routes/memo.ts`                         | Add index update hooks              |
-| `apps/api/package.json`                               | Add @azure/search-documents         |
 | `packages/shared/src/schemas/index.ts`                | Export search schemas               |
 | `apps/web/src/app/services/db-stores.ts`              | Add search index store              |
 | `apps/web/src/app/components/organisms/sidebar/*`     | Add search button                   |
 | `apps/web/src/app/components/templates/main-layout/*` | Add Cmd+K shortcut                  |
-
-### Azure Resources to Create
-
-| Resource                   | Purpose                               |
-| -------------------------- | ------------------------------------- |
-| Azure AI Search service    | Full-text search with fuzzy matching  |
-| Data Source (Cosmos DB)    | Points to search_index collection     |
-| Index (justmaple-notes)    | Search index schema                   |
-| Indexer (cosmosdb-indexer) | Auto-syncs from Cosmos DB every 5 min |
 
 ---
 
@@ -774,15 +679,13 @@ export const DB_STORES = {
 - **Background processing**: Async index updates don't block API responses
 - **Incremental updates**: Only update changed content, not full re-index
 - **Batch migration**: Process 100-500 documents at a time
-- **Indexer sync**: Azure AI Search indexer runs every 5 minutes (configurable)
 
 ### Search
 
-- **Scoring profile**: Title weighted 5x higher than content via Azure AI Search
-- **Native highlighting**: Azure AI Search provides snippet highlighting automatically
+- **Text index weights**: Title weighted 10x higher than content
+- **Server-side highlighting**: Generate snippets with `<mark>` tags server-side
 - **Access control**: Filter by accessible notebookIds (not userId) at query time
-- **Pagination**: top/skip parameters for efficient pagination
-- **Latency**: Azure AI Search typically responds in 20-50ms
+- **Pagination**: limit/skip parameters for efficient pagination
 - **Notebook lookup caching**: Consider caching accessible notebook IDs for 1-5 min to reduce DB calls
 
 ### Frontend
@@ -800,17 +703,17 @@ export const DB_STORES = {
 Search results MUST respect notebook sharing permissions:
 
 1. **Pre-query access check**: Before searching, fetch all notebook IDs the user has access to via `findNotebooksForUser(userId)`
-2. **Filter by accessible notebooks**: Azure AI Search filter includes `notebookId in (accessible IDs)`
+2. **Filter by accessible notebooks**: MongoDB filter includes `notebookId: { $in: accessibleIds }`
 3. **No userId-only filtering**: Never filter only by `userId` - this misses shared notebooks and exposes private content
 4. **Intersection validation**: If user requests specific `notebookIds`, validate they have access before including in filter
 
 ```typescript
 // WRONG - exposes only user's own content, misses shared notebooks
-const filter = `userId eq '${userId}'`;
+const filter = { userId };
 
 // CORRECT - includes all accessible notebooks (owned + shared + public)
 const accessibleIds = await getAccessibleNotebookIds(userId);
-const filter = accessibleIds.map((id) => `notebookId eq '${id}'`).join(' or ');
+const filter = { notebookId: { $in: accessibleIds } };
 ```
 
 ### Other Security Measures
@@ -818,48 +721,42 @@ const filter = accessibleIds.map((id) => `notebookId eq '${id}'`).join(' or ');
 1. **Query sanitization**: Escape special characters in search queries to prevent injection
 2. **Rate limiting**: 30 requests/minute per user
 3. **Result limiting**: Maximum 100 results per query
-4. **API key security**: Azure Search admin key stored in environment variables, never exposed to client
 
 ---
 
 ## Implementation Sequence
 
-| Step | Task                                            | Effort |
-| ---- | ----------------------------------------------- | ------ |
-| 1    | Create Azure AI Search resource in Azure Portal | 0.5h   |
-| 2    | Create search schema in shared package          | 1h     |
-| 3    | Implement azure-search.service.ts               | 2h     |
-| 4    | Implement search.repo.ts (Y.js decoding)        | 3h     |
-| 5    | Create Cosmos DB indexes for search_index       | 0.5h   |
-| 6    | Configure Azure indexer + data source           | 1h     |
-| 7    | Implement search API routes                     | 2h     |
-| 8    | Write migration script for existing content     | 2h     |
-| 9    | Add index update hooks to existing routes       | 2h     |
-| 10   | Implement frontend search service               | 3h     |
-| 11   | Build search modal component                    | 4h     |
-| 12   | Add keyboard shortcuts and sidebar integration  | 1h     |
-| 13   | Implement offline search capability             | 4h     |
-| 14   | Testing and refinement                          | 4h     |
+| Step | Task                                           | Effort |
+| ---- | ---------------------------------------------- | ------ |
+| 1    | Create search schema in shared package         | 1h     |
+| 2    | Create Cosmos DB text indexes for search_index | 0.5h   |
+| 3    | Implement search.service.ts (Cosmos DB $text)  | 2h     |
+| 4    | Implement search.repo.ts (Y.js decoding)       | 3h     |
+| 5    | Implement search API routes                    | 1h     |
+| 6    | Write migration script for existing content    | 2h     |
+| 7    | Add index update hooks to existing routes      | 2h     |
+| 8    | Implement frontend search service              | 3h     |
+| 9    | Build search modal component                   | 4h     |
+| 10   | Add keyboard shortcuts and sidebar integration | 1h     |
+| 11   | Implement offline search capability            | 4h     |
+| 12   | Testing and refinement                         | 4h     |
 
-**Total**: ~30 hours
+**Total**: ~27.5 hours
 
 ---
 
 ## Testing Strategy
 
-- **Unit tests**: Y.js text extraction, filter building
-- **Integration tests**: Azure AI Search queries, access control
+- **Unit tests**: Y.js text extraction, filter building, snippet highlighting
+- **Integration tests**: Cosmos DB text search queries, access control
 - **E2E tests**: Search modal interaction, keyboard navigation
 - **Performance tests**: Latency with 10K+ documents
-- **Index tests**: Verify indexer syncs correctly from Cosmos DB
 
 ---
 
 ## Future Enhancements
 
-- **Semantic search**: Add Azure AI Search semantic ranking for better relevance
-- **Vector search**: Add embedding-based search for conceptual matching
+- **Azure AI Search upgrade**: For fuzzy matching, synonyms, better relevance
 - **Search within notebook**: Scoped search from sidebar
-- **Autocomplete**: Use Azure AI Search suggester for type-ahead
+- **Autocomplete**: Type-ahead suggestions from titles
 - **Search analytics**: Track popular queries, zero-result queries
-- **Synonyms**: Configure synonym maps for common terms
