@@ -429,8 +429,17 @@ export async function searchNotes(query: string, options: SearchOptions) {
 }
 
 export async function suggestNotes(query: string, userId: string) {
+    // CRITICAL: Use same access control as searchNotes
+    const accessibleNotebookIds = await getAccessibleNotebookIds(userId);
+
+    if (accessibleNotebookIds.length === 0) {
+        return [];
+    }
+
+    const accessFilter = accessibleNotebookIds.map((id) => `notebookId eq '${id}'`).join(' or ');
+
     const results = await searchClient.suggest(query, 'sg', {
-        filter: `userId eq '${userId}'`,
+        filter: `(${accessFilter})`,
         top: 5,
         highlightPreTag: '<mark>',
         highlightPostTag: '</mark>',
@@ -771,9 +780,10 @@ export const DB_STORES = {
 
 - **Scoring profile**: Title weighted 5x higher than content via Azure AI Search
 - **Native highlighting**: Azure AI Search provides snippet highlighting automatically
-- **Filters**: userId filter ensures access control at query time
+- **Access control**: Filter by accessible notebookIds (not userId) at query time
 - **Pagination**: top/skip parameters for efficient pagination
 - **Latency**: Azure AI Search typically responds in 20-50ms
+- **Notebook lookup caching**: Consider caching accessible notebook IDs for 1-5 min to reduce DB calls
 
 ### Frontend
 
