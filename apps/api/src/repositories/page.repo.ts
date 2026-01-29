@@ -450,7 +450,7 @@ export async function findPageByIdInternal(
     }
 
     try {
-        const doc = await getCollection().findOne({ _id: new ObjectId(id) });
+        const doc = await getCollection().findOne({ id });
         if (!doc) return null;
         return toPageResponse(doc);
     } catch {
@@ -506,7 +506,7 @@ export async function updatePageInternal(
         if (data.isArchived !== undefined) updateData.isArchived = data.isArchived;
 
         const result = await getCollection().findOneAndUpdate(
-            { _id: new ObjectId(id) },
+            { id },
             { $set: updateData },
             { returnDocument: 'after' },
         );
