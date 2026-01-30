@@ -54,12 +54,14 @@ import {
   CodeBlockWithLanguage,
   PageLink,
   PageLinkBlock,
+  HashTag,
   formatTime,
   formatDate,
   type SlashCommandItem,
   type InlineMentionSuggestion,
   type MentionableUser,
   type PageLinkSuggestion,
+  type HashTagSuggestion,
 } from './extensions';
 import { PageLinkSearchComponent } from '../../molecules/page-link-search/page-link-search.component';
 import { Router } from '@angular/router';
@@ -72,6 +74,7 @@ import { AiBotWidgetComponent } from '../../molecules/ai-bot-widget/ai-bot-widge
 import { AIPreviewPanelComponent } from '../../molecules/ai-preview-panel/ai-preview-panel.component';
 import { AICommandMenuComponent } from '../../molecules/ai-command-menu/ai-command-menu.component';
 import { AIWritingService } from '../../../services/ai-writing.service';
+import { TagService } from '../../../services/tag.service';
 import type { AIWritingType } from '@maple/shared';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
@@ -101,6 +104,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly activatedRoute = inject(ActivatedRoute);
   private readonly memoImageService = inject(MemoImageService);
   private readonly aiWritingService = inject(AIWritingService);
+  private readonly tagService = inject(TagService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
@@ -295,6 +299,16 @@ export class NotebookEditorComponent implements OnDestroy {
           PageLinkBlock.configure({
             onLinkClick: (pageId: string) => this.navigateToPage(pageId),
             getPageTitle$: (pageId: string) => this.pageService.getPageTitle$(pageId),
+          }),
+          // Hashtags for page organization
+          HashTag.configure({
+            getTags: () =>
+              this.tagService.tags().map((t) => ({ name: t.name, count: t.count, color: t.color })),
+            getTagColor: (tag: string) => this.tagService.getTagColor(tag),
+            onTagClick: (tag: string) => this.navigateToTag(tag),
+            suggestion: {
+              render: () => this.createHashTagSuggestionRenderer(),
+            },
           }),
           // Drag handles for blocks
           DragHandle.configure({
@@ -2064,6 +2078,154 @@ export class NotebookEditorComponent implements OnDestroy {
       div.addEventListener('click', () => onSelect(item));
       div.addEventListener('mouseenter', () => {
         popup.querySelectorAll('.page-link-item').forEach((el) => el.classList.remove('active'));
+        div.classList.add('active');
+      });
+
+      popup.appendChild(div);
+    });
+  }
+
+  // ==========================================
+  // HashTag Methods
+  // ==========================================
+
+  /**
+   * Navigate to a tag view (filter pages by tag)
+   */
+  navigateToTag(tag: string): void {
+    const notebookId = this.notebookId();
+    // Navigate to notebook with tag filter query param
+    this.router.navigate(['/', notebookId], { queryParams: { tag } });
+  }
+
+  /**
+   * Create renderer for hashtag suggestions popup
+   */
+  private createHashTagSuggestionRenderer() {
+    let popup: HTMLElement | null = null;
+    let currentProps: any = null;
+
+    return {
+      onStart: (props: any) => {
+        currentProps = props;
+
+        popup = document.createElement('div');
+        popup.classList.add('hashtag-suggestion-popup');
+        popup.style.position = 'absolute';
+        popup.style.zIndex = '1000';
+        document.body.appendChild(popup);
+
+        this.renderHashTagMenu(popup, props.items, (item: HashTagSuggestion) => {
+          if (currentProps) {
+            currentProps.command(item);
+          }
+        });
+
+        this.updatePopupPosition(popup, props.clientRect);
+      },
+
+      onUpdate: (props: any) => {
+        currentProps = props;
+
+        if (popup) {
+          popup.innerHTML = '';
+          this.renderHashTagMenu(popup, props.items, (item: HashTagSuggestion) => {
+            if (currentProps) {
+              currentProps.command(item);
+            }
+          });
+          if (props.clientRect) {
+            this.updatePopupPosition(popup, props.clientRect);
+          }
+        }
+      },
+
+      onKeyDown: (props: any) => {
+        if (props.event.key === 'Escape') {
+          popup?.remove();
+          return true;
+        }
+
+        // Handle arrow keys and enter for menu navigation
+        if (['ArrowUp', 'ArrowDown', 'Enter'].includes(props.event.key)) {
+          const items = popup?.querySelectorAll('.hashtag-item');
+          if (!items?.length) return false;
+
+          const active = popup?.querySelector('.hashtag-item.active');
+          let activeIndex = active ? Array.from(items).indexOf(active) : -1;
+
+          if (props.event.key === 'ArrowDown') {
+            activeIndex = (activeIndex + 1) % items.length;
+          } else if (props.event.key === 'ArrowUp') {
+            activeIndex = activeIndex <= 0 ? items.length - 1 : activeIndex - 1;
+          } else if (props.event.key === 'Enter' && active) {
+            (active as HTMLElement).click();
+            return true;
+          }
+
+          items.forEach((item, i) => {
+            item.classList.toggle('active', i === activeIndex);
+          });
+
+          return true;
+        }
+
+        return false;
+      },
+
+      onExit: () => {
+        popup?.remove();
+        popup = null;
+      },
+    };
+  }
+
+  /**
+   * Render hashtag suggestion menu items
+   */
+  private renderHashTagMenu(
+    popup: HTMLElement,
+    items: HashTagSuggestion[],
+    onSelect: (item: HashTagSuggestion) => void,
+  ): void {
+    if (items.length === 0) {
+      popup.innerHTML = '<div class="hashtag-empty">Type to create a new tag</div>';
+      return;
+    }
+
+    items.forEach((item, index) => {
+      const div = document.createElement('div');
+      div.classList.add('hashtag-item');
+      if (index === 0) div.classList.add('active');
+
+      const tagIcon = document.createElement('span');
+      tagIcon.classList.add('hashtag-item-icon');
+      tagIcon.textContent = '#';
+
+      const tagName = document.createElement('span');
+      tagName.classList.add('hashtag-item-name');
+      tagName.textContent = item.name;
+
+      div.appendChild(tagIcon);
+      div.appendChild(tagName);
+
+      if (item.color) {
+        const colorDot = document.createElement('span');
+        colorDot.classList.add('hashtag-item-color');
+        colorDot.style.backgroundColor = item.color;
+        div.appendChild(colorDot);
+      }
+
+      if (item.count !== undefined) {
+        const count = document.createElement('span');
+        count.classList.add('hashtag-item-count');
+        count.textContent = `${item.count}`;
+        div.appendChild(count);
+      }
+
+      div.addEventListener('click', () => onSelect(item));
+      div.addEventListener('mouseenter', () => {
+        popup.querySelectorAll('.hashtag-item').forEach((el) => el.classList.remove('active'));
         div.classList.add('active');
       });
 
