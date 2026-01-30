@@ -15,12 +15,23 @@ bootstrapApplication(App, appConfig)
     const nativeBridge = appRef.injector.get(NativeBridgeService);
     const router = appRef.injector.get(Router);
 
+    // Get SW update service for checking update status
+    const swUpdateService = appRef.injector.get(SwUpdateService);
+
     // Helper to navigate to a deep link URL
     const navigateToDeepLink = (deepLinkUrl: string) => {
       try {
         const url = new URL(deepLinkUrl);
         const path = url.pathname + url.search + url.hash;
         console.log('[Main] Navigating to deep link path:', path);
+
+        // If SW update is available, force full page navigation
+        if (swUpdateService.updateAvailable()) {
+          console.log('[Main] SW update available, using full page navigation');
+          window.location.href = path;
+          return;
+        }
+
         router.navigateByUrl(path);
       } catch (err) {
         console.error('[Main] Failed to parse deep link:', err);

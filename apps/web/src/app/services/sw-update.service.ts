@@ -1,10 +1,13 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { filter } from 'rxjs/operators';
 
 @Injectable({ providedIn: 'root' })
 export class SwUpdateService {
   private readonly swUpdate = inject(SwUpdate);
+
+  /** Signal indicating a new SW version is ready and waiting */
+  readonly updateAvailable = signal(false);
 
   constructor() {
     if (!this.swUpdate.isEnabled) {
@@ -14,6 +17,7 @@ export class SwUpdateService {
     this.swUpdate.versionUpdates
       .pipe(filter((evt): evt is VersionReadyEvent => evt.type === 'VERSION_READY'))
       .subscribe(() => {
+        this.updateAvailable.set(true);
         this.showUpdateNotification();
       });
   }

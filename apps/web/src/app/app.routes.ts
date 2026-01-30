@@ -6,17 +6,19 @@ import {
   MemoPageGuard,
   MessagePageGuard,
 } from './guards/page-type.guard';
+import { swUpdateGuard } from './guards/sw-update.guard';
 
 export const routes: Routes = [
   // Auth routes - must come before the catch-all :notebookId route
   {
     path: 'login',
     loadComponent: () => import('./pages/login/login.component').then((m) => m.LoginComponent),
-    canActivate: [PublicGuard],
+    canActivate: [swUpdateGuard, PublicGuard],
   },
   {
     path: 'verify',
     loadComponent: () => import('./pages/verify/verify.component').then((m) => m.VerifyComponent),
+    canActivate: [swUpdateGuard],
   },
 
   // Authenticated app routes - matched first if user is authenticated
@@ -24,6 +26,7 @@ export const routes: Routes = [
     path: '',
     loadComponent: () => import('./layouts/home/home.component').then((m) => m.HomeComponent),
     canMatch: [AuthGuard],
+    canActivateChild: [swUpdateGuard],
     children: [
       // Settings route - must come before the home route
       {
@@ -131,6 +134,7 @@ export const routes: Routes = [
     path: '',
     loadComponent: () =>
       import('./pages/marketing/marketing.component').then((m) => m.MarketingComponent),
+    canActivate: [swUpdateGuard],
   },
   {
     path: '**',
