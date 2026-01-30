@@ -39,6 +39,42 @@ function extractTextFromYjs(xmlFragment: Y.XmlFragment): string {
 }
 
 /**
+ * Extract hashtags from Y.js XML fragment
+ */
+function extractTagsFromYjs(xmlFragment: Y.XmlFragment): string[] {
+    const tags: Set<string> = new Set();
+
+    function traverse(node: Y.XmlElement | Y.XmlText | Y.XmlFragment): void {
+        if (node instanceof Y.XmlElement) {
+            // Check if this is a hashtag node
+            if (node.nodeName === 'hashtag') {
+                const tagName = node.getAttribute('tag');
+                if (tagName && typeof tagName === 'string') {
+                    tags.add(tagName.toLowerCase());
+                }
+            }
+            // Continue traversing children
+            const children = node.toArray();
+            for (const child of children) {
+                if (child instanceof Y.XmlElement || child instanceof Y.XmlText) {
+                    traverse(child);
+                }
+            }
+        } else if (node instanceof Y.XmlFragment) {
+            const children = node.toArray();
+            for (const child of children) {
+                if (child instanceof Y.XmlElement || child instanceof Y.XmlText) {
+                    traverse(child);
+                }
+            }
+        }
+    }
+
+    traverse(xmlFragment);
+    return Array.from(tags);
+}
+
+/**
  * Index a page into the search_index collection
  */
 export async function indexPage(pageId: string): Promise<void> {
@@ -52,6 +88,7 @@ export async function indexPage(pageId: string): Promise<void> {
     }
 
     let plainText = page.title || '';
+    let extractedTags: string[] = [];
 
     // Extract text based on page type
     if (page.type === 'memo') {
@@ -63,6 +100,8 @@ export async function indexPage(pageId: string): Promise<void> {
                 Y.applyUpdate(ydoc, state);
                 const xmlFragment = ydoc.getXmlFragment('prosemirror');
                 plainText += ' ' + extractTextFromYjs(xmlFragment);
+                // Extract hashtags from Y.js content
+                extractedTags = extractTagsFromYjs(xmlFragment);
             } catch (e) {
                 console.error(`[SearchIndex] Failed to decode Y.js for ${pageId}:`, e);
                 // Fall back to page content if Y.js decode fails
@@ -94,6 +133,9 @@ export async function indexPage(pageId: string): Promise<void> {
     // Generate preview (first 200 chars)
     const preview = plainText.slice(0, 200);
 
+    // Use extracted tags from content, falling back to page.tags
+    const tags = extractedTags.length > 0 ? extractedTags : page.tags || [];
+
     // Upsert to search_index collection
     await db.collection('search_index').updateOne(
         { pageId },
@@ -107,14 +149,14 @@ export async function indexPage(pageId: string): Promise<void> {
                 plainText,
                 preview,
                 notebookLabel,
-                tags: page.tags || [],
+                tags,
                 updatedAt: new Date(),
             },
         },
         { upsert: true },
     );
 
-    console.log(`[SearchIndex] Indexed page: ${pageId}`);
+    console.log(`[SearchIndex] Indexed page: ${pageId} (tags: ${tags.join(', ') || 'none'})`);
 }
 
 /**
