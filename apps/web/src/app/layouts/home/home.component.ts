@@ -1,6 +1,6 @@
 import { Component, inject, signal, OnInit, OnDestroy, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
+import { Router, RouterOutlet, NavigationEnd, ActivatedRoute } from '@angular/router';
 import { Subscription, filter } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { NotebookService } from '../../services/notebook.service';
@@ -29,6 +29,7 @@ import {
 })
 export class HomeComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   readonly authService = inject(AuthService);
   readonly notebookService = inject(NotebookService);
   readonly pageService = inject(PageService);
@@ -57,6 +58,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   private touchStartTime = 0;
 
   private routerSubscription?: Subscription;
+  private queryParamsSubscription?: Subscription;
 
   ngOnInit(): void {
     // Ensure default notebook exists (notebooks auto-load via visibility service)
@@ -86,10 +88,32 @@ export class HomeComponent implements OnInit, OnDestroy {
       .subscribe(() => {
         this.syncFromRoute();
       });
+
+    // Listen for query params to open search modal with filters
+    this.queryParamsSubscription = this.route.queryParams.subscribe((params) => {
+      const tag = params['tag'];
+      const search = params['search'];
+
+      if (tag || search) {
+        // Open search modal with the filter
+        this.uiStateService.openSearchModal({
+          tag: tag || undefined,
+          query: search || undefined,
+        });
+
+        // Clear query params from URL without triggering navigation
+        this.router.navigate([], {
+          relativeTo: this.route,
+          queryParams: {},
+          replaceUrl: true,
+        });
+      }
+    });
   }
 
   ngOnDestroy(): void {
     this.routerSubscription?.unsubscribe();
+    this.queryParamsSubscription?.unsubscribe();
     this.realtimeWS.disconnect();
   }
 

@@ -75,6 +75,7 @@ import { AIPreviewPanelComponent } from '../../molecules/ai-preview-panel/ai-pre
 import { AICommandMenuComponent } from '../../molecules/ai-command-menu/ai-command-menu.component';
 import { AIWritingService } from '../../../services/ai-writing.service';
 import { TagService } from '../../../services/tag.service';
+import { UiStateService } from '../../../services/ui-state.service';
 import type { AIWritingType } from '@maple/shared';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
@@ -105,6 +106,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly memoImageService = inject(MemoImageService);
   private readonly aiWritingService = inject(AIWritingService);
   private readonly tagService = inject(TagService);
+  private readonly uiStateService = inject(UiStateService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
@@ -2040,7 +2042,7 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
-   * Render page link suggestion menu items
+   * Render page link suggestion menu items (matches slash-command-menu design)
    */
   private renderPageLinkMenu(
     popup: HTMLElement,
@@ -2048,37 +2050,43 @@ export class NotebookEditorComponent implements OnDestroy {
     onSelect: (item: PageLinkSuggestion) => void,
   ): void {
     if (items.length === 0) {
-      popup.innerHTML = '<div class="page-link-empty">No pages found</div>';
+      popup.innerHTML = '<div class="no-results">No results</div>';
       return;
     }
 
     items.forEach((item, index) => {
       const div = document.createElement('div');
       div.classList.add('page-link-item');
-      if (index === 0) div.classList.add('active');
+      if (index === 0) div.classList.add('selected');
 
+      // Icon container
       const icon = document.createElement('span');
       icon.classList.add('page-link-item-icon');
       icon.textContent = item.type === 'memo' ? '📝' : item.type === 'whiteboard' ? '🎨' : '📄';
 
+      // Content container
+      const content = document.createElement('div');
+      content.classList.add('page-link-item-content');
+
       const title = document.createElement('span');
       title.classList.add('page-link-item-title');
       title.textContent = item.title;
-
-      div.appendChild(icon);
-      div.appendChild(title);
+      content.appendChild(title);
 
       if (item.notebookName) {
         const notebook = document.createElement('span');
         notebook.classList.add('page-link-item-notebook');
         notebook.textContent = item.notebookName;
-        div.appendChild(notebook);
+        content.appendChild(notebook);
       }
+
+      div.appendChild(icon);
+      div.appendChild(content);
 
       div.addEventListener('click', () => onSelect(item));
       div.addEventListener('mouseenter', () => {
-        popup.querySelectorAll('.page-link-item').forEach((el) => el.classList.remove('active'));
-        div.classList.add('active');
+        popup.querySelectorAll('.page-link-item').forEach((el) => el.classList.remove('selected'));
+        div.classList.add('selected');
       });
 
       popup.appendChild(div);
@@ -2090,12 +2098,11 @@ export class NotebookEditorComponent implements OnDestroy {
   // ==========================================
 
   /**
-   * Navigate to a tag view (filter pages by tag)
+   * Open search modal filtered by tag
    */
   navigateToTag(tag: string): void {
-    const notebookId = this.notebookId();
-    // Navigate to notebook with tag filter query param
-    this.router.navigate(['/', notebookId], { queryParams: { tag } });
+    // Open search modal with tag filter
+    this.uiStateService.openSearchModal({ tag });
   }
 
   /**
@@ -2151,20 +2158,20 @@ export class NotebookEditorComponent implements OnDestroy {
           const items = popup?.querySelectorAll('.hashtag-item');
           if (!items?.length) return false;
 
-          const active = popup?.querySelector('.hashtag-item.active');
-          let activeIndex = active ? Array.from(items).indexOf(active) : -1;
+          const selected = popup?.querySelector('.hashtag-item.selected');
+          let selectedIndex = selected ? Array.from(items).indexOf(selected) : -1;
 
           if (props.event.key === 'ArrowDown') {
-            activeIndex = (activeIndex + 1) % items.length;
+            selectedIndex = (selectedIndex + 1) % items.length;
           } else if (props.event.key === 'ArrowUp') {
-            activeIndex = activeIndex <= 0 ? items.length - 1 : activeIndex - 1;
-          } else if (props.event.key === 'Enter' && active) {
-            (active as HTMLElement).click();
+            selectedIndex = selectedIndex <= 0 ? items.length - 1 : selectedIndex - 1;
+          } else if (props.event.key === 'Enter' && selected) {
+            (selected as HTMLElement).click();
             return true;
           }
 
           items.forEach((item, i) => {
-            item.classList.toggle('active', i === activeIndex);
+            item.classList.toggle('selected', i === selectedIndex);
           });
 
           return true;
@@ -2181,7 +2188,7 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
-   * Render hashtag suggestion menu items
+   * Render hashtag suggestion menu items (matches slash-command-menu design)
    */
   private renderHashTagMenu(
     popup: HTMLElement,
@@ -2189,25 +2196,38 @@ export class NotebookEditorComponent implements OnDestroy {
     onSelect: (item: HashTagSuggestion) => void,
   ): void {
     if (items.length === 0) {
-      popup.innerHTML = '<div class="hashtag-empty">Type to create a new tag</div>';
+      popup.innerHTML = '<div class="no-results">No results</div>';
       return;
     }
 
     items.forEach((item, index) => {
       const div = document.createElement('div');
       div.classList.add('hashtag-item');
-      if (index === 0) div.classList.add('active');
+      if (index === 0) div.classList.add('selected');
 
+      // Icon container
       const tagIcon = document.createElement('span');
       tagIcon.classList.add('hashtag-item-icon');
       tagIcon.textContent = '#';
 
+      // Content container
+      const content = document.createElement('div');
+      content.classList.add('hashtag-item-content');
+
       const tagName = document.createElement('span');
       tagName.classList.add('hashtag-item-name');
       tagName.textContent = item.name;
+      content.appendChild(tagName);
+
+      if (item.count !== undefined && item.count > 0) {
+        const desc = document.createElement('span');
+        desc.classList.add('hashtag-item-desc');
+        desc.textContent = `${item.count} page${item.count === 1 ? '' : 's'}`;
+        content.appendChild(desc);
+      }
 
       div.appendChild(tagIcon);
-      div.appendChild(tagName);
+      div.appendChild(content);
 
       if (item.color) {
         const colorDot = document.createElement('span');
@@ -2216,17 +2236,10 @@ export class NotebookEditorComponent implements OnDestroy {
         div.appendChild(colorDot);
       }
 
-      if (item.count !== undefined) {
-        const count = document.createElement('span');
-        count.classList.add('hashtag-item-count');
-        count.textContent = `${item.count}`;
-        div.appendChild(count);
-      }
-
       div.addEventListener('click', () => onSelect(item));
       div.addEventListener('mouseenter', () => {
-        popup.querySelectorAll('.hashtag-item').forEach((el) => el.classList.remove('active'));
-        div.classList.add('active');
+        popup.querySelectorAll('.hashtag-item').forEach((el) => el.classList.remove('selected'));
+        div.classList.add('selected');
       });
 
       popup.appendChild(div);
