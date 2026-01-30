@@ -86,7 +86,7 @@
 
         <!-- Notebook filters -->
         @if (notebooks().length > 0) {
-          <div>
+          <div class="mb-3">
             <span class="text-xs text-[var(--color-text-muted)] mb-2 block">Notebooks</span>
             <div class="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
               @for (notebook of notebooks(); track notebook._id) {
@@ -110,6 +110,25 @@
             </div>
           </div>
         }
+
+        <!-- Active tag filters -->
+        @if (selectedTags().length > 0) {
+          <div>
+            <span class="text-xs text-[var(--color-text-muted)] mb-2 block">Tags</span>
+            <div class="flex flex-wrap gap-2">
+              @for (tag of selectedTags(); track tag) {
+                <button
+                  (click)="removeTag(tag)"
+                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs bg-[var(--color-primary)] text-white transition-colors"
+                >
+                  <span class="material-symbols-rounded text-sm">tag</span>
+                  #{{ tag }}
+                  <span class="material-symbols-rounded text-sm ml-1">close</span>
+                </button>
+              }
+            </div>
+          </div>
+        }
       </div>
     }
 
@@ -120,7 +139,9 @@
           <span class="material-symbols-rounded text-4xl text-red-500 mb-2 block">error</span>
           <p class="text-[var(--color-text-muted)] text-sm">{{ error() }}</p>
         </div>
-      } @else if (query().trim() && results().length === 0 && !isSearching()) {
+      } @else if (
+        (query().trim() || selectedTags().length > 0) && results().length === 0 && !isSearching()
+      ) {
         <div class="p-8 text-center">
           <span
             class="material-symbols-rounded text-4xl text-[var(--color-text-muted)] opacity-30 mb-2 block"

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { SearchService, type SearchFilters } from '../../../services/search.service';
 import { NotebookService } from '../../../services/notebook.service';
+import { UiStateService } from '../../../services/ui-state.service';
 import type { SearchResult } from '@maple/shared';
 
 @Component({
@@ -16,6 +17,7 @@ import type { SearchResult } from '@maple/shared';
 export class SearchModalComponent implements OnInit, OnDestroy {
   private readonly searchService = inject(SearchService);
   private readonly notebookService = inject(NotebookService);
+  private readonly uiStateService = inject(UiStateService);
   private readonly router = inject(Router);
 
   readonly closed = output<void>();
@@ -27,6 +29,7 @@ export class SearchModalComponent implements OnInit, OnDestroy {
   // Filter state
   readonly selectedTypes = signal<string[]>([]);
   readonly selectedNotebookIds = signal<string[]>([]);
+  readonly selectedTags = signal<string[]>([]);
 
   // Search service state
   readonly isSearching = this.searchService.isSearching;
@@ -50,6 +53,30 @@ export class SearchModalComponent implements OnInit, OnDestroy {
   ];
 
   ngOnInit(): void {
+    // Apply initial options from UiStateService
+    const options = this.uiStateService.searchModalOptions();
+    if (options) {
+      if (options.query) {
+        this.query.set(options.query);
+      }
+      if (options.tag) {
+        this.selectedTags.set([options.tag]);
+        this.showFilters.set(true);
+      }
+      if (options.notebookId) {
+        this.selectedNotebookIds.set([options.notebookId]);
+        this.showFilters.set(true);
+      }
+
+      // Trigger search if we have a query or tag filter
+      if (options.query || options.tag) {
+        // Use a small delay to ensure component is fully initialized
+        setTimeout(() => {
+          this.rerunSearch();
+        }, 0);
+      }
+    }
+
     // Focus input on open
     setTimeout(() => {
       const input = document.querySelector('.search-input') as HTMLInputElement;
@@ -163,14 +190,34 @@ export class SearchModalComponent implements OnInit, OnDestroy {
     this.rerunSearch();
   }
 
+  toggleTag(tag: string): void {
+    this.selectedTags.update((tags) => {
+      if (tags.includes(tag)) {
+        return tags.filter((t) => t !== tag);
+      }
+      return [...tags, tag];
+    });
+    this.rerunSearch();
+  }
+
+  removeTag(tag: string): void {
+    this.selectedTags.update((tags) => tags.filter((t) => t !== tag));
+    this.rerunSearch();
+  }
+
   clearFilters(): void {
     this.selectedTypes.set([]);
     this.selectedNotebookIds.set([]);
+    this.selectedTags.set([]);
     this.rerunSearch();
   }
 
   hasActiveFilters(): boolean {
-    return this.selectedTypes().length > 0 || this.selectedNotebookIds().length > 0;
+    return (
+      this.selectedTypes().length > 0 ||
+      this.selectedNotebookIds().length > 0 ||
+      this.selectedTags().length > 0
+    );
   }
 
   getTypeIcon(type: string): string {
@@ -220,14 +267,23 @@ export class SearchModalComponent implements OnInit, OnDestroy {
       filters.notebookIds = notebookIds;
     }
 
+    const tags = this.selectedTags();
+    if (tags.length > 0) {
+      filters.tags = tags;
+    }
+
     return filters;
   }
 
   private rerunSearch(): void {
     const q = this.query().trim();
-    if (q) {
-      const filters = this.buildFilters();
-      this.searchService.search(q, filters);
+    const filters = this.buildFilters();
+
+    // Search if we have a query OR active tag filters
+    if (q || filters.tags?.length) {
+      // If no query but we have tags, use a wildcard search
+      const searchQuery = q || '*';
+      this.searchService.search(searchQuery, filters);
     }
   }
 
