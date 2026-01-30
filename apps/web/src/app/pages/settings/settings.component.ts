@@ -6,6 +6,7 @@ import { AuthService } from '../../services/auth.service';
 import { PreferencesService } from '../../services/preferences.service';
 import { NotificationService } from '../../services/notification.service';
 import { ThemeService, ThemeId } from '../../services/theme.service';
+import { TagService, TagWithMeta } from '../../services/tag.service';
 import { ProfileAvatarComponent, SettingsHeaderComponent } from '../../components';
 
 interface PasskeyInfo {
@@ -29,9 +30,27 @@ export class SettingsComponent implements OnInit {
   readonly preferences = inject(PreferencesService);
   readonly notifications = inject(NotificationService);
   readonly themeService = inject(ThemeService);
+  readonly tagService = inject(TagService);
 
   // Check if current user is an admin
   readonly isAdmin = computed(() => this.authService.user()?.admin === true);
+
+  // Tag colors state
+  readonly isLoadingTags = signal(false);
+  readonly editingTagColor = signal<string | null>(null);
+
+  // Preset colors for tag color picker
+  readonly tagColorPresets = [
+    '#dc2626', // red
+    '#ea580c', // orange
+    '#ca8a04', // yellow
+    '#16a34a', // green
+    '#0891b2', // cyan
+    '#2563eb', // blue
+    '#7c3aed', // violet
+    '#c026d3', // fuchsia
+    '#475569', // slate
+  ];
 
   readonly passkeys = signal<PasskeyInfo[]>([]);
   readonly isLoadingPasskeys = signal(false);
@@ -58,6 +77,7 @@ export class SettingsComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadPasskeys();
+    this.loadTags();
     // Initialize display name and profile picture from current user
     const user = this.authService.user();
     console.log('Loaded user in settings:', user);
@@ -65,6 +85,18 @@ export class SettingsComponent implements OnInit {
       this.displayName.set(user.displayName || '');
       this.profilePictureUrl.set(user.profilePictureUrl || null);
     }
+  }
+
+  loadTags(): void {
+    this.isLoadingTags.set(true);
+    this.tagService.loadTags().subscribe({
+      next: () => {
+        this.isLoadingTags.set(false);
+      },
+      error: () => {
+        this.isLoadingTags.set(false);
+      },
+    });
   }
 
   loadPasskeys(): void {
@@ -302,6 +334,27 @@ export class SettingsComponent implements OnInit {
         // Clear the input so the same file can be selected again
         input.value = '';
       },
+    });
+  }
+
+  // Tag color management
+  toggleEditTagColor(tagName: string): void {
+    if (this.editingTagColor() === tagName) {
+      this.editingTagColor.set(null);
+    } else {
+      this.editingTagColor.set(tagName);
+    }
+  }
+
+  setTagColor(tagName: string, color: string): void {
+    this.tagService.setTagColor(tagName, color).subscribe(() => {
+      this.editingTagColor.set(null);
+    });
+  }
+
+  removeTagColor(tagName: string): void {
+    this.tagService.removeTagColor(tagName).subscribe(() => {
+      this.editingTagColor.set(null);
     });
   }
 }

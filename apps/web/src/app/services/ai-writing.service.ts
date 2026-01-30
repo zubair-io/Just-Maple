@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, Subject, firstValueFrom } from 'rxjs';
 import type { AIWritingType, AIUsageResponse } from '@maple/shared';
+import { AuthService } from './auth.service';
 
 export interface AIWritingRequest {
   type: AIWritingType;
@@ -24,6 +25,7 @@ export interface AIStreamEvent {
 @Injectable({ providedIn: 'root' })
 export class AIWritingService {
   private readonly http = inject(HttpClient);
+  private readonly authService = inject(AuthService);
 
   // Current generation state
   private readonly _isGenerating = signal(false);
@@ -182,10 +184,10 @@ export class AIWritingService {
   }
 
   /**
-   * Get auth token from localStorage
+   * Get auth token from AuthService
    */
   private getAuthToken(): string {
-    return localStorage.getItem('auth_token') || '';
+    return this.authService.accessToken() || '';
   }
 
   /**

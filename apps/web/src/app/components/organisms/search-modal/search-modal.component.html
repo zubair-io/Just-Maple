@@ -111,19 +111,26 @@
           </div>
         }
 
-        <!-- Active tag filters -->
-        @if (selectedTags().length > 0) {
+        <!-- Tags filters -->
+        @if (availableTags().length > 0) {
           <div>
             <span class="text-xs text-[var(--color-text-muted)] mb-2 block">Tags</span>
-            <div class="flex flex-wrap gap-2">
-              @for (tag of selectedTags(); track tag) {
+            <div class="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
+              @for (tag of availableTags(); track tag.name) {
                 <button
-                  (click)="removeTag(tag)"
-                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs bg-[var(--color-primary)] text-white transition-colors"
+                  (click)="toggleTag(tag.name)"
+                  class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-colors"
+                  [class.bg-[var(--color-primary)]]="selectedTags().includes(tag.name)"
+                  [class.text-white]="selectedTags().includes(tag.name)"
+                  [class.bg-[var(--color-surface)]]="!selectedTags().includes(tag.name)"
+                  [class.text-[var(--color-text-main)]]="!selectedTags().includes(tag.name)"
+                  [class.hover:bg-[var(--color-surface-hover)]]="!selectedTags().includes(tag.name)"
                 >
                   <span class="material-symbols-rounded text-sm">tag</span>
-                  #{{ tag }}
-                  <span class="material-symbols-rounded text-sm ml-1">close</span>
+                  #{{ tag.name }}
+                  @if (tag.count > 0) {
+                    <span class="text-[10px] opacity-70">({{ tag.count }})</span>
+                  }
                 </button>
               }
             </div>

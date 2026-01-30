@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { SearchService, type SearchFilters } from '../../../services/search.service';
 import { NotebookService } from '../../../services/notebook.service';
 import { UiStateService } from '../../../services/ui-state.service';
+import { TagService } from '../../../services/tag.service';
 import type { SearchResult } from '@maple/shared';
 
 @Component({
@@ -18,6 +19,7 @@ export class SearchModalComponent implements OnInit, OnDestroy {
   private readonly searchService = inject(SearchService);
   private readonly notebookService = inject(NotebookService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly tagService = inject(TagService);
   private readonly router = inject(Router);
 
   readonly closed = output<void>();
@@ -40,6 +42,9 @@ export class SearchModalComponent implements OnInit, OnDestroy {
 
   // Notebooks for filtering
   readonly notebooks = this.notebookService.notebooks;
+
+  // Tags for filtering
+  readonly availableTags = this.tagService.tags;
 
   // Navigator for platform detection
   readonly navigator = typeof window !== 'undefined' ? window.navigator : { platform: '' };
