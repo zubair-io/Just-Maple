@@ -41,6 +41,7 @@ export const searchRoutes = new Elysia({ prefix: '/api/search' })
                 userId: auth.user._id,
                 notebookIds: query.notebookIds?.split(',').filter((id) => id.length > 0),
                 types: query.types?.split(',').filter((t) => t.length > 0),
+                tags: query.tags?.split(',').filter((t) => t.length > 0),
                 dateFrom: query.dateFrom ? new Date(query.dateFrom) : undefined,
                 dateTo: query.dateTo ? new Date(query.dateTo) : undefined,
                 limit: query.limit ? parseInt(query.limit, 10) : 20,
@@ -54,6 +55,7 @@ export const searchRoutes = new Elysia({ prefix: '/api/search' })
                 q: t.String(),
                 notebookIds: t.Optional(t.String()),
                 types: t.Optional(t.String()),
+                tags: t.Optional(t.String()), // Comma-separated tag names
                 dateFrom: t.Optional(t.String()),
                 dateTo: t.Optional(t.String()),
                 limit: t.Optional(t.String()),

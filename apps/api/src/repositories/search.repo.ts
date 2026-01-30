@@ -107,6 +107,7 @@ export async function indexPage(pageId: string): Promise<void> {
                 plainText,
                 preview,
                 notebookLabel,
+                tags: page.tags || [],
                 updatedAt: new Date(),
             },
         },

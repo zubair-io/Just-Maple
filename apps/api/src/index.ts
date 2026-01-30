@@ -22,6 +22,7 @@ import { aiRoutes } from './routes/ai';
 import { templateRoutes } from './routes/templates';
 import { linkRoutes } from './routes/links';
 import { searchRoutes } from './routes/search';
+import { tagRoutes } from './routes/tags';
 import { mcpRoutes } from './routes/mcp';
 import { realtimeWebSocket } from './ws/realtime.ws';
 import { redisPubSub } from './services/redis.service';
@@ -84,6 +85,7 @@ async function main() {
         .use(templateRoutes)
         .use(linkRoutes)
         .use(searchRoutes)
+        .use(tagRoutes)
         .use(mcpRoutes)
         .use(realtimeWebSocket); // Unified WebSocket for app events + notebook sync + chat
 

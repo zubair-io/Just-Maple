@@ -6,6 +6,7 @@ export interface SearchOptions {
     userId: string;
     types?: string[];
     notebookIds?: string[];
+    tags?: string[];
     dateFrom?: Date;
     dateTo?: Date;
     limit?: number;
@@ -132,6 +133,11 @@ export async function searchNotes(query: string, options: SearchOptions): Promis
         filter.notebookId = { $in: requestedIds };
     }
 
+    // Filter by tags
+    if (options.tags?.length) {
+        filter.tags = { $all: options.tags };
+    }
+
     if (options.dateFrom || options.dateTo) {
         const dateFilter: Record<string, Date> = {};
         if (options.dateFrom) dateFilter.$gte = options.dateFrom;
@@ -166,6 +172,7 @@ export async function searchNotes(query: string, options: SearchOptions): Promis
         preview: r.preview as string,
         snippet: highlightSnippet(r.plainText as string, query),
         score: r.score,
+        tags: (r.tags as string[] | undefined) || [],
         updatedAt: r.updatedAt as string,
     }));
 }

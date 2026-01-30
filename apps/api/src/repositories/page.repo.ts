@@ -41,6 +41,8 @@ interface PageDocument {
     trashedAt?: Date;
     // Todo metadata for efficient querying
     todoMeta?: PageTodoMeta;
+    // Tags extracted from content (e.g., #work, #ideas)
+    tags?: string[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -66,6 +68,7 @@ function toPageResponse(doc: PageDocument): Page {
         isTrashed: doc.isTrashed,
         trashedAt: doc.trashedAt?.toISOString(),
         todoMeta: doc.todoMeta, // Todo metadata
+        tags: doc.tags, // Tags extracted from content
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
     };
@@ -324,6 +327,9 @@ export async function updatePage(
         }
         if (data.todoMeta !== undefined) {
             updateData.todoMeta = data.todoMeta;
+        }
+        if (data.tags !== undefined) {
+            updateData.tags = data.tags;
         }
 
         const result = await getCollection().findOneAndUpdate(
@@ -682,5 +688,132 @@ export async function getTodoStatsForNotebook(notebookId: string): Promise<{
         };
     } catch {
         return { todoCount: 0, completedCount: 0, overdueCount: 0 };
+    }
+}
+
+// ============================================
+// Tag Functions
+// ============================================
+
+/**
+ * Get all unique tags for pages accessible to a user
+ */
+export async function getAllTagsForUser(userId: string): Promise<string[]> {
+    try {
+        // Get all notebooks the user has access to
+        const accessibleNotebooks = await findNotebooksByUserId(userId);
+        const notebookIds = accessibleNotebooks
+            .filter((t) => ObjectId.isValid(t._id))
+            .map((t) => new ObjectId(t._id));
+
+        // Aggregate unique tags from accessible pages
+        const pipeline = [
+            {
+                $match: {
+                    isTrashed: { $ne: true },
+                    tags: { $exists: true, $ne: [] },
+                    $or: [
+                        { notebookId: { $in: notebookIds } },
+                        { notebookId: { $exists: false }, userId: new ObjectId(userId) },
+                        { notebookId: null, userId: new ObjectId(userId) },
+                    ],
+                },
+            },
+            { $unwind: '$tags' },
+            { $group: { _id: '$tags' } },
+            { $sort: { _id: 1 } },
+        ];
+
+        const results = await getCollection().aggregate(pipeline).toArray();
+        return results.map((r) => r._id as string);
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Find pages by tag for a user
+ */
+export async function findPagesByTag(
+    userId: string,
+    tag: string,
+    options?: {
+        notebookId?: string;
+        limit?: number;
+        offset?: number;
+    },
+): Promise<Page[]> {
+    try {
+        // Get all notebooks the user has access to
+        const accessibleNotebooks = await findNotebooksByUserId(userId);
+        const notebookIds = accessibleNotebooks
+            .filter((t) => ObjectId.isValid(t._id))
+            .map((t) => new ObjectId(t._id));
+
+        const query: Record<string, unknown> = {
+            isTrashed: { $ne: true },
+            tags: tag,
+            $or: [
+                { notebookId: { $in: notebookIds } },
+                { notebookId: { $exists: false }, userId: new ObjectId(userId) },
+                { notebookId: null, userId: new ObjectId(userId) },
+            ],
+        };
+
+        // Optional: filter by specific notebook
+        if (options?.notebookId) {
+            query.notebookId = new ObjectId(options.notebookId);
+        }
+
+        let cursor = getCollection().find(query).sort({ updatedAt: -1 });
+
+        if (options?.offset) {
+            cursor = cursor.skip(options.offset);
+        }
+        if (options?.limit) {
+            cursor = cursor.limit(options.limit);
+        }
+
+        const docs = await cursor.toArray();
+        return docs.map(toPageResponse);
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Get tag counts for a user (how many pages have each tag)
+ */
+export async function getTagCountsForUser(
+    userId: string,
+): Promise<Array<{ tag: string; count: number }>> {
+    try {
+        // Get all notebooks the user has access to
+        const accessibleNotebooks = await findNotebooksByUserId(userId);
+        const notebookIds = accessibleNotebooks
+            .filter((t) => ObjectId.isValid(t._id))
+            .map((t) => new ObjectId(t._id));
+
+        const pipeline = [
+            {
+                $match: {
+                    isTrashed: { $ne: true },
+                    tags: { $exists: true, $ne: [] },
+                    $or: [
+                        { notebookId: { $in: notebookIds } },
+                        { notebookId: { $exists: false }, userId: new ObjectId(userId) },
+                        { notebookId: null, userId: new ObjectId(userId) },
+                    ],
+                },
+            },
+            { $unwind: '$tags' },
+            { $group: { _id: '$tags', count: { $sum: 1 } } },
+            { $sort: { count: -1, _id: 1 } },
+        ];
+
+        const results = await getCollection().aggregate(pipeline).toArray();
+        return results.map((r) => ({ tag: r._id as string, count: r.count as number }));
+    } catch {
+        return [];
     }
 }

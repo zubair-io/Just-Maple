@@ -55,6 +55,8 @@ export const PageSchema = Type.Object({
     todoMeta: Type.Optional(PageTodoMetaSchema),
     // Link metadata for bi-directional linking
     linksMeta: Type.Optional(PageLinksMetaSchema),
+    // Tags extracted from content (e.g., #work, #ideas)
+    tags: Type.Optional(Type.Array(Type.String())),
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
 });
@@ -85,6 +87,7 @@ export const UpdatePageSchema = Type.Object({
     isTrashed: Type.Optional(Type.Boolean()),
     todoMeta: Type.Optional(PageTodoMetaSchema), // Todo metadata for efficient querying
     linksMeta: Type.Optional(PageLinksMetaSchema), // Link metadata for bi-directional linking
+    tags: Type.Optional(Type.Array(Type.String())), // Tags extracted from content
 });
 
 export type UpdatePageInput = Static<typeof UpdatePageSchema>;

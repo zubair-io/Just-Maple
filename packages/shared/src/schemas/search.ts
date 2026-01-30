@@ -12,6 +12,7 @@ export const SearchIndexSchema = Type.Object({
     plainText: Type.String(), // Extracted searchable text from Y.js/ProseMirror
     preview: Type.String(), // First 200 chars for display
     notebookLabel: Type.Optional(Type.String()),
+    tags: Type.Optional(Type.Array(Type.String())), // Tags from page content
     updatedAt: Type.String({ format: 'date-time' }),
 });
 
@@ -27,6 +28,7 @@ export const SearchResultSchema = Type.Object({
     preview: Type.String(),
     snippet: Type.String(), // Highlighted snippet with <mark> tags
     score: Type.Number(),
+    tags: Type.Optional(Type.Array(Type.String())), // Tags from page
     updatedAt: Type.String({ format: 'date-time' }),
 });
 
@@ -37,6 +39,7 @@ export const SearchRequestSchema = Type.Object({
     q: Type.String({ minLength: 1 }),
     types: Type.Optional(Type.Array(PageTypeSchema)),
     notebookIds: Type.Optional(Type.Array(Type.String())),
+    tags: Type.Optional(Type.Array(Type.String())), // Filter by tags
     dateFrom: Type.Optional(Type.String({ format: 'date-time' })),
     dateTo: Type.Optional(Type.String({ format: 'date-time' })),
     limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100, default: 20 })),
