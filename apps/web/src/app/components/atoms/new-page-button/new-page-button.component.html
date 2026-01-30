@@ -53,6 +53,18 @@
           <span>New Conversation</span>
         </button>
       }
+      @if (showTemplate()) {
+        <div class="my-1 border-t border-[var(--color-border)]"></div>
+        <button
+          (click)="onNewFromTemplate()"
+          class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        >
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+            >auto_awesome</span
+          >
+          <span>New from Template</span>
+        </button>
+      }
     </div>
   }
 </div>

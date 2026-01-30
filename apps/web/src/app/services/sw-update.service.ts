@@ -1,10 +1,17 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, PLATFORM_ID } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { filter } from 'rxjs/operators';
+import { VisibilityService } from './visibility.service';
 
 @Injectable({ providedIn: 'root' })
 export class SwUpdateService {
+  private readonly platformId = inject(PLATFORM_ID);
   private readonly swUpdate = inject(SwUpdate);
+  private readonly visibilityService = inject(VisibilityService);
+
+  private lastCheckTime = 0;
+  private readonly CHECK_INTERVAL_MS = 60000; // Check at most once per minute
 
   /** Signal indicating a new SW version is ready and waiting */
   readonly updateAvailable = signal(false);
@@ -14,12 +21,47 @@ export class SwUpdateService {
       return;
     }
 
+    // Listen for version ready events
     this.swUpdate.versionUpdates
       .pipe(filter((evt): evt is VersionReadyEvent => evt.type === 'VERSION_READY'))
       .subscribe(() => {
         this.updateAvailable.set(true);
         this.showUpdateNotification();
       });
+
+    // Check for updates on focus/visibility (browser only)
+    if (isPlatformBrowser(this.platformId)) {
+      this.visibilityService.becameVisible$.subscribe(() => {
+        this.checkForUpdate();
+      });
+
+      window.addEventListener('focus', () => {
+        this.checkForUpdate();
+      });
+    }
+  }
+
+  /**
+   * Check for SW updates (rate-limited)
+   */
+  private async checkForUpdate(): Promise<void> {
+    const now = Date.now();
+
+    // Rate limit checks
+    if (now - this.lastCheckTime < this.CHECK_INTERVAL_MS) {
+      return;
+    }
+
+    this.lastCheckTime = now;
+
+    try {
+      const updateAvailable = await this.swUpdate.checkForUpdate();
+      if (updateAvailable) {
+        console.log('[SW] Update available');
+      }
+    } catch (err) {
+      console.debug('[SW] Update check failed:', err);
+    }
   }
 
   private showUpdateNotification(): void {

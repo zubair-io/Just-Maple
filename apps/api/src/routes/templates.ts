@@ -306,4 +306,22 @@ export const templateRoutes = new Elysia({ prefix: '/api/templates' })
                 notebookName: t.Optional(t.String()),
             }),
         },
+    )
+
+    // Track template usage (for analytics, called client-side after page creation)
+    .post(
+        '/:id/track-usage',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            await incrementUsageCount(params.id);
+            return { success: true };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+        },
     );

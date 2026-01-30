@@ -351,13 +351,23 @@ export class NotebookEditorComponent implements OnDestroy {
 
       // For new memos with initial content (e.g., from templates), set the content
       // Check if Y.js document is empty and we have initial content
-      if (!isDocPageView && initialContent && this._editor) {
+      if (!isDocPageView && this._editor) {
         const prosemirror = ydoc.getXmlFragment('prosemirror');
         if (prosemirror.length === 0) {
-          // Y.js doc is empty, set initial content from template
-          setTimeout(() => {
-            this._editor?.commands.setContent(initialContent);
-          }, 0);
+          // Y.js doc is empty - check for initial content from server or page store
+          const pageData = this.pageService.getPageById(pageId);
+          const contentToUse = initialContent || pageData?.content;
+          if (contentToUse && contentToUse.content && contentToUse.content.length > 0) {
+            // Has meaningful content (not just empty paragraph)
+            const hasContent = contentToUse.content.some(
+              (node: any) => node.type !== 'paragraph' || (node.content && node.content.length > 0),
+            );
+            if (hasContent) {
+              setTimeout(() => {
+                this._editor?.commands.setContent(contentToUse);
+              }, 0);
+            }
+          }
         }
       }
 

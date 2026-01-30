@@ -1,7 +1,6 @@
-import { Component, HostListener, signal, inject } from '@angular/core';
+import { Component, HostListener, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { SidebarComponent, SearchModalComponent } from '../../organisms';
-import { AppVersionService } from '../../../services/app-version.service';
 
 @Component({
   selector: 'app-main-layout',
@@ -27,9 +26,6 @@ import { AppVersionService } from '../../../services/app-version.service';
   `,
 })
 export class MainLayoutComponent {
-  // Initialize app version service to start version checking
-  private readonly appVersionService = inject(AppVersionService);
-
   readonly showSearchModal = signal(false);
 
   @HostListener('document:keydown', ['$event'])

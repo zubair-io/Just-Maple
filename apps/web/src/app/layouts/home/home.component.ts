@@ -1,19 +1,29 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd } from '@angular/router';
-import { Subscription, filter, firstValueFrom, timeout, catchError, of } from 'rxjs';
+import { Subscription, filter } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { NotebookService } from '../../services/notebook.service';
 import { PageService } from '../../services/page.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { RealtimeWSService } from '../../services/realtime-ws.service';
-import { SidebarComponent, TemplateGalleryModalComponent } from '../../components';
+import {
+  SidebarComponent,
+  TemplateGalleryModalComponent,
+  SearchModalComponent,
+} from '../../components';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent, TemplateGalleryModalComponent],
+  imports: [
+    CommonModule,
+    RouterOutlet,
+    SidebarComponent,
+    TemplateGalleryModalComponent,
+    SearchModalComponent,
+  ],
   templateUrl: './home.component.html',
   styleUrl: './home.component.scss',
 })
@@ -23,13 +33,23 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly notebookService = inject(NotebookService);
   readonly pageService = inject(PageService);
   private readonly realtimeService = inject(RealtimeService);
-  private readonly uiStateService = inject(UiStateService);
+  readonly uiStateService = inject(UiStateService);
   private readonly realtimeWS = inject(RealtimeWSService);
 
   readonly selectedPageId = signal<string | null>(null);
   readonly selectedNotebookId = signal<string | null>(null);
   readonly sidebarOpen = this.uiStateService.sidebarOpen;
-  readonly showTemplateGallery = signal(false);
+  readonly showTemplateGallery = this.uiStateService.showTemplateGallery;
+  readonly showSearchModal = this.uiStateService.showSearchModal;
+
+  // Keyboard shortcut for search (Cmd+K / Ctrl+K)
+  @HostListener('document:keydown', ['$event'])
+  onKeyDown(event: KeyboardEvent): void {
+    if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+      event.preventDefault();
+      this.uiStateService.openSearchModal();
+    }
+  }
 
   // Swipe gesture tracking
   private touchStartX = 0;
@@ -142,25 +162,22 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   onNewFromTemplate(): void {
     this.closeSidebar();
-    this.showTemplateGallery.set(true);
+    this.uiStateService.openTemplateGallery();
   }
 
   onTemplateGalleryClosed(): void {
-    this.showTemplateGallery.set(false);
+    this.uiStateService.closeTemplateGallery();
   }
 
-  async onTemplateCreated(event: { pageId: string }): Promise<void> {
-    this.showTemplateGallery.set(false);
+  onSearchClosed(): void {
+    this.uiStateService.closeSearchModal();
+  }
+
+  onTemplateCreated(event: { pageId: string }): void {
+    this.uiStateService.closeTemplateGallery();
     const notebookId = this.selectedNotebookId() || this.notebookService.notebooks()[0]?._id;
     if (notebookId) {
-      // Wait for the page to appear in the store (server broadcasts page.created event)
-      // Use timeout to avoid waiting forever if something goes wrong
-      await firstValueFrom(
-        this.pageService.select(event.pageId).pipe(
-          timeout(5000),
-          catchError(() => of(null)), // Navigate anyway after timeout
-        ),
-      );
+      // Page is already in store (optimistic update from client-side creation)
       this.router.navigate(['/', notebookId, event.pageId]);
     }
   }

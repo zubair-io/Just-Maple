@@ -26,6 +26,7 @@ export class NotebookHeaderComponent {
 
   // Outputs
   readonly shareClicked = output<void>();
+  readonly newFromTemplate = output<void>();
 
   // Content projection for additional actions
   readonly additionalActions = contentChild<TemplateRef<unknown>>('additionalActions');
@@ -36,5 +37,10 @@ export class NotebookHeaderComponent {
 
   openSidebarOnMobile(): void {
     this.uiStateService.openSidebar();
+  }
+
+  onNewFromTemplate(): void {
+    this.uiStateService.openTemplateGallery();
+    this.newFromTemplate.emit();
   }
 }

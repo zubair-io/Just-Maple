@@ -1,5 +1,23 @@
 <div class="toolbar-container">
   <div class="editor-toolbar" [class.disabled]="!editor()">
+    <!-- Text type buttons (Paragraph, Headings) -->
+    <div class="toolbar-group">
+      @for (btn of textTypeButtons(); track btn.label) {
+        <button
+          type="button"
+          class="toolbar-btn"
+          [class.active]="btn.isActive?.()"
+          [disabled]="btn.disabled?.()"
+          [title]="btn.label"
+          (click)="btn.action()"
+        >
+          <span class="btn-icon">{{ btn.icon }}</span>
+        </button>
+      }
+    </div>
+
+    <div class="toolbar-divider"></div>
+
     <!-- Formatting buttons -->
     <div class="toolbar-group">
       @for (btn of formattingButtons(); track btn.label) {
