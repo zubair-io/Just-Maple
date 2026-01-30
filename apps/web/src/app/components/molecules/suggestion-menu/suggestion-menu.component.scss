@@ -1,0 +1,91 @@
+.suggestion-menu {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 320px;
+  overflow-y: auto;
+  min-width: 280px;
+  padding: 4px;
+}
+
+.no-results {
+  padding: 12px 16px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease;
+
+  &:hover,
+  &.selected {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+  }
+}
+
+.menu-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.menu-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.menu-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-main);
+}
+
+.menu-description {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// Dark mode adjustments
+:host-context(.dark-mode) {
+  .suggestion-menu {
+    background: var(--color-bg);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+
+  .menu-item {
+    &:hover,
+    &.selected {
+      background: rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  .menu-icon {
+    background: rgba(255, 255, 255, 0.1);
+  }
+}

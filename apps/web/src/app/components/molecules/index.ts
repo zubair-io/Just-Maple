@@ -15,3 +15,7 @@ export { TemplateCardComponent } from './template-card/template-card.component';
 export { PageLinkSearchComponent } from './page-link-search/page-link-search.component';
 export { BacklinksPanelComponent } from './backlinks-panel/backlinks-panel.component';
 export { VersionHistoryComponent } from './version-history/version-history.component';
+export {
+  SuggestionMenuComponent,
+  type SuggestionItem,
+} from './suggestion-menu/suggestion-menu.component';
