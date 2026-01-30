@@ -1,6 +1,18 @@
 import { Injectable, signal } from '@angular/core';
 
 /**
+ * Options for opening the search modal with pre-configured state
+ */
+export interface SearchModalOptions {
+  /** Initial search query */
+  query?: string;
+  /** Filter by tag name */
+  tag?: string;
+  /** Filter by notebook ID */
+  notebookId?: string;
+}
+
+/**
  * Simple service for UI state that needs to be shared across components.
  */
 @Injectable({ providedIn: 'root' })
@@ -19,6 +31,9 @@ export class UiStateService {
 
   /** Signal to show search modal */
   readonly showSearchModal = signal(false);
+
+  /** Signal for search modal initial options */
+  readonly searchModalOptions = signal<SearchModalOptions | null>(null);
 
   setChatInputFocused(focused: boolean): void {
     this.chatInputFocused.set(focused);
@@ -52,11 +67,13 @@ export class UiStateService {
     this.showTemplateGallery.set(false);
   }
 
-  openSearchModal(): void {
+  openSearchModal(options?: SearchModalOptions): void {
+    this.searchModalOptions.set(options || null);
     this.showSearchModal.set(true);
   }
 
   closeSearchModal(): void {
     this.showSearchModal.set(false);
+    this.searchModalOptions.set(null);
   }
 }

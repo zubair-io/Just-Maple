@@ -6,6 +6,7 @@ import type { SearchResult, SearchResponse } from '@maple/shared';
 export interface SearchFilters {
   notebookIds?: string[];
   types?: string[];
+  tags?: string[];
   dateFrom?: Date;
   dateTo?: Date;
   limit?: number;
@@ -131,6 +132,9 @@ export class SearchService {
     }
     if (filters?.types?.length) {
       params = params.set('types', filters.types.join(','));
+    }
+    if (filters?.tags?.length) {
+      params = params.set('tags', filters.tags.join(','));
     }
     if (filters?.dateFrom) {
       params = params.set('dateFrom', filters.dateFrom.toISOString());
