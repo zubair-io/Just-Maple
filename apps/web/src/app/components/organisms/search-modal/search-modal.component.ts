@@ -1,4 +1,13 @@
-import { Component, output, signal, inject, HostListener, OnInit, OnDestroy } from '@angular/core';
+import {
+  Component,
+  output,
+  signal,
+  inject,
+  HostListener,
+  OnInit,
+  OnDestroy,
+  computed,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -40,8 +49,8 @@ export class SearchModalComponent implements OnInit, OnDestroy {
   readonly recentSearches = this.searchService.recentSearches;
   readonly hasResults = this.searchService.hasResults;
 
-  // Notebooks for filtering
-  readonly notebooks = this.notebookService.notebooks;
+  // Notebooks for filtering (use computed to properly call the method)
+  readonly notebooks = computed(() => this.notebookService.notebooks());
 
   // Tags for filtering
   readonly availableTags = this.tagService.tags;
@@ -58,10 +67,6 @@ export class SearchModalComponent implements OnInit, OnDestroy {
   ];
 
   ngOnInit(): void {
-    // Ensure notebooks and tags are loaded for filters
-    this.notebookService.loadNotebooks().subscribe();
-    this.tagService.loadTags().subscribe();
-
     // Apply initial options from UiStateService
     const options = this.uiStateService.searchModalOptions();
     if (options) {
