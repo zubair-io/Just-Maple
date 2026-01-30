@@ -320,6 +320,15 @@ export const defaultSlashCommands: SlashCommandItem[] = [
       );
     },
   },
+  {
+    title: 'Tag',
+    description: 'Add a hashtag for organization',
+    icon: '#',
+    command: ({ editor, range }) => {
+      // Delete the slash command and insert # to trigger hashtag suggestions
+      editor.chain().focus().deleteRange(range).insertContent('#').run();
+    },
+  },
 ];
 
 export interface SlashCommandsOptions {

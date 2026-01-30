@@ -1,6 +1,6 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
-import type { User, CreateUser, UserResponse } from '@maple/shared';
+import type { User, CreateUser, UserResponse, UserPreferences } from '@maple/shared';
 import { getGravatarProfileAndImageUrl } from '../services/gravatar.service';
 import {
     deleteProfilePictures,
@@ -15,6 +15,7 @@ interface UserDocument {
     profilePictureUrl?: string;
     profilePictureThumbnailUrl?: string;
     admin?: boolean;
+    preferences?: UserPreferences;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -188,5 +189,110 @@ export async function updateUserProfilePicture(
         return result ? toUserResponse(result) : null;
     } catch {
         return null;
+    }
+}
+
+// ============================================
+// User Preferences Functions
+// ============================================
+
+/**
+ * Get user preferences
+ */
+export async function getUserPreferences(userId: string): Promise<UserPreferences | null> {
+    try {
+        const doc = await getCollection().findOne(
+            { _id: new ObjectId(userId) },
+            { projection: { preferences: 1 } },
+        );
+        return doc?.preferences || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Update user preferences (partial update)
+ */
+export async function updateUserPreferences(
+    userId: string,
+    preferences: Partial<UserPreferences>,
+): Promise<UserPreferences | null> {
+    try {
+        const updateFields: Record<string, unknown> = {
+            updatedAt: new Date(),
+        };
+
+        // Build dot notation updates for nested preferences
+        if (preferences.tagColors !== undefined) {
+            updateFields['preferences.tagColors'] = preferences.tagColors;
+        }
+
+        const result = await getCollection().findOneAndUpdate(
+            { _id: new ObjectId(userId) },
+            { $set: updateFields },
+            { returnDocument: 'after' },
+        );
+
+        return result?.preferences || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Set a single tag color
+ */
+export async function setTagColor(
+    userId: string,
+    tagName: string,
+    color: string,
+): Promise<boolean> {
+    try {
+        const result = await getCollection().updateOne(
+            { _id: new ObjectId(userId) },
+            {
+                $set: {
+                    [`preferences.tagColors.${tagName}`]: color,
+                    updatedAt: new Date(),
+                },
+            },
+        );
+        return result.modifiedCount === 1;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Remove a tag color
+ */
+export async function removeTagColor(userId: string, tagName: string): Promise<boolean> {
+    try {
+        const result = await getCollection().updateOne(
+            { _id: new ObjectId(userId) },
+            {
+                $unset: { [`preferences.tagColors.${tagName}`]: '' },
+                $set: { updatedAt: new Date() },
+            },
+        );
+        return result.modifiedCount === 1;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Get all tag colors for a user
+ */
+export async function getTagColors(userId: string): Promise<Record<string, string>> {
+    try {
+        const doc = await getCollection().findOne(
+            { _id: new ObjectId(userId) },
+            { projection: { 'preferences.tagColors': 1 } },
+        );
+        return doc?.preferences?.tagColors || {};
+    } catch {
+        return {};
     }
 }

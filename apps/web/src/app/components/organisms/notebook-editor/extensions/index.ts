@@ -63,3 +63,11 @@ export {
   type PageLinkBlockAttrs,
   type PageLinkBlockOptions,
 } from './page-link-block';
+export {
+  HashTag,
+  HashTagPluginKey,
+  extractHashTags,
+  type HashTagAttrs,
+  type HashTagSuggestion,
+  type HashTagOptions,
+} from './hashtag';
