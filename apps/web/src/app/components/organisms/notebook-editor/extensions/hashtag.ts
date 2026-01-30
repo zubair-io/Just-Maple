@@ -216,10 +216,9 @@ export const HashTag = Node.create<HashTagOptions>({
         ...this.options.suggestion,
         // Search for existing tags
         items: ({ query }) => {
+          // Don't show menu until at least 1 character is typed
           if (!query || query.length < 1) {
-            // Show recent/popular tags when no query
-            const tags = extensionThis.options.getTags?.() || [];
-            return tags.slice(0, 10);
+            return [];
           }
 
           const tags = extensionThis.options.getTags?.() || [];

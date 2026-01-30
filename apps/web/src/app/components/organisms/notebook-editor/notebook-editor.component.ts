@@ -30,6 +30,10 @@ import { AuthService } from '../../../services/auth.service';
 import { TodoSyncService } from '../../../services/todo-sync.service';
 import { MemoImageService } from '../../../services/memo-image.service';
 import { SlashCommandMenuComponent } from '../../molecules/slash-command-menu/slash-command-menu.component';
+import {
+  SuggestionMenuComponent,
+  type SuggestionItem,
+} from '../../molecules/suggestion-menu/suggestion-menu.component';
 import DragHandle from '@tiptap/extension-drag-handle';
 import { proseMirrorToMarkdown, proseMirrorToHtmlDocument, type PageContent } from '@maple/shared';
 
@@ -1960,74 +1964,151 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
-   * Create renderer for page link suggestions popup
+   * Create renderer for page link suggestions popup using SuggestionMenuComponent
    */
   private createPageLinkSuggestionRenderer() {
     let popup: HTMLElement | null = null;
+    let menuComponent: SuggestionMenuComponent | null = null;
+    let componentRef: any = null;
     let currentProps: any = null;
+
+    // Map to store original PageLinkSuggestion items for command execution
+    let itemsMap = new Map<string, PageLinkSuggestion>();
+
+    const getPageIcon = (type: string): string => {
+      switch (type) {
+        case 'memo':
+          return '📝';
+        case 'whiteboard':
+          return '🎨';
+        default:
+          return '📄';
+      }
+    };
+
+    const convertToSuggestionItems = (items: PageLinkSuggestion[]): SuggestionItem[] => {
+      itemsMap.clear();
+      return items.map((item) => {
+        itemsMap.set(item.id, item);
+        return {
+          id: item.id,
+          icon: getPageIcon(item.type),
+          title: item.title,
+          description: item.notebookName,
+          data: item,
+        };
+      });
+    };
 
     return {
       onStart: (props: any) => {
         currentProps = props;
 
+        // Don't show popup if no items
+        if (!props.items || props.items.length === 0) {
+          return;
+        }
+
+        // Create popup element
         popup = document.createElement('div');
-        popup.classList.add('page-link-suggestion-popup');
+        popup.classList.add('suggestion-menu-popup');
         popup.style.position = 'absolute';
         popup.style.zIndex = '1000';
         document.body.appendChild(popup);
 
-        this.renderPageLinkMenu(popup, props.items, (item: PageLinkSuggestion) => {
+        // Create Angular component dynamically
+        componentRef = createComponent(SuggestionMenuComponent, {
+          environmentInjector: this.injector,
+          hostElement: popup,
+        });
+
+        menuComponent = componentRef.instance;
+        menuComponent!.items.set(convertToSuggestionItems(props.items));
+        menuComponent!.query.set(props.query);
+
+        // Handle item selection
+        componentRef.instance.itemSelected.subscribe((item: SuggestionItem) => {
           if (currentProps) {
-            currentProps.command(item);
+            const originalItem = itemsMap.get(item.id);
+            if (originalItem) {
+              currentProps.command(originalItem);
+            }
           }
         });
 
+        this.appRef.attachView(componentRef.hostView);
         this.updatePopupPosition(popup, props.clientRect);
       },
 
       onUpdate: (props: any) => {
         currentProps = props;
 
-        if (popup) {
-          popup.innerHTML = '';
-          this.renderPageLinkMenu(popup, props.items, (item: PageLinkSuggestion) => {
+        // If items become empty, destroy popup
+        if (!props.items || props.items.length === 0) {
+          if (componentRef) {
+            this.appRef.detachView(componentRef.hostView);
+            componentRef.destroy();
+            componentRef = null;
+          }
+          if (popup) {
+            popup.remove();
+            popup = null;
+          }
+          menuComponent = null;
+          return;
+        }
+
+        // If popup doesn't exist yet, create it
+        if (!popup) {
+          popup = document.createElement('div');
+          popup.classList.add('suggestion-menu-popup');
+          popup.style.position = 'absolute';
+          popup.style.zIndex = '1000';
+          document.body.appendChild(popup);
+
+          componentRef = createComponent(SuggestionMenuComponent, {
+            environmentInjector: this.injector,
+            hostElement: popup,
+          });
+
+          menuComponent = componentRef.instance;
+
+          componentRef.instance.itemSelected.subscribe((item: SuggestionItem) => {
             if (currentProps) {
-              currentProps.command(item);
+              const originalItem = itemsMap.get(item.id);
+              if (originalItem) {
+                currentProps.command(originalItem);
+              }
             }
           });
-          if (props.clientRect) {
-            this.updatePopupPosition(popup, props.clientRect);
-          }
+
+          this.appRef.attachView(componentRef.hostView);
+        }
+
+        if (menuComponent) {
+          menuComponent.items.set(convertToSuggestionItems(props.items));
+          menuComponent.query.set(props.query);
+        }
+        if (popup && props.clientRect) {
+          this.updatePopupPosition(popup, props.clientRect);
         }
       },
 
       onKeyDown: (props: any) => {
-        if (props.event.key === 'Escape') {
-          popup?.remove();
+        if (!menuComponent) return false;
+
+        if (props.event.key === 'ArrowUp') {
+          menuComponent.navigateUp();
           return true;
         }
 
-        // Handle arrow keys and enter for menu navigation
-        if (['ArrowUp', 'ArrowDown', 'Enter'].includes(props.event.key)) {
-          const items = popup?.querySelectorAll('.page-link-item');
-          if (!items?.length) return false;
+        if (props.event.key === 'ArrowDown') {
+          menuComponent.navigateDown();
+          return true;
+        }
 
-          const active = popup?.querySelector('.page-link-item.active');
-          let activeIndex = active ? Array.from(items).indexOf(active) : -1;
-
-          if (props.event.key === 'ArrowDown') {
-            activeIndex = (activeIndex + 1) % items.length;
-          } else if (props.event.key === 'ArrowUp') {
-            activeIndex = activeIndex <= 0 ? items.length - 1 : activeIndex - 1;
-          } else if (props.event.key === 'Enter' && active) {
-            (active as HTMLElement).click();
-            return true;
-          }
-
-          items.forEach((item, i) => {
-            item.classList.toggle('active', i === activeIndex);
-          });
-
+        if (props.event.key === 'Enter') {
+          menuComponent.selectCurrent();
           return true;
         }
 
@@ -2035,62 +2116,19 @@ export class NotebookEditorComponent implements OnDestroy {
       },
 
       onExit: () => {
-        popup?.remove();
-        popup = null;
+        if (componentRef) {
+          this.appRef.detachView(componentRef.hostView);
+          componentRef.destroy();
+          componentRef = null;
+        }
+        if (popup) {
+          popup.remove();
+          popup = null;
+        }
+        menuComponent = null;
+        itemsMap.clear();
       },
     };
-  }
-
-  /**
-   * Render page link suggestion menu items (matches slash-command-menu design)
-   */
-  private renderPageLinkMenu(
-    popup: HTMLElement,
-    items: PageLinkSuggestion[],
-    onSelect: (item: PageLinkSuggestion) => void,
-  ): void {
-    if (items.length === 0) {
-      popup.innerHTML = '<div class="no-results">No results</div>';
-      return;
-    }
-
-    items.forEach((item, index) => {
-      const div = document.createElement('div');
-      div.classList.add('page-link-item');
-      if (index === 0) div.classList.add('selected');
-
-      // Icon container
-      const icon = document.createElement('span');
-      icon.classList.add('page-link-item-icon');
-      icon.textContent = item.type === 'memo' ? '📝' : item.type === 'whiteboard' ? '🎨' : '📄';
-
-      // Content container
-      const content = document.createElement('div');
-      content.classList.add('page-link-item-content');
-
-      const title = document.createElement('span');
-      title.classList.add('page-link-item-title');
-      title.textContent = item.title;
-      content.appendChild(title);
-
-      if (item.notebookName) {
-        const notebook = document.createElement('span');
-        notebook.classList.add('page-link-item-notebook');
-        notebook.textContent = item.notebookName;
-        content.appendChild(notebook);
-      }
-
-      div.appendChild(icon);
-      div.appendChild(content);
-
-      div.addEventListener('click', () => onSelect(item));
-      div.addEventListener('mouseenter', () => {
-        popup.querySelectorAll('.page-link-item').forEach((el) => el.classList.remove('selected'));
-        div.classList.add('selected');
-      });
-
-      popup.appendChild(div);
-    });
   }
 
   // ==========================================
@@ -2106,74 +2144,144 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
-   * Create renderer for hashtag suggestions popup
+   * Create renderer for hashtag suggestions popup using SuggestionMenuComponent
    */
   private createHashTagSuggestionRenderer() {
     let popup: HTMLElement | null = null;
+    let menuComponent: SuggestionMenuComponent | null = null;
+    let componentRef: any = null;
     let currentProps: any = null;
+
+    // Map to store original HashTagSuggestion items for command execution
+    let itemsMap = new Map<string, HashTagSuggestion>();
+
+    const convertToSuggestionItems = (items: HashTagSuggestion[]): SuggestionItem[] => {
+      itemsMap.clear();
+      return items.map((item) => {
+        const id = item.name;
+        itemsMap.set(id, item);
+        return {
+          id,
+          icon: '#',
+          title: item.name,
+          description:
+            item.count && item.count > 0
+              ? `${item.count} page${item.count === 1 ? '' : 's'}`
+              : undefined,
+          data: item,
+        };
+      });
+    };
 
     return {
       onStart: (props: any) => {
         currentProps = props;
 
+        // Don't show popup if no items
+        if (!props.items || props.items.length === 0) {
+          return;
+        }
+
+        // Create popup element
         popup = document.createElement('div');
-        popup.classList.add('hashtag-suggestion-popup');
+        popup.classList.add('suggestion-menu-popup');
         popup.style.position = 'absolute';
         popup.style.zIndex = '1000';
         document.body.appendChild(popup);
 
-        this.renderHashTagMenu(popup, props.items, (item: HashTagSuggestion) => {
+        // Create Angular component dynamically
+        componentRef = createComponent(SuggestionMenuComponent, {
+          environmentInjector: this.injector,
+          hostElement: popup,
+        });
+
+        menuComponent = componentRef.instance;
+        menuComponent!.items.set(convertToSuggestionItems(props.items));
+        menuComponent!.query.set(props.query);
+
+        // Handle item selection
+        componentRef.instance.itemSelected.subscribe((item: SuggestionItem) => {
           if (currentProps) {
-            currentProps.command(item);
+            const originalItem = itemsMap.get(item.id);
+            if (originalItem) {
+              currentProps.command(originalItem);
+            }
           }
         });
 
+        this.appRef.attachView(componentRef.hostView);
         this.updatePopupPosition(popup, props.clientRect);
       },
 
       onUpdate: (props: any) => {
         currentProps = props;
 
-        if (popup) {
-          popup.innerHTML = '';
-          this.renderHashTagMenu(popup, props.items, (item: HashTagSuggestion) => {
+        // If items become empty, destroy popup
+        if (!props.items || props.items.length === 0) {
+          if (componentRef) {
+            this.appRef.detachView(componentRef.hostView);
+            componentRef.destroy();
+            componentRef = null;
+          }
+          if (popup) {
+            popup.remove();
+            popup = null;
+          }
+          menuComponent = null;
+          return;
+        }
+
+        // If popup doesn't exist yet, create it
+        if (!popup) {
+          popup = document.createElement('div');
+          popup.classList.add('suggestion-menu-popup');
+          popup.style.position = 'absolute';
+          popup.style.zIndex = '1000';
+          document.body.appendChild(popup);
+
+          componentRef = createComponent(SuggestionMenuComponent, {
+            environmentInjector: this.injector,
+            hostElement: popup,
+          });
+
+          menuComponent = componentRef.instance;
+
+          componentRef.instance.itemSelected.subscribe((item: SuggestionItem) => {
             if (currentProps) {
-              currentProps.command(item);
+              const originalItem = itemsMap.get(item.id);
+              if (originalItem) {
+                currentProps.command(originalItem);
+              }
             }
           });
-          if (props.clientRect) {
-            this.updatePopupPosition(popup, props.clientRect);
-          }
+
+          this.appRef.attachView(componentRef.hostView);
+        }
+
+        if (menuComponent) {
+          menuComponent.items.set(convertToSuggestionItems(props.items));
+          menuComponent.query.set(props.query);
+        }
+        if (popup && props.clientRect) {
+          this.updatePopupPosition(popup, props.clientRect);
         }
       },
 
       onKeyDown: (props: any) => {
-        if (props.event.key === 'Escape') {
-          popup?.remove();
+        if (!menuComponent) return false;
+
+        if (props.event.key === 'ArrowUp') {
+          menuComponent.navigateUp();
           return true;
         }
 
-        // Handle arrow keys and enter for menu navigation
-        if (['ArrowUp', 'ArrowDown', 'Enter'].includes(props.event.key)) {
-          const items = popup?.querySelectorAll('.hashtag-item');
-          if (!items?.length) return false;
+        if (props.event.key === 'ArrowDown') {
+          menuComponent.navigateDown();
+          return true;
+        }
 
-          const selected = popup?.querySelector('.hashtag-item.selected');
-          let selectedIndex = selected ? Array.from(items).indexOf(selected) : -1;
-
-          if (props.event.key === 'ArrowDown') {
-            selectedIndex = (selectedIndex + 1) % items.length;
-          } else if (props.event.key === 'ArrowUp') {
-            selectedIndex = selectedIndex <= 0 ? items.length - 1 : selectedIndex - 1;
-          } else if (props.event.key === 'Enter' && selected) {
-            (selected as HTMLElement).click();
-            return true;
-          }
-
-          items.forEach((item, i) => {
-            item.classList.toggle('selected', i === selectedIndex);
-          });
-
+        if (props.event.key === 'Enter') {
+          menuComponent.selectCurrent();
           return true;
         }
 
@@ -2181,68 +2289,18 @@ export class NotebookEditorComponent implements OnDestroy {
       },
 
       onExit: () => {
-        popup?.remove();
-        popup = null;
+        if (componentRef) {
+          this.appRef.detachView(componentRef.hostView);
+          componentRef.destroy();
+          componentRef = null;
+        }
+        if (popup) {
+          popup.remove();
+          popup = null;
+        }
+        menuComponent = null;
+        itemsMap.clear();
       },
     };
-  }
-
-  /**
-   * Render hashtag suggestion menu items (matches slash-command-menu design)
-   */
-  private renderHashTagMenu(
-    popup: HTMLElement,
-    items: HashTagSuggestion[],
-    onSelect: (item: HashTagSuggestion) => void,
-  ): void {
-    if (items.length === 0) {
-      popup.innerHTML = '<div class="no-results">No results</div>';
-      return;
-    }
-
-    items.forEach((item, index) => {
-      const div = document.createElement('div');
-      div.classList.add('hashtag-item');
-      if (index === 0) div.classList.add('selected');
-
-      // Icon container
-      const tagIcon = document.createElement('span');
-      tagIcon.classList.add('hashtag-item-icon');
-      tagIcon.textContent = '#';
-
-      // Content container
-      const content = document.createElement('div');
-      content.classList.add('hashtag-item-content');
-
-      const tagName = document.createElement('span');
-      tagName.classList.add('hashtag-item-name');
-      tagName.textContent = item.name;
-      content.appendChild(tagName);
-
-      if (item.count !== undefined && item.count > 0) {
-        const desc = document.createElement('span');
-        desc.classList.add('hashtag-item-desc');
-        desc.textContent = `${item.count} page${item.count === 1 ? '' : 's'}`;
-        content.appendChild(desc);
-      }
-
-      div.appendChild(tagIcon);
-      div.appendChild(content);
-
-      if (item.color) {
-        const colorDot = document.createElement('span');
-        colorDot.classList.add('hashtag-item-color');
-        colorDot.style.backgroundColor = item.color;
-        div.appendChild(colorDot);
-      }
-
-      div.addEventListener('click', () => onSelect(item));
-      div.addEventListener('mouseenter', () => {
-        popup.querySelectorAll('.hashtag-item').forEach((el) => el.classList.remove('selected'));
-        div.classList.add('selected');
-      });
-
-      popup.appendChild(div);
-    });
   }
 }
