@@ -268,6 +268,11 @@ export class SearchModalComponent implements OnInit, OnDestroy {
     }
   }
 
+  getNotebookLabel(notebookId: string): string {
+    const notebook = this.notebooks().find((n) => n._id === notebookId);
+    return notebook?.label || 'Unknown';
+  }
+
   private buildFilters(): SearchFilters {
     const filters: SearchFilters = {};
 

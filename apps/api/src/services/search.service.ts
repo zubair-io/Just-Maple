@@ -99,25 +99,33 @@ export async function searchNotes(query: string, options: SearchOptions): Promis
         return [];
     }
 
-    // Parse search terms
-    const terms = query
-        .toLowerCase()
-        .split(/\s+/)
-        .filter((t) => t.length > 0);
+    // Check if this is a wildcard query (used for filter-only searches)
+    const isWildcard = query.trim() === '*';
 
-    if (terms.length === 0) {
+    // Parse search terms (skip for wildcard)
+    const terms = isWildcard
+        ? []
+        : query
+              .toLowerCase()
+              .split(/\s+/)
+              .filter((t) => t.length > 0);
+
+    // If no terms and not a wildcard query, return empty
+    if (terms.length === 0 && !isWildcard) {
         return [];
     }
-
-    // Build regex pattern for OR matching (any term matches)
-    const regexPattern = terms.map((t) => escapeRegex(t)).join('|');
-    const searchRegex = { $regex: regexPattern, $options: 'i' };
 
     // Build filter
     const filter: Record<string, unknown> = {
         notebookId: { $in: accessibleNotebookIds },
-        $or: [{ title: searchRegex }, { plainText: searchRegex }],
     };
+
+    // Only add text search for non-wildcard queries
+    if (!isWildcard && terms.length > 0) {
+        const regexPattern = terms.map((t) => escapeRegex(t)).join('|');
+        const searchRegex = { $regex: regexPattern, $options: 'i' };
+        filter.$or = [{ title: searchRegex }, { plainText: searchRegex }];
+    }
 
     // Additional user-requested filters
     if (options.types?.length) {
@@ -153,14 +161,26 @@ export async function searchNotes(query: string, options: SearchOptions): Promis
         .limit(fetchLimit + (options.offset || 0))
         .toArray();
 
-    // Calculate scores and sort by relevance
-    const scoredResults = results
-        .map((r) => ({
-            ...r,
-            score: calculateScore(r.title as string, r.plainText as string, terms),
-        }))
-        .sort((a, b) => b.score - a.score)
-        .slice(options.offset || 0, (options.offset || 0) + (options.limit || 20));
+    // Calculate scores and sort by relevance (for wildcard, sort by updatedAt)
+    let scoredResults;
+    if (isWildcard) {
+        scoredResults = results
+            .map((r) => ({ ...r, score: 0 }))
+            .sort((a, b) => {
+                const aDate = new Date(a.updatedAt as string).getTime();
+                const bDate = new Date(b.updatedAt as string).getTime();
+                return bDate - aDate;
+            })
+            .slice(options.offset || 0, (options.offset || 0) + (options.limit || 20));
+    } else {
+        scoredResults = results
+            .map((r) => ({
+                ...r,
+                score: calculateScore(r.title as string, r.plainText as string, terms),
+            }))
+            .sort((a, b) => b.score - a.score)
+            .slice(options.offset || 0, (options.offset || 0) + (options.limit || 20));
+    }
 
     // Add highlighted snippets
     return scoredResults.map((r) => ({
@@ -170,7 +190,9 @@ export async function searchNotes(query: string, options: SearchOptions): Promis
         notebookId: r.notebookId as string | undefined,
         notebookLabel: r.notebookLabel as string | undefined,
         preview: r.preview as string,
-        snippet: highlightSnippet(r.plainText as string, query),
+        snippet: isWildcard
+            ? (r.preview as string) || ''
+            : highlightSnippet(r.plainText as string, query),
         score: r.score,
         tags: (r.tags as string[] | undefined) || [],
         updatedAt: r.updatedAt as string,
