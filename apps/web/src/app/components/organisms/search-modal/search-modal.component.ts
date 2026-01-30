@@ -58,6 +58,10 @@ export class SearchModalComponent implements OnInit, OnDestroy {
   ];
 
   ngOnInit(): void {
+    // Ensure notebooks and tags are loaded for filters
+    this.notebookService.loadNotebooks().subscribe();
+    this.tagService.loadTags().subscribe();
+
     // Apply initial options from UiStateService
     const options = this.uiStateService.searchModalOptions();
     if (options) {
