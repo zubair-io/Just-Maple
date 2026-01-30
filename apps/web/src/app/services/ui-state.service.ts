@@ -14,6 +14,12 @@ export class UiStateService {
   /** Signal for sidebar open state (mobile) */
   readonly sidebarOpen = signal(false);
 
+  /** Signal to show template gallery modal */
+  readonly showTemplateGallery = signal(false);
+
+  /** Signal to show search modal */
+  readonly showSearchModal = signal(false);
+
   setChatInputFocused(focused: boolean): void {
     this.chatInputFocused.set(focused);
   }
@@ -36,5 +42,21 @@ export class UiStateService {
 
   closeSidebar(): void {
     this.sidebarOpen.set(false);
+  }
+
+  openTemplateGallery(): void {
+    this.showTemplateGallery.set(true);
+  }
+
+  closeTemplateGallery(): void {
+    this.showTemplateGallery.set(false);
+  }
+
+  openSearchModal(): void {
+    this.showSearchModal.set(true);
+  }
+
+  closeSearchModal(): void {
+    this.showSearchModal.set(false);
   }
 }

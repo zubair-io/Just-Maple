@@ -55,6 +55,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   readonly selectNotebook = output<string>();
   readonly createNotebook = output<void>();
   readonly settings = output<void>();
+  readonly search = output<void>();
 
   readonly expandedNotebooks = signal<Set<string>>(new Set());
   readonly isNewDropdownOpen = signal(false);
@@ -202,6 +203,10 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
 
   onSettings(): void {
     this.settings.emit();
+  }
+
+  onSearch(): void {
+    this.search.emit();
   }
 
   onNotifications(): void {

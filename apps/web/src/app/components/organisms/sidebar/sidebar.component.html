@@ -34,27 +34,38 @@
       </button>
     </div> -->
 
-    <!-- New Note Button with Dropdown -->
+    <!-- New Note Button with Dropdown + Search -->
     <div class="px-4 pb-4 relative">
-      <div class="flex">
-        <!-- Main button -->
+      <div class="flex gap-2">
+        <!-- New button group -->
+        <div class="flex flex-1">
+          <!-- Main button -->
+          <button
+            (click)="onNewPage('memo')"
+            class="flex-1 flex items-center justify-center gap-2 py-2 bg-[var(--color-primary)] text-white rounded-l-md hover:bg-[var(--color-primary-hover)] transition-all text-sm font-medium"
+            title="New Note"
+          >
+            <span class="material-symbols-rounded text-base">add</span>
+            <span>New</span>
+          </button>
+          <!-- Dropdown toggle -->
+          <button
+            (click)="toggleNewDropdown()"
+            class="flex items-center px-2 py-2 bg-[var(--color-primary)] text-white rounded-r-md hover:bg-[var(--color-primary-hover)] transition-all border-l border-white/20"
+            title="More options"
+          >
+            <span class="material-symbols-rounded text-base">
+              {{ isNewDropdownOpen() ? 'expand_less' : 'expand_more' }}
+            </span>
+          </button>
+        </div>
+        <!-- Search button -->
         <button
-          (click)="onNewPage('memo')"
-          class="flex-1 flex items-center justify-center gap-2 py-2 bg-[var(--color-primary)] text-white rounded-l-md hover:bg-[var(--color-primary-hover)] transition-all text-sm font-medium"
-          title="New Note"
+          (click)="onSearch()"
+          class="flex items-center justify-center px-3 py-2 bg-[var(--color-surface)] text-[var(--color-text-muted)] rounded-md hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)] transition-all border border-[var(--color-border)]"
+          title="Search (⌘K)"
         >
-          <span class="material-symbols-rounded text-base">add</span>
-          <span>New</span>
-        </button>
-        <!-- Dropdown toggle -->
-        <button
-          (click)="toggleNewDropdown()"
-          class="flex items-center px-2 py-2 bg-[var(--color-primary)] text-white rounded-r-md hover:bg-[var(--color-primary-hover)] transition-all border-l border-white/20"
-          title="More options"
-        >
-          <span class="material-symbols-rounded text-base">
-            {{ isNewDropdownOpen() ? 'expand_less' : 'expand_more' }}
-          </span>
+          <span class="material-symbols-rounded text-base">search</span>
         </button>
       </div>
 

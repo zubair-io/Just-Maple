@@ -20,6 +20,7 @@
       (selectNotebook)="onSelectNotebook($event)"
       (createNotebook)="onCreateNotebook()"
       (settings)="onSettings()"
+      (search)="uiStateService.openSearchModal()"
     />
   </div>
 
@@ -42,4 +43,9 @@
     (closed)="onTemplateGalleryClosed()"
     (created)="onTemplateCreated($event)"
   />
+}
+
+<!-- Search Modal (Cmd+K / Ctrl+K) -->
+@if (showSearchModal()) {
+  <app-search-modal (closed)="onSearchClosed()" />
 }

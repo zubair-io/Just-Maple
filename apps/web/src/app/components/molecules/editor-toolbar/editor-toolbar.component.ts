@@ -3,6 +3,7 @@ import {
   input,
   computed,
   signal,
+  effect,
   ChangeDetectionStrategy,
   OnInit,
   OnDestroy,
@@ -32,8 +33,41 @@ interface ToolbarButton {
 export class EditorToolbarComponent implements OnInit, OnDestroy {
   readonly editor = input.required<Editor | null>();
 
+  // Signal to track editor state updates (increments on each transaction)
+  private readonly editorStateVersion = signal(0);
+
   // Keyboard offset for mobile browsers (not iOS native app)
   readonly keyboardOffset = signal(0);
+
+  // Store cleanup function for editor listener
+  private editorUnsubscribe?: () => void;
+
+  constructor() {
+    // Listen to editor changes and update state version
+    effect(() => {
+      const ed = this.editor();
+
+      // Cleanup previous listener
+      if (this.editorUnsubscribe) {
+        this.editorUnsubscribe();
+        this.editorUnsubscribe = undefined;
+      }
+
+      if (ed) {
+        // Subscribe to editor updates
+        const handler = () => {
+          this.editorStateVersion.update((v) => v + 1);
+        };
+        ed.on('selectionUpdate', handler);
+        ed.on('transaction', handler);
+
+        this.editorUnsubscribe = () => {
+          ed.off('selectionUpdate', handler);
+          ed.off('transaction', handler);
+        };
+      }
+    });
+  }
 
   // Computed bottom position
   readonly toolbarBottom = computed(() => {
@@ -87,9 +121,50 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
       window.visualViewport.removeEventListener('resize', this.handleViewportResize);
       window.visualViewport.removeEventListener('scroll', this.handleViewportResize);
     }
+
+    // Cleanup editor listener
+    if (this.editorUnsubscribe) {
+      this.editorUnsubscribe();
+    }
   }
 
+  readonly textTypeButtons = computed<ToolbarButton[]>(() => {
+    // Depend on state version to trigger recalculation
+    this.editorStateVersion();
+    const ed = this.editor();
+    if (!ed) return [];
+
+    return [
+      {
+        icon: '¶',
+        label: 'Paragraph',
+        action: () => (ed.chain().focus() as any).setParagraph().run(),
+        isActive: () => ed.isActive('paragraph') && !ed.isActive('heading'),
+      },
+      {
+        icon: 'H1',
+        label: 'Heading 1',
+        action: () => (ed.chain().focus() as any).toggleHeading({ level: 1 }).run(),
+        isActive: () => ed.isActive('heading', { level: 1 }),
+      },
+      {
+        icon: 'H2',
+        label: 'Heading 2',
+        action: () => (ed.chain().focus() as any).toggleHeading({ level: 2 }).run(),
+        isActive: () => ed.isActive('heading', { level: 2 }),
+      },
+      {
+        icon: 'H3',
+        label: 'Heading 3',
+        action: () => (ed.chain().focus() as any).toggleHeading({ level: 3 }).run(),
+        isActive: () => ed.isActive('heading', { level: 3 }),
+      },
+    ];
+  });
+
   readonly formattingButtons = computed<ToolbarButton[]>(() => {
+    // Depend on state version to trigger recalculation
+    this.editorStateVersion();
     const ed = this.editor();
     if (!ed) return [];
 

@@ -132,11 +132,63 @@ export class TemplateService {
 
   /**
    * Apply a template to create a new page
+   * @deprecated Use processTemplateContent + PageService.createPage instead for offline support
    */
   applyTemplate(templateId: string, data: ApplyTemplateInput): Observable<Page> {
     return this.http
       .post<PageResponse>(`/api/templates/${templateId}/apply`, data)
       .pipe(map((response) => response.page));
+  }
+
+  /**
+   * Process template variables client-side
+   * Replaces {{date}}, {{title}}, {{notebook}} with actual values
+   */
+  processTemplateContent(
+    content: { type: string; content?: any[] },
+    context: { date?: string; title?: string; notebook?: string },
+  ): { type: string; content?: any[] } {
+    const today =
+      context.date ??
+      new Date().toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+    const processNode = (node: any): any => {
+      if (!node) return node;
+
+      // Process text nodes
+      if (node.type === 'text' && node.text) {
+        let text = node.text as string;
+        text = text.replace(/\{\{date\}\}/g, today);
+        text = text.replace(/\{\{notebook\}\}/g, context.notebook ?? '');
+        text = text.replace(/\{\{title\}\}/g, context.title ?? '');
+        return { ...node, text };
+      }
+
+      // Process children recursively
+      if (node.content && Array.isArray(node.content)) {
+        return {
+          ...node,
+          content: node.content.map(processNode),
+        };
+      }
+
+      return node;
+    };
+
+    return processNode(content);
+  }
+
+  /**
+   * Increment template usage count (fire and forget)
+   */
+  trackTemplateUsage(templateId: string): void {
+    // We still want to track usage on the server
+    this.http.post(`/api/templates/${templateId}/track-usage`, {}).subscribe({ error: () => {} }); // Ignore errors
   }
 
   /**

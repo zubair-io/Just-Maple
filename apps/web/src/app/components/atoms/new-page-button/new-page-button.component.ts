@@ -1,4 +1,4 @@
-import { Component, input, signal, HostListener, inject } from '@angular/core';
+import { Component, input, output, signal, HostListener, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import type { PageType } from '@maple/shared';
@@ -19,6 +19,12 @@ export class NewPageButtonComponent {
   /** Whether to show the "New Conversation" option in the dropdown */
   readonly showConversation = input<boolean>(true);
 
+  /** Whether to show the "New from Template" option in the dropdown */
+  readonly showTemplate = input<boolean>(true);
+
+  /** Emits when "New from Template" is clicked */
+  readonly newFromTemplate = output<void>();
+
   /** Dropdown state */
   readonly isDropdownOpen = signal(false);
 
@@ -35,6 +41,11 @@ export class NewPageButtonComponent {
   toggleDropdown(event: Event): void {
     event.stopPropagation();
     this.isDropdownOpen.update((open) => !open);
+  }
+
+  onNewFromTemplate(): void {
+    this.newFromTemplate.emit();
+    this.isDropdownOpen.set(false);
   }
 
   @HostListener('document:click')

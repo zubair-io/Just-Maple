@@ -62,7 +62,11 @@
         <!-- Split button for new page -->
         @if (showNewButton()) {
           <div class="ml-1">
-            <app-new-page-button [notebookId]="notebook()._id" [showConversation]="true" />
+            <app-new-page-button
+              [notebookId]="notebook()._id"
+              [showConversation]="true"
+              (newFromTemplate)="onNewFromTemplate()"
+            />
           </div>
         }
       </div>

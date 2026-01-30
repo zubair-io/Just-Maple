@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import type { Template } from '@maple/shared';
 import { TemplateService } from '../../../services/template.service';
+import { PageService } from '../../../services/page.service';
 import { TemplateCardComponent } from '../../molecules/template-card/template-card.component';
 
 type CategoryFilter = 'all' | 'work' | 'personal' | 'planning' | 'custom';
@@ -17,6 +18,7 @@ type CategoryFilter = 'all' | 'work' | 'personal' | 'planning' | 'custom';
 })
 export class TemplateGalleryModalComponent implements OnInit {
   private readonly templateService = inject(TemplateService);
+  private readonly pageService = inject(PageService);
 
   readonly notebookId = input.required<string>();
   readonly notebookName = input<string>('');
@@ -88,12 +90,24 @@ export class TemplateGalleryModalComponent implements OnInit {
       this.applyingTemplateId.set(template.id);
       this.error.set(null);
 
+      // Process template variables client-side (enables offline support)
+      const processedContent = this.templateService.processTemplateContent(template.content, {
+        title: template.title,
+        notebook: this.notebookName(),
+      });
+
+      // Create page using standard page creation flow (works offline)
       const page = await firstValueFrom(
-        this.templateService.applyTemplate(template.id, {
+        this.pageService.createPage({
           notebookId: this.notebookId(),
-          notebookName: this.notebookName(),
+          type: 'memo',
+          title: template.title,
+          content: processedContent,
         }),
       );
+
+      // Track template usage (fire and forget, non-blocking)
+      this.templateService.trackTemplateUsage(template.id);
 
       this.created.emit({ pageId: page.id });
     } catch (err) {
