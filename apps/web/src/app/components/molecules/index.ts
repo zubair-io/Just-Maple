@@ -20,3 +20,9 @@ export {
   type SuggestionItem,
 } from './suggestion-menu/suggestion-menu.component';
 export { EditorBubbleMenuComponent } from './editor-bubble-menu/editor-bubble-menu.component';
+export {
+  ConnectionGraphComponent,
+  type GraphNode,
+  type GraphEdge,
+  type GraphStats,
+} from './connection-graph/connection-graph.component';

@@ -78,6 +78,17 @@ export const GraphNodeSchema = Type.Object({
 
 export type GraphNode = Static<typeof GraphNodeSchema>;
 
+// Extended edge types for connection graph
+export const ConnectionTypeSchema = Type.Union([
+    Type.Literal('inline'), // [[Page Name]] style wiki-link
+    Type.Literal('block'), // Embed-style preview block
+    Type.Literal('tag'), // #tag reference (legacy link type)
+    Type.Literal('hashtag'), // Pages share the same hashtag
+    Type.Literal('mention'), // Pages mention the same entity
+]);
+
+export type ConnectionType = Static<typeof ConnectionTypeSchema>;
+
 export const GraphEdgeSchema = Type.Object({
     source: Type.String(),
     target: Type.String(),
@@ -86,9 +97,45 @@ export const GraphEdgeSchema = Type.Object({
 
 export type GraphEdge = Static<typeof GraphEdgeSchema>;
 
+// Extended edge for connection graph
+export const ConnectionEdgeSchema = Type.Object({
+    source: Type.String(),
+    target: Type.String(),
+    type: ConnectionTypeSchema,
+    label: Type.Optional(Type.String()), // e.g., hashtag name for hashtag connections
+});
+
+export type ConnectionEdge = Static<typeof ConnectionEdgeSchema>;
+
+// Extended node for connection graph with more metadata
+export const ConnectionNodeSchema = Type.Object({
+    id: Type.String(),
+    label: Type.String(),
+    type: Type.String(), // Page type (memo, whiteboard, etc.)
+    linkCount: Type.Number(),
+    tags: Type.Optional(Type.Array(Type.String())), // Hashtags on this page
+    isCenter: Type.Optional(Type.Boolean()),
+});
+
+export type ConnectionNode = Static<typeof ConnectionNodeSchema>;
+
 export const GraphDataSchema = Type.Object({
     nodes: Type.Array(GraphNodeSchema),
     edges: Type.Array(GraphEdgeSchema),
 });
 
 export type GraphData = Static<typeof GraphDataSchema>;
+
+// Connection graph with all relationship types
+export const ConnectionGraphSchema = Type.Object({
+    nodes: Type.Array(ConnectionNodeSchema),
+    edges: Type.Array(ConnectionEdgeSchema),
+    stats: Type.Object({
+        totalNodes: Type.Number(),
+        totalEdges: Type.Number(),
+        linkEdges: Type.Number(),
+        hashtagEdges: Type.Number(),
+    }),
+});
+
+export type ConnectionGraph = Static<typeof ConnectionGraphSchema>;

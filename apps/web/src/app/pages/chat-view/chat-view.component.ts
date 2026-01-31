@@ -2,11 +2,18 @@ import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription, switchMap, of, combineLatest, map, catchError } from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
 import { NotificationService } from '../../services/notification.service';
-import { ShareModalComponent, NotebookHeaderComponent } from '../../components';
+import {
+  ShareModalComponent,
+  NotebookHeaderComponent,
+  ConnectionGraphComponent,
+  type GraphNode,
+  type GraphEdge,
+  type GraphStats,
+} from '../../components';
 import type { NotebookMember } from '@maple/shared';
 
 interface NotebookSummary {
@@ -15,15 +22,28 @@ interface NotebookSummary {
   todoStats: { todoCount: number; completedCount: number; overdueCount: number };
 }
 
+interface ConnectionGraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  stats: GraphStats;
+}
+
 @Component({
   selector: 'app-chat-view',
   standalone: true,
-  imports: [CommonModule, FormsModule, ShareModalComponent, NotebookHeaderComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    ShareModalComponent,
+    NotebookHeaderComponent,
+    ConnectionGraphComponent,
+  ],
   templateUrl: './chat-view.component.html',
   styleUrl: './chat-view.component.scss',
 })
 export class ChatViewComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   readonly notebookService = inject(NotebookService);
   private readonly notificationService = inject(NotificationService);
 
@@ -65,6 +85,24 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       ),
     ),
     { initialValue: null as NotebookSummary | null },
+  );
+
+  // Reactively load connection graph when notebook changes
+  readonly connectionGraph = toSignal(
+    combineLatest([
+      toObservable(this.selectedNotebookId),
+      toObservable(this.summaryRefreshTrigger),
+    ]).pipe(
+      switchMap(([notebookId, _trigger]) =>
+        notebookId
+          ? this.notebookService.getConnectionGraph(notebookId).pipe(
+              map((response) => response.graph as ConnectionGraphData),
+              catchError(() => of(null)),
+            )
+          : of(null),
+      ),
+    ),
+    { initialValue: null as ConnectionGraphData | null },
   );
 
   constructor() {
@@ -167,6 +205,14 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       this.saveNotebookName();
     } else if (event.key === 'Escape') {
       this.cancelEditingName();
+    }
+  }
+
+  // Handle graph node click - navigate to the page
+  onGraphNodeClicked(pageId: string): void {
+    const notebookId = this.selectedNotebookId();
+    if (notebookId) {
+      this.router.navigate(['/', notebookId, pageId]);
     }
   }
 }

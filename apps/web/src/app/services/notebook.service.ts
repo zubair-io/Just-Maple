@@ -485,4 +485,68 @@ export class NotebookService {
         }),
       );
   }
+
+  // ============ Connection Graph Methods ============
+
+  /**
+   * Get connection graph for a notebook
+   * Shows relationships between pages via links, hashtags, and mentions
+   */
+  getConnectionGraph(notebookId: string): Observable<{
+    graph: {
+      nodes: Array<{
+        id: string;
+        label: string;
+        type: string;
+        linkCount: number;
+        tags?: string[];
+        isCenter?: boolean;
+      }>;
+      edges: Array<{
+        source: string;
+        target: string;
+        type: 'inline' | 'block' | 'tag' | 'hashtag' | 'mention';
+        label?: string;
+      }>;
+      stats: {
+        totalNodes: number;
+        totalEdges: number;
+        linkEdges: number;
+        hashtagEdges: number;
+      };
+    };
+  }> {
+    return this.http
+      .get<{
+        graph: {
+          nodes: Array<{
+            id: string;
+            label: string;
+            type: string;
+            linkCount: number;
+            tags?: string[];
+            isCenter?: boolean;
+          }>;
+          edges: Array<{
+            source: string;
+            target: string;
+            type: 'inline' | 'block' | 'tag' | 'hashtag' | 'mention';
+            label?: string;
+          }>;
+          stats: {
+            totalNodes: number;
+            totalEdges: number;
+            linkEdges: number;
+            hashtagEdges: number;
+          };
+        };
+      }>(`/api/links/connections/notebook/${notebookId}`)
+      .pipe(
+        catchError((err) => {
+          const message =
+            err?.error?.message || err?.error?.error || 'Failed to fetch connection graph';
+          return throwError(() => new Error(message));
+        }),
+      );
+  }
 }

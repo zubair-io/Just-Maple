@@ -9,6 +9,9 @@ import type {
     GraphData,
     GraphNode,
     GraphEdge,
+    ConnectionGraph,
+    ConnectionNode,
+    ConnectionEdge,
 } from '@maple/shared';
 
 /**
@@ -514,4 +517,151 @@ export async function reindexAllLinks(userId: string, notebookId?: string): Prom
     }
 
     return count;
+}
+
+/**
+ * Get connection graph data including page links, hashtag connections, and mentions
+ * This builds a comprehensive graph showing all relationships between pages
+ */
+export async function getConnectionGraph(
+    userId: string,
+    notebookId?: string,
+): Promise<ConnectionGraph> {
+    const db = getDb();
+    const pages = db.collection('pages');
+    const searchIndex = db.collection('search_index');
+
+    // Build query
+    const query: any = {
+        userId: new ObjectId(userId),
+        isTrashed: { $ne: true },
+    };
+
+    if (notebookId) {
+        query.notebookId = new ObjectId(notebookId);
+    }
+
+    // Get all pages with their links and tags
+    const allPages = await pages
+        .find(query)
+        .project({
+            id: 1,
+            title: 1,
+            type: 1,
+            tags: 1,
+            'linksMeta.forwardLinks': 1,
+            'linksMeta.backlinks': 1,
+        })
+        .toArray();
+
+    // Also get tags from search_index (may be more up-to-date)
+    const pageIds = allPages.map((p) => p.id);
+    const searchDocs = await searchIndex
+        .find({ pageId: { $in: pageIds } })
+        .project({ pageId: 1, tags: 1 })
+        .toArray();
+    const searchTagsMap = new Map(searchDocs.map((d) => [d.pageId, d.tags || []]));
+
+    const pageIdSet = new Set(pageIds);
+
+    // Build nodes with merged tags
+    const nodes: ConnectionNode[] = allPages.map((page) => {
+        // Merge tags from page and search_index
+        const pageTags = page.tags || [];
+        const indexTags = searchTagsMap.get(page.id) || [];
+        const mergedTags = [...new Set([...pageTags, ...indexTags])];
+
+        return {
+            id: page.id,
+            label: page.title || 'Untitled',
+            type: page.type || 'memo',
+            linkCount:
+                (page.linksMeta?.forwardLinks?.length || 0) +
+                (page.linksMeta?.backlinks?.length || 0),
+            tags: mergedTags.length > 0 ? mergedTags : undefined,
+        };
+    });
+
+    // Build edges
+    const edges: ConnectionEdge[] = [];
+    const edgeSet = new Set<string>();
+    let linkEdgeCount = 0;
+    let hashtagEdgeCount = 0;
+
+    // Add page link edges (forward links only to avoid duplicates)
+    for (const page of allPages) {
+        const forwardLinks = page.linksMeta?.forwardLinks || [];
+        for (const link of forwardLinks) {
+            // Only include edges where both nodes exist in the result set
+            if (!pageIdSet.has(link.pageId)) continue;
+
+            const edgeId = `link:${page.id}-${link.pageId}`;
+            if (!edgeSet.has(edgeId)) {
+                edges.push({
+                    source: page.id,
+                    target: link.pageId,
+                    type: link.type || 'inline',
+                });
+                edgeSet.add(edgeId);
+                linkEdgeCount++;
+            }
+        }
+    }
+
+    // Build hashtag connections (pages sharing the same hashtag)
+    // Group pages by their tags
+    const tagToPages = new Map<string, string[]>();
+    for (const node of nodes) {
+        if (node.tags) {
+            for (const tag of node.tags) {
+                if (!tagToPages.has(tag)) {
+                    tagToPages.set(tag, []);
+                }
+                tagToPages.get(tag)!.push(node.id);
+            }
+        }
+    }
+
+    // Create edges between pages that share tags
+    for (const [tag, pageIdsWithTag] of tagToPages) {
+        // Only create connections if multiple pages share the tag
+        if (pageIdsWithTag.length < 2) continue;
+
+        // Create edges between all pairs (but only in one direction)
+        for (let i = 0; i < pageIdsWithTag.length; i++) {
+            for (let j = i + 1; j < pageIdsWithTag.length; j++) {
+                const sourceId = pageIdsWithTag[i];
+                const targetId = pageIdsWithTag[j];
+
+                // Skip if already connected via link
+                const linkEdgeId = `link:${sourceId}-${targetId}`;
+                const linkEdgeIdReverse = `link:${targetId}-${sourceId}`;
+                if (edgeSet.has(linkEdgeId) || edgeSet.has(linkEdgeIdReverse)) continue;
+
+                // Create hashtag edge
+                const hashEdgeId = `hashtag:${sourceId}-${targetId}`;
+                if (!edgeSet.has(hashEdgeId)) {
+                    edges.push({
+                        source: sourceId,
+                        target: targetId,
+                        type: 'hashtag',
+                        label: `#${tag}`,
+                    });
+                    edgeSet.add(hashEdgeId);
+                    hashtagEdgeCount++;
+                }
+            }
+        }
+    }
+
+    return {
+        nodes,
+        edges,
+        stats: {
+            totalNodes: nodes.length,
+            totalEdges: edges.length,
+            linkEdges: linkEdgeCount,
+            hashtagEdges: hashtagEdgeCount,
+        },
+    };
 }
