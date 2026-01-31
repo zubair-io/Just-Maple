@@ -110,7 +110,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   });
 
   readonly notificationUnreadCount = computed(() => {
-    return this.notificationService.unreadCount();
+    return this.notificationService.totalUnreadCount();
   });
 
   readonly isOnline = this.networkService.isOnline;

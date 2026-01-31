@@ -553,6 +553,147 @@ Priority indicators use color coding:
 
 ---
 
+## Centralized Notification System
+
+### Overview
+
+The notification system provides a centralized store for all notifications and unread counts. It uses Elf for state management and links notification state with message unread counts for a unified badge count.
+
+### Architecture
+
+```
+apps/web/src/app/services/
+├── notification.service.ts  # Centralized notification store (Elf)
+├── message.service.ts       # Message handling with unread counts
+└── db-stores.ts             # IndexedDB store constants
+```
+
+### Key Signals
+
+**NotificationService:**
+
+| Signal                    | Type                     | Description                                             |
+| ------------------------- | ------------------------ | ------------------------------------------------------- |
+| `notifications`           | `Signal<Notification[]>` | All notifications from Elf store                        |
+| `unreadNotificationCount` | `Signal<number>`         | Count of unread notifications                           |
+| `messageUnreadCount`      | `Signal<number>`         | Total message unread count (set by MessageService)      |
+| `totalUnreadCount`        | `Signal<number>`         | Combined count for app badge (notifications + messages) |
+| `unreadCount`             | `Signal<number>`         | Legacy alias for `unreadNotificationCount`              |
+
+**MessageService:**
+
+| Signal                    | Type                    | Description                   |
+| ------------------------- | ----------------------- | ----------------------------- |
+| `unreadCounts`            | `Signal<UnreadCount[]>` | Unread counts per page        |
+| `totalMessageUnreadCount` | `Signal<number>`        | Sum of all page unread counts |
+
+### Bidirectional Sync
+
+The notification and message systems are linked bidirectionally:
+
+1. **Message → Notification**: When `MessageService` unread counts change, it updates `NotificationService.setMessageUnreadCount()`, which syncs the badge.
+
+2. **Notification → Message**: When a `message_received` notification is marked as read in the notification panel, it triggers a callback that clears the corresponding message unread count.
+
+```typescript
+// MessageService constructor
+effect(() => {
+    const totalUnread = this.totalMessageUnreadCount();
+    this.notificationService.setMessageUnreadCount(totalUnread);
+});
+
+this.notificationService.onMessageNotificationRead((notebookId, pageId) => {
+    // Clear local unread count when notification is marked read
+    this._unreadCounts.update((counts) => counts.filter((c) => c.pageId !== pageId));
+});
+```
+
+### API Call Optimization
+
+The `markAsRead` methods skip API calls when there are no unread items:
+
+```typescript
+// MessageService
+markAsReadByPageId(pageId: string): Observable<void> {
+    // Skip API call if no unread messages for this page
+    if (!this.hasUnreadByPageId(pageId)) {
+        return of(undefined);
+    }
+    // ... make API call
+}
+
+// NotificationService
+markAsRead(id: string): Observable<void> {
+    const notification = this.notifications().find((n) => n._id === id);
+    // Skip if already read
+    if (notification?.read) {
+        return of(void 0);
+    }
+    // ... make API call
+}
+```
+
+### Badge Count
+
+The app icon badge uses `totalUnreadCount` which combines notifications and messages:
+
+```typescript
+syncBadgeCount(): void {
+    if (this.nativeBridge.isNativeApp()) {
+        this.nativeBridge.setBadge(this.totalUnreadCount());
+    }
+}
+```
+
+### IndexedDB Persistence
+
+Notifications are persisted to IndexedDB for offline support:
+
+```typescript
+const STORE_NAME = DB_STORES.NOTIFICATION; // 'notification'
+
+// Hydrate from cache on init
+const cached = await this.indexedDB.getAll<Notification>(STORE_NAME);
+this.store.update(setEntities(cached));
+
+// Persist when fetching
+await this.indexedDB.putMany(notifications, STORE_NAME);
+```
+
+### Key Methods
+
+**NotificationService:**
+
+| Method                         | Description                                         |
+| ------------------------------ | --------------------------------------------------- |
+| `fetchNotifications()`         | Fetch notifications from server, update store       |
+| `markAsRead(id)`               | Mark single notification as read                    |
+| `markAllAsRead()`              | Mark all notifications as read                      |
+| `markNotebookMessagesAsRead()` | Mark all message notifications for notebook as read |
+| `markPageMessagesAsRead()`     | Mark all message notifications for page as read     |
+| `setMessageUnreadCount()`      | Set message unread count (called by MessageService) |
+| `onMessageNotificationRead()`  | Register callback for when messages are marked read |
+| `syncBadgeCount()`             | Sync badge with native app                          |
+
+**MessageService:**
+
+| Method                    | Description                                |
+| ------------------------- | ------------------------------------------ |
+| `markAsRead(notebookId)`  | Mark notebook as read (skips if no unread) |
+| `markAsReadByPageId()`    | Mark page as read (skips if no unread)     |
+| `hasUnreadByPageId()`     | Check if page has unread messages          |
+| `hasUnreadByNotebookId()` | Check if notebook has unread messages      |
+| `loadUnreadCounts()`      | Load all unread counts from server         |
+
+### Test Files
+
+| File                           | Coverage                                           |
+| ------------------------------ | -------------------------------------------------- |
+| `notification.service.spec.ts` | Elf store, unread counts, badge sync, mark as read |
+| `message.service.spec.ts`      | Message handling, notification integration         |
+
+---
+
 ## Quick Reference
 
 | Do                             | Don't                               |
