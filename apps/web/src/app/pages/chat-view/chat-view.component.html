@@ -93,6 +93,18 @@
           </div>
         </div>
       }
+
+      <!-- Connection Graph -->
+      @if (connectionGraph()) {
+        <div class="connection-graph-section">
+          <app-connection-graph
+            [nodes]="connectionGraph()!.nodes"
+            [edges]="connectionGraph()!.edges"
+            [stats]="connectionGraph()!.stats"
+            (nodeClicked)="onGraphNodeClicked($event)"
+          />
+        </div>
+      }
     } @else {
       <div class="loading-summary">
         <span class="material-symbols-rounded spin">progress_activity</span>

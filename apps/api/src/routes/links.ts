@@ -10,6 +10,7 @@ import {
     getGraphData,
     getLocalGraph,
     reindexAllLinks,
+    getConnectionGraph,
 } from '../services/link.service';
 
 export const linkRoutes = new Elysia({ prefix: '/api/links' })
@@ -167,6 +168,34 @@ export const linkRoutes = new Elysia({ prefix: '/api/links' })
             }),
         },
     )
+
+    // Get connection graph for a notebook (includes page links, hashtag connections, mentions)
+    .get(
+        '/connections/notebook/:notebookId',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const graph = await getConnectionGraph(auth.user._id, params.notebookId);
+            return { graph };
+        },
+        {
+            params: t.Object({
+                notebookId: t.String(),
+            }),
+        },
+    )
+
+    // Get full connection graph for user
+    .get('/connections', async ({ auth, set }) => {
+        if (!checkAuth(auth, set)) {
+            return { error: 'Unauthorized', message: 'Valid authentication required' };
+        }
+
+        const graph = await getConnectionGraph(auth.user._id);
+        return { graph };
+    })
 
     // Reindex links for a notebook (admin/migration)
     .post(
