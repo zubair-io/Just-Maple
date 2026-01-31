@@ -44,11 +44,14 @@ Remove redundancy and unnecessary words. Output only the shortened text.
 Text to shorten:
 {selection}`,
 
-    summarize: `Summarize the key points of this text in 2-3 sentences.
-Focus on the main ideas. Output only the summary.
+    summarize: `Write a brief summary of this text in 2-3 sentences.
+Summarize WHAT the text says, not what "the author" or "the narrator" does.
+Write as if you are the author condensing your own notes.
+Do not use phrases like "The text discusses...", "The author explains...", or "The narrator describes...".
+Just state the key points directly.
 
-Text to summarize:
-{context}`,
+Text:
+{selection}`,
 
     grammar: `Fix all grammar, spelling, and punctuation errors in this text.
 Do not change the meaning or style. Output only the corrected text.

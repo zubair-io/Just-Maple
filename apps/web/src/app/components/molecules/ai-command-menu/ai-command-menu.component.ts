@@ -3,6 +3,7 @@ import {
   input,
   output,
   signal,
+  computed,
   ChangeDetectionStrategy,
   HostListener,
   ElementRef,
@@ -135,6 +136,25 @@ export class AICommandMenuComponent implements AfterViewInit {
     'Arabic',
   ];
 
+  // Estimated menu height (header + items + footer)
+  private readonly MENU_HEIGHT = 450;
+
+  // Adjusted position that doesn't go off the bottom of the screen
+  readonly adjustedPosition = computed(() => {
+    const pos = this.position();
+    const viewportHeight = window.innerHeight;
+    const bottomMargin = 16;
+
+    // Check if menu would go off the bottom
+    if (pos.top + this.MENU_HEIGHT > viewportHeight - bottomMargin) {
+      // Position above the cursor instead, or cap at top of screen
+      const adjustedTop = Math.max(bottomMargin, viewportHeight - this.MENU_HEIGHT - bottomMargin);
+      return { top: adjustedTop, left: pos.left };
+    }
+
+    return pos;
+  });
+
   get filteredCommands(): AICommandItem[] {
     const hasSelection = this.hasSelection();
     return AI_COMMANDS.filter((cmd) => !cmd.requiresSelection || hasSelection);
@@ -165,10 +185,12 @@ export class AICommandMenuComponent implements AfterViewInit {
       case 'ArrowDown':
         event.preventDefault();
         this.selectedIndex.update((i) => Math.min(i + 1, this.filteredCommands.length - 1));
+        this.scrollSelectedIntoView();
         break;
       case 'ArrowUp':
         event.preventDefault();
         this.selectedIndex.update((i) => Math.max(i - 1, 0));
+        this.scrollSelectedIntoView();
         break;
       case 'Enter':
         event.preventDefault();
@@ -179,6 +201,13 @@ export class AICommandMenuComponent implements AfterViewInit {
         this.closed.emit();
         break;
     }
+  }
+
+  private scrollSelectedIntoView(): void {
+    setTimeout(() => {
+      const selectedEl = this.elementRef.nativeElement.querySelector('.ai-command-item.selected');
+      selectedEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, 0);
   }
 
   selectCommand(command: AICommandItem): void {

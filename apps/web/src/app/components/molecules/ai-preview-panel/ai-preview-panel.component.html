@@ -1,9 +1,4 @@
-<div
-  #panel
-  class="ai-preview-panel"
-  [style.top.px]="position().top"
-  [style.left.px]="position().left"
->
+<div #panel class="ai-preview-panel">
   <div class="ai-preview-header">
     <span class="ai-preview-title">{{ getActionLabel() }}</span>
     <button class="ai-preview-close" (click)="onReject()" title="Close (Esc)">

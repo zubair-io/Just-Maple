@@ -29,9 +29,13 @@
   text-align: left;
   transition: background-color 0.15s ease;
 
-  &:hover,
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+
   &.selected {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+    background: var(--color-primary-light);
+    box-shadow: inset 3px 0 0 var(--color-primary);
   }
 }
 
@@ -68,24 +72,4 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-// Dark mode adjustments
-:host-context(.dark-mode) {
-  .suggestion-menu {
-    background: var(--color-bg);
-    border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  }
-
-  .menu-item {
-    &:hover,
-    &.selected {
-      background: rgba(255, 255, 255, 0.08);
-    }
-  }
-
-  .menu-icon {
-    background: rgba(255, 255, 255, 0.1);
-  }
 }

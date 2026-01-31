@@ -6,12 +6,7 @@
     </div>
   } @else {
     <!-- Editor wrapper for centering and max-width -->
-    <div
-      #editorWrapper
-      class="editor-wrapper"
-      [class.full-width]="isFullWidth()"
-      (click)="onEditorWrapperClick($event)"
-    >
+    <div #editorWrapper class="editor-wrapper" [class.full-width]="isFullWidth()">
       <div
         #editorElement
         class="editor-content"

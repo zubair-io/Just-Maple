@@ -1,0 +1,32 @@
+.bubble-menu {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.bubble-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.ai-btn {
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  color: white;
+  padding-top: 5px;
+
+  &:hover {
+    background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  }
+}

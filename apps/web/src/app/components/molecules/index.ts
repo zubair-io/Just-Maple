@@ -19,3 +19,4 @@ export {
   SuggestionMenuComponent,
   type SuggestionItem,
 } from './suggestion-menu/suggestion-menu.component';
+export { EditorBubbleMenuComponent } from './editor-bubble-menu/editor-bubble-menu.component';

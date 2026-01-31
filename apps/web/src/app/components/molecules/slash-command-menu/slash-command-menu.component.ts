@@ -75,11 +75,13 @@ export class SlashCommandMenuComponent implements AfterViewInit {
       case 'ArrowUp':
         event.preventDefault();
         this.selectedIndex.update((i) => (i > 0 ? i - 1 : items.length - 1));
+        setTimeout(() => this.scrollToSelected(), 0);
         return false;
 
       case 'ArrowDown':
         event.preventDefault();
         this.selectedIndex.update((i) => (i < items.length - 1 ? i + 1 : 0));
+        setTimeout(() => this.scrollToSelected(), 0);
         return false;
 
       case 'Enter':

@@ -1,8 +1,8 @@
 <div class="ai-command-backdrop" (click)="onBackdropClick($event)">
   <div
     class="ai-command-menu"
-    [style.top.px]="position().top"
-    [style.left.px]="position().left"
+    [style.top.px]="adjustedPosition().top"
+    [style.left.px]="adjustedPosition().left"
     tabindex="0"
   >
     @if (showCustomPrompt()) {
