@@ -379,6 +379,7 @@ export interface PageDoc {
     content: any;
     version: number;
     notebookId?: ObjectId;
+    tags?: string[];
     isFavorite?: boolean;
     isArchived?: boolean;
     isTrashed?: boolean;
@@ -395,6 +396,7 @@ export interface CreatePageOptions {
     id?: string;
     version?: number;
     notebookId?: string;
+    tags?: string[];
     isFavorite?: boolean;
     isArchived?: boolean;
     isTrashed?: boolean;
@@ -413,6 +415,7 @@ export async function createPageFixture(options: CreatePageOptions = {}): Promis
         content: options.content || { type: 'doc', content: [] },
         version: options.version ?? 1,
         notebookId: options.notebookId ? new ObjectId(options.notebookId) : undefined,
+        tags: options.tags,
         isFavorite: options.isFavorite ?? false,
         isArchived: options.isArchived ?? false,
         isTrashed: options.isTrashed ?? false,

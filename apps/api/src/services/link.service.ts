@@ -1,5 +1,7 @@
 import { ObjectId } from 'mongodb';
+import * as Y from 'yjs';
 import { getDb } from '../db/client';
+import { getMemoState } from '../repositories/memo.repo';
 import type {
     PageContent,
     PageLink,
@@ -18,6 +20,54 @@ import type {
  * Link Service
  * Handles bi-directional link extraction, tracking, and graph queries
  */
+
+/**
+ * Extract page links from Y.js XML fragment (for memos stored in Y.js format)
+ */
+function extractLinksFromYjs(xmlFragment: Y.XmlFragment): PageLink[] {
+    const links: PageLink[] = [];
+    const seen = new Set<string>();
+
+    function traverse(node: Y.XmlElement | Y.XmlText | Y.XmlFragment): void {
+        if (node instanceof Y.XmlElement) {
+            // Check for pageLink nodes
+            if (node.nodeName === 'pageLink') {
+                const pageId = node.getAttribute('pageId');
+                const title = node.getAttribute('title') || 'Untitled';
+                if (pageId && typeof pageId === 'string' && !seen.has(pageId)) {
+                    links.push({ pageId, title: String(title), type: 'inline' });
+                    seen.add(pageId);
+                }
+            }
+            // Check for pageLinkBlock nodes (block embeds)
+            if (node.nodeName === 'pageLinkBlock') {
+                const pageId = node.getAttribute('pageId');
+                const title = node.getAttribute('title') || 'Untitled';
+                if (pageId && typeof pageId === 'string' && !seen.has(pageId)) {
+                    links.push({ pageId, title: String(title), type: 'block' });
+                    seen.add(pageId);
+                }
+            }
+            // Continue traversing children
+            const children = node.toArray();
+            for (const child of children) {
+                if (child instanceof Y.XmlElement || child instanceof Y.XmlText) {
+                    traverse(child);
+                }
+            }
+        } else if (node instanceof Y.XmlFragment) {
+            const children = node.toArray();
+            for (const child of children) {
+                if (child instanceof Y.XmlElement || child instanceof Y.XmlText) {
+                    traverse(child);
+                }
+            }
+        }
+    }
+
+    traverse(xmlFragment);
+    return links;
+}
 
 /**
  * Extract all page links from ProseMirror/TipTap content
@@ -564,20 +614,48 @@ export async function getConnectionGraph(
 
     const pageIdSet = new Set(pageIds);
 
-    // Build nodes with merged tags
+    // Extract links from Y.js content for memos that don't have linksMeta
+    // This is needed because linksMeta may not be populated for Y.js-based memos
+    const pageLinksMap = new Map<string, PageLink[]>();
+    for (const page of allPages) {
+        // If linksMeta exists and has forward links, use those
+        if (page.linksMeta?.forwardLinks?.length > 0) {
+            pageLinksMap.set(page.id, page.linksMeta.forwardLinks);
+        } else if (page.type === 'memo') {
+            // Try to extract links from Y.js content
+            try {
+                const state = await getMemoState(page.id);
+                if (state) {
+                    const ydoc = new Y.Doc();
+                    Y.applyUpdate(ydoc, state);
+                    const xmlFragment = ydoc.getXmlFragment('prosemirror');
+                    const links = extractLinksFromYjs(xmlFragment);
+                    if (links.length > 0) {
+                        pageLinksMap.set(page.id, links);
+                    }
+                }
+            } catch (e) {
+                // Ignore errors, just skip this page's links
+            }
+        }
+    }
+
+    // Build nodes with merged tags and corrected link counts
     const nodes: ConnectionNode[] = allPages.map((page) => {
         // Merge tags from page and search_index
         const pageTags = page.tags || [];
         const indexTags = searchTagsMap.get(page.id) || [];
         const mergedTags = [...new Set([...pageTags, ...indexTags])];
 
+        // Get link count from extracted links
+        const forwardLinks = pageLinksMap.get(page.id) || [];
+        const backlinks = page.linksMeta?.backlinks || [];
+
         return {
             id: page.id,
             label: page.title || 'Untitled',
             type: page.type || 'memo',
-            linkCount:
-                (page.linksMeta?.forwardLinks?.length || 0) +
-                (page.linksMeta?.backlinks?.length || 0),
+            linkCount: forwardLinks.length + backlinks.length,
             tags: mergedTags.length > 0 ? mergedTags : undefined,
         };
     });
@@ -590,7 +668,7 @@ export async function getConnectionGraph(
 
     // Add page link edges (forward links only to avoid duplicates)
     for (const page of allPages) {
-        const forwardLinks = page.linksMeta?.forwardLinks || [];
+        const forwardLinks = pageLinksMap.get(page.id) || [];
         for (const link of forwardLinks) {
             // Only include edges where both nodes exist in the result set
             if (!pageIdSet.has(link.pageId)) continue;
