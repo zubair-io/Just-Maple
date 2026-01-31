@@ -1,12 +1,26 @@
 import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom, take, Observable, map, tap } from 'rxjs';
+import { firstValueFrom, take, Observable, map, tap, of } from 'rxjs';
 import { nanoid } from 'nanoid';
+import { createStore } from '@ngneat/elf';
+import {
+  withEntities,
+  selectAllEntities,
+  setEntities,
+  updateEntities,
+  upsertEntities,
+  getAllEntities,
+} from '@ngneat/elf-entities';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { NativeBridgeService } from './native-bridge.service';
+import { IndexedDBService } from './indexed-db.service';
+import { DB_STORES } from './db-stores';
 import type { Notification, NotificationListResponse, DeviceRegistration } from '@maple/shared';
 import type { ToastData } from '../components/atoms/toast/toast.component';
 import { Router } from '@angular/router';
+
+const STORE_NAME = DB_STORES.NOTIFICATION;
 
 @Injectable({
   providedIn: 'root',
@@ -16,10 +30,40 @@ export class NotificationService {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly nativeBridge = inject(NativeBridgeService);
   private readonly router = inject(Router);
+  private readonly indexedDB = inject(IndexedDBService);
 
-  // Signals for reactive state
-  readonly notifications = signal<Notification[]>([]);
-  readonly unreadCount = computed(() => this.notifications().filter((n) => !n.read).length);
+  // Elf Store for notifications
+  private readonly store = createStore(
+    { name: STORE_NAME },
+    withEntities<Notification, '_id'>({ idKey: '_id' }),
+  );
+
+  // Observable selectors
+  private readonly notifications$ = this.store.pipe(selectAllEntities());
+
+  // Signal wrapper for notifications from Elf store
+  private readonly _notificationsSignal = toSignal(this.notifications$, {
+    initialValue: [] as Notification[],
+  });
+
+  // Public signals
+  readonly notifications = computed(() => this._notificationsSignal() ?? []);
+  readonly unreadNotificationCount = computed(
+    () => this.notifications().filter((n) => !n.read).length,
+  );
+
+  // Message unread count (set by MessageService to avoid circular dependency)
+  private readonly _messageUnreadCount = signal(0);
+  readonly messageUnreadCount = this._messageUnreadCount.asReadonly();
+
+  // Total unread count (notifications + messages) for badge
+  readonly totalUnreadCount = computed(
+    () => this.unreadNotificationCount() + this._messageUnreadCount(),
+  );
+
+  // Legacy alias for backward compatibility
+  readonly unreadCount = this.unreadNotificationCount;
+
   readonly isRequestingPermission = signal(false);
   readonly permissionGranted = signal(false);
   readonly isRegistered = signal(false);
@@ -31,6 +75,9 @@ export class NotificationService {
   // Current active notebook (for smart toast filtering)
   readonly activeNotebookId = signal<string | null>(null);
 
+  // Callback for when message_received notifications are marked as read
+  private _onMessageNotificationRead: ((notebookId: string, pageId?: string) => void) | null = null;
+
   constructor() {
     this.init();
   }
@@ -39,6 +86,9 @@ export class NotificationService {
     if (!isPlatformBrowser(this.platformId)) {
       return;
     }
+
+    // Hydrate from IndexedDB
+    await this.hydrateFromIndexedDB();
 
     if (this.nativeBridge.isNativeApp()) {
       // Listen for push permission result
@@ -71,6 +121,45 @@ export class NotificationService {
       // Check initial push status
       await this.checkPushStatus();
     }
+  }
+
+  private async hydrateFromIndexedDB(): Promise<void> {
+    try {
+      const cached = await this.indexedDB.getAll<Notification>(STORE_NAME);
+      if (cached.length > 0 && this.store.query(getAllEntities()).length === 0) {
+        this.store.update(setEntities(cached));
+      }
+    } catch {
+      // Silently fail - IndexedDB hydration is non-critical
+    }
+  }
+
+  private async persistToIndexedDB(notifications: Notification[]): Promise<void> {
+    if (!isPlatformBrowser(this.platformId) || notifications.length === 0) return;
+    try {
+      await this.indexedDB.putMany(notifications, STORE_NAME);
+    } catch {
+      // Silently fail
+    }
+  }
+
+  // MARK: - Message Unread Count Integration
+
+  /**
+   * Set the message unread count (called by MessageService)
+   * This keeps the notification service aware of total unread messages
+   */
+  setMessageUnreadCount(count: number): void {
+    this._messageUnreadCount.set(count);
+    this.syncBadgeCount();
+  }
+
+  /**
+   * Register callback for when message_received notifications are marked as read
+   * This allows MessageService to sync its unread counts
+   */
+  onMessageNotificationRead(callback: (notebookId: string, pageId?: string) => void): void {
+    this._onMessageNotificationRead = callback;
   }
 
   // MARK: - Push Notification Registration
@@ -168,7 +257,8 @@ export class NotificationService {
       })
       .pipe(
         tap((response) => {
-          this.notifications.set(response.notifications);
+          this.store.update(setEntities(response.notifications));
+          this.persistToIndexedDB(response.notifications);
           // Sync badge count with native app
           this.syncBadgeCount();
         }),
@@ -190,11 +280,27 @@ export class NotificationService {
    * Mark notification as read
    */
   markAsRead(id: string): Observable<void> {
+    const notification = this.notifications().find((n) => n._id === id);
+
+    // Skip if already read
+    if (notification?.read) {
+      return of(void 0);
+    }
+
     return this.http.patch<{ message: string }>(`/api/notifications/${id}/read`, {}).pipe(
       tap(() => {
         // Update local state
-        const updated = this.notifications().map((n) => (n._id === id ? { ...n, read: true } : n));
-        this.notifications.set(updated);
+        this.store.update(updateEntities(id, { read: true }));
+
+        // If this is a message_received notification, notify MessageService to sync
+        if (notification?.type === 'message_received' && this._onMessageNotificationRead) {
+          const notebookId = notification.data['notebookId'];
+          const pageId = notification.data['pageId'];
+          if (notebookId) {
+            this._onMessageNotificationRead(notebookId, pageId);
+          }
+        }
+
         // Sync badge count with native app
         this.syncBadgeCount();
       }),
@@ -204,11 +310,11 @@ export class NotificationService {
 
   /**
    * Sync the badge count with the native app
-   * This updates the app icon badge to reflect the current unread count
+   * Uses total unread count (notifications + messages)
    */
   syncBadgeCount(): void {
     if (this.nativeBridge.isNativeApp()) {
-      this.nativeBridge.setBadge(this.unreadCount());
+      this.nativeBridge.setBadge(this.totalUnreadCount());
     }
   }
 
@@ -225,15 +331,42 @@ export class NotificationService {
    * Mark all notifications as read
    */
   markAllAsRead(): Observable<void> {
+    const unreadNotifications = this.notifications().filter((n) => !n.read);
+
+    // Skip if no unread notifications
+    if (unreadNotifications.length === 0) {
+      return of(void 0);
+    }
+
     return this.http
       .patch<{ message: string; count: number }>('/api/notifications/read-all', {})
       .pipe(
         tap(() => {
-          // Update local state
-          const updated = this.notifications().map((n) => ({ ...n, read: true }));
-          this.notifications.set(updated);
-          // Clear the badge since all are read
-          this.clearBadge();
+          // Update local state - mark all as read
+          const allIds = this.notifications().map((n) => n._id);
+          allIds.forEach((id) => {
+            this.store.update(updateEntities(id, { read: true }));
+          });
+
+          // Notify MessageService about all message_received notifications that were marked read
+          if (this._onMessageNotificationRead) {
+            const messageNotifications = unreadNotifications.filter(
+              (n) => n.type === 'message_received',
+            );
+            const processedNotebooks = new Set<string>();
+
+            messageNotifications.forEach((n) => {
+              const notebookId = n.data['notebookId'];
+              const pageId = n.data['pageId'];
+              if (notebookId && !processedNotebooks.has(notebookId)) {
+                processedNotebooks.add(notebookId);
+                this._onMessageNotificationRead!(notebookId, pageId);
+              }
+            });
+          }
+
+          // Sync badge - will include message unread count
+          this.syncBadgeCount();
         }),
         map(() => void 0),
       );
@@ -248,9 +381,58 @@ export class NotificationService {
       (n) => !n.read && n.type === 'message_received' && n.data['notebookId'] === notebookId,
     );
 
+    // Skip if no unread message notifications for this notebook
+    if (unreadMessageNotifications.length === 0) {
+      return;
+    }
+
+    // Mark all at once in store, then make API calls
     unreadMessageNotifications.forEach((n) => {
-      this.markAsRead(n._id).subscribe();
+      this.store.update(updateEntities(n._id, { read: true }));
     });
+
+    // Sync badge immediately
+    this.syncBadgeCount();
+
+    // Fire API calls in background
+    unreadMessageNotifications.forEach((n) => {
+      this.http.patch(`/api/notifications/${n._id}/read`, {}).subscribe();
+    });
+  }
+
+  /**
+   * Mark all message_received notifications for a specific page as read
+   */
+  markPageMessagesAsRead(pageId: string): void {
+    const unreadMessageNotifications = this.notifications().filter(
+      (n) => !n.read && n.type === 'message_received' && n.data['pageId'] === pageId,
+    );
+
+    if (unreadMessageNotifications.length === 0) {
+      return;
+    }
+
+    // Mark all at once in store
+    unreadMessageNotifications.forEach((n) => {
+      this.store.update(updateEntities(n._id, { read: true }));
+    });
+
+    // Sync badge immediately
+    this.syncBadgeCount();
+
+    // Fire API calls in background
+    unreadMessageNotifications.forEach((n) => {
+      this.http.patch(`/api/notifications/${n._id}/read`, {}).subscribe();
+    });
+  }
+
+  /**
+   * Add a notification to the store (for real-time updates)
+   */
+  addNotification(notification: Notification): void {
+    this.store.update(upsertEntities(notification));
+    this.persistToIndexedDB([notification]);
+    this.syncBadgeCount();
   }
 
   /**
@@ -313,6 +495,9 @@ export class NotificationService {
       // Fetch full notification to get message content
       this.fetchNotification(notification.notificationId, notification.apiUrl).subscribe({
         next: (fullNotification) => {
+          // Add to store for real-time updates
+          this.addNotification(fullNotification);
+
           // Construct toast message from notification data
           let title = 'Notification';
           let message = 'You have a new notification';

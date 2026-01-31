@@ -36,35 +36,37 @@ export class NotificationListComponent {
     });
   });
 
-  async ngOnInit(): Promise<void> {
-    await this.loadNotifications();
+  ngOnInit(): void {
+    this.loadNotifications();
   }
 
-  async loadNotifications(): Promise<void> {
+  loadNotifications(): void {
     this.isLoading.set(true);
-    try {
-      await this.notificationService.fetchNotifications();
-    } catch (error) {
-      console.error('Failed to load notifications:', error);
-    } finally {
-      this.isLoading.set(false);
-    }
+    this.notificationService.fetchNotifications().subscribe({
+      next: () => {
+        this.isLoading.set(false);
+      },
+      error: (error) => {
+        console.error('Failed to load notifications:', error);
+        this.isLoading.set(false);
+      },
+    });
   }
 
   onFiltersChanged(filters: NotificationFilters): void {
     this.filters.set(filters);
   }
 
-  async onNotificationClicked(notification: Notification): Promise<void> {
+  onNotificationClicked(notification: Notification): void {
     // Navigate based on notification type
     // This will be handled in the page component
   }
 
-  async onMarkAsRead(id: string): Promise<void> {
-    try {
-      await this.notificationService.markAsRead(id);
-    } catch (error) {
-      console.error('Failed to mark notification as read:', error);
-    }
+  onMarkAsRead(id: string): void {
+    this.notificationService.markAsRead(id).subscribe({
+      error: (error) => {
+        console.error('Failed to mark notification as read:', error);
+      },
+    });
   }
 }

@@ -1,4 +1,12 @@
-import { Injectable, inject, PLATFORM_ID, signal, computed, DestroyRef } from '@angular/core';
+import {
+  Injectable,
+  inject,
+  PLATFORM_ID,
+  signal,
+  computed,
+  DestroyRef,
+  effect,
+} from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, map, catchError, throwError, of, Subscription, switchMap } from 'rxjs';
@@ -69,6 +77,11 @@ export class MessageService {
   readonly currentPage = this._currentPage.asReadonly();
   readonly unreadCounts = this._unreadCounts.asReadonly();
 
+  // Total message unread count (sum of all pages)
+  readonly totalMessageUnreadCount = computed(() =>
+    this._unreadCounts().reduce((sum, c) => sum + c.count, 0),
+  );
+
   // Backward compatibility alias
   readonly currentTagId = this._currentNotebookId.asReadonly();
 
@@ -88,6 +101,23 @@ export class MessageService {
       this.visibilityService.becameVisible$
         .pipe(switchMap(() => this.loadUnreadCounts()))
         .subscribe();
+
+      // Sync total message unread count with NotificationService
+      effect(() => {
+        const totalUnread = this.totalMessageUnreadCount();
+        this.notificationService.setMessageUnreadCount(totalUnread);
+      });
+
+      // Register callback for when message notifications are marked as read in notification panel
+      this.notificationService.onMessageNotificationRead((notebookId, pageId) => {
+        if (pageId) {
+          // Clear unread count for specific page
+          this._unreadCounts.update((counts) => counts.filter((c) => c.pageId !== pageId));
+        } else {
+          // Clear unread count for notebook
+          this._unreadCounts.update((counts) => counts.filter((c) => c.notebookId !== notebookId));
+        }
+      });
     }
 
     this.destroyRef.onDestroy(() => {
@@ -549,9 +579,29 @@ export class MessageService {
   }
 
   /**
+   * Check if a page has unread messages
+   */
+  hasUnreadByPageId(pageId: string): boolean {
+    return this.getUnreadCountByPageId(pageId) > 0;
+  }
+
+  /**
+   * Check if a notebook has unread messages
+   */
+  hasUnreadByNotebookId(notebookId: string): boolean {
+    return this.getUnreadCount(notebookId) > 0;
+  }
+
+  /**
    * Mark notebook as read (finds messages page automatically)
+   * Only makes API call if there are unread messages
    */
   markAsRead(notebookId: string): Observable<void> {
+    // Skip API call if no unread messages for this notebook
+    if (!this.hasUnreadByNotebookId(notebookId)) {
+      return of(undefined);
+    }
+
     return this.http
       .post<{ lastReadAt: string; pageId?: string }>(`/api/notebooks/${notebookId}/read`, {})
       .pipe(
@@ -561,6 +611,8 @@ export class MessageService {
           this._unreadCounts.update((counts) =>
             counts.filter((c) => (pageId ? c.pageId !== pageId : c.notebookId !== notebookId)),
           );
+          // Also mark related notifications as read
+          this.notificationService.markNotebookMessagesAsRead(notebookId);
         }),
         map(() => undefined),
         catchError(() => of(undefined)),
@@ -569,11 +621,19 @@ export class MessageService {
 
   /**
    * Mark page as read by pageId
+   * Only makes API call if there are unread messages
    */
   markAsReadByPageId(pageId: string): Observable<void> {
+    // Skip API call if no unread messages for this page
+    if (!this.hasUnreadByPageId(pageId)) {
+      return of(undefined);
+    }
+
     return this.http.post<{ lastReadAt: string }>(`/api/pages/${pageId}/read`, {}).pipe(
       tap(() => {
         this._unreadCounts.update((counts) => counts.filter((c) => c.pageId !== pageId));
+        // Also mark related notifications as read
+        this.notificationService.markPageMessagesAsRead(pageId);
       }),
       map(() => undefined),
       catchError(() => of(undefined)),

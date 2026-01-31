@@ -9,6 +9,7 @@ export const DB_STORES = {
   PAGE: 'page',
   SYNC_METADATA: 'sync-metadata',
   MESSAGE: 'message',
+  NOTIFICATION: 'notification',
   OFFLINE_QUEUE: 'offline-queue',
 } as const;
 
