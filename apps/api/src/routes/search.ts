@@ -2,7 +2,7 @@ import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
 import { searchNotes } from '../services/search.service';
-import { reindexAllForUser } from '../repositories/search.repo';
+import { reindexAllForUser, updatePageTags } from '../repositories/search.repo';
 import type { JWTPayload } from '@maple/shared';
 
 export const searchRoutes = new Elysia({ prefix: '/api/search' })
@@ -76,4 +76,29 @@ export const searchRoutes = new Elysia({ prefix: '/api/search' })
         });
 
         return { message: 'Reindex started' };
-    });
+    })
+
+    // Update tags for a specific page
+    .put(
+        '/:pageId/tags',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const { pageId } = params;
+            const { tags } = body;
+
+            await updatePageTags(pageId, tags);
+
+            return { success: true };
+        },
+        {
+            params: t.Object({
+                pageId: t.String(),
+            }),
+            body: t.Object({
+                tags: t.Array(t.String()),
+            }),
+        },
+    );

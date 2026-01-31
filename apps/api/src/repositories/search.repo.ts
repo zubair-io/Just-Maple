@@ -169,6 +169,25 @@ export async function removeFromIndex(pageId: string): Promise<void> {
 }
 
 /**
+ * Update tags for a page in the search index (without full reindex)
+ */
+export async function updatePageTags(pageId: string, tags: string[]): Promise<void> {
+    const db = getDb();
+    const normalizedTags = tags.map((t) => t.toLowerCase());
+
+    await db.collection('search_index').updateOne(
+        { pageId },
+        {
+            $set: {
+                tags: normalizedTags,
+                updatedAt: new Date(),
+            },
+        },
+    );
+    console.log(`[SearchIndex] Updated tags for ${pageId}: ${normalizedTags.join(', ') || 'none'}`);
+}
+
+/**
  * Reindex all pages for a user
  */
 export async function reindexAllForUser(userId: string): Promise<void> {

@@ -79,6 +79,7 @@ import { AIPreviewPanelComponent } from '../../molecules/ai-preview-panel/ai-pre
 import { AICommandMenuComponent } from '../../molecules/ai-command-menu/ai-command-menu.component';
 import { AIWritingService } from '../../../services/ai-writing.service';
 import { TagService } from '../../../services/tag.service';
+import { SearchService } from '../../../services/search.service';
 import { UiStateService } from '../../../services/ui-state.service';
 import type { AIWritingType } from '@maple/shared';
 import type * as Y from 'yjs';
@@ -110,6 +111,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly memoImageService = inject(MemoImageService);
   private readonly aiWritingService = inject(AIWritingService);
   private readonly tagService = inject(TagService);
+  private readonly searchService = inject(SearchService);
   private readonly uiStateService = inject(UiStateService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
@@ -138,6 +140,8 @@ export class NotebookEditorComponent implements OnDestroy {
   private lastPageId: string | null = null;
   private titleUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastSyncedTitle: string = '';
+  private tagUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
+  private lastSyncedTags: string[] = [];
   private isInitialSync = true;
   private slashMenuElement: HTMLElement | null = null;
   private slashMenuComponent: SlashCommandMenuComponent | null = null;
@@ -1497,6 +1501,65 @@ export class NotebookEditorComponent implements OnDestroy {
     // Sync todo metadata (debounced internally by TodoSyncService)
     const pageId = this.pageId();
     this.todoSyncService.syncTodoMeta(pageId, editor);
+
+    // Sync hashtags to search index
+    this.syncHashtags(pageId, editor);
+  }
+
+  /**
+   * Extract all hashtags from the editor and sync to search index
+   */
+  private syncHashtags(pageId: string, editor: Editor): void {
+    const tags = this.extractHashtags(editor);
+    const tagsStr = tags.sort().join(',');
+    const lastTagsStr = this.lastSyncedTags.sort().join(',');
+
+    // Only sync if tags changed
+    if (tagsStr === lastTagsStr) {
+      return;
+    }
+
+    // Clear existing timeout
+    if (this.tagUpdateTimeout) {
+      clearTimeout(this.tagUpdateTimeout);
+    }
+
+    // Debounce tag updates (500ms)
+    this.tagUpdateTimeout = setTimeout(() => {
+      this.lastSyncedTags = [...tags];
+      this.searchService.updatePageTags(pageId, tags).subscribe({
+        next: () => {
+          console.log('[NotebookEditor] Tags synced:', tags);
+          // Also update the tag service cache
+          for (const tag of tags) {
+            this.tagService.addTagToCache(tag);
+          }
+        },
+        error: (err) => {
+          console.error('[NotebookEditor] Failed to sync tags:', err);
+        },
+      });
+    }, 500);
+  }
+
+  /**
+   * Extract all hashtag values from the editor content
+   */
+  private extractHashtags(editor: Editor): string[] {
+    const tags: Set<string> = new Set();
+    const doc = editor.state.doc;
+
+    doc.descendants((node) => {
+      if (node.type.name === 'hashTag') {
+        const tag = node.attrs['tag'];
+        if (tag && typeof tag === 'string') {
+          tags.add(tag.toLowerCase());
+        }
+      }
+      return true;
+    });
+
+    return Array.from(tags);
   }
 
   /**
