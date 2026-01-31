@@ -61,9 +61,14 @@
   cursor: pointer;
   transition: background 0.1s ease;
 
-  &:hover,
-  &.selected {
+  &:hover {
     background: var(--color-bg-hover);
+  }
+
+  &.selected {
+    background: var(--color-primary-light);
+    border-left: 3px solid var(--color-primary);
+    padding-left: 13px;
   }
 }
 

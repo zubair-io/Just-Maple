@@ -29,9 +29,13 @@
   text-align: left;
   transition: background-color 0.15s ease;
 
-  &:hover,
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+
   &.selected {
-    background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+    background: var(--color-primary-light);
+    box-shadow: inset 3px 0 0 var(--color-primary);
   }
 }
 

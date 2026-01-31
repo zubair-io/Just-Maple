@@ -1,15 +1,17 @@
 <div
-  class="flex p-2 bg-white rounded-xl border-2 my-1 mx-2 cursor-pointer transition-colors overflow-hidden max-w-full"
+  class="flex p-2 bg-[var(--color-surface)] rounded-xl border-2 my-1 mx-2 cursor-pointer transition-colors overflow-hidden max-w-full"
   [class.border-[var(--color-primary)]]="selected()"
-  [class.bg-orange-50]="selected()"
+  [class.bg-[var(--color-primary-light)]]="selected()"
   [class.border-transparent]="!selected()"
-  [class.hover:border-gray-200]="!selected()"
+  [class.hover:border-[var(--color-border)]]="!selected()"
 >
   <div class="mr-4 flex-1 min-w-0 overflow-hidden">
-    <h4 class="text-lg font-medium text-gray-900 truncate">
+    <h4 class="text-lg font-medium text-[var(--color-text-main)] truncate">
       {{ title() }}
     </h4>
-    <div class="mt-1 text-sm text-gray-400 truncate whitespace-nowrap overflow-hidden">
+    <div
+      class="mt-1 text-sm text-[var(--color-text-muted)] truncate whitespace-nowrap overflow-hidden"
+    >
       @for (tag of tags(); track $index; let last = $last) {
         <span>{{ tag.value }}</span>
         @if (!last) {
@@ -22,7 +24,9 @@
         {{ statusLabel() }}
       </span>
       @if (collectable().data.quantity > 1) {
-        <span class="text-xs text-gray-500"> x{{ collectable().data.quantity }} </span>
+        <span class="text-xs text-[var(--color-text-muted)]">
+          x{{ collectable().data.quantity }}
+        </span>
       }
     </div>
   </div>

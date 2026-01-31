@@ -23,6 +23,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
+import BubbleMenu from '@tiptap/extension-bubble-menu';
 import { marked } from 'marked';
 import { MemoDocumentService } from '../../../services/memo-document.service';
 import { PageService } from '../../../services/page.service';
@@ -77,6 +78,7 @@ import { EditorToolbarComponent } from '../../molecules/editor-toolbar/editor-to
 import { AiBotWidgetComponent } from '../../molecules/ai-bot-widget/ai-bot-widget.component';
 import { AIPreviewPanelComponent } from '../../molecules/ai-preview-panel/ai-preview-panel.component';
 import { AICommandMenuComponent } from '../../molecules/ai-command-menu/ai-command-menu.component';
+import { EditorBubbleMenuComponent } from '../../molecules/editor-bubble-menu/editor-bubble-menu.component';
 import { AIWritingService } from '../../../services/ai-writing.service';
 import { TagService } from '../../../services/tag.service';
 import { SearchService } from '../../../services/search.service';
@@ -157,7 +159,13 @@ export class NotebookEditorComponent implements OnDestroy {
 
   // AI Writing Assistant state
   private aiPreviewComponent: { componentRef: any; element: HTMLElement } | null = null;
-  private aiCommandMenuComponent: { componentRef: any; element: HTMLElement } | null = null;
+  private aiCommandMenuComponent: {
+    componentRef: any;
+    element: HTMLElement;
+    capturedSelection: string;
+    capturedContext: string;
+    insertPosition: number;
+  } | null = null;
   private pendingAICommand: {
     type: AIWritingType;
     selection: string;
@@ -166,6 +174,10 @@ export class NotebookEditorComponent implements OnDestroy {
     targetLanguage?: string;
     insertPosition: number;
   } | null = null;
+
+  // Bubble menu state
+  private bubbleMenuElement: HTMLElement | null = null;
+  private bubbleMenuComponentRef: any = null;
 
   constructor() {
     // Initialize editor after view is ready
@@ -220,6 +232,10 @@ export class NotebookEditorComponent implements OnDestroy {
         name: 'Anonymous',
         color: '#888888',
       };
+
+      // Create bubble menu element for text selection formatting
+      this.bubbleMenuElement = document.createElement('div');
+      this.bubbleMenuElement.classList.add('editor-bubble-menu-container');
 
       // Create TipTap editor with YJS collaboration and Notion-like features
       this._editor = new Editor({
@@ -356,6 +372,18 @@ export class NotebookEditorComponent implements OnDestroy {
               },
             },
           }),
+          // Bubble menu for text selection formatting
+          BubbleMenu.configure({
+            element: this.bubbleMenuElement!,
+            shouldShow: ({ editor, state }: { editor: Editor; state: any }) => {
+              // Only show when there's a text selection (not empty)
+              const { from, to } = state.selection;
+              const hasSelection = from !== to;
+              // Don't show in code blocks
+              const isInCodeBlock = editor.isActive('codeBlock');
+              return hasSelection && !isInCodeBlock;
+            },
+          } as any),
         ],
         // Doc pages are always read-only
         editable: isDocPageView ? false : this.editable(),
@@ -424,6 +452,9 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up page link listeners
         this.setupPageLinkListeners();
+
+        // Set up bubble menu component
+        this.setupBubbleMenuComponent();
 
         // Check for Claude bot availability
         this.checkClaudeBotAvailability();
@@ -1159,33 +1190,82 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
+   * Set up the bubble menu Angular component
+   */
+  private setupBubbleMenuComponent(): void {
+    if (!this.bubbleMenuElement || !this._editor) return;
+
+    // Create Angular component
+    const componentRef = createComponent(EditorBubbleMenuComponent, {
+      environmentInjector: this.injector,
+      hostElement: this.bubbleMenuElement,
+    });
+
+    // Set the editor input
+    // Handle opening the AI menu
+    componentRef.instance.openAIMenu.subscribe(() => {
+      this.openAICommandMenu();
+    });
+
+    this.appRef.attachView(componentRef.hostView);
+    this.bubbleMenuComponentRef = componentRef;
+  }
+
+  /**
    * Handle an AI writing command
+   * If capturedSelection/capturedContext/capturedInsertPos are provided, use them
+   * (e.g., when called from menu where selection was captured at menu open time)
    */
   private handleAIWritingCommand(
     type: AIWritingType,
     instruction?: string,
     targetLanguage?: string,
+    capturedSelection?: string,
+    capturedContext?: string,
+    capturedInsertPos?: number,
   ): void {
     if (!this._editor) return;
 
-    // Get selected text and context
-    const { state } = this._editor;
-    const { from, to, empty } = state.selection;
-    const selectedText = empty ? '' : state.doc.textBetween(from, to, ' ');
+    let selectedText: string;
+    let context: string;
+    let insertPosition: number;
 
-    // Get surrounding context (up to 2000 chars before cursor)
-    const contextEnd = from;
-    const contextStart = Math.max(0, contextEnd - 2000);
-    const context = state.doc.textBetween(contextStart, contextEnd, '\n', ' ');
+    if (
+      capturedSelection !== undefined &&
+      capturedContext !== undefined &&
+      capturedInsertPos !== undefined
+    ) {
+      // Use pre-captured values (from AI command menu)
+      selectedText = capturedSelection;
+      context = capturedContext;
+      insertPosition = capturedInsertPos;
+    } else {
+      // Get selected text and context from current editor state
+      const { state } = this._editor;
+      const { from, to, empty } = state.selection;
+      selectedText = empty ? '' : state.doc.textBetween(from, to, ' ');
+
+      // Get surrounding context (up to 2000 chars before cursor)
+      const contextEnd = from;
+      const contextStart = Math.max(0, contextEnd - 2000);
+      context = state.doc.textBetween(contextStart, contextEnd, '\n', ' ');
+      insertPosition = empty ? from : to;
+    }
+
+    // For summarize: if no selection, use the whole memo content
+    if (type === 'summarize' && !selectedText) {
+      const { state } = this._editor;
+      selectedText = state.doc.textBetween(0, state.doc.content.size, '\n', ' ');
+    }
 
     // Store the command info
     this.pendingAICommand = {
       type,
       selection: selectedText,
-      context,
+      context: type === 'summarize' ? '' : context, // Don't send context for summarize
       instruction,
       targetLanguage,
-      insertPosition: empty ? from : to,
+      insertPosition,
     };
 
     // Show the AI preview panel
@@ -1200,6 +1280,17 @@ export class NotebookEditorComponent implements OnDestroy {
 
     const { state, view } = this._editor;
     const { from, to, empty } = state.selection;
+
+    // Capture selection text NOW, before the menu click clears it
+    const capturedSelection = empty ? '' : state.doc.textBetween(from, to, ' ');
+
+    // Get surrounding context (up to 2000 chars before cursor)
+    const contextEnd = from;
+    const contextStart = Math.max(0, contextEnd - 2000);
+    const capturedContext = state.doc.textBetween(contextStart, contextEnd, '\n', ' ');
+
+    // Capture insert position
+    const insertPosition = empty ? from : to;
 
     // Get cursor position for menu placement
     const coords = view.coordsAtPos(from);
@@ -1222,8 +1313,17 @@ export class NotebookEditorComponent implements OnDestroy {
     // Handle command selection
     componentRef.instance.commandSelected.subscribe(
       (cmd: { type: AIWritingType; instruction?: string; targetLanguage?: string }) => {
+        // Use the captured selection from when menu was opened
+        const { capturedSelection, capturedContext, insertPosition } = this.aiCommandMenuComponent!;
         this.closeAICommandMenu();
-        this.handleAIWritingCommand(cmd.type, cmd.instruction, cmd.targetLanguage);
+        this.handleAIWritingCommand(
+          cmd.type,
+          cmd.instruction,
+          cmd.targetLanguage,
+          capturedSelection,
+          capturedContext,
+          insertPosition,
+        );
       },
     );
 
@@ -1233,7 +1333,13 @@ export class NotebookEditorComponent implements OnDestroy {
     });
 
     this.appRef.attachView(componentRef.hostView);
-    this.aiCommandMenuComponent = { componentRef, element: menuElement };
+    this.aiCommandMenuComponent = {
+      componentRef,
+      element: menuElement,
+      capturedSelection,
+      capturedContext,
+      insertPosition,
+    };
   }
 
   /**
@@ -1254,9 +1360,6 @@ export class NotebookEditorComponent implements OnDestroy {
   private showAIPreviewPanel(): void {
     if (!this._editor || !this.pendingAICommand || this.aiPreviewComponent) return;
 
-    const { view } = this._editor;
-    const coords = view.coordsAtPos(this.pendingAICommand.insertPosition);
-
     // Create panel element
     const panelElement = document.createElement('div');
     panelElement.classList.add('ai-preview-panel-container');
@@ -1270,7 +1373,6 @@ export class NotebookEditorComponent implements OnDestroy {
 
     // Set inputs
     componentRef.setInput('notebookId', this.notebookId());
-    componentRef.setInput('position', { top: coords.bottom + 8, left: coords.left });
     componentRef.setInput('actionType', this.pendingAICommand.type);
     componentRef.setInput('selection', this.pendingAICommand.selection);
     componentRef.setInput('context', this.pendingAICommand.context);
@@ -1317,9 +1419,16 @@ export class NotebookEditorComponent implements OnDestroy {
 
     const { type, selection, insertPosition } = this.pendingAICommand;
     const { state } = this._editor;
-    const { from, to, empty } = state.selection;
+    const { empty } = state.selection;
 
-    if (type === 'continue' || type === 'summarize' || type === 'custom') {
+    if (type === 'summarize') {
+      // Insert summary with H3 heading
+      const summaryContent = [
+        { type: 'heading', attrs: { level: 3 }, content: [{ type: 'text', text: 'Summary' }] },
+        { type: 'paragraph', content: [{ type: 'text', text }] },
+      ];
+      this._editor.chain().focus().insertContentAt(insertPosition, summaryContent).run();
+    } else if (type === 'continue' || type === 'custom') {
       // Insert at cursor position
       this._editor.chain().focus().insertContentAt(insertPosition, text).run();
     } else if (selection && !empty) {
@@ -1723,6 +1832,17 @@ export class NotebookEditorComponent implements OnDestroy {
     this.closeAIPreviewPanel();
     this.closeAICommandMenu();
 
+    // Clean up bubble menu component
+    if (this.bubbleMenuComponentRef) {
+      this.appRef.detachView(this.bubbleMenuComponentRef.hostView);
+      this.bubbleMenuComponentRef.destroy();
+      this.bubbleMenuComponentRef = null;
+    }
+    if (this.bubbleMenuElement) {
+      this.bubbleMenuElement.remove();
+      this.bubbleMenuElement = null;
+    }
+
     // Clean up page link listeners
     this.cleanupPageLinkListeners();
 
@@ -1758,13 +1878,12 @@ export class NotebookEditorComponent implements OnDestroy {
    * Handle click on the editor wrapper to focus
    */
   onEditorWrapperClick(event: MouseEvent): void {
-    // Only focus if clicking directly on the wrapper (not on editor content)
+    // Only focus to end if clicking directly on the wrapper element itself
+    // (the empty space below the content), not on the editor content
     const target = event.target as HTMLElement;
-    if (
-      target.classList.contains('editor-wrapper') ||
-      target.classList.contains('editor-content')
-    ) {
+    if (target.classList.contains('editor-wrapper')) {
       this._editor?.commands.focus('end');
+      console.log('onEditorWrapperClick');
     }
   }
 

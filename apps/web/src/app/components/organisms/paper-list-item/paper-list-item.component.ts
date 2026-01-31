@@ -60,11 +60,11 @@ export class CollectableListItemComponent {
     const status = this.collectable().data.status;
     switch (status) {
       case 'have':
-        return 'bg-green-100 text-green-800';
+        return 'bg-green-500/20 text-green-600 dark:text-green-400';
       case 'want':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400';
       case 'sold':
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-[var(--color-bg-hover)] text-[var(--color-text-muted)]';
       default:
         return '';
     }

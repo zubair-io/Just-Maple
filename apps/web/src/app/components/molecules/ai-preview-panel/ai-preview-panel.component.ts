@@ -17,11 +17,6 @@ import { AIWritingService, type AIStreamEvent } from '../../../services/ai-writi
 import type { AIWritingType } from '@maple/shared';
 import { Subscription } from 'rxjs';
 
-export interface AIPreviewPosition {
-  top: number;
-  left: number;
-}
-
 @Component({
   selector: 'app-ai-preview-panel',
   standalone: true,
@@ -37,7 +32,6 @@ export class AIPreviewPanelComponent implements AfterViewInit, OnDestroy {
 
   // Inputs
   readonly notebookId = input.required<string>();
-  readonly position = input.required<AIPreviewPosition>();
   readonly actionType = input.required<AIWritingType>();
   readonly selection = input<string>('');
   readonly context = input<string>('');
