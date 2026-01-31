@@ -14,6 +14,7 @@ import {
   type GraphEdge,
   type GraphStats,
 } from '../../components';
+import { getPageTypeLabel as getLabel, getPageTypeIcon as getIcon } from '../../utils/page-types';
 import type { NotebookMember } from '@maple/shared';
 
 interface NotebookSummary {
@@ -120,31 +121,9 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     return this.notebookService.notebooks().find((n) => n._id === notebookId) || null;
   });
 
-  // Helper to get page type display name
-  getPageTypeLabel(type: string): string {
-    const labels: Record<string, string> = {
-      memo: 'Memos',
-      message: 'Messages',
-      whiteboard: 'Whiteboards',
-      collectable: 'Collectables',
-      kanban: 'Kanban Boards',
-      recording: 'Recordings',
-    };
-    return labels[type] || type;
-  }
-
-  // Helper to get page type icon
-  getPageTypeIcon(type: string): string {
-    const icons: Record<string, string> = {
-      memo: 'edit_note',
-      message: 'chat',
-      whiteboard: 'draw',
-      collectable: 'grid_view',
-      kanban: 'view_kanban',
-      recording: 'mic',
-    };
-    return icons[type] || 'description';
-  }
+  // Delegate to shared utilities
+  getPageTypeLabel = getLabel;
+  getPageTypeIcon = getIcon;
 
   ngOnInit(): void {
     // Subscribe to route params and set ID directly - let computed handle the rest
