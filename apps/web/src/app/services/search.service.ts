@@ -121,6 +121,13 @@ export class SearchService {
     return this.http.post<{ message: string }>('/api/search/reindex', {});
   }
 
+  /**
+   * Update tags for a specific page in the search index
+   */
+  updatePageTags(pageId: string, tags: string[]): Observable<{ success: boolean }> {
+    return this.http.put<{ success: boolean }>(`/api/search/${pageId}/tags`, { tags });
+  }
+
   private executeSearch(query: string, filters?: SearchFilters): Observable<SearchResult[]> {
     this._isSearching.set(true);
     this._error.set(null);
