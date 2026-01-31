@@ -480,4 +480,178 @@ describe.runIf(mongoAvailable)('Link Routes', () => {
             expect(data.pagesIndexed).toBeDefined();
         });
     });
+
+    describe('GET /api/links/connections/notebook/:notebookId', () => {
+        it('should return connection graph with link edges', async () => {
+            const user = await createUserFixture();
+            const notebook = await createNotebookFixture({ createdBy: user._id.toString() });
+
+            // Create pages
+            const page1 = await createPageFixture({
+                userId: user._id.toString(),
+                notebookId: notebook._id.toString(),
+                title: 'Page 1',
+            });
+            const page2 = await createPageFixture({
+                userId: user._id.toString(),
+                notebookId: notebook._id.toString(),
+                title: 'Page 2',
+            });
+
+            // Add link metadata (page1 links to page2)
+            await testDb!.collection('pages').updateOne(
+                { _id: page1._id },
+                {
+                    $set: {
+                        linksMeta: {
+                            forwardLinks: [{ pageId: page2.id, title: 'Page 2', type: 'inline' }],
+                            backlinks: [],
+                        },
+                    },
+                },
+            );
+
+            const token = await getAuthToken(user._id.toString(), user.email);
+
+            const response = await app.handle(
+                new Request(
+                    `http://localhost/api/links/connections/notebook/${notebook._id.toString()}`,
+                    {
+                        headers: { Authorization: `Bearer ${token}` },
+                    },
+                ),
+            );
+
+            expect(response.status).toBe(200);
+            const data: any = await response.json();
+            expect(data.graph).toBeDefined();
+            expect(data.graph.nodes).toBeDefined();
+            expect(data.graph.edges).toBeDefined();
+            expect(data.graph.stats).toBeDefined();
+            expect(data.graph.nodes.length).toBe(2);
+            expect(data.graph.stats.linkEdges).toBe(1);
+        });
+
+        it('should return connection graph with hashtag edges', async () => {
+            const user = await createUserFixture();
+            const notebook = await createNotebookFixture({ createdBy: user._id.toString() });
+
+            // Create pages with shared hashtags
+            const page1 = await createPageFixture({
+                userId: user._id.toString(),
+                notebookId: notebook._id.toString(),
+                title: 'Page 1',
+                tags: ['project', 'work'],
+            });
+            const page2 = await createPageFixture({
+                userId: user._id.toString(),
+                notebookId: notebook._id.toString(),
+                title: 'Page 2',
+                tags: ['project', 'meeting'],
+            });
+
+            const token = await getAuthToken(user._id.toString(), user.email);
+
+            const response = await app.handle(
+                new Request(
+                    `http://localhost/api/links/connections/notebook/${notebook._id.toString()}`,
+                    {
+                        headers: { Authorization: `Bearer ${token}` },
+                    },
+                ),
+            );
+
+            expect(response.status).toBe(200);
+            const data: any = await response.json();
+            expect(data.graph).toBeDefined();
+            expect(data.graph.nodes.length).toBe(2);
+            // Should have 1 hashtag edge (both pages share 'project' tag)
+            expect(data.graph.stats.hashtagEdges).toBe(1);
+            // Check that the edge has correct type
+            const hashtagEdge = data.graph.edges.find((e: any) => e.type === 'hashtag');
+            expect(hashtagEdge).toBeDefined();
+            expect(hashtagEdge.label).toBe('#project');
+        });
+
+        it('should include node metadata', async () => {
+            const user = await createUserFixture();
+            const notebook = await createNotebookFixture({ createdBy: user._id.toString() });
+
+            await createPageFixture({
+                userId: user._id.toString(),
+                notebookId: notebook._id.toString(),
+                title: 'Test Page',
+                type: 'memo',
+                tags: ['important'],
+            });
+
+            const token = await getAuthToken(user._id.toString(), user.email);
+
+            const response = await app.handle(
+                new Request(
+                    `http://localhost/api/links/connections/notebook/${notebook._id.toString()}`,
+                    {
+                        headers: { Authorization: `Bearer ${token}` },
+                    },
+                ),
+            );
+
+            expect(response.status).toBe(200);
+            const data: any = await response.json();
+            const node = data.graph.nodes[0];
+            expect(node.id).toBeDefined();
+            expect(node.label).toBe('Test Page');
+            expect(node.type).toBe('memo');
+            expect(node.tags).toContain('important');
+            expect(node.linkCount).toBeDefined();
+        });
+
+        it('should require authentication', async () => {
+            const response = await app.handle(
+                new Request('http://localhost/api/links/connections/notebook/some-id'),
+            );
+
+            expect(response.status).toBe(401);
+        });
+    });
+
+    describe('GET /api/links/connections', () => {
+        it('should return full connection graph for user', async () => {
+            const user = await createUserFixture();
+            const notebook = await createNotebookFixture({ createdBy: user._id.toString() });
+
+            await createPageFixture({
+                userId: user._id.toString(),
+                notebookId: notebook._id.toString(),
+                title: 'Page 1',
+            });
+            await createPageFixture({
+                userId: user._id.toString(),
+                notebookId: notebook._id.toString(),
+                title: 'Page 2',
+            });
+
+            const token = await getAuthToken(user._id.toString(), user.email);
+
+            const response = await app.handle(
+                new Request('http://localhost/api/links/connections', {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+            );
+
+            expect(response.status).toBe(200);
+            const data: any = await response.json();
+            expect(data.graph).toBeDefined();
+            expect(data.graph.nodes.length).toBe(2);
+            expect(data.graph.stats.totalNodes).toBe(2);
+        });
+
+        it('should require authentication', async () => {
+            const response = await app.handle(
+                new Request('http://localhost/api/links/connections'),
+            );
+
+            expect(response.status).toBe(401);
+        });
+    });
 });

@@ -10,6 +10,14 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as d3 from 'd3';
+import {
+  getPageTypeColor,
+  getEdgeColor,
+  getNodeRadius,
+  truncateLabel,
+  GRAPH_CONSTANTS,
+  type ConnectionEdgeType,
+} from '../../../utils/page-types';
 
 export interface GraphNode {
   id: string;
@@ -28,7 +36,7 @@ export interface GraphNode {
 export interface GraphEdge {
   source: string | GraphNode;
   target: string | GraphNode;
-  type: 'inline' | 'block' | 'tag' | 'hashtag' | 'mention';
+  type: ConnectionEdgeType;
   label?: string;
 }
 
@@ -122,14 +130,48 @@ export class ConnectionGraphComponent implements AfterViewInit, OnDestroy {
     const g = this.svg.append('g');
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 4])
+      .scaleExtent(GRAPH_CONSTANTS.ZOOM_EXTENT)
       .on('zoom', (event) => {
         g.attr('transform', event.transform);
       });
     this.svg.call(zoom);
 
     // Define arrow markers for directed edges
-    const defs = this.svg.append('defs');
+    this.createArrowMarkers(this.svg);
+
+    // Create force simulation
+    this.simulation = d3
+      .forceSimulation<GraphNode>(nodesCopy)
+      .force(
+        'link',
+        d3
+          .forceLink<GraphNode, GraphEdge>(edgesCopy)
+          .id((d) => d.id)
+          .distance(GRAPH_CONSTANTS.FORCE_LINK_DISTANCE),
+      )
+      .force('charge', d3.forceManyBody().strength(GRAPH_CONSTANTS.FORCE_CHARGE_STRENGTH))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collision', d3.forceCollide().radius(GRAPH_CONSTANTS.FORCE_COLLISION_RADIUS));
+
+    // Draw edges
+    const link = this.createEdges(g, edgesCopy);
+
+    // Draw edge labels for hashtag connections
+    const edgeLabels = this.createEdgeLabels(g, edgesCopy);
+
+    // Draw nodes
+    const node = this.createNodes(g, nodesCopy);
+
+    // Update positions on tick
+    this.simulation.on('tick', () => {
+      this.updatePositions(link, edgeLabels, node);
+    });
+  }
+
+  private createArrowMarkers(svg: d3.Selection<SVGSVGElement, unknown, null, undefined>): void {
+    const defs = svg.append('defs');
+
+    // Arrow marker for page links
     defs
       .append('marker')
       .attr('id', 'arrowhead-link')
@@ -143,6 +185,7 @@ export class ConnectionGraphComponent implements AfterViewInit, OnDestroy {
       .attr('d', 'M 0,-5 L 10,0 L 0,5')
       .attr('fill', 'var(--color-primary)');
 
+    // Arrow marker for hashtag connections
     defs
       .append('marker')
       .attr('id', 'arrowhead-hashtag')
@@ -155,54 +198,46 @@ export class ConnectionGraphComponent implements AfterViewInit, OnDestroy {
       .append('path')
       .attr('d', 'M 0,-5 L 10,0 L 0,5')
       .attr('fill', 'var(--color-text-muted)');
+  }
 
-    // Create force simulation
-    this.simulation = d3
-      .forceSimulation<GraphNode>(nodesCopy)
-      .force(
-        'link',
-        d3
-          .forceLink<GraphNode, GraphEdge>(edgesCopy)
-          .id((d) => d.id)
-          .distance(80),
-      )
-      .force('charge', d3.forceManyBody().strength(-200))
-      .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(30));
-
-    // Draw edges
-    const link = g
+  private createEdges(g: d3.Selection<SVGGElement, unknown, null, undefined>, edges: GraphEdge[]) {
+    return g
       .append('g')
       .attr('class', 'links')
       .selectAll('line')
-      .data(edgesCopy)
+      .data(edges)
       .join('line')
       .attr('class', (d) => `edge edge-${d.type}`)
-      .attr('stroke', (d) => this.getEdgeColor(d.type))
+      .attr('stroke', (d) => getEdgeColor(d.type))
       .attr('stroke-width', (d) => (d.type === 'inline' || d.type === 'block' ? 2 : 1))
       .attr('stroke-dasharray', (d) => (d.type === 'hashtag' ? '4,2' : 'none'))
       .attr('marker-end', (d) =>
         d.type === 'hashtag' ? 'url(#arrowhead-hashtag)' : 'url(#arrowhead-link)',
       );
+  }
 
-    // Draw edge labels for hashtag connections
-    const edgeLabels = g
+  private createEdgeLabels(
+    g: d3.Selection<SVGGElement, unknown, null, undefined>,
+    edges: GraphEdge[],
+  ) {
+    return g
       .append('g')
       .attr('class', 'edge-labels')
       .selectAll('text')
-      .data(edgesCopy.filter((e) => e.label))
+      .data(edges.filter((e) => e.label))
       .join('text')
       .attr('class', 'edge-label')
       .attr('font-size', '10px')
       .attr('fill', 'var(--color-text-muted)')
       .text((d) => d.label || '');
+  }
 
-    // Draw nodes
+  private createNodes(g: d3.Selection<SVGGElement, unknown, null, undefined>, nodes: GraphNode[]) {
     const node = g
       .append('g')
       .attr('class', 'nodes')
       .selectAll('g')
-      .data(nodesCopy)
+      .data(nodes)
       .join('g')
       .attr('class', (d) => `node node-${d.type}`)
       .style('cursor', 'pointer')
@@ -211,17 +246,17 @@ export class ConnectionGraphComponent implements AfterViewInit, OnDestroy {
     // Node circles
     node
       .append('circle')
-      .attr('r', (d) => this.getNodeRadius(d))
-      .attr('fill', (d) => this.getNodeColor(d.type))
+      .attr('r', (d) => getNodeRadius(d.linkCount))
+      .attr('fill', (d) => getPageTypeColor(d.type))
       .attr('stroke', 'var(--color-bg)')
       .attr('stroke-width', 2);
 
     // Node labels
     node
       .append('text')
-      .text((d) => this.truncateLabel(d.label, 15))
+      .text((d) => truncateLabel(d.label))
       .attr('x', 0)
-      .attr('y', (d) => this.getNodeRadius(d) + 14)
+      .attr('y', (d) => getNodeRadius(d.linkCount) + 14)
       .attr('text-anchor', 'middle')
       .attr('font-size', '11px')
       .attr('fill', 'var(--color-text-main)');
@@ -240,28 +275,33 @@ export class ConnectionGraphComponent implements AfterViewInit, OnDestroy {
       this.nodeClicked.emit(d.id);
     });
 
-    // Update positions on tick
-    this.simulation.on('tick', () => {
-      link
-        .attr('x1', (d) => (d.source as GraphNode).x || 0)
-        .attr('y1', (d) => (d.source as GraphNode).y || 0)
-        .attr('x2', (d) => (d.target as GraphNode).x || 0)
-        .attr('y2', (d) => (d.target as GraphNode).y || 0);
+    return node;
+  }
 
-      edgeLabels
-        .attr('x', (d) => {
-          const source = d.source as GraphNode;
-          const target = d.target as GraphNode;
-          return ((source.x || 0) + (target.x || 0)) / 2;
-        })
-        .attr('y', (d) => {
-          const source = d.source as GraphNode;
-          const target = d.target as GraphNode;
-          return ((source.y || 0) + (target.y || 0)) / 2 - 5;
-        });
+  private updatePositions(
+    link: d3.Selection<d3.BaseType, GraphEdge, SVGGElement, unknown>,
+    edgeLabels: d3.Selection<d3.BaseType, GraphEdge, SVGGElement, unknown>,
+    node: d3.Selection<d3.BaseType, GraphNode, SVGGElement, unknown>,
+  ): void {
+    link
+      .attr('x1', (d) => (d.source as GraphNode).x || 0)
+      .attr('y1', (d) => (d.source as GraphNode).y || 0)
+      .attr('x2', (d) => (d.target as GraphNode).x || 0)
+      .attr('y2', (d) => (d.target as GraphNode).y || 0);
 
-      node.attr('transform', (d) => `translate(${d.x || 0},${d.y || 0})`);
-    });
+    edgeLabels
+      .attr('x', (d) => {
+        const source = d.source as GraphNode;
+        const target = d.target as GraphNode;
+        return ((source.x || 0) + (target.x || 0)) / 2;
+      })
+      .attr('y', (d) => {
+        const source = d.source as GraphNode;
+        const target = d.target as GraphNode;
+        return ((source.y || 0) + (target.y || 0)) / 2 - 5;
+      });
+
+    node.attr('transform', (d) => `translate(${d.x || 0},${d.y || 0})`);
   }
 
   private createDragBehavior(): d3.DragBehavior<
@@ -285,39 +325,5 @@ export class ConnectionGraphComponent implements AfterViewInit, OnDestroy {
         d.fx = null;
         d.fy = null;
       });
-  }
-
-  private getNodeRadius(node: GraphNode): number {
-    // Base radius plus bonus for more connections
-    const baseRadius = 8;
-    const connectionBonus = Math.min(node.linkCount * 2, 10);
-    return baseRadius + connectionBonus;
-  }
-
-  private getNodeColor(type: string): string {
-    const colors: Record<string, string> = {
-      memo: 'var(--color-primary)',
-      whiteboard: '#10b981', // green
-      message: '#3b82f6', // blue
-      kanban: '#f59e0b', // amber
-      collectable: '#8b5cf6', // purple
-      recording: '#ef4444', // red
-    };
-    return colors[type] || 'var(--color-text-muted)';
-  }
-
-  private getEdgeColor(type: string): string {
-    if (type === 'inline' || type === 'block') {
-      return 'var(--color-primary)';
-    }
-    if (type === 'hashtag') {
-      return 'var(--color-text-muted)';
-    }
-    return 'var(--color-border)';
-  }
-
-  private truncateLabel(label: string, maxLength: number): string {
-    if (label.length <= maxLength) return label;
-    return label.slice(0, maxLength - 1) + '...';
   }
 }
