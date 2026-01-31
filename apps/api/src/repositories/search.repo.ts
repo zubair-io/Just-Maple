@@ -46,8 +46,8 @@ function extractTagsFromYjs(xmlFragment: Y.XmlFragment): string[] {
 
     function traverse(node: Y.XmlElement | Y.XmlText | Y.XmlFragment): void {
         if (node instanceof Y.XmlElement) {
-            // Check if this is a hashtag node
-            if (node.nodeName === 'hashtag') {
+            // Check if this is a hashtag node (TipTap uses 'hashTag' as the node name)
+            if (node.nodeName === 'hashTag') {
                 const tagName = node.getAttribute('tag');
                 if (tagName && typeof tagName === 'string') {
                     tags.add(tagName.toLowerCase());

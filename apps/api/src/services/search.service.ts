@@ -144,6 +144,7 @@ export async function searchNotes(query: string, options: SearchOptions): Promis
     // Filter by tags
     if (options.tags?.length) {
         filter.tags = { $all: options.tags };
+        console.log('[Search] Filtering by tags:', options.tags);
     }
 
     if (options.dateFrom || options.dateTo) {
@@ -155,11 +156,13 @@ export async function searchNotes(query: string, options: SearchOptions): Promis
 
     // Fetch more results than needed to allow for scoring and sorting
     const fetchLimit = (options.limit || 20) * 3;
+    console.log('[Search] Filter:', JSON.stringify(filter, null, 2));
     const results = await db
         .collection('search_index')
         .find(filter)
         .limit(fetchLimit + (options.offset || 0))
         .toArray();
+    console.log('[Search] Found', results.length, 'results');
 
     // Calculate scores and sort by relevance (for wildcard, sort by updatedAt)
     let scoredResults;
