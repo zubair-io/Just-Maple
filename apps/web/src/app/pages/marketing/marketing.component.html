@@ -20,14 +20,17 @@
   </header>
 
   <!-- Hero Section -->
-  <main class="max-w-6xl mx-auto px-6 py-20">
+  <section class="max-w-6xl mx-auto px-6 py-20">
     <div class="text-center max-w-3xl mx-auto">
       <h1 class="text-5xl md:text-6xl font-serif font-bold text-[var(--color-text-main)] mb-6">
         Your thoughts,<br />beautifully organized
       </h1>
-      <p class="text-xl text-[var(--color-text-muted)] mb-10 max-w-2xl mx-auto">
-        A simple, elegant note-taking app that helps you capture ideas, organize thoughts, and stay
-        focused on what matters.
+      <p class="text-xl text-[var(--color-text-muted)] mb-4 max-w-2xl mx-auto">
+        A self-hosted note-taking platform that combines rich documents, whiteboards, AI assistance,
+        and real-time collaboration—all while keeping your data private.
+      </p>
+      <p class="text-base text-[var(--color-text-muted)] mb-10 max-w-xl mx-auto">
+        No cloud lock-in. No subscription fees. Your notes, your server.
       </p>
       <a
         routerLink="/login"
@@ -37,50 +40,368 @@
         <span class="material-symbols-rounded text-xl">arrow_forward</span>
       </a>
     </div>
+  </section>
 
-    <!-- Features -->
-    <div class="mt-32 grid md:grid-cols-3 gap-8">
+  <!-- Core Features -->
+  <section class="max-w-6xl mx-auto px-6 py-16">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl md:text-4xl font-serif font-bold text-[var(--color-text-main)]">
+        Everything you need to capture ideas
+      </h2>
+      <p class="mt-4 text-lg text-[var(--color-text-muted)] max-w-2xl mx-auto">
+        From quick notes to visual brainstorms, Just Maple adapts to how you think.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Rich Document Editing -->
       <div class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
         <div
           class="w-12 h-12 rounded-xl bg-[var(--color-primary-light)] flex items-center justify-center mb-4"
         >
           <span class="material-symbols-rounded text-[var(--color-primary)]">edit_note</span>
         </div>
-        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">Simple Writing</h3>
+        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">
+          Rich Document Editing
+        </h3>
         <p class="text-[var(--color-text-muted)]">
-          Focus on your ideas without distractions. Clean, minimal interface that stays out of your
-          way.
+          Create beautifully formatted documents with headings, lists, tables, code blocks,
+          callouts, and more. Real-time sync keeps everything up to date.
         </p>
       </div>
 
+      <!-- Whiteboard & Drawing -->
       <div class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
         <div
           class="w-12 h-12 rounded-xl bg-[var(--color-primary-light)] flex items-center justify-center mb-4"
         >
-          <span class="material-symbols-rounded text-[var(--color-primary)]">folder</span>
+          <span class="material-symbols-rounded text-[var(--color-primary)]">draw</span>
         </div>
-        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">Smart Organization</h3>
+        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">
+          Whiteboard & Drawing
+        </h3>
         <p class="text-[var(--color-text-muted)]">
-          Tag and organize your notes effortlessly. Find anything instantly with powerful search.
+          Sketch ideas, create diagrams, or draw freely on an infinite canvas. Perfect for visual
+          thinkers and collaborative brainstorming.
         </p>
       </div>
 
+      <!-- Enhanced Todos -->
       <div class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
         <div
           class="w-12 h-12 rounded-xl bg-[var(--color-primary-light)] flex items-center justify-center mb-4"
         >
-          <span class="material-symbols-rounded text-[var(--color-primary)]">devices</span>
+          <span class="material-symbols-rounded text-[var(--color-primary)]">task_alt</span>
         </div>
-        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">Access Anywhere</h3>
+        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">Enhanced Todos</h3>
         <p class="text-[var(--color-text-muted)]">
-          Your notes sync across all your devices. Start on your phone, continue on your laptop.
+          Track tasks with priority levels, due dates, and color coding. View all your todos across
+          notebooks and never miss a deadline.
+        </p>
+      </div>
+
+      <!-- Bi-directional Linking -->
+      <div class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <div
+          class="w-12 h-12 rounded-xl bg-[var(--color-primary-light)] flex items-center justify-center mb-4"
+        >
+          <span class="material-symbols-rounded text-[var(--color-primary)]">hub</span>
+        </div>
+        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">
+          Bi-directional Linking
+        </h3>
+        <p class="text-[var(--color-text-muted)]">
+          Connect your ideas with wiki-style [[Page Links]]. See backlinks to understand how your
+          knowledge connects and build a personal knowledge graph.
+        </p>
+      </div>
+
+      <!-- Full-text Search -->
+      <div class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <div
+          class="w-12 h-12 rounded-xl bg-[var(--color-primary-light)] flex items-center justify-center mb-4"
+        >
+          <span class="material-symbols-rounded text-[var(--color-primary)]">search</span>
+        </div>
+        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">Powerful Search</h3>
+        <p class="text-[var(--color-text-muted)]">
+          Find anything instantly with full-text search across memos, whiteboards, and messages.
+          Highlighted snippets show matching text in context.
+        </p>
+      </div>
+
+      <!-- Templates -->
+      <div class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <div
+          class="w-12 h-12 rounded-xl bg-[var(--color-primary-light)] flex items-center justify-center mb-4"
+        >
+          <span class="material-symbols-rounded text-[var(--color-primary)]">content_copy</span>
+        </div>
+        <h3 class="text-lg font-semibold text-[var(--color-text-main)] mb-2">Templates</h3>
+        <p class="text-[var(--color-text-muted)]">
+          Start from pre-built templates like Meeting Notes, Daily Journal, or Project Brief—or
+          create your own with variable substitution.
         </p>
       </div>
     </div>
-  </main>
+  </section>
+
+  <!-- AI Section -->
+  <section class="max-w-6xl mx-auto px-6 py-16">
+    <div
+      class="rounded-3xl bg-gradient-to-br from-[var(--color-primary-light)] to-[var(--color-surface)] border border-[var(--color-border)] p-8 md:p-12"
+    >
+      <div class="grid md:grid-cols-2 gap-8 items-center">
+        <div>
+          <div
+            class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--color-primary)] text-white text-sm font-medium mb-4"
+          >
+            <span class="material-symbols-rounded text-base">auto_awesome</span>
+            Powered by Claude
+          </div>
+          <h2 class="text-3xl md:text-4xl font-serif font-bold text-[var(--color-text-main)] mb-4">
+            AI Writing Assistant
+          </h2>
+          <p class="text-lg text-[var(--color-text-muted)] mb-6">
+            Let AI help you write better. Continue your thoughts, improve clarity, simplify complex
+            text, expand ideas, or get summaries—all with real-time streaming.
+          </p>
+          <ul class="space-y-3">
+            <li class="flex items-center gap-3 text-[var(--color-text-main)]">
+              <span class="material-symbols-rounded text-[var(--color-primary)] text-xl"
+                >check_circle</span
+              >
+              9 AI actions: continue, improve, simplify, summarize, and more
+            </li>
+            <li class="flex items-center gap-3 text-[var(--color-text-main)]">
+              <span class="material-symbols-rounded text-[var(--color-primary)] text-xl"
+                >check_circle</span
+              >
+              Accept or reject suggestions with a single keystroke
+            </li>
+            <li class="flex items-center gap-3 text-[var(--color-text-main)]">
+              <span class="material-symbols-rounded text-[var(--color-primary)] text-xl"
+                >check_circle</span
+              >
+              Custom prompts for specialized workflows
+            </li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-4">
+          <div
+            class="p-4 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] shadow-sm"
+          >
+            <code class="text-sm text-[var(--color-text-muted)]">/ai continue</code>
+            <p class="mt-2 text-[var(--color-text-main)]">AI continues writing from your cursor</p>
+          </div>
+          <div
+            class="p-4 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] shadow-sm"
+          >
+            <code class="text-sm text-[var(--color-text-muted)]">/ai improve</code>
+            <p class="mt-2 text-[var(--color-text-main)]">Enhance clarity and readability</p>
+          </div>
+          <div
+            class="p-4 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] shadow-sm"
+          >
+            <code class="text-sm text-[var(--color-text-muted)]">/ai translate</code>
+            <p class="mt-2 text-[var(--color-text-main)]">Translate to another language</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- More Features -->
+  <section class="max-w-6xl mx-auto px-6 py-16">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl md:text-4xl font-serif font-bold text-[var(--color-text-main)]">
+        And so much more
+      </h2>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <!-- Messaging -->
+      <div class="p-5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <span class="material-symbols-rounded text-[var(--color-primary)] text-2xl mb-3">chat</span>
+        <h3 class="font-semibold text-[var(--color-text-main)] mb-1">Team Chat</h3>
+        <p class="text-sm text-[var(--color-text-muted)]">
+          Built-in messaging with threads and mentions alongside your notes.
+        </p>
+      </div>
+
+      <!-- Voice Recording -->
+      <div class="p-5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <span class="material-symbols-rounded text-[var(--color-primary)] text-2xl mb-3">mic</span>
+        <h3 class="font-semibold text-[var(--color-text-main)] mb-1">Voice Recording</h3>
+        <p class="text-sm text-[var(--color-text-muted)]">
+          Record audio with on-device transcription. Your recordings stay private.
+        </p>
+      </div>
+
+      <!-- Version History -->
+      <div class="p-5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <span class="material-symbols-rounded text-[var(--color-primary)] text-2xl mb-3"
+          >history</span
+        >
+        <h3 class="font-semibold text-[var(--color-text-main)] mb-1">Version History</h3>
+        <p class="text-sm text-[var(--color-text-muted)]">
+          Auto-save snapshots every 5 minutes. Restore any previous version instantly.
+        </p>
+      </div>
+
+      <!-- Offline First -->
+      <div class="p-5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <span class="material-symbols-rounded text-[var(--color-primary)] text-2xl mb-3"
+          >cloud_off</span
+        >
+        <h3 class="font-semibold text-[var(--color-text-main)] mb-1">Offline First</h3>
+        <p class="text-sm text-[var(--color-text-muted)]">
+          Keep working without internet. Changes sync automatically when you reconnect.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Platform Support -->
+  <section class="max-w-6xl mx-auto px-6 py-16">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl md:text-4xl font-serif font-bold text-[var(--color-text-main)]">
+        Works where you do
+      </h2>
+      <p class="mt-4 text-lg text-[var(--color-text-muted)] max-w-2xl mx-auto">
+        Native apps for every platform, all syncing seamlessly with your self-hosted server.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div
+        class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] text-center"
+      >
+        <span class="material-symbols-rounded text-[var(--color-primary)] text-4xl mb-3 block"
+          >language</span
+        >
+        <h3 class="font-semibold text-[var(--color-text-main)] mb-1">Web</h3>
+        <p class="text-sm text-[var(--color-text-muted)]">Full-featured in any modern browser</p>
+      </div>
+
+      <div
+        class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] text-center"
+      >
+        <span class="material-symbols-rounded text-[var(--color-primary)] text-4xl mb-3 block"
+          >laptop_mac</span
+        >
+        <h3 class="font-semibold text-[var(--color-text-main)] mb-1">macOS</h3>
+        <p class="text-sm text-[var(--color-text-muted)]">Native Swift with menu bar access</p>
+      </div>
+
+      <div
+        class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] text-center"
+      >
+        <span class="material-symbols-rounded text-[var(--color-primary)] text-4xl mb-3 block"
+          >phone_iphone</span
+        >
+        <h3 class="font-semibold text-[var(--color-text-main)] mb-1">iOS</h3>
+        <p class="text-sm text-[var(--color-text-muted)]">
+          Touch-optimized with push notifications
+        </p>
+      </div>
+
+      <div
+        class="p-6 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] text-center"
+      >
+        <span class="material-symbols-rounded text-[var(--color-primary)] text-4xl mb-3 block"
+          >stylus_note</span
+        >
+        <h3 class="font-semibold text-[var(--color-text-main)] mb-1">reMarkable</h3>
+        <p class="text-sm text-[var(--color-text-muted)]">E-ink optimized with stylus</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Privacy Section -->
+  <section class="max-w-6xl mx-auto px-6 py-16">
+    <div
+      class="rounded-3xl bg-[var(--color-surface)] border border-[var(--color-border)] p-8 md:p-12"
+    >
+      <div class="grid md:grid-cols-2 gap-8 items-center">
+        <div>
+          <h2 class="text-3xl md:text-4xl font-serif font-bold text-[var(--color-text-main)] mb-4">
+            Your data stays yours
+          </h2>
+          <p class="text-lg text-[var(--color-text-muted)] mb-6">
+            Unlike cloud-only services, Just Maple is designed to be self-hosted. Deploy on your own
+            server and maintain complete control over your notes.
+          </p>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="p-4 rounded-xl bg-[var(--color-bg)]">
+            <span class="material-symbols-rounded text-[var(--color-primary)] text-2xl mb-2 block"
+              >dns</span
+            >
+            <h4 class="font-semibold text-[var(--color-text-main)] text-sm">Self-Hosted</h4>
+            <p class="text-xs text-[var(--color-text-muted)] mt-1">Your server, your rules</p>
+          </div>
+          <div class="p-4 rounded-xl bg-[var(--color-bg)]">
+            <span class="material-symbols-rounded text-[var(--color-primary)] text-2xl mb-2 block"
+              >download</span
+            >
+            <h4 class="font-semibold text-[var(--color-text-main)] text-sm">Export Anytime</h4>
+            <p class="text-xs text-[var(--color-text-muted)] mt-1">Standard formats, no lock-in</p>
+          </div>
+          <div class="p-4 rounded-xl bg-[var(--color-bg)]">
+            <span class="material-symbols-rounded text-[var(--color-primary)] text-2xl mb-2 block"
+              >lock</span
+            >
+            <h4 class="font-semibold text-[var(--color-text-main)] text-sm">Privacy First</h4>
+            <p class="text-xs text-[var(--color-text-muted)] mt-1">
+              Minimal telemetry, on-device processing
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-[var(--color-bg)]">
+            <span class="material-symbols-rounded text-[var(--color-primary)] text-2xl mb-2 block"
+              >code</span
+            >
+            <h4 class="font-semibold text-[var(--color-text-main)] text-sm">Open Source</h4>
+            <p class="text-xs text-[var(--color-text-muted)] mt-1">Inspect, modify, contribute</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="max-w-6xl mx-auto px-6 py-20">
+    <div class="text-center max-w-2xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-serif font-bold text-[var(--color-text-main)] mb-4">
+        Ready to take control of your notes?
+      </h2>
+      <p class="text-lg text-[var(--color-text-muted)] mb-8">
+        Deploy Just Maple on your own server and start organizing your thoughts—privately,
+        beautifully, and on your terms.
+      </p>
+      <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a
+          routerLink="/login"
+          class="inline-flex items-center justify-center gap-2 px-8 py-4 bg-[var(--color-primary)] text-white font-medium rounded-xl shadow-lg hover:bg-[var(--color-primary-hover)] hover:shadow-xl transition-all"
+        >
+          Get Started
+          <span class="material-symbols-rounded text-xl">arrow_forward</span>
+        </a>
+        <a
+          href="https://github.com/just-maple/just-maple"
+          target="_blank"
+          rel="noopener"
+          class="inline-flex items-center justify-center gap-2 px-8 py-4 bg-[var(--color-surface)] text-[var(--color-text-main)] font-medium rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-bg)] transition-all"
+        >
+          View on GitHub
+          <span class="material-symbols-rounded text-xl">open_in_new</span>
+        </a>
+      </div>
+    </div>
+  </section>
 
   <!-- Footer -->
-  <footer class="px-6 py-8 border-t border-[var(--color-border)] mt-20">
+  <footer class="px-6 py-8 border-t border-[var(--color-border)]">
     <div class="max-w-6xl mx-auto text-center text-sm text-[var(--color-text-muted)]">
       &copy; {{ currentYear }} Just Maple. Made with care.
     </div>
