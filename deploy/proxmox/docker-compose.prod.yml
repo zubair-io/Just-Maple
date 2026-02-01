@@ -1,0 +1,136 @@
+version: '3.8'
+
+# Just Maple - Production Docker Compose for Proxmox Self-Hosting
+# Usage: docker compose -f docker-compose.prod.yml up -d
+
+services:
+    api:
+        image: ghcr.io/justmapleapp/just-maple-api:latest
+        # Or use local build:
+        # build:
+        #     context: ../..
+        #     dockerfile: apps/api/Dockerfile
+        container_name: justmaple-api
+        restart: unless-stopped
+        ports:
+            - '7071:7071'
+        environment:
+            - MONGODB_URI=mongodb://mongodb:27017/justmaple
+            - REDIS_URL=redis://redis:6379
+            - JWT_SECRET=${JWT_SECRET}
+            - RP_NAME=${RP_NAME:-Just Maple}
+            - RP_ID=${RP_ID:-localhost}
+            - ORIGIN=${ORIGIN:-http://localhost:7071}
+            # Optional services (uncomment and configure as needed)
+            # - GRAVATAR_KEY=${GRAVATAR_KEY}
+            # - HORNBEAM=${HORNBEAM}
+            # - AZURE_COMMUNICATION_CONNECTION_STRING=${AZURE_COMMUNICATION_CONNECTION_STRING}
+            # - EMAIL_FROM=${EMAIL_FROM}
+            # - PAPERBARK_URL=${PAPERBARK_URL}
+            # - PAPERBARK_API_KEY=${PAPERBARK_API_KEY}
+        depends_on:
+            mongodb:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        healthcheck:
+            test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:7071/api/health']
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+        labels:
+            - 'com.centurylinklabs.watchtower.enable=true'
+        networks:
+            - justmaple
+
+    mongodb:
+        image: mongo:7
+        container_name: justmaple-mongodb
+        restart: unless-stopped
+        volumes:
+            - mongodb_data:/data/db
+            - mongodb_config:/data/configdb
+        healthcheck:
+            test: mongosh --eval "db.adminCommand('ping')" --quiet
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        networks:
+            - justmaple
+        # Uncomment for external access (not recommended in production)
+        # ports:
+        #     - '27017:27017'
+
+    redis:
+        image: redis:7-alpine
+        container_name: justmaple-redis
+        restart: unless-stopped
+        command: redis-server --appendonly yes
+        volumes:
+            - redis_data:/data
+        healthcheck:
+            test: ['CMD', 'redis-cli', 'ping']
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        networks:
+            - justmaple
+        # Uncomment for external access (not recommended in production)
+        # ports:
+        #     - '6379:6379'
+
+    # Watchtower - Automatic container updates
+    # Checks for new images every 24 hours and updates containers
+    watchtower:
+        image: containrrr/watchtower:latest
+        container_name: justmaple-watchtower
+        restart: unless-stopped
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
+        environment:
+            - WATCHTOWER_CLEANUP=true
+            - WATCHTOWER_POLL_INTERVAL=86400  # Check every 24 hours
+            - WATCHTOWER_LABEL_ENABLE=true    # Only update labeled containers
+            - WATCHTOWER_INCLUDE_STOPPED=false
+            - WATCHTOWER_REVIVE_STOPPED=false
+            # Optional: Notifications (uncomment and configure)
+            # - WATCHTOWER_NOTIFICATIONS=slack
+            # - WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL=${SLACK_WEBHOOK_URL}
+        command: --interval 86400 --cleanup --label-enable
+        networks:
+            - justmaple
+
+    # Optional: Reverse proxy with automatic HTTPS
+    # Uncomment this section if you want Caddy as a reverse proxy
+    # caddy:
+    #     image: caddy:2-alpine
+    #     container_name: justmaple-caddy
+    #     restart: unless-stopped
+    #     ports:
+    #         - '80:80'
+    #         - '443:443'
+    #     volumes:
+    #         - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    #         - caddy_data:/data
+    #         - caddy_config:/config
+    #     depends_on:
+    #         - api
+    #     networks:
+    #         - justmaple
+
+volumes:
+    mongodb_data:
+        driver: local
+    mongodb_config:
+        driver: local
+    redis_data:
+        driver: local
+    # caddy_data:
+    #     driver: local
+    # caddy_config:
+    #     driver: local
+
+networks:
+    justmaple:
+        driver: bridge
