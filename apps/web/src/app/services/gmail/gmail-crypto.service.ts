@@ -52,7 +52,7 @@ export class GmailCryptoService {
     this.cryptoKey = await crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
-        salt,
+        salt: salt.buffer as ArrayBuffer,
         iterations: 100000,
         hash: 'SHA-256',
       },

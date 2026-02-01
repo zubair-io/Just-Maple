@@ -9,13 +9,12 @@ import { GmailAuthService } from '../../services/gmail/gmail-auth.service';
 import { GmailStorageService } from '../../services/gmail/gmail-storage.service';
 import { GmailSyncService } from '../../services/gmail/gmail-sync.service';
 import { GmailApiService } from '../../services/gmail/gmail-api.service';
-import { NotebookHeaderComponent } from '../../components/molecules/notebook-header/notebook-header.component';
-import type { CachedEmail, GmailFilter, Page } from '@maple/shared';
+import type { CachedEmail, GmailFilter } from '@maple/shared';
 
 @Component({
   selector: 'app-gmail-view',
   standalone: true,
-  imports: [CommonModule, FormsModule, NotebookHeaderComponent],
+  imports: [CommonModule, FormsModule],
   templateUrl: './gmail-view.component.html',
   styleUrl: './gmail-view.component.scss',
 })
@@ -303,5 +302,21 @@ export class GmailViewComponent implements OnInit, OnDestroy {
 
   trackByFilterId(index: number, filter: GmailFilter): string {
     return filter.id;
+  }
+
+  // Email list parsing helpers (for template)
+  updateComposeTo(value: string): void {
+    this.composeTo.set(this.parseEmailList(value));
+  }
+
+  updateComposeCc(value: string): void {
+    this.composeCc.set(this.parseEmailList(value));
+  }
+
+  private parseEmailList(value: string): string[] {
+    return value
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
   }
 }

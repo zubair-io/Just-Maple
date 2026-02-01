@@ -214,7 +214,7 @@
               <input
                 type="text"
                 [ngModel]="composeTo().join(', ')"
-                (ngModelChange)="composeTo.set($event.split(',').map(s => s.trim()).filter(s => s))"
+                (ngModelChange)="updateComposeTo($event)"
                 placeholder="recipient@example.com"
               />
             </div>
@@ -223,7 +223,7 @@
               <input
                 type="text"
                 [ngModel]="composeCc().join(', ')"
-                (ngModelChange)="composeCc.set($event.split(',').map(s => s.trim()).filter(s => s))"
+                (ngModelChange)="updateComposeCc($event)"
                 placeholder="cc@example.com"
               />
             </div>

@@ -45,6 +45,11 @@ interface GmailHistoryResponse {
  * Service for interacting with the Gmail REST API.
  * All requests are made directly from the client to Gmail API.
  * Email content is never sent to Maple servers.
+ *
+ * NOTE: This service intentionally uses native fetch() instead of Angular HttpClient.
+ * Reason: Gmail API requires OAuth 2.0 Bearer tokens from Google, not Maple's auth tokens.
+ * Using HttpClient would apply Maple's auth interceptor, which would add incorrect headers.
+ * The Gmail OAuth flow is handled separately by GmailAuthService.
  */
 @Injectable({ providedIn: 'root' })
 export class GmailApiService {
