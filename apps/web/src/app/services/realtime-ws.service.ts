@@ -292,7 +292,11 @@ export class RealtimeWSService {
   /**
    * Send Y.Doc update
    */
-  sendMemoUpdate(pageId: string, update: Uint8Array, pageType?: 'memo' | 'whiteboard'): void {
+  sendMemoUpdate(
+    pageId: string,
+    update: Uint8Array,
+    pageType?: 'memo' | 'whiteboard' | 'kanban',
+  ): void {
     const base64 = uint8ArrayToBase64(update);
     this.send({
       channel: 'memo',

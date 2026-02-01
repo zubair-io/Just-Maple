@@ -13,6 +13,7 @@ import type {
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
 import { deleteMemo } from './memo.repo';
 import { deleteWhiteboard } from './whiteboard.repo';
+import { deleteKanbanBoard } from './kanban-board.repo';
 import { isDevMode, isDocPage, getDocPage, pageIdToSlug } from '../services/docs.service';
 
 /**
@@ -370,6 +371,8 @@ export async function deletePage(id: string, userId: string): Promise<boolean> {
             await deleteMemo(doc.id);
         } else if (doc.type === 'whiteboard') {
             await deleteWhiteboard(doc.id);
+        } else if (doc.type === 'kanban') {
+            await deleteKanbanBoard(doc.id);
         }
 
         const result = await getCollection().deleteOne({ id });

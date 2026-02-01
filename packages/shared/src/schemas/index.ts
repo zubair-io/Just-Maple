@@ -20,3 +20,4 @@ export * from './ai-writing';
 export * from './template';
 export * from './link';
 export * from './search';
+export * from './kanban';

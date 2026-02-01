@@ -16,6 +16,7 @@ import { memoRoutes } from './routes/memo';
 import { memoVersionRoutes } from './routes/memo-versions';
 import { storageRoutes } from './routes/storage';
 import { whiteboardRoutes } from './routes/whiteboard';
+import { kanbanBoardRoutes } from './routes/kanban-boards';
 import { recordingRoutes } from './routes/recordings';
 import { externalRoutes } from './routes/external';
 import { aiRoutes } from './routes/ai';
@@ -79,6 +80,7 @@ async function main() {
         .use(memoVersionRoutes)
         .use(storageRoutes)
         .use(whiteboardRoutes)
+        .use(kanbanBoardRoutes)
         .use(recordingRoutes)
         .use(externalRoutes)
         .use(aiRoutes)

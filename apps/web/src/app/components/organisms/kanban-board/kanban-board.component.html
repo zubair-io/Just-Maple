@@ -1,0 +1,145 @@
+<div class="kanban-board" cdkDropListGroup>
+  @if (isLoading()) {
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+      <span>Loading board...</span>
+    </div>
+  } @else {
+    <div class="lanes-container">
+      @for (lane of lanes(); track trackByLaneId($index, lane)) {
+        <div class="lane" [class.is-done]="lane.isDoneLane">
+          <div class="lane-header">
+            @if (editingLaneId() === lane.id) {
+              <input
+                type="text"
+                class="lane-title-input"
+                [value]="lane.title"
+                (blur)="saveLaneTitle(lane.id, $any($event.target).value)"
+                (keydown.enter)="saveLaneTitle(lane.id, $any($event.target).value)"
+                (keydown.escape)="cancelEditingLane()"
+                autofocus
+              />
+            } @else {
+              <h3 class="lane-title" (dblclick)="startEditingLane(lane.id)">
+                {{ lane.title }}
+              </h3>
+            }
+            <span class="lane-count">{{ getCardCount(lane.id) }}</span>
+            @if (!isDefaultLane(lane)) {
+              <button class="lane-menu-btn" (click)="deleteLane(lane.id)" title="Delete lane">
+                <span class="material-icons">delete_outline</span>
+              </button>
+            }
+          </div>
+
+          @if (lane.isDoneLane && getHiddenDoneCount(lane) > 0) {
+            <div class="done-filter-info">
+              Showing this week ({{ getCardsForLane(lane).length }}) ·
+              {{ getHiddenDoneCount(lane) }} archived
+            </div>
+          }
+
+          <div
+            class="lane-cards"
+            cdkDropList
+            [id]="lane.id"
+            [cdkDropListData]="getCardsForLane(lane)"
+            (cdkDropListDropped)="dropCard($event, lane.id)"
+          >
+            @for (card of getCardsForLane(lane); track trackByCardId($index, card)) {
+              <div
+                class="card"
+                cdkDrag
+                [cdkDragData]="card"
+                [style.border-left-color]="card.coverColor || 'transparent'"
+                [class.has-cover-color]="!!card.coverColor"
+                (click)="openCard(card)"
+              >
+                <div class="card-content">
+                  <span class="card-title">{{ card.title || 'Untitled' }}</span>
+                  <div class="card-meta">
+                    @if (card.priority && settings()?.cardDisplay?.showPriority) {
+                      <span
+                        class="priority-badge"
+                        [style.background-color]="getPriorityColor(card.priority)"
+                      >
+                        {{ card.priority }}
+                      </span>
+                    }
+                    @if (card.dueDate && settings()?.cardDisplay?.showDueDate) {
+                      <span class="due-date" [class.overdue]="isDueDateOverdue(card.dueDate)">
+                        <span class="material-icons">schedule</span>
+                        {{ formatDueDate(card.dueDate) }}
+                      </span>
+                    }
+                  </div>
+                </div>
+                <div class="card-actions" (click)="$event.stopPropagation()">
+                  <button
+                    class="card-action-btn"
+                    (click)="archiveCard(card, lane.id)"
+                    title="Archive"
+                  >
+                    <span class="material-icons">archive</span>
+                  </button>
+                </div>
+              </div>
+            }
+
+            <!-- Add card button / input -->
+            @if (newCardLaneId() === lane.id) {
+              <div class="new-card-form">
+                <input
+                  type="text"
+                  class="new-card-input"
+                  placeholder="Card title..."
+                  [(ngModel)]="newCardTitle"
+                  (blur)="saveCard()"
+                  (keydown.enter)="saveCard()"
+                  (keydown.escape)="cancelAddCard()"
+                  autofocus
+                />
+              </div>
+            } @else {
+              <button class="add-card-btn" (click)="startAddingCard(lane.id)">
+                <span class="material-icons">add</span>
+                <span>Add card</span>
+              </button>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Add lane button / input -->
+      <div class="add-lane-container">
+        @if (isAddingLane()) {
+          <div class="new-lane-form">
+            <input
+              type="text"
+              class="new-lane-input"
+              placeholder="Lane title..."
+              [(ngModel)]="newLaneTitle"
+              (blur)="saveLane()"
+              (keydown.enter)="saveLane()"
+              (keydown.escape)="cancelAddLane()"
+              autofocus
+            />
+          </div>
+        } @else {
+          <button class="add-lane-btn" (click)="startAddingLane()">
+            <span class="material-icons">add</span>
+            <span>Add lane</span>
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Archived button -->
+    @if (archivedCount() > 0) {
+      <button class="archived-btn">
+        <span class="material-icons">inventory_2</span>
+        <span class="archived-count">{{ archivedCount() }}</span>
+      </button>
+    }
+  }
+</div>
