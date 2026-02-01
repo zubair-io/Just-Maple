@@ -1,17 +1,36 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
-import type { UserBot, CreateUserBotInput, UpdateUserBotInput, BotConfig } from '@maple/shared';
+import type {
+    UserBot,
+    CreateUserBotInput,
+    UpdateUserBotInput,
+    BotConfig,
+    CreateCustomBotInput,
+    UpdateCustomBotInput,
+    CustomBotPermissions,
+    BotType,
+} from '@maple/shared';
 
 interface UserBotDocument {
     _id: ObjectId;
     userId: ObjectId;
-    templateId: ObjectId;
+    templateId?: ObjectId; // Optional for custom bots
     handle: string;
     displayName?: string;
+    description?: string;
+    avatar?: string;
     config?: BotConfig;
     isEnabled: boolean;
     createdAt: Date;
     updatedAt: Date;
+
+    // Custom bot fields
+    botType?: BotType;
+    invokeUrl?: string;
+    webhookSecret?: string;
+    permissions?: CustomBotPermissions;
+    jwtExpirationHours?: number;
+    status?: 'active' | 'disabled' | 'revoked';
 }
 
 function getCollection(): Collection<UserBotDocument> {
@@ -19,20 +38,29 @@ function getCollection(): Collection<UserBotDocument> {
 }
 
 /**
- * Convert document to UserBot - INTERNAL USE ONLY (includes config)
- * WARNING: Contains sensitive data (API keys). Use toUserBotSafe for API responses.
+ * Convert document to UserBot - INTERNAL USE ONLY (includes config and secrets)
+ * WARNING: Contains sensitive data (API keys, webhook secrets). Use toUserBotSafe for API responses.
  */
 function toUserBotInternal(doc: UserBotDocument): UserBot {
     return {
         _id: doc._id.toString(),
         userId: doc.userId.toString(),
-        templateId: doc.templateId.toString(),
+        templateId: doc.templateId?.toString(),
         handle: doc.handle,
         displayName: doc.displayName,
+        description: doc.description,
+        avatar: doc.avatar,
         config: doc.config,
         isEnabled: doc.isEnabled,
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
+        // Custom bot fields
+        botType: doc.botType,
+        invokeUrl: doc.invokeUrl,
+        webhookSecret: doc.webhookSecret,
+        permissions: doc.permissions,
+        jwtExpirationHours: doc.jwtExpirationHours,
+        status: doc.status,
     };
 }
 
@@ -48,6 +76,11 @@ function toUserBotSafe(doc: UserBotDocument): UserBot {
             ...bot.config,
             apiKey: bot.config.apiKey ? '***REDACTED***' : undefined,
         };
+    }
+
+    // Redact webhook secret for custom bots
+    if (bot.webhookSecret) {
+        bot.webhookSecret = '***REDACTED***';
     }
 
     return bot;
@@ -340,5 +373,196 @@ export async function searchUserBots(
         return uniqueBots.map(toUserBotSafe);
     } catch {
         return [];
+    }
+}
+
+// ============================================
+// Custom Bot Methods
+// ============================================
+
+/**
+ * Generate a webhook secret for custom bots
+ */
+function generateWebhookSecret(): string {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const base64 = Buffer.from(bytes)
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+    return `whsec_${base64}`;
+}
+
+/**
+ * Create a custom bot
+ */
+export async function createCustomBot(
+    userId: string,
+    data: CreateCustomBotInput,
+): Promise<{ bot: UserBot; webhookSecret: string }> {
+    const now = new Date();
+    const webhookSecret = generateWebhookSecret();
+
+    const doc: Omit<UserBotDocument, '_id'> = {
+        userId: new ObjectId(userId),
+        handle: data.handle.toLowerCase(),
+        displayName: data.name,
+        description: data.description,
+        isEnabled: true,
+        createdAt: now,
+        updatedAt: now,
+        // Custom bot fields
+        botType: 'custom',
+        invokeUrl: data.invokeUrl,
+        webhookSecret,
+        permissions: data.permissions,
+        jwtExpirationHours: data.jwtExpirationHours || 12,
+        status: 'active',
+    };
+
+    const result = await getCollection().insertOne(doc as UserBotDocument);
+    const bot = toUserBotSafe({ ...doc, _id: result.insertedId } as UserBotDocument);
+
+    return { bot, webhookSecret };
+}
+
+/**
+ * Update a custom bot
+ */
+export async function updateCustomBot(
+    id: string,
+    userId: string,
+    data: UpdateCustomBotInput,
+): Promise<UserBot | null> {
+    const now = new Date();
+
+    const updateDoc: Record<string, unknown> = { updatedAt: now };
+
+    if (data.name !== undefined) updateDoc.displayName = data.name;
+    if (data.description !== undefined) updateDoc.description = data.description;
+    if (data.invokeUrl !== undefined) updateDoc.invokeUrl = data.invokeUrl;
+    if (data.permissions !== undefined) updateDoc.permissions = data.permissions;
+    if (data.jwtExpirationHours !== undefined)
+        updateDoc.jwtExpirationHours = data.jwtExpirationHours;
+    if (data.isEnabled !== undefined) updateDoc.isEnabled = data.isEnabled;
+
+    try {
+        const result = await getCollection().findOneAndUpdate(
+            {
+                _id: new ObjectId(id),
+                userId: new ObjectId(userId),
+                botType: 'custom',
+            },
+            { $set: updateDoc },
+            { returnDocument: 'after' },
+        );
+
+        return result ? toUserBotSafe(result) : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Find all custom bots for a user
+ */
+export async function findCustomBotsByUserId(userId: string): Promise<UserBot[]> {
+    try {
+        const docs = await getCollection()
+            .find({
+                userId: new ObjectId(userId),
+                botType: 'custom',
+            })
+            .toArray();
+        return docs.map(toUserBotSafe);
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Update custom bot status
+ */
+export async function updateBotStatus(
+    botId: string,
+    userId: string,
+    status: 'active' | 'disabled' | 'revoked',
+): Promise<boolean> {
+    try {
+        const result = await getCollection().updateOne(
+            {
+                _id: new ObjectId(botId),
+                userId: new ObjectId(userId),
+                botType: 'custom',
+            },
+            { $set: { status, updatedAt: new Date() } },
+        );
+        return result.modifiedCount === 1;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Regenerate webhook secret for a custom bot
+ */
+export async function regenerateWebhookSecret(
+    botId: string,
+    userId: string,
+): Promise<string | null> {
+    const webhookSecret = generateWebhookSecret();
+
+    try {
+        const result = await getCollection().updateOne(
+            {
+                _id: new ObjectId(botId),
+                userId: new ObjectId(userId),
+                botType: 'custom',
+            },
+            { $set: { webhookSecret, updatedAt: new Date() } },
+        );
+
+        if (result.modifiedCount === 1) {
+            return webhookSecret;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Check if a bot is shared with a notebook
+ */
+export async function isBotSharedWithNotebook(botId: string, notebookId: string): Promise<boolean> {
+    try {
+        const notebookDoc = await getDb()
+            .collection('notebooks')
+            .findOne({ _id: new ObjectId(notebookId) });
+
+        if (!notebookDoc) return false;
+
+        const sharedBotIds =
+            notebookDoc.sharing?.sharedBots?.map((b: { userBotId: string }) => b.userBotId) || [];
+
+        return sharedBotIds.includes(botId);
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Delete a custom bot
+ */
+export async function deleteCustomBot(id: string, userId: string): Promise<boolean> {
+    try {
+        const result = await getCollection().deleteOne({
+            _id: new ObjectId(id),
+            userId: new ObjectId(userId),
+            botType: 'custom',
+        });
+        return result.deletedCount === 1;
+    } catch {
+        return false;
     }
 }

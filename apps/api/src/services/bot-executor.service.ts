@@ -5,6 +5,7 @@ import type {
     BotConfig,
     Action,
     PageContent,
+    Message,
 } from '@maple/shared';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
@@ -16,10 +17,16 @@ import {
     createInvocation,
 } from '../repositories/bot-invocation.repo';
 import { getOrCreateThread, incrementThreadMessageCount } from '../repositories/thread.repo';
-import { createMessageInThread, markMessageHasThread } from '../repositories/message.repo';
+import {
+    createMessageInThread,
+    markMessageHasThread,
+    findMessagesByThreadId,
+    findMessageById,
+} from '../repositories/message.repo';
 import { broadcastChatEvent } from './realtime.service';
 import { extractTextFromContent } from '../utils/content-utils';
 import { markdownToProseMirror } from '../utils/markdown-to-prosemirror';
+import { buildWebhookPayload, invokeWebhookWithRetry } from './webhook.service';
 
 // Configuration constants
 const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL || 'claude-sonnet-4-20250514';
@@ -49,11 +56,17 @@ export class BotExecutorService {
         userId: string;
         context: BotInvocation['context'];
     }): Promise<BotInvocation> {
-        // Get the user bot and template (use internal to get config for execution)
+        // Get the user bot (use internal to get config for execution)
         const userBot = await findUserBotByIdInternal(params.userBotId);
         if (!userBot) throw new Error('User bot not found');
 
-        const template = await findBotTemplateById(userBot.templateId);
+        // Handle custom bots differently
+        if (userBot.botType === 'custom') {
+            return this.invokeCustomBot(userBot, params);
+        }
+
+        // Template bot: requires a template
+        const template = await findBotTemplateById(userBot.templateId!);
         if (!template) throw new Error('Bot template not found');
 
         // Create invocation record
@@ -73,6 +86,110 @@ export class BotExecutorService {
         });
 
         return invocation;
+    }
+
+    /**
+     * Invoke a custom bot via webhook
+     */
+    private async invokeCustomBot(
+        userBot: UserBot,
+        params: {
+            userBotId: string;
+            sourceType: 'message' | 'note';
+            sourceId: string;
+            notebookId: string;
+            userId: string;
+            context: BotInvocation['context'];
+        },
+    ): Promise<BotInvocation> {
+        // Create invocation record (no templateId for custom bots)
+        const invocation = await createInvocation({
+            userBotId: params.userBotId,
+            templateId: 'custom', // Placeholder for custom bots
+            sourceType: params.sourceType,
+            sourceId: params.sourceId,
+            notebookId: params.notebookId,
+            userId: params.userId,
+            context: params.context,
+        });
+
+        // Execute webhook asynchronously
+        this.executeCustomBot(invocation, userBot).catch((error) => {
+            console.error(`Custom bot webhook failed for invocation ${invocation._id}:`, error);
+        });
+
+        return invocation;
+    }
+
+    /**
+     * Execute a custom bot webhook
+     */
+    private async executeCustomBot(invocation: BotInvocation, userBot: UserBot): Promise<void> {
+        const startTime = Date.now();
+
+        try {
+            // Update status to running
+            await updateInvocationStatus(invocation._id, 'running');
+            this.broadcastStatus(invocation, 'running');
+
+            // Get thread context - the parent message and any thread messages
+            const parentMessage = await findMessageById(invocation.sourceId);
+            let messages: Message[] = [];
+            let threadId: string | null = null;
+
+            if (parentMessage) {
+                // Check if parent has a thread
+                if (parentMessage.hasThread) {
+                    // Get thread messages
+                    const { findThreadByParentMessage } =
+                        await import('../repositories/thread.repo');
+                    const thread = await findThreadByParentMessage(invocation.sourceId);
+                    if (thread) {
+                        threadId = thread._id;
+                        const threadMessages = await findMessagesByThreadId(thread._id);
+                        messages = [parentMessage, ...threadMessages];
+                    } else {
+                        messages = [parentMessage];
+                    }
+                } else {
+                    messages = [parentMessage];
+                }
+            }
+
+            // Build webhook payload
+            const payload = buildWebhookPayload(invocation, messages, threadId);
+
+            // Invoke webhook with retry
+            const result = await invokeWebhookWithRetry(userBot, payload);
+
+            if (!result.success) {
+                throw new Error(result.error || 'Webhook invocation failed');
+            }
+
+            // Custom bot acknowledged - it will respond via API
+            // Keep status as 'running' until bot responds or times out
+            const executionTimeMs = Date.now() - startTime;
+
+            await updateInvocationStatus(invocation._id, 'running', {
+                executionTimeMs,
+            });
+
+            // Broadcast that webhook was sent successfully
+            this.broadcastStatus(invocation, 'running');
+        } catch (error) {
+            const executionTimeMs = Date.now() - startTime;
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+            await updateInvocationStatus(invocation._id, 'failed', {
+                error: {
+                    code: 'webhook/failed',
+                    message: errorMessage,
+                },
+                executionTimeMs,
+            });
+
+            this.broadcastStatus(invocation, 'failed', errorMessage);
+        }
     }
 
     /**

@@ -5,18 +5,26 @@ import {
     canAccessNotebook,
     type BotAccessTokenInternal,
 } from '../repositories/bot-token.repo';
+import { verifyBotJWT } from '../services/bot-jwt.service';
+import { validateSession } from '../repositories/bot-session.repo';
+import { findUserBotByIdInternal } from '../repositories/user-bot.repo';
+import type { BotJWTPayload, CustomBotPermissions } from '@maple/shared';
 
 /**
  * Bot auth context - available when bot token authentication succeeds
+ * Supports both access tokens (template bots) and JWTs (custom bots)
  */
 export interface BotAuthContext {
-    token: BotAccessTokenInternal;
+    authType: 'token' | 'jwt';
+    token?: BotAccessTokenInternal; // For access token auth
+    jwtPayload?: BotJWTPayload; // For JWT auth
     userBotId: string;
     userId: string;
+    permissions?: CustomBotPermissions; // For custom bots
 }
 
 /**
- * Bot auth middleware - authenticates requests using bot access tokens
+ * Bot auth middleware - authenticates requests using bot access tokens or JWTs
  * Extracts token from Authorization header: "Bearer <token>"
  */
 export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).derive(
@@ -27,11 +35,40 @@ export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).der
             return { botAuth: null as BotAuthContext | null };
         }
 
-        const plaintextToken = authHeader.slice(7);
+        const bearerToken = authHeader.slice(7);
 
         try {
-            // Verify the token
-            const token = await verifyToken(plaintextToken);
+            // Try JWT first (custom bots)
+            const jwtPayload = await verifyBotJWT(bearerToken);
+
+            if (jwtPayload) {
+                // Validate session is still active
+                const session = await validateSession(jwtPayload.sessionId);
+
+                if (!session) {
+                    return { botAuth: null as BotAuthContext | null };
+                }
+
+                // Get bot for permissions
+                const bot = await findUserBotByIdInternal(jwtPayload.sub);
+
+                if (!bot || bot.status === 'revoked' || bot.status === 'disabled') {
+                    return { botAuth: null as BotAuthContext | null };
+                }
+
+                return {
+                    botAuth: {
+                        authType: 'jwt',
+                        jwtPayload,
+                        userBotId: jwtPayload.sub,
+                        userId: jwtPayload.userId,
+                        permissions: bot.permissions,
+                    } as BotAuthContext,
+                };
+            }
+
+            // Fall back to access token (template bots)
+            const token = await verifyToken(bearerToken);
 
             if (!token) {
                 return { botAuth: null as BotAuthContext | null };
@@ -39,6 +76,7 @@ export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).der
 
             return {
                 botAuth: {
+                    authType: 'token',
                     token,
                     userBotId: token.userBotId,
                     userId: token.userId,
@@ -65,38 +103,67 @@ export function checkBotAuth(
 }
 
 /**
- * Helper to check if bot token has required permission
+ * Helper to check if bot has required permission
+ * Works for both access tokens (template bots) and JWTs (custom bots)
  */
 export function checkBotPermission(
     botAuth: BotAuthContext,
     permission: 'read' | 'write' | 'invoke',
     set: { status?: number | string },
 ): boolean {
-    if (!hasPermission(botAuth.token, permission)) {
-        set.status = 403;
-        return false;
+    // For access token auth, check token permissions
+    if (botAuth.authType === 'token' && botAuth.token) {
+        if (!hasPermission(botAuth.token, permission)) {
+            set.status = 403;
+            return false;
+        }
+        return true;
     }
-    return true;
+
+    // For JWT auth (custom bots), check bot permissions
+    if (botAuth.authType === 'jwt' && botAuth.permissions) {
+        // Currently only 'messages' permissions are supported
+        // Map 'invoke' to 'write' for custom bots
+        const mappedPermission = permission === 'invoke' ? 'write' : permission;
+
+        if (!botAuth.permissions.messages[mappedPermission]) {
+            set.status = 403;
+            return false;
+        }
+        return true;
+    }
+
+    // No valid auth type
+    set.status = 403;
+    return false;
 }
 
 /**
- * Helper to check if bot token can access a specific notebook
- * Also verifies the bot is shared with the notebook
+ * Helper to check if bot can access a specific notebook
+ * Works for both access tokens (template bots) and JWTs (custom bots)
  */
 export async function checkBotNotebookAccess(
     botAuth: BotAuthContext,
     notebookId: string,
     set: { status?: number | string },
 ): Promise<boolean> {
-    // First check token scope
-    if (!canAccessNotebook(botAuth.token, notebookId)) {
+    // For access token auth, check token scope
+    if (botAuth.authType === 'token' && botAuth.token) {
+        if (!canAccessNotebook(botAuth.token, notebookId)) {
+            set.status = 403;
+            return false;
+        }
+    }
+
+    // For both auth types, verify the bot is shared with this notebook
+    const { isBotSharedWithNotebook } = await import('../repositories/user-bot.repo');
+    const isShared = await isBotSharedWithNotebook(botAuth.userBotId, notebookId);
+
+    if (!isShared) {
         set.status = 403;
         return false;
     }
 
-    // Then verify the bot is shared with this notebook
-    // (The external API should verify this when looking up pages)
-    // For now, just check token scope
     return true;
 }
 

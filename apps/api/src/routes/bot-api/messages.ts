@@ -1,0 +1,405 @@
+import { Elysia, t } from 'elysia';
+import {
+    botAuthMiddleware,
+    checkBotAuth,
+    checkBotPermission,
+    checkBotNotebookAccess,
+} from '../../middleware/bot-auth';
+import {
+    findMessagesByPageId,
+    findMessagesByThreadId,
+    createMessageInThread,
+    createMessage,
+    findMessageById,
+    markMessageHasThread,
+} from '../../repositories/message.repo';
+import {
+    getOrCreateThread,
+    findThreadByParentMessage,
+    incrementThreadMessageCount,
+} from '../../repositories/thread.repo';
+import { findPageById } from '../../repositories/page.repo';
+import { findUserBotByIdInternal } from '../../repositories/user-bot.repo';
+import { broadcastChatEvent } from '../../services/realtime.service';
+import { markdownToProseMirror } from '../../utils/markdown-to-prosemirror';
+import type { PageContent } from '@maple/shared';
+
+/**
+ * Bot Messages API
+ *
+ * API endpoints for custom bots to read and write messages.
+ * Requires bot JWT authentication.
+ */
+export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
+    .use(botAuthMiddleware)
+
+    // Get messages for a page
+    .get(
+        '/pages/:pageId/messages',
+        async ({ botAuth, params, query, set }) => {
+            if (!checkBotAuth(botAuth, set)) {
+                return { error: 'auth/missing_token', message: 'Bot authentication required' };
+            }
+
+            if (!checkBotPermission(botAuth, 'read', set)) {
+                return {
+                    error: 'auth/insufficient_permissions',
+                    message: 'Read permission required',
+                };
+            }
+
+            // Get page to find notebook
+            const page = await findPageById(params.pageId);
+            if (!page) {
+                set.status = 404;
+                return { error: 'resource/not_found', message: 'Page not found' };
+            }
+
+            // Check notebook access
+            const notebookId = page.tagId || page.notebookId;
+            if (!notebookId || !(await checkBotNotebookAccess(botAuth, notebookId, set))) {
+                return {
+                    error: 'auth/insufficient_permissions',
+                    message: 'Bot cannot access this notebook',
+                };
+            }
+
+            const messages = await findMessagesByPageId(params.pageId, {
+                limit: query.limit || 50,
+                before: query.before,
+            });
+
+            return {
+                messages: messages.map((m) => ({
+                    id: m.id || m._id,
+                    page_id: m.pageId,
+                    thread_id: m.threadId,
+                    author: {
+                        id: m.userId,
+                        name: m.senderDisplayName || m.senderEmail || 'Unknown',
+                        type: m.senderType || 'user',
+                    },
+                    content: extractText(m.content as PageContent),
+                    content_json: m.content,
+                    has_thread: m.hasThread,
+                    created_at: m.createdAt,
+                })),
+            };
+        },
+        {
+            params: t.Object({
+                pageId: t.String(),
+            }),
+            query: t.Object({
+                limit: t.Optional(t.Number({ minimum: 1, maximum: 100 })),
+                before: t.Optional(t.String()),
+            }),
+        },
+    )
+
+    // Get thread messages
+    .get(
+        '/threads/:threadId',
+        async ({ botAuth, params, query, set }) => {
+            if (!checkBotAuth(botAuth, set)) {
+                return { error: 'auth/missing_token', message: 'Bot authentication required' };
+            }
+
+            if (!checkBotPermission(botAuth, 'read', set)) {
+                return {
+                    error: 'auth/insufficient_permissions',
+                    message: 'Read permission required',
+                };
+            }
+
+            const messages = await findMessagesByThreadId(params.threadId, {
+                limit: query.limit || 50,
+                before: query.before,
+            });
+
+            if (messages.length === 0) {
+                set.status = 404;
+                return { error: 'resource/not_found', message: 'Thread not found or empty' };
+            }
+
+            // Get the first message to check notebook access
+            const page = await findPageById(messages[0].pageId);
+            if (page) {
+                const notebookId = page.tagId || page.notebookId;
+                if (notebookId && !(await checkBotNotebookAccess(botAuth, notebookId, set))) {
+                    return {
+                        error: 'auth/insufficient_permissions',
+                        message: 'Bot cannot access this notebook',
+                    };
+                }
+            }
+
+            return {
+                thread_id: params.threadId,
+                messages: messages.map((m) => ({
+                    id: m.id || m._id,
+                    page_id: m.pageId,
+                    author: {
+                        id: m.userId,
+                        name: m.senderDisplayName || m.senderEmail || 'Unknown',
+                        type: m.senderType || 'user',
+                    },
+                    content: extractText(m.content as PageContent),
+                    content_json: m.content,
+                    created_at: m.createdAt,
+                })),
+            };
+        },
+        {
+            params: t.Object({
+                threadId: t.String(),
+            }),
+            query: t.Object({
+                limit: t.Optional(t.Number({ minimum: 1, maximum: 100 })),
+                before: t.Optional(t.String()),
+            }),
+        },
+    )
+
+    // Reply to a thread (or create thread from a message)
+    .post(
+        '/threads/:parentMessageId/reply',
+        async ({ botAuth, params, body, set }) => {
+            if (!checkBotAuth(botAuth, set)) {
+                return { error: 'auth/missing_token', message: 'Bot authentication required' };
+            }
+
+            if (!checkBotPermission(botAuth, 'write', set)) {
+                return {
+                    error: 'auth/insufficient_permissions',
+                    message: 'Write permission required',
+                };
+            }
+
+            // Get parent message
+            const parentMessage = await findMessageById(params.parentMessageId);
+            if (!parentMessage) {
+                set.status = 404;
+                return { error: 'resource/not_found', message: 'Parent message not found' };
+            }
+
+            // Get page to find notebook
+            const page = await findPageById(parentMessage.pageId);
+            if (!page) {
+                set.status = 404;
+                return { error: 'resource/not_found', message: 'Page not found' };
+            }
+
+            const notebookId = page.tagId || page.notebookId;
+            if (!notebookId || !(await checkBotNotebookAccess(botAuth, notebookId, set))) {
+                return {
+                    error: 'auth/insufficient_permissions',
+                    message: 'Bot cannot access this notebook',
+                };
+            }
+
+            // Get bot info
+            const userBot = await findUserBotByIdInternal(botAuth.userBotId);
+            if (!userBot) {
+                set.status = 500;
+                return { error: 'server/bot_not_found', message: 'Bot configuration not found' };
+            }
+
+            // Convert content to ProseMirror format if needed
+            let content: PageContent;
+            if (body.content_type === 'prosemirror') {
+                content = body.content as unknown as PageContent;
+            } else {
+                // Convert plain text/markdown to ProseMirror
+                content = markdownToProseMirror(body.content);
+            }
+
+            // Get or create thread
+            const thread = await getOrCreateThread({
+                parentMessageId: params.parentMessageId,
+                notebookId,
+            });
+
+            // Mark parent as having a thread (if not already)
+            if (!parentMessage.hasThread) {
+                await markMessageHasThread(params.parentMessageId);
+            }
+
+            // Create the message in the thread
+            const message = await createMessageInThread({
+                pageId: parentMessage.pageId,
+                threadId: thread._id,
+                userId: botAuth.userId,
+                userBotId: botAuth.userBotId,
+                senderType: 'bot',
+                senderDisplayName: userBot.displayName || userBot.handle,
+                content,
+            });
+
+            // Increment thread message count
+            await incrementThreadMessageCount(thread._id);
+
+            // Broadcast the message
+            broadcastChatEvent(notebookId, {
+                action: 'thread_message',
+                message: {
+                    _id: message._id,
+                    id: message.id,
+                    pageId: message.pageId,
+                    threadId: thread._id,
+                    userId: message.userId,
+                    senderType: 'bot',
+                    senderDisplayName: userBot.displayName || userBot.handle,
+                    content: message.content,
+                    createdAt: message.createdAt,
+                },
+                threadId: thread._id,
+                parentMessageId: params.parentMessageId,
+            });
+
+            return {
+                message_id: message.id || message._id,
+                thread_id: thread._id,
+                created_at: message.createdAt,
+            };
+        },
+        {
+            params: t.Object({
+                parentMessageId: t.String(),
+            }),
+            body: t.Object({
+                content: t.String(),
+                content_type: t.Optional(t.Union([t.Literal('text'), t.Literal('prosemirror')])),
+            }),
+        },
+    )
+
+    // Create a new message (start a new conversation)
+    .post(
+        '/pages/:pageId/messages',
+        async ({ botAuth, params, body, set }) => {
+            if (!checkBotAuth(botAuth, set)) {
+                return { error: 'auth/missing_token', message: 'Bot authentication required' };
+            }
+
+            if (!checkBotPermission(botAuth, 'write', set)) {
+                return {
+                    error: 'auth/insufficient_permissions',
+                    message: 'Write permission required',
+                };
+            }
+
+            // Get page to find notebook
+            const page = await findPageById(params.pageId);
+            if (!page) {
+                set.status = 404;
+                return { error: 'resource/not_found', message: 'Page not found' };
+            }
+
+            const notebookId = page.tagId || page.notebookId;
+            if (!notebookId || !(await checkBotNotebookAccess(botAuth, notebookId, set))) {
+                return {
+                    error: 'auth/insufficient_permissions',
+                    message: 'Bot cannot access this notebook',
+                };
+            }
+
+            // Get bot info
+            const userBot = await findUserBotByIdInternal(botAuth.userBotId);
+            if (!userBot) {
+                set.status = 500;
+                return { error: 'server/bot_not_found', message: 'Bot configuration not found' };
+            }
+
+            // Convert content to ProseMirror format if needed
+            let content: PageContent;
+            if (body.content_type === 'prosemirror') {
+                content = body.content as unknown as PageContent;
+            } else {
+                // Convert plain text/markdown to ProseMirror
+                content = markdownToProseMirror(body.content);
+            }
+
+            // Create the message
+            const message = await createMessage(
+                params.pageId,
+                botAuth.userId,
+                { content },
+                undefined, // senderEmail
+                userBot.displayName || userBot.handle,
+                userBot.avatar,
+                undefined, // threadId
+                notebookId,
+            );
+
+            // Update senderType to bot
+            // Note: createMessage doesn't support senderType directly, so we need to update
+            const { getDb } = await import('../../db/client');
+            const { ObjectId } = await import('mongodb');
+            await getDb()
+                .collection('messages')
+                .updateOne(
+                    { _id: new ObjectId(message._id) },
+                    { $set: { senderType: 'bot', userBotId: new ObjectId(botAuth.userBotId) } },
+                );
+
+            // Broadcast the message
+            broadcastChatEvent(notebookId, {
+                action: 'message',
+                message: {
+                    _id: message._id,
+                    id: message.id,
+                    pageId: params.pageId,
+                    userId: botAuth.userId,
+                    senderType: 'bot',
+                    senderDisplayName: userBot.displayName || userBot.handle,
+                    content: message.content,
+                    createdAt: message.createdAt,
+                },
+            });
+
+            return {
+                message_id: message.id || message._id,
+                page_id: params.pageId,
+                created_at: message.createdAt,
+            };
+        },
+        {
+            params: t.Object({
+                pageId: t.String(),
+            }),
+            body: t.Object({
+                content: t.String(),
+                content_type: t.Optional(t.Union([t.Literal('text'), t.Literal('prosemirror')])),
+            }),
+        },
+    );
+
+/**
+ * Extract plain text from ProseMirror content
+ */
+function extractText(content: PageContent): string {
+    if (!content || typeof content !== 'object') {
+        return '';
+    }
+
+    const traverse = (node: any): string => {
+        if (!node) return '';
+
+        if (node.type === 'text' && typeof node.text === 'string') {
+            return node.text;
+        }
+
+        if (node.type === 'mention' && node.attrs?.handle) {
+            return `@${node.attrs.handle}`;
+        }
+
+        if (Array.isArray(node.content)) {
+            return node.content.map(traverse).join('');
+        }
+
+        return '';
+    };
+
+    return traverse(content);
+}
