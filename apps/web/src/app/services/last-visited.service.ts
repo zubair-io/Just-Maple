@@ -53,12 +53,10 @@ export class LastVisitedService {
   }
 
   /**
-   * Get and clear the last visited location (for one-time redirect on app start)
+   * Get the last visited location
    */
-  getAndClear(): LastVisitedLocation | null {
-    const location = this._lastVisited();
-    // Don't clear here - we'll clear if they navigate away to settings etc.
-    return location;
+  get(): LastVisitedLocation | null {
+    return this._lastVisited();
   }
 
   /**

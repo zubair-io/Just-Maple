@@ -152,10 +152,11 @@ export class HomeComponent implements OnInit, OnDestroy {
       if (this.isValidPageRoute(segments)) {
         // Cache both notebook and page
         this.lastVisitedService.save(notebookId, segments[1]);
-      } else {
-        // Just cache the notebook (no page or special route like /new)
+      } else if (segments.length === 1) {
+        // Just the notebook route (no child) - cache just the notebook
         this.lastVisitedService.save(notebookId);
       }
+      // Don't cache special child routes like /new, /scan, /todos - they're transient actions
     } else if (segments.length > 0) {
       // Non-notebook route (settings, notifications, etc.) - clear the cache
       this.lastVisitedService.clear();
@@ -184,9 +185,11 @@ export class HomeComponent implements OnInit, OnDestroy {
 
     // Only redirect if on root path
     if (segments.length === 0) {
-      const lastVisited = this.lastVisitedService.getAndClear();
+      const lastVisited = this.lastVisitedService.get();
       if (lastVisited) {
         this.hasHandledInitialRedirect = true;
+        // Clear the cache after redirect to prevent repeated redirects
+        this.lastVisitedService.clear();
         if (lastVisited.pageId) {
           this.router.navigate(['/', lastVisited.notebookId, lastVisited.pageId]);
         } else {
