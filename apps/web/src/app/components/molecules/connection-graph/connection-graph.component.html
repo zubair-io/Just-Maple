@@ -1,46 +1,62 @@
-<div class="connection-graph-wrapper">
-  <div #graphContainer class="graph-container"></div>
+<div class="connection-graph-wrapper" [class.fullscreen]="isFullscreen()">
+  @if (isFullscreen()) {
+    <div class="fullscreen-backdrop" (click)="toggleFullscreen()"></div>
+  }
 
-  @if (stats()) {
-    <div class="graph-legend">
-      <div class="legend-title">
-        <span class="material-symbols-rounded">hub</span>
-        Connection Graph
-      </div>
-      <div class="legend-stats">
-        <span class="stat">
-          <span class="stat-value">{{ stats()!.totalNodes }}</span>
-          <span class="stat-label">pages</span>
-        </span>
-        <span class="stat">
-          <span class="stat-value">{{ stats()!.linkEdges }}</span>
-          <span class="stat-label">links</span>
-        </span>
-        @if (stats()!.hashtagEdges > 0) {
+  <div class="fullscreen-container" [class.fullscreen]="isFullscreen()">
+    <div #graphContainer class="graph-container"></div>
+
+    @if (stats()) {
+      <div class="graph-legend">
+        <div class="legend-title">
+          <span class="material-symbols-rounded">hub</span>
+          Connection Graph
+        </div>
+        <div class="legend-stats">
           <span class="stat">
-            <span class="stat-value">{{ stats()!.hashtagEdges }}</span>
-            <span class="stat-label">tag connections</span>
+            <span class="stat-value">{{ stats()!.totalNodes }}</span>
+            <span class="stat-label">pages</span>
           </span>
-        }
-      </div>
-      <div class="legend-items">
-        <div class="legend-item">
-          <span class="legend-line solid"></span>
-          <span>Page Link</span>
+          <span class="stat">
+            <span class="stat-value">{{ stats()!.linkEdges }}</span>
+            <span class="stat-label">links</span>
+          </span>
+          @if (stats()!.hashtagEdges > 0) {
+            <span class="stat">
+              <span class="stat-value">{{ stats()!.hashtagEdges }}</span>
+              <span class="stat-label">tag connections</span>
+            </span>
+          }
         </div>
-        <div class="legend-item">
-          <span class="legend-line dashed"></span>
-          <span>Shared Hashtag</span>
+        <div class="legend-items">
+          <div class="legend-item">
+            <span class="legend-line solid"></span>
+            <span>Page Link</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-line dashed"></span>
+            <span>Shared Hashtag</span>
+          </div>
         </div>
       </div>
-    </div>
-  }
+    }
 
-  @if (nodes().length === 0) {
-    <div class="empty-state">
-      <span class="material-symbols-rounded">device_hub</span>
-      <p>No connections yet</p>
-      <p class="hint">Link pages using [[Page Name]] or add hashtags to create connections</p>
-    </div>
-  }
+    <button
+      class="fullscreen-button"
+      (click)="toggleFullscreen()"
+      [attr.aria-label]="isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen'"
+    >
+      <span class="material-symbols-rounded">
+        {{ isFullscreen() ? 'close_fullscreen' : 'open_in_full' }}
+      </span>
+    </button>
+
+    @if (nodes().length === 0) {
+      <div class="empty-state">
+        <span class="material-symbols-rounded">device_hub</span>
+        <p>No connections yet</p>
+        <p class="hint">Link pages using [[Page Name]] or add hashtags to create connections</p>
+      </div>
+    }
+  </div>
 </div>

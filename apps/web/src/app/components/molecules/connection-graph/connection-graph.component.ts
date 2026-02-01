@@ -7,6 +7,8 @@ import {
   input,
   effect,
   output,
+  signal,
+  HostListener,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as d3 from 'd3';
@@ -63,6 +65,8 @@ export class ConnectionGraphComponent implements AfterViewInit, OnDestroy {
 
   readonly nodeClicked = output<string>();
 
+  readonly isFullscreen = signal(false);
+
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null;
   private simulation: d3.Simulation<GraphNode, GraphEdge> | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -95,6 +99,17 @@ export class ConnectionGraphComponent implements AfterViewInit, OnDestroy {
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
     }
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    if (this.isFullscreen()) {
+      this.isFullscreen.set(false);
+    }
+  }
+
+  toggleFullscreen(): void {
+    this.isFullscreen.update((v) => !v);
   }
 
   private renderGraph(nodes: GraphNode[], edges: GraphEdge[]): void {
