@@ -126,7 +126,7 @@ async function createNote(
 }
 
 // Run tests serially to avoid shared backend state conflicts
-test.describe.serial('Automerge Collaboration Test (/write)', () => {
+test.describe.serial('Y.js Collaboration Test (/write)', () => {
     test('should sync edits between two browser windows in real-time', async ({ browser }) => {
         // Create two separate browser contexts (like two different users/windows)
         const context1 = await browser.newContext();
@@ -179,7 +179,7 @@ test.describe.serial('Automerge Collaboration Test (/write)', () => {
 
             console.log('Both editors are visible');
 
-            // Wait for Automerge to establish connection
+            // Wait for Y.js to establish connection
             await page1.waitForTimeout(3000);
 
             // Clear any existing content in editor1
@@ -277,7 +277,7 @@ test.describe.serial('Automerge Collaboration Test (/write)', () => {
             await expect(editor1).toBeVisible({ timeout: 15000 });
             await expect(editor2).toBeVisible({ timeout: 15000 });
 
-            // Wait for Automerge connection
+            // Wait for Y.js connection
             await page1.waitForTimeout(3000);
 
             // Clear any existing content

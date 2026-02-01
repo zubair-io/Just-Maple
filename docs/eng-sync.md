@@ -1,6 +1,6 @@
 # Engineering: Sync & Offline
 
-Just Maple uses CRDTs (Automerge and Yjs) for offline-first synchronization. This document covers the implementation.
+Just Maple uses Y.js CRDTs for offline-first synchronization. This document covers the implementation.
 
 ## Architecture
 
@@ -31,15 +31,12 @@ graph TB
 
 ## CRDT Strategy
 
-### Automerge for Documents
+### Y.js for Documents
 
-- Rich text content stored as Automerge documents
+- Rich text content stored as Y.js documents
 - Character-level CRDT for text operations
 - Automatic merge resolution
-
-### Yjs for Real-time
-
-- Y.js provides awareness (cursors, selections)
+- Provides awareness (cursors, selections)
 - WebSocket provider for live updates
 - Compatible with TipTap
 
@@ -173,184 +170,77 @@ export class OfflineQueueService {
 
 ## Document Sync Service
 
-### Automerge Sync
+### Y.js Sync
 
 ```typescript
 // apps/web/src/app/services/memo-sync.service.ts
-import * as Automerge from '@automerge/automerge';
+import * as Y from 'yjs';
+import { IndexeddbPersistence } from 'y-indexeddb';
+import { WebsocketProvider } from 'y-websocket';
 
 @Injectable()
 export class MemoSyncService {
-    private syncStates = new Map<string, Automerge.SyncState>();
-    private documents = new Map<string, Automerge.Doc<any>>();
+    private documents = new Map<string, Y.Doc>();
+    private providers = new Map<string, WebsocketProvider>();
+    private persistence = new Map<string, IndexeddbPersistence>();
 
-    constructor(
-        private idb: IndexedDBService,
-        private ws: WebSocketService,
-    ) {
-        this.ws.onMessage('sync').subscribe((msg) => this.handleSyncMessage(msg));
+    constructor(private wsUrl: string) {}
+
+    async initDocument(noteId: string): Promise<Y.Doc> {
+        // Create Y.js document
+        const ydoc = new Y.Doc();
+        this.documents.set(noteId, ydoc);
+
+        // Set up IndexedDB persistence
+        const idbPersistence = new IndexeddbPersistence(`memo-${noteId}`, ydoc);
+        this.persistence.set(noteId, idbPersistence);
+
+        // Wait for local data to load
+        await idbPersistence.whenSynced;
+
+        // Connect to server via WebSocket
+        const wsProvider = new WebsocketProvider(this.wsUrl, `memo:${noteId}`, ydoc);
+        this.providers.set(noteId, wsProvider);
+
+        return ydoc;
     }
 
-    async initDocument(noteId: string): Promise<Automerge.Doc<any>> {
-        // Load from local storage first
-        const localBinary = await this.idb.get('memos', noteId);
-
-        let doc: Automerge.Doc<any>;
-        if (localBinary) {
-            doc = Automerge.load(localBinary);
-        } else {
-            doc = Automerge.init();
-        }
-
-        this.documents.set(noteId, doc);
-        this.syncStates.set(noteId, Automerge.initSyncState());
-
-        // Start sync with server
-        this.requestSync(noteId);
-
-        return doc;
-    }
-
-    applyLocalChange(noteId: string, changeFn: (doc: any) => void): void {
+    getXmlFragment(noteId: string): Y.XmlFragment | null {
         const doc = this.documents.get(noteId);
-        if (!doc) return;
-
-        const newDoc = Automerge.change(doc, changeFn);
-        this.documents.set(noteId, newDoc);
-
-        // Persist locally
-        this.persistLocally(noteId, newDoc);
-
-        // Sync to server
-        this.sendChanges(noteId);
+        return doc?.getXmlFragment('prosemirror') ?? null;
     }
 
-    private async persistLocally(noteId: string, doc: Automerge.Doc<any>): Promise<void> {
-        const binary = Automerge.save(doc);
-        await this.idb.put('memos', binary, noteId);
-    }
+    destroy(noteId: string): void {
+        this.providers.get(noteId)?.destroy();
+        this.persistence.get(noteId)?.destroy();
+        this.documents.get(noteId)?.destroy();
 
-    private sendChanges(noteId: string): void {
-        const doc = this.documents.get(noteId)!;
-        const syncState = this.syncStates.get(noteId)!;
-
-        const [newSyncState, message] = Automerge.generateSyncMessage(doc, syncState);
-        this.syncStates.set(noteId, newSyncState);
-
-        if (message) {
-            this.ws.send({
-                type: 'sync',
-                noteId,
-                message: this.encodeMessage(message),
-            });
-        }
-    }
-
-    private handleSyncMessage(msg: { noteId: string; message: string }): void {
-        const doc = this.documents.get(msg.noteId);
-        const syncState = this.syncStates.get(msg.noteId);
-        if (!doc || !syncState) return;
-
-        const decoded = this.decodeMessage(msg.message);
-        const [newDoc, newSyncState] = Automerge.receiveSyncMessage(doc, syncState, decoded);
-
-        this.documents.set(msg.noteId, newDoc);
-        this.syncStates.set(msg.noteId, newSyncState);
-
-        // Persist updated document
-        this.persistLocally(msg.noteId, newDoc);
-
-        // Continue sync if needed
-        this.sendChanges(msg.noteId);
-    }
-
-    private requestSync(noteId: string): void {
-        this.ws.send({
-            type: 'requestSync',
-            noteId,
-        });
-    }
-
-    private encodeMessage(message: Uint8Array): string {
-        return btoa(String.fromCharCode(...message));
-    }
-
-    private decodeMessage(encoded: string): Uint8Array {
-        return Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+        this.providers.delete(noteId);
+        this.persistence.delete(noteId);
+        this.documents.delete(noteId);
     }
 }
 ```
 
 ## Conflict Resolution
 
-### Version Tracking
-
-```typescript
-// apps/api/src/repositories/memo.repo.ts
-export async function applyChangesWithConflictCheck(
-    noteId: string,
-    changes: Uint8Array[],
-    clientHeads: string[],
-): Promise<{ success: boolean; merged: boolean; newHeads: string[] }> {
-    const memo = await db.collection('memos').findOne({ noteId });
-
-    if (!memo) {
-        // New document
-        const doc = Automerge.init();
-        const [merged] = Automerge.applyChanges(doc, changes);
-        await saveMemo(noteId, merged);
-        return { success: true, merged: false, newHeads: Automerge.getHeads(merged) };
-    }
-
-    const serverDoc = Automerge.load(memo.state.buffer);
-    const serverHeads = Automerge.getHeads(serverDoc);
-
-    // Check if client is in sync
-    const isInSync = clientHeads.every((h) => serverHeads.includes(h));
-
-    if (isInSync) {
-        // Fast-forward merge
-        const [merged] = Automerge.applyChanges(serverDoc, changes);
-        await saveMemo(noteId, merged);
-        return { success: true, merged: false, newHeads: Automerge.getHeads(merged) };
-    }
-
-    // Concurrent changes - merge
-    const [merged] = Automerge.applyChanges(serverDoc, changes);
-    await saveMemo(noteId, merged);
-    return { success: true, merged: true, newHeads: Automerge.getHeads(merged) };
-}
-```
-
-### Client-Side Merge
+Y.js handles conflicts automatically through its CRDT algorithm. Concurrent edits are merged without user intervention.
 
 ```typescript
 // apps/web/src/app/services/conflict-resolution.service.ts
 @Injectable()
 export class ConflictResolutionService {
-    async resolveConflict<T>(
-        localDoc: Automerge.Doc<T>,
-        serverDoc: Automerge.Doc<T>,
-    ): Promise<Automerge.Doc<T>> {
-        // Automerge handles most conflicts automatically
-        const merged = Automerge.merge(localDoc, serverDoc);
-        return merged;
-    }
+    // Y.js handles most conflicts automatically through its CRDT algorithm
+    // Manual conflict resolution is rarely needed
 
-    detectConflicts<T>(doc: Automerge.Doc<T>): ConflictInfo[] {
-        const conflicts: ConflictInfo[] = [];
-
-        // Check for conflicting heads
-        const heads = Automerge.getHeads(doc);
-        if (heads.length > 1) {
-            // Multiple heads indicate divergent history
-            conflicts.push({
-                type: 'divergent-history',
-                heads,
-            });
+    checkSyncStatus(provider: WebsocketProvider): SyncStatus {
+        if (!provider.wsconnected) {
+            return 'offline';
         }
-
-        return conflicts;
+        if (provider.synced) {
+            return 'synced';
+        }
+        return 'syncing';
     }
 }
 ```

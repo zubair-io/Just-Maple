@@ -333,15 +333,6 @@ export class PageService {
     );
   }
 
-  updateAutoMerge(id: string, data: any) {
-    const original = this.store.query(getEntity(id)) as Page;
-
-    const snapshot = data.key[1] === 'snapshot';
-    const automergeDoc = snapshot ? [] : (original.automergeDoc ?? []);
-    automergeDoc.push(data);
-    return this.updatePage(id, { automergeDoc });
-  }
-
   /**
    * Update a page with optimistic update
    */

@@ -56,7 +56,7 @@ Native importers for specific apps are planned.
 
 ### Can multiple people edit at the same time?
 
-Yes! Just Maple uses CRDT technology (Automerge) for real-time collaboration. Multiple users can edit the same document simultaneously without conflicts.
+Yes! Just Maple uses CRDT technology (Y.js) for real-time collaboration. Multiple users can edit the same document simultaneously without conflicts.
 
 ### Does it work offline?
 

@@ -53,7 +53,7 @@ This document records the successful migration from the AutumnBlaze Azure Functi
 
 **Files Deleted:**
 
-- `apps/web/src/app/services/collab-signalr.service.ts` - Obsolete (Automerge WebSocket handles collaboration)
+- `apps/web/src/app/services/collab-signalr.service.ts` - Obsolete (Y.js WebSocket handles collaboration)
 
 **Packages Removed:**
 
@@ -62,7 +62,7 @@ This document records the successful migration from the AutumnBlaze Azure Functi
 **WebSocket Endpoints Used:**
 
 - Chat: `/ws/chat` (already implemented)
-- Collaboration: `/ws/automerge-sync` (already implemented)
+- Collaboration: `/ws/collab` (already implemented)
 
 ### 3. SignalR Removal - iOS Watch App
 
