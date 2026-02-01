@@ -13,6 +13,22 @@ This plan extends the existing bot system to support **custom bots with webhook 
 | Auth         | Bot access tokens (per-bot)              | Provisioning token → JWT (per-bot)        |
 | Capabilities | Fixed by template                        | Full API access with permissions          |
 
+### Flow Diagram
+
+```
+User @mybot → Maple POSTs webhook → Bot acknowledges (200 OK)
+                                  → Bot calls Maple API to:
+                                      - Reply to thread
+                                      - Start new message
+```
+
+### Design Decisions
+
+- **Webhook timeout**: 30 seconds for acknowledgment
+- **JWT expiration**: 12 hours default (configurable per bot)
+- **Scope**: Notebook-level (bot added to notebooks like Claude bot)
+- **Phase 1 scope**: Messages only (memos/whiteboards deferred to Phase 2)
+
 ---
 
 ## Phase 1: Database & Schema Updates
@@ -39,31 +55,19 @@ export const UserBotSchema = Type.Object({
     invokeUrl: Type.Optional(Type.String()), // Webhook URL for custom bots
     webhookSecret: Type.Optional(Type.String()), // HMAC secret for signature verification
 
-    // Permissions for custom bots
+    // Permissions for custom bots (Phase 1: messages only)
     permissions: Type.Optional(
         Type.Object({
             messages: Type.Object({
                 read: Type.Boolean(),
                 write: Type.Boolean(),
             }),
-            memos: Type.Object({
-                read: Type.Boolean(),
-                write: Type.Boolean(),
-            }),
-            whiteboards: Type.Object({
-                read: Type.Boolean(),
-                write: Type.Boolean(),
-            }),
+            // Future: memos, whiteboards
         }),
     ),
 
-    // Scope - which resources the bot can access
-    scope: Type.Optional(
-        Type.Object({
-            type: Type.Union([Type.Literal('all'), Type.Literal('specific')]),
-            notebookIds: Type.Optional(Type.Array(Type.String())),
-        }),
-    ),
+    // JWT expiration configuration (hours)
+    jwtExpirationHours: Type.Optional(Type.Number({ default: 12 })),
 });
 ```
 
@@ -91,7 +95,7 @@ interface BotSession {
     userId: ObjectId;
     jwtId: string; // Unique JWT identifier
     createdAt: Date;
-    expiresAt: Date; // 12 hours default
+    expiresAt: Date; // Configurable, default 12 hours
     lastUsedAt: Date;
     ipAddress: string | null;
     revokedAt: Date | null;
@@ -135,7 +139,11 @@ interface BotJWTPayload {
     exp: number;
 }
 
-export function generateBotJWT(userBot: UserBot, sessionId: string): string;
+export function generateBotJWT(
+    userBot: UserBot,
+    sessionId: string,
+    expirationHours?: number,
+): string;
 export function verifyBotJWT(token: string): BotJWTPayload | null;
 ```
 
@@ -231,13 +239,9 @@ export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).der
     "description": "A custom bot for automation",
     "invokeUrl": "https://my-server.com/webhook",
     "permissions": {
-        "messages": { "read": true, "write": true },
-        "memos": { "read": true, "write": false },
-        "whiteboards": { "read": false, "write": false }
+        "messages": { "read": true, "write": true }
     },
-    "scope": {
-        "type": "all"
-    }
+    "jwtExpirationHours": 12
 }
 ```
 
@@ -249,15 +253,29 @@ export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).der
         "_id": "bot_abc123",
         "name": "My Custom Bot",
         "handle": "mybot",
-        "status": "active",
-        ...
+        "status": "active"
     },
     "provisioning_token": "prov_xxxxxxxxxxxxxxxx",
     "webhook_secret": "whsec_yyyyyyyyyyyyyyyy"
 }
 ```
 
-### 3.2 Bot Repository Updates
+### 3.2 Bot Sharing (Notebook Access)
+
+Custom bots use the existing notebook sharing system:
+
+```typescript
+// Share bot with notebook (same as Claude bot)
+POST /api/notebooks/:notebookId/bots
+{
+    "userBotId": "bot_abc123"
+}
+
+// List bots in notebook
+GET /api/notebooks/:notebookId/bots
+```
+
+### 3.3 Bot Repository Updates
 
 **File:** `apps/api/src/repositories/user-bot.repo.ts`
 
@@ -283,7 +301,9 @@ export async function updateBotStatus(
 ```typescript
 interface WebhookPayload {
     event_type: 'thread_mention';
-    thread_id: string;
+    thread_id: string | null; // null for top-level message
+    parent_message_id: string; // Message that triggered the bot
+    page_id: string;
     messages: WebhookMessage[];
     context: {
         notebook_id: string;
@@ -302,7 +322,6 @@ interface WebhookMessage {
     content: string; // Plain text extracted from ProseMirror
     content_json: PageContent; // Full ProseMirror JSON
     created_at: string;
-    attachments: WebhookAttachment[];
 }
 
 export async function invokeWebhook(
@@ -332,46 +351,45 @@ private async executeCustomBot(
     // 2. Sign payload with HMAC-SHA256
     const signature = signPayload(JSON.stringify(payload), userBot.webhookSecret);
 
-    // 3. Call webhook URL
-    const response = await fetch(userBot.invokeUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Maple-Signature': signature,
-            'X-Maple-Timestamp': payload.timestamp,
-            'X-Maple-Bot-Id': userBot._id,
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(30000),  // 30 second timeout
-    });
+    // 3. Call webhook URL with retry
+    await this.invokeWithRetry(userBot, payload, signature);
 
-    // 4. Verify acknowledgment
-    if (!response.ok) {
-        throw new Error(`Webhook failed: ${response.status}`);
-    }
-
-    const result = await response.json();
-    if (result.status !== 'accepted') {
-        throw new Error('Webhook did not acknowledge');
-    }
-
-    // 5. Mark invocation as running (bot will respond via API)
+    // 4. Mark invocation as running (bot will respond via API)
     await updateInvocationStatus(invocation._id, 'running');
 }
-```
 
-### 4.3 Webhook Retry Logic
-
-```typescript
-const RETRY_DELAYS = [1000, 5000, 30000]; // 1s, 5s, 30s
-
-async function invokeWithRetry(userBot: UserBot, payload: WebhookPayload): Promise<void> {
+private async invokeWithRetry(
+    userBot: UserBot,
+    payload: WebhookPayload,
+    signature: string
+): Promise<void> {
+    const RETRY_DELAYS = [1000, 5000, 30000]; // 1s, 5s, 30s
     let lastError: Error;
 
     for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
         try {
-            await invokeWebhook(userBot, payload);
-            return;
+            const response = await fetch(userBot.invokeUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Maple-Signature': `sha256=${signature}`,
+                    'X-Maple-Timestamp': payload.timestamp,
+                    'X-Maple-Bot-Id': userBot._id,
+                },
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(30000), // 30 second timeout
+            });
+
+            if (!response.ok) {
+                throw new Error(`Webhook failed: ${response.status}`);
+            }
+
+            const result = await response.json();
+            if (result.status !== 'accepted') {
+                throw new Error('Webhook did not acknowledge');
+            }
+
+            return; // Success
         } catch (error) {
             lastError = error;
             if (attempt < RETRY_DELAYS.length) {
@@ -386,20 +404,20 @@ async function invokeWithRetry(userBot: UserBot, payload: WebhookPayload): Promi
 
 ---
 
-## Phase 5: Bot API Endpoints
+## Phase 5: Bot API Endpoints (Messages)
 
 ### 5.1 Messages API for Bots
 
 **File:** `apps/api/src/routes/bot-api/messages.ts`
 
-| Endpoint                            | Method | Permission | Description              |
-| ----------------------------------- | ------ | ---------- | ------------------------ |
-| `/api/bots/messages`                | GET    | read       | List accessible messages |
-| `/api/bots/threads/:threadId`       | GET    | read       | Get full thread          |
-| `/api/bots/threads/:threadId/reply` | POST   | write      | Reply to thread          |
-| `/api/bots/messages`                | POST   | write      | Start new conversation   |
+| Endpoint                            | Method | Permission | Description           |
+| ----------------------------------- | ------ | ---------- | --------------------- |
+| `/api/bots/pages/:pageId/messages`  | GET    | read       | List messages in page |
+| `/api/bots/threads/:threadId`       | GET    | read       | Get full thread       |
+| `/api/bots/threads/:threadId/reply` | POST   | write      | Reply to thread       |
+| `/api/bots/pages/:pageId/messages`  | POST   | write      | Start new message     |
 
-**Reply to Thread:**
+### 5.2 Reply to Thread
 
 ```
 POST /api/bots/threads/:threadId/reply
@@ -418,54 +436,42 @@ Response:
 }
 ```
 
-### 5.2 Memos API for Bots
+### 5.3 Start New Message
 
-**File:** `apps/api/src/routes/bot-api/memos.ts`
+```
+POST /api/bots/pages/:pageId/messages
+Authorization: Bearer <bot_jwt>
 
-| Endpoint              | Method | Permission | Description           |
-| --------------------- | ------ | ---------- | --------------------- |
-| `/api/bots/memos`     | GET    | read       | List accessible memos |
-| `/api/bots/memos/:id` | GET    | read       | Get memo content      |
-| `/api/bots/memos/:id` | PUT    | write      | Update memo           |
-| `/api/bots/memos`     | POST   | write      | Create memo           |
+{
+    "content": "Bot-initiated message...",
+    "content_type": "text"
+}
 
-### 5.3 Whiteboards API for Bots (Future)
-
-**File:** `apps/api/src/routes/bot-api/whiteboards.ts`
-
-| Endpoint                    | Method | Permission | Description                 |
-| --------------------------- | ------ | ---------- | --------------------------- |
-| `/api/bots/whiteboards`     | GET    | read       | List accessible whiteboards |
-| `/api/bots/whiteboards/:id` | GET    | read       | Get whiteboard              |
-| `/api/bots/whiteboards/:id` | PUT    | write      | Update whiteboard           |
-| `/api/bots/whiteboards`     | POST   | write      | Create whiteboard           |
+Response:
+{
+    "message_id": "msg_new456",
+    "page_id": "page_xyz",
+    "created_at": "2026-02-01T10:40:00Z"
+}
+```
 
 ### 5.4 Permission Checking
 
 ```typescript
 async function checkBotResourceAccess(
     botAuth: BotAuthContext,
-    resourceType: 'messages' | 'memos' | 'whiteboards',
     permission: 'read' | 'write',
     notebookId: string,
     set: { status?: number },
 ): Promise<boolean> {
-    // 1. Check permission type
+    // 1. Get bot and check permission
     const userBot = await findUserBotById(botAuth.userBotId);
-    if (!userBot.permissions?.[resourceType]?.[permission]) {
+    if (!userBot.permissions?.messages?.[permission]) {
         set.status = 403;
         return false;
     }
 
-    // 2. Check notebook scope
-    if (userBot.scope?.type === 'specific') {
-        if (!userBot.scope.notebookIds?.includes(notebookId)) {
-            set.status = 403;
-            return false;
-        }
-    }
-
-    // 3. Verify bot is shared with notebook
+    // 2. Verify bot is shared with notebook (like Claude bot)
     const isShared = await isBotSharedWithNotebook(userBot._id, notebookId);
     if (!isShared) {
         set.status = 403;
@@ -486,12 +492,12 @@ async function checkBotResourceAccess(
 
 **Steps:**
 
-1. Enter bot name and description
+1. Enter bot name, handle, and description
 2. Configure invoke URL
-3. Set permissions (checkboxes)
-4. Set scope (all or specific notebooks)
+3. Set permissions (checkboxes for messages read/write)
+4. Set JWT expiration (optional, default 12h)
 5. Review and create
-6. Display provisioning token (one-time modal)
+6. Display provisioning token (one-time modal with copy button)
 
 ### 6.2 Bot Management Component
 
@@ -501,9 +507,11 @@ Features:
 
 - List all bots (template + custom)
 - Show bot status (active/disabled)
-- Edit bot settings
-- Regenerate tokens
-- View usage stats
+- Edit bot settings (invoke URL, permissions)
+- Regenerate provisioning token
+- Regenerate webhook secret
+- View active sessions
+- Revoke sessions
 - Delete bot
 
 ### 6.3 Bot Service Updates
@@ -562,6 +570,16 @@ def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
     return hmac.compare_digest(f"sha256={expected}", signature)
 ```
 
+```typescript
+// Bot-side verification (TypeScript example)
+import { createHmac, timingSafeEqual } from 'crypto';
+
+function verifySignature(payload: string, signature: string, secret: string): boolean {
+    const expected = `sha256=${createHmac('sha256', secret).update(payload).digest('hex')}`;
+    return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+}
+```
+
 ### 7.2 Rate Limiting by Endpoint
 
 | Endpoint Category | Rate Limit              |
@@ -582,7 +600,7 @@ interface BotAuditLog {
     _id: ObjectId;
     botId: string;
     userId: string;
-    action: 'login' | 'read' | 'write' | 'webhook_received';
+    action: 'login' | 'read' | 'write' | 'webhook_sent';
     resource: string;
     resourceId: string;
     ipAddress: string;
@@ -597,8 +615,8 @@ interface BotAuditLog {
 
 Reuse existing SSRF protection from `bot-executor.service.ts`:
 
-- Block private IPs
-- Block cloud metadata endpoints
+- Block private IPs (10.x, 172.16.x, 192.168.x, 127.x)
+- Block cloud metadata endpoints (169.254.169.254)
 - Block internal domains
 - Only allow HTTPS in production
 
@@ -659,21 +677,22 @@ Create OpenAPI spec for bot developers:
 ### Sprint 4: Webhook System
 
 11. Webhook service
-12. Update bot executor
-13. Retry logic
+12. Update bot executor for custom bots
+13. Retry logic with exponential backoff
 
-### Sprint 5: Bot API
+### Sprint 5: Bot API (Messages)
 
-14. Messages API for bots
-15. Memos API for bots
-16. Permission checking
+14. Messages read API for bots
+15. Thread reply API for bots
+16. New message API for bots
+17. Permission checking
 
 ### Sprint 6: Security & Polish
 
-17. Audit logging
-18. Rate limiting updates
-19. SSRF hardening
-20. Documentation
+18. Audit logging
+19. Rate limiting updates
+20. SSRF hardening
+21. Documentation
 
 ---
 
@@ -685,11 +704,12 @@ Create OpenAPI spec for bot developers:
 // Add new fields to user_bots collection
 db.user_bots.updateMany({ botType: { $exists: false } }, { $set: { botType: 'template' } });
 
-// Create indexes
+// Create indexes for bot_provisioning_tokens
 db.bot_provisioning_tokens.createIndex({ tokenHash: 1 }, { unique: true });
 db.bot_provisioning_tokens.createIndex({ userBotId: 1 });
 db.bot_provisioning_tokens.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
+// Create indexes for bot_sessions
 db.bot_sessions.createIndex({ userBotId: 1 });
 db.bot_sessions.createIndex({ jwtId: 1 }, { unique: true });
 db.bot_sessions.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
@@ -701,19 +721,18 @@ db.bot_sessions.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 ### New Files
 
-| Path                                                       | Purpose             |
-| ---------------------------------------------------------- | ------------------- |
-| `packages/shared/src/schemas/custom-bot.ts`                | Custom bot schemas  |
-| `apps/api/src/repositories/bot-provisioning-token.repo.ts` | Token management    |
-| `apps/api/src/repositories/bot-session.repo.ts`            | Session management  |
-| `apps/api/src/services/bot-jwt.service.ts`                 | JWT generation      |
-| `apps/api/src/services/webhook.service.ts`                 | Webhook invocation  |
-| `apps/api/src/services/audit-log.service.ts`               | Audit logging       |
-| `apps/api/src/routes/bot-auth.ts`                          | Auth endpoints      |
-| `apps/api/src/routes/custom-bots.ts`                       | Bot management      |
-| `apps/api/src/routes/bot-api/messages.ts`                  | Bot messages API    |
-| `apps/api/src/routes/bot-api/memos.ts`                     | Bot memos API       |
-| `apps/web/src/app/pages/settings/bots/*.ts`                | Frontend components |
+| Path                                                       | Purpose            |
+| ---------------------------------------------------------- | ------------------ |
+| `packages/shared/src/schemas/custom-bot.ts`                | Custom bot schemas |
+| `apps/api/src/repositories/bot-provisioning-token.repo.ts` | Token management   |
+| `apps/api/src/repositories/bot-session.repo.ts`            | Session management |
+| `apps/api/src/services/bot-jwt.service.ts`                 | JWT generation     |
+| `apps/api/src/services/webhook.service.ts`                 | Webhook invocation |
+| `apps/api/src/services/audit-log.service.ts`               | Audit logging      |
+| `apps/api/src/routes/bot-auth.ts`                          | Auth endpoints     |
+| `apps/api/src/routes/custom-bots.ts`                       | Bot management     |
+| `apps/api/src/routes/bot-api/messages.ts`                  | Bot messages API   |
+| `apps/web/src/app/pages/settings/bots/*.ts`                | Frontend UI        |
 
 ### Modified Files
 
@@ -728,10 +747,202 @@ db.bot_sessions.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 ---
 
-## Open Questions
+## Future Phases
 
-1. **Webhook timeout**: 30 seconds reasonable for initial response?
-2. **JWT expiration**: 12 hours default, or should it be configurable?
-3. **Scope granularity**: Should we support page-level scope (vs notebook)?
-4. **Whiteboard format**: What format should bots receive/send whiteboard content?
-5. **Bot marketplace**: Future feature - allow sharing bots publicly?
+### Phase 2: Memos & Whiteboards
+
+- Add memo read/write permissions
+- Add whiteboard read/write permissions
+- Memo API for bots (`/api/bots/memos`)
+- Whiteboard API for bots (`/api/bots/whiteboards`)
+
+### Phase 3: Advanced Features
+
+- Bot marketplace (share bots publicly)
+- Webhook health monitoring dashboard
+- Bot analytics (usage metrics)
+- Improved error messages and debugging tools
+
+---
+
+## Appendix: Error Codes
+
+| Code                            | Description                                        |
+| ------------------------------- | -------------------------------------------------- |
+| `auth/invalid_token`            | Provisioning token is invalid or expired           |
+| `auth/jwt_expired`              | JWT has expired, refresh required                  |
+| `auth/insufficient_permissions` | Bot lacks required permission                      |
+| `rate_limit/exceeded`           | Rate limit exceeded                                |
+| `resource/not_found`            | Requested resource doesn't exist or not accessible |
+| `webhook/timeout`               | Bot's invoke URL didn't respond in 30s             |
+| `webhook/invalid_response`      | Bot returned malformed response                    |
+| `webhook/connection_failed`     | Could not connect to bot's invoke URL              |
+
+---
+
+## Appendix: Example Bot Implementation
+
+```python
+from flask import Flask, request, jsonify
+import requests
+import threading
+import hmac
+import hashlib
+
+app = Flask(__name__)
+
+MAPLE_API = "https://maple.app/api/bots"
+PROVISIONING_TOKEN = "prov_xxx"  # Store securely!
+WEBHOOK_SECRET = "whsec_xxx"     # Store securely!
+jwt_token = None
+
+def verify_signature(payload: bytes, signature: str) -> bool:
+    """Verify webhook signature from Maple."""
+    expected = hmac.new(
+        WEBHOOK_SECRET.encode(),
+        payload,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(f"sha256={expected}", signature)
+
+def ensure_authenticated():
+    """Exchange provisioning token for JWT."""
+    global jwt_token
+    if not jwt_token:
+        resp = requests.post(f"{MAPLE_API}/login", json={
+            "provisioning_token": PROVISIONING_TOKEN
+        })
+        jwt_token = resp.json()["jwt"]
+    return jwt_token
+
+def process_and_reply(thread_id, parent_message_id, page_id, messages):
+    """Process messages and post reply asynchronously."""
+    try:
+        # Your bot logic here
+        response_text = generate_response(messages)
+
+        token = ensure_authenticated()
+
+        if thread_id:
+            # Reply to existing thread
+            requests.post(
+                f"{MAPLE_API}/threads/{thread_id}/reply",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"content": response_text, "content_type": "text"}
+            )
+        else:
+            # Create new thread by replying to parent message
+            requests.post(
+                f"{MAPLE_API}/threads/{parent_message_id}/reply",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"content": response_text, "content_type": "text"}
+            )
+    except Exception as e:
+        print(f"Error processing request: {e}")
+
+def generate_response(messages):
+    """Your bot logic here."""
+    return "Hello from my custom bot!"
+
+@app.route("/webhook", methods=["POST"])
+def handle_webhook():
+    """Receive webhook from Maple."""
+    # Verify signature
+    signature = request.headers.get("X-Maple-Signature", "")
+    if not verify_signature(request.data, signature):
+        return jsonify({"error": "Invalid signature"}), 401
+
+    data = request.json
+
+    if data["event_type"] == "thread_mention":
+        # Process in background thread
+        thread = threading.Thread(
+            target=process_and_reply,
+            args=(
+                data.get("thread_id"),
+                data["parent_message_id"],
+                data["page_id"],
+                data["messages"]
+            )
+        )
+        thread.start()
+
+    # Always acknowledge immediately
+    return jsonify({"status": "accepted"})
+
+if __name__ == "__main__":
+    app.run(port=8080)
+```
+
+```typescript
+// TypeScript/Bun example
+import { Hono } from 'hono';
+import { createHmac, timingSafeEqual } from 'crypto';
+
+const app = new Hono();
+
+const MAPLE_API = 'https://maple.app/api/bots';
+const PROVISIONING_TOKEN = process.env.PROVISIONING_TOKEN!;
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
+let jwtToken: string | null = null;
+
+function verifySignature(payload: string, signature: string): boolean {
+    const expected = `sha256=${createHmac('sha256', WEBHOOK_SECRET).update(payload).digest('hex')}`;
+    return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+}
+
+async function ensureAuthenticated(): Promise<string> {
+    if (!jwtToken) {
+        const resp = await fetch(`${MAPLE_API}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provisioning_token: PROVISIONING_TOKEN }),
+        });
+        const data = await resp.json();
+        jwtToken = data.jwt;
+    }
+    return jwtToken!;
+}
+
+app.post('/webhook', async (c) => {
+    const signature = c.req.header('X-Maple-Signature') || '';
+    const body = await c.req.text();
+
+    if (!verifySignature(body, signature)) {
+        return c.json({ error: 'Invalid signature' }, 401);
+    }
+
+    const data = JSON.parse(body);
+
+    if (data.event_type === 'thread_mention') {
+        // Process async
+        processAndReply(data).catch(console.error);
+    }
+
+    return c.json({ status: 'accepted' });
+});
+
+async function processAndReply(data: any) {
+    const token = await ensureAuthenticated();
+    const response = generateResponse(data.messages);
+
+    const endpoint = data.thread_id
+        ? `${MAPLE_API}/threads/${data.thread_id}/reply`
+        : `${MAPLE_API}/threads/${data.parent_message_id}/reply`;
+
+    await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content: response, content_type: 'text' }),
+    });
+}
+
+function generateResponse(messages: any[]): string {
+    return 'Hello from my custom bot!';
+}
+
+export default app;
+```
