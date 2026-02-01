@@ -71,4 +71,4 @@ export {
   type HashTagSuggestion,
   type HashTagOptions,
 } from './hashtag';
-export { MarkdownPaste } from './markdown-paste';
+export { MarkdownPaste, isMarkdownContent, markdownToHtml } from './markdown-paste';

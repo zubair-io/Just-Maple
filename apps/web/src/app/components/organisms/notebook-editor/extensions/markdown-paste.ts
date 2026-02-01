@@ -31,8 +31,9 @@ const MARKDOWN_PATTERNS = [
 
 /**
  * Checks if text content appears to be markdown
+ * @exported for testing
  */
-function isMarkdownContent(text: string): boolean {
+export function isMarkdownContent(text: string): boolean {
   // Ignore very short strings
   if (text.length < 3) {
     return false;
@@ -44,8 +45,9 @@ function isMarkdownContent(text: string): boolean {
 
 /**
  * Convert markdown to HTML using marked
+ * @exported for testing
  */
-async function markdownToHtml(markdown: string): Promise<string> {
+export async function markdownToHtml(markdown: string): Promise<string> {
   // Configure marked for safe HTML output
   const html = await marked.parse(markdown, {
     gfm: true, // GitHub Flavored Markdown
