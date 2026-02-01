@@ -118,7 +118,7 @@ Force retry if stuck:
 
 ### CRDT Magic
 
-Automerge/Yjs handles most conflicts:
+Y.js handles most conflicts:
 
 - Character-level merging
 - Last-write-wins for simple values

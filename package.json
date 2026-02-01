@@ -28,8 +28,7 @@
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "cleanup:automerge": "bun run apps/api/src/scripts/cleanup-automerge-data.ts"
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
@@ -42,11 +41,6 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@automerge/automerge": "3.2.1",
-    "@automerge/automerge-repo": "2.5.1",
-    "@automerge/automerge-repo-network-websocket": "2.5.1",
-    "@automerge/automerge-repo-storage-indexeddb": "2.5.1",
-    "@automerge/prosemirror": "0.1.0",
     "mongodb": "^7.0.0",
     "nanoid": "^5.1.6",
     "prettier": "^3.7.4",

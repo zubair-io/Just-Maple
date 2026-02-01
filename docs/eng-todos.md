@@ -14,7 +14,7 @@ graph TB
 
     subgraph State
         ProseMirror[ProseMirror State]
-        Automerge[Automerge Doc]
+        Yjs[Y.js Doc]
     end
 
     subgraph Backend
@@ -25,8 +25,8 @@ graph TB
     TaskItem --> ProseMirror
     TaskList --> ProseMirror
     Toolbar --> TaskItem
-    ProseMirror --> Automerge
-    Automerge --> PageRepo
+    ProseMirror --> Yjs
+    Yjs --> PageRepo
     PageRepo --> MongoDB
 ```
 
@@ -235,7 +235,7 @@ interface TodoMeta {
 
 export async function updatePageTodoMeta(
     pageId: string,
-    content: any, // ProseMirror JSON or Automerge doc
+    content: any, // ProseMirror JSON
 ): Promise<void> {
     const todos = extractTodos(content);
     const today = new Date().toISOString().split('T')[0];
@@ -492,8 +492,7 @@ export class TodoViewComponent implements OnInit {
         // Get memo content
         const memo = await getMemoState(page.id);
         if (memo) {
-            const doc = Automerge.load(memo);
-            const pageTodos = extractTodosWithContext(doc, page);
+            const pageTodos = extractTodosWithContext(memo, page);
             todos.push(...pageTodos);
         }
     }

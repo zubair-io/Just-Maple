@@ -397,7 +397,7 @@ Documents can:
 
 ### State Management
 
-- **CRDT-based**: Use Yjs or Automerge for conflict-free real-time sync
+- **CRDT-based**: Use Y.js for conflict-free real-time sync
 - **Local-first**: Full offline support with sync when connected
 - **Event sourcing**: All changes as events for time-travel/undo
 

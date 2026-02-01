@@ -25,7 +25,7 @@ pub struct LocalStorage {
     collectables: Tree,
     /// Offline queue for pending operations
     offline_queue: Tree,
-    /// Automerge documents
+    /// Y.js documents
     documents: Tree,
 }
 
@@ -256,15 +256,15 @@ impl LocalStorage {
         Ok(())
     }
 
-    // ===== Documents (Automerge) =====
+    // ===== Documents (Y.js) =====
 
-    /// Store an Automerge document
+    /// Store a Y.js document
     pub fn store_document(&self, id: &str, data: &[u8]) -> Result<()> {
         self.documents.insert(id, data)?;
         Ok(())
     }
 
-    /// Get an Automerge document
+    /// Get a Y.js document
     pub fn get_document(&self, id: &str) -> Result<Option<Vec<u8>>> {
         match self.documents.get(id)? {
             Some(bytes) => Ok(Some(bytes.to_vec())),
