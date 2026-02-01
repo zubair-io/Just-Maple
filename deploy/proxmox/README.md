@@ -7,9 +7,10 @@ This guide covers deploying Just Maple on Proxmox VE with automatic updates.
 | Option                      | Proxmox Version | Best For                   | Compose Support | Auto-Updates |
 | --------------------------- | --------------- | -------------------------- | --------------- | ------------ |
 | **Docker VM** (Recommended) | Any             | Production, full stack     | Yes             | Watchtower   |
+| **ACR + Existing Infra**    | Any             | Have MongoDB/Redis already | Yes             | Watchtower   |
 | **Native OCI**              | 9.1+            | Single containers, testing | No              | Manual       |
 
-**Recommendation**: Use the Docker VM approach for Just Maple since it requires multiple services (API, MongoDB, Redis) that work together via Docker Compose.
+**Recommendation**: Use the Docker VM approach for Just Maple since it requires multiple services (API, MongoDB, Redis) that work together via Docker Compose. If you already have MongoDB and Redis, use the ACR option.
 
 ---
 
@@ -145,7 +146,91 @@ docker compose down -v
 
 ---
 
-## Option B: Native OCI Containers (Proxmox 9.1+)
+## Option B: ACR with Existing MongoDB/Redis
+
+If you already have MongoDB and Redis running (Azure, separate servers, etc.), use this simplified setup that only runs the Just Maple API.
+
+### Prerequisites
+
+- Existing MongoDB instance (connection string ready)
+- Existing Redis instance (connection string ready)
+- Access to Azure Container Registry (`acrjustmaple.azurecr.io`)
+
+### Quick Start
+
+```bash
+# SSH into your Proxmox VM, then:
+curl -fsSL https://raw.githubusercontent.com/justmapleapp/Just-Maple/main/deploy/proxmox/setup-acr.sh | sudo bash
+```
+
+### Manual Setup
+
+```bash
+# Install Docker
+curl -fsSL https://get.docker.com | sh
+
+# Login to Azure Container Registry
+docker login acrjustmaple.azurecr.io
+
+# Create app directory
+sudo mkdir -p /opt/justmaple
+cd /opt/justmaple
+
+# Download ACR-specific compose
+curl -fsSL https://raw.githubusercontent.com/justmapleapp/Just-Maple/main/deploy/proxmox/docker-compose.acr.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/justmapleapp/Just-Maple/main/deploy/proxmox/.env.acr.example -o .env
+
+# Configure - point to your existing infrastructure
+nano .env
+```
+
+### Environment Configuration
+
+```bash
+# Your existing infrastructure
+MONGODB_URI=mongodb://your-mongodb-host:27017/justmaple
+REDIS_URL=redis://your-redis-host:6379
+
+# Required
+JWT_SECRET=your-secure-secret
+RP_ID=maple.yourdomain.com
+ORIGIN=https://maple.yourdomain.com
+```
+
+### ACR Authentication for Watchtower
+
+Watchtower needs access to pull from ACR. The compose file mounts your Docker credentials:
+
+```yaml
+volumes:
+    - ~/.docker/config.json:/config.json:ro
+```
+
+Ensure you've logged in with `docker login acrjustmaple.azurecr.io` before starting.
+
+### Architecture (ACR Setup)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Proxmox Host                           │
+│  ┌────────────────────────────────────┐                     │
+│  │          Docker VM                 │                     │
+│  │  ┌──────────────┐  ┌────────────┐  │                     │
+│  │  │  Just Maple  │  │ Watchtower │  │                     │
+│  │  │    API       │  │ (updates)  │  │                     │
+│  │  │   :7071      │  │            │  │                     │
+│  │  └──────┬───────┘  └────────────┘  │                     │
+│  └─────────│──────────────────────────┘                     │
+└────────────│────────────────────────────────────────────────┘
+             │
+             ├──────────────> Your MongoDB (Azure/external)
+             │
+             └──────────────> Your Redis (Azure/external)
+```
+
+---
+
+## Option C: Native OCI Containers (Proxmox 9.1+)
 
 Proxmox 9.1 introduced experimental support for running Docker/OCI images directly as LXC containers.
 
