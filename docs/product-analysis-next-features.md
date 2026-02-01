@@ -8,7 +8,11 @@ _Analysis Date: February 2026_
 
 Just Maple is a self-hosted, privacy-first note-taking and collaboration platform with strong differentiation in offline-first architecture, passwordless authentication, and AI integration. The v0.9 release delivered five major features (AI Writing, Templates, Bi-directional Linking, Memo Versioning, Full-text Search, MCP Server), establishing a solid foundation for knowledge management.
 
-This analysis identifies the next set of high-impact features based on gaps in current functionality, natural extensions of existing capabilities, and alignment with the product's self-hosted, privacy-first positioning.
+This analysis identifies the next set of high-impact features based on:
+
+1. Gaps in current functionality
+2. **Competitive analysis** vs Microsoft Loop, OneNote, Notion, Obsidian, and local-first alternatives
+3. **Unique opportunities** that leverage Just Maple's self-hosted + real-time collaboration positioning
 
 ---
 
@@ -46,9 +50,74 @@ Just Maple serves privacy-conscious users who want:
 
 ---
 
-## 2. Identified Opportunities
+## 2. Competitive Analysis
 
-### 2.1 Features Partially Implemented or Hinted At
+### 2.1 Microsoft Loop & OneNote
+
+**What they have that Just Maple is missing:**
+
+| Feature                 | Description                                                                  | Priority for Just Maple                       |
+| ----------------------- | ---------------------------------------------------------------------------- | --------------------------------------------- |
+| **Loop Components**     | Embeddable, synced content blocks that stay live across Teams, Outlook, Word | **High** - Unique collaboration pattern       |
+| **Copilot Notebooks**   | AI grounded in aggregated content (notes + files + recordings)               | **High** - Natural extension of AI Writing    |
+| **Audio Overview**      | Generate audio summaries of notebooks for on-the-go listening                | **Medium** - WhisperKit infrastructure exists |
+| **Video/Image → Notes** | AI transcribes videos, extracts text from images                             | **Medium** - Fits privacy-first positioning   |
+| **Meeting Integration** | Auto-capture meeting notes, transcripts, action items                        | **Low** - Requires calendar integration first |
+
+_Sources: [Microsoft Loop](https://www.microsoft.com/en-us/microsoft-loop), [Copilot Notebooks in OneNote](https://support.microsoft.com/en-us/topic/introducing-microsoft-365-copilot-notebooks-in-onenote-c91a851a-77d6-4b70-a898-8aaf718a95df)_
+
+### 2.2 Notion
+
+**What they have that Just Maple is missing:**
+
+| Feature                  | Description                                     | Priority for Just Maple                 |
+| ------------------------ | ----------------------------------------------- | --------------------------------------- |
+| **Databases with Views** | Tables, boards, calendars, galleries, timelines | **Medium** - Complex but powerful       |
+| **Synced Blocks**        | Same content in multiple pages, stays in sync   | **High** - Similar to Loop components   |
+| **API & Integrations**   | Rich third-party ecosystem                      | **Low** - MCP provides alternative path |
+| **Web Clipper**          | Browser extension for saving content            | **Medium** - Already on roadmap         |
+
+### 2.3 Obsidian & Local-First Alternatives
+
+**What they have:**
+
+| Feature                | Obsidian           | LogSeq            | Anytype         |
+| ---------------------- | ------------------ | ----------------- | --------------- |
+| **Local-first**        | Yes (files)        | Yes (markdown)    | Yes (encrypted) |
+| **Graph View**         | Core feature       | Plugin            | Basic           |
+| **Real-time Collab**   | No (Sync is async) | No                | P2P only        |
+| **AI Integration**     | Plugin-based       | Community plugins | Limited         |
+| **Self-hosted Server** | No (local only)    | No                | No (P2P)        |
+
+**Just Maple's Unique Position:**
+
+Just Maple is the **only** platform that combines:
+
+- ✅ Self-hosted server (full data ownership)
+- ✅ Real-time collaboration (Y.js CRDTs)
+- ✅ Native AI integration (Claude-powered)
+- ✅ Knowledge graph (bi-directional linking)
+- ✅ Cross-platform native apps
+
+_Sources: [Obsidian](https://obsidian.md), [LogSeq](https://logseq.com/), [Anytype](https://anytype.io/)_
+
+### 2.4 Competitive Gap Summary
+
+| Capability          | Loop | OneNote | Notion | Obsidian | Anytype | **Just Maple**  |
+| ------------------- | ---- | ------- | ------ | -------- | ------- | --------------- |
+| Self-hosted         | ❌   | ❌      | ❌     | N/A      | P2P     | ✅              |
+| Real-time collab    | ✅   | ✅      | ✅     | ❌       | Limited | ✅              |
+| Knowledge graph     | ❌   | ❌      | ❌     | ✅       | ✅      | ✅              |
+| Portable components | ✅   | ✅      | ✅     | ❌       | ❌      | ❌ **Gap**      |
+| AI grounded in KB   | ✅   | ✅      | ✅     | Plugin   | ❌      | ❌ **Gap**      |
+| On-device AI        | ❌   | ❌      | ❌     | Plugin   | ❌      | ✅ (WhisperKit) |
+| Passwordless auth   | ❌   | ❌      | ❌     | N/A      | ❌      | ✅              |
+
+---
+
+## 3. Identified Opportunities
+
+### 3.1 Features Partially Implemented or Hinted At
 
 | Feature                           | Current State                            | Gap                                                                                       |
 | --------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -58,7 +127,7 @@ Just Maple serves privacy-conscious users who want:
 | **Todo Reminders**                | Todos have due dates                     | No push notification reminders for upcoming/overdue tasks                                 |
 | **Recurring Todos**               | Listed in roadmap (#15)                  | No implementation                                                                         |
 
-### 2.2 Natural Extensions of Existing Capabilities
+### 3.2 Natural Extensions of Existing Capabilities
 
 | Extension                           | Builds On                   | Why It Fits                                                     |
 | ----------------------------------- | --------------------------- | --------------------------------------------------------------- |
@@ -68,7 +137,7 @@ Just Maple serves privacy-conscious users who want:
 | **Graph-Based Navigation**          | Connection Graph            | Click through from local graph, breadcrumb trails               |
 | **Version Comparison Diff**         | Memo Versioning             | Side-by-side diff view between any two versions                 |
 
-### 2.3 Gaps Between Stated Goals and Current Functionality
+### 3.3 Gaps Between Stated Goals and Current Functionality
 
 | Stated Goal                            | Current Gap                                        |
 | -------------------------------------- | -------------------------------------------------- |
@@ -81,332 +150,260 @@ Just Maple serves privacy-conscious users who want:
 
 ---
 
-## 3. Proposed Next Features
+## 4. Proposed Next Features
 
-### Feature 1: Todo Reminders & Notifications
+### 4.1 UNIQUE DIFFERENTIATORS (What Makes Just Maple Special)
 
-**Problem**: Users set due dates on todos but receive no notification when deadlines approach or pass. The promise of "never miss a deadline" is unfulfilled.
+These features leverage Just Maple's unique position and create defensible differentiation:
 
-**Solution**: Push notification system for todo due dates with configurable reminder timing.
+---
+
+#### Feature A: Knowledge-Grounded AI ("Ask Your Notes")
+
+**Problem**: Current AI Writing operates on single pages. Users can't ask questions across their entire knowledge base like OneNote Copilot or Notion AI can.
+
+**Solution**: AI assistant that answers questions grounded in the user's full knowledge graph.
 
 **Key Capabilities**:
 
-- Reminder timing options: At time, 15min/1hr/1day before
-- Daily digest of upcoming todos
-- Overdue notifications with escalation
-- Per-todo snooze functionality
-- APNs/FCM integration for native apps
+- "Ask" command searches across all pages, grounds AI response in found content
+- Shows source pages: "Based on: [[Meeting Notes]], [[Project Plan]]"
+- Works in chat: "What did we decide about pricing?"
+- Respects permissions (only searches accessible content)
+- **Privacy-first**: can use on-server LLM (data never leaves your infrastructure)
 
-**Why Now**:
+**Why This Is Unique**:
 
-- Enhanced todos with due dates already exist
-- Push notification infrastructure already built (privacy-first design)
-- Direct user request pattern (todos without reminders are incomplete)
+- Competitors require cloud. Just Maple offers **on-server AI** - your data never leaves
+- MCP Server provides external access; this is the internal equivalent
+- Builds on existing search index and bi-directional linking
 
-**Dependencies**: Enhanced Todo system, Push notification service
-
-**Complexity**: **Medium** - Requires scheduled job for reminder triggering, notification preference UI, timezone handling
+**Complexity**: **Medium-High** - RAG pipeline, context assembly, source attribution
 
 ---
 
-### Feature 2: Dashboard/Home View
+#### Feature B: Portable Components ("Maple Blocks")
 
-**Problem**: Users lack a unified entry point that surfaces relevant content. Current flow requires navigating to specific notebooks.
+**Problem**: No way to embed live content across pages or share synced blocks externally. Loop and Notion have this; Just Maple doesn't.
 
-**Solution**: Personalized home dashboard with recent activity, upcoming todos, and quick actions.
+**Solution**: Embeddable, synced content blocks that stay live wherever placed.
 
 **Key Capabilities**:
 
-- Recent pages (last 10 across all notebooks)
-- Upcoming todos (next 7 days with priority)
-- Activity timeline (edits, messages, collaborator updates)
-- Quick create buttons (new memo, whiteboard, from template)
-- Pinned/favorite pages section
-- Today's schedule if calendar integrated
+- Create a "block" from any selection (text, table, todo list)
+- Embed in other pages with `{{block-id}}` - changes sync everywhere
+- Embed in external apps via URL (read-only public embed)
+- Block-level permissions (some public, others private)
+- Works offline - syncs via Y.js when reconnected
 
-**Why Now**:
+**Why This Is Unique**:
 
-- Foundation data exists (pages, todos, messages all tracked)
-- Natural entry point for both web and mobile
-- Reduces cognitive load for daily usage
+- Loop Components only work in Microsoft ecosystem
+- Notion Synced Blocks require Notion cloud
+- Just Maple offers **self-hosted portable blocks** with full data ownership
 
-**Dependencies**: Page repository, Todo stats aggregation, Activity tracking
-
-**Complexity**: **Medium** - New page route, aggregation queries, responsive layout
+**Complexity**: **High** - New data model, embed renderer, permission layer
 
 ---
 
-### Feature 3: Unified Todo View
+#### Feature C: Voice-to-Structured-Notes (On-Device)
 
-**Problem**: Todos are scattered across individual pages. Users can't see all tasks in one place for prioritization.
+**Problem**: Recording transcription exists but outputs raw text. Users want structured notes with action items.
 
-**Solution**: Cross-notebook todo aggregation view with filtering and bulk actions.
+**Solution**: On-device AI that converts voice recordings to structured, formatted notes.
 
 **Key Capabilities**:
 
-- Filter by: notebook, priority, due date range, status (pending/completed)
-- Sort by: due date, priority, created date, notebook
-- Inline editing (toggle completion, change priority, reschedule)
-- Bulk actions (mark complete, reschedule, move)
-- Quick navigation to source page
+- Record → Transcribe (WhisperKit) → Structure (local LLM)
+- Output formats: Meeting notes with action items, brainstorm bullets, Q&A
+- Auto-extract todos and add to unified view
+- **Fully offline** on device
+- Privacy-first: nothing leaves device unless user chooses
 
-**Why Now**:
+**Why This Is Unique**:
 
-- Todo stats already aggregated per notebook (`todoMeta`)
-- Addresses a common complaint about task-based workflows
-- Builds on existing todo infrastructure
+- OneNote's voice features require Microsoft cloud
+- WhisperKit already integrated - just add structuring layer
+- Combine on-device transcription + on-device LLM (MLX models)
 
-**Dependencies**: Enhanced Todo system, Page repository
-
-**Complexity**: **Low-Medium** - New page component, aggregation query, no new data model
+**Complexity**: **Medium** - Local LLM integration, prompt engineering
 
 ---
 
-### Feature 4: Daily Notes with Auto-Linking
+#### Feature D: Cross-Server Federation (Future Vision)
 
-**Problem**: Users interested in journaling or daily logging lack a streamlined daily note workflow with temporal navigation.
+**Problem**: Self-hosted users can't share with users on different Just Maple servers.
 
-**Solution**: Dedicated daily note system with automatic creation, date-based navigation, and bi-directional linking between days.
+**Solution**: Federated sharing protocol for cross-server collaboration.
 
 **Key Capabilities**:
 
-- "Today's Note" quick action in sidebar
-- Auto-create today's note if it doesn't exist
-- Date picker to navigate to any day
-- Auto-link to yesterday/tomorrow
-- Weekly/monthly rollup views
-- Templates for daily notes (customizable)
+- Share notebook with user@their-maple-server.com
+- Content syncs server-to-server
+- Each server retains copy (no SPOF)
+- Federated identity verification
 
-**Why Now**:
+**Why This Is Unique**:
 
-- Bi-directional linking infrastructure is complete
-- Templates system can provide daily note templates
-- Popular pattern in competitors (Roam, Logseq, Obsidian)
+- No competitor offers this - all are centralized
+- Aligns with self-hosted ethos
+- Creates network effect for Just Maple ecosystem
 
-**Dependencies**: Bi-directional Linking, Templates
-
-**Complexity**: **Medium** - New route, date-based page lookup, auto-linking logic
+**Complexity**: **Very High** - Federation protocol, trust model (roadmap item)
 
 ---
 
-### Feature 5: Smart Template Suggestions
+### 4.2 CONSOLIDATED: Complete Task Management
 
-**Problem**: Users must manually browse templates. New note creation doesn't guide users toward relevant templates.
+Combining all todo features into one comprehensive release:
 
-**Solution**: AI-powered template suggestions based on initial content or notebook context.
+---
+
+#### Feature 1: Task Management Suite
+
+**Problem**: Todos have due dates but lack reminders, unified view, and recurrence. Feature is 60% complete.
+
+**Solution**: Complete task management with all missing pieces in one release.
 
 **Key Capabilities**:
 
-- Suggest template after first sentence typed
-- Context-aware (notebook type, time of day, day of week)
-- "Apply template" non-destructively merges with existing content
-- Learn from user acceptance/rejection
-- Quick-apply with keyboard shortcut
+| Capability                    | Description                                                            |
+| ----------------------------- | ---------------------------------------------------------------------- |
+| **Unified Todo View**         | Cross-notebook aggregation, filters (notebook, priority, date, status) |
+| **Reminders & Notifications** | Push at configurable times, daily digest, overdue alerts               |
+| **Recurring Todos**           | Daily/weekly/monthly, auto-create on completion, streak tracking       |
+| **Bulk Actions**              | Multi-select, reschedule, reprioritize, move between pages             |
+| **Calendar View**             | Visual calendar showing todos by due date                              |
 
-**Why Now**:
+**Why Now**: Push notification infrastructure exists. Makes Just Maple competitive with Todoist/Things.
 
-- Templates and AI Writing are both implemented
-- Low friction path to template adoption
-- Differentiator vs. static template galleries
-
-**Dependencies**: Templates, AI Writing Assistant
-
-**Complexity**: **Low** - API call on first paragraph, UI overlay, no new data model
+**Complexity**: **Medium** - Multiple sub-features, all extend existing system
 
 ---
 
-### Feature 6: Local Graph View
-
-**Problem**: The notebook-wide connection graph becomes cluttered with many pages. Users can't explore connections from a specific page.
-
-**Solution**: Page-centered local graph with configurable depth and focus.
-
-**Key Capabilities**:
-
-- Show connections 1-3 hops from current page
-- Depth slider control
-- Highlight direct vs. indirect connections
-- Click to navigate, shift+click to add to view
-- Export/share graph as image
-
-**Why Now**:
-
-- Listed as future enhancement in existing connection graph docs
-- Backend `getLocalGraph()` already designed (see bidirectional-linking-plan.md)
-- Graph component already exists, needs parameter
-
-**Dependencies**: Connection Graph, Bi-directional Linking
-
-**Complexity**: **Low** - Backend endpoint designed, frontend depth control
+### 4.3 PRODUCTIVITY FEATURES
 
 ---
 
-### Feature 7: Cross-Notebook Tag View
+#### Feature 2: Dashboard/Home View
 
-**Problem**: Tags are page-level. Users can't see all content tagged with a specific topic across notebooks.
+**Problem**: No unified entry point. Users must navigate to specific notebooks.
 
-**Solution**: Tag browser with cross-notebook aggregation and tag management.
+**Solution**: Personalized dashboard with recents, todos, activity, quick actions.
 
-**Key Capabilities**:
-
-- Tag cloud or list view with usage counts
-- Click tag to see all pages (across notebooks) with that tag
-- Tag rename (updates all references)
-- Tag merge (combine duplicates)
-- Tag colors/icons
-- Tag pages (notes about the tag itself)
-
-**Why Now**:
-
-- Tags as first-class entities designed in bidirectional-linking-plan.md
-- Page schema already supports tags
-- Common pattern in knowledge management tools
-
-**Dependencies**: Bi-directional Linking (tag infrastructure)
-
-**Complexity**: **Medium** - Tag aggregation, rename propagation, new UI
+**Complexity**: **Medium**
 
 ---
 
-### Feature 8: Public Sharing Links
+#### Feature 3: Daily Notes with Auto-Linking
 
-**Problem**: Sharing requires recipients to have accounts. Users can't share individual pages publicly for read-only viewing.
+**Problem**: No streamlined journaling workflow.
 
-**Solution**: Generate shareable public URLs for individual pages with optional access controls.
+**Solution**: "Today's Note" with auto-creation, date navigation, temporal linking.
 
-**Key Capabilities**:
-
-- Generate unique share URL for any page
-- Access options: anyone with link, password-protected, expiring link
-- Analytics (view count, last viewed)
-- Revoke access instantly
-- Respect page updates (live content, not snapshot)
-
-**Why Now**:
-
-- Listed in product roadmap (#14)
-- Common request for knowledge sharing use cases
-- Builds on existing auth infrastructure
-
-**Dependencies**: Auth system (new public route), Page repository
-
-**Complexity**: **Medium** - New public route, share token generation, access tracking
+**Complexity**: **Medium**
 
 ---
 
-### Feature 9: Recurring Todos
+#### Feature 4: Local Graph View
 
-**Problem**: Tasks that repeat on schedule (weekly reviews, monthly reports) must be manually recreated.
+**Problem**: Notebook-wide graph cluttered. Can't explore from specific page.
 
-**Solution**: Recurring task patterns with automatic creation on completion.
+**Solution**: Page-centered graph with 1-3 hop depth slider.
 
-**Key Capabilities**:
-
-- Recurrence patterns: daily, weekly, monthly, custom
-- On completion: create next occurrence
-- Skip/postpone recurrence
-- Show upcoming occurrences in todo view
-- Streak tracking for habit-building
-
-**Why Now**:
-
-- Listed in product roadmap (#15)
-- Natural extension of enhanced todos
-- Builds user engagement through habits
-
-**Dependencies**: Enhanced Todo system
-
-**Complexity**: **Medium** - Recurrence pattern storage, scheduled creation, streak calculation
+**Complexity**: **Low** (backend already designed)
 
 ---
 
-### Feature 10: Web Clipper
-
-**Problem**: Users find content on the web but have no way to quickly save it to Just Maple.
-
-**Solution**: Browser extension that clips selected content or full pages directly to a notebook.
-
-**Key Capabilities**:
-
-- Chrome/Firefox extension
-- Clip selection, full page, or simplified (reader mode)
-- Quick notebook selector
-- Add notes/tags before saving
-- Preserve images and formatting
-
-**Why Now**:
-
-- Listed in product roadmap (#8)
-- Captures content acquisition use case
-- Relatively standalone project
-
-**Dependencies**: Page creation API, Auth (extension login flow)
-
-**Complexity**: **High** - Browser extension development, content sanitization, image handling
+### 4.4 SHARING & CAPTURE
 
 ---
 
-## 4. Prioritization Matrix
+#### Feature 5: Public Sharing Links
 
-| #   | Feature                    | User Impact | Technical Effort | Strategic Fit | Priority Score |
-| --- | -------------------------- | ----------- | ---------------- | ------------- | -------------- |
-| 1   | Todo Reminders             | High        | Medium           | High          | **9/10**       |
-| 2   | Dashboard/Home View        | High        | Medium           | High          | **9/10**       |
-| 3   | Unified Todo View          | High        | Low-Medium       | High          | **8/10**       |
-| 6   | Local Graph View           | Medium      | Low              | Medium        | **8/10**       |
-| 4   | Daily Notes                | Medium      | Medium           | Medium        | **7/10**       |
-| 5   | Smart Template Suggestions | Medium      | Low              | High          | **7/10**       |
-| 7   | Cross-Notebook Tag View    | Medium      | Medium           | Medium        | **6/10**       |
-| 9   | Recurring Todos            | Medium      | Medium           | Medium        | **6/10**       |
-| 8   | Public Sharing Links       | Medium      | Medium           | Medium        | **6/10**       |
-| 10  | Web Clipper                | Medium      | High             | Low           | **5/10**       |
+**Problem**: All sharing requires authentication.
+
+**Solution**: Generate public URLs with optional password/expiry.
+
+**Complexity**: **Medium**
 
 ---
 
-## 5. Recommended Roadmap
+#### Feature 6: Web Clipper
 
-### Phase 1: "Task Management Excellence" (Next Sprint)
+**Problem**: No way to save web content.
 
-**Focus**: Complete the todo feature set
+**Solution**: Chrome/Firefox extension for clipping.
 
-1. **Todo Reminders & Notifications** - Fulfill the "never miss a deadline" promise
-2. **Unified Todo View** - Central place for all tasks
-3. **Recurring Todos** - Support for habits and recurring work
+**Complexity**: **High**
 
-**Rationale**: Todos are already popular but incomplete. These three features make Just Maple competitive with dedicated task managers.
+---
 
-### Phase 2: "Daily Productivity Hub"
+## 5. Prioritization Matrix
+
+| #   | Feature                   | User Impact | Effort      | Differentiation | Priority  |
+| --- | ------------------------- | ----------- | ----------- | --------------- | --------- |
+| A   | Knowledge-Grounded AI     | High        | Medium-High | **Unique**      | **10/10** |
+| B   | Portable Components       | High        | High        | **Unique**      | **9/10**  |
+| 1   | Task Management Suite     | High        | Medium      | Competitive     | **9/10**  |
+| C   | Voice-to-Structured Notes | Medium      | Medium      | **Unique**      | **8/10**  |
+| 2   | Dashboard/Home View       | High        | Medium      | Expected        | **8/10**  |
+| 4   | Local Graph View          | Medium      | Low         | Competitive     | **7/10**  |
+| 3   | Daily Notes               | Medium      | Medium      | Competitive     | **6/10**  |
+| 5   | Public Sharing Links      | Medium      | Medium      | Expected        | **6/10**  |
+| 6   | Web Clipper               | Medium      | High        | Expected        | **5/10**  |
+| D   | Cross-Server Federation   | Low (niche) | Very High   | **Unique**      | **4/10**  |
+
+---
+
+## 6. Recommended Roadmap
+
+### Phase 1: "Unique Value" (Highest Priority)
+
+**Focus**: Build features that only Just Maple can offer
+
+1. **Knowledge-Grounded AI** - "Ask Your Notes" with on-server privacy
+2. **Task Management Suite** - Complete todos (reminders + unified view + recurrence)
+
+**Rationale**: Knowledge-Grounded AI is the biggest differentiator. No competitor offers on-server RAG. Combined with complete task management, this makes Just Maple compelling vs. both privacy tools (Obsidian) and cloud tools (Notion).
+
+### Phase 2: "Daily Productivity"
 
 **Focus**: Make Just Maple the daily starting point
 
-4. **Dashboard/Home View** - Unified entry point
-5. **Daily Notes with Auto-Linking** - Journaling/logging workflow
-6. **Smart Template Suggestions** - Reduce friction for new notes
+3. **Dashboard/Home View** - Unified entry point with recents and todos
+4. **Portable Components** - Maple Blocks for synced content everywhere
+5. **Voice-to-Structured Notes** - On-device meeting notes
 
-**Rationale**: Daily engagement features increase stickiness and surface existing content.
+**Rationale**: Increases daily engagement. Portable Components compete with Loop/Notion while maintaining privacy.
 
-### Phase 3: "Knowledge Graph Enhancement"
+### Phase 3: "Knowledge Graph"
 
 **Focus**: Strengthen the knowledge management differentiator
 
-7. **Local Graph View** - Page-centered exploration
-8. **Cross-Notebook Tag View** - Topic-based navigation
-9. **AI-Powered Backlink Suggestions** - Smart linking assistance
+6. **Local Graph View** - Page-centered exploration with depth control
+7. **Daily Notes** - Streamlined journaling with temporal linking
 
-**Rationale**: Builds on bi-directional linking investment, differentiates from simpler note apps.
+**Rationale**: Low effort, high impact. Graph view is already half-built. Differentiates from simpler note apps.
 
 ### Phase 4: "Sharing & Capture"
 
-**Focus**: Expand reach and content acquisition
+**Focus**: Expand reach
 
-10. **Public Sharing Links** - Outbound content sharing
-11. **Web Clipper** - Inbound content capture
+8. **Public Sharing Links** - Share pages without requiring auth
+9. **Web Clipper** - Capture content from the web
 
-**Rationale**: These are more standalone and less core to daily workflow.
+**Rationale**: Lower priority but expected features. Can be done in parallel.
+
+### Future Vision
+
+10. **Cross-Server Federation** - Share between self-hosted instances
+
+**Rationale**: Transformative but very high effort. Table for later when user base grows.
 
 ---
 
-## 6. Quick Wins (Can Implement Immediately)
+## 7. Quick Wins (Implement Immediately)
 
 These small enhancements require minimal effort:
 
@@ -420,7 +417,7 @@ These small enhancements require minimal effort:
 
 ---
 
-## 7. Technical Considerations
+## 8. Technical Considerations
 
 ### Infrastructure Ready
 
@@ -442,44 +439,75 @@ These small enhancements require minimal effort:
 
 ---
 
-## 8. Success Metrics
+## 9. Success Metrics
 
-| Feature           | Primary Metric                             | Target                       |
-| ----------------- | ------------------------------------------ | ---------------------------- |
-| Todo Reminders    | % of todos with reminders set              | >30% of todos with due dates |
-| Dashboard         | Daily active users starting from dashboard | >60% of sessions             |
-| Unified Todo View | Task completion rate increase              | +15%                         |
-| Daily Notes       | % of users creating daily notes            | >20% weekly active users     |
-| Local Graph       | Graph feature engagement                   | 2x click-through rate        |
-| Recurring Todos   | % of todos set to recurring                | >10%                         |
-| Public Sharing    | Links generated per month                  | Growing 20% MoM              |
+| Feature                   | Primary Metric                   | Target                 |
+| ------------------------- | -------------------------------- | ---------------------- |
+| Knowledge-Grounded AI     | Questions asked per user/week    | >5 after first use     |
+| Task Management Suite     | Task completion rate             | +20%                   |
+| Dashboard                 | Sessions starting from dashboard | >60%                   |
+| Portable Components       | Blocks created per user          | >3/month               |
+| Voice-to-Structured Notes | Recordings structured            | >80% of transcriptions |
+| Local Graph               | Graph click-through rate         | 2x current             |
 
 ---
 
 ## Appendix: Feature-to-Dependency Map
 
 ```
-Todo Reminders ──► Enhanced Todos ◄── Recurring Todos
-                         │
-                         ▼
-Dashboard ─────────► Unified Todo View
-    │
-    ├──► Recent Pages
-    │
-    └──► Activity Timeline
+                    ┌─────────────────────────────────┐
+                    │   UNIQUE DIFFERENTIATORS        │
+                    └─────────────────────────────────┘
+                                   │
+        ┌──────────────────────────┼──────────────────────────┐
+        ▼                          ▼                          ▼
+Knowledge-Grounded AI    Portable Components    Voice-to-Structured
+        │                          │                          │
+        ▼                          ▼                          ▼
+   Search Index              Y.js Sync                  WhisperKit
+   AI Writing               TipTap Editor              Local LLM (MLX)
+   Bi-directional Links
 
-Daily Notes ───► Bi-directional Linking ◄── Local Graph View
-                         │
-                         ▼
-         Cross-Notebook Tag View ◄── Tags on Pages
-
-Smart Templates ──► Templates + AI Writing
-
-Public Sharing ──► Auth System (bypass for public routes)
-
-Web Clipper ──► Page Creation API + Browser Extension
+                    ┌─────────────────────────────────┐
+                    │   PRODUCTIVITY FEATURES         │
+                    └─────────────────────────────────┘
+                                   │
+        ┌──────────────────────────┼──────────────────────────┐
+        ▼                          ▼                          ▼
+Task Management Suite        Dashboard              Local Graph View
+        │                          │                          │
+        ▼                          ▼                          ▼
+  Enhanced Todos             Page Repo              Connection Graph
+  Notifications              Todo Stats             (already exists)
+  Scheduled Jobs
 ```
 
 ---
 
-_This analysis is based on documentation in `/docs` as of February 2026._
+## TL;DR - What's New and What's Unique
+
+### Competitive Gaps (What OneNote/Loop/Notion Have)
+
+- ❌ **Loop Components** - Synced blocks across apps
+- ❌ **Copilot Notebooks** - AI grounded in all your notes
+- ❌ **Audio Overview** - Generate audio summaries
+- ❌ **Databases with Views** - Tables, boards, calendars
+
+### Just Maple's Unique Advantages
+
+- ✅ **Self-hosted + Real-time Collab** - Only platform with both
+- ✅ **On-device AI** - WhisperKit transcription, can add local LLM
+- ✅ **Passwordless Auth** - Passkeys + magic links
+- ✅ **MCP Server** - Claude integration
+
+### Top 3 Features to Build
+
+1. **Knowledge-Grounded AI** - Ask questions across all notes, on-server (privacy-first)
+2. **Portable Components** - Maple Blocks, self-hosted alternative to Loop
+3. **Task Management Suite** - Complete the todo feature (reminders, unified view, recurrence)
+
+---
+
+_Analysis based on documentation in `/docs` as of February 2026._
+
+_Sources: [Microsoft Loop](https://www.microsoft.com/en-us/microsoft-loop), [OneNote Copilot](https://support.microsoft.com/en-us/office/welcome-to-copilot-in-onenote-34b30802-02ae-4676-a88c-82f8d5e586dd), [Notion](https://www.notion.so), [Obsidian](https://obsidian.md), [LogSeq](https://logseq.com/), [Anytype](https://anytype.io/)_
