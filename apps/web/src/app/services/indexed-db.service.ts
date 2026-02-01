@@ -22,7 +22,7 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 11, // Bump version for message id migration
+    dbVersion: 12, // Bump version for Gmail integration
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.COLLECTABLE, keyPath: '_id', autoIncrement: false },
@@ -31,6 +31,11 @@ export class IndexedDBService {
       { name: DB_STORES.SYNC_METADATA, keyPath: 'key', autoIncrement: false },
       { name: DB_STORES.MESSAGE, keyPath: 'id', autoIncrement: false },
       { name: DB_STORES.OFFLINE_QUEUE, keyPath: 'id', autoIncrement: false },
+      // Gmail stores (local-only, email content never sent to server)
+      { name: DB_STORES.GMAIL_EMAILS, keyPath: 'id', autoIncrement: false },
+      { name: DB_STORES.GMAIL_TOKENS, keyPath: 'accountEmail', autoIncrement: false },
+      { name: DB_STORES.GMAIL_SYNC_STATE, keyPath: 'accountEmail', autoIncrement: false },
+      { name: DB_STORES.GMAIL_DRAFTS, keyPath: 'id', autoIncrement: false },
     ],
   };
 

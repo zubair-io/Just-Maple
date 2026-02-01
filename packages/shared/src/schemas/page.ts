@@ -1,6 +1,7 @@
 import { Type, Static } from '@sinclair/typebox';
 import { PageTodoMetaSchema } from './todo';
 import { PageLinksMetaSchema } from './link';
+import { GmailConfigSchema } from './gmail';
 
 export const PageContentSchema = Type.Object({
     type: Type.String(),
@@ -29,6 +30,7 @@ export const PageTypeSchema = Type.Union([
     Type.Literal('kanban'),
     Type.Literal('message'), // Chat messages container
     Type.Literal('recording'),
+    Type.Literal('gmail'), // Gmail integration - owner-only, local email storage
 ]);
 
 export type PageType = Static<typeof PageTypeSchema>;
@@ -52,6 +54,8 @@ export const PageSchema = Type.Object({
     linksMeta: Type.Optional(PageLinksMetaSchema),
     // Tags extracted from content (e.g., #work, #ideas)
     tags: Type.Optional(Type.Array(Type.String())),
+    // Gmail page configuration (only for type: 'gmail')
+    gmailConfig: Type.Optional(GmailConfigSchema),
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
 });
@@ -79,6 +83,7 @@ export const UpdatePageSchema = Type.Object({
     todoMeta: Type.Optional(PageTodoMetaSchema), // Todo metadata for efficient querying
     linksMeta: Type.Optional(PageLinksMetaSchema), // Link metadata for bi-directional linking
     tags: Type.Optional(Type.Array(Type.String())), // Tags extracted from content
+    gmailConfig: Type.Optional(GmailConfigSchema), // Gmail page configuration
 });
 
 export type UpdatePageInput = Static<typeof UpdatePageSchema>;

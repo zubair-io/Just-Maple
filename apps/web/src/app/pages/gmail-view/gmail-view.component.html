@@ -1,0 +1,296 @@
+<div class="gmail-view">
+  <!-- Not Connected State -->
+  @if (!authService.isConnected()) {
+    <div class="gmail-connect">
+      <div class="gmail-connect-card">
+        <div class="gmail-connect-icon">📬</div>
+        <h2>Connect Gmail</h2>
+        <p>
+          Access your emails directly in Maple. Your email content stays on your device and is never
+          sent to our servers.
+        </p>
+        <button
+          class="btn-primary"
+          (click)="connectGmail()"
+          [disabled]="authService.isAuthenticating()"
+        >
+          @if (authService.isAuthenticating()) {
+            <span>Connecting...</span>
+          } @else {
+            <span>Connect Gmail</span>
+          }
+        </button>
+      </div>
+    </div>
+  } @else {
+    <!-- Three Panel Layout -->
+    <div class="gmail-panels">
+      <!-- Filter Sidebar -->
+      <div class="gmail-sidebar">
+        <div class="sidebar-header">
+          <button class="btn-compose" (click)="openCompose()">
+            <span>+ Compose</span>
+          </button>
+        </div>
+
+        <div class="filter-list">
+          @for (filter of filters(); track trackByFilterId($index, filter)) {
+            <button
+              class="filter-item"
+              [class.active]="activeFilter()?.id === filter.id"
+              (click)="selectFilter(filter)"
+            >
+              <span class="filter-icon">{{ filter.icon || '📁' }}</span>
+              <span class="filter-name">{{ filter.name }}</span>
+            </button>
+          }
+        </div>
+
+        <div class="sidebar-footer">
+          <button class="btn-settings" (click)="openSettings()">
+            <span>⚙️ Settings</span>
+          </button>
+          <div class="sync-status">
+            @if (syncService.isSyncing()) {
+              <span class="syncing">Syncing...</span>
+            } @else if (syncService.lastSyncAt()) {
+              <span class="synced"
+                >Updated {{ formatDate(syncService.lastSyncAt()!.toISOString()) }}</span
+              >
+            }
+          </div>
+        </div>
+      </div>
+
+      <!-- Email List -->
+      <div class="gmail-list">
+        <div class="list-header">
+          <div class="search-bar">
+            <input
+              type="text"
+              placeholder="Search emails..."
+              [ngModel]="searchQuery()"
+              (ngModelChange)="searchQuery.set($event)"
+            />
+          </div>
+          <button
+            class="btn-refresh"
+            (click)="refreshEmails()"
+            [disabled]="syncService.isSyncing()"
+          >
+            🔄
+          </button>
+        </div>
+
+        <div class="email-list">
+          @for (email of filteredEmails(); track trackByEmailId($index, email)) {
+            <div
+              class="email-item"
+              [class.unread]="!email.isRead"
+              [class.selected]="selectedEmailId() === email.id"
+              (click)="selectEmail(email)"
+            >
+              <button class="star-btn" (click)="toggleStar(email, $event)">
+                {{ email.isStarred ? '⭐' : '☆' }}
+              </button>
+              <div class="email-content">
+                <div class="email-header">
+                  <span class="email-sender">{{ formatSender(email) }}</span>
+                  <span class="email-date">{{ formatDate(email.date) }}</span>
+                </div>
+                <div class="email-subject">{{ email.subject }}</div>
+                <div class="email-snippet">{{ email.snippet }}</div>
+              </div>
+              @if (email.hasAttachments) {
+                <span class="attachment-indicator">📎</span>
+              }
+            </div>
+          } @empty {
+            <div class="empty-list">
+              <span>No emails found</span>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- Email Detail -->
+      <div class="gmail-detail">
+        @if (selectedEmail(); as email) {
+          <div class="detail-header">
+            <button class="btn-back" (click)="selectedEmailId.set(null)">← Back</button>
+            <div class="detail-actions">
+              <button (click)="toggleStar(email, $event)" title="Star">
+                {{ email.isStarred ? '⭐' : '☆' }}
+              </button>
+              <button (click)="archiveEmail(email)" title="Archive">📥</button>
+              <button (click)="trashEmail(email)" title="Delete">🗑️</button>
+              <button (click)="markAsUnread(email)" title="Mark unread">📩</button>
+            </div>
+          </div>
+
+          <div class="email-detail-content">
+            <div class="email-meta">
+              <div class="meta-row">
+                <span class="label">From:</span>
+                <span class="value">
+                  {{
+                    email.from.name
+                      ? email.from.name + ' <' + email.from.email + '>'
+                      : email.from.email
+                  }}
+                </span>
+              </div>
+              <div class="meta-row">
+                <span class="label">To:</span>
+                <span class="value">
+                  @for (addr of email.to; track addr.email; let last = $last) {
+                    {{ addr.name || addr.email }}{{ last ? '' : ', ' }}
+                  }
+                </span>
+              </div>
+              @if (email.cc && email.cc.length > 0) {
+                <div class="meta-row">
+                  <span class="label">Cc:</span>
+                  <span class="value">
+                    @for (addr of email.cc; track addr.email; let last = $last) {
+                      {{ addr.name || addr.email }}{{ last ? '' : ', ' }}
+                    }
+                  </span>
+                </div>
+              }
+              <div class="meta-row">
+                <span class="label">Date:</span>
+                <span class="value">{{ formatFullDate(email.date) }}</span>
+              </div>
+            </div>
+
+            <h2 class="email-subject-full">{{ email.subject }}</h2>
+
+            <div class="email-body" [innerHTML]="email.bodyHtml || email.bodyText"></div>
+
+            @if (email.attachments && email.attachments.length > 0) {
+              <div class="attachments-section">
+                <h4>Attachments ({{ email.attachments.length }})</h4>
+                <div class="attachment-list">
+                  @for (attachment of email.attachments; track attachment.id) {
+                    <button
+                      class="attachment-item"
+                      (click)="downloadAttachment(email.id, attachment.id, attachment.filename)"
+                    >
+                      <span class="attachment-icon">📎</span>
+                      <span class="attachment-name">{{ attachment.filename }}</span>
+                      <span class="attachment-size">{{ formatFileSize(attachment.size) }}</span>
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+
+            <div class="reply-actions">
+              <button class="btn-reply" (click)="openReply(email)">↩️ Reply</button>
+              <button class="btn-reply-all" (click)="openReply(email, true)">↩️↩️ Reply All</button>
+            </div>
+          </div>
+        } @else {
+          <div class="no-email-selected">
+            <span>Select an email to view</span>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- Compose Modal -->
+    @if (showCompose()) {
+      <div class="compose-overlay" (click)="closeCompose()">
+        <div class="compose-modal" (click)="$event.stopPropagation()">
+          <div class="compose-header">
+            <h3>{{ replyToEmail() ? 'Reply' : 'New Email' }}</h3>
+            <button class="btn-close" (click)="closeCompose()">✕</button>
+          </div>
+
+          <div class="compose-form">
+            <div class="form-row">
+              <label>To:</label>
+              <input
+                type="text"
+                [ngModel]="composeTo().join(', ')"
+                (ngModelChange)="composeTo.set($event.split(',').map(s => s.trim()).filter(s => s))"
+                placeholder="recipient@example.com"
+              />
+            </div>
+            <div class="form-row">
+              <label>Cc:</label>
+              <input
+                type="text"
+                [ngModel]="composeCc().join(', ')"
+                (ngModelChange)="composeCc.set($event.split(',').map(s => s.trim()).filter(s => s))"
+                placeholder="cc@example.com"
+              />
+            </div>
+            <div class="form-row">
+              <label>Subject:</label>
+              <input
+                type="text"
+                [ngModel]="composeSubject()"
+                (ngModelChange)="composeSubject.set($event)"
+                placeholder="Subject"
+              />
+            </div>
+            <div class="form-row body-row">
+              <textarea
+                [ngModel]="composeBody()"
+                (ngModelChange)="composeBody.set($event)"
+                placeholder="Write your message..."
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="compose-footer">
+            <button class="btn-discard" (click)="closeCompose()">Discard</button>
+            <button
+              class="btn-send"
+              (click)="sendEmail()"
+              [disabled]="composeTo().length === 0 || !composeSubject()"
+            >
+              Send ▶️
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Settings Modal -->
+    @if (showSettings()) {
+      <div class="settings-overlay" (click)="closeSettings()">
+        <div class="settings-modal" (click)="$event.stopPropagation()">
+          <div class="settings-header">
+            <h3>Gmail Settings</h3>
+            <button class="btn-close" (click)="closeSettings()">✕</button>
+          </div>
+
+          <div class="settings-content">
+            <div class="settings-section">
+              <h4>Account</h4>
+              <div class="account-info">
+                <span class="email">✉️ {{ authService.connectedEmail() }}</span>
+                <button class="btn-disconnect" (click)="disconnectGmail()">Disconnect</button>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h4>Sync Status</h4>
+              <div class="sync-info">
+                <span>Total emails: {{ storageService.emails().length }}</span>
+                <span>Unread: {{ storageService.unreadCount() }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-footer">
+            <button class="btn-close-settings" (click)="closeSettings()">Close</button>
+          </div>
+        </div>
+      </div>
+    }
+  }
+</div>
