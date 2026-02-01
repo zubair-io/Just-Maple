@@ -5,7 +5,7 @@ import { findUserById } from '../repositories/user.repo';
 import { findPageById } from '../repositories/page.repo';
 import { findKanbanBoard, updateKanbanBoardSettings } from '../repositories/kanban-board.repo';
 import { yjsKanbanService } from '../services/yjs-kanban.service';
-import type { JWTPayload, KanbanSettings } from '@maple/shared';
+import { DEFAULT_KANBAN_SETTINGS, type JWTPayload, type KanbanSettings } from '@maple/shared';
 
 /**
  * Kanban Board API routes
@@ -154,18 +154,7 @@ export const kanbanBoardRoutes = new Elysia({ prefix: '/api/kanban-boards' })
             if (!board) {
                 // Return default settings if board doesn't exist yet
                 return {
-                    settings: {
-                        defaultLaneId: undefined,
-                        cardDisplay: {
-                            showDueDate: true,
-                            showPriority: true,
-                            showCoverColor: false,
-                        },
-                        doneReset: {
-                            period: 'weekly',
-                            dayOfWeek: 1,
-                        },
-                    },
+                    settings: DEFAULT_KANBAN_SETTINGS,
                 };
             }
 

@@ -123,13 +123,73 @@
     color: var(--color-text-main);
   }
 
-  .material-icons {
+  .material-symbols-rounded {
     font-size: 18px;
   }
 }
 
 .lane:hover .lane-menu-btn {
   opacity: 1;
+}
+
+.delete-confirmation {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.delete-message {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.confirm-btn,
+.cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+
+  .material-symbols-rounded {
+    font-size: 16px;
+  }
+}
+
+.confirm-btn {
+  background-color: var(--color-primary);
+  color: white;
+
+  &:hover {
+    background-color: var(--color-primary-hover, #c7432f);
+  }
+}
+
+.cancel-btn {
+  background-color: var(--color-bg);
+  color: var(--color-text-muted);
+
+  &:hover {
+    background-color: var(--color-border);
+    color: var(--color-text-main);
+  }
 }
 
 .done-filter-info {
@@ -215,7 +275,7 @@
   font-size: 0.75rem;
   color: var(--color-text-muted);
 
-  .material-icons {
+  .material-symbols-rounded {
     font-size: 14px;
   }
 
@@ -253,7 +313,7 @@
     color: var(--color-text-main);
   }
 
-  .material-icons {
+  .material-symbols-rounded {
     font-size: 16px;
   }
 }
@@ -279,7 +339,7 @@
     color: var(--color-text-main);
   }
 
-  .material-icons {
+  .material-symbols-rounded {
     font-size: 18px;
   }
 }
@@ -327,7 +387,7 @@
     background-color: var(--color-bg-secondary, #f3f4f6);
   }
 
-  .material-icons {
+  .material-symbols-rounded {
     font-size: 18px;
   }
 }
@@ -371,7 +431,7 @@
     transform: translateY(-2px);
   }
 
-  .material-icons {
+  .material-symbols-rounded {
     font-size: 20px;
   }
 

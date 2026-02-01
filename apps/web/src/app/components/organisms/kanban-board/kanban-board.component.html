@@ -26,9 +26,28 @@
             }
             <span class="lane-count">{{ getCardCount(lane.id) }}</span>
             @if (!isDefaultLane(lane)) {
-              <button class="lane-menu-btn" (click)="deleteLane(lane.id)" title="Delete lane">
-                <span class="material-icons">delete_outline</span>
-              </button>
+              @if (deletingLaneId() === lane.id) {
+                <div class="delete-confirmation">
+                  <span class="delete-message">
+                    Move {{ getCardCount(lane.id) }} card{{ getCardCount(lane.id) > 1 ? 's' : '' }}
+                    to Archived?
+                  </span>
+                  <button
+                    class="confirm-btn"
+                    (click)="confirmDeleteLane(lane.id)"
+                    title="Confirm delete"
+                  >
+                    <span class="material-symbols-rounded">check</span>
+                  </button>
+                  <button class="cancel-btn" (click)="cancelDeleteLane()" title="Cancel">
+                    <span class="material-symbols-rounded">close</span>
+                  </button>
+                </div>
+              } @else {
+                <button class="lane-menu-btn" (click)="deleteLane(lane.id)" title="Delete lane">
+                  <span class="material-symbols-rounded">delete_outline</span>
+                </button>
+              }
             }
           </div>
 
@@ -68,7 +87,7 @@
                     }
                     @if (card.dueDate && settings()?.cardDisplay?.showDueDate) {
                       <span class="due-date" [class.overdue]="isDueDateOverdue(card.dueDate)">
-                        <span class="material-icons">schedule</span>
+                        <span class="material-symbols-rounded">schedule</span>
                         {{ formatDueDate(card.dueDate) }}
                       </span>
                     }
@@ -80,7 +99,7 @@
                     (click)="archiveCard(card, lane.id)"
                     title="Archive"
                   >
-                    <span class="material-icons">archive</span>
+                    <span class="material-symbols-rounded">archive</span>
                   </button>
                 </div>
               </div>
@@ -102,7 +121,7 @@
               </div>
             } @else {
               <button class="add-card-btn" (click)="startAddingCard(lane.id)">
-                <span class="material-icons">add</span>
+                <span class="material-symbols-rounded">add</span>
                 <span>Add card</span>
               </button>
             }
@@ -127,7 +146,7 @@
           </div>
         } @else {
           <button class="add-lane-btn" (click)="startAddingLane()">
-            <span class="material-icons">add</span>
+            <span class="material-symbols-rounded">add</span>
             <span>Add lane</span>
           </button>
         }
@@ -137,7 +156,7 @@
     <!-- Archived button -->
     @if (archivedCount() > 0) {
       <button class="archived-btn">
-        <span class="material-icons">inventory_2</span>
+        <span class="material-symbols-rounded">inventory_2</span>
         <span class="archived-count">{{ archivedCount() }}</span>
       </button>
     }

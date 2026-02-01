@@ -59,6 +59,7 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
   readonly newCardTitle = signal('');
   readonly newLaneTitle = signal('');
   readonly isAddingLane = signal(false);
+  readonly deletingLaneId = signal<string | null>(null);
 
   // Computed: cards organized by lane
   readonly cardsByLane = computed(() => {
@@ -280,6 +281,9 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
     this.cancelEditingLane();
   }
 
+  /**
+   * Initiate lane deletion - shows confirmation if lane has cards
+   */
   deleteLane(laneId: string): void {
     const lane = this.lanes().find((l) => l.id === laneId);
     if (!lane) return;
@@ -291,14 +295,28 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
 
     const cardCount = lane.cardIds.length;
     if (cardCount > 0) {
-      const confirmed = confirm(
-        `Move ${cardCount} card${cardCount > 1 ? 's' : ''} to Archived and delete this lane?`,
-      );
-      if (!confirmed) return;
+      // Show inline confirmation
+      this.deletingLaneId.set(laneId);
+    } else {
+      // No cards, delete immediately
+      this.confirmDeleteLane(laneId);
     }
+  }
 
+  /**
+   * Confirm and execute lane deletion
+   */
+  confirmDeleteLane(laneId: string): void {
     const pageId = this.pageId();
     this.kanbanDocService.deleteLane(pageId, laneId);
+    this.deletingLaneId.set(null);
+  }
+
+  /**
+   * Cancel lane deletion
+   */
+  cancelDeleteLane(): void {
+    this.deletingLaneId.set(null);
   }
 
   // Card operations
