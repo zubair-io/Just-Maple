@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
-import { BotService, BotSuggestion, EnrichedUserBot } from '../bot.service';
+import { BotService, BotSuggestion, EnrichedUserBot, CustomBot } from '../bot.service';
 import type { BotTemplate, BotInvocation, Thread, Message } from '@maple/shared';
 
 describe('BotService', () => {
@@ -516,6 +516,244 @@ describe('BotService', () => {
 
       const req = httpMock.expectOne('/api/threads/invalid/messages');
       req.flush({ error: 'Not found' }, { status: 404, statusText: 'Not Found' });
+    });
+  });
+
+  // ============================================
+  // Custom Bots Tests
+  // ============================================
+
+  describe('Custom Bots', () => {
+    const mockCustomBot: CustomBot = {
+      _id: 'custom-bot-1',
+      userId: 'user-1',
+      handle: 'my-bot',
+      displayName: 'My Custom Bot',
+      description: 'A test custom bot',
+      isEnabled: true,
+      botType: 'custom',
+      invokeUrl: 'https://my-server.com/webhook',
+      permissions: {
+        messages: { read: true, write: true },
+      },
+      jwtExpirationHours: 12,
+      status: 'active',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+    };
+
+    describe('loadCustomBots', () => {
+      it('should load custom bots', (done) => {
+        const bots = [mockCustomBot];
+
+        service.loadCustomBots().subscribe((result) => {
+          expect(result).toEqual(bots);
+          expect(service.customBots()).toEqual(bots);
+          done();
+        });
+
+        const req = httpMock.expectOne('/api/custom-bots');
+        expect(req.request.method).toBe('GET');
+        req.flush({ bots });
+      });
+
+      it('should set loading state', () => {
+        expect(service.customBotsLoading()).toBe(false);
+
+        service.loadCustomBots().subscribe();
+        expect(service.customBotsLoading()).toBe(true);
+
+        const req = httpMock.expectOne('/api/custom-bots');
+        req.flush({ bots: [] });
+
+        expect(service.customBotsLoading()).toBe(false);
+      });
+
+      it('should return empty array on error', (done) => {
+        service.loadCustomBots().subscribe((result) => {
+          expect(result).toEqual([]);
+          done();
+        });
+
+        const req = httpMock.expectOne('/api/custom-bots');
+        req.flush({ error: 'Server error' }, { status: 500, statusText: 'Server Error' });
+      });
+    });
+
+    describe('createCustomBot', () => {
+      it('should create a custom bot and return with provisioning token', (done) => {
+        const createData = {
+          name: 'My Custom Bot',
+          handle: 'my-bot',
+          invokeUrl: 'https://my-server.com/webhook',
+          permissions: { messages: { read: true, write: true } },
+        };
+
+        service.createCustomBot(createData).subscribe((result) => {
+          expect(result.handle).toBe('my-bot');
+          expect(result.provisioningToken).toBe('prov_abc123');
+          expect(service.customBots()).toContain(jasmine.objectContaining({ handle: 'my-bot' }));
+          done();
+        });
+
+        const req = httpMock.expectOne('/api/custom-bots');
+        expect(req.request.method).toBe('POST');
+        req.flush({ bot: mockCustomBot, provisioningToken: 'prov_abc123' });
+      });
+
+      it('should throw error on failure', (done) => {
+        service
+          .createCustomBot({
+            name: 'Test',
+            handle: 'existing',
+            invokeUrl: 'https://test.com/webhook',
+            permissions: { messages: { read: true, write: true } },
+          })
+          .subscribe({
+            error: (err) => {
+              expect(err.message).toBe('Handle already exists');
+              done();
+            },
+          });
+
+        const req = httpMock.expectOne('/api/custom-bots');
+        req.flush({ error: 'Handle already exists' }, { status: 400, statusText: 'Bad Request' });
+      });
+    });
+
+    describe('updateCustomBot', () => {
+      it('should update a custom bot', (done) => {
+        // First load custom bots
+        service.loadCustomBots().subscribe();
+        httpMock.expectOne('/api/custom-bots').flush({ bots: [mockCustomBot] });
+
+        const updateData = { name: 'Updated Bot' };
+        const updatedBot = { ...mockCustomBot, displayName: 'Updated Bot' };
+
+        service.updateCustomBot('custom-bot-1', updateData).subscribe((result) => {
+          expect(result.displayName).toBe('Updated Bot');
+          expect(service.customBots()[0].displayName).toBe('Updated Bot');
+          done();
+        });
+
+        const req = httpMock.expectOne('/api/custom-bots/custom-bot-1');
+        expect(req.request.method).toBe('PATCH');
+        req.flush({ bot: updatedBot });
+      });
+    });
+
+    describe('deleteCustomBot', () => {
+      it('should delete a custom bot', (done) => {
+        // First load custom bots
+        service.loadCustomBots().subscribe();
+        httpMock.expectOne('/api/custom-bots').flush({ bots: [mockCustomBot] });
+
+        service.deleteCustomBot('custom-bot-1').subscribe(() => {
+          expect(service.customBots().length).toBe(0);
+          done();
+        });
+
+        const req = httpMock.expectOne('/api/custom-bots/custom-bot-1');
+        expect(req.request.method).toBe('DELETE');
+        req.flush({});
+      });
+    });
+
+    describe('regenerateProvisioningToken', () => {
+      it('should regenerate provisioning token', (done) => {
+        service.regenerateProvisioningToken('custom-bot-1').subscribe((result) => {
+          expect(result).toBe('prov_new_token');
+          done();
+        });
+
+        const req = httpMock.expectOne('/api/custom-bots/custom-bot-1/regenerate-token');
+        expect(req.request.method).toBe('POST');
+        req.flush({ provisioningToken: 'prov_new_token' });
+      });
+    });
+
+    describe('regenerateWebhookSecret', () => {
+      it('should regenerate webhook secret', (done) => {
+        // First load custom bots
+        service.loadCustomBots().subscribe();
+        httpMock.expectOne('/api/custom-bots').flush({ bots: [mockCustomBot] });
+
+        service.regenerateWebhookSecret('custom-bot-1').subscribe((result) => {
+          expect(result).toBe('whsec_new_secret');
+          done();
+        });
+
+        const req = httpMock.expectOne('/api/custom-bots/custom-bot-1/webhook-secret');
+        expect(req.request.method).toBe('POST');
+        req.flush({ webhookSecret: 'whsec_new_secret' });
+      });
+    });
+
+    describe('updateCustomBotStatus', () => {
+      it('should update bot status', (done) => {
+        // First load custom bots
+        service.loadCustomBots().subscribe();
+        httpMock.expectOne('/api/custom-bots').flush({ bots: [mockCustomBot] });
+
+        const disabledBot = { ...mockCustomBot, status: 'disabled' as const };
+
+        service.updateCustomBotStatus('custom-bot-1', 'disabled').subscribe((result) => {
+          expect(result.status).toBe('disabled');
+          expect(service.customBots()[0].status).toBe('disabled');
+          done();
+        });
+
+        const req = httpMock.expectOne('/api/custom-bots/custom-bot-1/status');
+        expect(req.request.method).toBe('POST');
+        req.flush({ bot: disabledBot });
+      });
+    });
+
+    describe('getCustomBotSessions', () => {
+      it('should get bot sessions', (done) => {
+        const sessions = [
+          {
+            _id: 'session-1',
+            userBotId: 'custom-bot-1',
+            userId: 'user-1',
+            jwtId: 'jwt-abc123',
+            createdAt: '2024-01-01T00:00:00.000Z',
+            expiresAt: '2024-01-01T12:00:00.000Z',
+            lastUsedAt: '2024-01-01T01:00:00.000Z',
+          },
+        ];
+
+        service.getCustomBotSessions('custom-bot-1').subscribe((result) => {
+          expect(result).toEqual(sessions);
+          done();
+        });
+
+        const req = httpMock.expectOne('/api/custom-bots/custom-bot-1/sessions');
+        expect(req.request.method).toBe('GET');
+        req.flush({ sessions });
+      });
+
+      it('should return empty array on error', (done) => {
+        service.getCustomBotSessions('invalid').subscribe((result) => {
+          expect(result).toEqual([]);
+          done();
+        });
+
+        const req = httpMock.expectOne('/api/custom-bots/invalid/sessions');
+        req.flush({ error: 'Not found' }, { status: 404, statusText: 'Not Found' });
+      });
+    });
+
+    describe('revokeAllCustomBotSessions', () => {
+      it('should revoke all sessions', (done) => {
+        service.revokeAllCustomBotSessions('custom-bot-1').subscribe(() => {
+          done();
+        });
+
+        const req = httpMock.expectOne('/api/custom-bots/custom-bot-1/sessions');
+        expect(req.request.method).toBe('DELETE');
+        req.flush({});
+      });
     });
   });
 });
