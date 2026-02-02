@@ -7,6 +7,9 @@ import type {
   BotInvocation,
   CreateUserBotInput,
   UpdateUserBotInput,
+  CreateCustomBotInput,
+  UpdateCustomBotInput,
+  BotSession,
   Thread,
   Message,
   Notebook,
@@ -33,6 +36,25 @@ export interface EnrichedUserBot extends UserBot {
   ownerAvatar?: string;
 }
 
+export interface CustomBot extends UserBot {
+  botType: 'custom';
+  invokeUrl: string;
+  webhookSecret?: string;
+  permissions: {
+    messages: { read: boolean; write: boolean };
+  };
+  jwtExpirationHours: number;
+  status: 'active' | 'disabled' | 'revoked';
+}
+
+export interface CustomBotWithToken extends CustomBot {
+  provisioningToken?: string; // Only present on creation
+}
+
+export interface CustomBotSession extends BotSession {
+  // Extended with any UI-specific fields
+}
+
 @Injectable({ providedIn: 'root' })
 export class BotService {
   private readonly http = inject(HttpClient);
@@ -41,15 +63,21 @@ export class BotService {
   private readonly _templates = signal<BotTemplate[]>([]);
   private readonly _templatesLoading = signal(false);
 
-  // User bots (user-registered)
+  // User bots (user-registered template bots)
   private readonly _userBots = signal<EnrichedUserBot[]>([]);
   private readonly _userBotsLoading = signal(false);
+
+  // Custom bots (user-created webhook bots)
+  private readonly _customBots = signal<CustomBot[]>([]);
+  private readonly _customBotsLoading = signal(false);
 
   // Public signals
   readonly templates = this._templates.asReadonly();
   readonly templatesLoading = this._templatesLoading.asReadonly();
   readonly userBots = this._userBots.asReadonly();
   readonly userBotsLoading = this._userBotsLoading.asReadonly();
+  readonly customBots = this._customBots.asReadonly();
+  readonly customBotsLoading = this._customBotsLoading.asReadonly();
 
   // Notebook bots cache
   private readonly _notebookBotsCache = new Map<string, BotSuggestion[]>();
@@ -147,6 +175,141 @@ export class BotService {
       map(() => undefined),
       catchError((err) => {
         const message = err?.error?.error || 'Failed to delete bot';
+        return throwError(() => new Error(message));
+      }),
+    );
+  }
+
+  // ============================================
+  // Custom Bots (webhook-based)
+  // ============================================
+
+  loadCustomBots(): Observable<CustomBot[]> {
+    this._customBotsLoading.set(true);
+
+    return this.http.get<{ bots: CustomBot[] }>('/api/custom-bots').pipe(
+      tap((response) => {
+        this._customBots.set(response.bots);
+        this._customBotsLoading.set(false);
+      }),
+      map((response) => response.bots),
+      catchError((err) => {
+        this._customBotsLoading.set(false);
+        return of([]);
+      }),
+    );
+  }
+
+  createCustomBot(data: CreateCustomBotInput): Observable<CustomBotWithToken> {
+    return this.http
+      .post<{ bot: CustomBot; provisioningToken: string }>('/api/custom-bots', data)
+      .pipe(
+        tap((response) => {
+          this._customBots.update((bots) => [...bots, response.bot]);
+        }),
+        map((response) => ({
+          ...response.bot,
+          provisioningToken: response.provisioningToken,
+        })),
+        catchError((err) => {
+          const message = err?.error?.error || 'Failed to create custom bot';
+          return throwError(() => new Error(message));
+        }),
+      );
+  }
+
+  getCustomBot(id: string): Observable<CustomBot | null> {
+    return this.http.get<{ bot: CustomBot }>(`/api/custom-bots/${id}`).pipe(
+      map((response) => response.bot),
+      catchError(() => of(null)),
+    );
+  }
+
+  updateCustomBot(id: string, data: UpdateCustomBotInput): Observable<CustomBot> {
+    return this.http.patch<{ bot: CustomBot }>(`/api/custom-bots/${id}`, data).pipe(
+      tap((response) => {
+        this._customBots.update((bots) => bots.map((b) => (b._id === id ? response.bot : b)));
+      }),
+      map((response) => response.bot),
+      catchError((err) => {
+        const message = err?.error?.error || 'Failed to update custom bot';
+        return throwError(() => new Error(message));
+      }),
+    );
+  }
+
+  deleteCustomBot(id: string): Observable<void> {
+    return this.http.delete(`/api/custom-bots/${id}`).pipe(
+      tap(() => {
+        this._customBots.update((bots) => bots.filter((b) => b._id !== id));
+      }),
+      map(() => undefined),
+      catchError((err) => {
+        const message = err?.error?.error || 'Failed to delete custom bot';
+        return throwError(() => new Error(message));
+      }),
+    );
+  }
+
+  regenerateProvisioningToken(botId: string): Observable<string> {
+    return this.http
+      .post<{ provisioningToken: string }>(`/api/custom-bots/${botId}/regenerate-token`, {})
+      .pipe(
+        map((response) => response.provisioningToken),
+        catchError((err) => {
+          const message = err?.error?.error || 'Failed to regenerate token';
+          return throwError(() => new Error(message));
+        }),
+      );
+  }
+
+  regenerateWebhookSecret(botId: string): Observable<string> {
+    return this.http
+      .post<{ webhookSecret: string }>(`/api/custom-bots/${botId}/webhook-secret`, {})
+      .pipe(
+        tap((response) => {
+          this._customBots.update((bots) =>
+            bots.map((b) =>
+              b._id === botId ? { ...b, webhookSecret: response.webhookSecret } : b,
+            ),
+          );
+        }),
+        map((response) => response.webhookSecret),
+        catchError((err) => {
+          const message = err?.error?.error || 'Failed to regenerate webhook secret';
+          return throwError(() => new Error(message));
+        }),
+      );
+  }
+
+  updateCustomBotStatus(botId: string, status: 'active' | 'disabled'): Observable<CustomBot> {
+    return this.http.post<{ bot: CustomBot }>(`/api/custom-bots/${botId}/status`, { status }).pipe(
+      tap((response) => {
+        this._customBots.update((bots) => bots.map((b) => (b._id === botId ? response.bot : b)));
+      }),
+      map((response) => response.bot),
+      catchError((err) => {
+        const message = err?.error?.error || 'Failed to update bot status';
+        return throwError(() => new Error(message));
+      }),
+    );
+  }
+
+  // Custom Bot Sessions
+  getCustomBotSessions(botId: string): Observable<CustomBotSession[]> {
+    return this.http
+      .get<{ sessions: CustomBotSession[] }>(`/api/custom-bots/${botId}/sessions`)
+      .pipe(
+        map((response) => response.sessions),
+        catchError(() => of([])),
+      );
+  }
+
+  revokeAllCustomBotSessions(botId: string): Observable<void> {
+    return this.http.delete(`/api/custom-bots/${botId}/sessions`).pipe(
+      map(() => undefined),
+      catchError((err) => {
+        const message = err?.error?.error || 'Failed to revoke sessions';
         return throwError(() => new Error(message));
       }),
     );

@@ -2,7 +2,7 @@
   <app-settings-header title="Bots" (backClicked)="goBack()" />
 
   <main class="page-content">
-    <!-- My Bots Section -->
+    <!-- My Bots Section (Template-based) -->
     <section class="section">
       <h2 class="section-title">My Bots</h2>
       <p class="section-description">Bots you've registered to your account</p>
@@ -51,6 +51,105 @@
                   type="button"
                   class="action-btn danger"
                   (click)="deleteBot(bot)"
+                  title="Delete"
+                >
+                  <span class="material-symbols-rounded">delete</span>
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </section>
+
+    <!-- Custom Bots Section -->
+    <section class="section">
+      <div class="section-header-row">
+        <div>
+          <h2 class="section-title">Custom Bots</h2>
+          <p class="section-description">Bots powered by your own webhook endpoints</p>
+        </div>
+        <button type="button" class="btn primary small" (click)="openCreateCustomBotDialog()">
+          <span class="material-symbols-rounded">add</span>
+          Create Bot
+        </button>
+      </div>
+
+      @if (customBotsLoading()) {
+        <div class="loading-state">Loading custom bots...</div>
+      } @else if (customBots().length === 0) {
+        <div class="empty-state">
+          <span class="material-symbols-rounded">webhook</span>
+          <p>You haven't created any custom bots yet.</p>
+          <p class="hint">Create a bot to connect your own webhook endpoint!</p>
+        </div>
+      } @else {
+        <div class="bot-list">
+          @for (bot of customBots(); track bot._id) {
+            <div class="custom-bot-card" [class.disabled]="bot.status !== 'active'">
+              <div class="custom-bot-avatar">
+                <span class="material-symbols-rounded">webhook</span>
+              </div>
+              <div class="bot-info">
+                <div class="bot-handle">@{{ bot.handle }}</div>
+                <div class="bot-name">{{ bot.displayName || bot.handle }}</div>
+                <div class="bot-url">{{ bot.invokeUrl }}</div>
+                <div class="bot-meta">
+                  <span class="bot-status" [ngClass]="getStatusColor(bot.status)">
+                    {{ bot.status }}
+                  </span>
+                  <span class="permission-badges">
+                    @if (bot.permissions?.messages?.read) {
+                      <span class="perm-badge">Read</span>
+                    }
+                    @if (bot.permissions?.messages?.write) {
+                      <span class="perm-badge">Write</span>
+                    }
+                  </span>
+                </div>
+              </div>
+              <div class="bot-actions-menu">
+                <button
+                  type="button"
+                  class="action-btn"
+                  (click)="toggleCustomBotStatus(bot)"
+                  [title]="bot.status === 'active' ? 'Disable' : 'Enable'"
+                >
+                  <span class="material-symbols-rounded">
+                    {{ bot.status === 'active' ? 'toggle_on' : 'toggle_off' }}
+                  </span>
+                </button>
+                <button type="button" class="action-btn" (click)="editCustomBot(bot)" title="Edit">
+                  <span class="material-symbols-rounded">edit</span>
+                </button>
+                <button
+                  type="button"
+                  class="action-btn"
+                  (click)="regenerateToken(bot)"
+                  title="Regenerate Token"
+                >
+                  <span class="material-symbols-rounded">key</span>
+                </button>
+                <button
+                  type="button"
+                  class="action-btn"
+                  (click)="regenerateSecret(bot)"
+                  title="Regenerate Secret"
+                >
+                  <span class="material-symbols-rounded">lock_reset</span>
+                </button>
+                <button
+                  type="button"
+                  class="action-btn"
+                  (click)="viewSessions(bot)"
+                  title="View Sessions"
+                >
+                  <span class="material-symbols-rounded">devices</span>
+                </button>
+                <button
+                  type="button"
+                  class="action-btn danger"
+                  (click)="deleteCustomBot(bot)"
                   title="Delete"
                 >
                   <span class="material-symbols-rounded">delete</span>
@@ -289,6 +388,440 @@
           </button>
         </footer>
       }
+    </div>
+  </div>
+}
+
+<!-- Create Custom Bot Dialog -->
+@if (showCreateCustomBotDialog()) {
+  <div class="dialog-backdrop" (click)="closeCreateCustomBotDialog()">
+    <div class="dialog dialog-large" (click)="$event.stopPropagation()">
+      <header class="dialog-header">
+        <h2>Create Custom Bot</h2>
+        <button type="button" class="close-btn" (click)="closeCreateCustomBotDialog()">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </header>
+
+      <div class="dialog-content">
+        <div class="form-field">
+          <label for="botName">Bot Name</label>
+          <input
+            type="text"
+            id="botName"
+            [ngModel]="newBotName()"
+            (ngModelChange)="newBotName.set($event)"
+            placeholder="My Custom Bot"
+          />
+          <p class="field-hint">A display name for your bot</p>
+        </div>
+
+        <div class="form-field">
+          <label for="botHandle">Handle</label>
+          <div class="input-with-prefix">
+            <span class="prefix">@</span>
+            <input
+              type="text"
+              id="botHandle"
+              [ngModel]="newBotHandle()"
+              (ngModelChange)="newBotHandle.set($event)"
+              placeholder="my-bot"
+            />
+          </div>
+          <p class="field-hint">Lowercase letters, numbers, hyphens, and underscores only</p>
+        </div>
+
+        <div class="form-field">
+          <label for="botDescription">Description (optional)</label>
+          <input
+            type="text"
+            id="botDescription"
+            [ngModel]="newBotDescription()"
+            (ngModelChange)="newBotDescription.set($event)"
+            placeholder="What does this bot do?"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="botInvokeUrl">Webhook URL</label>
+          <input
+            type="url"
+            id="botInvokeUrl"
+            [ngModel]="newBotInvokeUrl()"
+            (ngModelChange)="newBotInvokeUrl.set($event)"
+            placeholder="https://your-server.com/webhook"
+          />
+          <p class="field-hint">
+            Must use HTTPS. This endpoint will be called when the bot is invoked.
+          </p>
+        </div>
+
+        <div class="form-section">
+          <h3 class="form-section-title">Permissions</h3>
+          <p class="form-section-description">What can this bot access?</p>
+
+          <div class="form-field">
+            <label class="toggle-label">
+              <input
+                type="checkbox"
+                [ngModel]="newBotPermReadMessages()"
+                (ngModelChange)="newBotPermReadMessages.set($event)"
+              />
+              <span>Read messages</span>
+            </label>
+          </div>
+
+          <div class="form-field">
+            <label class="toggle-label">
+              <input
+                type="checkbox"
+                [ngModel]="newBotPermWriteMessages()"
+                (ngModelChange)="newBotPermWriteMessages.set($event)"
+              />
+              <span>Write messages</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="jwtExpiration">JWT Expiration (hours)</label>
+          <input
+            type="number"
+            id="jwtExpiration"
+            [ngModel]="newBotJwtExpiration()"
+            (ngModelChange)="newBotJwtExpiration.set($event)"
+            min="1"
+            max="720"
+          />
+          <p class="field-hint">How long authentication tokens are valid (1-720 hours)</p>
+        </div>
+
+        @if (createCustomBotError()) {
+          <div class="error-message">{{ createCustomBotError() }}</div>
+        }
+      </div>
+
+      <footer class="dialog-footer">
+        <button type="button" class="btn secondary" (click)="closeCreateCustomBotDialog()">
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn primary"
+          (click)="createCustomBot()"
+          [disabled]="isCreatingCustomBot()"
+        >
+          {{ isCreatingCustomBot() ? 'Creating...' : 'Create Bot' }}
+        </button>
+      </footer>
+    </div>
+  </div>
+}
+
+<!-- Token Display Dialog -->
+@if (showTokenDialog()) {
+  <div class="dialog-backdrop" (click)="closeTokenDialog()">
+    <div class="dialog" (click)="$event.stopPropagation()">
+      <header class="dialog-header">
+        <h2>Bot Created Successfully</h2>
+        <button type="button" class="close-btn" (click)="closeTokenDialog()">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </header>
+
+      <div class="dialog-content">
+        <div class="success-icon">
+          <span class="material-symbols-rounded">check_circle</span>
+        </div>
+
+        <p class="token-intro">
+          Your bot <strong>{{ createdBotName() }}</strong> has been created! Copy the provisioning
+          token below to authenticate your bot.
+        </p>
+
+        <div class="warning-box">
+          <span class="material-symbols-rounded">warning</span>
+          <p>This token will only be shown once. Make sure to copy it now!</p>
+        </div>
+
+        <div class="token-display">
+          <code>{{ createdBotToken() }}</code>
+          <button type="button" class="copy-btn" (click)="copyToken()">
+            <span class="material-symbols-rounded">{{
+              tokenCopied() ? 'check' : 'content_copy'
+            }}</span>
+          </button>
+        </div>
+
+        @if (tokenCopied()) {
+          <p class="copied-message">Token copied to clipboard!</p>
+        }
+      </div>
+
+      <footer class="dialog-footer">
+        <button type="button" class="btn primary" (click)="closeTokenDialog()">Done</button>
+      </footer>
+    </div>
+  </div>
+}
+
+<!-- Edit Custom Bot Dialog -->
+@if (showEditCustomBotDialog()) {
+  <div class="dialog-backdrop" (click)="closeEditCustomBotDialog()">
+    <div class="dialog dialog-large" (click)="$event.stopPropagation()">
+      <header class="dialog-header">
+        <h2>Edit Custom Bot</h2>
+        <button type="button" class="close-btn" (click)="closeEditCustomBotDialog()">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </header>
+
+      @if (editingCustomBot(); as bot) {
+        <div class="dialog-content">
+          <div class="form-field">
+            <label for="editBotName">Bot Name</label>
+            <input
+              type="text"
+              id="editBotName"
+              [ngModel]="editCustomBotName()"
+              (ngModelChange)="editCustomBotName.set($event)"
+              [placeholder]="bot.handle"
+            />
+          </div>
+
+          <div class="form-field">
+            <label>Handle</label>
+            <div class="input-with-prefix disabled">
+              <span class="prefix">@</span>
+              <input type="text" [value]="bot.handle" disabled />
+            </div>
+            <p class="field-hint">Handle cannot be changed after creation</p>
+          </div>
+
+          <div class="form-field">
+            <label for="editBotDescription">Description</label>
+            <input
+              type="text"
+              id="editBotDescription"
+              [ngModel]="editCustomBotDescription()"
+              (ngModelChange)="editCustomBotDescription.set($event)"
+              placeholder="What does this bot do?"
+            />
+          </div>
+
+          <div class="form-field">
+            <label for="editBotInvokeUrl">Webhook URL</label>
+            <input
+              type="url"
+              id="editBotInvokeUrl"
+              [ngModel]="editCustomBotInvokeUrl()"
+              (ngModelChange)="editCustomBotInvokeUrl.set($event)"
+              placeholder="https://your-server.com/webhook"
+            />
+          </div>
+
+          <div class="form-section">
+            <h3 class="form-section-title">Permissions</h3>
+
+            <div class="form-field">
+              <label class="toggle-label">
+                <input
+                  type="checkbox"
+                  [ngModel]="editCustomBotPermReadMessages()"
+                  (ngModelChange)="editCustomBotPermReadMessages.set($event)"
+                />
+                <span>Read messages</span>
+              </label>
+            </div>
+
+            <div class="form-field">
+              <label class="toggle-label">
+                <input
+                  type="checkbox"
+                  [ngModel]="editCustomBotPermWriteMessages()"
+                  (ngModelChange)="editCustomBotPermWriteMessages.set($event)"
+                />
+                <span>Write messages</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="editJwtExpiration">JWT Expiration (hours)</label>
+            <input
+              type="number"
+              id="editJwtExpiration"
+              [ngModel]="editCustomBotJwtExpiration()"
+              (ngModelChange)="editCustomBotJwtExpiration.set($event)"
+              min="1"
+              max="720"
+            />
+          </div>
+
+          @if (editCustomBotError()) {
+            <div class="error-message">{{ editCustomBotError() }}</div>
+          }
+        </div>
+
+        <footer class="dialog-footer">
+          <button type="button" class="btn secondary" (click)="closeEditCustomBotDialog()">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn primary"
+            (click)="saveCustomBot()"
+            [disabled]="isUpdatingCustomBot()"
+          >
+            {{ isUpdatingCustomBot() ? 'Saving...' : 'Save Changes' }}
+          </button>
+        </footer>
+      }
+    </div>
+  </div>
+}
+
+<!-- Sessions Dialog -->
+@if (showSessionsDialog()) {
+  <div class="dialog-backdrop" (click)="closeSessionsDialog()">
+    <div class="dialog dialog-large" (click)="$event.stopPropagation()">
+      <header class="dialog-header">
+        <h2>Active Sessions</h2>
+        <button type="button" class="close-btn" (click)="closeSessionsDialog()">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </header>
+
+      <div class="dialog-content">
+        @if (sessionsBot(); as bot) {
+          <p class="sessions-intro">
+            Active sessions for <strong>@{{ bot.handle }}</strong>
+          </p>
+        }
+
+        @if (sessionsLoading()) {
+          <div class="loading-state">Loading sessions...</div>
+        } @else if (botSessions().length === 0) {
+          <div class="empty-state small">
+            <span class="material-symbols-rounded">devices</span>
+            <p>No active sessions</p>
+          </div>
+        } @else {
+          <div class="sessions-list">
+            @for (session of botSessions(); track session._id) {
+              <div class="session-item">
+                <div class="session-info">
+                  <div class="session-id">Session {{ session.jwtId.slice(0, 8) }}...</div>
+                  <div class="session-details">
+                    Created: {{ formatDate(session.createdAt) }}
+                    @if (session.lastUsedAt) {
+                      <br />Last used: {{ formatDate(session.lastUsedAt) }}
+                    }
+                    @if (session.ipAddress) {
+                      <br />IP: {{ session.ipAddress }}
+                    }
+                  </div>
+                </div>
+                <div class="session-expires">Expires: {{ formatDate(session.expiresAt) }}</div>
+              </div>
+            }
+          </div>
+
+          <button type="button" class="btn danger full-width" (click)="revokeAllSessions()">
+            <span class="material-symbols-rounded">block</span>
+            Revoke All Sessions
+          </button>
+        }
+      </div>
+
+      <footer class="dialog-footer">
+        <button type="button" class="btn secondary" (click)="closeSessionsDialog()">Close</button>
+      </footer>
+    </div>
+  </div>
+}
+
+<!-- Regenerated Token Dialog -->
+@if (showRegeneratedTokenDialog()) {
+  <div class="dialog-backdrop" (click)="closeRegeneratedTokenDialog()">
+    <div class="dialog" (click)="$event.stopPropagation()">
+      <header class="dialog-header">
+        <h2>New Provisioning Token</h2>
+        <button type="button" class="close-btn" (click)="closeRegeneratedTokenDialog()">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </header>
+
+      <div class="dialog-content">
+        <div class="warning-box">
+          <span class="material-symbols-rounded">warning</span>
+          <p>This token will only be shown once. Make sure to copy it now!</p>
+        </div>
+
+        <div class="token-display">
+          <code>{{ regeneratedToken() }}</code>
+          <button type="button" class="copy-btn" (click)="copyRegeneratedToken()">
+            <span class="material-symbols-rounded">{{
+              regeneratedTokenCopied() ? 'check' : 'content_copy'
+            }}</span>
+          </button>
+        </div>
+
+        @if (regeneratedTokenCopied()) {
+          <p class="copied-message">Token copied to clipboard!</p>
+        }
+      </div>
+
+      <footer class="dialog-footer">
+        <button type="button" class="btn primary" (click)="closeRegeneratedTokenDialog()">
+          Done
+        </button>
+      </footer>
+    </div>
+  </div>
+}
+
+<!-- Regenerated Secret Dialog -->
+@if (showRegeneratedSecretDialog()) {
+  <div class="dialog-backdrop" (click)="closeRegeneratedSecretDialog()">
+    <div class="dialog" (click)="$event.stopPropagation()">
+      <header class="dialog-header">
+        <h2>New Webhook Secret</h2>
+        <button type="button" class="close-btn" (click)="closeRegeneratedSecretDialog()">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </header>
+
+      <div class="dialog-content">
+        <p class="token-intro">
+          Your webhook secret has been regenerated. Update your bot with the new secret to verify
+          webhook signatures.
+        </p>
+
+        <div class="warning-box">
+          <span class="material-symbols-rounded">warning</span>
+          <p>This secret will only be shown once. Make sure to copy it now!</p>
+        </div>
+
+        <div class="token-display">
+          <code>{{ regeneratedSecret() }}</code>
+          <button type="button" class="copy-btn" (click)="copyRegeneratedSecret()">
+            <span class="material-symbols-rounded">{{
+              regeneratedSecretCopied() ? 'check' : 'content_copy'
+            }}</span>
+          </button>
+        </div>
+
+        @if (regeneratedSecretCopied()) {
+          <p class="copied-message">Secret copied to clipboard!</p>
+        }
+      </div>
+
+      <footer class="dialog-footer">
+        <button type="button" class="btn primary" (click)="closeRegeneratedSecretDialog()">
+          Done
+        </button>
+      </footer>
     </div>
   </div>
 }
