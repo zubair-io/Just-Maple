@@ -16,7 +16,19 @@ import {
     findTokensByUserBotId,
 } from '../repositories/bot-provisioning-token.repo';
 import { findActiveSessionsByBotId, revokeAllSessions } from '../repositories/bot-session.repo';
+import { logAuditEvent, createBotAuditEntry } from '../services/audit-log.service';
 import { CreateCustomBotSchema, UpdateCustomBotSchema } from '@maple/shared';
+
+// Helper to extract request context for audit logs
+function getRequestContext(request: Request): { ipAddress?: string; userAgent?: string } {
+    return {
+        ipAddress:
+            request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+            request.headers.get('x-real-ip') ||
+            undefined,
+        userAgent: request.headers.get('user-agent') || undefined,
+    };
+}
 
 /**
  * Custom Bot Management Routes
@@ -52,10 +64,12 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
     // Create a custom bot
     .post(
         '/',
-        async ({ auth, set, body }) => {
+        async ({ auth, set, body, request }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
             }
+
+            const ctx = getRequestContext(request);
 
             // Check if handle is already taken
             const existingBot = await findUserBotByHandle(auth.user._id, body.handle);
@@ -72,6 +86,18 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
 
             // Create a provisioning token
             const { plaintextToken } = await createProvisioningToken(bot._id, auth.user._id);
+
+            // Audit log
+            await logAuditEvent(
+                createBotAuditEntry('custom_bot.created', auth.user._id, bot._id, {
+                    metadata: {
+                        handle: body.handle,
+                        invokeUrl: body.invokeUrl,
+                        permissions: body.permissions,
+                    },
+                    ...ctx,
+                }),
+            );
 
             return {
                 bot,
@@ -150,10 +176,15 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
     // Delete a custom bot
     .delete(
         '/:id',
-        async ({ auth, set, params }) => {
+        async ({ auth, set, params, request }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
             }
+
+            const ctx = getRequestContext(request);
+
+            // Get bot info for audit log before deletion
+            const bot = await findUserBotById(params.id);
 
             // Revoke all tokens and sessions first
             await revokeAllTokens(params.id);
@@ -169,6 +200,14 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
                 };
             }
 
+            // Audit log
+            await logAuditEvent(
+                createBotAuditEntry('custom_bot.deleted', auth.user._id, params.id, {
+                    metadata: { handle: bot?.handle },
+                    ...ctx,
+                }),
+            );
+
             return { message: 'Bot deleted successfully' };
         },
         {
@@ -181,10 +220,12 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
     // Regenerate provisioning token
     .post(
         '/:id/regenerate-token',
-        async ({ auth, set, params }) => {
+        async ({ auth, set, params, request }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
             }
+
+            const ctx = getRequestContext(request);
 
             // Verify ownership
             const bot = await findUserBotById(params.id);
@@ -203,6 +244,14 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
             // Create new token
             const { plaintextToken } = await createProvisioningToken(params.id, auth.user._id);
 
+            // Audit log
+            await logAuditEvent(
+                createBotAuditEntry('custom_bot.token_regenerated', auth.user._id, params.id, {
+                    metadata: { handle: bot.handle },
+                    ...ctx,
+                }),
+            );
+
             return {
                 provisioning_token: plaintextToken,
                 message: 'New provisioning token generated. All previous tokens are now invalid.',
@@ -218,10 +267,12 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
     // Regenerate webhook secret
     .post(
         '/:id/webhook-secret',
-        async ({ auth, set, params }) => {
+        async ({ auth, set, params, request }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
             }
+
+            const ctx = getRequestContext(request);
 
             const webhookSecret = await regenerateWebhookSecret(params.id, auth.user._id);
 
@@ -232,6 +283,11 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
                     message: 'Bot not found or not a custom bot',
                 };
             }
+
+            // Audit log
+            await logAuditEvent(
+                createBotAuditEntry('custom_bot.secret_regenerated', auth.user._id, params.id, ctx),
+            );
 
             return {
                 webhook_secret: webhookSecret,
@@ -248,10 +304,12 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
     // Update bot status (enable/disable)
     .post(
         '/:id/status',
-        async ({ auth, set, params, body }) => {
+        async ({ auth, set, params, body, request }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
             }
+
+            const ctx = getRequestContext(request);
 
             const updated = await updateBotStatus(params.id, auth.user._id, body.status);
 
@@ -267,6 +325,14 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
             if (body.status !== 'active') {
                 await revokeAllSessions(params.id);
             }
+
+            // Audit log
+            await logAuditEvent(
+                createBotAuditEntry('custom_bot.status_changed', auth.user._id, params.id, {
+                    metadata: { newStatus: body.status },
+                    ...ctx,
+                }),
+            );
 
             return { message: `Bot status updated to ${body.status}` };
         },
@@ -321,10 +387,12 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
     // Revoke all sessions for a bot
     .delete(
         '/:id/sessions',
-        async ({ auth, set, params }) => {
+        async ({ auth, set, params, request }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
             }
+
+            const ctx = getRequestContext(request);
 
             // Verify ownership
             const bot = await findUserBotById(params.id);
@@ -338,6 +406,14 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
             }
 
             const count = await revokeAllSessions(params.id);
+
+            // Audit log
+            await logAuditEvent(
+                createBotAuditEntry('bot.sessions_revoked_all', auth.user._id, params.id, {
+                    metadata: { sessionCount: count, handle: bot.handle },
+                    ...ctx,
+                }),
+            );
 
             return { message: `${count} session(s) revoked` };
         },

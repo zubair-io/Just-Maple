@@ -12,6 +12,18 @@ import {
 } from '../repositories/bot-session.repo';
 import { findUserBotByIdInternal } from '../repositories/user-bot.repo';
 import { generateBotJWT, verifyBotJWT } from '../services/bot-jwt.service';
+import { logAuditEvent } from '../services/audit-log.service';
+
+// Helper to extract request context for audit logs
+function getRequestContext(request: Request): { ipAddress?: string; userAgent?: string } {
+    return {
+        ipAddress:
+            request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+            request.headers.get('x-real-ip') ||
+            undefined,
+        userAgent: request.headers.get('user-agent') || undefined,
+    };
+}
 
 /**
  * Bot Authentication Routes
@@ -28,11 +40,23 @@ export const botAuthRoutes = new Elysia({ prefix: '/api/bots' })
         '/login',
         async ({ body, set, request }) => {
             const { provisioning_token } = body;
+            const ctx = getRequestContext(request);
 
             // Verify the provisioning token
             const tokenData = await verifyProvisioningToken(provisioning_token);
 
             if (!tokenData) {
+                // Log failed login attempt (can't know bot ID)
+                await logAuditEvent({
+                    action: 'bot.login_failed',
+                    userId: 'unknown',
+                    resourceType: 'bot_auth',
+                    metadata: { reason: 'invalid_token' },
+                    ...ctx,
+                    success: false,
+                    errorMessage: 'Invalid or expired provisioning token',
+                });
+
                 set.status = 401;
                 return {
                     error: 'auth/invalid_token',
@@ -44,6 +68,17 @@ export const botAuthRoutes = new Elysia({ prefix: '/api/bots' })
             const bot = await findUserBotByIdInternal(tokenData.userBotId);
 
             if (!bot) {
+                await logAuditEvent({
+                    action: 'bot.login_failed',
+                    userId: tokenData.userId,
+                    userBotId: tokenData.userBotId,
+                    resourceType: 'bot_auth',
+                    metadata: { reason: 'bot_not_found' },
+                    ...ctx,
+                    success: false,
+                    errorMessage: 'Bot not found',
+                });
+
                 set.status = 401;
                 return {
                     error: 'auth/invalid_token',
@@ -52,6 +87,17 @@ export const botAuthRoutes = new Elysia({ prefix: '/api/bots' })
             }
 
             if (bot.status === 'revoked' || bot.status === 'disabled') {
+                await logAuditEvent({
+                    action: 'bot.login_failed',
+                    userId: tokenData.userId,
+                    userBotId: tokenData.userBotId,
+                    resourceType: 'bot_auth',
+                    metadata: { reason: 'bot_inactive', status: bot.status },
+                    ...ctx,
+                    success: false,
+                    errorMessage: 'Bot is disabled or revoked',
+                });
+
                 set.status = 401;
                 return {
                     error: 'auth/bot_inactive',
@@ -83,6 +129,18 @@ export const botAuthRoutes = new Elysia({ prefix: '/api/bots' })
             if (!tokenData.usedAt) {
                 await markTokenUsed(tokenData._id);
             }
+
+            // Audit log successful login
+            await logAuditEvent({
+                action: 'bot.login',
+                userId: tokenData.userId,
+                userBotId: tokenData.userBotId,
+                resourceType: 'bot_auth',
+                resourceId: session._id,
+                metadata: { handle: bot.handle, sessionId: session.jwtId },
+                ...ctx,
+                success: true,
+            });
 
             return {
                 jwt,
@@ -176,6 +234,7 @@ export const botAuthRoutes = new Elysia({ prefix: '/api/bots' })
     // Logout: Revoke current session
     .post('/logout', async ({ request, set }) => {
         const authHeader = request.headers.get('authorization');
+        const ctx = getRequestContext(request);
 
         if (!authHeader?.startsWith('Bearer ')) {
             set.status = 401;
@@ -195,6 +254,17 @@ export const botAuthRoutes = new Elysia({ prefix: '/api/bots' })
 
         // Revoke the session
         await revokeSessionByJwtId(payload.sessionId);
+
+        // Audit log
+        await logAuditEvent({
+            action: 'bot.logout',
+            userId: payload.userId,
+            userBotId: payload.sub,
+            resourceType: 'bot_auth',
+            metadata: { sessionId: payload.sessionId },
+            ...ctx,
+            success: true,
+        });
 
         return { message: 'Logged out successfully' };
     })
