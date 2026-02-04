@@ -60,6 +60,7 @@ import {
   PageLink,
   PageLinkBlock,
   HashTag,
+  MarkdownPaste,
   formatTime,
   formatDate,
   type SlashCommandItem,
@@ -286,6 +287,8 @@ export class NotebookEditorComponent implements OnDestroy {
           }),
           // Emoji replacer (e.g., :) -> emoji)
           EmojiReplacer,
+          // Markdown paste handler (converts pasted markdown to rich text)
+          MarkdownPaste,
           // Task lists with enhanced attributes (id, name, showCompleted, dueDate, priority, color)
           EnhancedTaskList,
           EnhancedTaskItem.configure({
