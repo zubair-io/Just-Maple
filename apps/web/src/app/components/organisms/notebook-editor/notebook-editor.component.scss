@@ -23,11 +23,13 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 1.5rem;
+  padding-bottom: 6rem;
   cursor: text;
 
   // Mobile: reduce left/right padding
   @media (max-width: 640px) {
     padding: 1rem 0.5rem;
+    padding-bottom: 6rem;
   }
 
   &:not(.full-width) {
