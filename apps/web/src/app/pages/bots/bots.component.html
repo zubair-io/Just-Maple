@@ -99,10 +99,10 @@
                     {{ bot.status }}
                   </span>
                   <span class="permission-badges">
-                    @if (bot.permissions?.messages?.read) {
+                    @if (bot.permissions.messages.read) {
                       <span class="perm-badge">Read</span>
                     }
-                    @if (bot.permissions?.messages?.write) {
+                    @if (bot.permissions.messages.write) {
                       <span class="perm-badge">Write</span>
                     }
                   </span>
