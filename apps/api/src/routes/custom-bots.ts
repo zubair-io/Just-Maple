@@ -1,5 +1,7 @@
 import { Elysia, t } from 'elysia';
-import { authMiddleware, checkAuth } from '../middleware/auth';
+import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
+import { findUserById } from '../repositories/user.repo';
+import type { JWTPayload } from '@maple/shared';
 import {
     createCustomBot,
     updateCustomBot,
@@ -37,7 +39,23 @@ function getRequestContext(request: Request): { ipAddress?: string; userAgent?: 
  * These require user authentication (not bot auth).
  */
 export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
-    .use(authMiddleware)
+    .use(jwtPlugin)
+    .derive(async ({ jwt, request }) => {
+        const authHeader = request.headers.get('authorization');
+        if (!authHeader?.startsWith('Bearer ')) {
+            return { auth: null as AuthContext | null };
+        }
+        const token = authHeader.slice(7);
+        try {
+            const payload = (await jwt.verify(token)) as JWTPayload | false;
+            if (!payload) return { auth: null as AuthContext | null };
+            const user = await findUserById(payload.sub);
+            if (!user) return { auth: null as AuthContext | null };
+            return { auth: { user, payload } as AuthContext };
+        } catch {
+            return { auth: null as AuthContext | null };
+        }
+    })
 
     // List user's custom bots
     .get('/', async ({ auth, set }) => {
