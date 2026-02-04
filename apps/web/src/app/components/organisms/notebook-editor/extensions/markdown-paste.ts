@@ -97,15 +97,22 @@ export const MarkdownPaste = Extension.create({
             event.preventDefault();
 
             // Convert markdown to HTML and insert
-            markdownToHtml(textContent).then((html) => {
-              // Use editor.commands.insertContent to handle the HTML
-              // This will properly convert HTML to ProseMirror nodes
-              editor.commands.insertContent(html, {
-                parseOptions: {
-                  preserveWhitespace: false,
-                },
+            markdownToHtml(textContent)
+              .then((html) => {
+                // Use editor.commands.insertContent to handle the HTML
+                // This will properly convert HTML to ProseMirror nodes
+                editor.commands.insertContent(html, {
+                  parseOptions: {
+                    preserveWhitespace: false,
+                  },
+                });
+              })
+              .catch((error) => {
+                // If markdown parsing fails, log the error and fall back to plain text
+                // eslint-disable-next-line no-console
+                console.error('Failed to parse markdown on paste:', error);
+                editor.commands.insertContent(textContent);
               });
-            });
 
             // Return true to indicate we handled the paste
             return true;
