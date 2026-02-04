@@ -101,8 +101,8 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
 
             return {
                 bot,
-                provisioning_token: plaintextToken,
-                webhook_secret: webhookSecret,
+                provisioningToken: plaintextToken,
+                webhookSecret: webhookSecret,
             };
         },
         {
@@ -253,7 +253,7 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
             );
 
             return {
-                provisioning_token: plaintextToken,
+                provisioningToken: plaintextToken,
                 message: 'New provisioning token generated. All previous tokens are now invalid.',
             };
         },
@@ -290,7 +290,7 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
             );
 
             return {
-                webhook_secret: webhookSecret,
+                webhookSecret: webhookSecret,
                 message: 'New webhook secret generated.',
             };
         },
@@ -370,10 +370,10 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
             return {
                 sessions: sessions.map((s) => ({
                     _id: s._id,
-                    created_at: s.createdAt,
-                    expires_at: s.expiresAt,
-                    last_used_at: s.lastUsedAt,
-                    ip_address: s.ipAddress,
+                    createdAt: s.createdAt,
+                    expiresAt: s.expiresAt,
+                    lastUsedAt: s.lastUsedAt,
+                    ipAddress: s.ipAddress,
                 })),
             };
         },
