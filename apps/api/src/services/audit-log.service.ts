@@ -1,4 +1,4 @@
-import { db } from '../db/client';
+import { getDb } from '../db/client';
 
 export type AuditAction =
     // Custom Bot Management
@@ -45,7 +45,7 @@ export async function logAuditEvent(
     entry: Omit<AuditLogEntry, '_id' | 'createdAt'>,
 ): Promise<void> {
     try {
-        const collection = db().collection('audit_logs');
+        const collection = getDb().collection('audit_logs');
         await collection.insertOne({
             ...entry,
             createdAt: new Date(),
@@ -96,7 +96,7 @@ export async function getAuditLogsForBot(
         actions?: AuditAction[];
     },
 ): Promise<AuditLogEntry[]> {
-    const collection = db().collection<AuditLogEntry>('audit_logs');
+    const collection = getDb().collection<AuditLogEntry>('audit_logs');
 
     const query: Record<string, unknown> = { userBotId };
 
@@ -128,7 +128,7 @@ export async function getAuditLogsForUser(
         actions?: AuditAction[];
     },
 ): Promise<AuditLogEntry[]> {
-    const collection = db().collection<AuditLogEntry>('audit_logs');
+    const collection = getDb().collection<AuditLogEntry>('audit_logs');
 
     const query: Record<string, unknown> = { userId };
 
