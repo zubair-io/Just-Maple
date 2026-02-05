@@ -444,13 +444,20 @@ export class MessageService {
   sendMessage(
     notebookId: string,
     content: PageContent,
-    options?: { threadId?: string; parentMessageId?: string },
+    options?: { threadId?: string; parentMessageId?: string; forceHttp?: boolean },
   ): Observable<Message> {
     this._error.set(null);
 
-    // For simple messages without threads, use WebSocket
-    if (!options?.threadId && !options?.parentMessageId && this.realtimeWS.isConnected()) {
+    // For simple messages without threads, use WebSocket (unless forceHttp is set)
+    if (
+      !options?.threadId &&
+      !options?.parentMessageId &&
+      !options?.forceHttp &&
+      this.realtimeWS.isConnected()
+    ) {
       this.realtimeWS.sendChatMessage(notebookId, content);
+      // WebSocket doesn't return the message, return null
+      // Caller should use forceHttp: true if they need the message ID
       return of(null as unknown as Message);
     }
 

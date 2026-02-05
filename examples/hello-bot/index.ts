@@ -237,6 +237,7 @@ const app = new Elysia()
 
     // Webhook endpoint - Just Maple calls this when the bot is mentioned
     .post('/webhook', async ({ body, headers, set }) => {
+        console.log('Received webhook');
         const rawBody = JSON.stringify(body);
         const signature = headers['x-maple-signature'] as string;
 

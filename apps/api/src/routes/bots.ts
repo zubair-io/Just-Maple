@@ -272,11 +272,14 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
 
             // Find the bot by handle
+            console.log(`[BotInvoke] Looking for bot @${body.botHandle} in notebook ${params.id}`);
             const userBot = await findUserBotByHandleForNotebook(body.botHandle, params.id);
             if (!userBot) {
+                console.log(`[BotInvoke] Bot @${body.botHandle} not found in notebook`);
                 set.status = 404;
                 return { error: `Bot @${body.botHandle} not found` };
             }
+            console.log(`[BotInvoke] Found bot: ${userBot._id}, type: ${userBot.botType}`);
 
             // Build context with conversation history if this is a thread
             const context: any = { ...body.context };

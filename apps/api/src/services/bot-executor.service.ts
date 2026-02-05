@@ -127,6 +127,10 @@ export class BotExecutorService {
     private async executeCustomBot(invocation: BotInvocation, userBot: UserBot): Promise<void> {
         const startTime = Date.now();
 
+        console.log(`[CustomBot] Executing webhook for bot ${userBot.handle} (${userBot._id})`);
+        console.log(`[CustomBot] Invoke URL: ${userBot.invokeUrl}`);
+        console.log(`[CustomBot] Has webhook secret: ${!!userBot.webhookSecret}`);
+
         try {
             // Update status to running
             await updateInvocationStatus(invocation._id, 'running');

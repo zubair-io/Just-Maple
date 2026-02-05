@@ -194,12 +194,17 @@ export async function invokeWebhook(
     userBot: UserBot,
     payload: WebhookPayload,
 ): Promise<{ success: boolean; error?: string }> {
+    console.log(`[Webhook] Invoking webhook for bot ${userBot.handle}`);
+    console.log(`[Webhook] URL: ${userBot.invokeUrl}`);
+
     if (!userBot.invokeUrl || !userBot.webhookSecret) {
+        console.log(`[Webhook] Missing invokeUrl or webhookSecret`);
         return { success: false, error: 'Bot missing invokeUrl or webhookSecret' };
     }
 
     // SSRF protection
     if (!isUrlSafe(userBot.invokeUrl)) {
+        console.log(`[Webhook] URL failed safety check: ${userBot.invokeUrl}`);
         return { success: false, error: 'Invalid webhook URL' };
     }
 

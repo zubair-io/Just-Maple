@@ -575,17 +575,22 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   }
 
   private sendRegularMessage(content: PageContent, mentions: MentionNodeAttrs[]): void {
-    this.messageService.sendMessage(this.notebookId(), content).subscribe({
-      next: (message) => {
-        this.editor?.commands.clearContent();
-        this.scrollToBottom();
+    const hasBotMentions = mentions.some((m) => m.type === 'bot');
 
-        // Invoke bots for each mention
-        if (mentions.length > 0) {
-          this.invokeMentionedBots(message, mentions, content);
-        }
-      },
-    });
+    // Use HTTP when there are bot mentions so we get the real message ID back
+    this.messageService
+      .sendMessage(this.notebookId(), content, { forceHttp: hasBotMentions })
+      .subscribe({
+        next: (message) => {
+          this.editor?.commands.clearContent();
+          this.scrollToBottom();
+
+          // Invoke bots for each mention (only if we have the message)
+          if (message && hasBotMentions) {
+            this.invokeMentionedBots(message, mentions, content);
+          }
+        },
+      });
   }
 
   private extractMentionsFromContent(content: PageContent): MentionNodeAttrs[] {
