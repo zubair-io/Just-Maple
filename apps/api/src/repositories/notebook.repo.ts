@@ -476,14 +476,17 @@ export async function shareBotToNotebook(
     const notebook = await findNotebookByIdWithAccess(notebookId, ownerId, 'owner');
     if (!notebook) return null;
 
-    // Verify bot exists and is owned by a notebook member
+    // Verify bot exists and is owned by a notebook member (or the owner)
     const { findUserBotById } = await import('./user-bot.repo');
     const bot = await findUserBotById(userBotId);
     if (!bot) return null;
 
+    // Check if bot owner is the notebook owner or a member
     const memberIds = notebook.sharing.sharedWith.map((m) => m.userId);
-    if (!memberIds.includes(bot.userId)) {
-        return null; // Bot owner must be notebook member
+    const isOwner = bot.userId === ownerId;
+    const isMember = memberIds.includes(bot.userId);
+    if (!isOwner && !isMember) {
+        return null; // Bot owner must be notebook owner or member
     }
 
     const result = await getCollection().findOneAndUpdate(

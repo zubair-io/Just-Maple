@@ -291,7 +291,10 @@ export async function findUserBotsForNotebook(notebookId: string): Promise<UserB
 
         // Batch load owners and templates
         const ownerIds = [...new Set(botDocs.map((b) => b.userId.toString()))];
-        const templateIds = [...new Set(botDocs.map((b) => b.templateId.toString()))];
+        // Only get template IDs for bots that have them (not custom bots)
+        const templateIds = [
+            ...new Set(botDocs.filter((b) => b.templateId).map((b) => b.templateId.toString())),
+        ];
 
         const owners = await getDb()
             .collection('users')
@@ -299,7 +302,7 @@ export async function findUserBotsForNotebook(notebookId: string): Promise<UserB
             .toArray();
 
         const { findBotTemplatesByIds } = await import('./bot-template.repo');
-        const templates = await findBotTemplatesByIds(templateIds);
+        const templates = templateIds.length > 0 ? await findBotTemplatesByIds(templateIds) : [];
 
         const ownerMap = new Map(owners.map((u) => [u._id.toString(), u]));
         const templateMap = new Map(templates.map((t) => [t._id, t]));
@@ -307,7 +310,7 @@ export async function findUserBotsForNotebook(notebookId: string): Promise<UserB
         // Enrich bots with owner and template info
         return botDocs.map((doc) => {
             const owner = ownerMap.get(doc.userId.toString());
-            const template = templateMap.get(doc.templateId.toString());
+            const template = doc.templateId ? templateMap.get(doc.templateId.toString()) : null;
 
             const bot = toUserBotSafe(doc);
             return {
