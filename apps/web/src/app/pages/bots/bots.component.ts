@@ -295,8 +295,8 @@ export class BotsComponent implements OnInit {
       this.createCustomBotError.set('Invoke URL is required');
       return;
     }
-    if (!invokeUrl.startsWith('https://')) {
-      this.createCustomBotError.set('Invoke URL must use HTTPS');
+    if (!this.isValidWebhookUrl(invokeUrl)) {
+      this.createCustomBotError.set('Invoke URL must use HTTPS (or HTTP for localhost)');
       return;
     }
 
@@ -381,8 +381,8 @@ export class BotsComponent implements OnInit {
     if (!bot) return;
 
     const invokeUrl = this.editCustomBotInvokeUrl().trim();
-    if (!invokeUrl.startsWith('https://')) {
-      this.editCustomBotError.set('Invoke URL must use HTTPS');
+    if (!this.isValidWebhookUrl(invokeUrl)) {
+      this.editCustomBotError.set('Invoke URL must use HTTPS (or HTTP for localhost)');
       return;
     }
 
@@ -572,6 +572,27 @@ export class BotsComponent implements OnInit {
         return 'status-revoked';
       default:
         return '';
+    }
+  }
+
+  /**
+   * Validate webhook URL - must be HTTPS, except HTTP is allowed for localhost
+   */
+  private isValidWebhookUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      const isLocalhost =
+        parsed.hostname === 'localhost' ||
+        parsed.hostname === '127.0.0.1' ||
+        parsed.hostname === '::1';
+
+      // Allow HTTP for localhost, require HTTPS otherwise
+      if (isLocalhost) {
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      }
+      return parsed.protocol === 'https:';
+    } catch {
+      return false;
     }
   }
 }

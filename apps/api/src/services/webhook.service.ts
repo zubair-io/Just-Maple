@@ -137,21 +137,27 @@ export function buildWebhookPayload(
 function isUrlSafe(url: string): boolean {
     try {
         const parsed = new URL(url);
+        const hostname = parsed.hostname.toLowerCase();
+        const isProduction = process.env.NODE_ENV === 'production';
+        const isLocalhost =
+            hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+
+        // In development, allow HTTP for localhost
+        if (!isProduction && isLocalhost) {
+            return true;
+        }
 
         // Must be HTTPS in production
-        if (process.env.NODE_ENV === 'production' && parsed.protocol !== 'https:') {
+        if (isProduction && parsed.protocol !== 'https:') {
             return false;
         }
 
-        // Block private IPs
-        const hostname = parsed.hostname.toLowerCase();
-
-        // Block localhost
-        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+        // Block localhost in production
+        if (isProduction && isLocalhost) {
             return false;
         }
 
-        // Block private IP ranges
+        // Block private IP ranges (always, even in development)
         const privateRanges = [
             /^10\./,
             /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
