@@ -315,7 +315,7 @@ export interface BotInvocationDoc {
     userBotId: ObjectId;
     templateId: ObjectId;
     sourceType: 'message' | 'note';
-    sourceId: ObjectId;
+    sourceId: string; // Message ID (UUID or legacy ObjectId string)
     notebookId: ObjectId;
     userId: ObjectId;
     context: Record<string, unknown>;
@@ -351,7 +351,7 @@ export async function createBotInvocationFixture(
         userBotId: options.userBotId ? new ObjectId(options.userBotId) : new ObjectId(),
         templateId: options.templateId ? new ObjectId(options.templateId) : new ObjectId(),
         sourceType: options.sourceType || 'message',
-        sourceId: options.sourceId ? new ObjectId(options.sourceId) : new ObjectId(),
+        sourceId: options.sourceId ?? new ObjectId().toString(),
         notebookId: options.notebookId ? new ObjectId(options.notebookId) : new ObjectId(),
         userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
         context: options.context || { mentionText: '@bot test' },
