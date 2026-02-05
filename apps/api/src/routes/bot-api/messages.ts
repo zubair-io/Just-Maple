@@ -42,10 +42,8 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
     .derive(async ({ request }) => {
         console.log('[BotMessages] Auth derive called for:', request.url);
         const authHeader = request.headers.get('authorization');
-        console.log(
-            '[BotMessages] Auth header:',
-            authHeader ? `${authHeader.substring(0, 50)}...` : 'null',
-        );
+        const hasAuthHeader = !!authHeader;
+        console.log('[BotMessages] Auth header present:', hasAuthHeader);
 
         if (!authHeader?.startsWith('Bearer ')) {
             console.log('[BotMessages] No Bearer token found');
@@ -53,7 +51,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
         }
 
         const bearerToken = authHeader.slice(7);
-        console.log('[BotMessages] Token length:', bearerToken.length);
+        console.log('[BotMessages] Bearer token present:', !!bearerToken);
 
         try {
             // Try JWT first (custom bots)
@@ -386,7 +384,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                 parentMessageId: t.String(),
             }),
             body: t.Object({
-                content: t.String(),
+                content: t.Union([t.String(), t.Record(t.String(), t.Any())]),
                 content_type: t.Optional(t.Union([t.Literal('text'), t.Literal('prosemirror')])),
             }),
         },
@@ -491,7 +489,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                 pageId: t.String(),
             }),
             body: t.Object({
-                content: t.String(),
+                content: t.Union([t.String(), t.Record(t.String(), t.Any())]),
                 content_type: t.Optional(t.Union([t.Literal('text'), t.Literal('prosemirror')])),
             }),
         },

@@ -64,6 +64,26 @@ export const botAuthRoutes = new Elysia({ prefix: '/api/bots' })
                 };
             }
 
+            // Reject already-used provisioning tokens
+            if (tokenData.usedAt) {
+                await logAuditEvent({
+                    action: 'bot.login_failed',
+                    userId: tokenData.userId,
+                    userBotId: tokenData.userBotId,
+                    resourceType: 'bot_auth',
+                    metadata: { reason: 'token_used' },
+                    ...ctx,
+                    success: false,
+                    errorMessage: 'Provisioning token has already been used',
+                });
+
+                set.status = 401;
+                return {
+                    error: 'auth/token_used',
+                    message: 'Provisioning token has already been used',
+                };
+            }
+
             // Get the bot to verify it exists and is active
             const bot = await findUserBotByIdInternal(tokenData.userBotId);
 
@@ -125,10 +145,8 @@ export const botAuthRoutes = new Elysia({ prefix: '/api/bots' })
                 bot.jwtExpirationHours || 12,
             );
 
-            // Mark provisioning token as used (first use)
-            if (!tokenData.usedAt) {
-                await markTokenUsed(tokenData._id);
-            }
+            // Mark provisioning token as used
+            await markTokenUsed(tokenData._id);
 
             // Audit log successful login
             await logAuditEvent({
@@ -292,6 +310,28 @@ export const botAuthRoutes = new Elysia({ prefix: '/api/bots' })
             };
         }
 
+        // Validate session is still active
+        const session = await validateSession(payload.sessionId);
+
+        if (!session) {
+            set.status = 401;
+            return {
+                error: 'auth/session_revoked',
+                message: 'Session has been revoked',
+            };
+        }
+
+        // Verify bot is still active
+        const bot = await findUserBotByIdInternal(payload.sub);
+
+        if (!bot || bot.status === 'revoked' || bot.status === 'disabled') {
+            set.status = 401;
+            return {
+                error: 'auth/bot_inactive',
+                message: 'Bot is disabled or revoked',
+            };
+        }
+
         const sessions = await findActiveSessionsByBotId(payload.sub);
 
         return {
@@ -328,6 +368,28 @@ export const botAuthRoutes = new Elysia({ prefix: '/api/bots' })
                 return {
                     error: 'auth/jwt_expired',
                     message: 'Invalid or expired JWT',
+                };
+            }
+
+            // Validate session is still active
+            const session = await validateSession(payload.sessionId);
+
+            if (!session) {
+                set.status = 401;
+                return {
+                    error: 'auth/session_revoked',
+                    message: 'Session has been revoked',
+                };
+            }
+
+            // Verify bot is still active
+            const bot = await findUserBotByIdInternal(payload.sub);
+
+            if (!bot || bot.status === 'revoked' || bot.status === 'disabled') {
+                set.status = 401;
+                return {
+                    error: 'auth/bot_inactive',
+                    message: 'Bot is disabled or revoked',
                 };
             }
 

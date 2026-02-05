@@ -201,16 +201,10 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
 
             const ctx = getRequestContext(request);
 
-            // Get bot info for audit log before deletion
+            // Verify ownership before any modifications
             const bot = await findUserBotById(params.id);
 
-            // Revoke all tokens and sessions first
-            await revokeAllTokens(params.id);
-            await revokeAllSessions(params.id);
-
-            const deleted = await deleteCustomBot(params.id, auth.user._id);
-
-            if (!deleted) {
+            if (!bot || bot.userId !== auth.user._id || bot.botType !== 'custom') {
                 set.status = 404;
                 return {
                     error: 'resource/not_found',
@@ -218,10 +212,24 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
                 };
             }
 
+            // Revoke all tokens and sessions after ownership verified
+            await revokeAllTokens(params.id);
+            await revokeAllSessions(params.id);
+
+            const deleted = await deleteCustomBot(params.id, auth.user._id);
+
+            if (!deleted) {
+                set.status = 500;
+                return {
+                    error: 'server/delete_failed',
+                    message: 'Failed to delete bot',
+                };
+            }
+
             // Audit log
             await logAuditEvent(
                 createBotAuditEntry('custom_bot.deleted', auth.user._id, params.id, {
-                    metadata: { handle: bot?.handle },
+                    metadata: { handle: bot.handle },
                     ...ctx,
                 }),
             );
@@ -352,7 +360,13 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
                 }),
             );
 
-            return { message: `Bot status updated to ${body.status}` };
+            // Fetch and return the updated bot
+            const updatedBot = await findUserBotById(params.id);
+
+            return {
+                bot: updatedBot,
+                message: `Bot status updated to ${body.status}`,
+            };
         },
         {
             params: t.Object({
@@ -388,6 +402,7 @@ export const customBotRoutes = new Elysia({ prefix: '/api/custom-bots' })
             return {
                 sessions: sessions.map((s) => ({
                     _id: s._id,
+                    jwtId: s.jwtId,
                     createdAt: s.createdAt,
                     expiresAt: s.expiresAt,
                     lastUsedAt: s.lastUsedAt,

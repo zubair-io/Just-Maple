@@ -31,10 +31,8 @@ export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).der
     async ({ request }) => {
         console.log('[BotAuth] Middleware called for:', request.url);
         const authHeader = request.headers.get('authorization');
-        console.log(
-            '[BotAuth] Auth header:',
-            authHeader ? `${authHeader.substring(0, 50)}...` : 'null',
-        );
+        const hasAuthHeader = !!authHeader;
+        console.log('[BotAuth] Auth header present:', hasAuthHeader);
 
         if (!authHeader?.startsWith('Bearer ')) {
             console.log('[BotAuth] No Bearer token found');
@@ -42,7 +40,7 @@ export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).der
         }
 
         const bearerToken = authHeader.slice(7);
-        console.log('[BotAuth] Token length:', bearerToken.length);
+        console.log('[BotAuth] Bearer token present:', !!bearerToken);
 
         try {
             // Try JWT first (custom bots)

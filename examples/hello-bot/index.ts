@@ -197,7 +197,6 @@ async function replyToMessage(parentMessageId: string, content: string): Promise
         console.error('Not logged in');
         return false;
     }
-    console.log(jwtToken);
     try {
         const response = await fetch(`${config.apiUrl}/api/bots/threads/${parentMessageId}/reply`, {
             method: 'POST',

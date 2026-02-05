@@ -16,7 +16,11 @@ import {
     updateInvocationStatus,
     createInvocation,
 } from '../repositories/bot-invocation.repo';
-import { getOrCreateThread, incrementThreadMessageCount } from '../repositories/thread.repo';
+import {
+    getOrCreateThread,
+    incrementThreadMessageCount,
+    findThreadByParentMessage,
+} from '../repositories/thread.repo';
 import {
     createMessageInThread,
     markMessageHasThread,
@@ -145,8 +149,6 @@ export class BotExecutorService {
                 // Check if parent has a thread
                 if (parentMessage.hasThread) {
                     // Get thread messages
-                    const { findThreadByParentMessage } =
-                        await import('../repositories/thread.repo');
                     const thread = await findThreadByParentMessage(invocation.sourceId);
                     if (thread) {
                         threadId = thread._id;

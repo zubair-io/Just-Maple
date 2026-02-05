@@ -455,7 +455,7 @@ export class MessageService {
     notebookId: string,
     content: PageContent,
     options?: { threadId?: string; parentMessageId?: string; forceHttp?: boolean },
-  ): Observable<Message> {
+  ): Observable<Message | null> {
     this._error.set(null);
 
     const tempId = `temp-${Date.now()}`;
@@ -492,7 +492,7 @@ export class MessageService {
       // WebSocket doesn't return the message, return null
       // Caller should use forceHttp: true if they need the message ID
       // The real message will arrive via realtime events and upsert will update
-      return of(null as unknown as Message);
+      return of(null);
     }
 
     // Fall back to HTTP for thread messages or when WebSocket not connected

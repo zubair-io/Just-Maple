@@ -273,7 +273,7 @@ export async function createUserBotFixture(
 
 export interface ThreadDoc {
     _id: ObjectId;
-    parentMessageId: ObjectId;
+    parentMessageId: string; // Message ID (UUID or legacy ObjectId string)
     notebookId: ObjectId;
     botInvocationId?: ObjectId;
     messageCount: number;
@@ -293,9 +293,7 @@ export async function createThreadFixture(options: CreateThreadOptions = {}): Pr
 
     const doc: ThreadDoc = {
         _id: new ObjectId(),
-        parentMessageId: options.parentMessageId
-            ? new ObjectId(options.parentMessageId)
-            : new ObjectId(),
+        parentMessageId: options.parentMessageId ?? new ObjectId().toString(),
         notebookId: options.notebookId ? new ObjectId(options.notebookId) : new ObjectId(),
         botInvocationId: options.botInvocationId
             ? new ObjectId(options.botInvocationId)

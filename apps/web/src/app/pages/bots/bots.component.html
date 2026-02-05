@@ -735,7 +735,9 @@
             @for (session of botSessions(); track session._id) {
               <div class="session-item">
                 <div class="session-info">
-                  <div class="session-id">Session {{ session.jwtId.slice(0, 8) }}...</div>
+                  <div class="session-id">
+                    Session {{ (session.jwtId || session._id).slice(0, 8) }}...
+                  </div>
                   <div class="session-details">
                     Created: {{ formatDate(session.createdAt) }}
                     @if (session.lastUsedAt) {

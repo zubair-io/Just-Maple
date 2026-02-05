@@ -1,4 +1,5 @@
 import { ObjectId, Collection, Binary } from 'mongodb';
+import { randomBytes } from 'crypto';
 import { getDb } from '../db/client';
 
 /**
@@ -70,8 +71,8 @@ function toInternalToken(doc: BotProvisioningTokenDocument): BotProvisioningToke
  * Format: prov_<32 bytes as base64url> (prefix helps identify token type)
  */
 export function generateProvisioningTokenString(): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    const base64 = Buffer.from(bytes)
+    const bytes = randomBytes(32);
+    const base64 = bytes
         .toString('base64')
         .replace(/\+/g, '-')
         .replace(/\//g, '_')

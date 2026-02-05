@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { BotService, BotSuggestion, EnrichedUserBot, CustomBot } from '../bot.service';
@@ -592,7 +593,9 @@ describe('BotService', () => {
         service.createCustomBot(createData).subscribe((result) => {
           expect(result.handle).toBe('my-bot');
           expect(result.provisioningToken).toBe('prov_abc123');
-          expect(service.customBots()).toContain(jasmine.objectContaining({ handle: 'my-bot' }));
+          expect(service.customBots()).toContainEqual(
+            expect.objectContaining({ handle: 'my-bot' }),
+          );
           done();
         });
 

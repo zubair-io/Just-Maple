@@ -1,4 +1,5 @@
 import { ObjectId, Collection } from 'mongodb';
+import { randomBytes } from 'crypto';
 import { getDb } from '../db/client';
 
 /**
@@ -70,8 +71,8 @@ function toPublicSession(doc: BotSessionDocument): BotSession {
  * Generate a unique JWT ID
  */
 function generateJwtId(): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(16));
-    return Buffer.from(bytes).toString('hex');
+    const bytes = randomBytes(16);
+    return bytes.toString('hex');
 }
 
 /**

@@ -1,4 +1,5 @@
 import { ObjectId, Collection } from 'mongodb';
+import { randomBytes } from 'crypto';
 import { getDb } from '../db/client';
 import type {
     UserBot,
@@ -387,8 +388,8 @@ export async function searchUserBots(
  * Generate a webhook secret for custom bots
  */
 function generateWebhookSecret(): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    const base64 = Buffer.from(bytes)
+    const bytes = randomBytes(32);
+    const base64 = bytes
         .toString('base64')
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
@@ -492,13 +493,15 @@ export async function updateBotStatus(
     status: 'active' | 'disabled' | 'revoked',
 ): Promise<boolean> {
     try {
+        // Sync isEnabled with status: active = enabled, disabled/revoked = disabled
+        const isEnabled = status === 'active';
         const result = await getCollection().updateOne(
             {
                 _id: new ObjectId(botId),
                 userId: new ObjectId(userId),
                 botType: 'custom',
             },
-            { $set: { status, updatedAt: new Date() } },
+            { $set: { status, isEnabled, updatedAt: new Date() } },
         );
         return result.modifiedCount === 1;
     } catch {
