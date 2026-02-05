@@ -548,7 +548,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
         .subscribe({
           next: (message) => {
             // Invoke bots for each mention (using parent message as source)
-            if (mentions.length > 0) {
+            if (message && mentions.length > 0) {
               this.invokeMentionedBots(message, mentions, content);
             }
           },
