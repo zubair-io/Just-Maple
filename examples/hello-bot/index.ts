@@ -250,57 +250,69 @@ const app = new Elysia()
 
         const event = body as WebhookEvent;
         console.log(`Received webhook: ${event.event_type}`);
+        console.log('Payload:', JSON.stringify(event, null, 2));
 
         // Handle the event
         switch (event.event_type) {
-            case 'bot.mentioned':
-                await handleMention(event);
-                break;
-
-            case 'message.created':
-                // Could handle new messages in threads the bot is part of
-                console.log('New message in conversation');
+            case 'thread_mention':
+                await handleThreadMention(event);
                 break;
 
             default:
                 console.log(`Unknown event type: ${event.event_type}`);
         }
 
-        return { received: true };
+        // Return accepted status (required by Just Maple)
+        return { status: 'accepted' };
     })
 
     .listen(config.port);
 
-// Webhook event types
-interface WebhookEvent {
-    event_type: 'bot.mentioned' | 'message.created';
-    timestamp: string;
-    data: {
-        message_id: string;
-        page_id: string;
-        notebook_id: string;
-        thread_id?: string;
-        author: {
-            id: string;
-            name: string;
-            type: 'user' | 'bot';
-        };
-        content: string;
-        mention_text?: string;
+// Webhook event types - matches Just Maple's webhook payload
+interface WebhookMessage {
+    id: string;
+    author: {
+        id: string;
+        name: string;
+        type: 'user' | 'bot';
     };
+    content: string;
+    content_json: unknown;
+    created_at: string;
+}
+
+interface WebhookEvent {
+    event_type: 'thread_mention';
+    thread_id: string | null;
+    parent_message_id: string;
+    page_id: string;
+    messages: WebhookMessage[];
+    context: {
+        notebook_id: string;
+        page_id: string;
+    };
+    timestamp: string;
 }
 
 /**
- * Handle bot mention - respond with "Hello!"
+ * Handle thread mention - respond with "Hello!"
  */
-async function handleMention(event: WebhookEvent): Promise<void> {
-    const { message_id, page_id } = event.data;
-    const authorName = event.data.author.name;
+async function handleThreadMention(event: WebhookEvent): Promise<void> {
+    const { parent_message_id, messages } = event;
 
-    console.log(`Mentioned by ${authorName} in message ${message_id}`);
+    // Get the last message (the one that mentioned the bot)
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage) {
+        console.log('No messages in webhook payload');
+        return;
+    }
 
-    // Reply in a thread
-    await replyToMessage(message_id, `Hello, ${authorName}! 👋`);
+    const authorName = lastMessage.author.name;
+    console.log(`Mentioned by ${authorName} in message ${lastMessage.id}`);
+    console.log(`Message content: ${lastMessage.content}`);
+
+    // Reply in the thread (use parent_message_id to reply to the thread)
+    await replyToMessage(parent_message_id, `Hello, ${authorName}! 👋`);
 }
 
 // Startup
