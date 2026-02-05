@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import {
-    botAuthMiddleware,
+    type BotAuthContext,
     checkBotAuth,
     checkBotPermission,
     checkBotNotebookAccess,
@@ -18,10 +18,17 @@ import {
     findThreadByParentMessage,
     incrementThreadMessageCount,
 } from '../../repositories/thread.repo';
-import { findPageById } from '../../repositories/page.repo';
-import { findUserBotByIdInternal } from '../../repositories/user-bot.repo';
+import { findPageByIdForBot } from '../../repositories/page.repo';
+import { findUserBotByIdInternal, isBotSharedWithNotebook } from '../../repositories/user-bot.repo';
+import {
+    findInvocationsBySourceMessage,
+    updateInvocationStatus,
+} from '../../repositories/bot-invocation.repo';
 import { broadcastChatEvent } from '../../services/realtime.service';
 import { markdownToProseMirror } from '../../utils/markdown-to-prosemirror';
+import { verifyBotJWT } from '../../services/bot-jwt.service';
+import { validateSession } from '../../repositories/bot-session.repo';
+import { verifyToken } from '../../repositories/bot-token.repo';
 import type { PageContent } from '@maple/shared';
 
 /**
@@ -31,7 +38,84 @@ import type { PageContent } from '@maple/shared';
  * Requires bot JWT authentication.
  */
 export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
-    .use(botAuthMiddleware)
+    // Inline bot auth - derive context for all routes
+    .derive(async ({ request }) => {
+        console.log('[BotMessages] Auth derive called for:', request.url);
+        const authHeader = request.headers.get('authorization');
+        console.log(
+            '[BotMessages] Auth header:',
+            authHeader ? `${authHeader.substring(0, 50)}...` : 'null',
+        );
+
+        if (!authHeader?.startsWith('Bearer ')) {
+            console.log('[BotMessages] No Bearer token found');
+            return { botAuth: null as BotAuthContext | null };
+        }
+
+        const bearerToken = authHeader.slice(7);
+        console.log('[BotMessages] Token length:', bearerToken.length);
+
+        try {
+            // Try JWT first (custom bots)
+            console.log('[BotMessages] Verifying bot JWT...');
+            const jwtPayload = await verifyBotJWT(bearerToken);
+
+            if (jwtPayload) {
+                console.log(
+                    `[BotMessages] JWT valid for bot ${jwtPayload.sub}, session ${jwtPayload.sessionId}`,
+                );
+
+                // Validate session is still active
+                const session = await validateSession(jwtPayload.sessionId);
+
+                if (!session) {
+                    console.log(`[BotMessages] Session ${jwtPayload.sessionId} not valid/active`);
+                    return { botAuth: null as BotAuthContext | null };
+                }
+
+                // Get bot for permissions
+                const bot = await findUserBotByIdInternal(jwtPayload.sub);
+
+                if (!bot || bot.status === 'revoked' || bot.status === 'disabled') {
+                    console.log(`[BotMessages] Bot ${jwtPayload.sub} not found or inactive`);
+                    return { botAuth: null as BotAuthContext | null };
+                }
+
+                console.log(`[BotMessages] Auth successful for bot ${jwtPayload.sub}`);
+                return {
+                    botAuth: {
+                        authType: 'jwt',
+                        jwtPayload,
+                        userBotId: jwtPayload.sub,
+                        userId: jwtPayload.userId,
+                        permissions: bot.permissions,
+                    } as BotAuthContext,
+                };
+            }
+
+            // Fall back to access token (template bots)
+            console.log('[BotMessages] JWT verification failed, trying access token...');
+            const token = await verifyToken(bearerToken);
+
+            if (!token) {
+                console.log('[BotMessages] Access token verification also failed');
+                return { botAuth: null as BotAuthContext | null };
+            }
+
+            console.log(`[BotMessages] Access token valid for bot ${token.userBotId}`);
+            return {
+                botAuth: {
+                    authType: 'token',
+                    token,
+                    userBotId: token.userBotId,
+                    userId: token.userId,
+                } as BotAuthContext,
+            };
+        } catch (error) {
+            console.error('[BotMessages] Error during authentication:', error);
+            return { botAuth: null as BotAuthContext | null };
+        }
+    })
 
     // Get messages for a page
     .get(
@@ -49,7 +133,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
             }
 
             // Get page to find notebook
-            const page = await findPageById(params.pageId);
+            const page = await findPageByIdForBot(params.pageId);
             if (!page) {
                 set.status = 404;
                 return { error: 'resource/not_found', message: 'Page not found' };
@@ -123,7 +207,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
             }
 
             // Get the first message to check notebook access
-            const page = await findPageById(messages[0].pageId);
+            const page = await findPageByIdForBot(messages[0].pageId);
             if (page) {
                 const notebookId = page.tagId || page.notebookId;
                 if (notebookId && !(await checkBotNotebookAccess(botAuth, notebookId, set))) {
@@ -165,6 +249,12 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
     .post(
         '/threads/:parentMessageId/reply',
         async ({ botAuth, params, body, set }) => {
+            console.log(`[BotMessages] POST /threads/${params.parentMessageId}/reply`);
+            console.log(
+                `[BotMessages] botAuth:`,
+                botAuth ? `authType=${botAuth.authType}` : 'null',
+            );
+
             if (!checkBotAuth(botAuth, set)) {
                 return { error: 'auth/missing_token', message: 'Bot authentication required' };
             }
@@ -184,7 +274,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
             }
 
             // Get page to find notebook
-            const page = await findPageById(parentMessage.pageId);
+            const page = await findPageByIdForBot(parentMessage.pageId);
             if (!page) {
                 set.status = 404;
                 return { error: 'resource/not_found', message: 'Page not found' };
@@ -239,22 +329,50 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
             // Increment thread message count
             await incrementThreadMessageCount(thread._id);
 
+            // Mark any pending invocations as completed
+            const pendingInvocations = await findInvocationsBySourceMessage(params.parentMessageId);
+            for (const inv of pendingInvocations) {
+                if (inv.status === 'running' || inv.status === 'pending') {
+                    await updateInvocationStatus(inv._id, 'completed', {
+                        responseMessageId: message._id,
+                        threadId: thread._id,
+                    });
+                    // Broadcast bot_invocation_completed
+                    broadcastChatEvent(notebookId, {
+                        action: 'bot_invocation_completed',
+                        data: {
+                            invocationId: inv._id,
+                            sourceId: inv.sourceId,
+                        },
+                        pageId: parentMessage.pageId,
+                        notebookId: notebookId,
+                        userId: botAuth.userId,
+                        timestamp: new Date().toISOString(),
+                    });
+                }
+            }
+
             // Broadcast the message
             broadcastChatEvent(notebookId, {
                 action: 'thread_message',
-                message: {
-                    _id: message._id,
-                    id: message.id,
-                    pageId: message.pageId,
-                    threadId: thread._id,
-                    userId: message.userId,
-                    senderType: 'bot',
-                    senderDisplayName: userBot.displayName || userBot.handle,
-                    content: message.content,
-                    createdAt: message.createdAt,
+                data: {
+                    message: {
+                        _id: message._id,
+                        id: message.id,
+                        pageId: message.pageId,
+                        threadId: thread._id,
+                        userId: message.userId,
+                        senderType: 'bot',
+                        senderDisplayName: userBot.displayName || userBot.handle,
+                        content: message.content,
+                        createdAt: message.createdAt,
+                    },
+                    parentMessageId: params.parentMessageId,
                 },
-                threadId: thread._id,
-                parentMessageId: params.parentMessageId,
+                pageId: parentMessage.pageId,
+                notebookId: notebookId,
+                userId: botAuth.userId,
+                timestamp: new Date().toISOString(),
             });
 
             return {
@@ -290,7 +408,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
             }
 
             // Get page to find notebook
-            const page = await findPageById(params.pageId);
+            const page = await findPageByIdForBot(params.pageId);
             if (!page) {
                 set.status = 404;
                 return { error: 'resource/not_found', message: 'Page not found' };
@@ -346,7 +464,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
             // Broadcast the message
             broadcastChatEvent(notebookId, {
                 action: 'message',
-                message: {
+                data: {
                     _id: message._id,
                     id: message.id,
                     pageId: params.pageId,
@@ -356,6 +474,10 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                     content: message.content,
                     createdAt: message.createdAt,
                 },
+                pageId: params.pageId,
+                notebookId: notebookId,
+                userId: botAuth.userId,
+                timestamp: new Date().toISOString(),
             });
 
             return {

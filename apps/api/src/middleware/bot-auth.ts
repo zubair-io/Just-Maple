@@ -29,13 +29,20 @@ export interface BotAuthContext {
  */
 export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).derive(
     async ({ request }) => {
+        console.log('[BotAuth] Middleware called for:', request.url);
         const authHeader = request.headers.get('authorization');
+        console.log(
+            '[BotAuth] Auth header:',
+            authHeader ? `${authHeader.substring(0, 50)}...` : 'null',
+        );
 
         if (!authHeader?.startsWith('Bearer ')) {
+            console.log('[BotAuth] No Bearer token found');
             return { botAuth: null as BotAuthContext | null };
         }
 
         const bearerToken = authHeader.slice(7);
+        console.log('[BotAuth] Token length:', bearerToken.length);
 
         try {
             // Try JWT first (custom bots)

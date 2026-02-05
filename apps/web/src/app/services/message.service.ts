@@ -171,6 +171,16 @@ export class MessageService {
     const isCurrentNotebook = message.notebookId === currentNotebookId;
 
     if (isCurrentPage || isCurrentNotebook) {
+      // If this is the current user's message, remove any temp messages first
+      // This handles optimistic updates from WebSocket sends
+      if (message.userId === currentUserId) {
+        const allMessages = this.store.query(getAllEntities());
+        const tempIds = allMessages.filter((m) => m.id.startsWith('temp-')).map((m) => m.id);
+        if (tempIds.length > 0) {
+          this.store.update(deleteEntities(tempIds));
+        }
+      }
+
       // Use upsert to handle duplicates (e.g., sender's own message)
       this.store.update(upsertEntities(message));
       this.persistToIndexedDB([message]);
@@ -448,6 +458,11 @@ export class MessageService {
   ): Observable<Message> {
     this._error.set(null);
 
+    const tempId = `temp-${Date.now()}`;
+    const now = new Date().toISOString();
+    const currentUser = this.authService.user();
+    const pageId = this._currentPageId() || '';
+
     // For simple messages without threads, use WebSocket (unless forceHttp is set)
     if (
       !options?.threadId &&
@@ -455,17 +470,32 @@ export class MessageService {
       !options?.forceHttp &&
       this.realtimeWS.isConnected()
     ) {
+      // Create optimistic message for WebSocket path too
+      const tempMessage: Message = {
+        _id: tempId,
+        id: tempId,
+        pageId,
+        notebookId,
+        userId: currentUser?._id || 'temp',
+        senderEmail: currentUser?.email,
+        senderDisplayName: currentUser?.displayName,
+        senderProfilePictureUrl: currentUser?.profilePictureUrl,
+        content,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      // Add optimistic message immediately
+      this.store.update(addEntities(tempMessage));
+
       this.realtimeWS.sendChatMessage(notebookId, content);
       // WebSocket doesn't return the message, return null
       // Caller should use forceHttp: true if they need the message ID
+      // The real message will arrive via realtime events and upsert will update
       return of(null as unknown as Message);
     }
 
     // Fall back to HTTP for thread messages or when WebSocket not connected
-    const tempId = `temp-${Date.now()}`;
-    const now = new Date().toISOString();
-    const currentUser = this.authService.user();
-    const pageId = this._currentPageId() || '';
 
     const tempMessage: Message = {
       _id: tempId,
