@@ -1,0 +1,16 @@
+{
+  "name": "hello-bot",
+  "version": "1.0.0",
+  "description": "Example custom bot for Just Maple that responds with Hello!",
+  "main": "index.ts",
+  "scripts": {
+    "start": "bun run index.ts",
+    "dev": "bun --watch run index.ts"
+  },
+  "dependencies": {
+    "elysia": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.0.0"
+  }
+}
