@@ -39,13 +39,19 @@ export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).der
 
         try {
             // Try JWT first (custom bots)
+            console.log('[BotAuth] Verifying bot JWT...');
             const jwtPayload = await verifyBotJWT(bearerToken);
 
             if (jwtPayload) {
+                console.log(
+                    `[BotAuth] JWT valid for bot ${jwtPayload.sub}, session ${jwtPayload.sessionId}`,
+                );
+
                 // Validate session is still active
                 const session = await validateSession(jwtPayload.sessionId);
 
                 if (!session) {
+                    console.log(`[BotAuth] Session ${jwtPayload.sessionId} not valid/active`);
                     return { botAuth: null as BotAuthContext | null };
                 }
 
@@ -53,6 +59,7 @@ export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).der
                 const bot = await findUserBotByIdInternal(jwtPayload.sub);
 
                 if (!bot || bot.status === 'revoked' || bot.status === 'disabled') {
+                    console.log(`[BotAuth] Bot ${jwtPayload.sub} not found or inactive`);
                     return { botAuth: null as BotAuthContext | null };
                 }
 
@@ -68,12 +75,15 @@ export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).der
             }
 
             // Fall back to access token (template bots)
+            console.log('[BotAuth] JWT verification failed, trying access token...');
             const token = await verifyToken(bearerToken);
 
             if (!token) {
+                console.log('[BotAuth] Access token verification also failed');
                 return { botAuth: null as BotAuthContext | null };
             }
 
+            console.log(`[BotAuth] Access token valid for bot ${token.userBotId}`);
             return {
                 botAuth: {
                     authType: 'token',
@@ -82,7 +92,8 @@ export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).der
                     userId: token.userId,
                 } as BotAuthContext,
             };
-        } catch {
+        } catch (error) {
+            console.error('[BotAuth] Error during authentication:', error);
             return { botAuth: null as BotAuthContext | null };
         }
     },
