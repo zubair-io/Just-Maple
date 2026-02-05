@@ -536,27 +536,50 @@
         </div>
 
         <p class="token-intro">
-          Your bot <strong>{{ createdBotName() }}</strong> has been created! Copy the provisioning
-          token below to authenticate your bot.
+          Your bot <strong>{{ createdBotName() }}</strong> has been created! Copy both credentials
+          below to configure your bot.
         </p>
 
         <div class="warning-box">
           <span class="material-symbols-rounded">warning</span>
-          <p>This token will only be shown once. Make sure to copy it now!</p>
+          <p>These credentials will only be shown once. Make sure to copy them now!</p>
         </div>
 
-        <div class="token-display">
-          <code>{{ createdBotToken() }}</code>
-          <button type="button" class="copy-btn" (click)="copyToken()">
-            <span class="material-symbols-rounded">{{
-              tokenCopied() ? 'check' : 'content_copy'
-            }}</span>
-          </button>
+        <div class="credentials-section">
+          <h4>Provisioning Token</h4>
+          <p class="credential-hint">
+            Used to authenticate your bot. Exchange this for a JWT via POST /api/bots/login
+          </p>
+          <div class="token-display">
+            <code>{{ createdBotToken() }}</code>
+            <button type="button" class="copy-btn" (click)="copyToken()">
+              <span class="material-symbols-rounded">{{
+                tokenCopied() ? 'check' : 'content_copy'
+              }}</span>
+            </button>
+          </div>
+          @if (tokenCopied()) {
+            <p class="copied-message">Token copied to clipboard!</p>
+          }
         </div>
 
-        @if (tokenCopied()) {
-          <p class="copied-message">Token copied to clipboard!</p>
-        }
+        <div class="credentials-section">
+          <h4>Webhook Secret</h4>
+          <p class="credential-hint">
+            Used to verify webhook signatures. Check the X-Maple-Signature header.
+          </p>
+          <div class="token-display">
+            <code>{{ createdBotSecret() }}</code>
+            <button type="button" class="copy-btn" (click)="copySecret()">
+              <span class="material-symbols-rounded">{{
+                secretCopied() ? 'check' : 'content_copy'
+              }}</span>
+            </button>
+          </div>
+          @if (secretCopied()) {
+            <p class="copied-message">Secret copied to clipboard!</p>
+          }
+        </div>
       </div>
 
       <footer class="dialog-footer">

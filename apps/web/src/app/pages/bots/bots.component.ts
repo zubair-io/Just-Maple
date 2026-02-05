@@ -69,8 +69,10 @@ export class BotsComponent implements OnInit {
   // Token display dialog (shown after creating custom bot)
   readonly showTokenDialog = signal(false);
   readonly createdBotToken = signal<string | null>(null);
+  readonly createdBotSecret = signal<string | null>(null);
   readonly createdBotName = signal('');
   readonly tokenCopied = signal(false);
+  readonly secretCopied = signal(false);
 
   // Edit custom bot dialog
   readonly showEditCustomBotDialog = signal(false);
@@ -322,10 +324,12 @@ export class BotsComponent implements OnInit {
         this.closeCreateCustomBotDialog();
         this.isCreatingCustomBot.set(false);
 
-        // Show the provisioning token
+        // Show the provisioning token and webhook secret
         this.createdBotName.set(bot.displayName || bot.handle);
         this.createdBotToken.set(bot.provisioningToken || null);
+        this.createdBotSecret.set(bot.webhookSecret || null);
         this.tokenCopied.set(false);
+        this.secretCopied.set(false);
         this.showTokenDialog.set(true);
       },
       error: (err) => {
@@ -342,8 +346,10 @@ export class BotsComponent implements OnInit {
   closeTokenDialog(): void {
     this.showTokenDialog.set(false);
     this.createdBotToken.set(null);
+    this.createdBotSecret.set(null);
     this.createdBotName.set('');
     this.tokenCopied.set(false);
+    this.secretCopied.set(false);
   }
 
   copyToken(): void {
@@ -351,6 +357,14 @@ export class BotsComponent implements OnInit {
     if (token) {
       navigator.clipboard.writeText(token);
       this.tokenCopied.set(true);
+    }
+  }
+
+  copySecret(): void {
+    const secret = this.createdBotSecret();
+    if (secret) {
+      navigator.clipboard.writeText(secret);
+      this.secretCopied.set(true);
     }
   }
 

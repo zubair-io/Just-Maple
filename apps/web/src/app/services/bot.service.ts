@@ -49,6 +49,7 @@ export interface CustomBot extends UserBot {
 
 export interface CustomBotWithToken extends CustomBot {
   provisioningToken?: string; // Only present on creation
+  webhookSecret?: string; // Only present on creation
 }
 
 export interface CustomBotSession extends BotSession {
@@ -202,7 +203,11 @@ export class BotService {
 
   createCustomBot(data: CreateCustomBotInput): Observable<CustomBotWithToken> {
     return this.http
-      .post<{ bot: CustomBot; provisioningToken: string }>('/api/custom-bots', data)
+      .post<{
+        bot: CustomBot;
+        provisioningToken: string;
+        webhookSecret: string;
+      }>('/api/custom-bots', data)
       .pipe(
         tap((response) => {
           this._customBots.update((bots) => [...bots, response.bot]);
@@ -210,6 +215,7 @@ export class BotService {
         map((response) => ({
           ...response.bot,
           provisioningToken: response.provisioningToken,
+          webhookSecret: response.webhookSecret,
         })),
         catchError((err) => {
           const message = err?.error?.error || 'Failed to create custom bot';

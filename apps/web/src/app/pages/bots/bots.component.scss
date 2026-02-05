@@ -715,6 +715,28 @@ input[type='url'] {
   line-height: 1.5;
 }
 
+// Credentials Section
+.credentials-section {
+  margin-bottom: 20px;
+
+  h4 {
+    margin: 0 0 4px 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-main);
+  }
+
+  .credential-hint {
+    margin: 0 0 8px 0;
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
 // Warning Box
 .warning-box {
   display: flex;
