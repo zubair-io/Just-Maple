@@ -34,6 +34,7 @@ interface PendingBotInvocation {
   invocationId: string;
   messageId: string;
   botHandle: string;
+  userBotId?: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   error?: string;
 }
@@ -397,6 +398,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private handleBotStarted(data: Record<string, unknown>): void {
     const invocationId = data['invocationId'] as string;
     const sourceId = data['sourceId'] as string;
+    const userBotId = data['userBotId'] as string | undefined;
+    const botHandle = (data['botHandle'] as string) || 'bot';
 
     // Add to pending invocations
     this.pendingBotInvocations.update((invocations) => [
@@ -404,7 +407,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       {
         invocationId,
         messageId: sourceId,
-        botHandle: 'bot', // Will be updated when we have more info
+        botHandle,
+        userBotId,
         status: 'running',
       },
     ]);
@@ -454,11 +458,33 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     // Mark the parent message as having a thread (this triggers UI update)
     this.messageService.markMessageHasThread(parentMessageId);
 
-    // If the message is from a bot, clear any pending invocations for this message
+    // If the message is from a bot, clear the specific pending invocation
     if (message?.['senderType'] === 'bot') {
-      this.pendingBotInvocations.update((invocations) =>
-        invocations.filter((i) => i.messageId !== parentMessageId),
-      );
+      const invocationId = message['invocationId'] as string | undefined;
+      const userBotId = message['userBotId'] as string | undefined;
+
+      this.pendingBotInvocations.update((invocations) => {
+        // First priority: match by invocationId if available (most precise)
+        if (invocationId) {
+          return invocations.filter((i) => i.invocationId !== invocationId);
+        }
+
+        // Second priority: match by userBotId + messageId
+        if (userBotId) {
+          let removed = false;
+          return invocations.filter((i) => {
+            if (!removed && i.messageId === parentMessageId && i.userBotId === userBotId) {
+              removed = true;
+              return false; // Remove only the first matching invocation
+            }
+            return true;
+          });
+        }
+
+        // Fallback: no identifiers available, keep all invocations
+        // This prevents accidentally canceling other bots waiting on the same message
+        return invocations;
+      });
     }
 
     // If user is at bottom, scroll to show the new thread indicator
