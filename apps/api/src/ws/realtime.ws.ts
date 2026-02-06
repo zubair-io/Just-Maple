@@ -22,6 +22,7 @@ import { realtimeWSService, type AppEvent } from '../services/realtime-ws.servic
 import { yjsDocumentService } from '../services/yjs-document.service';
 import { yjsWhiteboardService } from '../services/yjs-whiteboard.service';
 import { yjsKanbanService } from '../services/yjs-kanban.service';
+import { findMemoById } from '../repositories/memo.repo';
 import {
     broadcastChatEvent,
     subscribeToNotebookChat,
@@ -206,8 +207,23 @@ async function handleMemoMessage(
 
             console.log(`[Memo] Join request for noteId: ${noteId}, parentPageId: ${parentPageId}`);
 
-            // Verify user has access to this page (must be notebook or whiteboard type)
+            // Verify user has access to this page (must be memo, whiteboard, or kanban type)
             let page = await findPageById(noteId, context.userId);
+
+            // If no page found, check if this is a card memo (memo.pageId references parent kanban page)
+            if (!page) {
+                const memo = await findMemoById(noteId);
+                if (memo) {
+                    const parentPage = await findPageById(memo.pageId, context.userId);
+                    if (parentPage && parentPage.type === 'kanban') {
+                        console.log(
+                            `[Memo] Card memo - authorized via parent kanban page: ${memo.pageId}`,
+                        );
+                        // Use 'memo' type so the YJS document service handles it
+                        page = { type: 'memo' } as any;
+                    }
+                }
+            }
 
             // If no page found but parentPageId provided, check access to parent (embedded whiteboard)
             if (!page && parentPageId) {

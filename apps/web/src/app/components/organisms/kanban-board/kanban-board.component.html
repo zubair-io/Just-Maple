@@ -128,11 +128,21 @@
           </div>
         </div>
       }
+    </div>
 
-      <!-- Add lane button / input -->
-      <div class="add-lane-container">
+    <!-- Floating action buttons -->
+    <div class="fab-container">
+      @if (archivedCount() > 0) {
+        <button class="archived-btn">
+          <span class="material-symbols-rounded">inventory_2</span>
+          <span class="archived-count">{{ archivedCount() }}</span>
+        </button>
+      }
+
+      <!-- Add lane FAB with popover -->
+      <div class="add-lane-fab-wrapper">
         @if (isAddingLane()) {
-          <div class="new-lane-form">
+          <div class="add-lane-popover">
             <input
               type="text"
               class="new-lane-input"
@@ -144,21 +154,11 @@
               autofocus
             />
           </div>
-        } @else {
-          <button class="add-lane-btn" (click)="startAddingLane()">
-            <span class="material-symbols-rounded">add</span>
-            <span>Add lane</span>
-          </button>
         }
+        <button class="add-lane-fab" (click)="startAddingLane()" title="Add lane">
+          <span class="material-symbols-rounded">add</span>
+        </button>
       </div>
     </div>
-
-    <!-- Archived button -->
-    @if (archivedCount() > 0) {
-      <button class="archived-btn">
-        <span class="material-symbols-rounded">inventory_2</span>
-        <span class="archived-count">{{ archivedCount() }}</span>
-      </button>
-    }
   }
 </div>

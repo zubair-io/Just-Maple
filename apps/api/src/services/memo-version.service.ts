@@ -9,7 +9,7 @@ import {
     countMemoVersions,
     getVersionStorageSize,
 } from '../repositories/memo-version.repo';
-import { findMemoByNoteId } from '../repositories/memo.repo';
+import { findMemoById } from '../repositories/memo.repo';
 import type { VersionTrigger, MemoVersionListItem } from '@maple/shared';
 
 // Configuration
@@ -65,7 +65,7 @@ export async function createSnapshot(
     await enforceStorageLimits(noteId);
 
     const state = Y.encodeStateAsUpdate(ydoc);
-    const memo = await findMemoByNoteId(noteId);
+    const memo = await findMemoById(noteId);
     const version = memo?.version ?? 1;
 
     // Extract metadata for display
@@ -103,7 +103,7 @@ export async function createSnapshotFromState(
 ): Promise<MemoVersionListItem> {
     await enforceStorageLimits(noteId);
 
-    const memo = await findMemoByNoteId(noteId);
+    const memo = await findMemoById(noteId);
     const version = memo?.version ?? 1;
 
     // Create a temporary Y.Doc to extract metadata

@@ -19,7 +19,21 @@
           class="material-symbols-rounded text-base text-[var(--color-primary)] flex-shrink-0 !hidden md:!block"
           >article</span
         >
-        <span class="truncate">{{ page()!.title }}</span>
+        @if (isEditingTitle()) {
+          <input
+            type="text"
+            class="truncate bg-transparent border border-[var(--color-primary)] rounded px-1.5 py-0.5 outline-none text-sm font-medium text-[var(--color-text-main)]"
+            [(ngModel)]="editTitleValue"
+            (blur)="saveTitle()"
+            (keydown.enter)="saveTitle()"
+            (keydown.escape)="cancelEditingTitle()"
+            autofocus
+          />
+        } @else {
+          <span class="truncate cursor-default" (dblclick)="startEditingTitle()">{{
+            page()!.title
+          }}</span>
+        }
       </div>
     </div>
 

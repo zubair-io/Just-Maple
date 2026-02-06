@@ -5,7 +5,7 @@ import { jwtPlugin, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
 import { findNotebooksByUserId, findNotebookById } from '../repositories/notebook.repo';
 import { findPagesByUserId, findPageById, createPage, updatePage } from '../repositories/page.repo';
-import { findMemoByNoteId, upsertMemo } from '../repositories/memo.repo';
+import { findMemoById, upsertMemo } from '../repositories/memo.repo';
 import {
     findWhiteboard,
     updateWhiteboardState as updateWhiteboardInDb,
@@ -504,7 +504,7 @@ async function handleToolCall(
                     };
                 }
 
-                const memo = await findMemoByNoteId(pageId);
+                const memo = await findMemoById(pageId);
                 let text = '';
                 if (memo?.state) {
                     const state = new Uint8Array(
@@ -561,7 +561,7 @@ async function handleToolCall(
                 xmlFragment.insert(0, [paragraph]);
 
                 const state = Y.encodeStateAsUpdate(ydoc);
-                await upsertMemo(pageId, Buffer.from(state));
+                await upsertMemo(pageId, pageId, Buffer.from(state));
 
                 // Also update page content for search
                 await updatePage(pageId, userId, {

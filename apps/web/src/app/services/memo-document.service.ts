@@ -454,14 +454,21 @@ export class MemoDocumentService {
   /**
    * Create a new memo (offline-capable)
    * Creates locally first, queues server sync
+   *
+   * Two modes:
+   * - Without parentPageId: Creates a Page record + memo entity (regular memo)
+   * - With parentPageId: Creates only a memo entity referencing the parent page (kanban card)
    */
-  async createMemo(notebookId?: string): Promise<{
-    page: Page;
+  async createMemo(
+    notebookId?: string,
+    parentPageId?: string,
+  ): Promise<{
+    page?: Page;
+    memoId: string;
     ydoc: Y.Doc;
     awareness: Awareness;
   }> {
-    // Generate IDs locally
-    const pageId = generatePageId();
+    const memoId = generatePageId();
     const now = new Date().toISOString();
 
     // Create Y.Doc
@@ -475,45 +482,8 @@ export class MemoDocumentService {
     this.setupAwareness(awareness);
 
     // Setup local persistence immediately
-    const persistence = new IndexeddbPersistence(`ydoc-${pageId}`, ydoc);
+    const persistence = new IndexeddbPersistence(`ydoc-${memoId}`, ydoc);
     await persistence.whenSynced;
-
-    // Create page metadata locally
-    const page: Page = {
-      _id: pageId, // Temporary, will be replaced by server
-      id: pageId,
-      userId: this.authService.user()?._id || '',
-      type: 'memo',
-      title: 'Untitled Memo',
-      content: { type: 'doc', content: [] },
-      notebookId: notebookId,
-      isFavorite: false,
-      isArchived: false,
-      isTrashed: false,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    // Save page metadata locally via page service
-    // This will be synced by the offline queue
-    this.pageService.addLocalPage(page);
-    await this.pageService.persistToIndexedDB([page]);
-
-    // Queue for server sync
-    await this.offlineQueue.enqueue('create-note', pageId, pageId, {
-      type: 'memo',
-      title: page.title,
-      notebookId: notebookId,
-      id: pageId,
-    });
-
-    // Queue memo Y.Doc sync
-    // Store as Array for IndexedDB serialization, convert back when processing
-    const state = Y.encodeStateAsUpdate(ydoc);
-    await this.offlineQueue.enqueue('sync-notebook', pageId, pageId, {
-      state: Array.from(state),
-      pageType: 'memo',
-    });
 
     // Store open document
     const doc: OpenDocument = {
@@ -522,21 +492,82 @@ export class MemoDocumentService {
       persistence,
       wsProvider: null,
     };
-    this.openDocs.set(pageId, doc);
+    this.openDocs.set(memoId, doc);
 
     // Update sync status
-    this.updateSyncStatus(pageId, 'pending');
+    this.updateSyncStatus(memoId, 'pending');
 
-    // Connect if online - but wait for page to be created on server first
-    if (this.connectivity.canSync()) {
-      // Wait for the create-page action to complete before connecting WS
-      const created = await this.offlineQueue.waitForAction(pageId, 'create-note', 10000);
-      if (created) {
-        await this.connectProviders(pageId, doc);
+    if (parentPageId) {
+      // === Card memo mode: no Page record, just a memo entity ===
+
+      // Queue create-memo action (POST /api/memos)
+      await this.offlineQueue.enqueue('create-memo', memoId, memoId, {
+        id: memoId,
+        pageId: parentPageId,
+      });
+
+      // Queue memo Y.Doc sync
+      const state = Y.encodeStateAsUpdate(ydoc);
+      await this.offlineQueue.enqueue('sync-notebook', memoId, memoId, {
+        state: Array.from(state),
+        pageType: 'memo',
+      });
+
+      // Connect if online
+      if (this.connectivity.canSync()) {
+        const created = await this.offlineQueue.waitForAction(memoId, 'create-memo', 10000);
+        if (created) {
+          await this.connectProviders(memoId, doc);
+        }
       }
-    }
 
-    return { page, ydoc, awareness };
+      return { memoId, ydoc, awareness };
+    } else {
+      // === Regular memo mode: creates both Page + memo entity ===
+      const page: Page = {
+        _id: memoId, // Temporary, will be replaced by server
+        id: memoId,
+        userId: this.authService.user()?._id || '',
+        type: 'memo',
+        title: 'Untitled Memo',
+        content: { type: 'doc', content: [] },
+        notebookId: notebookId,
+        isFavorite: false,
+        isArchived: false,
+        isTrashed: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      // Save page metadata locally via page service
+      this.pageService.addLocalPage(page);
+      await this.pageService.persistToIndexedDB([page]);
+
+      // Queue for server sync
+      await this.offlineQueue.enqueue('create-note', memoId, memoId, {
+        type: 'memo',
+        title: page.title,
+        notebookId: notebookId,
+        id: memoId,
+      });
+
+      // Queue memo Y.Doc sync
+      const state = Y.encodeStateAsUpdate(ydoc);
+      await this.offlineQueue.enqueue('sync-notebook', memoId, memoId, {
+        state: Array.from(state),
+        pageType: 'memo',
+      });
+
+      // Connect if online - but wait for page to be created on server first
+      if (this.connectivity.canSync()) {
+        const created = await this.offlineQueue.waitForAction(memoId, 'create-note', 10000);
+        if (created) {
+          await this.connectProviders(memoId, doc);
+        }
+      }
+
+      return { page, memoId, ydoc, awareness };
+    }
   }
 
   /**

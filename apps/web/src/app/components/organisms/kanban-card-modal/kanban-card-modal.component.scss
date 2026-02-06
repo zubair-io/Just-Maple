@@ -1,0 +1,16 @@
+:host {
+  display: contents;
+}
+
+.modal-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 56rem;
+  height: 85vh;
+  background: var(--color-bg);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  margin: 1rem;
+}

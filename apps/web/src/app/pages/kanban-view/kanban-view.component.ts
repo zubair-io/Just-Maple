@@ -7,12 +7,13 @@ import { PageService } from '../../services/page.service';
 import { NotebookService } from '../../services/notebook.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { KanbanBoardComponent } from '../../components/organisms/kanban-board/kanban-board.component';
+import { KanbanCardModalComponent } from '../../components/organisms/kanban-card-modal/kanban-card-modal.component';
 import { NoteHeaderComponent } from '../../components';
 
 @Component({
   selector: 'app-kanban-view',
   standalone: true,
-  imports: [CommonModule, KanbanBoardComponent, NoteHeaderComponent],
+  imports: [CommonModule, KanbanBoardComponent, KanbanCardModalComponent, NoteHeaderComponent],
   templateUrl: './kanban-view.component.html',
   styleUrl: './kanban-view.component.scss',
 })
@@ -27,6 +28,7 @@ export class KanbanViewComponent implements OnDestroy {
 
   readonly pageId = signal<string | null>(null);
   readonly notebookId = signal<string | null>(null);
+  readonly openCardModal = signal<{ memoPageId: string; title: string } | null>(null);
 
   // Get the page from the store
   readonly selectedPage = toSignal(this.pageService.activePage$, { initialValue: null });
@@ -52,6 +54,25 @@ export class KanbanViewComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.routeSubscription?.unsubscribe();
+  }
+
+  onCardOpened(card: { memoPageId: string; title: string }): void {
+    this.openCardModal.set(card);
+  }
+
+  closeCardModal(): void {
+    this.openCardModal.set(null);
+  }
+
+  onTitleChanged(newTitle: string): void {
+    const page = this.selectedPage();
+    if (!page?.id) return;
+
+    this.pageService.updatePage(page.id, { title: newTitle }).subscribe({
+      error: (error) => {
+        console.error('Failed to update title:', error);
+      },
+    });
   }
 
   toggleFavorite(): void {

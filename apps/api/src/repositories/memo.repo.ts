@@ -4,7 +4,8 @@ import type { Memo, CreateMemoInput } from '@maple/shared';
 
 interface MemoDocument {
     _id: ObjectId;
-    noteId: string; // id of the parent page
+    id: string; // Unique memo identifier (UUID v4)
+    pageId: string; // Parent page ID (non-unique for kanban card memos)
     state: Binary; // Y.Doc encoded state
     version: number;
     updatedAt: Date;
@@ -17,7 +18,8 @@ function getCollection(): Collection<MemoDocument> {
 function toMemoResponse(doc: MemoDocument): Memo {
     return {
         _id: doc._id.toString(),
-        noteId: doc.noteId,
+        id: doc.id,
+        pageId: doc.pageId,
         state: doc.state.buffer, // Convert Binary to Buffer/Uint8Array
         version: doc.version,
         updatedAt: doc.updatedAt.toISOString(),
@@ -36,7 +38,8 @@ export async function createMemo(input: CreateMemoInput): Promise<Memo> {
         input.state instanceof Uint8Array ? input.state : new Uint8Array(input.state as any);
 
     const doc: Omit<MemoDocument, '_id'> = {
-        noteId: input.noteId,
+        id: input.id,
+        pageId: input.pageId,
         state: new Binary(Buffer.from(stateBuffer)),
         version: 1,
         updatedAt: now,
@@ -46,7 +49,8 @@ export async function createMemo(input: CreateMemoInput): Promise<Memo> {
 
     return {
         _id: result.insertedId.toString(),
-        noteId: doc.noteId,
+        id: doc.id,
+        pageId: doc.pageId,
         state: stateBuffer,
         version: doc.version,
         updatedAt: now.toISOString(),
@@ -54,11 +58,25 @@ export async function createMemo(input: CreateMemoInput): Promise<Memo> {
 }
 
 /**
- * Find memo by the parent page's documentId
+ * Find memo by its unique id
  */
-export async function findMemoByNoteId(noteId: string): Promise<Memo | null> {
+export async function findMemoById(id: string): Promise<Memo | null> {
     try {
-        const doc = await getCollection().findOne({ noteId });
+        const doc = await getCollection().findOne({ id });
+        if (!doc) return null;
+        return toMemoResponse(doc);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Find memo by pageId (parent page ID)
+ * For regular memos (1:1 with page), this returns the single memo.
+ */
+export async function findMemoByPageId(pageId: string): Promise<Memo | null> {
+    try {
+        const doc = await getCollection().findOne({ pageId });
         if (!doc) return null;
         return toMemoResponse(doc);
     } catch {
@@ -71,13 +89,13 @@ export async function findMemoByNoteId(noteId: string): Promise<Memo | null> {
  * Called on each sync from client
  */
 export async function updateMemoState(
-    noteId: string,
+    id: string,
     state: Uint8Array,
     version: number,
 ): Promise<Memo | null> {
     try {
         const result = await getCollection().findOneAndUpdate(
-            { noteId },
+            { id },
             {
                 $set: {
                     state: new Binary(Buffer.from(state)),
@@ -100,14 +118,15 @@ export async function updateMemoState(
  * Useful for initial sync of offline-created memos
  */
 export async function upsertMemo(
-    noteId: string,
+    id: string,
+    pageId: string,
     state: Uint8Array,
     version?: number,
 ): Promise<Memo> {
     const now = new Date();
 
     const result = await getCollection().findOneAndUpdate(
-        { noteId },
+        { id },
         {
             $set: {
                 state: new Binary(Buffer.from(state)),
@@ -115,7 +134,8 @@ export async function upsertMemo(
             },
             $inc: { version: 1 },
             $setOnInsert: {
-                noteId,
+                id,
+                pageId,
             },
         },
         {
@@ -134,9 +154,9 @@ export async function upsertMemo(
 /**
  * Get only the version number (for cache validation)
  */
-export async function getMemoVersion(noteId: string): Promise<number | null> {
+export async function getMemoVersion(id: string): Promise<number | null> {
     try {
-        const doc = await getCollection().findOne({ noteId }, { projection: { version: 1 } });
+        const doc = await getCollection().findOne({ id }, { projection: { version: 1 } });
         return doc?.version ?? null;
     } catch {
         return null;
@@ -144,11 +164,11 @@ export async function getMemoVersion(noteId: string): Promise<number | null> {
 }
 
 /**
- * Delete memo (cascade from page deletion)
+ * Delete memo by its unique id
  */
-export async function deleteMemo(noteId: string): Promise<boolean> {
+export async function deleteMemo(id: string): Promise<boolean> {
     try {
-        const result = await getCollection().deleteOne({ noteId });
+        const result = await getCollection().deleteOne({ id });
         return result.deletedCount === 1;
     } catch {
         return false;
@@ -156,11 +176,24 @@ export async function deleteMemo(noteId: string): Promise<boolean> {
 }
 
 /**
- * Check if memo exists for a given noteId
+ * Delete all memos with a given pageId (parent page ID)
+ * Used for cascade delete when a kanban page is deleted
  */
-export async function memoExists(noteId: string): Promise<boolean> {
+export async function deleteMemosByPageId(pageId: string): Promise<number> {
     try {
-        const count = await getCollection().countDocuments({ noteId }, { limit: 1 });
+        const result = await getCollection().deleteMany({ pageId });
+        return result.deletedCount;
+    } catch {
+        return 0;
+    }
+}
+
+/**
+ * Check if memo exists for a given id
+ */
+export async function memoExists(id: string): Promise<boolean> {
+    try {
+        const count = await getCollection().countDocuments({ id }, { limit: 1 });
         return count > 0;
     } catch {
         return false;
@@ -170,9 +203,9 @@ export async function memoExists(noteId: string): Promise<boolean> {
 /**
  * Get memo state as Uint8Array (convenience method)
  */
-export async function getMemoState(noteId: string): Promise<Uint8Array | null> {
+export async function getMemoState(id: string): Promise<Uint8Array | null> {
     try {
-        const doc = await getCollection().findOne({ noteId }, { projection: { state: 1 } });
+        const doc = await getCollection().findOne({ id }, { projection: { state: 1 } });
         if (!doc) return null;
 
         // Convert Binary back to Uint8Array
@@ -191,7 +224,7 @@ const ALLOWED_INTERNAL_CALLERS = new Set(['YJSDocumentService']);
  * Update memo state without version checks (for internal YJS service)
  */
 export async function updateMemoStateInternal(
-    noteId: string,
+    id: string,
     state: Uint8Array,
     capability: symbol,
     caller: string,
@@ -208,7 +241,7 @@ export async function updateMemoStateInternal(
     const now = new Date();
 
     const result = await getCollection().findOneAndUpdate(
-        { noteId },
+        { id },
         {
             $set: {
                 state: new Binary(Buffer.from(state)),
@@ -225,6 +258,6 @@ export async function updateMemoStateInternal(
 /**
  * Wrapper for YJS Document Service
  */
-export async function updateMemoForYJS(noteId: string, state: Uint8Array): Promise<Memo | null> {
-    return updateMemoStateInternal(noteId, state, INTERNAL_CAPABILITY, 'YJSDocumentService');
+export async function updateMemoForYJS(id: string, state: Uint8Array): Promise<Memo | null> {
+    return updateMemoStateInternal(id, state, INTERNAL_CAPABILITY, 'YJSDocumentService');
 }

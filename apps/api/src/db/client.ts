@@ -97,13 +97,9 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('pages').createIndex({ id: 1 }, { unique: true }); // For lookup by id
 
     // Memos collection (Y.Doc storage for notebook-type pages, formerly notebooks)
-    // Drop existing index first (in case of migration issues with duplicates)
-    try {
-        await database.collection('memos').dropIndex('noteId_1');
-    } catch (e) {
-        // Index doesn't exist, ignore
-    }
-    await createUniqueIndex(database, 'memos', { noteId: 1 }, 'noteId');
+    // Migration: recreate collection handles old indexes. These are created fresh.
+    await createUniqueIndex(database, 'memos', { id: 1 }, 'id');
+    await database.collection('memos').createIndex({ pageId: 1 }); // Non-unique: parent page lookup
 
     // Messages collection
     await database.collection('messages').createIndex({ notebookId: 1, _id: -1 }); // For paginated queries

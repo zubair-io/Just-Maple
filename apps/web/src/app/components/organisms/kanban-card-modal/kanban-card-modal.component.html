@@ -1,0 +1,26 @@
+<div
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+  (click)="onBackdropClick($event)"
+  (keydown)="onKeydown($event)"
+>
+  <div class="modal-container">
+    <!-- Header -->
+    <div class="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+      <h2 class="text-base font-semibold text-[var(--color-text-main)] truncate">
+        {{ displayTitle() }}
+      </h2>
+      <button
+        (click)="close()"
+        class="flex items-center justify-center w-8 h-8 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors flex-shrink-0"
+        title="Close"
+      >
+        <span class="material-symbols-rounded text-xl">close</span>
+      </button>
+    </div>
+
+    <!-- Body -->
+    <div class="flex-1 min-h-0 overflow-auto">
+      <app-notebook-editor [pageId]="pageId()" [notebookId]="notebookId()" />
+    </div>
+  </div>
+</div>
