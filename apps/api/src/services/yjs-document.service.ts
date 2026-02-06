@@ -1,10 +1,5 @@
 import * as Y from 'yjs';
-import {
-    findMemoByNoteId,
-    updateMemoForYJS,
-    getMemoState,
-    memoExists,
-} from '../repositories/memo.repo';
+import { updateMemoForYJS, getMemoState, memoExists } from '../repositories/memo.repo';
 import { realtimeWSService } from './realtime-ws.service';
 import { maybeCreateSnapshot } from './memo-version.service';
 import { indexPage } from '../repositories/search.repo';

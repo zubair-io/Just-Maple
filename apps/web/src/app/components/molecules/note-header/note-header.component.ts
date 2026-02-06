@@ -1,5 +1,6 @@
 import { Component, input, output, computed, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import type { Page, Notebook } from '@maple/shared';
 import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
 import { VersionHistoryComponent } from '../version-history/version-history.component';
@@ -10,7 +11,7 @@ export type ExportFormat = 'markdown' | 'html';
 @Component({
   selector: 'app-note-header',
   standalone: true,
-  imports: [CommonModule, SyncStatusComponent, VersionHistoryComponent],
+  imports: [CommonModule, FormsModule, SyncStatusComponent, VersionHistoryComponent],
   templateUrl: './note-header.component.html',
   styleUrl: './note-header.component.scss',
 })
@@ -33,12 +34,33 @@ export class NoteHeaderComponent {
   readonly toggleWidthRequested = output<void>();
   readonly versionRestored = output<void>();
   readonly deleteRequested = output<void>();
+  readonly titleChanged = output<string>();
 
   readonly showExportMenu = signal(false);
   readonly showVersionHistory = signal(false);
+  readonly isEditingTitle = signal(false);
+  readonly editTitleValue = signal('');
 
   openSidebarOnMobile(): void {
     this.uiStateService.openSidebar();
+  }
+
+  startEditingTitle(): void {
+    const title = this.page()?.title || '';
+    this.editTitleValue.set(title);
+    this.isEditingTitle.set(true);
+  }
+
+  saveTitle(): void {
+    const newTitle = this.editTitleValue().trim();
+    this.isEditingTitle.set(false);
+    if (newTitle && newTitle !== this.page()?.title) {
+      this.titleChanged.emit(newTitle);
+    }
+  }
+
+  cancelEditingTitle(): void {
+    this.isEditingTitle.set(false);
   }
 
   readonly formattedDate = computed(() => {

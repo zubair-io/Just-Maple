@@ -54,11 +54,11 @@
 .lane {
   display: flex;
   flex-direction: column;
-  min-width: 280px;
-  max-width: 320px;
+  flex: 1;
+  min-width: 300px;
+  max-width: 600px;
   background-color: var(--color-bg-secondary, #f3f4f6);
   border-radius: 8px;
-  flex-shrink: 0;
   max-height: 100%;
 }
 
@@ -358,59 +358,17 @@
   background: var(--color-bg);
 }
 
-.add-lane-container {
-  display: flex;
-  flex-direction: column;
-  min-width: 280px;
-  flex-shrink: 0;
-}
-
-.add-lane-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border: 2px dashed var(--color-border);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  transition:
-    border-color 0.15s,
-    color 0.15s,
-    background-color 0.15s;
-
-  &:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-    background-color: var(--color-bg-secondary, #f3f4f6);
-  }
-
-  .material-symbols-rounded {
-    font-size: 18px;
-  }
-}
-
-.new-lane-form {
-  min-width: 280px;
-}
-
-.new-lane-input {
-  width: 100%;
-  padding: 0.75rem 1rem;
-  border: 2px solid var(--color-primary);
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  outline: none;
-  background: var(--color-bg);
-}
-
-.archived-btn {
+.fab-container {
   position: fixed;
   bottom: 1.5rem;
   right: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  z-index: 20;
+}
+
+.archived-btn {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -443,6 +401,58 @@
     font-size: 0.75rem;
     font-weight: 600;
   }
+}
+
+.add-lane-fab-wrapper {
+  position: relative;
+}
+
+.add-lane-fab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: none;
+  background: var(--color-primary);
+  color: white;
+  cursor: pointer;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition:
+    box-shadow 0.15s,
+    transform 0.15s,
+    background-color 0.15s;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transform: translateY(-2px);
+    background: var(--color-primary-hover, #c7432f);
+  }
+
+  .material-symbols-rounded {
+    font-size: 24px;
+  }
+}
+
+.add-lane-popover {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 240px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.new-lane-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--color-primary);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  outline: none;
+  background: var(--color-bg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 // CDK Drag animations

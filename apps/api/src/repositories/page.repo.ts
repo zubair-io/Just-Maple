@@ -10,7 +10,7 @@ import type {
     PageTodoMeta,
 } from '@maple/shared';
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
-import { deleteMemo } from './memo.repo';
+import { deleteMemo, deleteMemosByPageId } from './memo.repo';
 import { deleteWhiteboard } from './whiteboard.repo';
 import { deleteKanbanBoard } from './kanban-board.repo';
 import { isDevMode, isDocPage, getDocPage, pageIdToSlug } from '../services/docs.service';
@@ -349,6 +349,8 @@ export async function deletePage(id: string, userId: string): Promise<boolean> {
             await deleteWhiteboard(doc.id);
         } else if (doc.type === 'kanban') {
             await deleteKanbanBoard(doc.id);
+            // Also delete all card memos that reference this kanban page
+            await deleteMemosByPageId(doc.id);
         }
 
         const result = await getCollection().deleteOne({ id });

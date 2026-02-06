@@ -2,6 +2,7 @@ import {
   Component,
   inject,
   input,
+  output,
   signal,
   computed,
   OnInit,
@@ -18,11 +19,9 @@ import {
   moveItemInArray,
   transferArrayItem,
 } from '@angular/cdk/drag-drop';
-import { Router } from '@angular/router';
 import * as Y from 'yjs';
 import { KanbanDocumentService, type KanbanYDoc } from '../../../services/kanban-document.service';
 import { MemoDocumentService } from '../../../services/memo-document.service';
-import { PageService } from '../../../services/page.service';
 import type { KanbanLane, KanbanCard, KanbanSettings, KanbanPriority } from '@maple/shared';
 import { DEFAULT_LANE_IDS } from '@maple/shared';
 
@@ -36,11 +35,11 @@ import { DEFAULT_LANE_IDS } from '@maple/shared';
 export class KanbanBoardComponent implements OnInit, OnDestroy {
   private readonly kanbanDocService = inject(KanbanDocumentService);
   private readonly memoDocService = inject(MemoDocumentService);
-  private readonly pageService = inject(PageService);
-  private readonly router = inject(Router);
 
   readonly pageId = input.required<string>();
   readonly notebookId = input<string | null>(null);
+
+  readonly cardOpened = output<{ memoPageId: string; title: string }>();
 
   // Document state
   private kanbanDoc: KanbanYDoc | null = null;
@@ -343,14 +342,14 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
     const notebookId = this.notebookId();
 
     try {
-      // Create a memo for this card
-      const { page: memoPage } = await this.memoDocService.createMemo(notebookId ?? undefined);
+      // Create a card memo (no Page record — references the kanban page as parent)
+      const { memoId } = await this.memoDocService.createMemo(
+        notebookId ?? undefined,
+        pageId, // parentPageId — kanban page ID
+      );
 
-      // Update memo title
-      this.pageService.updatePage(memoPage.id, { title }).subscribe();
-
-      // Create the card
-      this.kanbanDocService.createCard(pageId, laneId, title, memoPage.id);
+      // Create the card in the kanban Y.Doc
+      this.kanbanDocService.createCard(pageId, laneId, title, memoId);
 
       this.cancelAddCard();
     } catch (error) {
@@ -359,13 +358,7 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
   }
 
   openCard(card: KanbanCard): void {
-    // Navigate to the memo
-    const notebookId = this.notebookId();
-    if (notebookId) {
-      this.router.navigate(['/n', notebookId, card.memoPageId]);
-    } else {
-      this.router.navigate(['/page', card.memoPageId]);
-    }
+    this.cardOpened.emit({ memoPageId: card.memoPageId, title: card.title });
   }
 
   archiveCard(card: KanbanCard, laneId: string): void {

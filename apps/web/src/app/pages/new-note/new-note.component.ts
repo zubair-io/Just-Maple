@@ -36,8 +36,8 @@ export class NewNoteComponent implements OnInit {
     try {
       if (type === 'memo') {
         // Create memo using the offline-first memo service
-        const { page } = await this.memoService.createMemo(notebookId || undefined);
-        this.router.navigate(['/', notebookId, page.id], { replaceUrl: true });
+        const { memoId } = await this.memoService.createMemo(notebookId || undefined);
+        this.router.navigate(['/', notebookId, memoId], { replaceUrl: true });
       } else if (type === 'whiteboard') {
         // Create whiteboard using the offline-first whiteboard service
         const { page } = await this.whiteboardService.createWhiteboard(notebookId || undefined);

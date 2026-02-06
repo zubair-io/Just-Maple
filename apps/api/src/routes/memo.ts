@@ -3,6 +3,7 @@ import { jwt } from '@elysiajs/jwt';
 import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
 import { findPageById } from '../repositories/page.repo';
+import { findMemoById, createMemo } from '../repositories/memo.repo';
 import { yjsDocumentService } from '../services/yjs-document.service';
 import { deleteMemo } from '../repositories/memo.repo';
 import { isDevMode, isDocPage, getDocContent, pageIdToSlug } from '../services/docs.service';
@@ -12,6 +13,27 @@ import {
     type MemoImageUrls,
 } from '../services/memo-image-storage.service';
 import type { JWTPayload } from '@maple/shared';
+
+/**
+ * Look up the parent page for a memo and verify user access.
+ * For regular memos, memo.id == memo.pageId == page.id.
+ * For card memos, memo.pageId points to the kanban page.
+ */
+async function findPageForMemo(memoId: string, userId: string) {
+    // First try: memoId is a page id directly (regular memos, or for init before memo exists)
+    const directPage = await findPageById(memoId, userId);
+    if (directPage) {
+        return directPage;
+    }
+
+    // Second try: look up the memo document to get its parent page (card memos)
+    const memo = await findMemoById(memoId);
+    if (memo) {
+        return findPageById(memo.pageId, userId);
+    }
+
+    return null;
+}
 
 /**
  * Memo API routes
@@ -37,28 +59,75 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
         return { auth: user ? { user } : null };
     })
     /**
+     * Create a memo entity (for kanban cards)
+     * Does NOT create a Page record — the memo references an existing page via pageId
+     */
+    .post(
+        '/',
+        async ({ auth, body, set }) => {
+            if (!auth) {
+                set.status = 401;
+                return { error: 'Unauthorized' };
+            }
+
+            const { id, pageId } = body;
+
+            // Verify user has access to the parent page
+            const page = await findPageById(pageId, auth.user._id);
+            if (!page) {
+                set.status = 404;
+                return { error: 'Parent page not found' };
+            }
+
+            try {
+                // Create empty memo with Y.js state
+                const Y = await import('yjs');
+                const ydoc = new Y.Doc();
+                ydoc.getXmlFragment('prosemirror');
+                const state = Y.encodeStateAsUpdate(ydoc);
+                ydoc.destroy();
+
+                const memo = await createMemo({ id, pageId, state });
+
+                console.log(`[Memo] Created memo entity ${id} for parent page ${pageId}`);
+
+                return { success: true, memo: { id: memo.id, pageId: memo.pageId } };
+            } catch (error) {
+                console.error(`[Memo] Failed to create memo ${id}:`, error);
+                set.status = 500;
+                return { error: 'Failed to create memo' };
+            }
+        },
+        {
+            body: t.Object({
+                id: t.String(),
+                pageId: t.String(),
+            }),
+        },
+    )
+    /**
      * Initialize memo with Y.js state
      * Used for first sync of offline-created memos
      */
     .post(
-        '/:noteId/init',
+        '/:id/init',
         async ({ auth, params, request, set }) => {
             if (!auth) {
                 set.status = 401;
                 return { error: 'Unauthorized' };
             }
 
-            const { noteId } = params;
+            const { id } = params;
 
-            // Verify page exists and user has access (noteId is the documentId)
-            const page = await findPageById(noteId, auth.user._id);
+            // Verify user has access via parent page
+            const page = await findPageForMemo(id, auth.user._id);
             if (!page) {
                 set.status = 404;
                 return { error: 'Page not found' };
             }
 
-            // Verify it's a notebook type (whiteboards use /api/whiteboards routes)
-            if (page.type !== 'memo') {
+            // Allow memo and kanban page types (kanban pages have card memos)
+            if (page.type !== 'memo' && page.type !== 'kanban') {
                 set.status = 400;
                 return { error: 'Page type does not support memo sync' };
             }
@@ -69,19 +138,19 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                 const state = new Uint8Array(arrayBuffer);
 
                 // Initialize memo with the state
-                const mergedState = await yjsDocumentService.initializeNotebook(noteId, state);
+                const mergedState = await yjsDocumentService.initializeNotebook(id, state);
 
                 // Return merged state as base64
                 const base64State = Buffer.from(mergedState).toString('base64');
 
-                console.log(`[Memo] Initialized memo ${noteId} with ${state.length} bytes`);
+                console.log(`[Memo] Initialized memo ${id} with ${state.length} bytes`);
 
                 return {
                     success: true,
                     state: base64State,
                 };
             } catch (error) {
-                console.error(`[Memo] Failed to initialize ${noteId}:`, error);
+                console.error(`[Memo] Failed to initialize ${id}:`, error);
                 set.status = 500;
                 return { error: 'Failed to initialize memo' };
             }
@@ -94,17 +163,17 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
      * Get memo Y.js state
      * Used for fetching initial state when WebSocket is slow or unavailable
      */
-    .get('/:noteId/state', async ({ auth, params, set }) => {
+    .get('/:id/state', async ({ auth, params, set }) => {
         if (!auth) {
             set.status = 401;
             return { error: 'Unauthorized' };
         }
 
-        const { noteId } = params;
+        const { id } = params;
 
         // Handle doc pages in dev mode - return markdown directly
-        if (isDevMode() && isDocPage(noteId)) {
-            const slug = pageIdToSlug(noteId);
+        if (isDevMode() && isDocPage(id)) {
+            const slug = pageIdToSlug(id);
             const markdown = await getDocContent(slug);
             if (!markdown) {
                 set.status = 404;
@@ -113,22 +182,22 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
             return { state: null, markdown };
         }
 
-        // Verify page exists and user has access (noteId is the documentId)
-        const page = await findPageById(noteId, auth.user._id);
+        // Verify user has access via parent page
+        const page = await findPageForMemo(id, auth.user._id);
         if (!page) {
             set.status = 404;
             return { error: 'Page not found' };
         }
 
-        // Verify it's a notebook type (whiteboards use /api/whiteboards routes)
-        if (page.type !== 'memo') {
+        // Allow memo and kanban page types
+        if (page.type !== 'memo' && page.type !== 'kanban') {
             set.status = 400;
             return { error: 'Page type does not support memo sync' };
         }
 
         try {
             // Get the current state
-            const state = await yjsDocumentService.getStateAsUpdate(noteId);
+            const state = await yjsDocumentService.getStateAsUpdate(id);
 
             // Return as base64
             const base64State = Buffer.from(state).toString('base64');
@@ -143,7 +212,7 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                 initialContent, // ProseMirror JSON to initialize empty memos
             };
         } catch (error) {
-            console.error(`[Memo] Failed to get state for ${noteId}:`, error);
+            console.error(`[Memo] Failed to get state for ${id}:`, error);
             set.status = 500;
             return { error: 'Failed to get memo state' };
         }
@@ -153,24 +222,24 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
      * Returns the URL of the uploaded image along with dimensions
      */
     .post(
-        '/:noteId/images',
+        '/:id/images',
         async ({ auth, params, request, set }) => {
             if (!auth) {
                 set.status = 401;
                 return { error: 'Unauthorized' };
             }
 
-            const { noteId } = params;
+            const { id } = params;
 
-            // Verify page exists and user has access
-            const page = await findPageById(noteId, auth.user._id);
+            // Verify user has access via parent page
+            const page = await findPageForMemo(id, auth.user._id);
             if (!page) {
                 set.status = 404;
                 return { error: 'Page not found' };
             }
 
-            // Verify it's a memo type
-            if (page.type !== 'memo') {
+            // Allow memo and kanban page types
+            if (page.type !== 'memo' && page.type !== 'kanban') {
                 set.status = 400;
                 return { error: 'Page type does not support image upload' };
             }
@@ -210,13 +279,13 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                 const result = await uploadMemoImage(
                     imageId,
                     auth.user._id,
-                    noteId,
+                    id,
                     buffer,
                     contentType,
                 );
 
                 console.log(
-                    `[Memo] Uploaded image ${imageId} for memo ${noteId} (${buffer.length} bytes)`,
+                    `[Memo] Uploaded image ${imageId} for memo ${id} (${buffer.length} bytes)`,
                 );
 
                 return {
@@ -226,7 +295,7 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                     height: result.height,
                 };
             } catch (error) {
-                console.error(`[Memo] Failed to upload image for ${noteId}:`, error);
+                console.error(`[Memo] Failed to upload image for ${id}:`, error);
                 set.status = 500;
                 return { error: 'Failed to upload image' };
             }
@@ -239,17 +308,17 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
      * Delete an image from a memo (all size variants)
      */
     .delete(
-        '/:noteId/images/:imageId',
+        '/:id/images/:imageId',
         async ({ auth, params, body, set }) => {
             if (!auth) {
                 set.status = 401;
                 return { error: 'Unauthorized' };
             }
 
-            const { noteId } = params;
+            const { id } = params;
 
-            // Verify page exists and user has access
-            const page = await findPageById(noteId, auth.user._id);
+            // Verify user has access via parent page
+            const page = await findPageForMemo(id, auth.user._id);
             if (!page) {
                 set.status = 404;
                 return { error: 'Page not found' };
@@ -261,7 +330,7 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                     await deleteMemoImageAllSizes(body.urls as MemoImageUrls);
                 }
 
-                console.log(`[Memo] Deleted image ${params.imageId} from memo ${noteId}`);
+                console.log(`[Memo] Deleted image ${params.imageId} from memo ${id}`);
 
                 return { success: true };
             } catch (error) {
@@ -272,7 +341,7 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
         },
         {
             params: t.Object({
-                noteId: t.String(),
+                id: t.String(),
                 imageId: t.String(),
             }),
             body: t.Object({
@@ -290,16 +359,16 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
      * Reset memo - delete the Y.js state to recover from corruption
      * A new empty document will be created on next load
      */
-    .delete('/:noteId/reset', async ({ auth, params, set }) => {
+    .delete('/:id/reset', async ({ auth, params, set }) => {
         if (!auth) {
             set.status = 401;
             return { error: 'Unauthorized' };
         }
 
-        const { noteId } = params;
+        const { id } = params;
 
-        // Verify page exists and user has access
-        const page = await findPageById(noteId, auth.user._id);
+        // Verify user has access via parent page
+        const page = await findPageForMemo(id, auth.user._id);
         if (!page) {
             set.status = 404;
             return { error: 'Page not found' };
@@ -307,15 +376,15 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
 
         try {
             // Clear from YJS service cache first (don't save the corrupted state)
-            yjsDocumentService.discardDocument(noteId);
+            yjsDocumentService.discardDocument(id);
             // Delete the memo document - a fresh one will be created on next load
-            await deleteMemo(noteId);
+            await deleteMemo(id);
 
-            console.log(`[Memo] Reset memo ${noteId}`);
+            console.log(`[Memo] Reset memo ${id}`);
 
             return { success: true, message: 'Memo reset successfully' };
         } catch (error) {
-            console.error(`[Memo] Failed to reset ${noteId}:`, error);
+            console.error(`[Memo] Failed to reset ${id}:`, error);
             set.status = 500;
             return { error: 'Failed to reset memo' };
         }

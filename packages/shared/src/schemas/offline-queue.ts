@@ -9,6 +9,7 @@ export const OfflineActionSchema = Type.Union([
     Type.Literal('move-note'), // Move note to different tag
     Type.Literal('trash-note'), // Move note to trash
     Type.Literal('restore-note'), // Restore from trash
+    Type.Literal('create-memo'), // Create a memo entity (for kanban cards, no Page record)
 ]);
 
 export type OfflineAction = Static<typeof OfflineActionSchema>;

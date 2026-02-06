@@ -180,6 +180,9 @@ export class OfflineQueueService {
         case 'restore-note':
           await this.processRestoreNote(item);
           break;
+        case 'create-memo':
+          await this.processCreateMemo(item);
+          break;
         default:
           console.warn(`[OfflineQueue] Unknown action: ${item.action}`);
       }
@@ -252,6 +255,15 @@ export class OfflineQueueService {
 
   private async processRestoreNote(item: OfflineQueueItem): Promise<void> {
     await firstValueFrom(this.http.post(`/api/pages/${item.documentId}/restore`, {}));
+  }
+
+  private async processCreateMemo(item: OfflineQueueItem): Promise<void> {
+    await firstValueFrom(
+      this.http.post('/api/memos', {
+        id: item.payload.id,
+        pageId: item.payload.pageId,
+      }),
+    );
   }
 
   /**

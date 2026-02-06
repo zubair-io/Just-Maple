@@ -9,3 +9,4 @@ export { ShareModalComponent } from './share-modal/share-modal.component';
 export { SearchModalComponent } from './search-modal/search-modal.component';
 export { WhiteboardComponent } from './whiteboard/whiteboard.component';
 export { TemplateGalleryModalComponent } from './template-gallery-modal/template-gallery-modal.component';
+export { KanbanCardModalComponent } from './kanban-card-modal/kanban-card-modal.component';

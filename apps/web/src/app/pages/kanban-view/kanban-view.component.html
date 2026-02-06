@@ -4,13 +4,30 @@
       [page]="page"
       [notebook]="selectedNotebook()"
       (favoriteClicked)="toggleFavorite()"
+      (titleChanged)="onTitleChanged($event)"
     />
 
     <div class="kanban-content">
       @if (pageId(); as id) {
-        <app-kanban-board [pageId]="id" [notebookId]="notebookId()" />
+        <app-kanban-board
+          [pageId]="id"
+          [notebookId]="notebookId()"
+          (cardOpened)="onCardOpened($event)"
+        />
       }
     </div>
+
+    <!-- Card modal -->
+    @if (openCardModal(); as card) {
+      @if (notebookId(); as nbId) {
+        <app-kanban-card-modal
+          [pageId]="card.memoPageId"
+          [notebookId]="nbId"
+          [cardTitle]="card.title"
+          (closed)="closeCardModal()"
+        />
+      }
+    }
   } @else {
     <div class="loading-state">
       <div class="loading-spinner"></div>
