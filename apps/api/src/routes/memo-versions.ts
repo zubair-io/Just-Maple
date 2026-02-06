@@ -40,14 +40,14 @@ export const memoVersionRoutes = new Elysia({ prefix: '/api/memos' })
      * List versions for a memo
      */
     .get(
-        '/:noteId/versions',
+        '/:id/versions',
         async ({ auth, params, query, set }) => {
             if (!auth) {
                 set.status = 401;
                 return { error: 'Unauthorized' };
             }
 
-            const { noteId } = params;
+            const noteId = params.id;
             const limit = query.limit ? parseInt(query.limit, 10) : 20;
             const before = query.before ? new Date(query.before) : undefined;
 
@@ -83,13 +83,14 @@ export const memoVersionRoutes = new Elysia({ prefix: '/api/memos' })
     /**
      * Get a specific version with full state
      */
-    .get('/:noteId/versions/:versionId', async ({ auth, params, set }) => {
+    .get('/:id/versions/:versionId', async ({ auth, params, set }) => {
         if (!auth) {
             set.status = 401;
             return { error: 'Unauthorized' };
         }
 
-        const { noteId, versionId } = params;
+        const noteId = params.id;
+        const { versionId } = params;
 
         // Verify page exists and user has access
         const page = await findPageById(noteId, auth.user._id);
@@ -122,13 +123,14 @@ export const memoVersionRoutes = new Elysia({ prefix: '/api/memos' })
      * Restore a version
      * Creates a new version snapshot before restoring (so restore can be undone)
      */
-    .post('/:noteId/versions/:versionId/restore', async ({ auth, params, set }) => {
+    .post('/:id/versions/:versionId/restore', async ({ auth, params, set }) => {
         if (!auth) {
             set.status = 401;
             return { error: 'Unauthorized' };
         }
 
-        const { noteId, versionId } = params;
+        const noteId = params.id;
+        const { versionId } = params;
 
         // Verify page exists and user has access
         const page = await findPageById(noteId, auth.user._id);
@@ -191,14 +193,14 @@ export const memoVersionRoutes = new Elysia({ prefix: '/api/memos' })
      * Create a manual checkpoint
      */
     .post(
-        '/:noteId/versions',
+        '/:id/versions',
         async ({ auth, params, body, set }) => {
             if (!auth) {
                 set.status = 401;
                 return { error: 'Unauthorized' };
             }
 
-            const { noteId } = params;
+            const noteId = params.id;
             const { label } = body;
 
             // Verify page exists and user has access
