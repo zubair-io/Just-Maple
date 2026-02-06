@@ -4,7 +4,7 @@ Native reMarkable tablet application for Just Maple, providing Notes, Whiteboard
 
 ## Features
 
-- **Notes**: Create and edit text notes with Automerge CRDT sync
+- **Notes**: Create and edit text notes with Y.js CRDT sync
 - **Whiteboard**: Stylus drawing with pressure sensitivity, optimized for e-ink
 - **Messages**: Real-time chat per notebook with offline queue
 - **Lego Catalog**: Browse and manage your Lego collection

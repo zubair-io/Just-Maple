@@ -1,0 +1,17 @@
+{
+  "name": "home-assistant-bot",
+  "version": "1.0.0",
+  "description": "Custom bot for Just Maple that controls Home Assistant via natural language",
+  "main": "index.ts",
+  "scripts": {
+    "start": "bun run index.ts",
+    "dev": "bun --watch run index.ts"
+  },
+  "dependencies": {
+    "elysia": "^1.0.0",
+    "@anthropic-ai/sdk": "^0.39.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.0.0"
+  }
+}

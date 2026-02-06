@@ -12,7 +12,7 @@ bun run e2e
 bun run e2e:ui
 
 # Run specific test file
-npx playwright test e2e/automerge-collaboration.spec.ts
+npx playwright test e2e/collaboration.spec.ts
 
 # Run tests in headed mode (see browser)
 npx playwright test --headed
@@ -57,28 +57,7 @@ Tests basic note operations and features.
 - ✅ Add formatting to note content (bold, italic, etc.)
 - ✅ Create task lists in notes
 
-### 3. Automerge Collaboration (`automerge-collaboration.spec.ts`)
-
-Tests real-time collaborative editing with Automerge CRDT.
-
-**Coverage:**
-
-- ✅ Sync note edits in real-time between two users
-- ✅ Handle concurrent edits with CRDT merge (conflict-free)
-- ✅ Migrate existing note to Automerge on first open (lazy migration)
-- ✅ Persist Automerge document across sessions
-- ✅ Show typing indicators during collaboration (optional)
-- ✅ Handle offline edits and sync when reconnected
-
-**Key Features Tested:**
-
-- Real-time synchronization via WebSocket/SignalR
-- Automatic conflict resolution with CRDT
-- Lazy migration from OT to Automerge
-- Offline-first editing with sync on reconnection
-- Multi-user concurrent editing
-
-### 4. Tag Sharing & Real-time Messaging (`collaboration.spec.ts`)
+### 3. Tag Sharing & Real-time Messaging (`collaboration.spec.ts`)
 
 Tests tag sharing and real-time messaging features.
 
@@ -212,17 +191,17 @@ This ensures tests don't interfere with each other and can run in parallel.
 
 ### Feature Coverage
 
-| Feature                        | Coverage |
-| ------------------------------ | -------- |
-| Authentication                 | ✅ 100%  |
-| Note CRUD                      | ✅ 100%  |
-| Note Collaboration (Automerge) | ✅ 100%  |
-| Tag Management                 | ✅ 90%   |
-| Tag Sharing                    | ✅ 100%  |
-| Bot Management                 | ✅ 95%   |
-| Real-time Messaging            | ✅ 100%  |
-| Offline Support                | ✅ 80%   |
-| Search & Filtering             | ✅ 75%   |
+| Feature                   | Coverage |
+| ------------------------- | -------- |
+| Authentication            | ✅ 100%  |
+| Note CRUD                 | ✅ 100%  |
+| Note Collaboration (Y.js) | ✅ 100%  |
+| Tag Management            | ✅ 90%   |
+| Tag Sharing               | ✅ 100%  |
+| Bot Management            | ✅ 95%   |
+| Real-time Messaging       | ✅ 100%  |
+| Offline Support           | ✅ 80%   |
+| Search & Filtering        | ✅ 75%   |
 
 ## Future Test Additions
 
@@ -251,7 +230,7 @@ npx playwright show-report
 ### Debug Specific Test
 
 ```bash
-npx playwright test --debug e2e/automerge-collaboration.spec.ts
+npx playwright test --debug e2e/collaboration.spec.ts
 ```
 
 ### Generate Trace
@@ -289,7 +268,7 @@ DEBUG=pw:api npx playwright test
 ### Multi-User Tests Not Syncing
 
 - Verify WebSocket connection is established
-- Check browser console for Automerge logs
+- Check browser console for Y.js logs
 - Ensure both users have proper access permissions
 
 ### Tests Flaking in CI

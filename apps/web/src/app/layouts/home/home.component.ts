@@ -8,6 +8,7 @@ import { PageService } from '../../services/page.service';
 import { RealtimeService } from '../../services/realtime.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { RealtimeWSService } from '../../services/realtime-ws.service';
+import { LastVisitedService } from '../../services/last-visited.service';
 import {
   SidebarComponent,
   TemplateGalleryModalComponent,
@@ -36,6 +37,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   private readonly realtimeService = inject(RealtimeService);
   readonly uiStateService = inject(UiStateService);
   private readonly realtimeWS = inject(RealtimeWSService);
+  private readonly lastVisitedService = inject(LastVisitedService);
 
   readonly selectedPageId = signal<string | null>(null);
   readonly selectedNotebookId = signal<string | null>(null);
@@ -59,13 +61,19 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   private routerSubscription?: Subscription;
   private queryParamsSubscription?: Subscription;
+  private hasHandledInitialRedirect = false;
 
   ngOnInit(): void {
+    // Try to redirect to last visited location before loading notebooks
+    this.redirectToLastVisitedIfNeeded();
+
     // Ensure default notebook exists (notebooks auto-load via visibility service)
     this.notebookService.ensureDefaultNotebook().subscribe({
       next: () => {
-        // Auto-select first notebook if on root path
-        this.autoSelectFirstNotebook();
+        // Auto-select first notebook if on root path (only if we didn't redirect)
+        if (!this.hasHandledInitialRedirect) {
+          this.autoSelectFirstNotebook();
+        }
       },
     });
 
@@ -119,7 +127,9 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   private syncFromRoute(): void {
     const url = this.router.url;
-    const segments = url.split('/').filter(Boolean);
+    // Strip query params for segment parsing
+    const pathOnly = url.split('?')[0];
+    const segments = pathOnly.split('/').filter(Boolean);
 
     if (segments.length >= 1) {
       // First segment is notebookId (if not a special route like 'favorites', 'trash')
@@ -135,6 +145,22 @@ export class HomeComponent implements OnInit, OnDestroy {
       const page = this.pageService.pages().find((n) => n.id === id);
       this.selectedPageId.set(page?.id || null);
     }
+
+    // Cache or clear last visited location
+    if (this.isNotebookRoute(segments)) {
+      const notebookId = segments[0];
+      if (this.isValidPageRoute(segments)) {
+        // Cache both notebook and page
+        this.lastVisitedService.save(notebookId, segments[1]);
+      } else if (segments.length === 1) {
+        // Just the notebook route (no child) - cache just the notebook
+        this.lastVisitedService.save(notebookId);
+      }
+      // Don't cache special child routes like /new, /scan, /todos - they're transient actions
+    } else if (segments.length > 0) {
+      // Non-notebook route (settings, notifications, etc.) - clear the cache
+      this.lastVisitedService.clear();
+    }
   }
 
   private autoSelectFirstNotebook(): void {
@@ -148,6 +174,51 @@ export class HomeComponent implements OnInit, OnDestroy {
         this.router.navigate(['/', notebooks[0]._id]);
       }
     }
+  }
+
+  /**
+   * Redirect to last visited notebook/page if we're on the root path
+   */
+  private redirectToLastVisitedIfNeeded(): void {
+    const url = this.router.url;
+    const segments = url.split('/').filter(Boolean);
+
+    // Only redirect if on root path
+    if (segments.length === 0) {
+      const lastVisited = this.lastVisitedService.get();
+      if (lastVisited) {
+        this.hasHandledInitialRedirect = true;
+        // Clear the cache after redirect to prevent repeated redirects
+        this.lastVisitedService.clear();
+        if (lastVisited.pageId) {
+          this.router.navigate(['/', lastVisited.notebookId, lastVisited.pageId]);
+        } else {
+          this.router.navigate(['/', lastVisited.notebookId]);
+        }
+      }
+    }
+  }
+
+  /**
+   * Check if the current route is a notebook/page route that should be cached
+   */
+  private isNotebookRoute(segments: string[]): boolean {
+    if (segments.length === 0) return false;
+    const firstSegment = segments[0];
+    // Exclude special routes that should not be cached
+    const excludedRoutes = ['settings', 'notifications', 'favorites', 'trash', 'login', 'verify'];
+    return !excludedRoutes.includes(firstSegment);
+  }
+
+  /**
+   * Check if the current route is a page within a notebook (not special routes like /new, /scan, /todos)
+   */
+  private isValidPageRoute(segments: string[]): boolean {
+    if (segments.length < 2) return false;
+    const secondSegment = segments[1];
+    // Exclude special notebook child routes
+    const excludedChildRoutes = ['new', 'scan', 'todos', 'collectible'];
+    return !excludedChildRoutes.includes(secondSegment);
   }
 
   toggleSidebar(): void {

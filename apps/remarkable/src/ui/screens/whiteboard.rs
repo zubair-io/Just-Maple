@@ -219,7 +219,7 @@ impl WhiteboardScreen {
         });
 
         if let Some(page) = page {
-            // TODO: Extract whiteboard elements from Automerge document
+            // TODO: Extract whiteboard elements from Y.js document
             self.page = Some(page);
         }
 
@@ -227,7 +227,7 @@ impl WhiteboardScreen {
     }
 
     fn save_page(&mut self, state: &Arc<RwLock<AppState>>) {
-        // TODO: Serialize elements to Automerge and save
+        // TODO: Serialize elements to Y.js and save
         let page_id = self.page_id.clone();
         let state_clone = state.clone();
 

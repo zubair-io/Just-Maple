@@ -57,17 +57,8 @@ pub struct Page {
     #[serde(rename = "type")]
     pub page_type: PageType,
     pub title: String,
-    /// ProseMirror JSON format (for search indexing)
+    /// ProseMirror JSON format
     pub content: PageContent,
-    /// Binary CRDT (source of truth) - base64 encoded
-    #[serde(rename = "automergeDoc", skip_serializing_if = "Option::is_none")]
-    pub automerge_doc: Option<serde_json::Value>,
-    /// Hash of Automerge heads (for cache validation)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<i64>,
-    /// Automerge heads (for sync optimization)
-    #[serde(rename = "lastSyncedHeads", skip_serializing_if = "Option::is_none")]
-    pub last_synced_heads: Option<Vec<String>>,
     /// Associated notebook/folder
     #[serde(rename = "tagId", skip_serializing_if = "Option::is_none")]
     pub tag_id: Option<String>,
@@ -99,8 +90,6 @@ pub struct CreatePageInput {
     /// UUID v4 for routing (was document_id)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    #[serde(rename = "automergeDoc", skip_serializing_if = "Option::is_none")]
-    pub automerge_doc: Option<serde_json::Value>,
 }
 
 /// Update page input
@@ -110,12 +99,6 @@ pub struct UpdatePageInput {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<PageContent>,
-    #[serde(rename = "automergeDoc", skip_serializing_if = "Option::is_none")]
-    pub automerge_doc: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<i64>,
-    #[serde(rename = "lastSyncedHeads", skip_serializing_if = "Option::is_none")]
-    pub last_synced_heads: Option<Vec<String>>,
     #[serde(rename = "tagId", skip_serializing_if = "Option::is_none")]
     pub tag_id: Option<String>,
     #[serde(rename = "isFavorite", skip_serializing_if = "Option::is_none")]

@@ -1,6 +1,6 @@
 # Engineering: Memo Editor
 
-The memo editor is built on TipTap (a headless ProseMirror wrapper) with Automerge for CRDT-based real-time collaboration. This document covers the implementation.
+The memo editor is built on TipTap (a headless ProseMirror wrapper) with Y.js for CRDT-based real-time collaboration. This document covers the implementation.
 
 ## Architecture
 
@@ -9,7 +9,7 @@ graph TB
     subgraph Frontend
         TipTap[TipTap Editor]
         Extensions[Custom Extensions]
-        Automerge[Automerge Doc]
+        Yjs[Y.js Doc]
         YProvider[Y.js Provider]
     end
 
@@ -25,10 +25,10 @@ graph TB
     end
 
     TipTap --> Extensions
-    TipTap --> Automerge
+    TipTap --> Yjs
     TipTap --> YProvider
-    Automerge --> IndexedDB
-    Automerge --> Store
+    Yjs --> IndexedDB
+    Yjs --> Store
     YProvider --> WS
     WS --> MemoRepo
     MemoRepo --> MongoDB
@@ -265,55 +265,6 @@ export const EnhancedTaskItem = TaskItem.extend({
 
 ## CRDT Integration
 
-### Automerge Document
-
-```typescript
-// apps/web/src/app/services/memo-document.service.ts
-import * as Automerge from '@automerge/automerge';
-
-@Injectable()
-export class MemoDocumentService {
-    private doc: Automerge.Doc<MemoContent>;
-
-    async loadDocument(noteId: string): Promise<void> {
-        // Try loading from IndexedDB first
-        const localState = await this.idb.get('memos', noteId);
-
-        if (localState) {
-            this.doc = Automerge.load(localState);
-        } else {
-            // Fetch from server
-            const response = await this.http.get<{ state: string }>(`/api/memos/${noteId}/state`);
-            this.doc = Automerge.load(
-                Uint8Array.from(atob(response.state), (c) => c.charCodeAt(0)),
-            );
-        }
-    }
-
-    applyChange(changeFn: (doc: MemoContent) => void): void {
-        this.doc = Automerge.change(this.doc, changeFn);
-        this.persistLocally();
-        this.syncToServer();
-    }
-
-    private async persistLocally(): Promise<void> {
-        const binary = Automerge.save(this.doc);
-        await this.idb.put('memos', binary, this.noteId);
-    }
-
-    private syncToServer(): void {
-        const changes = Automerge.getChanges(this.lastSyncedDoc, this.doc);
-        this.wsService.sendChanges(this.noteId, changes);
-    }
-
-    mergeRemoteChanges(changes: Uint8Array[]): void {
-        const [newDoc] = Automerge.applyChanges(this.doc, changes);
-        this.doc = newDoc;
-        this.persistLocally();
-    }
-}
-```
-
 ### Y.js WebSocket Provider
 
 ```typescript
@@ -363,14 +314,13 @@ export class YjsDocumentProvider {
 ```typescript
 // apps/api/src/repositories/memo.repo.ts
 import { ObjectId } from 'mongodb';
-import * as Automerge from '@automerge/automerge';
+import * as Y from 'yjs';
 
 interface MemoDocument {
     _id: ObjectId;
     noteId: string;
-    state: Binary;
+    state: Binary; // Y.js encoded state
     version: number;
-    heads: string[];
     updatedAt: Date;
 }
 
@@ -379,29 +329,12 @@ export async function getMemoState(noteId: string): Promise<Uint8Array | null> {
     return memo?.state?.buffer ?? null;
 }
 
-export async function saveMemoChanges(noteId: string, changes: Uint8Array[]): Promise<void> {
-    const existing = await getMemoState(noteId);
-
-    let doc: Automerge.Doc<any>;
-    if (existing) {
-        doc = Automerge.load(existing);
-        const [merged] = Automerge.applyChanges(doc, changes);
-        doc = merged;
-    } else {
-        doc = Automerge.init();
-        const [merged] = Automerge.applyChanges(doc, changes);
-        doc = merged;
-    }
-
-    const state = Automerge.save(doc);
-    const heads = Automerge.getHeads(doc);
-
+export async function saveMemoState(noteId: string, state: Uint8Array): Promise<void> {
     await db.collection('memos').updateOne(
         { noteId },
         {
             $set: {
                 state: new Binary(state),
-                heads,
                 updatedAt: new Date(),
             },
             $inc: { version: 1 },
@@ -411,18 +344,13 @@ export async function saveMemoChanges(noteId: string, changes: Uint8Array[]): Pr
 }
 
 export async function initMemo(noteId: string): Promise<Uint8Array> {
-    const doc = Automerge.init<MemoContent>();
-    const initialized = Automerge.change(doc, (d) => {
-        d.content = [];
-    });
-
-    const state = Automerge.save(initialized);
+    const ydoc = new Y.Doc();
+    const state = Y.encodeStateAsUpdate(ydoc);
 
     await db.collection('memos').insertOne({
         noteId,
         state: new Binary(state),
         version: 1,
-        heads: Automerge.getHeads(initialized),
         createdAt: new Date(),
         updatedAt: new Date(),
     });

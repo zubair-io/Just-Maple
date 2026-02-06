@@ -248,13 +248,13 @@ interface Page {
 
 ### memos
 
-Y.js/Automerge document state for memos.
+Y.js document state for memos.
 
 ```typescript
 interface Memo {
     _id: ObjectId;
     noteId: string; // References pages.id
-    state: Binary; // Y.js or Automerge binary state
+    state: Binary; // Y.js binary state
     vector?: Binary; // State vector for sync
     version: number;
     updatedAt: Date;
@@ -267,7 +267,7 @@ interface Memo {
 
 **Notes:**
 
-- `state` is binary data (Y.js `Uint8Array` or Automerge binary)
+- `state` is binary data (Y.js `Uint8Array`)
 - `noteId` references `pages.id` (not `pages._id`)
 - Content is CRDT-based for conflict-free merging
 
@@ -425,7 +425,7 @@ interface SearchIndexEntry {
 
 **Notes:**
 
-- `plainText` is extracted from Y.js/Automerge content
+- `plainText` is extracted from Y.js content
 - Search uses `$regex` due to Cosmos DB limitations
 - Tags are extracted from `#hashtag` patterns in content
 

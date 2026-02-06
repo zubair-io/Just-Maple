@@ -151,22 +151,53 @@ export type BotTemplate = Static<typeof BotTemplateSchema>;
 // User Bot Registration
 // ============================================
 
+// Bot type: template (system-defined) or custom (user webhook)
+export const BotTypeSchema = Type.Union([
+    Type.Literal('template'), // Existing template-based bots
+    Type.Literal('custom'), // New webhook-based bots
+]);
+
+export type BotType = Static<typeof BotTypeSchema>;
+
+// Permissions for custom bots
+export const CustomBotPermissionsSchema = Type.Object({
+    messages: Type.Object({
+        read: Type.Boolean(),
+        write: Type.Boolean(),
+    }),
+    // Future phases: memos, whiteboards
+});
+
+export type CustomBotPermissions = Static<typeof CustomBotPermissionsSchema>;
+
 // When a user registers a bot to their account
 export const UserBotSchema = Type.Object({
     _id: Type.String(),
     userId: Type.String(), // Owner
-    templateId: Type.String(), // Reference to BotTemplate
+    templateId: Type.Optional(Type.String()), // Reference to BotTemplate (required for template bots)
     handle: Type.String(), // User's chosen handle (must be unique per user)
     displayName: Type.Optional(Type.String()), // Custom display name
+    description: Type.Optional(Type.String()), // Bot description
+    avatar: Type.Optional(Type.String()), // Bot avatar URL
     config: Type.Optional(BotConfigSchema), // User-provided configuration (encrypted)
     isEnabled: Type.Boolean(),
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
+
+    // Custom bot fields
+    botType: Type.Optional(BotTypeSchema), // Default 'template' for backward compat
+    invokeUrl: Type.Optional(Type.String()), // Webhook URL for custom bots
+    webhookSecret: Type.Optional(Type.String()), // HMAC secret for signature verification
+    permissions: Type.Optional(CustomBotPermissionsSchema), // Permissions for custom bots
+    jwtExpirationHours: Type.Optional(Type.Number()), // JWT expiration (default 12)
+    status: Type.Optional(
+        Type.Union([Type.Literal('active'), Type.Literal('disabled'), Type.Literal('revoked')]),
+    ),
 });
 
 export type UserBot = Static<typeof UserBotSchema>;
 
-// Create user bot input
+// Create user bot input (for template bots)
 export const CreateUserBotSchema = Type.Object({
     templateId: Type.String(),
     handle: Type.Optional(Type.String()), // Optional custom handle
@@ -176,6 +207,18 @@ export const CreateUserBotSchema = Type.Object({
 
 export type CreateUserBotInput = Static<typeof CreateUserBotSchema>;
 
+// Create custom bot input
+export const CreateCustomBotSchema = Type.Object({
+    name: Type.String({ minLength: 1, maxLength: 50 }),
+    handle: Type.String({ minLength: 1, maxLength: 30, pattern: '^[a-z0-9_-]+$' }),
+    description: Type.Optional(Type.String({ maxLength: 500 })),
+    invokeUrl: Type.String({ format: 'uri' }),
+    permissions: CustomBotPermissionsSchema,
+    jwtExpirationHours: Type.Optional(Type.Number({ minimum: 1, maximum: 720, default: 12 })), // 1h to 30 days
+});
+
+export type CreateCustomBotInput = Static<typeof CreateCustomBotSchema>;
+
 // Update user bot input
 export const UpdateUserBotSchema = Type.Object({
     displayName: Type.Optional(Type.String()),
@@ -184,6 +227,48 @@ export const UpdateUserBotSchema = Type.Object({
 });
 
 export type UpdateUserBotInput = Static<typeof UpdateUserBotSchema>;
+
+// Update custom bot input
+export const UpdateCustomBotSchema = Type.Object({
+    name: Type.Optional(Type.String({ minLength: 1, maxLength: 50 })),
+    description: Type.Optional(Type.String({ maxLength: 500 })),
+    invokeUrl: Type.Optional(Type.String({ format: 'uri' })),
+    permissions: Type.Optional(CustomBotPermissionsSchema),
+    jwtExpirationHours: Type.Optional(Type.Number({ minimum: 1, maximum: 720 })),
+    isEnabled: Type.Optional(Type.Boolean()),
+});
+
+export type UpdateCustomBotInput = Static<typeof UpdateCustomBotSchema>;
+
+// ============================================
+// Bot Auth Token (long-lived, revocable, reusable)
+// ============================================
+
+export const BotTokenSchema = Type.Object({
+    _id: Type.String(),
+    userBotId: Type.String(),
+    userId: Type.String(),
+    createdAt: Type.String({ format: 'date-time' }),
+    lastUsedAt: Type.Optional(Type.String({ format: 'date-time' })),
+    revokedAt: Type.Optional(Type.String({ format: 'date-time' })),
+});
+
+export type BotToken = Static<typeof BotTokenSchema>;
+
+// ============================================
+// Bot JWT Payload
+// ============================================
+
+export const BotJWTPayloadSchema = Type.Object({
+    sub: Type.String(), // Bot ID (userBotId)
+    userId: Type.String(), // Owner user ID
+    type: Type.Literal('bot'), // Distinguish from user JWTs
+    permissions: CustomBotPermissionsSchema, // Embedded permissions
+    iat: Type.Number(),
+    exp: Type.Number(),
+});
+
+export type BotJWTPayload = Static<typeof BotJWTPayloadSchema>;
 
 // ============================================
 // Bot Invocation

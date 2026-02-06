@@ -60,7 +60,12 @@ export class ShareModalComponent {
     { initialValue: [] as EnrichedUserBot[] },
   );
 
-  constructor() {}
+  constructor() {
+    // Ensure user bots are loaded for the bot sharing tab
+    if (this.botService.userBots().length === 0) {
+      this.botService.loadUserBots().subscribe();
+    }
+  }
 
   onClose(): void {
     this.closed.emit();

@@ -5,46 +5,81 @@ import {
     canAccessNotebook,
     type BotAccessTokenInternal,
 } from '../repositories/bot-token.repo';
+import { verifyBotJWT } from '../services/bot-jwt.service';
+import type { BotJWTPayload, CustomBotPermissions } from '@maple/shared';
 
 /**
  * Bot auth context - available when bot token authentication succeeds
+ * Supports both access tokens (template bots) and JWTs (custom bots)
  */
 export interface BotAuthContext {
-    token: BotAccessTokenInternal;
+    authType: 'token' | 'jwt';
+    token?: BotAccessTokenInternal; // For access token auth
+    jwtPayload?: BotJWTPayload; // For JWT auth
     userBotId: string;
     userId: string;
+    permissions?: CustomBotPermissions; // For custom bots
 }
 
 /**
- * Bot auth middleware - authenticates requests using bot access tokens
+ * Bot auth middleware - authenticates requests using bot access tokens or JWTs
  * Extracts token from Authorization header: "Bearer <token>"
  */
 export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).derive(
     async ({ request }) => {
+        console.log('[BotAuth] Middleware called for:', request.url);
         const authHeader = request.headers.get('authorization');
+        const hasAuthHeader = !!authHeader;
+        console.log('[BotAuth] Auth header present:', hasAuthHeader);
 
         if (!authHeader?.startsWith('Bearer ')) {
+            console.log('[BotAuth] No Bearer token found');
             return { botAuth: null as BotAuthContext | null };
         }
 
-        const plaintextToken = authHeader.slice(7);
+        const bearerToken = authHeader.slice(7);
+        console.log('[BotAuth] Bearer token present:', !!bearerToken);
 
         try {
-            // Verify the token
-            const token = await verifyToken(plaintextToken);
+            // Try JWT first (custom bots)
+            console.log('[BotAuth] Verifying bot JWT...');
+            const jwtPayload = await verifyBotJWT(bearerToken);
+
+            if (jwtPayload) {
+                console.log(`[BotAuth] JWT valid for bot ${jwtPayload.sub}`);
+
+                // Zero DB lookups — permissions are embedded in the JWT
+                return {
+                    botAuth: {
+                        authType: 'jwt',
+                        jwtPayload,
+                        userBotId: jwtPayload.sub,
+                        userId: jwtPayload.userId,
+                        permissions: jwtPayload.permissions,
+                    } as BotAuthContext,
+                };
+            }
+
+            // Fall back to access token (template bots)
+            console.log('[BotAuth] JWT verification failed, trying access token...');
+            const token = await verifyToken(bearerToken);
 
             if (!token) {
+                console.log('[BotAuth] Access token verification also failed');
                 return { botAuth: null as BotAuthContext | null };
             }
 
+            console.log(`[BotAuth] Access token valid for bot ${token.userBotId}`);
             return {
                 botAuth: {
+                    authType: 'token',
                     token,
                     userBotId: token.userBotId,
                     userId: token.userId,
                 } as BotAuthContext,
             };
-        } catch {
+        } catch (error) {
+            console.error('[BotAuth] Error during authentication:', error);
             return { botAuth: null as BotAuthContext | null };
         }
     },
@@ -65,38 +100,67 @@ export function checkBotAuth(
 }
 
 /**
- * Helper to check if bot token has required permission
+ * Helper to check if bot has required permission
+ * Works for both access tokens (template bots) and JWTs (custom bots)
  */
 export function checkBotPermission(
     botAuth: BotAuthContext,
     permission: 'read' | 'write' | 'invoke',
     set: { status?: number | string },
 ): boolean {
-    if (!hasPermission(botAuth.token, permission)) {
-        set.status = 403;
-        return false;
+    // For access token auth, check token permissions
+    if (botAuth.authType === 'token' && botAuth.token) {
+        if (!hasPermission(botAuth.token, permission)) {
+            set.status = 403;
+            return false;
+        }
+        return true;
     }
-    return true;
+
+    // For JWT auth (custom bots), check bot permissions
+    if (botAuth.authType === 'jwt' && botAuth.permissions) {
+        // Currently only 'messages' permissions are supported
+        // Map 'invoke' to 'write' for custom bots
+        const mappedPermission = permission === 'invoke' ? 'write' : permission;
+
+        if (!botAuth.permissions.messages[mappedPermission]) {
+            set.status = 403;
+            return false;
+        }
+        return true;
+    }
+
+    // No valid auth type
+    set.status = 403;
+    return false;
 }
 
 /**
- * Helper to check if bot token can access a specific notebook
- * Also verifies the bot is shared with the notebook
+ * Helper to check if bot can access a specific notebook
+ * Works for both access tokens (template bots) and JWTs (custom bots)
  */
 export async function checkBotNotebookAccess(
     botAuth: BotAuthContext,
     notebookId: string,
     set: { status?: number | string },
 ): Promise<boolean> {
-    // First check token scope
-    if (!canAccessNotebook(botAuth.token, notebookId)) {
+    // For access token auth, check token scope
+    if (botAuth.authType === 'token' && botAuth.token) {
+        if (!canAccessNotebook(botAuth.token, notebookId)) {
+            set.status = 403;
+            return false;
+        }
+    }
+
+    // For both auth types, verify the bot is shared with this notebook
+    const { isBotSharedWithNotebook } = await import('../repositories/user-bot.repo');
+    const isShared = await isBotSharedWithNotebook(botAuth.userBotId, notebookId);
+
+    if (!isShared) {
         set.status = 403;
         return false;
     }
 
-    // Then verify the bot is shared with this notebook
-    // (The external API should verify this when looking up pages)
-    // For now, just check token scope
     return true;
 }
 

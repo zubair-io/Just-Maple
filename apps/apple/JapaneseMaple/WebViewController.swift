@@ -73,6 +73,7 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
 
         #if os(iOS)
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.bounces = false
         #endif
 
         #if DEBUG

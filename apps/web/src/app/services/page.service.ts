@@ -309,7 +309,6 @@ export class PageService {
       type: data.type || 'memo',
       title: data.title || 'Untitled',
       content: data.content || defaultContent,
-      version: 1,
       notebookId: data.notebookId,
       isFavorite: false,
       isArchived: false,
@@ -333,15 +332,6 @@ export class PageService {
     );
   }
 
-  updateAutoMerge(id: string, data: any) {
-    const original = this.store.query(getEntity(id)) as Page;
-
-    const snapshot = data.key[1] === 'snapshot';
-    const automergeDoc = snapshot ? [] : (original.automergeDoc ?? []);
-    automergeDoc.push(data);
-    return this.updatePage(id, { automergeDoc });
-  }
-
   /**
    * Update a page with optimistic update
    */
@@ -357,7 +347,6 @@ export class PageService {
       updateEntities(id, (entity) => ({
         ...entity,
         ...data,
-        version: (entity.version || 0) + 1,
         updatedAt: new Date().toISOString(),
       })),
     );

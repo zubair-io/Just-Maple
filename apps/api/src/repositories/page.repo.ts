@@ -1,5 +1,4 @@
 import { ObjectId, Collection } from 'mongodb';
-import * as Automerge from '@automerge/automerge';
 import { randomUUID } from 'crypto';
 import { getDb } from '../db/client';
 import type {
@@ -29,12 +28,7 @@ interface PageDocument {
     userId: ObjectId;
     type: PageType;
     title: string;
-    // DUAL STORAGE: content for search, automergeDoc as source of truth
     content: PageContent;
-    automergeDoc?: Buffer; // Binary CRDT (source of truth)
-    // Automerge metadata
-    version?: number; // Hash of Automerge heads (for cache validation)
-    lastSyncedHeads?: string[]; // Automerge heads (for sync optimization)
     notebookId?: ObjectId;
     isFavorite?: boolean;
     isArchived?: boolean;
@@ -60,9 +54,6 @@ function toPageResponse(doc: PageDocument): Page {
         type: doc.type || 'memo', // Default for legacy pages
         title: doc.title,
         content: doc.content,
-        automergeDoc: doc.automergeDoc, // Binary CRDT (normalized to array)
-        version: doc.version, // Hash of Automerge heads
-        lastSyncedHeads: doc.lastSyncedHeads, // Automerge heads
         notebookId: doc.notebookId?.toString(),
         isFavorite: doc.isFavorite,
         isArchived: doc.isArchived,
@@ -224,8 +215,6 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
         type: pageType,
         title: title,
         content: data.content || defaultContent,
-        version: undefined,
-        lastSyncedHeads: undefined,
         notebookId: data.notebookId ? new ObjectId(data.notebookId) : undefined,
         isFavorite: false,
         isArchived: false,
@@ -243,9 +232,6 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
         type: pageType,
         title: doc.title,
         content: doc.content,
-        automergeDoc: undefined,
-        version: undefined,
-        lastSyncedHeads: undefined,
         notebookId: data.notebookId,
         isFavorite: doc.isFavorite,
         isArchived: doc.isArchived,
@@ -298,16 +284,6 @@ export async function updatePage(
         }
         if (data.content !== undefined) {
             updateData.content = data.content;
-        }
-        if (data.automergeDoc !== undefined) {
-            updateData.automergeDoc = data.automergeDoc;
-        }
-
-        if (data.version !== undefined) {
-            updateData.version = data.version;
-        }
-        if (data.lastSyncedHeads !== undefined) {
-            updateData.lastSyncedHeads = data.lastSyncedHeads;
         }
         if (data.notebookId !== undefined) {
             updateData.notebookId = data.notebookId ? new ObjectId(data.notebookId) : undefined;
@@ -427,7 +403,7 @@ export async function emptyTrash(userId: string): Promise<number> {
 const INTERNAL_CAPABILITY = Symbol('page.repo.internal');
 
 // Allowed callers registry for audit logging
-const ALLOWED_INTERNAL_CALLERS = new Set(['OTService', 'MigrationService', 'AutomergeService']);
+const ALLOWED_INTERNAL_CALLERS = new Set(['OTService', 'MigrationService']);
 
 /**
  * Find page by ID without permission checks
@@ -505,9 +481,6 @@ export async function updatePageInternal(
 
         if (data.title !== undefined) updateData.title = data.title;
         if (data.content !== undefined) updateData.content = data.content;
-        if (data.automergeDoc !== undefined) updateData.automergeDoc = data.automergeDoc;
-        if (data.version !== undefined) updateData.version = data.version;
-        if (data.lastSyncedHeads !== undefined) updateData.lastSyncedHeads = data.lastSyncedHeads;
         if (data.notebookId !== undefined) {
             updateData.notebookId = data.notebookId ? new ObjectId(data.notebookId) : null;
         }
@@ -532,11 +505,11 @@ export async function updatePageInternal(
 
 /**
  * Find page by ID for collaboration services (bypasses permission checks)
- * Only use from OTService or AutomergeService
+ * Only use from OTService
  */
 export async function findPageByIdForCollab(
     id: string,
-    caller: 'OTService' | 'MigrationService' | 'AutomergeService',
+    caller: 'OTService' | 'MigrationService',
 ): Promise<Page | null> {
     return findPageByIdInternal(id, INTERNAL_CAPABILITY, caller);
 }
@@ -548,9 +521,29 @@ export async function findPageByIdForCollab(
 export async function updatePageForCollab(
     id: string,
     data: Partial<UpdatePageInput>,
-    caller: 'OTService' | 'MigrationService' | 'AutomergeService',
+    caller: 'OTService' | 'MigrationService',
 ): Promise<Page | null> {
     return updatePageInternal(id, data, INTERNAL_CAPABILITY, caller);
+}
+
+// ============================================
+// Bot Access Functions
+// ============================================
+
+/**
+ * Find page by ID for bot access (bypasses user permission checks)
+ * Bot permission is verified separately via checkBotNotebookAccess
+ */
+export async function findPageByIdForBot(id: string): Promise<Page | null> {
+    try {
+        console.log(`[findPageByIdForBot] Looking for page with id: ${id}`);
+        const doc = await getCollection().findOne({ id });
+        console.log(`[findPageByIdForBot] Found doc:`, doc ? `yes (type: ${doc.type})` : 'no');
+        if (!doc) return null;
+        return toPageResponse(doc);
+    } catch {
+        return null;
+    }
 }
 
 // ============================================

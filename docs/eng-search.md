@@ -90,8 +90,8 @@ async function extractPlainText(page: Page): Promise<string> {
         case 'memo':
             const memo = await getMemoState(page.id);
             if (memo) {
-                const doc = Automerge.load(memo);
-                return automergeToPlainText(doc);
+                // Y.js content extracted
+                return yjsToPlainText(memo);
             }
             return '';
 

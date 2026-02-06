@@ -412,7 +412,7 @@ Update memo Y.js state.
 
 ### POST /api/memos/:noteId/sync
 
-Sync memo changes (Automerge).
+Sync memo changes.
 
 **Request:**
 
