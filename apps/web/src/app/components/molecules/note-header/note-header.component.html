@@ -108,6 +108,18 @@
           </div>
         }
       </div>
+
+      <!-- Divider -->
+      <div class="w-px h-5 bg-[var(--color-border)] mx-1"></div>
+
+      <!-- Delete button -->
+      <button
+        (click)="deleteRequested.emit()"
+        class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+        title="Delete page"
+      >
+        <span class="material-symbols-rounded text-lg">delete</span>
+      </button>
     </div>
   </header>
 

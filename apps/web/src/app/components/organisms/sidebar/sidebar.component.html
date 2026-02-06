@@ -104,6 +104,15 @@
           </button>
           <div class="my-1 border-t border-[var(--color-border)]"></div>
           <button
+            (click)="onCreateNotebook()"
+            class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+          >
+            <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+              >folder</span
+            >
+            <span>New Notebook</span>
+          </button>
+          <button
             (click)="onNewFromTemplate()"
             class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
           >
