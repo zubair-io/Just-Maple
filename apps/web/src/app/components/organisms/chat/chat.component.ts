@@ -34,6 +34,7 @@ interface PendingBotInvocation {
   invocationId: string;
   messageId: string;
   botHandle: string;
+  userBotId?: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   error?: string;
 }
@@ -96,7 +97,6 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
   // Bot invocation tracking
   readonly pendingBotInvocations = signal<PendingBotInvocation[]>([]);
-  readonly botsTyping = signal<{ messageId: string; botHandle: string }[]>([]);
 
   // Reply functionality
   readonly replyingToMessage = signal<Message | null>(null);
@@ -398,6 +398,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private handleBotStarted(data: Record<string, unknown>): void {
     const invocationId = data['invocationId'] as string;
     const sourceId = data['sourceId'] as string;
+    const userBotId = data['userBotId'] as string | undefined;
+    const botHandle = (data['botHandle'] as string) || 'bot';
 
     // Add to pending invocations
     this.pendingBotInvocations.update((invocations) => [
@@ -405,21 +407,15 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       {
         invocationId,
         messageId: sourceId,
-        botHandle: 'bot', // Will be updated when we have more info
+        botHandle,
+        userBotId,
         status: 'running',
       },
-    ]);
-
-    // Add to bots typing indicator
-    this.botsTyping.update((bots) => [
-      ...bots.filter((b) => b.messageId !== sourceId),
-      { messageId: sourceId, botHandle: 'bot' },
     ]);
   }
 
   private handleBotCompleted(data: Record<string, unknown>): void {
     const invocationId = data['invocationId'] as string;
-    const sourceId = data['sourceId'] as string;
 
     // Update invocation status
     this.pendingBotInvocations.update((invocations) =>
@@ -427,9 +423,6 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
         i.invocationId === invocationId ? { ...i, status: 'completed' as const } : i,
       ),
     );
-
-    // Remove from bots typing
-    this.botsTyping.update((bots) => bots.filter((b) => b.messageId !== sourceId));
 
     // Clean up completed invocations after a short delay
     setTimeout(() => {
@@ -441,7 +434,6 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
   private handleBotFailed(data: Record<string, unknown>): void {
     const invocationId = data['invocationId'] as string;
-    const sourceId = data['sourceId'] as string;
     const error = data['error'] as string | undefined;
 
     // Update invocation status
@@ -450,9 +442,6 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
         i.invocationId === invocationId ? { ...i, status: 'failed' as const, error } : i,
       ),
     );
-
-    // Remove from bots typing
-    this.botsTyping.update((bots) => bots.filter((b) => b.messageId !== sourceId));
 
     // Keep failed invocations visible for longer
     setTimeout(() => {
@@ -464,9 +453,39 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
   private handleThreadMessage(data: Record<string, unknown>): void {
     const parentMessageId = data['parentMessageId'] as string;
+    const message = data['message'] as Record<string, unknown> | undefined;
 
     // Mark the parent message as having a thread (this triggers UI update)
     this.messageService.markMessageHasThread(parentMessageId);
+
+    // If the message is from a bot, clear the specific pending invocation
+    if (message?.['senderType'] === 'bot') {
+      const invocationId = message['invocationId'] as string | undefined;
+      const userBotId = message['userBotId'] as string | undefined;
+
+      this.pendingBotInvocations.update((invocations) => {
+        // First priority: match by invocationId if available (most precise)
+        if (invocationId) {
+          return invocations.filter((i) => i.invocationId !== invocationId);
+        }
+
+        // Second priority: match by userBotId + messageId
+        if (userBotId) {
+          let removed = false;
+          return invocations.filter((i) => {
+            if (!removed && i.messageId === parentMessageId && i.userBotId === userBotId) {
+              removed = true;
+              return false; // Remove only the first matching invocation
+            }
+            return true;
+          });
+        }
+
+        // Fallback: no identifiers available, keep all invocations
+        // This prevents accidentally canceling other bots waiting on the same message
+        return invocations;
+      });
+    }
 
     // If user is at bottom, scroll to show the new thread indicator
     if (this.isAtBottom) {
@@ -487,11 +506,6 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       (i) => i.messageId === messageId && i.status === 'failed',
     );
     return failed?.error;
-  }
-
-  // Check if a bot is "typing" for a message
-  isBotTyping(messageId: string): boolean {
-    return this.botsTyping().some((b) => b.messageId === messageId);
   }
 
   private handleTypingEvent(event: TypingEvent): void {
@@ -541,23 +555,26 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     // Extract mentions from content
     const mentions = this.extractMentionsFromContent(content);
 
+    // Optimistic UI update - clear editor immediately
+    this.editor.commands.clearContent();
+
     // When sending own message, always scroll to bottom
     this.isAtBottom = true;
+    this.scrollToBottom();
 
     const replyingTo = this.replyingToMessage();
 
     if (replyingTo) {
+      // Clear reply state immediately
+      this.clearReply();
+
       // Replying to a message - backend will create thread if needed
       this.messageService
-        .sendMessage(this.notebookId(), content, { parentMessageId: replyingTo._id })
+        .sendMessage(this.notebookId(), content, { parentMessageId: replyingTo.id })
         .subscribe({
           next: (message) => {
-            this.editor?.commands.clearContent();
-            this.clearReply();
-            this.scrollToBottom();
-
             // Invoke bots for each mention (using parent message as source)
-            if (mentions.length > 0) {
+            if (message && mentions.length > 0) {
               this.invokeMentionedBots(message, mentions, content);
             }
           },
@@ -575,17 +592,19 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   }
 
   private sendRegularMessage(content: PageContent, mentions: MentionNodeAttrs[]): void {
-    this.messageService.sendMessage(this.notebookId(), content).subscribe({
-      next: (message) => {
-        this.editor?.commands.clearContent();
-        this.scrollToBottom();
+    const hasBotMentions = mentions.some((m) => m.type === 'bot');
 
-        // Invoke bots for each mention
-        if (mentions.length > 0) {
-          this.invokeMentionedBots(message, mentions, content);
-        }
-      },
-    });
+    // Use HTTP when there are bot mentions so we get the real message ID back
+    this.messageService
+      .sendMessage(this.notebookId(), content, { forceHttp: hasBotMentions })
+      .subscribe({
+        next: (message) => {
+          // Invoke bots for each mention (only if we have the message)
+          if (message && hasBotMentions) {
+            this.invokeMentionedBots(message, mentions, content);
+          }
+        },
+      });
   }
 
   private extractMentionsFromContent(content: PageContent): MentionNodeAttrs[] {
@@ -675,13 +694,15 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private scrollToBottom(): void {
     // Use requestAnimationFrame to ensure DOM has updated
     requestAnimationFrame(() => {
-      if (this.messageListRef?.nativeElement) {
-        const element = this.messageListRef.nativeElement;
-        element.scrollTop = element.scrollHeight;
-        this.isAtBottom = true;
-        this.showScrollButton.set(false);
-        this.newMessageCount.set(0);
-      }
+      setTimeout(() => {
+        if (this.messageListRef?.nativeElement) {
+          const element = this.messageListRef.nativeElement;
+          element.scrollTop = element.scrollHeight;
+          this.isAtBottom = true;
+          this.showScrollButton.set(false);
+          this.newMessageCount.set(0);
+        }
+      });
     });
   }
 

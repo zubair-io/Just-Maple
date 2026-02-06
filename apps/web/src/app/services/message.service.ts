@@ -171,6 +171,16 @@ export class MessageService {
     const isCurrentNotebook = message.notebookId === currentNotebookId;
 
     if (isCurrentPage || isCurrentNotebook) {
+      // If this is the current user's message, remove any temp messages first
+      // This handles optimistic updates from WebSocket sends
+      if (message.userId === currentUserId) {
+        const allMessages = this.store.query(getAllEntities());
+        const tempIds = allMessages.filter((m) => m.id.startsWith('temp-')).map((m) => m.id);
+        if (tempIds.length > 0) {
+          this.store.update(deleteEntities(tempIds));
+        }
+      }
+
       // Use upsert to handle duplicates (e.g., sender's own message)
       this.store.update(upsertEntities(message));
       this.persistToIndexedDB([message]);
@@ -444,39 +454,69 @@ export class MessageService {
   sendMessage(
     notebookId: string,
     content: PageContent,
-    options?: { threadId?: string; parentMessageId?: string },
-  ): Observable<Message> {
+    options?: { threadId?: string; parentMessageId?: string; forceHttp?: boolean },
+  ): Observable<Message | null> {
     this._error.set(null);
 
-    // For simple messages without threads, use WebSocket
-    if (!options?.threadId && !options?.parentMessageId && this.realtimeWS.isConnected()) {
-      this.realtimeWS.sendChatMessage(notebookId, content);
-      return of(null as unknown as Message);
-    }
-
-    // Fall back to HTTP for thread messages or when WebSocket not connected
     const tempId = `temp-${Date.now()}`;
     const now = new Date().toISOString();
     const currentUser = this.authService.user();
     const pageId = this._currentPageId() || '';
 
-    const tempMessage: Message = {
-      _id: tempId,
-      id: tempId,
-      pageId,
-      notebookId,
-      threadId: options?.threadId,
-      userId: currentUser?._id || 'temp',
-      senderEmail: currentUser?.email,
-      senderDisplayName: currentUser?.displayName,
-      senderProfilePictureUrl: currentUser?.profilePictureUrl,
-      content,
-      createdAt: now,
-      updatedAt: now,
-    };
+    // For simple messages without threads, use WebSocket (unless forceHttp is set)
+    if (
+      !options?.threadId &&
+      !options?.parentMessageId &&
+      !options?.forceHttp &&
+      this.realtimeWS.isConnected()
+    ) {
+      // Create optimistic message for WebSocket path too
+      const tempMessage: Message = {
+        _id: tempId,
+        id: tempId,
+        pageId,
+        notebookId,
+        userId: currentUser?._id || 'temp',
+        senderEmail: currentUser?.email,
+        senderDisplayName: currentUser?.displayName,
+        senderProfilePictureUrl: currentUser?.profilePictureUrl,
+        content,
+        createdAt: now,
+        updatedAt: now,
+      };
 
-    // Optimistic update
-    this.store.update(addEntities(tempMessage));
+      // Add optimistic message immediately
+      this.store.update(addEntities(tempMessage));
+
+      this.realtimeWS.sendChatMessage(notebookId, content);
+      // WebSocket doesn't return the message, return null
+      // Caller should use forceHttp: true if they need the message ID
+      // The real message will arrive via realtime events and upsert will update
+      return of(null);
+    }
+
+    // Fall back to HTTP for thread messages or when WebSocket not connected
+
+    // Skip optimistic update for thread replies — they shouldn't appear in the main chat
+    const isThreadReply = !!options?.parentMessageId || !!options?.threadId;
+
+    if (!isThreadReply) {
+      const tempMessage: Message = {
+        _id: tempId,
+        id: tempId,
+        pageId,
+        notebookId,
+        userId: currentUser?._id || 'temp',
+        senderEmail: currentUser?.email,
+        senderDisplayName: currentUser?.displayName,
+        senderProfilePictureUrl: currentUser?.profilePictureUrl,
+        content,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      this.store.update(addEntities(tempMessage));
+    }
 
     const body: { content: PageContent; threadId?: string; parentMessageId?: string } = {
       content,
@@ -492,9 +532,16 @@ export class MessageService {
       .post<{ message: Message; page?: Page }>(`/api/notebooks/${notebookId}/messages`, body)
       .pipe(
         tap((response) => {
-          this.store.update(deleteEntities(tempId));
+          if (!isThreadReply) {
+            this.store.update(deleteEntities(tempId));
+          }
           this.store.update(upsertEntities(response.message));
           this.persistToIndexedDB([response.message]);
+
+          // Mark parent message as having a thread
+          if (options?.parentMessageId) {
+            this.markMessageHasThread(options.parentMessageId);
+          }
 
           // Update current page if returned
           if (response.page && !this._currentPageId()) {
@@ -504,7 +551,9 @@ export class MessageService {
         }),
         map((response) => response.message),
         catchError((err) => {
-          this.store.update(deleteEntities(tempId));
+          if (!isThreadReply) {
+            this.store.update(deleteEntities(tempId));
+          }
           const message = err?.error?.error || err?.error?.message || 'Failed to send message';
           this._error.set(message);
           return throwError(() => new Error(message));

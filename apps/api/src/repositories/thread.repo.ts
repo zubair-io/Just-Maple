@@ -4,7 +4,7 @@ import type { Thread } from '@maple/shared';
 
 interface ThreadDocument {
     _id: ObjectId;
-    parentMessageId: ObjectId;
+    parentMessageId: string; // Message ID (UUID or legacy ObjectId string)
     notebookId: ObjectId;
     botInvocationId?: ObjectId;
     messageCount: number;
@@ -19,7 +19,7 @@ function getCollection(): Collection<ThreadDocument> {
 function toThread(doc: ThreadDocument): Thread {
     return {
         _id: doc._id.toString(),
-        parentMessageId: doc.parentMessageId.toString(),
+        parentMessageId: doc.parentMessageId, // Already a string
         notebookId: doc.notebookId.toString(),
         botInvocationId: doc.botInvocationId?.toString(),
         messageCount: doc.messageCount,
@@ -40,7 +40,7 @@ export async function findThreadById(id: string): Promise<Thread | null> {
 export async function findThreadByParentMessage(messageId: string): Promise<Thread | null> {
     try {
         const doc = await getCollection().findOne({
-            parentMessageId: new ObjectId(messageId),
+            parentMessageId: messageId, // String comparison
         });
         return doc ? toThread(doc) : null;
     } catch {
@@ -55,7 +55,7 @@ export async function createThread(data: {
 }): Promise<Thread> {
     const now = new Date();
     const doc: Omit<ThreadDocument, '_id'> = {
-        parentMessageId: new ObjectId(data.parentMessageId),
+        parentMessageId: data.parentMessageId, // Keep as string (UUID or ObjectId string)
         notebookId: new ObjectId(data.notebookId),
         botInvocationId: data.botInvocationId ? new ObjectId(data.botInvocationId) : undefined,
         messageCount: 0,
@@ -101,16 +101,15 @@ export async function getOrCreateThread(data: {
     botInvocationId?: string;
 }): Promise<Thread> {
     const now = new Date();
-    const parentMessageOid = new ObjectId(data.parentMessageId);
-    const tagOid = new ObjectId(data.notebookId);
+    const notebookOid = new ObjectId(data.notebookId);
     const botInvocationOid = data.botInvocationId ? new ObjectId(data.botInvocationId) : undefined;
 
     const result = await getCollection().findOneAndUpdate(
-        { parentMessageId: parentMessageOid },
+        { parentMessageId: data.parentMessageId }, // String comparison
         {
             $setOnInsert: {
-                parentMessageId: parentMessageOid,
-                notebookId: tagOid,
+                parentMessageId: data.parentMessageId, // Keep as string
+                notebookId: notebookOid,
                 botInvocationId: botInvocationOid,
                 messageCount: 0,
                 createdAt: now,

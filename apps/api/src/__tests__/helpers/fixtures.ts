@@ -273,7 +273,7 @@ export async function createUserBotFixture(
 
 export interface ThreadDoc {
     _id: ObjectId;
-    parentMessageId: ObjectId;
+    parentMessageId: string; // Message ID (UUID or legacy ObjectId string)
     notebookId: ObjectId;
     botInvocationId?: ObjectId;
     messageCount: number;
@@ -293,9 +293,7 @@ export async function createThreadFixture(options: CreateThreadOptions = {}): Pr
 
     const doc: ThreadDoc = {
         _id: new ObjectId(),
-        parentMessageId: options.parentMessageId
-            ? new ObjectId(options.parentMessageId)
-            : new ObjectId(),
+        parentMessageId: options.parentMessageId ?? new ObjectId().toString(),
         notebookId: options.notebookId ? new ObjectId(options.notebookId) : new ObjectId(),
         botInvocationId: options.botInvocationId
             ? new ObjectId(options.botInvocationId)
@@ -317,7 +315,7 @@ export interface BotInvocationDoc {
     userBotId: ObjectId;
     templateId: ObjectId;
     sourceType: 'message' | 'note';
-    sourceId: ObjectId;
+    sourceId: string; // Message ID (UUID or legacy ObjectId string)
     notebookId: ObjectId;
     userId: ObjectId;
     context: Record<string, unknown>;
@@ -353,7 +351,7 @@ export async function createBotInvocationFixture(
         userBotId: options.userBotId ? new ObjectId(options.userBotId) : new ObjectId(),
         templateId: options.templateId ? new ObjectId(options.templateId) : new ObjectId(),
         sourceType: options.sourceType || 'message',
-        sourceId: options.sourceId ? new ObjectId(options.sourceId) : new ObjectId(),
+        sourceId: options.sourceId ?? new ObjectId().toString(),
         notebookId: options.notebookId ? new ObjectId(options.notebookId) : new ObjectId(),
         userId: options.userId ? new ObjectId(options.userId) : new ObjectId(),
         context: options.context || { mentionText: '@bot test' },

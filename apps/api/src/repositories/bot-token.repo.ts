@@ -1,4 +1,5 @@
 import { ObjectId, Collection, Binary } from 'mongodb';
+import { randomBytes } from 'crypto';
 import { getDb } from '../db/client';
 
 /**
@@ -87,13 +88,9 @@ function toInternalToken(doc: BotAccessTokenDocument): BotAccessTokenInternal {
  * Returns: 32-byte random token as base64url string (43 chars)
  */
 export function generateTokenString(): string {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const bytes = randomBytes(32);
     // Convert to base64url (URL-safe base64)
-    return Buffer.from(bytes)
-        .toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
+    return bytes.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 /**

@@ -5,9 +5,9 @@ import type { BotInvocation, InvocationStatus } from '@maple/shared';
 interface BotInvocationDocument {
     _id: ObjectId;
     userBotId: ObjectId;
-    templateId: ObjectId;
+    templateId: ObjectId | string; // 'custom' for custom bots
     sourceType: 'message' | 'note';
-    sourceId: ObjectId;
+    sourceId: string; // Can be UUID (messages) or ObjectId string (notes)
     notebookId: ObjectId;
     userId: ObjectId;
     context: {
@@ -42,7 +42,7 @@ function toInvocation(doc: BotInvocationDocument): BotInvocation {
         userBotId: doc.userBotId.toString(),
         templateId: doc.templateId.toString(),
         sourceType: doc.sourceType,
-        sourceId: doc.sourceId.toString(),
+        sourceId: doc.sourceId, // Already a string
         notebookId: doc.notebookId.toString(),
         userId: doc.userId.toString(),
         context: doc.context,
@@ -77,11 +77,14 @@ export async function createInvocation(data: {
     context: BotInvocation['context'];
 }): Promise<BotInvocation> {
     const now = new Date();
+    // templateId can be 'custom' for custom bots, otherwise it's an ObjectId
+    const templateId = data.templateId === 'custom' ? 'custom' : new ObjectId(data.templateId);
+
     const doc: Omit<BotInvocationDocument, '_id'> = {
         userBotId: new ObjectId(data.userBotId),
-        templateId: new ObjectId(data.templateId),
+        templateId,
         sourceType: data.sourceType,
-        sourceId: new ObjectId(data.sourceId),
+        sourceId: data.sourceId, // Keep as string (can be UUID or ObjectId string)
         notebookId: new ObjectId(data.notebookId),
         userId: new ObjectId(data.userId),
         context: data.context,
@@ -155,7 +158,7 @@ export async function findInvocationsBySourceMessage(sourceId: string): Promise<
         const docs = await getCollection()
             .find({
                 sourceType: 'message',
-                sourceId: new ObjectId(sourceId),
+                sourceId, // sourceId is now stored as string
             })
             .sort({ createdAt: -1 })
             .toArray();

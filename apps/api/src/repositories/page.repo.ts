@@ -524,6 +524,26 @@ export async function updatePageForCollab(
 }
 
 // ============================================
+// Bot Access Functions
+// ============================================
+
+/**
+ * Find page by ID for bot access (bypasses user permission checks)
+ * Bot permission is verified separately via checkBotNotebookAccess
+ */
+export async function findPageByIdForBot(id: string): Promise<Page | null> {
+    try {
+        console.log(`[findPageByIdForBot] Looking for page with id: ${id}`);
+        const doc = await getCollection().findOne({ id });
+        console.log(`[findPageByIdForBot] Found doc:`, doc ? `yes (type: ${doc.type})` : 'no');
+        if (!doc) return null;
+        return toPageResponse(doc);
+    } catch {
+        return null;
+    }
+}
+
+// ============================================
 // Messages Page Functions
 // ============================================
 
