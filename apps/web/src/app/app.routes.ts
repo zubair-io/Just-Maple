@@ -3,6 +3,7 @@ import { AuthGuard, PublicGuard } from './guards/auth.guard';
 import {
   CollectablePageGuard,
   WhiteboardPageGuard,
+  KanbanPageGuard,
   MemoPageGuard,
   MessagePageGuard,
 } from './guards/page-type.guard';
@@ -116,6 +117,15 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/message-view/message-view.component').then(
                 (m) => m.MessageViewComponent,
+              ),
+          },
+          // Kanban-type page - shows kanban board
+          {
+            path: ':id',
+            canMatch: [KanbanPageGuard],
+            loadComponent: () =>
+              import('./pages/kanban-view/kanban-view.component').then(
+                (m) => m.KanbanViewComponent,
               ),
           },
           // Memo-type page - shows collaborative notebook editor (default for pages)

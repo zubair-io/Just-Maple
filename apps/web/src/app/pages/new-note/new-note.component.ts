@@ -4,6 +4,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { PageService } from '../../services/page.service';
 import { MemoDocumentService } from '../../services/memo-document.service';
 import { WhiteboardDocumentService } from '../../services/whiteboard-document.service';
+import { KanbanDocumentService } from '../../services/kanban-document.service';
 import type { PageType } from '@maple/shared';
 
 @Component({
@@ -22,6 +23,7 @@ export class NewNoteComponent implements OnInit {
   private readonly pageService = inject(PageService);
   private readonly memoService = inject(MemoDocumentService);
   private readonly whiteboardService = inject(WhiteboardDocumentService);
+  private readonly kanbanService = inject(KanbanDocumentService);
 
   ngOnInit(): void {
     const notebookId = this.route.snapshot.paramMap.get('notebookId');
@@ -39,6 +41,10 @@ export class NewNoteComponent implements OnInit {
       } else if (type === 'whiteboard') {
         // Create whiteboard using the offline-first whiteboard service
         const { page } = await this.whiteboardService.createWhiteboard(notebookId || undefined);
+        this.router.navigate(['/', notebookId, page.id], { replaceUrl: true });
+      } else if (type === 'kanban') {
+        // Create kanban board using the kanban document service
+        const { page } = await this.kanbanService.createKanban(notebookId || undefined);
         this.router.navigate(['/', notebookId, page.id], { replaceUrl: true });
       } else {
         // Create other page types using the regular page service

@@ -1,0 +1,20 @@
+<div class="kanban-page">
+  @if (selectedPage(); as page) {
+    <app-note-header
+      [page]="page"
+      [notebook]="selectedNotebook()"
+      (favoriteClicked)="toggleFavorite()"
+    />
+
+    <div class="kanban-content">
+      @if (pageId(); as id) {
+        <app-kanban-board [pageId]="id" [notebookId]="notebookId()" />
+      }
+    </div>
+  } @else {
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+      <span>Loading board...</span>
+    </div>
+  }
+</div>

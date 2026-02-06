@@ -1,0 +1,455 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.kanban-board {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--color-bg);
+}
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  height: 100%;
+  color: var(--color-text-muted);
+}
+
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.lanes-container {
+  display: flex;
+  flex: 1;
+  gap: 1rem;
+  padding: 1rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 0;
+}
+
+.lane {
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+  max-width: 320px;
+  background-color: var(--color-bg-secondary, #f3f4f6);
+  border-radius: 8px;
+  flex-shrink: 0;
+  max-height: 100%;
+}
+
+.lane-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.lane-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-main);
+  margin: 0;
+  flex: 1;
+  cursor: default;
+
+  &:hover {
+    cursor: text;
+  }
+}
+
+.lane-title-input {
+  flex: 1;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-primary);
+  border-radius: 4px;
+  outline: none;
+  background: var(--color-bg);
+}
+
+.lane-count {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+}
+
+.lane-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background-color 0.15s;
+
+  &:hover {
+    background-color: var(--color-bg);
+    color: var(--color-text-main);
+  }
+
+  .material-symbols-rounded {
+    font-size: 18px;
+  }
+}
+
+.lane:hover .lane-menu-btn {
+  opacity: 1;
+}
+
+.delete-confirmation {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.delete-message {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.confirm-btn,
+.cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+
+  .material-symbols-rounded {
+    font-size: 16px;
+  }
+}
+
+.confirm-btn {
+  background-color: var(--color-primary);
+  color: white;
+
+  &:hover {
+    background-color: var(--color-primary-hover, #c7432f);
+  }
+}
+
+.cancel-btn {
+  background-color: var(--color-bg);
+  color: var(--color-text-muted);
+
+  &:hover {
+    background-color: var(--color-border);
+    color: var(--color-text-main);
+  }
+}
+
+.done-filter-info {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.lane-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 50px;
+}
+
+.card {
+  background: var(--color-bg);
+  border-radius: 6px;
+  padding: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  display: flex;
+  gap: 0.5rem;
+  transition:
+    box-shadow 0.15s,
+    transform 0.15s;
+
+  &:hover {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  }
+
+  &.has-cover-color {
+    border-left-width: 4px;
+  }
+
+  &.cdk-drag-preview {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    transform: scale(1.02);
+  }
+
+  &.cdk-drag-placeholder {
+    opacity: 0.4;
+  }
+}
+
+.card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-title {
+  font-size: 0.875rem;
+  color: var(--color-text-main);
+  display: block;
+  word-break: break-word;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.priority-badge {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: white;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+}
+
+.due-date {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+
+  .material-symbols-rounded {
+    font-size: 14px;
+  }
+
+  &.overdue {
+    color: #dc2626;
+  }
+}
+
+.card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.card:hover .card-actions {
+  opacity: 1;
+}
+
+.card-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+
+  &:hover {
+    background-color: var(--color-bg-secondary, #f3f4f6);
+    color: var(--color-text-main);
+  }
+
+  .material-symbols-rounded {
+    font-size: 16px;
+  }
+}
+
+.add-card-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  width: 100%;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+
+  &:hover {
+    background-color: var(--color-bg);
+    color: var(--color-text-main);
+  }
+
+  .material-symbols-rounded {
+    font-size: 18px;
+  }
+}
+
+.new-card-form {
+  width: 100%;
+}
+
+.new-card-input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  outline: none;
+  background: var(--color-bg);
+}
+
+.add-lane-container {
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+  flex-shrink: 0;
+}
+
+.add-lane-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 2px dashed var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background-color 0.15s;
+
+  &:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background-color: var(--color-bg-secondary, #f3f4f6);
+  }
+
+  .material-symbols-rounded {
+    font-size: 18px;
+  }
+}
+
+.new-lane-form {
+  min-width: 280px;
+}
+
+.new-lane-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--color-primary);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  outline: none;
+  background: var(--color-bg);
+}
+
+.archived-btn {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: var(--color-bg);
+  color: var(--color-text-main);
+  cursor: pointer;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 0.875rem;
+  transition:
+    box-shadow 0.15s,
+    transform 0.15s;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    transform: translateY(-2px);
+  }
+
+  .material-symbols-rounded {
+    font-size: 20px;
+  }
+
+  .archived-count {
+    background: var(--color-primary);
+    color: white;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+}
+
+// CDK Drag animations
+.cdk-drop-list-dragging .card:not(.cdk-drag-placeholder) {
+  transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.cdk-drag-animating {
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}

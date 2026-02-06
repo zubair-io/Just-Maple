@@ -246,7 +246,7 @@ export class HomeComponent implements OnInit, OnDestroy {
     }
   }
 
-  onNewPage(type: 'memo' | 'whiteboard' | 'message' = 'memo'): void {
+  onNewPage(type: 'memo' | 'whiteboard' | 'message' | 'kanban' = 'memo'): void {
     // Get the selected notebook or use the first one
     const notebookId = this.selectedNotebookId() || this.notebookService.notebooks()[0]?._id;
     if (notebookId) {

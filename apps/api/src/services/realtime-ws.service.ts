@@ -580,6 +580,14 @@ class RealtimeWSService {
     }
 
     /**
+     * Get client count for a kanban board document
+     * (Alias for getNotebookClientCount - same room infrastructure)
+     */
+    getKanbanClientCount(documentId: string): number {
+        return this.getNotebookClientCount(documentId);
+    }
+
+    /**
      * Get client IDs in a notebook room
      */
     getNotebookClientIds(noteId: string): string[] {

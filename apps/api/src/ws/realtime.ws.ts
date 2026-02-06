@@ -21,6 +21,7 @@ import { authenticateWebSocket } from './ws-auth';
 import { realtimeWSService, type AppEvent } from '../services/realtime-ws.service';
 import { yjsDocumentService } from '../services/yjs-document.service';
 import { yjsWhiteboardService } from '../services/yjs-whiteboard.service';
+import { yjsKanbanService } from '../services/yjs-kanban.service';
 import {
     broadcastChatEvent,
     subscribeToNotebookChat,
@@ -220,8 +221,11 @@ async function handleMemoMessage(
                 }
             }
 
-            if (!page || (page.type !== 'memo' && page.type !== 'whiteboard')) {
-                console.log(`[Memo] Access denied or not a notebook/whiteboard page: ${noteId}`);
+            if (
+                !page ||
+                (page.type !== 'memo' && page.type !== 'whiteboard' && page.type !== 'kanban')
+            ) {
+                console.log(`[Memo] Access denied or not a memo/whiteboard/kanban page: ${noteId}`);
                 ws.send(
                     JSON.stringify({
                         channel: 'memo',
@@ -246,10 +250,14 @@ async function handleMemoMessage(
             context.connection.subscribedNotebooks.add(noteId);
 
             // Get initial state from appropriate service based on page type
-            const isWhiteboard = page.type === 'whiteboard';
-            const state = isWhiteboard
-                ? await yjsWhiteboardService.getStateAsUpdate(noteId)
-                : await yjsDocumentService.getStateAsUpdate(noteId);
+            let state: Uint8Array;
+            if (page.type === 'whiteboard') {
+                state = await yjsWhiteboardService.getStateAsUpdate(noteId);
+            } else if (page.type === 'kanban') {
+                state = await yjsKanbanService.getStateAsUpdate(noteId);
+            } else {
+                state = await yjsDocumentService.getStateAsUpdate(noteId);
+            }
             console.log(
                 `[Memo] Sending initial state for ${noteId} (${page.type}), size: ${state.length} bytes`,
             );
@@ -311,6 +319,8 @@ async function handleMemoMessage(
             try {
                 if (pageType === 'whiteboard') {
                     await yjsWhiteboardService.applyUpdate(noteId, update, clientId);
+                } else if (pageType === 'kanban') {
+                    await yjsKanbanService.applyUpdate(noteId, update, clientId);
                 } else {
                     await yjsDocumentService.applyUpdate(noteId, update, clientId);
                 }

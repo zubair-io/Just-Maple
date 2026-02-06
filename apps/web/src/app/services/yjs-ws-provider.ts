@@ -44,7 +44,7 @@ export class YJSWSProvider {
     private readonly ydoc: Y.Doc,
     private readonly realtimeWS: RealtimeWSService,
     private readonly awareness?: Awareness,
-    private readonly pageType?: 'memo' | 'whiteboard',
+    private readonly pageType?: 'memo' | 'whiteboard' | 'kanban',
     private readonly parentPageId?: string, // For embedded whiteboards
   ) {
     this._clientId = generateClientId();
