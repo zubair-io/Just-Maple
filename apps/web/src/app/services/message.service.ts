@@ -497,23 +497,26 @@ export class MessageService {
 
     // Fall back to HTTP for thread messages or when WebSocket not connected
 
-    const tempMessage: Message = {
-      _id: tempId,
-      id: tempId,
-      pageId,
-      notebookId,
-      threadId: options?.threadId,
-      userId: currentUser?._id || 'temp',
-      senderEmail: currentUser?.email,
-      senderDisplayName: currentUser?.displayName,
-      senderProfilePictureUrl: currentUser?.profilePictureUrl,
-      content,
-      createdAt: now,
-      updatedAt: now,
-    };
+    // Skip optimistic update for thread replies — they shouldn't appear in the main chat
+    const isThreadReply = !!options?.parentMessageId || !!options?.threadId;
 
-    // Optimistic update
-    this.store.update(addEntities(tempMessage));
+    if (!isThreadReply) {
+      const tempMessage: Message = {
+        _id: tempId,
+        id: tempId,
+        pageId,
+        notebookId,
+        userId: currentUser?._id || 'temp',
+        senderEmail: currentUser?.email,
+        senderDisplayName: currentUser?.displayName,
+        senderProfilePictureUrl: currentUser?.profilePictureUrl,
+        content,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      this.store.update(addEntities(tempMessage));
+    }
 
     const body: { content: PageContent; threadId?: string; parentMessageId?: string } = {
       content,
@@ -529,9 +532,16 @@ export class MessageService {
       .post<{ message: Message; page?: Page }>(`/api/notebooks/${notebookId}/messages`, body)
       .pipe(
         tap((response) => {
-          this.store.update(deleteEntities(tempId));
+          if (!isThreadReply) {
+            this.store.update(deleteEntities(tempId));
+          }
           this.store.update(upsertEntities(response.message));
           this.persistToIndexedDB([response.message]);
+
+          // Mark parent message as having a thread
+          if (options?.parentMessageId) {
+            this.markMessageHasThread(options.parentMessageId);
+          }
 
           // Update current page if returned
           if (response.page && !this._currentPageId()) {
@@ -541,7 +551,9 @@ export class MessageService {
         }),
         map((response) => response.message),
         catchError((err) => {
-          this.store.update(deleteEntities(tempId));
+          if (!isThreadReply) {
+            this.store.update(deleteEntities(tempId));
+          }
           const message = err?.error?.error || err?.error?.message || 'Failed to send message';
           this._error.set(message);
           return throwError(() => new Error(message));

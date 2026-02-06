@@ -570,7 +570,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
       // Replying to a message - backend will create thread if needed
       this.messageService
-        .sendMessage(this.notebookId(), content, { parentMessageId: replyingTo._id })
+        .sendMessage(this.notebookId(), content, { parentMessageId: replyingTo.id })
         .subscribe({
           next: (message) => {
             // Invoke bots for each mention (using parent message as source)

@@ -241,38 +241,19 @@ export const UpdateCustomBotSchema = Type.Object({
 export type UpdateCustomBotInput = Static<typeof UpdateCustomBotSchema>;
 
 // ============================================
-// Bot Provisioning Token
+// Bot Auth Token (long-lived, revocable, reusable)
 // ============================================
 
-export const BotProvisioningTokenSchema = Type.Object({
+export const BotTokenSchema = Type.Object({
     _id: Type.String(),
     userBotId: Type.String(),
     userId: Type.String(),
     createdAt: Type.String({ format: 'date-time' }),
-    expiresAt: Type.String({ format: 'date-time' }),
-    usedAt: Type.Optional(Type.String({ format: 'date-time' })),
-    revoked: Type.Boolean(),
-});
-
-export type BotProvisioningToken = Static<typeof BotProvisioningTokenSchema>;
-
-// ============================================
-// Bot Session (JWT session tracking)
-// ============================================
-
-export const BotSessionSchema = Type.Object({
-    _id: Type.String(),
-    userBotId: Type.String(),
-    userId: Type.String(),
-    jwtId: Type.String(), // Unique JWT identifier
-    createdAt: Type.String({ format: 'date-time' }),
-    expiresAt: Type.String({ format: 'date-time' }),
-    lastUsedAt: Type.String({ format: 'date-time' }),
-    ipAddress: Type.Optional(Type.String()),
+    lastUsedAt: Type.Optional(Type.String({ format: 'date-time' })),
     revokedAt: Type.Optional(Type.String({ format: 'date-time' })),
 });
 
-export type BotSession = Static<typeof BotSessionSchema>;
+export type BotToken = Static<typeof BotTokenSchema>;
 
 // ============================================
 // Bot JWT Payload
@@ -282,7 +263,7 @@ export const BotJWTPayloadSchema = Type.Object({
     sub: Type.String(), // Bot ID (userBotId)
     userId: Type.String(), // Owner user ID
     type: Type.Literal('bot'), // Distinguish from user JWTs
-    sessionId: Type.String(), // Reference to bot_sessions
+    permissions: CustomBotPermissionsSchema, // Embedded permissions
     iat: Type.Number(),
     exp: Type.Number(),
 });

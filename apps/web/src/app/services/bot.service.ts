@@ -9,7 +9,6 @@ import type {
   UpdateUserBotInput,
   CreateCustomBotInput,
   UpdateCustomBotInput,
-  BotSession,
   Thread,
   Message,
   Notebook,
@@ -48,12 +47,8 @@ export interface CustomBot extends UserBot {
 }
 
 export interface CustomBotWithToken extends CustomBot {
-  provisioningToken?: string; // Only present on creation
+  botToken?: string; // Only present on creation
   webhookSecret?: string; // Only present on creation
-}
-
-export interface CustomBotSession extends BotSession {
-  // Extended with any UI-specific fields
 }
 
 @Injectable({ providedIn: 'root' })
@@ -144,6 +139,7 @@ export class BotService {
     return this.http.post<{ userBot: EnrichedUserBot }>('/api/user-bots', data).pipe(
       tap((response) => {
         this._userBots.update((bots) => [...bots, response.userBot]);
+        this.clearNotebookBotsCache();
       }),
       map((response) => response.userBot),
       catchError((err) => {
@@ -172,6 +168,7 @@ export class BotService {
     return this.http.delete(`/api/user-bots/${id}`).pipe(
       tap(() => {
         this._userBots.update((bots) => bots.filter((b) => b._id !== id));
+        this.clearNotebookBotsCache();
       }),
       map(() => undefined),
       catchError((err) => {
@@ -205,16 +202,17 @@ export class BotService {
     return this.http
       .post<{
         bot: CustomBot;
-        provisioningToken: string;
+        botToken: string;
         webhookSecret: string;
       }>('/api/custom-bots', data)
       .pipe(
         tap((response) => {
           this._customBots.update((bots) => [...bots, response.bot]);
+          this.clearNotebookBotsCache();
         }),
         map((response) => ({
           ...response.bot,
-          provisioningToken: response.provisioningToken,
+          botToken: response.botToken,
           webhookSecret: response.webhookSecret,
         })),
         catchError((err) => {
@@ -248,6 +246,7 @@ export class BotService {
     return this.http.delete(`/api/custom-bots/${id}`).pipe(
       tap(() => {
         this._customBots.update((bots) => bots.filter((b) => b._id !== id));
+        this.clearNotebookBotsCache();
       }),
       map(() => undefined),
       catchError((err) => {
@@ -257,11 +256,11 @@ export class BotService {
     );
   }
 
-  regenerateProvisioningToken(botId: string): Observable<string> {
+  regenerateBotToken(botId: string): Observable<string> {
     return this.http
-      .post<{ provisioningToken: string }>(`/api/custom-bots/${botId}/regenerate-token`, {})
+      .post<{ botToken: string }>(`/api/custom-bots/${botId}/regenerate-token`, {})
       .pipe(
-        map((response) => response.provisioningToken),
+        map((response) => response.botToken),
         catchError((err) => {
           const message = err?.error?.error || 'Failed to regenerate token';
           return throwError(() => new Error(message));
@@ -296,26 +295,6 @@ export class BotService {
       map((response) => response.bot),
       catchError((err) => {
         const message = err?.error?.error || 'Failed to update bot status';
-        return throwError(() => new Error(message));
-      }),
-    );
-  }
-
-  // Custom Bot Sessions
-  getCustomBotSessions(botId: string): Observable<CustomBotSession[]> {
-    return this.http
-      .get<{ sessions: CustomBotSession[] }>(`/api/custom-bots/${botId}/sessions`)
-      .pipe(
-        map((response) => response.sessions),
-        catchError(() => of([])),
-      );
-  }
-
-  revokeAllCustomBotSessions(botId: string): Observable<void> {
-    return this.http.delete(`/api/custom-bots/${botId}/sessions`).pipe(
-      map(() => undefined),
-      catchError((err) => {
-        const message = err?.error?.error || 'Failed to revoke sessions';
         return throwError(() => new Error(message));
       }),
     );

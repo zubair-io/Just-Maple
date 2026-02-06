@@ -1,5 +1,6 @@
 .page-wrapper {
-  min-height: 100vh;
+  height: 100vh;
+  overflow-y: auto;
   background: var(--color-bg);
   padding-top: env(safe-area-inset-top);
 }

@@ -582,7 +582,7 @@ describe('BotService', () => {
     });
 
     describe('createCustomBot', () => {
-      it('should create a custom bot and return with provisioning token', (done) => {
+      it('should create a custom bot and return with bot token', (done) => {
         const createData = {
           name: 'My Custom Bot',
           handle: 'my-bot',
@@ -592,7 +592,7 @@ describe('BotService', () => {
 
         service.createCustomBot(createData).subscribe((result) => {
           expect(result.handle).toBe('my-bot');
-          expect(result.provisioningToken).toBe('prov_abc123');
+          expect(result.botToken).toBe('bot_abc123');
           expect(service.customBots()).toContainEqual(
             expect.objectContaining({ handle: 'my-bot' }),
           );
@@ -601,7 +601,7 @@ describe('BotService', () => {
 
         const req = httpMock.expectOne('/api/custom-bots');
         expect(req.request.method).toBe('POST');
-        req.flush({ bot: mockCustomBot, provisioningToken: 'prov_abc123' });
+        req.flush({ bot: mockCustomBot, botToken: 'bot_abc123' });
       });
 
       it('should throw error on failure', (done) => {
@@ -662,16 +662,16 @@ describe('BotService', () => {
       });
     });
 
-    describe('regenerateProvisioningToken', () => {
-      it('should regenerate provisioning token', (done) => {
-        service.regenerateProvisioningToken('custom-bot-1').subscribe((result) => {
-          expect(result).toBe('prov_new_token');
+    describe('regenerateBotToken', () => {
+      it('should regenerate bot token', (done) => {
+        service.regenerateBotToken('custom-bot-1').subscribe((result) => {
+          expect(result).toBe('bot_new_token');
           done();
         });
 
         const req = httpMock.expectOne('/api/custom-bots/custom-bot-1/regenerate-token');
         expect(req.request.method).toBe('POST');
-        req.flush({ provisioningToken: 'prov_new_token' });
+        req.flush({ botToken: 'bot_new_token' });
       });
     });
 
@@ -709,53 +709,6 @@ describe('BotService', () => {
         const req = httpMock.expectOne('/api/custom-bots/custom-bot-1/status');
         expect(req.request.method).toBe('POST');
         req.flush({ bot: disabledBot });
-      });
-    });
-
-    describe('getCustomBotSessions', () => {
-      it('should get bot sessions', (done) => {
-        const sessions = [
-          {
-            _id: 'session-1',
-            userBotId: 'custom-bot-1',
-            userId: 'user-1',
-            jwtId: 'jwt-abc123',
-            createdAt: '2024-01-01T00:00:00.000Z',
-            expiresAt: '2024-01-01T12:00:00.000Z',
-            lastUsedAt: '2024-01-01T01:00:00.000Z',
-          },
-        ];
-
-        service.getCustomBotSessions('custom-bot-1').subscribe((result) => {
-          expect(result).toEqual(sessions);
-          done();
-        });
-
-        const req = httpMock.expectOne('/api/custom-bots/custom-bot-1/sessions');
-        expect(req.request.method).toBe('GET');
-        req.flush({ sessions });
-      });
-
-      it('should return empty array on error', (done) => {
-        service.getCustomBotSessions('invalid').subscribe((result) => {
-          expect(result).toEqual([]);
-          done();
-        });
-
-        const req = httpMock.expectOne('/api/custom-bots/invalid/sessions');
-        req.flush({ error: 'Not found' }, { status: 404, statusText: 'Not Found' });
-      });
-    });
-
-    describe('revokeAllCustomBotSessions', () => {
-      it('should revoke all sessions', (done) => {
-        service.revokeAllCustomBotSessions('custom-bot-1').subscribe(() => {
-          done();
-        });
-
-        const req = httpMock.expectOne('/api/custom-bots/custom-bot-1/sessions');
-        expect(req.request.method).toBe('DELETE');
-        req.flush({});
       });
     });
   });

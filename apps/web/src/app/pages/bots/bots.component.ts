@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -7,11 +7,11 @@ import {
   type EnrichedUserBot,
   type CustomBot,
   type CustomBotWithToken,
-  type CustomBotSession,
 } from '../../services/bot.service';
 import { ProfileAvatarComponent } from '../../components/atoms/profile-avatar/profile-avatar.component';
 import { SettingsHeaderComponent } from '../../components';
 import type { BotTemplate, CreateCustomBotInput } from '@maple/shared';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-bots',
@@ -36,12 +36,25 @@ export class BotsComponent implements OnInit {
   readonly customBots = this.botService.customBots;
   readonly customBotsLoading = this.botService.customBotsLoading;
 
+  // Unified bot list
+  readonly allBots = computed(() => {
+    const templateBots = this.userBots().map((bot) => ({
+      ...bot,
+      botType: 'template' as const,
+    }));
+    const custom = this.customBots().map((bot) => ({
+      ...bot,
+      botType: 'custom' as const,
+    }));
+    return [...templateBots, ...custom];
+  });
+  readonly botsLoading = computed(() => this.userBotsLoading() || this.customBotsLoading());
+
   // Register bot dialog (template bots)
   readonly showRegisterDialog = signal(false);
   readonly selectedTemplate = signal<BotTemplate | null>(null);
   readonly customHandle = signal('');
   readonly apiKey = signal('');
-  readonly isOAuthToken = signal(false);
   readonly registerError = signal<string | null>(null);
   readonly isRegistering = signal(false);
 
@@ -49,7 +62,6 @@ export class BotsComponent implements OnInit {
   readonly showEditDialog = signal(false);
   readonly editingBot = signal<EnrichedUserBot | null>(null);
   readonly editApiKey = signal('');
-  readonly editIsOAuthToken = signal(false);
   readonly editEnabled = signal(true);
   readonly editError = signal<string | null>(null);
   readonly isUpdating = signal(false);
@@ -86,12 +98,6 @@ export class BotsComponent implements OnInit {
   readonly editCustomBotError = signal<string | null>(null);
   readonly isUpdatingCustomBot = signal(false);
 
-  // Custom bot sessions dialog
-  readonly showSessionsDialog = signal(false);
-  readonly sessionsBot = signal<CustomBot | null>(null);
-  readonly botSessions = signal<CustomBotSession[]>([]);
-  readonly sessionsLoading = signal(false);
-
   // Regenerated token/secret display
   readonly showRegeneratedTokenDialog = signal(false);
   readonly regeneratedToken = signal<string | null>(null);
@@ -119,7 +125,7 @@ export class BotsComponent implements OnInit {
     this.selectedTemplate.set(template);
     this.customHandle.set(template.handle);
     this.apiKey.set('');
-    this.isOAuthToken.set(false);
+
     this.registerError.set(null);
     this.showRegisterDialog.set(true);
   }
@@ -129,7 +135,7 @@ export class BotsComponent implements OnInit {
     this.selectedTemplate.set(null);
     this.customHandle.set('');
     this.apiKey.set('');
-    this.isOAuthToken.set(false);
+
     this.registerError.set(null);
   }
 
@@ -152,7 +158,6 @@ export class BotsComponent implements OnInit {
         config: template.requiresConfig
           ? {
               apiKey: this.apiKey().trim(),
-              isOAuthToken: this.isOAuthToken(),
             }
           : undefined,
       })
@@ -175,7 +180,6 @@ export class BotsComponent implements OnInit {
   editBot(bot: EnrichedUserBot): void {
     this.editingBot.set(bot);
     this.editApiKey.set('');
-    this.editIsOAuthToken.set(bot.config?.isOAuthToken || false);
     this.editEnabled.set(bot.isEnabled);
     this.editError.set(null);
     this.showEditDialog.set(true);
@@ -185,7 +189,6 @@ export class BotsComponent implements OnInit {
     this.showEditDialog.set(false);
     this.editingBot.set(null);
     this.editApiKey.set('');
-    this.editIsOAuthToken.set(false);
     this.editError.set(null);
   }
 
@@ -198,23 +201,15 @@ export class BotsComponent implements OnInit {
 
     const updateData: {
       isEnabled?: boolean;
-      config?: { apiKey?: string; isOAuthToken?: boolean };
+      config?: { apiKey?: string };
     } = {
       isEnabled: this.editEnabled(),
     };
 
-    const oauthChanged = this.editIsOAuthToken() !== (bot.config?.isOAuthToken || false);
-
-    if (this.editApiKey().trim() || oauthChanged) {
-      updateData.config = {};
-
-      if (this.editApiKey().trim()) {
-        updateData.config.apiKey = this.editApiKey().trim();
-      }
-
-      if (oauthChanged) {
-        updateData.config.isOAuthToken = this.editIsOAuthToken();
-      }
+    if (this.editApiKey().trim()) {
+      updateData.config = {
+        apiKey: this.editApiKey().trim(),
+      };
     }
 
     this.botService.updateBot(bot._id, updateData).subscribe({
@@ -298,7 +293,11 @@ export class BotsComponent implements OnInit {
       return;
     }
     if (!this.isValidWebhookUrl(invokeUrl)) {
-      this.createCustomBotError.set('Invoke URL must use HTTPS (or HTTP for localhost)');
+      this.createCustomBotError.set(
+        environment.production
+          ? 'Invoke URL must use HTTPS'
+          : 'Invoke URL must use HTTPS (or HTTP for localhost)',
+      );
       return;
     }
 
@@ -324,9 +323,9 @@ export class BotsComponent implements OnInit {
         this.closeCreateCustomBotDialog();
         this.isCreatingCustomBot.set(false);
 
-        // Show the provisioning token and webhook secret
+        // Show the bot token and webhook secret
         this.createdBotName.set(bot.displayName || bot.handle);
-        this.createdBotToken.set(bot.provisioningToken || null);
+        this.createdBotToken.set(bot.botToken || null);
         this.createdBotSecret.set(bot.webhookSecret || null);
         this.tokenCopied.set(false);
         this.secretCopied.set(false);
@@ -396,7 +395,11 @@ export class BotsComponent implements OnInit {
 
     const invokeUrl = this.editCustomBotInvokeUrl().trim();
     if (!this.isValidWebhookUrl(invokeUrl)) {
-      this.editCustomBotError.set('Invoke URL must use HTTPS (or HTTP for localhost)');
+      this.editCustomBotError.set(
+        environment.production
+          ? 'Invoke URL must use HTTPS'
+          : 'Invoke URL must use HTTPS (or HTTP for localhost)',
+      );
       return;
     }
 
@@ -456,13 +459,13 @@ export class BotsComponent implements OnInit {
   regenerateToken(bot: CustomBot): void {
     if (
       !confirm(
-        'Are you sure you want to regenerate the provisioning token? The old token will be invalidated.',
+        'Are you sure you want to regenerate the bot token? The old token will be invalidated.',
       )
     ) {
       return;
     }
 
-    this.botService.regenerateProvisioningToken(bot._id).subscribe({
+    this.botService.regenerateBotToken(bot._id).subscribe({
       next: (token) => {
         this.regeneratedToken.set(token);
         this.regeneratedTokenCopied.set(false);
@@ -523,55 +526,6 @@ export class BotsComponent implements OnInit {
     }
   }
 
-  // ============================================
-  // Sessions Management
-  // ============================================
-
-  viewSessions(bot: CustomBot): void {
-    this.sessionsBot.set(bot);
-    this.sessionsLoading.set(true);
-    this.showSessionsDialog.set(true);
-
-    this.botService.getCustomBotSessions(bot._id).subscribe({
-      next: (sessions) => {
-        this.botSessions.set(sessions);
-        this.sessionsLoading.set(false);
-      },
-      error: () => {
-        this.botSessions.set([]);
-        this.sessionsLoading.set(false);
-      },
-    });
-  }
-
-  closeSessionsDialog(): void {
-    this.showSessionsDialog.set(false);
-    this.sessionsBot.set(null);
-    this.botSessions.set([]);
-  }
-
-  revokeAllSessions(): void {
-    const bot = this.sessionsBot();
-    if (!bot) return;
-
-    if (
-      !confirm(
-        'Are you sure you want to revoke all active sessions? The bot will need to re-authenticate.',
-      )
-    ) {
-      return;
-    }
-
-    this.botService.revokeAllCustomBotSessions(bot._id).subscribe({
-      next: () => {
-        this.botSessions.set([]);
-      },
-      error: (err) => {
-        alert(err.message || 'Failed to revoke sessions');
-      },
-    });
-  }
-
   formatDate(dateString: string): string {
     return new Date(dateString).toLocaleString();
   }
@@ -590,7 +544,7 @@ export class BotsComponent implements OnInit {
   }
 
   /**
-   * Validate webhook URL - must be HTTPS, except HTTP is allowed for localhost
+   * Validate webhook URL - must be HTTPS, except HTTP is allowed for localhost in dev
    */
   private isValidWebhookUrl(url: string): boolean {
     try {
@@ -600,9 +554,9 @@ export class BotsComponent implements OnInit {
         parsed.hostname === '127.0.0.1' ||
         parsed.hostname === '::1';
 
-      // Allow HTTP for localhost, require HTTPS otherwise
+      // Only allow localhost in development
       if (isLocalhost) {
-        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        return !environment.production;
       }
       return parsed.protocol === 'https:';
     } catch {

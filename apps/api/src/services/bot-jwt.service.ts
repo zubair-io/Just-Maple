@@ -1,6 +1,6 @@
 import * as jose from 'jose';
 import { config } from '../config';
-import type { BotJWTPayload } from '@maple/shared';
+import type { BotJWTPayload, CustomBotPermissions } from '@maple/shared';
 
 /**
  * Bot JWT Service
@@ -21,7 +21,7 @@ const DEFAULT_EXPIRATION_HOURS = 12;
 export async function generateBotJWT(
     userBotId: string,
     userId: string,
-    sessionId: string,
+    permissions: CustomBotPermissions,
     expirationHours: number = DEFAULT_EXPIRATION_HOURS,
 ): Promise<{ jwt: string; expiresAt: Date }> {
     const now = Math.floor(Date.now() / 1000);
@@ -31,7 +31,7 @@ export async function generateBotJWT(
         sub: userBotId,
         userId,
         type: 'bot',
-        sessionId,
+        permissions,
         iat: now,
         exp: Math.floor(expiresAt.getTime() / 1000),
     };
@@ -56,6 +56,7 @@ export async function verifyBotJWT(token: string): Promise<BotJWTPayload | null>
 
         // Validate that this is a bot JWT
         if (payload.type !== 'bot') {
+            console.log('[BotJWT] Token type is not "bot":', payload.type);
             return null;
         }
 
@@ -63,8 +64,13 @@ export async function verifyBotJWT(token: string): Promise<BotJWTPayload | null>
         if (
             typeof payload.sub !== 'string' ||
             typeof payload.userId !== 'string' ||
-            typeof payload.sessionId !== 'string'
+            !payload.permissions
         ) {
+            console.log('[BotJWT] Missing required fields:', {
+                sub: typeof payload.sub,
+                userId: typeof payload.userId,
+                permissions: typeof payload.permissions,
+            });
             return null;
         }
 
@@ -72,11 +78,30 @@ export async function verifyBotJWT(token: string): Promise<BotJWTPayload | null>
             sub: payload.sub,
             userId: payload.userId as string,
             type: 'bot',
-            sessionId: payload.sessionId as string,
+            permissions: payload.permissions as CustomBotPermissions,
             iat: payload.iat as number,
             exp: payload.exp as number,
         };
-    } catch {
+    } catch (err) {
+        // Log the actual verification error for debugging
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.log('[BotJWT] Verification failed:', errMsg);
+
+        // Try to decode (without verifying) to help diagnose
+        try {
+            const decoded = jose.decodeJwt(token);
+            const now = Math.floor(Date.now() / 1000);
+            console.log('[BotJWT] Decoded token (unverified):', {
+                sub: decoded.sub,
+                type: decoded.type,
+                exp: decoded.exp,
+                expired: decoded.exp ? decoded.exp < now : 'no exp',
+                expiresIn: decoded.exp ? `${decoded.exp - now}s` : 'n/a',
+            });
+        } catch {
+            console.log('[BotJWT] Token could not be decoded at all (malformed)');
+        }
+
         return null;
     }
 }
@@ -96,7 +121,7 @@ export function decodeBotJWT(token: string): BotJWTPayload | null {
             sub: payload.sub as string,
             userId: payload.userId as string,
             type: 'bot',
-            sessionId: payload.sessionId as string,
+            permissions: payload.permissions as CustomBotPermissions,
             iat: payload.iat as number,
             exp: payload.exp as number,
         };

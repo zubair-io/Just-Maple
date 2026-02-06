@@ -6,8 +6,6 @@ import {
     type BotAccessTokenInternal,
 } from '../repositories/bot-token.repo';
 import { verifyBotJWT } from '../services/bot-jwt.service';
-import { validateSession } from '../repositories/bot-session.repo';
-import { findUserBotByIdInternal } from '../repositories/user-bot.repo';
 import type { BotJWTPayload, CustomBotPermissions } from '@maple/shared';
 
 /**
@@ -48,33 +46,16 @@ export const botAuthMiddleware = new Elysia({ name: 'bot-auth-middleware' }).der
             const jwtPayload = await verifyBotJWT(bearerToken);
 
             if (jwtPayload) {
-                console.log(
-                    `[BotAuth] JWT valid for bot ${jwtPayload.sub}, session ${jwtPayload.sessionId}`,
-                );
+                console.log(`[BotAuth] JWT valid for bot ${jwtPayload.sub}`);
 
-                // Validate session is still active
-                const session = await validateSession(jwtPayload.sessionId);
-
-                if (!session) {
-                    console.log(`[BotAuth] Session ${jwtPayload.sessionId} not valid/active`);
-                    return { botAuth: null as BotAuthContext | null };
-                }
-
-                // Get bot for permissions
-                const bot = await findUserBotByIdInternal(jwtPayload.sub);
-
-                if (!bot || bot.status === 'revoked' || bot.status === 'disabled') {
-                    console.log(`[BotAuth] Bot ${jwtPayload.sub} not found or inactive`);
-                    return { botAuth: null as BotAuthContext | null };
-                }
-
+                // Zero DB lookups — permissions are embedded in the JWT
                 return {
                     botAuth: {
                         authType: 'jwt',
                         jwtPayload,
                         userBotId: jwtPayload.sub,
                         userId: jwtPayload.userId,
-                        permissions: bot.permissions,
+                        permissions: jwtPayload.permissions,
                     } as BotAuthContext,
                 };
             }

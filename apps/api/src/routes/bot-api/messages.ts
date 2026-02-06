@@ -27,7 +27,6 @@ import {
 import { broadcastChatEvent } from '../../services/realtime.service';
 import { markdownToProseMirror } from '../../utils/markdown-to-prosemirror';
 import { verifyBotJWT } from '../../services/bot-jwt.service';
-import { validateSession } from '../../repositories/bot-session.repo';
 import { verifyToken } from '../../repositories/bot-token.repo';
 import type { PageContent } from '@maple/shared';
 
@@ -59,34 +58,16 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
             const jwtPayload = await verifyBotJWT(bearerToken);
 
             if (jwtPayload) {
-                console.log(
-                    `[BotMessages] JWT valid for bot ${jwtPayload.sub}, session ${jwtPayload.sessionId}`,
-                );
+                console.log(`[BotMessages] JWT valid for bot ${jwtPayload.sub}`);
 
-                // Validate session is still active
-                const session = await validateSession(jwtPayload.sessionId);
-
-                if (!session) {
-                    console.log(`[BotMessages] Session ${jwtPayload.sessionId} not valid/active`);
-                    return { botAuth: null as BotAuthContext | null };
-                }
-
-                // Get bot for permissions
-                const bot = await findUserBotByIdInternal(jwtPayload.sub);
-
-                if (!bot || bot.status === 'revoked' || bot.status === 'disabled') {
-                    console.log(`[BotMessages] Bot ${jwtPayload.sub} not found or inactive`);
-                    return { botAuth: null as BotAuthContext | null };
-                }
-
-                console.log(`[BotMessages] Auth successful for bot ${jwtPayload.sub}`);
+                // Zero DB lookups — permissions are embedded in the JWT
                 return {
                     botAuth: {
                         authType: 'jwt',
                         jwtPayload,
                         userBotId: jwtPayload.sub,
                         userId: jwtPayload.userId,
-                        permissions: bot.permissions,
+                        permissions: jwtPayload.permissions,
                     } as BotAuthContext,
                 };
             }
