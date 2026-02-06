@@ -198,6 +198,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   }
 
   onCreateNotebook(): void {
+    this.isNewDropdownOpen.set(false);
     this.createNotebook.emit();
   }
 

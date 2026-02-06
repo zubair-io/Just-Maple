@@ -3,7 +3,8 @@
     <app-note-header
       [page]="page"
       [notebook]="selectedNotebook()"
-      (favoriteClicked)="toggleFavorite()"
+      (toggleFavorite)="toggleFavorite()"
+      (deleteRequested)="handleDelete()"
     />
 
     <div class="whiteboard-content">

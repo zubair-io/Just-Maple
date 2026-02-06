@@ -143,6 +143,20 @@ export class NotebookComponent implements OnDestroy {
     window.location.reload();
   }
 
+  handleDelete(): void {
+    if (!confirm('Are you sure you want to delete this page?')) return;
+    const id = this.pageId();
+    const notebookId = this.notebookId();
+    if (!id) return;
+    this.pageService.deletePage(id).subscribe({
+      next: () => {
+        if (notebookId) {
+          this.router.navigate(['/', notebookId]);
+        }
+      },
+    });
+  }
+
   /**
    * Handle Cmd/Ctrl+S to save a manual checkpoint
    */

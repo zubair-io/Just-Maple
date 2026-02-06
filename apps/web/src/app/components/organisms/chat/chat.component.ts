@@ -206,11 +206,12 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       addKeyboardShortcuts: () => ({
         Enter: () => {
           // Don't send if mention suggestions are showing
+          // Return true to prevent ProseMirror from creating a new paragraph
           if (this.showMentionSuggestions()) {
-            return false;
+            return true;
           }
           this.sendMessage();
-          return true; // Prevent default (new paragraph)
+          return true;
         },
         'Shift-Enter': () => {
           // Allow Shift+Enter to create new line
@@ -251,8 +252,13 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
                   this.updateMentionPosition(props.clientRect);
                 },
                 onKeyDown: (props) => {
-                  if (props.event.key === 'Escape') {
+                  const key = props.event.key;
+                  if (key === 'Escape') {
                     this.showMentionSuggestions.set(false);
+                    return true;
+                  }
+                  // Consume Enter and arrow keys so ProseMirror doesn't handle them
+                  if (key === 'Enter' || key === 'ArrowUp' || key === 'ArrowDown') {
                     return true;
                   }
                   return false;
@@ -547,7 +553,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   sendMessage(): void {
     if (!this.editor) return;
 
-    const content = this.editor.getJSON() as PageContent;
+    const content = this.trimContent(this.editor.getJSON() as PageContent);
 
     // Check if empty
     if (this.isContentEmpty(content)) return;
@@ -665,6 +671,21 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private extractTextFromContent(content: PageContent): string {
     // Use shared utility (without newlines for chat messages)
     return extractText(content, { includeNewlines: false });
+  }
+
+  private trimContent(content: PageContent): PageContent {
+    if (!content?.content) return content;
+    // Remove trailing empty paragraphs
+    const nodes = [...content.content];
+    while (nodes.length > 0) {
+      const last = nodes[nodes.length - 1];
+      if (last.type === 'paragraph' && (!last.content || last.content.length === 0)) {
+        nodes.pop();
+      } else {
+        break;
+      }
+    }
+    return { ...content, content: nodes };
   }
 
   private isContentEmpty(content: PageContent): boolean {

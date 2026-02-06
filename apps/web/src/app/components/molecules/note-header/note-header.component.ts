@@ -32,6 +32,7 @@ export class NoteHeaderComponent {
   readonly redoRequested = output<void>();
   readonly toggleWidthRequested = output<void>();
   readonly versionRestored = output<void>();
+  readonly deleteRequested = output<void>();
 
   readonly showExportMenu = signal(false);
   readonly showVersionHistory = signal(false);
