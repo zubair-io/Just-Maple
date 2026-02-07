@@ -41,6 +41,7 @@ export interface CustomBot extends UserBot {
   webhookSecret?: string;
   permissions: {
     messages: { read: boolean; write: boolean };
+    memos?: { read: boolean; write: boolean };
   };
   jwtExpirationHours: number;
   status: 'active' | 'disabled' | 'revoked';

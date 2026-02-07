@@ -86,6 +86,12 @@
                       @if (bot.permissions.messages.write) {
                         <span class="perm-badge">Write</span>
                       }
+                      @if (bot.permissions.memos?.read) {
+                        <span class="perm-badge">Memo Read</span>
+                      }
+                      @if (bot.permissions.memos?.write) {
+                        <span class="perm-badge">Memo Write</span>
+                      }
                     </span>
                   </div>
                 </div>
@@ -433,6 +439,28 @@
               <span>Write messages</span>
             </label>
           </div>
+
+          <div class="form-field">
+            <label class="toggle-label">
+              <input
+                type="checkbox"
+                [ngModel]="newBotPermReadMemos()"
+                (ngModelChange)="newBotPermReadMemos.set($event)"
+              />
+              <span>Read memos</span>
+            </label>
+          </div>
+
+          <div class="form-field">
+            <label class="toggle-label">
+              <input
+                type="checkbox"
+                [ngModel]="newBotPermWriteMemos()"
+                (ngModelChange)="newBotPermWriteMemos.set($event)"
+              />
+              <span>Write memos</span>
+            </label>
+          </div>
         </div>
 
         <div class="form-field">
@@ -617,6 +645,28 @@
                   (ngModelChange)="editCustomBotPermWriteMessages.set($event)"
                 />
                 <span>Write messages</span>
+              </label>
+            </div>
+
+            <div class="form-field">
+              <label class="toggle-label">
+                <input
+                  type="checkbox"
+                  [ngModel]="editCustomBotPermReadMemos()"
+                  (ngModelChange)="editCustomBotPermReadMemos.set($event)"
+                />
+                <span>Read memos</span>
+              </label>
+            </div>
+
+            <div class="form-field">
+              <label class="toggle-label">
+                <input
+                  type="checkbox"
+                  [ngModel]="editCustomBotPermWriteMemos()"
+                  (ngModelChange)="editCustomBotPermWriteMemos.set($event)"
+                />
+                <span>Write memos</span>
               </label>
             </div>
           </div>
