@@ -18,6 +18,14 @@ export const KanbanCardSchema = Type.Object({
     // Denormalized from memo (synced)
     title: Type.String(),
     tags: Type.Optional(Type.Array(Type.String())),
+    mentions: Type.Optional(
+        Type.Array(
+            Type.Object({
+                userId: Type.String(),
+                displayName: Type.String(),
+            }),
+        ),
+    ),
 
     // Card attributes
     priority: Type.Optional(KanbanPrioritySchema),

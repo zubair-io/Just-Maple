@@ -99,6 +99,14 @@
                         <span class="tag-chip">#{{ tag }}</span>
                       }
                     }
+                    @if (card.mentions?.length) {
+                      @for (mention of card.mentions; track mention.userId) {
+                        <span class="mention-chip" title="{{ mention.displayName }}">
+                          <span class="material-symbols-rounded">person</span>
+                          @{{ mention.displayName }}
+                        </span>
+                      }
+                    }
                   </div>
                 </div>
                 <div class="card-actions" (click)="$event.stopPropagation()">

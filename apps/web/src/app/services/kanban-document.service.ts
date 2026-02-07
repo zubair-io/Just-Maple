@@ -386,6 +386,26 @@ export class KanbanDocumentService {
   }
 
   /**
+   * Update a card's mentions (page links) by its memoPageId
+   */
+  updateCardMentionsByMemoPageId(
+    pageId: string,
+    memoPageId: string,
+    mentions: { userId: string; displayName: string }[],
+  ): void {
+    const doc = this.openDocs.get(pageId);
+    if (!doc) return;
+
+    const cards = doc.ydoc.getMap<Y.Map<unknown>>('cards');
+    for (const [, card] of cards) {
+      if (card.get('memoPageId') === memoPageId) {
+        card.set('mentions', mentions);
+        return;
+      }
+    }
+  }
+
+  /**
    * Update a card's tags by its memoPageId
    */
   updateCardTagsByMemoPageId(pageId: string, memoPageId: string, tags: string[]): void {
@@ -870,6 +890,7 @@ export class KanbanDocumentService {
       memoId: yMap.get('memoId') as string | undefined,
       title: yMap.get('title') as string,
       tags: yMap.get('tags') as string[] | undefined,
+      mentions: yMap.get('mentions') as { userId: string; displayName: string }[] | undefined,
       priority: yMap.get('priority') as KanbanPriority | undefined,
       dueDate: yMap.get('dueDate') as string | undefined,
       coverColor: yMap.get('coverColor') as string | undefined,

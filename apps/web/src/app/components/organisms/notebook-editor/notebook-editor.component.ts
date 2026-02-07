@@ -128,6 +128,7 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly skipPageSync = input<boolean>(false);
   readonly titleChanged = output<string>();
   readonly tagsChanged = output<string[]>();
+  readonly mentionsChanged = output<{ userId: string; displayName: string }[]>();
 
   readonly isReady = signal(false);
   readonly isFocused = signal(false);
@@ -149,6 +150,8 @@ export class NotebookEditorComponent implements OnDestroy {
   private lastSyncedTitle: string = '';
   private tagUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastSyncedTags: string[] = [];
+  private mentionUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
+  private lastSyncedMentions: string = ''; // Serialized for comparison
   private isInitialSync = true;
   private slashMenuElement: HTMLElement | null = null;
   private slashMenuComponent: SlashCommandMenuComponent | null = null;
@@ -1590,10 +1593,14 @@ export class NotebookEditorComponent implements OnDestroy {
    */
   private handleContentUpdate(editor: Editor): void {
     console.log('[NotebookEditor] Content updated', this.lastSyncedTitle);
-    // Skip during initial sync to avoid unnecessary updates
 
     const title = this.extractFirstHeadingText(editor)?.trim();
 
+    // Always extract and emit tags and mentions (they have their own dedup/debounce)
+    this.syncHashtags(this.pageId(), editor);
+    this.syncMentions(editor);
+
+    // Skip title and todo syncs during initial load
     if (!this.lastSyncedTitle) {
       this.lastSyncedTitle = title || '';
       return;
@@ -1616,9 +1623,6 @@ export class NotebookEditorComponent implements OnDestroy {
         }
       }, 500);
     }
-
-    // Always extract and emit tags (for kanban card tag display)
-    this.syncHashtags(this.pageId(), editor);
 
     // Skip page-level syncs for card memos (no Page record)
     if (!this.skipPageSync()) {
@@ -1689,6 +1693,46 @@ export class NotebookEditorComponent implements OnDestroy {
     });
 
     return Array.from(tags);
+  }
+
+  /**
+   * Extract page link mentions from the editor and emit changes
+   */
+  private syncMentions(editor: Editor): void {
+    const mentions = this.extractUserMentions(editor);
+    const serialized = JSON.stringify(mentions);
+
+    if (serialized === this.lastSyncedMentions) return;
+
+    if (this.mentionUpdateTimeout) {
+      clearTimeout(this.mentionUpdateTimeout);
+    }
+
+    this.mentionUpdateTimeout = setTimeout(() => {
+      this.lastSyncedMentions = serialized;
+      this.mentionsChanged.emit(mentions);
+    }, 500);
+  }
+
+  /**
+   * Extract all @user mentions from the editor content
+   */
+  private extractUserMentions(editor: Editor): { userId: string; displayName: string }[] {
+    const mentions = new Map<string, string>();
+    const doc = editor.state.doc;
+
+    doc.descendants((node) => {
+      if (node.type.name === 'inlineMention' && node.attrs['type'] === 'user') {
+        const userId = node.attrs['value'];
+        const displayName = node.attrs['displayName'] || 'User';
+        if (userId && typeof userId === 'string') {
+          mentions.set(userId, displayName);
+        }
+      }
+      return true;
+    });
+
+    return Array.from(mentions, ([userId, displayName]) => ({ userId, displayName }));
   }
 
   /**
@@ -1878,7 +1922,21 @@ export class NotebookEditorComponent implements OnDestroy {
     this.ydoc = null;
     this.awareness = null;
     this.isReady.set(false);
+    // Flush pending mention sync before destroying
+    if (this.mentionUpdateTimeout && this._editor) {
+      clearTimeout(this.mentionUpdateTimeout);
+      this.mentionUpdateTimeout = null;
+      const mentions = this.extractUserMentions(this._editor);
+      const serialized = JSON.stringify(mentions);
+      if (serialized !== this.lastSyncedMentions) {
+        this.mentionsChanged.emit(mentions);
+      }
+    } else if (this.mentionUpdateTimeout) {
+      clearTimeout(this.mentionUpdateTimeout);
+      this.mentionUpdateTimeout = null;
+    }
     this.lastSyncedTitle = '';
+    this.lastSyncedMentions = '';
     this.isInitialSync = true;
   }
 

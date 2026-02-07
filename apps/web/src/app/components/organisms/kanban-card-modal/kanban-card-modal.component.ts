@@ -17,6 +17,7 @@ export class KanbanCardModalComponent {
   readonly closed = output<void>();
   readonly titleChanged = output<string>();
   readonly tagsChanged = output<string[]>();
+  readonly mentionsChanged = output<{ userId: string; displayName: string }[]>();
 
   close(): void {
     this.closed.emit();

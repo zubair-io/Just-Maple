@@ -70,6 +70,48 @@ function extractLinksFromYjs(xmlFragment: Y.XmlFragment): PageLink[] {
     return links;
 }
 
+interface UserMention {
+    userId: string;
+    displayName: string;
+}
+
+/**
+ * Extract @user mentions from Y.js XML fragment
+ */
+function extractUserMentionsFromYjs(xmlFragment: Y.XmlFragment): UserMention[] {
+    const mentions: UserMention[] = [];
+    const seen = new Set<string>();
+
+    function traverse(node: Y.XmlElement | Y.XmlText | Y.XmlFragment): void {
+        if (node instanceof Y.XmlElement) {
+            if (node.nodeName === 'inlineMention' && node.getAttribute('type') === 'user') {
+                const userId = node.getAttribute('value');
+                const displayName = node.getAttribute('displayName') || 'User';
+                if (userId && typeof userId === 'string' && !seen.has(userId)) {
+                    mentions.push({ userId, displayName: String(displayName) });
+                    seen.add(userId);
+                }
+            }
+            const children = node.toArray();
+            for (const child of children) {
+                if (child instanceof Y.XmlElement || child instanceof Y.XmlText) {
+                    traverse(child);
+                }
+            }
+        } else if (node instanceof Y.XmlFragment) {
+            const children = node.toArray();
+            for (const child of children) {
+                if (child instanceof Y.XmlElement || child instanceof Y.XmlText) {
+                    traverse(child);
+                }
+            }
+        }
+    }
+
+    traverse(xmlFragment);
+    return mentions;
+}
+
 /**
  * Extract all page links from ProseMirror/TipTap content
  */
@@ -615,28 +657,50 @@ export async function getConnectionGraph(
 
     const pageIdSet = new Set(pageIds);
 
-    // Extract links from Y.js content for memos that don't have linksMeta
-    // This is needed because linksMeta may not be populated for Y.js-based memos
+    // Extract links and @user mentions from Y.js content for memos
     const pageLinksMap = new Map<string, PageLink[]>();
+    // Map: userId -> { displayName, mentionedInPageIds[] }
+    const userMentionsMap = new Map<string, { displayName: string; pageIds: Set<string> }>();
+
     for (const page of allPages) {
         // If linksMeta exists and has forward links, use those
         if (page.linksMeta?.forwardLinks?.length > 0) {
             pageLinksMap.set(page.id, page.linksMeta.forwardLinks);
-        } else if (page.type === 'memo') {
-            // Try to extract links from Y.js content
+        }
+
+        if (page.type === 'memo') {
+            // Try to extract links and user mentions from Y.js content
             try {
                 const state = await getMemoState(page.id);
                 if (state) {
                     const ydoc = new Y.Doc();
                     Y.applyUpdate(ydoc, state);
                     const xmlFragment = ydoc.getXmlFragment('prosemirror');
-                    const links = extractLinksFromYjs(xmlFragment);
-                    if (links.length > 0) {
-                        pageLinksMap.set(page.id, links);
+
+                    // Extract page links (if not already from linksMeta)
+                    if (!pageLinksMap.has(page.id)) {
+                        const links = extractLinksFromYjs(xmlFragment);
+                        if (links.length > 0) {
+                            pageLinksMap.set(page.id, links);
+                        }
+                    }
+
+                    // Extract @user mentions
+                    const mentions = extractUserMentionsFromYjs(xmlFragment);
+                    for (const m of mentions) {
+                        const existing = userMentionsMap.get(m.userId);
+                        if (existing) {
+                            existing.pageIds.add(page.id);
+                        } else {
+                            userMentionsMap.set(m.userId, {
+                                displayName: m.displayName,
+                                pageIds: new Set([page.id]),
+                            });
+                        }
                     }
                 }
             } catch (e) {
-                // Ignore errors, just skip this page's links
+                // Ignore errors, just skip this page
             }
         }
     }
@@ -683,6 +747,26 @@ export async function getConnectionGraph(
                 // Extract tags from Y.js content
                 const cardTags = extractTagsFromYjs(xmlFragment);
 
+                // Extract page links from Y.js content (for graph edges)
+                const cardLinks = extractLinksFromYjs(xmlFragment);
+                if (cardLinks.length > 0) {
+                    pageLinksMap.set(memo.id, cardLinks);
+                }
+
+                // Extract @user mentions from card memos
+                const cardUserMentions = extractUserMentionsFromYjs(xmlFragment);
+                for (const m of cardUserMentions) {
+                    const existing = userMentionsMap.get(m.userId);
+                    if (existing) {
+                        existing.pageIds.add(memo.id);
+                    } else {
+                        userMentionsMap.set(m.userId, {
+                            displayName: m.displayName,
+                            pageIds: new Set([memo.id]),
+                        });
+                    }
+                }
+
                 // Extract title from first heading or first line
                 let cardTitle = 'Untitled Card';
                 const children = xmlFragment.toArray();
@@ -702,11 +786,12 @@ export async function getConnectionGraph(
                 }
 
                 // Add card memo as node
+                const cardLinkCount = 1 + cardLinks.length; // Parent kanban + page links
                 nodes.push({
                     id: memo.id,
                     label: cardTitle,
                     type: 'kanban-card',
-                    linkCount: 1, // At least linked to parent kanban
+                    linkCount: cardLinkCount,
                     tags: cardTags.length > 0 ? cardTags : undefined,
                 });
                 pageIdSet.add(memo.id);
@@ -760,6 +845,23 @@ export async function getConnectionGraph(
             edgeSet.add(edgeId);
             linkEdgeCount++;
         }
+
+        // Add edges from card memo to pages it links to
+        const cardLinks = pageLinksMap.get(cardMemoId) || [];
+        for (const link of cardLinks) {
+            if (!pageIdSet.has(link.pageId)) continue;
+
+            const cardLinkEdgeId = `link:${cardMemoId}-${link.pageId}`;
+            if (!edgeSet.has(cardLinkEdgeId)) {
+                edges.push({
+                    source: cardMemoId,
+                    target: link.pageId,
+                    type: link.type || 'inline',
+                });
+                edgeSet.add(cardLinkEdgeId);
+                linkEdgeCount++;
+            }
+        }
     }
 
     // Build hashtag connections (pages sharing the same hashtag)
@@ -804,6 +906,34 @@ export async function getConnectionGraph(
                     edgeSet.add(hashEdgeId);
                     hashtagEdgeCount++;
                 }
+            }
+        }
+    }
+
+    // Add @user mention nodes and edges
+    let mentionEdgeCount = 0;
+    for (const [userId, { displayName, pageIds: mentionPageIds }] of userMentionsMap) {
+        const userNodeId = `user:${userId}`;
+
+        // Add user node
+        nodes.push({
+            id: userNodeId,
+            label: displayName,
+            type: 'user',
+            linkCount: mentionPageIds.size,
+        });
+
+        // Add edges from each page/card that mentions this user
+        for (const srcPageId of mentionPageIds) {
+            const mentionEdgeId = `mention:${srcPageId}-${userNodeId}`;
+            if (!edgeSet.has(mentionEdgeId)) {
+                edges.push({
+                    source: srcPageId,
+                    target: userNodeId,
+                    type: 'mention',
+                });
+                edgeSet.add(mentionEdgeId);
+                mentionEdgeCount++;
             }
         }
     }

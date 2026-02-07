@@ -99,6 +99,14 @@ export class KanbanViewComponent implements OnDestroy {
     this.kanbanDocService.updateCardTitleByMemoPageId(kanbanPageId, memoId, newTitle);
   }
 
+  onCardMentionsChanged(mentions: { userId: string; displayName: string }[]): void {
+    const memoId = this.activeMemoId();
+    const kanbanPageId = this.pageId();
+    if (!memoId || !kanbanPageId) return;
+
+    this.kanbanDocService.updateCardMentionsByMemoPageId(kanbanPageId, memoId, mentions);
+  }
+
   onCardTagsChanged(tags: string[]): void {
     const memoId = this.activeMemoId();
     const kanbanPageId = this.pageId();
