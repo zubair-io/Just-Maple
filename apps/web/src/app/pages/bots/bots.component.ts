@@ -74,6 +74,8 @@ export class BotsComponent implements OnInit {
   readonly newBotInvokeUrl = signal('');
   readonly newBotPermReadMessages = signal(true);
   readonly newBotPermWriteMessages = signal(true);
+  readonly newBotPermReadMemos = signal(false);
+  readonly newBotPermWriteMemos = signal(false);
   readonly newBotJwtExpiration = signal(12);
   readonly createCustomBotError = signal<string | null>(null);
   readonly isCreatingCustomBot = signal(false);
@@ -94,6 +96,8 @@ export class BotsComponent implements OnInit {
   readonly editCustomBotInvokeUrl = signal('');
   readonly editCustomBotPermReadMessages = signal(true);
   readonly editCustomBotPermWriteMessages = signal(true);
+  readonly editCustomBotPermReadMemos = signal(false);
+  readonly editCustomBotPermWriteMemos = signal(false);
   readonly editCustomBotJwtExpiration = signal(12);
   readonly editCustomBotError = signal<string | null>(null);
   readonly isUpdatingCustomBot = signal(false);
@@ -314,6 +318,10 @@ export class BotsComponent implements OnInit {
           read: this.newBotPermReadMessages(),
           write: this.newBotPermWriteMessages(),
         },
+        memos: {
+          read: this.newBotPermReadMemos(),
+          write: this.newBotPermWriteMemos(),
+        },
       },
       jwtExpirationHours: this.newBotJwtExpiration(),
     };
@@ -378,6 +386,8 @@ export class BotsComponent implements OnInit {
     this.editCustomBotInvokeUrl.set(bot.invokeUrl);
     this.editCustomBotPermReadMessages.set(bot.permissions?.messages?.read ?? true);
     this.editCustomBotPermWriteMessages.set(bot.permissions?.messages?.write ?? true);
+    this.editCustomBotPermReadMemos.set(bot.permissions?.memos?.read ?? false);
+    this.editCustomBotPermWriteMemos.set(bot.permissions?.memos?.write ?? false);
     this.editCustomBotJwtExpiration.set(bot.jwtExpirationHours || 12);
     this.editCustomBotError.set(null);
     this.showEditCustomBotDialog.set(true);
@@ -415,6 +425,10 @@ export class BotsComponent implements OnInit {
           messages: {
             read: this.editCustomBotPermReadMessages(),
             write: this.editCustomBotPermWriteMessages(),
+          },
+          memos: {
+            read: this.editCustomBotPermReadMemos(),
+            write: this.editCustomBotPermWriteMemos(),
           },
         },
         jwtExpirationHours: this.editCustomBotJwtExpiration(),
