@@ -102,11 +102,13 @@ export function checkBotAuth(
 /**
  * Helper to check if bot has required permission
  * Works for both access tokens (template bots) and JWTs (custom bots)
+ * @param scope - Permission scope: 'messages' (default) or 'memos'
  */
 export function checkBotPermission(
     botAuth: BotAuthContext,
     permission: 'read' | 'write' | 'invoke',
     set: { status?: number | string },
+    scope: 'messages' | 'memos' = 'messages',
 ): boolean {
     // For access token auth, check token permissions
     if (botAuth.authType === 'token' && botAuth.token) {
@@ -119,11 +121,11 @@ export function checkBotPermission(
 
     // For JWT auth (custom bots), check bot permissions
     if (botAuth.authType === 'jwt' && botAuth.permissions) {
-        // Currently only 'messages' permissions are supported
         // Map 'invoke' to 'write' for custom bots
         const mappedPermission = permission === 'invoke' ? 'write' : permission;
 
-        if (!botAuth.permissions.messages[mappedPermission]) {
+        const scopePermissions = botAuth.permissions[scope];
+        if (!scopePermissions || !scopePermissions[mappedPermission]) {
             set.status = 403;
             return false;
         }

@@ -28,6 +28,10 @@ const config = {
     haUrl: process.env.HA_URL || 'http://homeassistant.local:8123',
     haAccessToken: process.env.HA_ACCESS_TOKEN || '',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+    // Memo editing: page ID for the daily summary document
+    summaryPageId: process.env.SUMMARY_PAGE_ID || '',
+    // Cron hour for daily summary (0-23, default 7 = 7:00 AM)
+    summaryCronHour: parseInt(process.env.SUMMARY_CRON_HOUR || '7'),
 };
 
 // ---- State ----
@@ -204,6 +208,168 @@ async function replyToMessage(parentMessageId: string, content: string): Promise
     }
 }
 
+// ---- Memo API ----
+
+/**
+ * Read a memo document's content as ProseMirror JSON.
+ */
+async function readMemo(pageId: string): Promise<{ title: string; document: unknown } | null> {
+    try {
+        const response = await authenticatedFetch(
+            `${config.apiUrl}/api/bots/pages/${pageId}/document`,
+            { method: 'GET', headers: { 'Content-Type': 'application/json' } },
+        );
+
+        if (!response.ok) {
+            const error = await response.json();
+            console.error('Failed to read memo:', error);
+            return null;
+        }
+
+        return (await response.json()) as { title: string; document: unknown };
+    } catch (error) {
+        console.error('Read memo error:', error);
+        return null;
+    }
+}
+
+/**
+ * Replace an entire memo document with new markdown content.
+ */
+async function writeMemo(pageId: string, markdown: string, title?: string): Promise<boolean> {
+    try {
+        const body: Record<string, string> = {
+            content: markdown,
+            content_type: 'markdown',
+        };
+        if (title) body.title = title;
+
+        const response = await authenticatedFetch(
+            `${config.apiUrl}/api/bots/pages/${pageId}/document`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            },
+        );
+
+        if (!response.ok) {
+            const error = await response.json();
+            console.error('Failed to write memo:', error);
+            return false;
+        }
+
+        const data = await response.json();
+        console.log(`Memo updated: ${data.page_id}`);
+        return true;
+    } catch (error) {
+        console.error('Write memo error:', error);
+        return false;
+    }
+}
+
+// Expose memo helpers for AIHandler
+export { readMemo, writeMemo, authenticatedFetch, config };
+
+// ---- Daily Summary ----
+
+let dailySummaryTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Build a markdown summary of all tracked HA entity states.
+ */
+function buildEntitySummaryMarkdown(): string {
+    if (!haClient) return '> Home Assistant not connected.\n';
+
+    const entities = haClient.getExposedEntities();
+    if (entities.length === 0) return '> No entities tracked.\n';
+
+    const now = new Date();
+    const lines: string[] = [
+        `# Home Assistant Summary`,
+        ``,
+        `**Generated:** ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`,
+        `**Entities tracked:** ${entities.length}`,
+        ``,
+    ];
+
+    // Group by domain
+    const byDomain = new Map<string, typeof entities>();
+    for (const entity of entities) {
+        const domain = entity.entity_id.split('.')[0];
+        if (!byDomain.has(domain)) byDomain.set(domain, []);
+        byDomain.get(domain)!.push(entity);
+    }
+
+    // Sort domains alphabetically
+    const sortedDomains = Array.from(byDomain.keys()).sort();
+
+    for (const domain of sortedDomains) {
+        const domainEntities = byDomain.get(domain)!;
+        const label = domain.charAt(0).toUpperCase() + domain.slice(1);
+        lines.push(`## ${label}`);
+        lines.push('');
+
+        for (const entity of domainEntities) {
+            const name = (entity.attributes.friendly_name as string) || entity.entity_id;
+            const state = entity.state;
+            const changed = new Date(entity.last_changed).toLocaleTimeString();
+            lines.push(`- **${name}**: ${state} *(last changed ${changed})*`);
+        }
+
+        lines.push('');
+    }
+
+    return lines.join('\n');
+}
+
+/**
+ * Write the daily summary to the configured memo page.
+ */
+async function updateDailySummary(): Promise<void> {
+    if (!config.summaryPageId) {
+        console.log('[DailySummary] No SUMMARY_PAGE_ID configured, skipping.');
+        return;
+    }
+
+    console.log('[DailySummary] Generating daily summary...');
+    const markdown = buildEntitySummaryMarkdown();
+    const today = new Date().toLocaleDateString();
+    const success = await writeMemo(config.summaryPageId, markdown, `HA Summary — ${today}`);
+
+    if (success) {
+        console.log('[DailySummary] Summary written successfully.');
+    } else {
+        console.error('[DailySummary] Failed to write summary.');
+    }
+}
+
+/**
+ * Schedule the next daily summary run.
+ * Runs once at the configured hour each day.
+ */
+function scheduleDailySummary(): void {
+    const now = new Date();
+    const target = new Date(now);
+    target.setHours(config.summaryCronHour, 0, 0, 0);
+
+    // If we've already passed the target time today, schedule for tomorrow
+    if (now >= target) {
+        target.setDate(target.getDate() + 1);
+    }
+
+    const delay = target.getTime() - now.getTime();
+    console.log(
+        `[DailySummary] Next run at ${target.toLocaleString()} (in ${Math.round(delay / 60000)} min)`,
+    );
+
+    dailySummaryTimer = setTimeout(async () => {
+        await updateDailySummary();
+        // Re-schedule for the next day
+        scheduleDailySummary();
+    }, delay);
+}
+
 // ---- Webhook Types ----
 
 interface WebhookMessage {
@@ -353,12 +519,26 @@ console.log(`Webhook server listening on port ${config.port}`);
         console.error('Failed to connect to Home Assistant. Bot will respond with error messages.');
     }
 
-    // Step 3: Initialize AI handler
+    // Step 3: Initialize AI handler with memo editing capabilities
     if (haClient && botId && config.anthropicApiKey) {
-        aiHandler = new AIHandler(config.anthropicApiKey, haClient, botId);
+        aiHandler = new AIHandler(config.anthropicApiKey, haClient, botId, {
+            readMemo,
+            writeMemo,
+        });
         console.log('AI handler initialized');
     } else if (!config.anthropicApiKey) {
         console.error('ANTHROPIC_API_KEY not set. AI handler not initialized.');
+    }
+
+    // Step 4: Schedule daily summary if page ID is configured
+    if (config.summaryPageId) {
+        scheduleDailySummary();
+        // Also run an initial summary on startup
+        updateDailySummary().catch((err) =>
+            console.error('[DailySummary] Initial run failed:', err),
+        );
+    } else {
+        console.log('SUMMARY_PAGE_ID not set. Daily summary disabled.');
     }
 
     console.log('Bot is ready!');

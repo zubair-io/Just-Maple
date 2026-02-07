@@ -2,7 +2,7 @@
  * AI Handler - Claude API with Tool Use for Home Assistant
  *
  * Processes natural language requests by giving Claude tools to
- * query entity states and call HA services.
+ * query entity states, call HA services, and read/write memo documents.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -27,9 +27,14 @@ interface WebhookMessage {
     created_at: string;
 }
 
+export interface MemoHelpers {
+    readMemo: (pageId: string) => Promise<{ title: string; document: unknown } | null>;
+    writeMemo: (pageId: string, markdown: string, title?: string) => Promise<boolean>;
+}
+
 // ---- Tool Definitions ----
 
-const tools: Anthropic.Tool[] = [
+const haTools: Anthropic.Tool[] = [
     {
         name: 'get_entity_state',
         description:
@@ -88,17 +93,61 @@ const tools: Anthropic.Tool[] = [
     },
 ];
 
+const memoTools: Anthropic.Tool[] = [
+    {
+        name: 'read_memo',
+        description:
+            'Read a memo/note document from Just Maple. Returns the document title and content. Use this to check what is currently in a document before editing it.',
+        input_schema: {
+            type: 'object' as const,
+            properties: {
+                page_id: {
+                    type: 'string',
+                    description: 'The page ID (UUID) of the memo to read',
+                },
+            },
+            required: ['page_id'],
+        },
+    },
+    {
+        name: 'update_memo',
+        description:
+            'Replace the content of a memo/note document in Just Maple with new markdown content. The content will be converted to rich text and synced to all connected clients in real time. Use this when the user asks you to write, update, or log information to a document.',
+        input_schema: {
+            type: 'object' as const,
+            properties: {
+                page_id: {
+                    type: 'string',
+                    description: 'The page ID (UUID) of the memo to update',
+                },
+                markdown: {
+                    type: 'string',
+                    description:
+                        'The new markdown content for the document. This replaces the entire document.',
+                },
+                title: {
+                    type: 'string',
+                    description: 'Optional new title for the document',
+                },
+            },
+            required: ['page_id', 'markdown'],
+        },
+    },
+];
+
 // ---- Handler ----
 
 export class AIHandler {
     private client: Anthropic;
     private haClient: HAClient;
     private botId: string;
+    private memoHelpers: MemoHelpers | null;
 
-    constructor(apiKey: string, haClient: HAClient, botId: string) {
+    constructor(apiKey: string, haClient: HAClient, botId: string, memoHelpers?: MemoHelpers) {
         this.client = new Anthropic({ apiKey });
         this.haClient = haClient;
         this.botId = botId;
+        this.memoHelpers = memoHelpers || null;
     }
 
     /**
@@ -108,6 +157,9 @@ export class AIHandler {
         const systemPrompt = this.buildSystemPrompt();
         const messages = this.buildConversationMessages(webhookMessages);
 
+        // Include memo tools only if memo helpers are available
+        const allTools = this.memoHelpers ? [...haTools, ...memoTools] : haTools;
+
         // Tool-use loop: keep calling Claude until we get a final text response
         let currentMessages: Anthropic.MessageParam[] = messages;
 
@@ -116,7 +168,7 @@ export class AIHandler {
                 model: 'claude-sonnet-4-5-20250929',
                 max_tokens: 1024,
                 system: systemPrompt,
-                tools,
+                tools: allTools,
                 messages: currentMessages,
             });
 
@@ -170,15 +222,29 @@ export class AIHandler {
             })
             .join('\n');
 
-        return [
-            'You are a Home Assistant controller integrated into a chat application.',
+        const lines = [
+            'You are a Home Assistant controller integrated into a chat application called Just Maple.',
             'You can check device states and control smart home entities using the provided tools.',
             'Be concise and helpful. When you perform actions, confirm what you did.',
             'If a user asks about a device that does not exist in the list, let them know.',
+        ];
+
+        if (this.memoHelpers) {
+            lines.push(
+                '',
+                'You also have the ability to read and write memo documents in Just Maple.',
+                'When asked to log, record, or update a document, use the read_memo and update_memo tools.',
+                'The update_memo tool replaces the entire document, so read it first if you need to preserve existing content.',
+            );
+        }
+
+        lines.push(
             '',
             `Available entities (${entities.length}):`,
             entitySummary || '(No entities available)',
-        ].join('\n');
+        );
+
+        return lines.join('\n');
     }
 
     private buildConversationMessages(webhookMessages: WebhookMessage[]): Anthropic.MessageParam[] {
@@ -280,6 +346,42 @@ export class AIHandler {
                         state: e.state,
                         domain: e.entity_id.split('.')[0],
                     })),
+                };
+            }
+
+            case 'read_memo': {
+                if (!this.memoHelpers) {
+                    return { error: 'Memo editing is not configured' };
+                }
+                const pageId = input.page_id as string;
+                const result = await this.memoHelpers.readMemo(pageId);
+                if (!result) {
+                    return {
+                        error: `Failed to read memo "${pageId}". It may not exist or the bot lacks access.`,
+                    };
+                }
+                return {
+                    page_id: pageId,
+                    title: result.title,
+                    document: result.document,
+                };
+            }
+
+            case 'update_memo': {
+                if (!this.memoHelpers) {
+                    return { error: 'Memo editing is not configured' };
+                }
+                const pageId = input.page_id as string;
+                const markdown = input.markdown as string;
+                const title = input.title as string | undefined;
+
+                const success = await this.memoHelpers.writeMemo(pageId, markdown, title);
+                return {
+                    success,
+                    page_id: pageId,
+                    message: success
+                        ? 'Document updated successfully. Changes are synced to all connected clients.'
+                        : 'Failed to update document. Check the page ID and bot permissions.',
                 };
             }
 
