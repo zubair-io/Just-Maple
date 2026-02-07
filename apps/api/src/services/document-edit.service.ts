@@ -448,6 +448,48 @@ class DocumentEditService {
         const fragment = ydoc.getXmlFragment('prosemirror');
         return this.yXmlFragmentToJSON(fragment);
     }
+
+    /**
+     * Replace entire document content
+     * Used by bots to set the full document from ProseMirror JSON
+     * @param pageId - The page/memo ID
+     * @param content - ProseMirror JSON document (must have type: 'doc' with content array)
+     */
+    async replaceDocument(pageId: string, content: JSONContent): Promise<AIEditResult> {
+        try {
+            const ydoc = await yjsDocumentService.getOrCreateDoc(pageId);
+            const fragment = ydoc.getXmlFragment('prosemirror');
+
+            ydoc.transact(() => {
+                // Clear existing content
+                while (fragment.length > 0) {
+                    fragment.delete(0, 1);
+                }
+
+                // Insert new content from the doc's children
+                if (content.content && content.content.length > 0) {
+                    const children = content.content.map((child) => this.jsonToYXml(child));
+                    fragment.insert(0, children);
+                }
+            }, 'bot-editor');
+
+            // Broadcast update to connected clients
+            const update = Y.encodeStateAsUpdate(ydoc);
+            realtimeWSService.broadcastUpdate(pageId, update, 'server');
+
+            return {
+                success: true,
+                appliedCount: 1,
+            };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            return {
+                success: false,
+                appliedCount: 0,
+                errors: [`Document replace failed: ${message}`],
+            };
+        }
+    }
 }
 
 // Singleton instance

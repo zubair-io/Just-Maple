@@ -165,7 +165,12 @@ export const CustomBotPermissionsSchema = Type.Object({
         read: Type.Boolean(),
         write: Type.Boolean(),
     }),
-    // Future phases: memos, whiteboards
+    memos: Type.Optional(
+        Type.Object({
+            read: Type.Boolean(),
+            write: Type.Boolean(),
+        }),
+    ),
 });
 
 export type CustomBotPermissions = Static<typeof CustomBotPermissionsSchema>;
