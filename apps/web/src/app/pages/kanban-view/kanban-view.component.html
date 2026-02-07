@@ -25,6 +25,7 @@
           [notebookId]="nbId"
           [cardTitle]="card.title"
           (closed)="closeCardModal()"
+          (titleChanged)="onCardTitleChanged($event)"
         />
       }
     }

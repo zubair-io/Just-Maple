@@ -5,7 +5,7 @@
       <span>Loading board...</span>
     </div>
   } @else {
-    <div class="lanes-container">
+    <div class="lanes-container" #lanesContainer>
       @for (lane of lanes(); track trackByLaneId($index, lane)) {
         <div class="lane" [class.is-done]="lane.isDoneLane">
           <div class="lane-header">
@@ -70,8 +70,11 @@
                 class="card"
                 cdkDrag
                 [cdkDragData]="card"
+                [cdkDragStartDelay]="{ touch: 150, mouse: 0 }"
                 [style.border-left-color]="card.coverColor || 'transparent'"
                 [class.has-cover-color]="!!card.coverColor"
+                (cdkDragStarted)="onDragStarted()"
+                (cdkDragEnded)="onDragEnded()"
                 (click)="openCard(card)"
               >
                 <div class="card-content">
@@ -113,8 +116,8 @@
                   class="new-card-input"
                   placeholder="Card title..."
                   [(ngModel)]="newCardTitle"
-                  (blur)="saveCard()"
-                  (keydown.enter)="saveCard()"
+                  (blur)="saveCardFromBlur()"
+                  (keydown.enter)="saveCardAndContinue()"
                   (keydown.escape)="cancelAddCard()"
                   autofocus
                 />

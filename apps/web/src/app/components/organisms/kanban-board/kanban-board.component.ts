@@ -1,5 +1,6 @@
 import {
   Component,
+  ElementRef,
   inject,
   input,
   output,
@@ -8,11 +9,13 @@ import {
   OnInit,
   OnDestroy,
   effect,
+  viewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
   CdkDragDrop,
+  CdkDragStart,
   CdkDrag,
   CdkDropList,
   CdkDropListGroup,
@@ -59,6 +62,9 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
   readonly newLaneTitle = signal('');
   readonly isAddingLane = signal(false);
   readonly deletingLaneId = signal<string | null>(null);
+
+  // Drag auto-scroll
+  private readonly lanesContainer = viewChild<ElementRef>('lanesContainer');
 
   // Computed: cards organized by lane
   readonly cardsByLane = computed(() => {
@@ -118,6 +124,7 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.onDragEnded();
     const id = this.pageId();
     if (id) {
       this.kanbanDocService.closeDocument(id);
@@ -150,8 +157,8 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
       this.refreshLanes();
     });
 
-    // Observe cards
-    this.kanbanDoc.cards.observe(() => {
+    // Observe cards (deep to catch nested property changes like title updates)
+    this.kanbanDoc.cards.observeDeep(() => {
       this.refreshCards();
     });
 
@@ -329,7 +336,7 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
     this.newCardTitle.set('');
   }
 
-  async saveCard(): Promise<void> {
+  saveCardAndContinue(): void {
     const laneId = this.newCardLaneId();
     const title = this.newCardTitle().trim();
 
@@ -338,23 +345,43 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.createCardInLane(laneId, title);
+    this.newCardTitle.set('');
+  }
+
+  saveCardFromBlur(): void {
+    const laneId = this.newCardLaneId();
+    const title = this.newCardTitle().trim();
+
+    if (!laneId || !title) {
+      this.cancelAddCard();
+      return;
+    }
+
+    this.createCardInLane(laneId, title);
+    this.cancelAddCard();
+  }
+
+  /**
+   * Optimistically creates a card: the card is added to the kanban Y.Doc in memory
+   * immediately so it appears in the UI without waiting for the async memo creation.
+   * The memo (Y.js document backing the card) is created in the background using
+   * a pre-generated memoId shared between both operations.
+   */
+  private createCardInLane(laneId: string, title: string): void {
     const pageId = this.pageId();
     const notebookId = this.notebookId();
+    const memoId = crypto.randomUUID();
 
-    try {
-      // Create a card memo (no Page record — references the kanban page as parent)
-      const { memoId } = await this.memoDocService.createMemo(
-        notebookId ?? undefined,
-        pageId, // parentPageId — kanban page ID
-      );
+    // Optimistic: add card to kanban Y.Doc in memory immediately
+    this.kanbanDocService.createCard(pageId, laneId, title, memoId);
 
-      // Create the card in the kanban Y.Doc
-      this.kanbanDocService.createCard(pageId, laneId, title, memoId);
-
-      this.cancelAddCard();
-    } catch (error) {
-      console.error('Failed to create card:', error);
-    }
+    // Async: create the backing memo document in the background
+    this.memoDocService
+      .createMemo(notebookId ?? undefined, pageId, title, memoId)
+      .catch((error) => {
+        console.error('Failed to create card memo:', error);
+      });
   }
 
   openCard(card: KanbanCard): void {
@@ -393,6 +420,81 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
     const pageId = this.pageId();
     const lane = this.lanes()[event.previousIndex];
     this.kanbanDocService.reorderLane(pageId, lane.id, event.currentIndex);
+  }
+
+  onDragStarted(): void {
+    const container = this.lanesContainer()?.nativeElement as HTMLElement | undefined;
+    if (!container) return;
+
+    // Disable scroll snap during drag so scrollTo works smoothly
+    container.style.scrollSnapType = 'none';
+    this._dragScrolledToLane = this.getCurrentLaneIndex(container);
+
+    // Track pointer and scroll to next/prev lane when near edge
+    this._dragScrollCooldown = false;
+
+    this._pointerMoveHandler = (e: PointerEvent) => {
+      if (this._dragScrollCooldown) return;
+
+      const rect = container.getBoundingClientRect();
+      const edgeZone = 60;
+      const laneEls = container.querySelectorAll<HTMLElement>('.lane');
+
+      let targetIdx: number | null = null;
+
+      if (e.clientX > rect.right - edgeZone) {
+        targetIdx = Math.min(this._dragScrolledToLane + 1, laneEls.length - 1);
+      } else if (e.clientX < rect.left + edgeZone) {
+        targetIdx = Math.max(this._dragScrolledToLane - 1, 0);
+      }
+
+      if (targetIdx != null && targetIdx !== this._dragScrolledToLane) {
+        this._dragScrolledToLane = targetIdx;
+        this._dragScrollCooldown = true;
+        laneEls[targetIdx].scrollIntoView({
+          behavior: 'smooth',
+          inline: 'start',
+          block: 'nearest',
+        });
+        // Wait for scroll animation to finish before allowing another scroll
+        setTimeout(() => {
+          this._dragScrollCooldown = false;
+        }, 400);
+      }
+    };
+    document.addEventListener('pointermove', this._pointerMoveHandler);
+  }
+
+  onDragEnded(): void {
+    if (this._pointerMoveHandler) {
+      document.removeEventListener('pointermove', this._pointerMoveHandler);
+      this._pointerMoveHandler = null;
+    }
+
+    // Re-enable scroll snap
+    const container = this.lanesContainer()?.nativeElement as HTMLElement | undefined;
+    if (container) {
+      container.style.scrollSnapType = 'x mandatory';
+    }
+  }
+
+  private _pointerMoveHandler: ((e: PointerEvent) => void) | null = null;
+  private _dragScrolledToLane = 0;
+  private _dragScrollCooldown = false;
+
+  private getCurrentLaneIndex(container: HTMLElement): number {
+    const laneEls = container.querySelectorAll<HTMLElement>('.lane');
+    const scrollLeft = container.scrollLeft;
+    let closest = 0;
+    let closestDist = Infinity;
+    laneEls.forEach((el, i) => {
+      const dist = Math.abs(el.offsetLeft - container.offsetLeft - scrollLeft);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = i;
+      }
+    });
+    return closest;
   }
 
   // Helpers

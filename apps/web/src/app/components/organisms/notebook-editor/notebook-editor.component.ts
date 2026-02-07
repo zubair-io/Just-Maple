@@ -1,6 +1,7 @@
 import {
   Component,
   input,
+  output,
   signal,
   effect,
   inject,
@@ -124,6 +125,8 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly pageId = input.required<string>();
   readonly notebookId = input.required<string>();
   readonly editable = input<boolean>(true);
+  readonly skipPageSync = input<boolean>(false);
+  readonly titleChanged = output<string>();
 
   readonly isReady = signal(false);
   readonly isFocused = signal(false);
@@ -1605,17 +1608,23 @@ export class NotebookEditorComponent implements OnDestroy {
       // Debounce title updates (500ms)
       this.titleUpdateTimeout = setTimeout(() => {
         this.lastSyncedTitle = title;
-        const pageId = this.pageId();
-        this.pageService.updatePage(pageId, { title }).subscribe();
+        this.titleChanged.emit(title);
+        if (!this.skipPageSync()) {
+          const pageId = this.pageId();
+          this.pageService.updatePage(pageId, { title }).subscribe();
+        }
       }, 500);
     }
 
-    // Sync todo metadata (debounced internally by TodoSyncService)
-    const pageId = this.pageId();
-    this.todoSyncService.syncTodoMeta(pageId, editor);
+    // Skip page-level syncs for card memos (no Page record)
+    if (!this.skipPageSync()) {
+      // Sync todo metadata (debounced internally by TodoSyncService)
+      const pageId = this.pageId();
+      this.todoSyncService.syncTodoMeta(pageId, editor);
 
-    // Sync hashtags to search index
-    this.syncHashtags(pageId, editor);
+      // Sync hashtags to search index
+      this.syncHashtags(pageId, editor);
+    }
   }
 
   /**

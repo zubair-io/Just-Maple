@@ -176,6 +176,19 @@ export async function deleteMemo(id: string): Promise<boolean> {
 }
 
 /**
+ * Find all memos with a given pageId (parent page ID)
+ * Used to find all card memos for a kanban page
+ */
+export async function findMemosByPageId(pageId: string): Promise<Memo[]> {
+    try {
+        const docs = await getCollection().find({ pageId }).toArray();
+        return docs.map(toMemoResponse);
+    } catch {
+        return [];
+    }
+}
+
+/**
  * Delete all memos with a given pageId (parent page ID)
  * Used for cascade delete when a kanban page is deleted
  */

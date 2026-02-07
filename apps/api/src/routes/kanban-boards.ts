@@ -1,9 +1,11 @@
 import { Elysia, t } from 'elysia';
 import { jwt } from '@elysiajs/jwt';
+import * as Y from 'yjs';
 import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
 import { findPageById } from '../repositories/page.repo';
 import { findKanbanBoard, updateKanbanBoardSettings } from '../repositories/kanban-board.repo';
+import { findMemosByPageId } from '../repositories/memo.repo';
 import { yjsKanbanService } from '../services/yjs-kanban.service';
 import { DEFAULT_KANBAN_SETTINGS, type JWTPayload, type KanbanSettings } from '@maple/shared';
 
@@ -241,4 +243,65 @@ export const kanbanBoardRoutes = new Elysia({ prefix: '/api/kanban-boards' })
                 ),
             }),
         },
-    );
+    )
+    /**
+     * Get card memos for a kanban board
+     * Returns memo id + title extracted from Y.js H1 heading
+     * Used to recover orphaned cards when kanban Y.Doc state is lost
+     */
+    .get('/:id/card-memos', async ({ auth, params, set }) => {
+        if (!auth) {
+            set.status = 401;
+            return { error: 'Unauthorized' };
+        }
+
+        const { id } = params;
+
+        const page = await findPageById(id, auth.user._id);
+        if (!page) {
+            set.status = 404;
+            return { error: 'Page not found' };
+        }
+
+        if (page.type !== 'kanban') {
+            set.status = 400;
+            return { error: 'Page is not a kanban type' };
+        }
+
+        try {
+            const memos = await findMemosByPageId(id);
+
+            // Filter out the kanban page's own memo (id === pageId) if it exists
+            const cardMemos = memos.filter((m) => m.id !== id);
+
+            const cards = cardMemos.map((memo) => {
+                // Extract title from Y.js state H1 heading
+                let title = 'Untitled';
+                try {
+                    const ydoc = new Y.Doc();
+                    const state = new Uint8Array(
+                        memo.state instanceof Buffer ? memo.state : Buffer.from(memo.state as any),
+                    );
+                    Y.applyUpdate(ydoc, state);
+                    const fragment = ydoc.getXmlFragment('prosemirror');
+                    if (fragment.length > 0) {
+                        const firstNode = fragment.get(0);
+                        if (firstNode instanceof Y.XmlElement && firstNode.nodeName === 'heading') {
+                            title = firstNode.toJSON().replace(/<[^>]*>/g, '') || 'Untitled';
+                        }
+                    }
+                    ydoc.destroy();
+                } catch {
+                    // Fallback to 'Untitled' on parse failure
+                }
+
+                return { memoId: memo.id, title };
+            });
+
+            return { cards };
+        } catch (error) {
+            console.error(`[Kanban] Failed to get card memos for ${id}:`, error);
+            set.status = 500;
+            return { error: 'Failed to get card memos' };
+        }
+    });

@@ -130,16 +130,10 @@ export class KanbanDocumentService {
       return this.getKanbanHelpers(doc);
     }
 
-    // Create Y.Doc
-    const ydoc = new Y.Doc();
-
-    // Create awareness for cursor/drag sync
-    const awareness = new Awareness(ydoc);
-    this.setupAwareness(awareness);
-
-    // Setup local persistence FIRST (offline-first)
-    const persistence = new IndexeddbPersistence(`ydoc-kanban-${pageId}`, ydoc);
-    await persistence.whenSynced;
+    // Create Y.Doc and sync from IndexedDB (with corruption recovery)
+    const { ydoc, awareness, persistence } = await this.createDocWithPersistence(
+      `ydoc-kanban-${pageId}`,
+    );
 
     // Store reference
     const doc: OpenKanban = {
@@ -154,14 +148,23 @@ export class KanbanDocumentService {
     const lanes = ydoc.getArray<Y.Map<unknown>>('lanes');
     const isDocEmpty = lanes.length === 0;
 
-    // Initialize default structure if empty
-    if (isDocEmpty) {
+    // If online, sync from server first before initializing defaults
+    if (this.connectivity.canSync()) {
+      await this.syncDocument(pageId, doc, ydoc, isDocEmpty);
+    }
+
+    // Only initialize default structure if still empty after server sync
+    if (ydoc.getArray('lanes').length === 0) {
       this.initializeEmptyKanban(ydoc);
     }
 
-    // Connect to server if online
-    if (this.connectivity.canSync()) {
-      this.syncDocument(pageId, doc, ydoc, isDocEmpty);
+    // Recover any orphaned cards (in cards map but not in any lane)
+    this.recoverOrphanedCards(ydoc);
+
+    // If online and no cards in the board, try to recover from memo collection
+    const cards = ydoc.getMap<Y.Map<unknown>>('cards');
+    if (this.connectivity.canSync() && cards.size === 0) {
+      await this.recoverCardsFromMemos(pageId, ydoc);
     }
 
     return this.getKanbanHelpers(doc);
@@ -201,6 +204,84 @@ export class KanbanDocumentService {
     }
     if (!settings.has('doneReset')) {
       settings.set('doneReset', DEFAULT_KANBAN_SETTINGS.doneReset);
+    }
+  }
+
+  /**
+   * Recover orphaned cards — cards in the cards map that aren't in any lane's cardIds.
+   * Adds them to the first lane (usually "To Do").
+   */
+  private recoverOrphanedCards(ydoc: Y.Doc): void {
+    const cards = ydoc.getMap<Y.Map<unknown>>('cards');
+    const lanes = ydoc.getArray<Y.Map<unknown>>('lanes');
+
+    if (cards.size === 0 || lanes.length === 0) return;
+
+    // Collect all card IDs referenced by lanes
+    const referencedIds = new Set<string>();
+    for (let i = 0; i < lanes.length; i++) {
+      const cardIds = lanes.get(i).get('cardIds') as Y.Array<string> | undefined;
+      if (cardIds) {
+        for (let j = 0; j < cardIds.length; j++) {
+          referencedIds.add(cardIds.get(j));
+        }
+      }
+    }
+
+    // Find orphaned cards
+    const orphanedIds: string[] = [];
+    cards.forEach((_, cardId) => {
+      if (!referencedIds.has(cardId)) {
+        orphanedIds.push(cardId);
+      }
+    });
+
+    if (orphanedIds.length === 0) return;
+
+    console.warn(`Recovering ${orphanedIds.length} orphaned card(s)`, orphanedIds);
+
+    // Add orphaned cards to the first lane
+    const firstLane = lanes.get(0);
+    const cardIds = firstLane.get('cardIds') as Y.Array<string>;
+    cardIds.push(orphanedIds);
+  }
+
+  /**
+   * Recover cards from the memo collection when the kanban Y.Doc has lost all cards.
+   * Fetches card memos from the server and recreates card entries in the Y.Doc.
+   */
+  private async recoverCardsFromMemos(pageId: string, ydoc: Y.Doc): Promise<void> {
+    try {
+      const response = await firstValueFrom(
+        this.http.get<{ cards: { memoId: string; title: string }[] }>(
+          `/api/kanban-boards/${pageId}/card-memos`,
+        ),
+      );
+
+      if (!response.cards || response.cards.length === 0) return;
+
+      console.warn(`Recovering ${response.cards.length} card(s) from memo collection`);
+
+      const cards = ydoc.getMap<Y.Map<unknown>>('cards');
+      const lanes = ydoc.getArray<Y.Map<unknown>>('lanes');
+      if (lanes.length === 0) return;
+
+      const firstLane = lanes.get(0);
+      const laneCardIds = firstLane.get('cardIds') as Y.Array<string>;
+
+      ydoc.transact(() => {
+        for (const { memoId, title } of response.cards) {
+          const cardId = generateId();
+          const card = new Y.Map<unknown>();
+          card.set('id', cardId);
+          card.set('memoPageId', memoId);
+          card.set('title', title);
+          cards.set(cardId, card);
+          laneCardIds.push([cardId]);
+        }
+      });
+    } catch (e) {
+      console.warn('Failed to recover cards from memos:', e);
     }
   }
 
@@ -284,6 +365,22 @@ export class KanbanDocumentService {
         card.delete(key);
       } else {
         card.set(key, value);
+      }
+    }
+  }
+
+  /**
+   * Update a card's title by its memoPageId
+   */
+  updateCardTitleByMemoPageId(pageId: string, memoPageId: string, title: string): void {
+    const doc = this.openDocs.get(pageId);
+    if (!doc) return;
+
+    const cards = doc.ydoc.getMap<Y.Map<unknown>>('cards');
+    for (const [, card] of cards) {
+      if (card.get('memoPageId') === memoPageId) {
+        card.set('title', title);
+        return;
       }
     }
   }
@@ -776,40 +873,19 @@ export class KanbanDocumentService {
   ): Promise<void> {
     await this.waitForAuth();
 
-    let hasSynced = false;
-
-    // Try REST API for empty docs
+    // Fetch server state via REST for empty docs
     if (isDocEmpty) {
-      this.fetchInitialState(pageId, ydoc)
-        .then(() => {
-          if (!hasSynced) {
-            hasSynced = true;
-          }
-        })
-        .catch(() => {
-          // REST sync failed, will rely on WebSocket
-        });
-    }
-
-    // Connect WebSocket provider
-    try {
-      await this.connectProviders(pageId, doc);
-
-      if (doc.wsProvider?.synced()) {
-        if (!hasSynced) {
-          hasSynced = true;
-        }
-      }
-    } catch {
-      if (isDocEmpty && !hasSynced) {
-        try {
-          await this.fetchInitialState(pageId, ydoc);
-          hasSynced = true;
-        } catch {
-          // All sync methods failed
-        }
+      try {
+        await this.fetchInitialState(pageId, ydoc);
+      } catch {
+        // REST sync failed, will rely on WebSocket
       }
     }
+
+    // Connect WebSocket provider (runs in background for ongoing sync)
+    this.connectProviders(pageId, doc).catch(() => {
+      // WebSocket connection failed, will retry later
+    });
   }
 
   /**
@@ -849,6 +925,48 @@ export class KanbanDocumentService {
   /**
    * Setup awareness with user info
    */
+  /**
+   * Create a Y.Doc with IndexedDB persistence, recovering from corrupt state.
+   * y-indexeddb throws synchronously inside IDB callbacks on corrupt data,
+   * so whenSynced never resolves. We race with a timeout and delete the
+   * database on failure.
+   */
+  private async createDocWithPersistence(
+    dbName: string,
+  ): Promise<{ ydoc: Y.Doc; awareness: Awareness; persistence: IndexeddbPersistence }> {
+    const SYNC_TIMEOUT = 5000;
+
+    const trySync = (
+      ydoc: Y.Doc,
+    ): Promise<{ ydoc: Y.Doc; awareness: Awareness; persistence: IndexeddbPersistence }> => {
+      const awareness = new Awareness(ydoc);
+      this.setupAwareness(awareness);
+      const persistence = new IndexeddbPersistence(dbName, ydoc);
+
+      return Promise.race([
+        persistence.whenSynced.then(() => ({ ydoc, awareness, persistence })),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('IndexedDB sync timeout')), SYNC_TIMEOUT),
+        ),
+      ]);
+    };
+
+    try {
+      return await trySync(new Y.Doc());
+    } catch (e) {
+      console.warn(`Corrupted IndexedDB for ${dbName}, deleting and retrying`, e);
+      // Delete the corrupted IDB database entirely
+      await new Promise<void>((resolve) => {
+        const req = indexedDB.deleteDatabase(dbName);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+      });
+      // Retry with a fresh Y.Doc — the old one may have partial corrupt state
+      return await trySync(new Y.Doc());
+    }
+  }
+
   private setupAwareness(awareness: Awareness): void {
     const user = this.authService.user();
     if (user) {
@@ -976,19 +1094,13 @@ export class KanbanDocumentService {
     const pageId = generateId();
     const now = new Date().toISOString();
 
-    // Create Y.Doc
-    const ydoc = new Y.Doc();
+    // Create Y.Doc and sync from IndexedDB (with corruption recovery)
+    const { ydoc, awareness, persistence } = await this.createDocWithPersistence(
+      `ydoc-kanban-${pageId}`,
+    );
 
     // Initialize kanban structure
     this.initializeEmptyKanban(ydoc);
-
-    // Create awareness
-    const awareness = new Awareness(ydoc);
-    this.setupAwareness(awareness);
-
-    // Setup local persistence
-    const persistence = new IndexeddbPersistence(`ydoc-kanban-${pageId}`, ydoc);
-    await persistence.whenSynced;
 
     // Create page metadata
     const page: Page = {

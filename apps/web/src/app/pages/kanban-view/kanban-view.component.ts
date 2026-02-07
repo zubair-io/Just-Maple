@@ -6,6 +6,7 @@ import { Subscription } from 'rxjs';
 import { PageService } from '../../services/page.service';
 import { NotebookService } from '../../services/notebook.service';
 import { UiStateService } from '../../services/ui-state.service';
+import { KanbanDocumentService } from '../../services/kanban-document.service';
 import { KanbanBoardComponent } from '../../components/organisms/kanban-board/kanban-board.component';
 import { KanbanCardModalComponent } from '../../components/organisms/kanban-card-modal/kanban-card-modal.component';
 import { NoteHeaderComponent } from '../../components';
@@ -23,6 +24,7 @@ export class KanbanViewComponent implements OnDestroy {
   private readonly pageService = inject(PageService);
   private readonly notebookService = inject(NotebookService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly kanbanDocService = inject(KanbanDocumentService);
 
   private routeSubscription?: Subscription;
 
@@ -62,6 +64,14 @@ export class KanbanViewComponent implements OnDestroy {
 
   closeCardModal(): void {
     this.openCardModal.set(null);
+  }
+
+  onCardTitleChanged(newTitle: string): void {
+    const card = this.openCardModal();
+    const kanbanPageId = this.pageId();
+    if (!card || !kanbanPageId) return;
+
+    this.kanbanDocService.updateCardTitleByMemoPageId(kanbanPageId, card.memoPageId, newTitle);
   }
 
   onTitleChanged(newTitle: string): void {

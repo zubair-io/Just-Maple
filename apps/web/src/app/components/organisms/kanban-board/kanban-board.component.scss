@@ -49,17 +49,20 @@
   overflow-x: auto;
   overflow-y: hidden;
   min-height: 0;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
 }
 
 .lane {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-width: 300px;
-  max-width: 600px;
+  width: calc(100vw - 64px);
+  max-width: 400px;
+  flex-shrink: 0;
   background-color: var(--color-bg-secondary, #f3f4f6);
   border-radius: 8px;
   max-height: 100%;
+  scroll-snap-align: start;
 }
 
 .lane-header {
@@ -232,11 +235,18 @@
 
   &.cdk-drag-preview {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    transform: scale(1.02);
+    opacity: 0.95;
+    will-change: transform;
+    z-index: 1000;
+    // Smooth out position jumps from scroll changes during drag
+    transition: transform 40ms ease-out;
   }
 
   &.cdk-drag-placeholder {
-    opacity: 0.4;
+    opacity: 0.3;
+    border: 2px dashed var(--color-border);
+    background: transparent;
+    box-shadow: none;
   }
 }
 

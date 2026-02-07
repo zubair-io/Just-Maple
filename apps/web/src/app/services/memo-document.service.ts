@@ -138,16 +138,8 @@ export class MemoDocumentService {
       return { ydoc: doc.ydoc, awareness: doc.awareness };
     }
 
-    // Create Y.Doc
-    const ydoc = new Y.Doc();
-
-    // Create awareness for cursor sync
-    const awareness = new Awareness(ydoc);
-    this.setupAwareness(awareness);
-
-    // Setup local persistence FIRST (offline-first)
-    const persistence = new IndexeddbPersistence(`ydoc-${pageId}`, ydoc);
-    await persistence.whenSynced;
+    // Create Y.Doc and sync from IndexedDB (with corruption recovery)
+    const { ydoc, awareness, persistence } = await this.createDocWithPersistence(`ydoc-${pageId}`);
 
     // Store reference
     const doc: OpenDocument = {
@@ -340,6 +332,46 @@ export class MemoDocumentService {
   /**
    * Setup awareness with user info
    */
+  /**
+   * Create a Y.Doc with IndexedDB persistence, recovering from corrupt state.
+   * y-indexeddb throws synchronously inside IDB callbacks on corrupt data,
+   * so whenSynced never resolves. We race with a timeout and delete the
+   * database on failure.
+   */
+  private async createDocWithPersistence(
+    dbName: string,
+  ): Promise<{ ydoc: Y.Doc; awareness: Awareness; persistence: IndexeddbPersistence }> {
+    const SYNC_TIMEOUT = 5000;
+
+    const trySync = (
+      ydoc: Y.Doc,
+    ): Promise<{ ydoc: Y.Doc; awareness: Awareness; persistence: IndexeddbPersistence }> => {
+      const awareness = new Awareness(ydoc);
+      this.setupAwareness(awareness);
+      const persistence = new IndexeddbPersistence(dbName, ydoc);
+
+      return Promise.race([
+        persistence.whenSynced.then(() => ({ ydoc, awareness, persistence })),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('IndexedDB sync timeout')), SYNC_TIMEOUT),
+        ),
+      ]);
+    };
+
+    try {
+      return await trySync(new Y.Doc());
+    } catch (e) {
+      console.warn(`Corrupted IndexedDB for ${dbName}, deleting and retrying`, e);
+      await new Promise<void>((resolve) => {
+        const req = indexedDB.deleteDatabase(dbName);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+      });
+      return await trySync(new Y.Doc());
+    }
+  }
+
   private setupAwareness(awareness: Awareness): void {
     const user = this.authService.user();
     if (user) {
@@ -462,28 +494,56 @@ export class MemoDocumentService {
   async createMemo(
     notebookId?: string,
     parentPageId?: string,
+    title?: string,
+    existingMemoId?: string,
   ): Promise<{
     page?: Page;
     memoId: string;
     ydoc: Y.Doc;
     awareness: Awareness;
   }> {
-    const memoId = generatePageId();
+    const memoId = existingMemoId || generatePageId();
     const now = new Date().toISOString();
 
     // Create Y.Doc
     const ydoc = new Y.Doc();
 
-    // Initialize with empty prosemirror content (creates the fragment)
-    ydoc.getXmlFragment('prosemirror');
+    // Initialize prosemirror content with heading
+    const fragment = ydoc.getXmlFragment('prosemirror');
+    const heading = new Y.XmlElement('heading');
+    heading.setAttribute('level', '1');
+    if (title) {
+      heading.insert(0, [new Y.XmlText(title)]);
+    }
+    const paragraph = new Y.XmlElement('paragraph');
+    fragment.push([heading, paragraph]);
 
     // Create awareness
     const awareness = new Awareness(ydoc);
     this.setupAwareness(awareness);
 
-    // Setup local persistence immediately
-    const persistence = new IndexeddbPersistence(`ydoc-${memoId}`, ydoc);
-    await persistence.whenSynced;
+    // Setup local persistence (with corruption recovery)
+    const dbName = `ydoc-${memoId}`;
+    let persistence: IndexeddbPersistence;
+    try {
+      persistence = new IndexeddbPersistence(dbName, ydoc);
+      await Promise.race([
+        persistence.whenSynced,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('IndexedDB sync timeout')), 5000),
+        ),
+      ]);
+    } catch (e) {
+      console.warn(`Corrupted IndexedDB for ${dbName}, deleting and retrying`, e);
+      await new Promise<void>((resolve) => {
+        const req = indexedDB.deleteDatabase(dbName);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+      });
+      persistence = new IndexeddbPersistence(dbName, ydoc);
+      await persistence.whenSynced;
+    }
 
     // Store open document
     const doc: OpenDocument = {
