@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnDestroy } from '@angular/core';
+import { Component, computed, inject, signal, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -27,10 +27,22 @@ export class KanbanViewComponent implements OnDestroy {
   private readonly kanbanDocService = inject(KanbanDocumentService);
 
   private routeSubscription?: Subscription;
+  private aggregateTagsTimeout?: ReturnType<typeof setTimeout>;
 
   readonly pageId = signal<string | null>(null);
   readonly notebookId = signal<string | null>(null);
-  readonly openCardModal = signal<{ memoPageId: string; title: string } | null>(null);
+  readonly activeMemoId = signal<string | null>(null);
+
+  // Look up the card title from the kanban Y.Doc
+  readonly activeCardTitle = computed(() => {
+    const memoId = this.activeMemoId();
+    const kanbanPageId = this.pageId();
+    if (!memoId || !kanbanPageId) return '';
+
+    const cards = this.kanbanDocService.getCards(kanbanPageId);
+    const card = cards.find((c) => c.memoPageId === memoId);
+    return card?.title ?? '';
+  });
 
   // Get the page from the store
   readonly selectedPage = toSignal(this.pageService.activePage$, { initialValue: null });
@@ -45,8 +57,10 @@ export class KanbanViewComponent implements OnDestroy {
     this.routeSubscription = this.route.params.subscribe((params) => {
       const id = params['id'] || null;
       const notebookId = params['notebookId'] || null;
+      const memoId = params['memoId'] || null;
       this.pageId.set(id);
       this.notebookId.set(notebookId);
+      this.activeMemoId.set(memoId);
 
       if (id) {
         this.pageService.setActivePageId(id);
@@ -56,22 +70,69 @@ export class KanbanViewComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.routeSubscription?.unsubscribe();
+    if (this.aggregateTagsTimeout) {
+      clearTimeout(this.aggregateTagsTimeout);
+    }
   }
 
   onCardOpened(card: { memoPageId: string; title: string }): void {
-    this.openCardModal.set(card);
+    const notebookId = this.notebookId();
+    const boardId = this.pageId();
+    if (notebookId && boardId) {
+      this.router.navigate(['/', notebookId, boardId, card.memoPageId]);
+    }
   }
 
   closeCardModal(): void {
-    this.openCardModal.set(null);
+    const notebookId = this.notebookId();
+    const boardId = this.pageId();
+    if (notebookId && boardId) {
+      this.router.navigate(['/', notebookId, boardId]);
+    }
   }
 
   onCardTitleChanged(newTitle: string): void {
-    const card = this.openCardModal();
+    const memoId = this.activeMemoId();
     const kanbanPageId = this.pageId();
-    if (!card || !kanbanPageId) return;
+    if (!memoId || !kanbanPageId) return;
 
-    this.kanbanDocService.updateCardTitleByMemoPageId(kanbanPageId, card.memoPageId, newTitle);
+    this.kanbanDocService.updateCardTitleByMemoPageId(kanbanPageId, memoId, newTitle);
+  }
+
+  onCardTagsChanged(tags: string[]): void {
+    const memoId = this.activeMemoId();
+    const kanbanPageId = this.pageId();
+    if (!memoId || !kanbanPageId) return;
+
+    this.kanbanDocService.updateCardTagsByMemoPageId(kanbanPageId, memoId, tags);
+    this.syncAggregatedTags();
+  }
+
+  /**
+   * Collect all card tags and update the kanban page's tags field
+   * so the connection graph picks them up. Debounced to avoid excessive API calls.
+   */
+  private syncAggregatedTags(): void {
+    if (this.aggregateTagsTimeout) {
+      clearTimeout(this.aggregateTagsTimeout);
+    }
+
+    this.aggregateTagsTimeout = setTimeout(() => {
+      const kanbanPageId = this.pageId();
+      if (!kanbanPageId) return;
+
+      const allCards = this.kanbanDocService.getCards(kanbanPageId);
+      const allTags = new Set<string>();
+      for (const card of allCards) {
+        if (card.tags) {
+          for (const tag of card.tags) {
+            allTags.add(tag);
+          }
+        }
+      }
+
+      this.pageService.updatePage(kanbanPageId, { tags: [...allTags] }).subscribe();
+    }, 1000);
   }
 
   onTitleChanged(newTitle: string): void {

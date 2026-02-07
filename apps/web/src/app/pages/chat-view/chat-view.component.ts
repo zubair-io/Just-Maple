@@ -190,8 +190,27 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   // Handle graph node click - navigate to the page
   onGraphNodeClicked(pageId: string): void {
     const notebookId = this.selectedNotebookId();
-    if (notebookId) {
-      this.router.navigate(['/', notebookId, pageId]);
+    if (!notebookId) return;
+
+    // Check if clicked node is a kanban card memo
+    const graph = this.connectionGraph();
+    if (graph) {
+      const node = graph.nodes.find((n) => n.id === pageId);
+      if (node?.type === 'kanban-card') {
+        // Find parent kanban board from edges
+        const parentEdge = graph.edges.find((e) => {
+          const targetId = typeof e.target === 'string' ? e.target : e.target.id;
+          return targetId === pageId;
+        });
+        if (parentEdge) {
+          const boardId =
+            typeof parentEdge.source === 'string' ? parentEdge.source : parentEdge.source.id;
+          this.router.navigate(['/', notebookId, boardId, pageId]);
+          return;
+        }
+      }
     }
+
+    this.router.navigate(['/', notebookId, pageId]);
   }
 }

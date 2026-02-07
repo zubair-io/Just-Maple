@@ -294,6 +294,15 @@
   }
 }
 
+.tag-chip {
+  font-size: 0.6875rem;
+  color: var(--color-primary, #d94e3b);
+  background: color-mix(in srgb, var(--color-primary, #d94e3b) 10%, transparent);
+  padding: 0.0625rem 0.375rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
 .card-actions {
   display: flex;
   flex-direction: column;

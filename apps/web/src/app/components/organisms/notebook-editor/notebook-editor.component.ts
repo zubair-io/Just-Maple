@@ -127,6 +127,7 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly editable = input<boolean>(true);
   readonly skipPageSync = input<boolean>(false);
   readonly titleChanged = output<string>();
+  readonly tagsChanged = output<string[]>();
 
   readonly isReady = signal(false);
   readonly isFocused = signal(false);
@@ -1616,14 +1617,14 @@ export class NotebookEditorComponent implements OnDestroy {
       }, 500);
     }
 
+    // Always extract and emit tags (for kanban card tag display)
+    this.syncHashtags(this.pageId(), editor);
+
     // Skip page-level syncs for card memos (no Page record)
     if (!this.skipPageSync()) {
       // Sync todo metadata (debounced internally by TodoSyncService)
       const pageId = this.pageId();
       this.todoSyncService.syncTodoMeta(pageId, editor);
-
-      // Sync hashtags to search index
-      this.syncHashtags(pageId, editor);
     }
   }
 
@@ -1648,18 +1649,25 @@ export class NotebookEditorComponent implements OnDestroy {
     // Debounce tag updates (500ms)
     this.tagUpdateTimeout = setTimeout(() => {
       this.lastSyncedTags = [...tags];
-      this.searchService.updatePageTags(pageId, tags).subscribe({
-        next: () => {
-          console.log('[NotebookEditor] Tags synced:', tags);
-          // Also update the tag service cache
-          for (const tag of tags) {
-            this.tagService.addTagToCache(tag);
-          }
-        },
-        error: (err) => {
-          console.error('[NotebookEditor] Failed to sync tags:', err);
-        },
-      });
+
+      // Always emit tagsChanged (for kanban card tag display)
+      this.tagsChanged.emit(tags);
+
+      // Only sync to search index when page record exists
+      if (!this.skipPageSync()) {
+        this.searchService.updatePageTags(pageId, tags).subscribe({
+          next: () => {
+            console.log('[NotebookEditor] Tags synced:', tags);
+            // Also update the tag service cache
+            for (const tag of tags) {
+              this.tagService.addTagToCache(tag);
+            }
+          },
+          error: (err) => {
+            console.error('[NotebookEditor] Failed to sync tags:', err);
+          },
+        });
+      }
     }, 500);
   }
 

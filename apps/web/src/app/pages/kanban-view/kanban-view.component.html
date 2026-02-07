@@ -17,15 +17,16 @@
       }
     </div>
 
-    <!-- Card modal -->
-    @if (openCardModal(); as card) {
+    <!-- Card modal driven by route param -->
+    @if (activeMemoId(); as memoId) {
       @if (notebookId(); as nbId) {
         <app-kanban-card-modal
-          [pageId]="card.memoPageId"
+          [pageId]="memoId"
           [notebookId]="nbId"
-          [cardTitle]="card.title"
+          [cardTitle]="activeCardTitle()"
           (closed)="closeCardModal()"
           (titleChanged)="onCardTitleChanged($event)"
+          (tagsChanged)="onCardTagsChanged($event)"
         />
       }
     }

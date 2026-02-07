@@ -94,6 +94,11 @@
                         {{ formatDueDate(card.dueDate) }}
                       </span>
                     }
+                    @if (card.tags?.length) {
+                      @for (tag of card.tags; track tag) {
+                        <span class="tag-chip">#{{ tag }}</span>
+                      }
+                    }
                   </div>
                 </div>
                 <div class="card-actions" (click)="$event.stopPropagation()">

@@ -41,7 +41,7 @@ function extractTextFromYjs(xmlFragment: Y.XmlFragment): string {
 /**
  * Extract hashtags from Y.js XML fragment
  */
-function extractTagsFromYjs(xmlFragment: Y.XmlFragment): string[] {
+export function extractTagsFromYjs(xmlFragment: Y.XmlFragment): string[] {
     const tags: Set<string> = new Set();
 
     function traverse(node: Y.XmlElement | Y.XmlText | Y.XmlFragment): void {

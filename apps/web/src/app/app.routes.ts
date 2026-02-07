@@ -94,6 +94,15 @@ export const routes: Routes = [
                 (m) => m.CollectibleRegistryViewComponent,
               ),
           },
+          // Kanban card memo route - opens modal over kanban board
+          {
+            path: ':id/:memoId',
+            canMatch: [KanbanPageGuard],
+            loadComponent: () =>
+              import('./pages/kanban-view/kanban-view.component').then(
+                (m) => m.KanbanViewComponent,
+              ),
+          },
           // Collectable-type page - shows collectable view
           {
             path: ':id',

@@ -386,6 +386,22 @@ export class KanbanDocumentService {
   }
 
   /**
+   * Update a card's tags by its memoPageId
+   */
+  updateCardTagsByMemoPageId(pageId: string, memoPageId: string, tags: string[]): void {
+    const doc = this.openDocs.get(pageId);
+    if (!doc) return;
+
+    const cards = doc.ydoc.getMap<Y.Map<unknown>>('cards');
+    for (const [, card] of cards) {
+      if (card.get('memoPageId') === memoPageId) {
+        card.set('tags', tags);
+        return;
+      }
+    }
+  }
+
+  /**
    * Move a card to a different lane
    */
   moveCard(
@@ -853,6 +869,7 @@ export class KanbanDocumentService {
       memoPageId: yMap.get('memoPageId') as string,
       memoId: yMap.get('memoId') as string | undefined,
       title: yMap.get('title') as string,
+      tags: yMap.get('tags') as string[] | undefined,
       priority: yMap.get('priority') as KanbanPriority | undefined,
       dueDate: yMap.get('dueDate') as string | undefined,
       coverColor: yMap.get('coverColor') as string | undefined,

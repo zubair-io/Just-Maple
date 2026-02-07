@@ -189,6 +189,21 @@ export async function findMemosByPageId(pageId: string): Promise<Memo[]> {
 }
 
 /**
+ * Find all memos with pageIds in the given list (batch query)
+ * Used to find card memos for multiple kanban pages without N+1
+ */
+export async function findMemosByPageIds(pageIds: string[]): Promise<Memo[]> {
+    try {
+        const docs = await getCollection()
+            .find({ pageId: { $in: pageIds } })
+            .toArray();
+        return docs.map(toMemoResponse);
+    } catch {
+        return [];
+    }
+}
+
+/**
  * Delete all memos with a given pageId (parent page ID)
  * Used for cascade delete when a kanban page is deleted
  */

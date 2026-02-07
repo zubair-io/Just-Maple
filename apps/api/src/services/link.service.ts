@@ -1,7 +1,8 @@
 import { ObjectId } from 'mongodb';
 import * as Y from 'yjs';
 import { getDb } from '../db/client';
-import { getMemoState } from '../repositories/memo.repo';
+import { getMemoState, findMemosByPageIds } from '../repositories/memo.repo';
+import { extractTagsFromYjs } from '../repositories/search.repo';
 import type {
     PageContent,
     PageLink,
@@ -660,6 +661,67 @@ export async function getConnectionGraph(
         };
     });
 
+    // Include kanban card memos as nodes in the graph
+    const kanbanPages = allPages.filter((p) => p.type === 'kanban');
+    const kanbanCardEdges: Array<{ kanbanPageId: string; cardMemoId: string }> = [];
+
+    if (kanbanPages.length > 0) {
+        const kanbanPageIds = kanbanPages.map((p) => p.id);
+        const cardMemos = await findMemosByPageIds(kanbanPageIds);
+
+        for (const memo of cardMemos) {
+            try {
+                const state = memo.state;
+                if (!state) continue;
+
+                const stateBytes =
+                    state instanceof Uint8Array ? state : new Uint8Array(state as ArrayBuffer);
+                const ydoc = new Y.Doc();
+                Y.applyUpdate(ydoc, stateBytes);
+                const xmlFragment = ydoc.getXmlFragment('prosemirror');
+
+                // Extract tags from Y.js content
+                const cardTags = extractTagsFromYjs(xmlFragment);
+
+                // Extract title from first heading or first line
+                let cardTitle = 'Untitled Card';
+                const children = xmlFragment.toArray();
+                for (const child of children) {
+                    if (child instanceof Y.XmlElement) {
+                        if (child.nodeName === 'heading') {
+                            const headingText = child
+                                .toArray()
+                                .map((c: any) => c.toString())
+                                .join('');
+                            if (headingText) {
+                                cardTitle = headingText;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Add card memo as node
+                nodes.push({
+                    id: memo.id,
+                    label: cardTitle,
+                    type: 'kanban-card',
+                    linkCount: 1, // At least linked to parent kanban
+                    tags: cardTags.length > 0 ? cardTags : undefined,
+                });
+                pageIdSet.add(memo.id);
+
+                // Track edge from kanban page to card memo
+                kanbanCardEdges.push({
+                    kanbanPageId: memo.pageId,
+                    cardMemoId: memo.id,
+                });
+            } catch {
+                // Skip card memos that fail to decode
+            }
+        }
+    }
+
     // Build edges
     const edges: ConnectionEdge[] = [];
     const edgeSet = new Set<string>();
@@ -683,6 +745,20 @@ export async function getConnectionGraph(
                 edgeSet.add(edgeId);
                 linkEdgeCount++;
             }
+        }
+    }
+
+    // Add kanban page → card memo edges
+    for (const { kanbanPageId, cardMemoId } of kanbanCardEdges) {
+        const edgeId = `link:${kanbanPageId}-${cardMemoId}`;
+        if (!edgeSet.has(edgeId)) {
+            edges.push({
+                source: kanbanPageId,
+                target: cardMemoId,
+                type: 'inline',
+            });
+            edgeSet.add(edgeId);
+            linkEdgeCount++;
         }
     }
 
