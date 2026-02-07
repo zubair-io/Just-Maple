@@ -32,6 +32,10 @@ const config = {
     summaryPageId: process.env.SUMMARY_PAGE_ID || '',
     // Cron hour for daily summary (0-23, default 7 = 7:00 AM)
     summaryCronHour: parseInt(process.env.SUMMARY_CRON_HOUR || '7'),
+    // Anomaly detection
+    alertsPageId: process.env.ALERTS_PAGE_ID || '',
+    alertsChatPageId: process.env.ALERTS_CHAT_PAGE_ID || '',
+    anomalyIntervalMin: parseInt(process.env.ANOMALY_INTERVAL_MIN || '10'),
 };
 
 // ---- State ----
@@ -208,6 +212,40 @@ async function replyToMessage(parentMessageId: string, content: string): Promise
     }
 }
 
+/**
+ * Send a new message (not a reply) to a chat page.
+ */
+async function sendMessage(pageId: string, content: string): Promise<boolean> {
+    if (!jwtToken) {
+        console.error('Not logged in');
+        return false;
+    }
+
+    try {
+        const response = await authenticatedFetch(
+            `${config.apiUrl}/api/bots/pages/${pageId}/messages`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content, content_type: 'text' }),
+            },
+        );
+
+        if (!response.ok) {
+            const error = await response.json();
+            console.error('Failed to send message:', error);
+            return false;
+        }
+
+        const data = await response.json();
+        console.log(`Message sent: ${data.message_id} on page ${data.page_id}`);
+        return true;
+    } catch (error) {
+        console.error('Send message error:', error);
+        return false;
+    }
+}
+
 // ---- Memo API ----
 
 /**
@@ -268,8 +306,8 @@ async function writeMemo(pageId: string, markdown: string, title?: string): Prom
     }
 }
 
-// Expose memo helpers for AIHandler
-export { readMemo, writeMemo, authenticatedFetch, config };
+// Expose helpers for AIHandler and anomaly detection
+export { readMemo, writeMemo, sendMessage, authenticatedFetch, config };
 
 // ---- Daily Summary ----
 
@@ -368,6 +406,351 @@ function scheduleDailySummary(): void {
         // Re-schedule for the next day
         scheduleDailySummary();
     }, delay);
+}
+
+// ---- State Change History & Anomaly Detection ----
+
+import Anthropic from '@anthropic-ai/sdk';
+import type { EntityState } from './ha-client';
+
+interface StateChangeRecord {
+    entity_id: string;
+    old_state: string;
+    new_state: string;
+    old_attributes: Record<string, unknown>;
+    new_attributes: Record<string, unknown>;
+    timestamp: string;
+    friendly_name: string;
+}
+
+/** Rolling buffer of state change events — keeps the last 24 hours max. */
+const stateHistory: StateChangeRecord[] = [];
+const MAX_HISTORY_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Called by HAClient.onStateChanged — records every state transition.
+ */
+function recordStateChange(entityId: string, newState: EntityState): void {
+    const oldEntity = haClient?.getEntityState(entityId);
+    stateHistory.push({
+        entity_id: entityId,
+        old_state: oldEntity?.state ?? 'unknown',
+        new_state: newState.state,
+        old_attributes: oldEntity?.attributes ?? {},
+        new_attributes: newState.attributes,
+        timestamp: new Date().toISOString(),
+        friendly_name: (newState.attributes.friendly_name as string) || entityId,
+    });
+
+    // Prune entries older than 24h
+    const cutoff = Date.now() - MAX_HISTORY_AGE_MS;
+    while (stateHistory.length > 0 && new Date(stateHistory[0].timestamp).getTime() < cutoff) {
+        stateHistory.shift();
+    }
+}
+
+/** Return state changes that happened since a given ISO timestamp. */
+function getChangesSince(since: string): StateChangeRecord[] {
+    const sinceMs = new Date(since).getTime();
+    return stateHistory.filter((r) => new Date(r.timestamp).getTime() >= sinceMs);
+}
+
+// ---- Anomaly Detection ----
+
+let anomalyTimer: ReturnType<typeof setInterval> | null = null;
+let lastAnomalyRun: string = new Date().toISOString();
+let anomalyClient: Anthropic | null = null;
+
+interface AnomalyResult {
+    event_id: string;
+    classification: 'URGENT' | 'ATTENTION' | 'FYI' | 'ALL_CLEAR';
+    confidence: 'high' | 'medium' | 'low';
+    reasoning: string;
+    correlations: string[];
+    context_factors: string[];
+    recommended_action: string;
+}
+
+const ANOMALY_DETECTION_PROMPT = `You are an intelligent Home Assistant anomaly detection system. Your job is to analyze sensor events in context and identify anomalies that require attention.
+
+### Your Task
+Analyze each event and classify it as:
+- **URGENT**: Immediate safety threat or critical failure
+- **ATTENTION**: Unusual pattern worth investigating now
+- **FYI**: Minor anomaly for daily digest
+- **ALL_CLEAR**: Normal operation
+
+### Analysis Framework
+
+**1. Safety First**
+- Is this a safety-critical device (smoke, CO, water, security)?
+- Does the state indicate immediate danger?
+- Are there cascading risks?
+
+**2. Context Analysis**
+- Is this normal for current time of day/week?
+- Does this match occupancy patterns?
+- Is this typical for the season/weather?
+- How does this compare to historical behavior?
+
+**3. Correlation Detection**
+- Are multiple related events happening together?
+- Do related sensors show consistent patterns?
+- Is this part of a larger sequence?
+
+**4. Statistical Deviation**
+- How far outside normal range is this?
+- Is frequency unusual?
+- Is timing unexpected?
+
+### Output Format
+Respond ONLY with a JSON array. No markdown, no code fences. Each element:
+{
+  "event_id": "entity.id",
+  "classification": "URGENT|ATTENTION|FYI|ALL_CLEAR",
+  "confidence": "high|medium|low",
+  "reasoning": "Brief explanation",
+  "correlations": ["related events or patterns"],
+  "context_factors": ["key contextual elements"],
+  "recommended_action": "What should be done, if anything"
+}
+
+### Key Principles
+1. Safety over convenience — err on the side of caution for safety devices
+2. Context matters — same event can be normal or anomalous based on context
+3. Minimize noise — don't alert on routine, explainable events
+4. Explain reasoning — always justify classifications`;
+
+/**
+ * Run the anomaly detection cycle.
+ * Sends recent state changes + current snapshot to Claude.
+ */
+async function runAnomalyDetection(): Promise<void> {
+    if (!anomalyClient || !haClient) return;
+
+    const since = lastAnomalyRun;
+    lastAnomalyRun = new Date().toISOString();
+
+    const recentChanges = getChangesSince(since);
+    if (recentChanges.length === 0) {
+        console.log('[Anomaly] No state changes since last run, skipping.');
+        return;
+    }
+
+    console.log(`[Anomaly] Analyzing ${recentChanges.length} state changes...`);
+
+    // Build the current state snapshot
+    const entities = haClient.getExposedEntities();
+    const currentState: Record<string, { state: string; friendly_name: string }> = {};
+    for (const e of entities) {
+        currentState[e.entity_id] = {
+            state: e.state,
+            friendly_name: (e.attributes.friendly_name as string) || e.entity_id,
+        };
+    }
+
+    const now = new Date();
+    const timeContext = {
+        time: now.toLocaleTimeString(),
+        day: now.toLocaleDateString('en-US', { weekday: 'long' }),
+        date: now.toLocaleDateString(),
+        hour: now.getHours(),
+    };
+
+    const userMessage = JSON.stringify(
+        {
+            events: recentChanges,
+            current_state: currentState,
+            time_context: timeContext,
+            historical_note: `Total state changes in the last 24h: ${stateHistory.length}`,
+        },
+        null,
+        2,
+    );
+
+    try {
+        const response = await anomalyClient.messages.create({
+            model: 'claude-sonnet-4-5-20250929',
+            max_tokens: 2048,
+            system: ANOMALY_DETECTION_PROMPT,
+            messages: [{ role: 'user', content: userMessage }],
+        });
+
+        const text = response.content
+            .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+            .map((b) => b.text)
+            .join('');
+
+        let results: AnomalyResult[];
+        try {
+            results = JSON.parse(text);
+        } catch {
+            console.error('[Anomaly] Failed to parse Claude response as JSON:', text.slice(0, 200));
+            return;
+        }
+
+        if (!Array.isArray(results) || results.length === 0) {
+            console.log('[Anomaly] No anomalies detected.');
+            return;
+        }
+
+        const urgent = results.filter((r) => r.classification === 'URGENT');
+        const attention = results.filter((r) => r.classification === 'ATTENTION');
+        const fyi = results.filter((r) => r.classification === 'FYI');
+        const highAlert = [...urgent, ...attention];
+
+        console.log(
+            `[Anomaly] Results: ${urgent.length} URGENT, ${attention.length} ATTENTION, ${fyi.length} FYI, ${results.length - highAlert.length - fyi.length} ALL_CLEAR`,
+        );
+
+        // Always update the alerts memo (if configured)
+        if (config.alertsPageId) {
+            await updateAlertsMemo(results, recentChanges);
+        }
+
+        // If high-alert items, also send a message to the chat page
+        if (highAlert.length > 0 && config.alertsChatPageId) {
+            const alertMessage = buildAlertChatMessage(highAlert);
+            await sendMessage(config.alertsChatPageId, alertMessage);
+            console.log(`[Anomaly] Sent ${highAlert.length} high-alert(s) to chat.`);
+        }
+    } catch (error) {
+        console.error('[Anomaly] Detection failed:', error);
+    }
+}
+
+/**
+ * Build markdown for the alerts memo — includes all severity levels.
+ */
+async function updateAlertsMemo(
+    results: AnomalyResult[],
+    recentChanges: StateChangeRecord[],
+): Promise<void> {
+    // Read existing memo to prepend new entries
+    let existingContent = '';
+    const existing = await readMemo(config.alertsPageId);
+    if (existing?.document) {
+        // Extract text from ProseMirror JSON for appending
+        existingContent = extractProseMirrorText(existing.document);
+    }
+
+    const now = new Date();
+    const lines: string[] = [];
+
+    // Header
+    lines.push(`# Anomaly Alerts`);
+    lines.push('');
+    lines.push(`**Last scan:** ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`);
+    lines.push(`**Changes analysed:** ${recentChanges.length}`);
+    lines.push('');
+
+    // Group by classification
+    const urgent = results.filter((r) => r.classification === 'URGENT');
+    const attention = results.filter((r) => r.classification === 'ATTENTION');
+    const fyi = results.filter((r) => r.classification === 'FYI');
+
+    if (urgent.length > 0) {
+        lines.push(`## URGENT`);
+        lines.push('');
+        for (const r of urgent) {
+            lines.push(`- **${r.event_id}** — ${r.reasoning}`);
+            lines.push(`  - Action: ${r.recommended_action}`);
+            if (r.correlations.length) lines.push(`  - Correlations: ${r.correlations.join(', ')}`);
+        }
+        lines.push('');
+    }
+
+    if (attention.length > 0) {
+        lines.push(`## Attention`);
+        lines.push('');
+        for (const r of attention) {
+            lines.push(`- **${r.event_id}** — ${r.reasoning}`);
+            lines.push(`  - Action: ${r.recommended_action}`);
+        }
+        lines.push('');
+    }
+
+    if (fyi.length > 0) {
+        lines.push(`## FYI`);
+        lines.push('');
+        for (const r of fyi) {
+            lines.push(`- **${r.event_id}** — ${r.reasoning}`);
+        }
+        lines.push('');
+    }
+
+    // Append previous content as history
+    if (existingContent.trim()) {
+        lines.push('---');
+        lines.push('');
+        lines.push('## Previous Alerts');
+        lines.push('');
+        // Keep the previous content but strip the top-level heading to avoid duplicates
+        const previous = existingContent.replace(/^# Anomaly Alerts\n*/m, '').trim();
+        if (previous) {
+            lines.push(previous);
+        }
+    }
+
+    await writeMemo(config.alertsPageId, lines.join('\n'), `Anomaly Alerts`);
+}
+
+/**
+ * Build a concise chat message for high-severity alerts.
+ */
+function buildAlertChatMessage(alerts: AnomalyResult[]): string {
+    const lines: string[] = [];
+
+    for (const alert of alerts) {
+        const icon = alert.classification === 'URGENT' ? '🚨' : '⚠️';
+        lines.push(`${icon} **${alert.classification}** — \`${alert.event_id}\``);
+        lines.push(alert.reasoning);
+        if (alert.recommended_action) {
+            lines.push(`→ ${alert.recommended_action}`);
+        }
+        lines.push('');
+    }
+
+    return lines.join('\n').trim();
+}
+
+/**
+ * Recursively extract plain text from a ProseMirror JSON document.
+ */
+function extractProseMirrorText(doc: unknown): string {
+    if (!doc || typeof doc !== 'object') return '';
+
+    const node = doc as Record<string, unknown>;
+    if (node.type === 'text' && typeof node.text === 'string') {
+        return node.text;
+    }
+
+    if (Array.isArray(node.content)) {
+        return node.content.map(extractProseMirrorText).join('');
+    }
+
+    return '';
+}
+
+function startAnomalyDetection(): void {
+    if (!config.alertsPageId && !config.alertsChatPageId) {
+        console.log('[Anomaly] No ALERTS_PAGE_ID or ALERTS_CHAT_PAGE_ID configured, skipping.');
+        return;
+    }
+
+    if (!config.anthropicApiKey) {
+        console.log('[Anomaly] No ANTHROPIC_API_KEY set, skipping anomaly detection.');
+        return;
+    }
+
+    anomalyClient = new Anthropic({ apiKey: config.anthropicApiKey });
+
+    const intervalMs = config.anomalyIntervalMin * 60 * 1000;
+    console.log(`[Anomaly] Starting anomaly detection every ${config.anomalyIntervalMin} minutes.`);
+
+    anomalyTimer = setInterval(() => {
+        runAnomalyDetection().catch((err) => console.error('[Anomaly] Cycle error:', err));
+    }, intervalMs);
 }
 
 // ---- Webhook Types ----
@@ -519,7 +902,13 @@ console.log(`Webhook server listening on port ${config.port}`);
         console.error('Failed to connect to Home Assistant. Bot will respond with error messages.');
     }
 
-    // Step 3: Initialize AI handler with memo editing capabilities
+    // Step 3: Register state change listener for history tracking
+    if (haClient) {
+        haClient.onStateChanged(recordStateChange);
+        console.log('State change history tracking enabled');
+    }
+
+    // Step 4: Initialize AI handler with memo editing capabilities
     if (haClient && botId && config.anthropicApiKey) {
         aiHandler = new AIHandler(config.anthropicApiKey, haClient, botId, {
             readMemo,
@@ -530,7 +919,7 @@ console.log(`Webhook server listening on port ${config.port}`);
         console.error('ANTHROPIC_API_KEY not set. AI handler not initialized.');
     }
 
-    // Step 4: Schedule daily summary if page ID is configured
+    // Step 5: Schedule daily summary if page ID is configured
     if (config.summaryPageId) {
         scheduleDailySummary();
         // Also run an initial summary on startup
@@ -539,6 +928,11 @@ console.log(`Webhook server listening on port ${config.port}`);
         );
     } else {
         console.log('SUMMARY_PAGE_ID not set. Daily summary disabled.');
+    }
+
+    // Step 6: Start anomaly detection cycle
+    if (haClient) {
+        startAnomalyDetection();
     }
 
     console.log('Bot is ready!');
