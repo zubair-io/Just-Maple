@@ -35,7 +35,7 @@ struct WebViewContainer: UIViewRepresentable {
 }
 #endif
 
-class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
+class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
     let webView: WKWebView
     private var bridge: NativeBridge?
     private var hasInitialized = false
@@ -90,6 +90,7 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
         contentController.add(bridge!, name: "nativeBridge")
 
         webView.navigationDelegate = self
+        webView.uiDelegate = self
 
         // Listen for deep link notifications
         NotificationCenter.default.addObserver(
@@ -287,8 +288,20 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate {
         print("[WebViewController] ✅ Sent foreground notification to web app")
     }
 
-    // MARK: - WKNavigationDelegate
+    // MARK: - WKUIDelegate
 
+    #if os(iOS)
+    @available(iOS 15.0, *)
+    func webView(_ webView: WKWebView,
+                 requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo,
+                 type: WKMediaCaptureType,
+                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        decisionHandler(.grant)
+    }
+    #endif
+
+    // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         print("WebView finished loading")
