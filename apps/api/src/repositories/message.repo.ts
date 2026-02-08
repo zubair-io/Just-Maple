@@ -99,12 +99,20 @@ export async function findMessagesByPageId(
     // Fetch messages without user data
     const docs = await getCollection().find(query).sort({ _id: -1 }).limit(limit).toArray();
 
-    // Batch fetch unique users
-    const userIds = [...new Set(docs.map((doc) => doc.userId.toString()))];
+    // Batch fetch unique users (only for non-bot messages)
+    const userIds = [
+        ...new Set(
+            docs.filter((doc) => doc.senderType !== 'bot').map((doc) => doc.userId.toString()),
+        ),
+    ];
     const usersMap = await findUsersByIds(userIds);
 
     // Return in chronological order (oldest first)
     return docs.reverse().map((doc) => {
+        // For bot messages, use the stored sender info
+        if (doc.senderType === 'bot') {
+            return toMessageResponse(doc);
+        }
         const user = usersMap.get(doc.userId.toString());
         return toMessageResponse(doc, user?.email, user?.displayName, user?.profilePictureUrl);
     });
@@ -135,10 +143,18 @@ export async function findMessagesByNotebookId(
 
     const limit = options?.limit || 500;
     const docs = await getCollection().find(query).sort({ _id: -1 }).limit(limit).toArray();
-    const userIds = [...new Set(docs.map((doc) => doc.userId.toString()))];
+    const userIds = [
+        ...new Set(
+            docs.filter((doc) => doc.senderType !== 'bot').map((doc) => doc.userId.toString()),
+        ),
+    ];
     const usersMap = await findUsersByIds(userIds);
 
     return docs.reverse().map((doc) => {
+        // For bot messages, use the stored sender info
+        if (doc.senderType === 'bot') {
+            return toMessageResponse(doc);
+        }
         const user = usersMap.get(doc.userId.toString());
         return toMessageResponse(doc, user?.email, user?.displayName, user?.profilePictureUrl);
     });

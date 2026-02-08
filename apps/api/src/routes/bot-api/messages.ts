@@ -302,6 +302,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                 userBotId: botAuth.userBotId,
                 senderType: 'bot',
                 senderDisplayName: userBot.displayName || userBot.handle,
+                senderProfilePictureUrl: userBot.avatar,
                 content,
             });
 
@@ -343,6 +344,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                         userId: message.userId,
                         senderType: 'bot',
                         senderDisplayName: userBot.displayName || userBot.handle,
+                        senderProfilePictureUrl: userBot.avatar,
                         content: message.content,
                         createdAt: message.createdAt,
                     },
@@ -429,7 +431,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                 notebookId,
             );
 
-            // Update senderType to bot
+            // Update senderType and bot sender info
             // Note: createMessage doesn't support senderType directly, so we need to update
             const { getDb } = await import('../../db/client');
             const { ObjectId } = await import('mongodb');
@@ -437,7 +439,14 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                 .collection('messages')
                 .updateOne(
                     { _id: new ObjectId(message._id) },
-                    { $set: { senderType: 'bot', userBotId: new ObjectId(botAuth.userBotId) } },
+                    {
+                        $set: {
+                            senderType: 'bot',
+                            userBotId: new ObjectId(botAuth.userBotId),
+                            senderDisplayName: userBot.displayName || userBot.handle,
+                            senderProfilePictureUrl: userBot.avatar,
+                        },
+                    },
                 );
 
             // Broadcast the message
@@ -450,6 +459,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                     userId: botAuth.userId,
                     senderType: 'bot',
                     senderDisplayName: userBot.displayName || userBot.handle,
+                    senderProfilePictureUrl: userBot.avatar,
                     content: message.content,
                     createdAt: message.createdAt,
                 },
