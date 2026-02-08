@@ -10,14 +10,18 @@
       <span class="material-symbols-rounded">arrow_back</span>
     </button>
 
-    <h1 class="text-lg font-medium text-[var(--color-text-main)]">Add to Collection</h1>
+    <h1 class="text-lg font-medium text-[var(--color-text-main)] whitespace-nowrap">
+      Add to Collection
+    </h1>
 
     @if (selectedNotebook()) {
       <div
-        class="ml-auto flex items-center gap-1.5 text-sm p-1 px-2 rounded bg-[var(--color-surface-alt)] text-[var(--color-text-muted)]"
+        class="ml-auto flex items-center gap-1.5 text-sm p-1 px-2 rounded bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] min-w-0"
       >
-        <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
-        <span>{{ selectedNotebook()!.label }}</span>
+        <span class="material-symbols-rounded text-sm text-[var(--color-primary)] flex-shrink-0"
+          >folder</span
+        >
+        <span class="truncate">{{ selectedNotebook()!.label }}</span>
       </div>
     }
   </header>
@@ -67,10 +71,10 @@
 
   <!-- Camera Preview -->
   @if (cameraEnabled()) {
-    <div class="bg-black relative">
+    <div class="bg-black relative flex-shrink-0">
       <video
         #videoElement
-        class="w-full h-48 object-contain"
+        class="w-full aspect-video object-cover"
         autoplay
         playsinline
         webkit-playsinline
