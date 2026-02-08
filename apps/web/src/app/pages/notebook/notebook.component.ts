@@ -17,7 +17,7 @@ import { UiStateService } from '../../services/ui-state.service';
 import { MemoVersionService } from '../../services/memo-version.service';
 import { NotificationService } from '../../services/notification.service';
 import { NotebookEditorComponent } from '../../components/organisms/notebook-editor/notebook-editor.component';
-import { NoteHeaderComponent, type ExportFormat } from '../../components';
+import { NoteHeaderComponent, type ExportFormat, DialogService } from '../../components';
 
 @Component({
   selector: 'app-notebook',
@@ -37,6 +37,7 @@ export class NotebookComponent implements OnDestroy {
   private readonly memoVersionService = inject(MemoVersionService);
   private readonly notificationService = inject(NotificationService);
   private readonly ngZone = inject(NgZone);
+  private readonly dialogService = inject(DialogService);
 
   private isSavingCheckpoint = false;
 
@@ -143,8 +144,13 @@ export class NotebookComponent implements OnDestroy {
     window.location.reload();
   }
 
-  handleDelete(): void {
-    if (!confirm('Are you sure you want to delete this page?')) return;
+  async handleDelete(): Promise<void> {
+    const confirmed = await this.dialogService.confirm({
+      title: 'Delete Page',
+      message: 'Are you sure you want to delete this page?',
+      confirmLabel: 'Delete',
+    });
+    if (!confirmed) return;
     const id = this.pageId();
     const notebookId = this.notebookId();
     if (!id) return;
