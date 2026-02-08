@@ -2,14 +2,16 @@
   class="h-14 flex items-center justify-between px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
 >
   <!-- Breadcrumb -->
-  <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+  <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)] min-w-0">
     @if (selectedNotebook()) {
       <div
         (click)="openSidebarOnMobile()"
-        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-[var(--color-surface-alt)] cursor-pointer hover:bg-[var(--color-surface-hover)] transition-colors"
+        class="flex items-center gap-1.5 text-[var(--color-text-main)] font-medium p-1 rounded bg-[var(--color-surface-alt)] cursor-pointer hover:bg-[var(--color-surface-hover)] transition-colors min-w-0"
       >
-        <span class="material-symbols-rounded text-sm text-[var(--color-primary)]">folder</span>
-        <span>{{ selectedNotebook()!.label }}</span>
+        <span class="material-symbols-rounded text-sm text-[var(--color-primary)] flex-shrink-0"
+          >folder</span
+        >
+        <span class="truncate">{{ selectedNotebook()!.label }}</span>
       </div>
     }
   </div>
