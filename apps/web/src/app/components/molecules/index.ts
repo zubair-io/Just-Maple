@@ -26,3 +26,5 @@ export {
   type GraphEdge,
   type GraphStats,
 } from './connection-graph/connection-graph.component';
+export { DialogComponent } from './dialog/dialog.component';
+export { DialogService, type DialogConfig } from './dialog/dialog.service';

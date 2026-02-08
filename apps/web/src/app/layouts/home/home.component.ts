@@ -13,6 +13,8 @@ import {
   SidebarComponent,
   TemplateGalleryModalComponent,
   SearchModalComponent,
+  DialogComponent,
+  DialogService,
 } from '../../components';
 
 @Component({
@@ -24,6 +26,7 @@ import {
     SidebarComponent,
     TemplateGalleryModalComponent,
     SearchModalComponent,
+    DialogComponent,
   ],
   templateUrl: './home.component.html',
   styleUrl: './home.component.scss',
@@ -38,6 +41,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly uiStateService = inject(UiStateService);
   private readonly realtimeWS = inject(RealtimeWSService);
   private readonly lastVisitedService = inject(LastVisitedService);
+  private readonly dialogService = inject(DialogService);
 
   readonly selectedPageId = signal<string | null>(null);
   readonly selectedNotebookId = signal<string | null>(null);
@@ -292,8 +296,13 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.selectedNotebookId.set(notebookId);
   }
 
-  onCreateNotebook(): void {
-    const name = prompt('Enter notebook name:');
+  async onCreateNotebook(): Promise<void> {
+    const name = await this.dialogService.prompt({
+      title: 'New Notebook',
+      message: 'Enter a name for the notebook:',
+      placeholder: 'Notebook name',
+      confirmLabel: 'Create',
+    });
     if (!name) return;
 
     this.notebookService.createNotebook({ label: name }).subscribe({

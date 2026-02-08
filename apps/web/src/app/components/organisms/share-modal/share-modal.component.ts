@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { combineLatest, switchMap, of, tap, catchError } from 'rxjs';
 import { ProfileAvatarComponent } from '../../atoms';
+import { DialogService } from '../../molecules';
 import { NotebookService } from '../../../services/notebook.service';
 import { BotService, type EnrichedUserBot } from '../../../services/bot.service';
 import type { NotebookMember, Notebook } from '@maple/shared';
@@ -18,6 +19,7 @@ import type { NotebookMember, Notebook } from '@maple/shared';
 export class ShareModalComponent {
   private readonly notebookService = inject(NotebookService);
   private readonly botService = inject(BotService);
+  private readonly dialogService = inject(DialogService);
 
   readonly notebook = input.required<Notebook>();
   readonly members = input.required<NotebookMember[]>();
@@ -94,7 +96,12 @@ export class ShareModalComponent {
   }
 
   async removeMember(userId: string): Promise<void> {
-    if (!confirm('Are you sure you want to remove this user from the notebook?')) {
+    const confirmed = await this.dialogService.confirm({
+      title: 'Remove Member',
+      message: 'Are you sure you want to remove this user from the notebook?',
+      confirmLabel: 'Remove',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -104,7 +111,10 @@ export class ShareModalComponent {
       },
       error: (err) => {
         console.error('Failed to remove member:', err);
-        alert('Failed to remove member: ' + err.message);
+        this.dialogService.alert({
+          title: 'Error',
+          message: 'Failed to remove member: ' + err.message,
+        });
       },
     });
   }
@@ -122,13 +132,21 @@ export class ShareModalComponent {
         this.sharedBotsRefreshTrigger.update((n) => n + 1);
       },
       error: (err) => {
-        alert('Failed to add bot: ' + err.message);
+        this.dialogService.alert({
+          title: 'Error',
+          message: 'Failed to add bot: ' + err.message,
+        });
       },
     });
   }
 
   async removeBot(userBotId: string, botHandle: string): Promise<void> {
-    if (!confirm(`Remove @${botHandle} from this notebook?`)) {
+    const confirmed = await this.dialogService.confirm({
+      title: 'Remove Bot',
+      message: `Remove @${botHandle} from this notebook?`,
+      confirmLabel: 'Remove',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -138,7 +156,10 @@ export class ShareModalComponent {
         this.sharedBotsRefreshTrigger.update((n) => n + 1);
       },
       error: (err) => {
-        alert('Failed to remove bot: ' + err.message);
+        this.dialogService.alert({
+          title: 'Error',
+          message: 'Failed to remove bot: ' + err.message,
+        });
       },
     });
   }

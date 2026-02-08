@@ -7,7 +7,7 @@ import { PreferencesService } from '../../services/preferences.service';
 import { NotificationService } from '../../services/notification.service';
 import { ThemeService, ThemeId } from '../../services/theme.service';
 import { TagService, TagWithMeta } from '../../services/tag.service';
-import { ProfileAvatarComponent, SettingsHeaderComponent } from '../../components';
+import { ProfileAvatarComponent, SettingsHeaderComponent, DialogService } from '../../components';
 
 interface PasskeyInfo {
   id: string;
@@ -31,6 +31,7 @@ export class SettingsComponent implements OnInit {
   readonly notifications = inject(NotificationService);
   readonly themeService = inject(ThemeService);
   readonly tagService = inject(TagService);
+  private readonly dialogService = inject(DialogService);
 
   // Check if current user is an admin
   readonly isAdmin = computed(() => this.authService.user()?.admin === true);
@@ -235,8 +236,13 @@ export class SettingsComponent implements OnInit {
     });
   }
 
-  removeServer(serverId: string): void {
-    if (confirm('Are you sure you want to remove this server?')) {
+  async removeServer(serverId: string): Promise<void> {
+    const confirmed = await this.dialogService.confirm({
+      title: 'Remove Server',
+      message: 'Are you sure you want to remove this server?',
+      confirmLabel: 'Remove',
+    });
+    if (confirmed) {
       this.preferences.removeServer(serverId).subscribe();
     }
   }
@@ -256,7 +262,12 @@ export class SettingsComponent implements OnInit {
   }
 
   async disablePushNotifications(): Promise<void> {
-    if (!confirm('Are you sure you want to disable push notifications?')) {
+    const confirmed = await this.dialogService.confirm({
+      title: 'Disable Notifications',
+      message: 'Are you sure you want to disable push notifications?',
+      confirmLabel: 'Disable',
+    });
+    if (!confirmed) {
       return;
     }
 

@@ -9,7 +9,7 @@ import {
   type CustomBotWithToken,
 } from '../../services/bot.service';
 import { ProfileAvatarComponent } from '../../components/atoms/profile-avatar/profile-avatar.component';
-import { SettingsHeaderComponent } from '../../components';
+import { SettingsHeaderComponent, DialogService } from '../../components';
 import type { BotTemplate, CreateCustomBotInput } from '@maple/shared';
 import { environment } from '../../../environments/environment';
 
@@ -23,6 +23,7 @@ import { environment } from '../../../environments/environment';
 export class BotsComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly botService = inject(BotService);
+  private readonly dialogService = inject(DialogService);
 
   // Bot templates
   readonly templates = this.botService.templates;
@@ -228,14 +229,22 @@ export class BotsComponent implements OnInit {
     });
   }
 
-  deleteBot(bot: EnrichedUserBot): void {
-    if (!confirm(`Are you sure you want to delete @${bot.handle}?`)) {
+  async deleteBot(bot: EnrichedUserBot): Promise<void> {
+    const confirmed = await this.dialogService.confirm({
+      title: 'Delete Bot',
+      message: `Are you sure you want to delete @${bot.handle}?`,
+      confirmLabel: 'Delete',
+    });
+    if (!confirmed) {
       return;
     }
 
     this.botService.deleteBot(bot._id).subscribe({
       error: (err) => {
-        alert(err.message || 'Failed to delete bot');
+        this.dialogService.alert({
+          title: 'Error',
+          message: err.message || 'Failed to delete bot',
+        });
       },
     });
   }
@@ -243,7 +252,10 @@ export class BotsComponent implements OnInit {
   toggleBotEnabled(bot: EnrichedUserBot): void {
     this.botService.updateBot(bot._id, { isEnabled: !bot.isEnabled }).subscribe({
       error: (err) => {
-        alert(err.message || 'Failed to update bot');
+        this.dialogService.alert({
+          title: 'Error',
+          message: err.message || 'Failed to update bot',
+        });
       },
     });
   }
@@ -453,29 +465,42 @@ export class BotsComponent implements OnInit {
     const newStatus = bot.status === 'active' ? 'disabled' : 'active';
     this.botService.updateCustomBotStatus(bot._id, newStatus).subscribe({
       error: (err) => {
-        alert(err.message || 'Failed to update bot status');
+        this.dialogService.alert({
+          title: 'Error',
+          message: err.message || 'Failed to update bot status',
+        });
       },
     });
   }
 
-  deleteCustomBot(bot: CustomBot): void {
-    if (!confirm(`Are you sure you want to delete @${bot.handle}? This action cannot be undone.`)) {
+  async deleteCustomBot(bot: CustomBot): Promise<void> {
+    const confirmed = await this.dialogService.confirm({
+      title: 'Delete Bot',
+      message: `Are you sure you want to delete @${bot.handle}? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+    });
+    if (!confirmed) {
       return;
     }
 
     this.botService.deleteCustomBot(bot._id).subscribe({
       error: (err) => {
-        alert(err.message || 'Failed to delete bot');
+        this.dialogService.alert({
+          title: 'Error',
+          message: err.message || 'Failed to delete bot',
+        });
       },
     });
   }
 
-  regenerateToken(bot: CustomBot): void {
-    if (
-      !confirm(
+  async regenerateToken(bot: CustomBot): Promise<void> {
+    const confirmed = await this.dialogService.confirm({
+      title: 'Regenerate Token',
+      message:
         'Are you sure you want to regenerate the bot token? The old token will be invalidated.',
-      )
-    ) {
+      confirmLabel: 'Regenerate',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -486,7 +511,10 @@ export class BotsComponent implements OnInit {
         this.showRegeneratedTokenDialog.set(true);
       },
       error: (err) => {
-        alert(err.message || 'Failed to regenerate token');
+        this.dialogService.alert({
+          title: 'Error',
+          message: err.message || 'Failed to regenerate token',
+        });
       },
     });
   }
@@ -505,12 +533,14 @@ export class BotsComponent implements OnInit {
     }
   }
 
-  regenerateSecret(bot: CustomBot): void {
-    if (
-      !confirm(
+  async regenerateSecret(bot: CustomBot): Promise<void> {
+    const confirmed = await this.dialogService.confirm({
+      title: 'Regenerate Webhook Secret',
+      message:
         'Are you sure you want to regenerate the webhook secret? Your bot will need to be updated with the new secret.',
-      )
-    ) {
+      confirmLabel: 'Regenerate',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -521,7 +551,10 @@ export class BotsComponent implements OnInit {
         this.showRegeneratedSecretDialog.set(true);
       },
       error: (err) => {
-        alert(err.message || 'Failed to regenerate webhook secret');
+        this.dialogService.alert({
+          title: 'Error',
+          message: err.message || 'Failed to regenerate webhook secret',
+        });
       },
     });
   }

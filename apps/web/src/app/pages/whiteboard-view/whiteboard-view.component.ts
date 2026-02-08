@@ -7,7 +7,7 @@ import { PageService } from '../../services/page.service';
 import { NotebookService } from '../../services/notebook.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { WhiteboardComponent } from '../../components/organisms/whiteboard/whiteboard.component';
-import { NoteHeaderComponent } from '../../components';
+import { NoteHeaderComponent, DialogService } from '../../components';
 
 @Component({
   selector: 'app-whiteboard-view',
@@ -22,6 +22,7 @@ export class WhiteboardViewComponent implements OnDestroy {
   private readonly pageService = inject(PageService);
   private readonly notebookService = inject(NotebookService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly dialogService = inject(DialogService);
 
   private routeSubscription?: Subscription;
 
@@ -71,8 +72,13 @@ export class WhiteboardViewComponent implements OnDestroy {
     }
   }
 
-  handleDelete(): void {
-    if (!confirm('Are you sure you want to delete this page?')) return;
+  async handleDelete(): Promise<void> {
+    const confirmed = await this.dialogService.confirm({
+      title: 'Delete Page',
+      message: 'Are you sure you want to delete this page?',
+      confirmLabel: 'Delete',
+    });
+    if (!confirmed) return;
     const id = this.pageId();
     const notebookId = this.notebookId();
     if (!id) return;
