@@ -150,7 +150,7 @@
       </button>
     </div>
 
-    <ul class="space-y-0.5">
+    <ul cdkDropListGroup class="space-y-0.5">
       @for (notebook of notebookService.notebooks(); track notebook._id) {
         <li>
           <!-- Notebook Header -->
@@ -209,14 +209,30 @@
             }
           </div>
 
-          <!-- Pages under notebook -->
-          @if (expandedNotebooks().has(notebook._id)) {
-            <ul class="ml-4 pl-3 border-l border-[var(--color-border)] mt-1 space-y-0.5 list-none">
+          <!-- Page drop list (always in DOM for drag-drop targeting) -->
+          <ul
+            cdkDropList
+            [cdkDropListData]="notebook._id"
+            (cdkDropListDropped)="onPageDrop($event)"
+            class="ml-4 pl-3 border-l border-[var(--color-border)] list-none"
+            [ngClass]="{
+              'mt-1 space-y-0.5': expandedNotebooks().has(notebook._id),
+              'overflow-hidden max-h-0': !expandedNotebooks().has(notebook._id) && !isDragging(),
+              'mt-1 min-h-[2rem]': isDragging() && !expandedNotebooks().has(notebook._id),
+            }"
+          >
+            @if (expandedNotebooks().has(notebook._id)) {
               @for (
                 page of getPagesForNotebook()[notebook._id || 'no_notebook'] || [];
                 track page.id
               ) {
-                <li>
+                <li
+                  cdkDrag
+                  [cdkDragData]="page"
+                  [cdkDragDisabled]="page.type === 'message'"
+                  (cdkDragStarted)="onDragStarted()"
+                  (cdkDragEnded)="onDragEnded()"
+                >
                   <a
                     [routerLink]="
                       editingPageId() !== page.id ? getPageRouterLink(page, notebook._id) : null
@@ -286,8 +302,15 @@
                   </a>
                 </li>
               }
-            </ul>
-          }
+            }
+            @if (isDragging() && !expandedNotebooks().has(notebook._id)) {
+              <li
+                class="py-2 text-xs text-center text-[var(--color-text-muted)] rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-surface-hover)]/50"
+              >
+                Drop here
+              </li>
+            }
+          </ul>
         </li>
       }
     </ul>

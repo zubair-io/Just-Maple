@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { AuthService } from '../../../services/auth.service';
 import { NotebookService } from '../../../services/notebook.service';
 import { PageService } from '../../../services/page.service';
@@ -29,7 +30,7 @@ import { filter, map, switchMap } from 'rxjs';
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [CommonModule, RouterLink, ProfileAvatarComponent],
+  imports: [CommonModule, RouterLink, ProfileAvatarComponent, DragDropModule],
   templateUrl: './sidebar.component.html',
   styleUrl: './sidebar.component.scss',
 })
@@ -59,6 +60,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
 
   readonly expandedNotebooks = signal<Set<string>>(new Set());
   readonly isNewDropdownOpen = signal(false);
+  readonly isDragging = signal(false);
 
   // Inline editing state
   readonly editingNotebookId = signal<string | null>(null);
@@ -212,6 +214,37 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
 
   onNotifications(): void {
     this.router.navigate(['/notifications']);
+  }
+
+  // Drag and drop methods
+  onDragStarted(): void {
+    this.isDragging.set(true);
+  }
+
+  onDragEnded(): void {
+    this.isDragging.set(false);
+  }
+
+  onPageDrop(event: CdkDragDrop<string, string, Page>): void {
+    const page = event.item.data;
+    const targetNotebookId = event.container.data;
+    const sourceNotebookId = event.previousContainer.data;
+
+    if (targetNotebookId === sourceNotebookId) return;
+
+    this.pageService.updatePage(page.id, { notebookId: targetNotebookId }).subscribe();
+
+    // Auto-expand target notebook
+    this.expandedNotebooks.update((notebooks) => {
+      const updated = new Set(notebooks);
+      updated.add(targetNotebookId);
+      return updated;
+    });
+
+    // Update route if the moved page is currently active
+    if (this.selectedPageId() === page.id) {
+      this.router.navigate(['/', targetNotebookId, page.id]);
+    }
   }
 
   // Inline editing methods
