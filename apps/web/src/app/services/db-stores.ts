@@ -12,6 +12,11 @@ export const DB_STORES = {
   NOTIFICATION: 'notification',
   OFFLINE_QUEUE: 'offline-queue',
   FS_HANDLES: 'fs-handles',
+  // Gmail stores (local-only, never synced to server)
+  GMAIL_EMAILS: 'gmail-emails',
+  GMAIL_TOKENS: 'gmail-tokens',
+  GMAIL_SYNC_STATE: 'gmail-sync-state',
+  GMAIL_DRAFTS: 'gmail-drafts',
 } as const;
 
 export type DBStoreName = (typeof DB_STORES)[keyof typeof DB_STORES];

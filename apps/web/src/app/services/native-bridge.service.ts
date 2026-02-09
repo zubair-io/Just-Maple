@@ -22,6 +22,8 @@ import type {
   AudioLevel,
   TranscriptionProgress,
   TranscriptionComplete,
+  AuthSessionResult,
+  GmailOAuthResultPayload,
   ErrorMessage,
   FolderPickerResult,
   FileListResult,
@@ -180,6 +182,13 @@ export class NativeBridgeService {
     );
   }
 
+  onAuthSessionResult(): Observable<AuthSessionResult> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'authSessionResult'),
+      map((msg) => msg.payload as AuthSessionResult),
+    );
+  }
+
   onError(): Observable<ErrorMessage> {
     return this.messages$.pipe(
       filter((msg) => msg.type === 'error'),
@@ -323,6 +332,21 @@ export class NativeBridgeService {
     });
   }
 
+  // MARK: - File Sharing
+
+  /**
+   * Share a file using the native share sheet
+   * @param filename - The name of the file to share
+   * @param mimeType - MIME type of the file (e.g., 'text/markdown', 'text/html')
+   * @param data - Base64-encoded file content
+   */
+  shareFile(filename: string, mimeType: string, data: string): void {
+    this.sendMessage({
+      type: 'shareFile',
+      payload: { filename, mimeType, data },
+    });
+  }
+
   // MARK: - Audio Recording
 
   /**
@@ -434,5 +458,21 @@ export class NativeBridgeService {
       filter((msg) => msg.type === 'fileDeleteResult'),
       map((msg) => msg.payload as FileDeleteResult),
     );
+  }
+
+  // MARK: - OAuth
+
+  openAuthSession(url: string, callbackScheme: string): void {
+    this.sendMessage({
+      type: 'openAuthSession',
+      payload: { url, callbackScheme },
+    });
+  }
+
+  sendGmailOAuthResult(result: GmailOAuthResultPayload): void {
+    this.sendMessage({
+      type: 'gmailOAuthResult',
+      payload: result,
+    });
   }
 }

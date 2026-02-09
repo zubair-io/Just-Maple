@@ -144,6 +144,24 @@ export class PageService {
           })),
         );
       });
+    // Listen for page.moved events (page moved between notebooks)
+    this.realtimeWS
+      .on('page.moved')
+      .subscribe((event: Extract<AppEvent, { type: 'page.moved' }>) => {
+        const existing = this.store.query(getEntity(event.pageId));
+        if (existing) {
+          this.store.update(
+            updateEntities(event.pageId, (page) => ({
+              ...page,
+              notebookId: event.newNotebookId,
+              updatedAt: event.updatedAt,
+            })),
+          );
+        } else {
+          // Page not in local store — fetch from server and upsert
+          this.getPage(event.pageId).subscribe();
+        }
+      });
     // Listen for page.deleted events
     this.realtimeWS
       .on('page.deleted')

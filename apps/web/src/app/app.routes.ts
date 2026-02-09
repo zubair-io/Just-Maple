@@ -6,6 +6,7 @@ import {
   KanbanPageGuard,
   MemoPageGuard,
   MessagePageGuard,
+  GmailPageGuard,
 } from './guards/page-type.guard';
 import { swUpdateGuard } from './guards/sw-update.guard';
 
@@ -20,6 +21,15 @@ export const routes: Routes = [
     path: 'verify',
     loadComponent: () => import('./pages/verify/verify.component').then((m) => m.VerifyComponent),
     canActivate: [swUpdateGuard],
+  },
+
+  // Gmail OAuth callback - public route, no auth required
+  {
+    path: 'gmail/oauth/callback',
+    loadComponent: () =>
+      import('./pages/gmail-oauth-callback/gmail-oauth-callback.component').then(
+        (m) => m.GmailOAuthCallbackComponent,
+      ),
   },
 
   // Authenticated app routes - matched first if user is authenticated
@@ -136,6 +146,13 @@ export const routes: Routes = [
               import('./pages/kanban-view/kanban-view.component').then(
                 (m) => m.KanbanViewComponent,
               ),
+          },
+          // Gmail-type page - shows email integration (owner-only)
+          {
+            path: ':id',
+            canMatch: [GmailPageGuard],
+            loadComponent: () =>
+              import('./pages/gmail-view/gmail-view.component').then((m) => m.GmailViewComponent),
           },
           // Memo-type page - shows collaborative notebook editor (default for pages)
           {
