@@ -23,6 +23,15 @@ export const routes: Routes = [
     canActivate: [swUpdateGuard],
   },
 
+  // Gmail OAuth callback - public route, no auth required
+  {
+    path: 'gmail/oauth/callback',
+    loadComponent: () =>
+      import('./pages/gmail-oauth-callback/gmail-oauth-callback.component').then(
+        (m) => m.GmailOAuthCallbackComponent,
+      ),
+  },
+
   // Authenticated app routes - matched first if user is authenticated
   {
     path: '',

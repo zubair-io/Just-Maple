@@ -9,7 +9,6 @@ export const environment = {
   logRocketAppId: 'd4ksdx/just-maple',
   // Google OAuth for Gmail integration
   google: {
-    clientId: '', // Configure in Google Cloud Console
     scopes: [
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/gmail.send',

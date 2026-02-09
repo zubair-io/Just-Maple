@@ -66,6 +66,9 @@ export const config = {
     // Local storage fallback (used when Azure Blob Storage is not configured)
     localStoragePath: process.env.LOCAL_STORAGE_PATH || './storage',
 
+    // Gmail OAuth config
+    gmailClientId: process.env.GMAIL_CLIENT_ID || '',
+
     // Lego service config
     rebrickableApiKey: process.env.REBRICKABLE_API_KEY,
     brightDataApiKey: process.env.BRIGHT_DATA_API_KEY,

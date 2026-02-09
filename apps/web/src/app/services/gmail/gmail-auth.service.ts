@@ -1,10 +1,13 @@
 import { Injectable, inject, signal, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
 import { Observable, from, throwError, of } from 'rxjs';
-import { map, switchMap, tap, catchError } from 'rxjs/operators';
+import { map, switchMap, tap, catchError, take } from 'rxjs/operators';
+import { firstValueFrom } from 'rxjs';
 import { IndexedDBService } from '../indexed-db.service';
 import { GmailCryptoService } from './gmail-crypto.service';
 import { AuthService } from '../auth.service';
+import { NativeBridgeService } from '../native-bridge.service';
 import { DB_STORES } from '../db-stores';
 import { environment } from '../../../environments/environment';
 import type { GmailTokens } from '@maple/shared';
@@ -32,14 +35,16 @@ interface GoogleUserInfo {
 @Injectable({ providedIn: 'root' })
 export class GmailAuthService {
   private readonly platformId = inject(PLATFORM_ID);
+  private readonly http = inject(HttpClient);
   private readonly indexedDB = inject(IndexedDBService);
   private readonly crypto = inject(GmailCryptoService);
   private readonly authService = inject(AuthService);
+  private readonly nativeBridge = inject(NativeBridgeService);
 
   private readonly GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
   private readonly GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
   private readonly GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
-  private readonly REDIRECT_URI = `${window?.location?.origin || ''}/api/gmail/oauth/callback`;
+  private readonly REDIRECT_URI = `${window?.location?.origin || ''}/gmail/oauth/callback`;
 
   // State
   private readonly _isConnected = signal(false);
@@ -53,10 +58,25 @@ export class GmailAuthService {
   // In-memory token cache for current session
   private currentTokens: GmailTokens | null = null;
 
+  // Cached client ID fetched from API (fetched once per session)
+  private clientIdPromise: Promise<string> | null = null;
+
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
       this.initializeFromStorage();
     }
+  }
+
+  /**
+   * Fetch and cache the Google OAuth client ID from the API.
+   */
+  private getClientId(): Promise<string> {
+    if (!this.clientIdPromise) {
+      this.clientIdPromise = firstValueFrom(
+        this.http.get<{ clientId: string }>('/api/gmail/config'),
+      ).then((res) => res.clientId);
+    }
+    return this.clientIdPromise;
   }
 
   /**
@@ -85,11 +105,6 @@ export class GmailAuthService {
       return throwError(() => new Error('OAuth not available in this environment'));
     }
 
-    const clientId = environment.google?.clientId;
-    if (!clientId) {
-      return throwError(() => new Error('Google OAuth client ID not configured'));
-    }
-
     this._isAuthenticating.set(true);
 
     // Generate PKCE code verifier and challenge
@@ -100,8 +115,16 @@ export class GmailAuthService {
     sessionStorage.setItem('gmail_code_verifier', codeVerifier);
     sessionStorage.setItem('gmail_oauth_state', state);
 
-    return from(this.generateCodeChallenge(codeVerifier)).pipe(
-      switchMap((codeChallenge) => {
+    return from(this.getClientId()).pipe(
+      switchMap((clientId) => {
+        if (!clientId) {
+          return throwError(() => new Error('Google OAuth client ID not configured'));
+        }
+        return from(this.generateCodeChallenge(codeVerifier)).pipe(
+          map((codeChallenge) => ({ clientId, codeChallenge })),
+        );
+      }),
+      switchMap(({ clientId, codeChallenge }) => {
         const params = new URLSearchParams({
           client_id: clientId,
           redirect_uri: this.REDIRECT_URI,
@@ -134,8 +157,64 @@ export class GmailAuthService {
 
   /**
    * Open OAuth popup and wait for callback.
+   * Uses ASWebAuthenticationSession on native apps, browser popup otherwise.
    */
   private openOAuthPopup(authUrl: string, expectedState: string): Observable<string> {
+    if (this.nativeBridge.isNativeApp()) {
+      return this.openNativeAuthSession(authUrl, expectedState);
+    }
+
+    return this.openBrowserPopup(authUrl, expectedState);
+  }
+
+  /**
+   * Native app flow: use ASWebAuthenticationSession via native bridge.
+   */
+  private openNativeAuthSession(authUrl: string, expectedState: string): Observable<string> {
+    return new Observable((observer) => {
+      const sub = this.nativeBridge
+        .onAuthSessionResult()
+        .pipe(take(1))
+        .subscribe((result) => {
+          if (result.error) {
+            observer.error(new Error(result.error));
+            return;
+          }
+
+          if (!result.url) {
+            observer.error(new Error('No callback URL received'));
+            return;
+          }
+
+          const callbackUrl = new URL(result.url);
+          const code = callbackUrl.searchParams.get('code');
+          const state = callbackUrl.searchParams.get('state');
+          const error = callbackUrl.searchParams.get('error');
+
+          if (error) {
+            observer.error(new Error(error));
+          } else if (state !== expectedState) {
+            observer.error(new Error('OAuth state mismatch'));
+          } else if (!code) {
+            observer.error(new Error('No authorization code received'));
+          } else {
+            observer.next(code);
+            observer.complete();
+          }
+        });
+
+      // Extract scheme from redirect URI for the native auth session callback
+      const callbackScheme = new URL(this.REDIRECT_URI).protocol.replace(':', '');
+      this.nativeBridge.openAuthSession(authUrl, callbackScheme);
+
+      return () => sub.unsubscribe();
+    });
+  }
+
+  /**
+   * Browser flow: open popup window and listen for postMessage.
+   */
+  private openBrowserPopup(authUrl: string, expectedState: string): Observable<string> {
     return new Observable((observer) => {
       const width = 500;
       const height = 600;
@@ -190,7 +269,6 @@ export class GmailAuthService {
    * Exchange authorization code for tokens.
    */
   private exchangeCodeForTokens(code: string): Observable<GoogleTokenResponse> {
-    const clientId = environment.google?.clientId;
     const codeVerifier = sessionStorage.getItem('gmail_code_verifier');
 
     if (!codeVerifier) {
@@ -201,21 +279,24 @@ export class GmailAuthService {
     sessionStorage.removeItem('gmail_code_verifier');
     sessionStorage.removeItem('gmail_oauth_state');
 
-    const params = new URLSearchParams({
-      client_id: clientId,
-      code,
-      code_verifier: codeVerifier,
-      grant_type: 'authorization_code',
-      redirect_uri: this.REDIRECT_URI,
-    });
+    return from(this.getClientId()).pipe(
+      switchMap((clientId) => {
+        const params = new URLSearchParams({
+          client_id: clientId,
+          code,
+          code_verifier: codeVerifier,
+          grant_type: 'authorization_code',
+          redirect_uri: this.REDIRECT_URI,
+        });
 
-    return from(
-      fetch(this.GOOGLE_TOKEN_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString(),
+        return from(
+          fetch(this.GOOGLE_TOKEN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString(),
+          }),
+        );
       }),
-    ).pipe(
       switchMap((response) => {
         if (!response.ok) {
           return from(response.json()).pipe(
@@ -344,7 +425,7 @@ export class GmailAuthService {
       throw new Error('No refresh token available');
     }
 
-    const clientId = environment.google?.clientId;
+    const clientId = await this.getClientId();
     const params = new URLSearchParams({
       client_id: clientId,
       refresh_token: this.currentTokens.refreshToken,

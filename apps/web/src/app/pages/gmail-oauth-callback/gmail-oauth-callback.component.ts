@@ -1,0 +1,33 @@
+import { Component, OnInit, inject } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
+import { NativeBridgeService } from '../../services/native-bridge.service';
+
+@Component({
+  selector: 'app-gmail-oauth-callback',
+  standalone: true,
+  templateUrl: './gmail-oauth-callback.component.html',
+})
+export class GmailOAuthCallbackComponent implements OnInit {
+  private readonly route = inject(ActivatedRoute);
+  private readonly nativeBridge = inject(NativeBridgeService);
+
+  ngOnInit(): void {
+    const params = this.route.snapshot.queryParams;
+    const code = params['code'] as string | undefined;
+    const state = params['state'] as string | undefined;
+    const error = params['error'] as string | undefined;
+
+    if (window.opener) {
+      // Browser popup flow: send result back to opener via postMessage
+      window.opener.postMessage(
+        { type: 'gmail_oauth_callback', code, state, error },
+        window.location.origin,
+      );
+      window.close();
+    } else if (this.nativeBridge.isNativeApp()) {
+      // Native app flow: relay result via native bridge
+      this.nativeBridge.sendGmailOAuthResult({ code, state, error });
+      window.close();
+    }
+  }
+}

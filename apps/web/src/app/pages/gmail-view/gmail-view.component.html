@@ -37,7 +37,7 @@
           @for (filter of filters(); track trackByFilterId($index, filter)) {
             <button
               class="filter-item"
-              [class.active]="activeFilter()?.id === filter.id"
+              [class.active]="activeFilter().id === filter.id"
               (click)="selectFilter(filter)"
             >
               <span class="filter-icon">{{ filter.icon || '📁' }}</span>

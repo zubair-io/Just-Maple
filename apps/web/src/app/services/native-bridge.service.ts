@@ -22,6 +22,8 @@ import type {
   AudioLevel,
   TranscriptionProgress,
   TranscriptionComplete,
+  AuthSessionResult,
+  GmailOAuthResultPayload,
   ErrorMessage,
 } from '../types/native-bridge.types';
 
@@ -172,6 +174,13 @@ export class NativeBridgeService {
     return this.messages$.pipe(
       filter((msg) => msg.type === 'transcriptionComplete'),
       map((msg) => msg.payload as TranscriptionComplete),
+    );
+  }
+
+  onAuthSessionResult(): Observable<AuthSessionResult> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'authSessionResult'),
+      map((msg) => msg.payload as AuthSessionResult),
     );
   }
 
@@ -337,5 +346,21 @@ export class NativeBridgeService {
 
   cancelRecording(): void {
     this.sendMessage({ type: 'cancelRecording' });
+  }
+
+  // MARK: - OAuth
+
+  openAuthSession(url: string, callbackScheme: string): void {
+    this.sendMessage({
+      type: 'openAuthSession',
+      payload: { url, callbackScheme },
+    });
+  }
+
+  sendGmailOAuthResult(result: GmailOAuthResultPayload): void {
+    this.sendMessage({
+      type: 'gmailOAuthResult',
+      payload: result,
+    });
   }
 }

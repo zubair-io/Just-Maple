@@ -7,4 +7,12 @@ export const environment = {
   signalrNegotiateUrl: '',
   // LogRocket disabled for self-hosted deployments
   logRocketAppId: '',
+  // Google OAuth for Gmail integration
+  google: {
+    scopes: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/gmail.modify',
+    ],
+  },
 };
