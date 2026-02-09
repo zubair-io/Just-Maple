@@ -52,6 +52,26 @@ export interface StartRecordingPayload {
   includeSystemAudio?: boolean;
 }
 
+// MARK: - File System Payloads
+
+export interface ListFilesPayload {
+  path: string;
+  extension?: string;
+}
+
+export interface ReadFilePayload {
+  path: string;
+}
+
+export interface WriteFilePayload {
+  path: string;
+  content: string;
+}
+
+export interface DeleteFilePayload {
+  path: string;
+}
+
 export type WebToNativeMessageType =
   | { type: 'test'; payload: TestPayload }
   | { type: 'startRecording'; payload?: StartRecordingPayload }
@@ -69,7 +89,12 @@ export type WebToNativeMessageType =
   | { type: 'requestPushPermission' }
   | { type: 'getPushStatus' }
   | { type: 'unregisterPushNotifications' }
-  | { type: 'setBadge'; payload: SetBadgePayload };
+  | { type: 'setBadge'; payload: SetBadgePayload }
+  | { type: 'openFolderPicker' }
+  | { type: 'listFiles'; payload: ListFilesPayload }
+  | { type: 'readFile'; payload: ReadFilePayload }
+  | { type: 'writeFile'; payload: WriteFilePayload }
+  | { type: 'deleteFile'; payload: DeleteFilePayload };
 
 // MARK: - Native to Web Messages
 
@@ -208,6 +233,36 @@ export interface ForegroundNotification {
   messageId?: string;
 }
 
+// MARK: - File System Response Types
+
+export interface FolderPickerResult {
+  path: string | null;
+  name?: string;
+}
+
+export interface FileListResult {
+  files: Array<{
+    name: string;
+    path: string;
+    lastModified?: string;
+  }>;
+}
+
+export interface FileReadResult {
+  content?: string;
+  error?: string;
+}
+
+export interface FileWriteResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface FileDeleteResult {
+  success: boolean;
+  error?: string;
+}
+
 export type NativeToWebMessageType =
   | { type: 'initialize'; payload: InitialState }
   | { type: 'testResponse'; payload: TestResponse }
@@ -229,6 +284,11 @@ export type NativeToWebMessageType =
   | { type: 'notificationTapped'; payload: NotificationTapped }
   | { type: 'foregroundNotification'; payload: ForegroundNotification }
   | { type: 'deepLink'; payload: DeepLinkPayload }
+  | { type: 'folderPickerResult'; payload: FolderPickerResult }
+  | { type: 'fileListResult'; payload: FileListResult }
+  | { type: 'fileReadResult'; payload: FileReadResult }
+  | { type: 'fileWriteResult'; payload: FileWriteResult }
+  | { type: 'fileDeleteResult'; payload: FileDeleteResult }
   | { type: 'error'; payload: ErrorMessage };
 
 // MARK: - Bridge Interface

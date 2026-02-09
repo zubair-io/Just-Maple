@@ -42,6 +42,14 @@ import { NetworkService } from './network.service';
 import { VisibilityService } from './visibility.service';
 import { DB_STORES } from './db-stores';
 import { RealtimeWSService, type AppEvent } from './realtime-ws.service';
+import {
+  isLocalPage,
+  isLocalNotebook,
+  type ProviderCapabilities,
+  API_CAPABILITIES,
+  LOCAL_FS_CAPABILITIES,
+} from '../providers/data-provider.interface';
+import { FileSystemPageProvider } from '../providers/filesystem-data.provider';
 import type {
   Page,
   CreatePageInput,
@@ -67,6 +75,7 @@ export class PageService {
   private readonly network = inject(NetworkService);
   private readonly visibilityService = inject(VisibilityService);
   private readonly realtimeWS = inject(RealtimeWSService);
+  private readonly fsPageProvider = inject(FileSystemPageProvider);
   private init = false;
 
   // ELF Store
@@ -215,12 +224,78 @@ export class PageService {
   }
 
   /**
-   * Load pages from API with optional filters
+   * Get capabilities for a specific page.
+   * Local pages have limited capabilities (no sharing, collaboration, etc.)
+   */
+  getCapabilities(pageId: string): ProviderCapabilities {
+    return isLocalPage(pageId) ? LOCAL_FS_CAPABILITIES : API_CAPABILITIES;
+  }
+
+  /**
+   * Check if a page is backed by the local file system
+   */
+  isLocal(pageId: string): boolean {
+    return isLocalPage(pageId);
+  }
+
+  /**
+   * Load pages from local file system for a specific notebook.
+   * Used to populate the store with local pages when a local notebook is expanded.
+   */
+  loadLocalPages(notebookId: string): Observable<Page[]> {
+    if (!isLocalNotebook(notebookId)) return of([]);
+
+    return this.fsPageProvider.loadPages({ notebookId }).pipe(
+      tap((pages) => {
+        // Upsert local pages into the store
+        if (pages.length > 0) {
+          this.store.update(upsertEntities(pages));
+        }
+      }),
+    );
+  }
+
+  /**
+   * Get markdown content for a local page
+   */
+  getLocalPageMarkdown(pageId: string): Observable<string | null> {
+    return this.fsPageProvider.getMarkdownContent(pageId);
+  }
+
+  /**
+   * Save markdown content for a local page
+   */
+  saveLocalPageMarkdown(pageId: string, content: string): Observable<void> {
+    return this.fsPageProvider.saveMarkdownContent(pageId, content);
+  }
+
+  /**
+   * Load pages from API with optional filters.
+   * Merges with local file system pages.
    */
   loadPages(filters?: PageFilters): Observable<Page[]> {
     this.init = true;
     this._isLoading.set(true);
     this._error.set(null);
+
+    // If loading for a local notebook, delegate to file system provider
+    if (filters?.notebookId && isLocalNotebook(filters.notebookId)) {
+      return this.fsPageProvider.loadPages({ notebookId: filters.notebookId }).pipe(
+        tap((pages) => {
+          // Keep API pages and other local pages, replace only this notebook's local pages
+          const currentPages = this.store
+            .query(getAllEntities())
+            .filter((p) => p.notebookId !== filters.notebookId);
+          this.store.update(setEntities([...currentPages, ...pages]));
+          this._isLoading.set(false);
+        }),
+        catchError((err) => {
+          this._error.set('Failed to load local pages');
+          this._isLoading.set(false);
+          return of([] as Page[]);
+        }),
+      );
+    }
 
     const params: Record<string, string> = {};
     if (filters?.notebookId) params['notebookId'] = filters.notebookId;
@@ -230,11 +305,13 @@ export class PageService {
 
     return this.http.get<{ pages: Page[] }>('/api/pages', { params }).pipe(
       tap((response) => {
-        this.store.update(setEntities(response.pages));
+        // Keep local pages in the store, replace only API pages
+        const localPages = this.store.query(getAllEntities()).filter((p) => isLocalPage(p.id));
+        this.store.update(setEntities([...response.pages, ...localPages]));
         this.persistToIndexedDB(response.pages);
         this._isLoading.set(false);
       }),
-      map((response) => response.pages),
+      map(() => this.store.query(getAllEntities())),
       catchError((err) => {
         let message = err?.error?.error || 'Failed to load pages';
 
@@ -254,9 +331,19 @@ export class PageService {
   }
 
   /**
-   * Get a single page by ID from server
+   * Get a single page by ID.
+   * Routes to file system provider for local pages.
    */
   getPage(pageId: string): Observable<Page> {
+    // Route local pages to file system provider
+    if (isLocalPage(pageId)) {
+      return this.fsPageProvider.getPage(pageId).pipe(
+        tap((page) => {
+          this.store.update(upsertEntities([page]));
+        }),
+      );
+    }
+
     this._isLoading.set(true);
     this._error.set(null);
 
@@ -289,9 +376,19 @@ export class PageService {
   }
 
   /**
-   * Create a new page with optimistic update
+   * Create a new page.
+   * Routes to file system provider for local notebooks.
    */
   createPage(data: CreatePageInput): Observable<Page> {
+    // Route to file system provider for local notebooks
+    if (data.notebookId && isLocalNotebook(data.notebookId)) {
+      return this.fsPageProvider.createPage(data).pipe(
+        tap((page) => {
+          this.store.update(addEntities(page));
+        }),
+      );
+    }
+
     this._isLoading.set(true);
     this._error.set(null);
 
@@ -333,16 +430,26 @@ export class PageService {
   }
 
   /**
-   * Update a page with optimistic update
+   * Update a page.
+   * Routes to file system provider for local pages.
    */
   updatePage(id: string, data: UpdatePageInput): Observable<Page> {
+    // Route local pages to file system provider
+    if (isLocalPage(id)) {
+      return this.fsPageProvider.updatePage(id, data).pipe(
+        tap((page) => {
+          this.store.update(updateEntities(id, () => page));
+        }),
+      );
+    }
+
     this._error.set(null);
     const original = this.store.query(getEntity(id));
     if (!original) {
       return throwError(() => new Error('Page not found'));
     }
 
-    // // Optimistic update
+    // Optimistic update
     this.store.update(
       updateEntities(id, (entity) => ({
         ...entity,
@@ -391,9 +498,15 @@ export class PageService {
   }
 
   /**
-   * Move page to trash
+   * Move page to trash.
+   * For local pages, this permanently deletes the file (no trash support).
    */
   moveToTrash(id: string): Observable<void> {
+    // Local pages don't support trash - delete directly
+    if (isLocalPage(id)) {
+      return this.deletePage(id);
+    }
+
     this._error.set(null);
 
     const original = this.store.query(getEntity(id));
@@ -449,18 +562,30 @@ export class PageService {
   }
 
   /**
-   * Permanently delete a page
+   * Permanently delete a page.
+   * Routes to file system provider for local pages.
    */
   deletePage(id: string): Observable<void> {
     this._error.set(null);
 
-    const original = this.store.query(getEntity(id));
     const wasActive = this.selectedPageId() === id;
-
     this.store.update(deleteEntities(id));
     if (wasActive) {
       this.store.update(resetActiveId());
     }
+
+    // Route local pages to file system provider
+    if (isLocalPage(id)) {
+      return this.fsPageProvider.deletePage(id).pipe(
+        catchError((err) => {
+          const message = err?.message || 'Failed to delete local page';
+          this._error.set(message);
+          return throwError(() => new Error(message));
+        }),
+      );
+    }
+
+    const original = this.store.query(getEntity(id));
 
     return this.http.delete(`/api/pages/${id}`).pipe(
       tap(() => {
