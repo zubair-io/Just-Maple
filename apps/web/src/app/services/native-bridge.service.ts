@@ -327,6 +327,21 @@ export class NativeBridgeService {
     });
   }
 
+  // MARK: - File Sharing
+
+  /**
+   * Share a file using the native share sheet
+   * @param filename - The name of the file to share
+   * @param mimeType - MIME type of the file (e.g., 'text/markdown', 'text/html')
+   * @param data - Base64-encoded file content
+   */
+  shareFile(filename: string, mimeType: string, data: string): void {
+    this.sendMessage({
+      type: 'shareFile',
+      payload: { filename, mimeType, data },
+    });
+  }
+
   // MARK: - Audio Recording
 
   /**

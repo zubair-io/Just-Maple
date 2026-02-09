@@ -63,6 +63,12 @@ export interface StartRecordingPayload {
   includeSystemAudio?: boolean;
 }
 
+export interface ShareFilePayload {
+  filename: string;
+  mimeType: string;
+  data: string; // base64-encoded file content
+}
+
 export type WebToNativeMessageType =
   | { type: 'test'; payload: TestPayload }
   | { type: 'startRecording'; payload?: StartRecordingPayload }
@@ -82,7 +88,8 @@ export type WebToNativeMessageType =
   | { type: 'unregisterPushNotifications' }
   | { type: 'setBadge'; payload: SetBadgePayload }
   | { type: 'openAuthSession'; payload: OpenAuthSessionPayload }
-  | { type: 'gmailOAuthResult'; payload: GmailOAuthResultPayload };
+  | { type: 'gmailOAuthResult'; payload: GmailOAuthResultPayload }
+  | { type: 'shareFile'; payload: ShareFilePayload };
 
 // MARK: - Native to Web Messages
 
