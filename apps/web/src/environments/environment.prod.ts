@@ -7,4 +7,12 @@ export const environment = {
   signalrNegotiateUrl: '', // Deprecated - SignalR removed
   // LogRocket (only enabled in production)
   logRocketAppId: 'd4ksdx/just-maple',
+  // Google OAuth for Gmail integration
+  google: {
+    scopes: [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/gmail.modify',
+    ],
+  },
 };

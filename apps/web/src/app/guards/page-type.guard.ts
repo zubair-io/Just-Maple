@@ -54,3 +54,6 @@ export const MemoPageGuard = createPageTypeGuard('memo');
 
 /** Guard that matches message-type pages (chat/messages) */
 export const MessagePageGuard = createPageTypeGuard('message');
+
+/** Guard that matches gmail-type pages (email integration) */
+export const GmailPageGuard = createPageTypeGuard('gmail');

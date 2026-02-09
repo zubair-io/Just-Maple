@@ -178,6 +178,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('kanban'),
                         t.Literal('message'),
                         t.Literal('recording'),
+                        t.Literal('gmail'),
                     ]),
                 ),
                 title: t.Optional(t.String({ maxLength: 255 })),

@@ -1,0 +1,428 @@
+<div class="flex h-full flex-col bg-[var(--color-bg)]">
+  <!-- Not Connected State -->
+  @if (!authService.isConnected()) {
+    <div class="flex flex-1 items-center justify-center p-8">
+      <div
+        class="max-w-[400px] rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-8 py-12 text-center"
+      >
+        <div class="mb-4 text-6xl">📬</div>
+        <h2 class="m-0 mb-2 text-[var(--color-text-main)]">Connect Gmail</h2>
+        <p class="mb-6 leading-relaxed text-[var(--color-text-muted)]">
+          Access your emails directly in Maple. Your email content stays on your device and is never
+          sent to our servers.
+        </p>
+        <button
+          class="cursor-pointer rounded-lg border-none bg-[var(--color-primary)] px-8 py-3 text-base text-white transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+          (click)="connectGmail()"
+          [disabled]="authService.isAuthenticating()"
+        >
+          @if (authService.isAuthenticating()) {
+            <span>Connecting...</span>
+          } @else {
+            <span>Connect Gmail</span>
+          }
+        </button>
+      </div>
+    </div>
+  } @else {
+    <!-- Three Panel Layout -->
+    <div
+      class="grid flex-1 grid-cols-[240px_350px_1fr] overflow-hidden max-lg:grid-cols-[200px_1fr] max-md:grid-cols-[1fr]"
+    >
+      <!-- Filter Sidebar -->
+      <div
+        class="flex flex-col border-r border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-[200] max-md:-translate-x-full max-md:transition-transform"
+      >
+        <div class="mb-4">
+          <button
+            class="w-full cursor-pointer rounded-3xl border-none bg-[var(--color-primary)] px-4 py-3 text-sm text-white transition-colors hover:bg-[var(--color-primary-hover)]"
+            (click)="openCompose()"
+          >
+            <span>+ Compose</span>
+          </button>
+        </div>
+
+        <div class="flex flex-1 flex-col gap-1">
+          @for (filter of filters(); track trackByFilterId($index, filter)) {
+            <button
+              class="flex cursor-pointer items-center gap-3 rounded-lg border-none bg-transparent px-3 py-2 text-left text-[var(--color-text-main)] transition-colors hover:bg-[var(--color-bg-hover)]"
+              [class]="
+                activeFilter().id === filter.id
+                  ? 'flex cursor-pointer items-center gap-3 rounded-lg border-none bg-[var(--color-bg-active)] px-3 py-2 text-left font-medium text-[var(--color-text-main)]'
+                  : 'flex cursor-pointer items-center gap-3 rounded-lg border-none bg-transparent px-3 py-2 text-left text-[var(--color-text-main)] transition-colors hover:bg-[var(--color-bg-hover)]'
+              "
+              (click)="selectFilter(filter)"
+            >
+              <span class="text-lg">{{ filter.icon || '📁' }}</span>
+              <span class="flex-1">{{ filter.name }}</span>
+            </button>
+          }
+        </div>
+
+        <div class="mt-4 border-t border-[var(--color-border)] pt-4">
+          <button
+            class="w-full cursor-pointer rounded-lg border-none bg-transparent px-3 py-2 text-left text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)]"
+            (click)="openSettings()"
+          >
+            <span>⚙️ Settings</span>
+          </button>
+          <div class="mt-2 px-3 text-xs text-[var(--color-text-muted)]">
+            @if (syncService.isSyncing()) {
+              <span class="text-[var(--color-primary)]">Syncing...</span>
+            } @else if (syncService.lastSyncAt()) {
+              <span>Updated {{ formatDate(syncService.lastSyncAt()!.toISOString()) }}</span>
+            }
+          </div>
+        </div>
+      </div>
+
+      <!-- Email List -->
+      <div
+        class="flex flex-col overflow-hidden border-r border-[var(--color-border)] bg-[var(--color-bg)]"
+      >
+        <div class="flex items-center gap-2 border-b border-[var(--color-border)] px-3 py-3">
+          <div class="flex-1">
+            <input
+              type="text"
+              placeholder="Search emails..."
+              class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2 text-[var(--color-text-main)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-primary)] focus:outline-none"
+              [ngModel]="searchQuery()"
+              (ngModelChange)="searchQuery.set($event)"
+            />
+          </div>
+          <button
+            class="cursor-pointer rounded-lg border-none bg-transparent p-2 text-lg transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-50"
+            (click)="refreshEmails()"
+            [disabled]="syncService.isSyncing()"
+          >
+            🔄
+          </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto">
+          @for (email of filteredEmails(); track trackByEmailId($index, email)) {
+            <div
+              class="flex cursor-pointer items-start gap-2 border-b border-[var(--color-border)] px-3 py-3 transition-colors hover:bg-[var(--color-bg-hover)]"
+              [class.bg-\[var\(--color-bg-active\)\]]="selectedEmailId() === email.id"
+              (click)="selectEmail(email)"
+            >
+              <button
+                class="cursor-pointer border-none bg-transparent p-1 text-base"
+                (click)="toggleStar(email, $event)"
+              >
+                {{ email.isStarred ? '⭐' : '☆' }}
+              </button>
+              <div class="min-w-0 flex-1">
+                <div class="mb-1 flex justify-between gap-2">
+                  <span
+                    class="flex-1 truncate text-[var(--color-text-main)]"
+                    [class.font-semibold]="!email.isRead"
+                  >
+                    {{ formatSender(email) }}
+                  </span>
+                  <span class="shrink-0 text-xs text-[var(--color-text-muted)]">
+                    {{ formatDate(email.date) }}
+                  </span>
+                </div>
+                <div
+                  class="mb-1 truncate text-sm text-[var(--color-text-main)]"
+                  [class.font-semibold]="!email.isRead"
+                >
+                  {{ email.subject }}
+                </div>
+                <div class="truncate text-xs text-[var(--color-text-muted)]">
+                  {{ email.snippet }}
+                </div>
+              </div>
+              @if (email.hasAttachments) {
+                <span class="shrink-0 text-sm">📎</span>
+              }
+            </div>
+          } @empty {
+            <div class="flex h-[200px] items-center justify-center text-[var(--color-text-muted)]">
+              <span>No emails found</span>
+            </div>
+          }
+        </div>
+      </div>
+
+      <!-- Email Detail -->
+      <div
+        class="flex flex-col overflow-hidden max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-[100] max-lg:w-full max-lg:translate-x-full max-lg:bg-[var(--color-bg)] max-lg:transition-transform"
+      >
+        @if (selectedEmail(); as email) {
+          <div
+            class="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3"
+          >
+            <button
+              class="cursor-pointer rounded-lg border-none bg-transparent px-4 py-2 text-[var(--color-text-main)] transition-colors hover:bg-[var(--color-bg-hover)]"
+              (click)="selectedEmailId.set(null)"
+            >
+              ← Back
+            </button>
+            <div class="flex gap-2">
+              <button
+                class="cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
+                (click)="toggleStar(email, $event)"
+                title="Star"
+              >
+                {{ email.isStarred ? '⭐' : '☆' }}
+              </button>
+              <button
+                class="cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
+                (click)="archiveEmail(email)"
+                title="Archive"
+              >
+                📥
+              </button>
+              <button
+                class="cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
+                (click)="trashEmail(email)"
+                title="Delete"
+              >
+                🗑️
+              </button>
+              <button
+                class="cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
+                (click)="markAsUnread(email)"
+                title="Mark unread"
+              >
+                📩
+              </button>
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-6">
+            <div class="mb-6 border-b border-[var(--color-border)] pb-4">
+              <div class="mb-2 flex gap-2 text-sm">
+                <span class="min-w-[50px] text-[var(--color-text-muted)]">From:</span>
+                <span class="text-[var(--color-text-main)]">
+                  {{
+                    email.from.name
+                      ? email.from.name + ' <' + email.from.email + '>'
+                      : email.from.email
+                  }}
+                </span>
+              </div>
+              <div class="mb-2 flex gap-2 text-sm">
+                <span class="min-w-[50px] text-[var(--color-text-muted)]">To:</span>
+                <span class="text-[var(--color-text-main)]">
+                  @for (addr of email.to; track addr.email; let last = $last) {
+                    {{ addr.name || addr.email }}{{ last ? '' : ', ' }}
+                  }
+                </span>
+              </div>
+              @if (email.cc && email.cc.length > 0) {
+                <div class="mb-2 flex gap-2 text-sm">
+                  <span class="min-w-[50px] text-[var(--color-text-muted)]">Cc:</span>
+                  <span class="text-[var(--color-text-main)]">
+                    @for (addr of email.cc; track addr.email; let last = $last) {
+                      {{ addr.name || addr.email }}{{ last ? '' : ', ' }}
+                    }
+                  </span>
+                </div>
+              }
+              <div class="mb-2 flex gap-2 text-sm">
+                <span class="min-w-[50px] text-[var(--color-text-muted)]">Date:</span>
+                <span class="text-[var(--color-text-main)]">{{ formatFullDate(email.date) }}</span>
+              </div>
+            </div>
+
+            <h2 class="m-0 mb-6 text-xl text-[var(--color-text-main)]">{{ email.subject }}</h2>
+
+            <div
+              class="leading-relaxed text-[var(--color-text-main)] [&_a]:text-[var(--color-primary)] [&_img]:h-auto [&_img]:max-w-full"
+              [innerHTML]="email.bodyHtml || email.bodyText"
+            ></div>
+
+            @if (email.attachments && email.attachments.length > 0) {
+              <div class="mt-8 border-t border-[var(--color-border)] pt-4">
+                <h4 class="m-0 mb-4 text-[var(--color-text-main)]">
+                  Attachments ({{ email.attachments.length }})
+                </h4>
+                <div class="flex flex-wrap gap-2">
+                  @for (attachment of email.attachments; track attachment.id) {
+                    <button
+                      class="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-2 transition-colors hover:bg-[var(--color-bg-hover)]"
+                      (click)="downloadAttachment(email.id, attachment.id, attachment.filename)"
+                    >
+                      <span>📎</span>
+                      <span class="text-[var(--color-text-main)]">{{ attachment.filename }}</span>
+                      <span class="text-xs text-[var(--color-text-muted)]">{{
+                        formatFileSize(attachment.size)
+                      }}</span>
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+
+            <div class="mt-8 flex gap-2">
+              <button
+                class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-2 text-[var(--color-text-main)] transition-colors hover:bg-[var(--color-bg-hover)]"
+                (click)="openReply(email)"
+              >
+                ↩️ Reply
+              </button>
+              <button
+                class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-2 text-[var(--color-text-main)] transition-colors hover:bg-[var(--color-bg-hover)]"
+                (click)="openReply(email, true)"
+              >
+                ↩️↩️ Reply All
+              </button>
+            </div>
+          </div>
+        } @else {
+          <div class="flex flex-1 items-center justify-center text-[var(--color-text-muted)]">
+            <span>Select an email to view</span>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- Compose Modal -->
+    @if (showCompose()) {
+      <div
+        class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50"
+        (click)="closeCompose()"
+      >
+        <div
+          class="flex max-h-[80vh] w-[90%] max-w-[600px] flex-col rounded-xl bg-[var(--color-bg)] shadow-[0_4px_24px_rgba(0,0,0,0.2)]"
+          (click)="$event.stopPropagation()"
+        >
+          <div
+            class="flex items-center justify-between border-b border-[var(--color-border)] px-6 py-4"
+          >
+            <h3 class="m-0 text-[var(--color-text-main)]">
+              {{ replyToEmail() ? 'Reply' : 'New Email' }}
+            </h3>
+            <button
+              class="cursor-pointer border-none bg-transparent p-2 text-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
+              (click)="closeCompose()"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto px-6 py-4">
+            <div class="mb-3 flex items-center gap-2">
+              <label class="min-w-[60px] text-sm text-[var(--color-text-muted)]">To:</label>
+              <input
+                type="text"
+                class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-2 text-[var(--color-text-main)] focus:border-[var(--color-primary)] focus:outline-none"
+                [ngModel]="composeTo().join(', ')"
+                (ngModelChange)="updateComposeTo($event)"
+                placeholder="recipient@example.com"
+              />
+            </div>
+            <div class="mb-3 flex items-center gap-2">
+              <label class="min-w-[60px] text-sm text-[var(--color-text-muted)]">Cc:</label>
+              <input
+                type="text"
+                class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-2 text-[var(--color-text-main)] focus:border-[var(--color-primary)] focus:outline-none"
+                [ngModel]="composeCc().join(', ')"
+                (ngModelChange)="updateComposeCc($event)"
+                placeholder="cc@example.com"
+              />
+            </div>
+            <div class="mb-3 flex items-center gap-2">
+              <label class="min-w-[60px] text-sm text-[var(--color-text-muted)]">Subject:</label>
+              <input
+                type="text"
+                class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-2 text-[var(--color-text-main)] focus:border-[var(--color-primary)] focus:outline-none"
+                [ngModel]="composeSubject()"
+                (ngModelChange)="composeSubject.set($event)"
+                placeholder="Subject"
+              />
+            </div>
+            <div class="flex flex-col">
+              <textarea
+                class="min-h-[200px] resize-y rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3 font-[inherit] text-[var(--color-text-main)] focus:border-[var(--color-primary)] focus:outline-none"
+                [ngModel]="composeBody()"
+                (ngModelChange)="composeBody.set($event)"
+                placeholder="Write your message..."
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 border-t border-[var(--color-border)] px-6 py-4">
+            <button
+              class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-6 py-2 text-sm text-[var(--color-text-main)] transition-colors hover:bg-[var(--color-bg-hover)]"
+              (click)="closeCompose()"
+            >
+              Discard
+            </button>
+            <button
+              class="cursor-pointer rounded-lg border-none bg-[var(--color-primary)] px-6 py-2 text-sm text-white transition-colors hover:bg-[var(--color-primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+              (click)="sendEmail()"
+              [disabled]="composeTo().length === 0 || !composeSubject()"
+            >
+              Send ▶️
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Settings Modal -->
+    @if (showSettings()) {
+      <div
+        class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50"
+        (click)="closeSettings()"
+      >
+        <div
+          class="flex max-h-[80vh] w-[90%] max-w-[600px] flex-col rounded-xl bg-[var(--color-bg)] shadow-[0_4px_24px_rgba(0,0,0,0.2)]"
+          (click)="$event.stopPropagation()"
+        >
+          <div
+            class="flex items-center justify-between border-b border-[var(--color-border)] px-6 py-4"
+          >
+            <h3 class="m-0 text-[var(--color-text-main)]">Gmail Settings</h3>
+            <button
+              class="cursor-pointer border-none bg-transparent p-2 text-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
+              (click)="closeSettings()"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-6">
+            <div class="mb-6">
+              <h4 class="m-0 mb-3 text-[var(--color-text-main)]">Account</h4>
+              <div
+                class="flex items-center justify-between rounded-lg bg-[var(--color-bg-secondary)] p-3"
+              >
+                <span class="text-[var(--color-text-main)]">
+                  ✉️ {{ authService.connectedEmail() }}
+                </span>
+                <button
+                  class="cursor-pointer rounded-md border border-[var(--color-border)] bg-transparent px-4 py-2 text-[var(--color-text-muted)] transition-colors hover:border-[#dc2626] hover:bg-[var(--color-bg-hover)] hover:text-[#dc2626]"
+                  (click)="disconnectGmail()"
+                >
+                  Disconnect
+                </button>
+              </div>
+            </div>
+
+            <div class="mb-6">
+              <h4 class="m-0 mb-3 text-[var(--color-text-main)]">Sync Status</h4>
+              <div class="flex flex-col gap-2 text-sm text-[var(--color-text-muted)]">
+                <span>Total emails: {{ storageService.emails().length }}</span>
+                <span>Unread: {{ storageService.unreadCount() }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 border-t border-[var(--color-border)] px-6 py-4">
+            <button
+              class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-6 py-2 text-sm text-[var(--color-text-main)] transition-colors hover:bg-[var(--color-bg-hover)]"
+              (click)="closeSettings()"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+  }
+</div>

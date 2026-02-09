@@ -48,6 +48,17 @@ export interface SetBadgePayload {
   count: number;
 }
 
+export interface OpenAuthSessionPayload {
+  url: string;
+  callbackScheme: string;
+}
+
+export interface GmailOAuthResultPayload {
+  code?: string;
+  state?: string;
+  error?: string;
+}
+
 export interface StartRecordingPayload {
   includeSystemAudio?: boolean;
 }
@@ -76,6 +87,8 @@ export type WebToNativeMessageType =
   | { type: 'getPushStatus' }
   | { type: 'unregisterPushNotifications' }
   | { type: 'setBadge'; payload: SetBadgePayload }
+  | { type: 'openAuthSession'; payload: OpenAuthSessionPayload }
+  | { type: 'gmailOAuthResult'; payload: GmailOAuthResultPayload }
   | { type: 'shareFile'; payload: ShareFilePayload };
 
 // MARK: - Native to Web Messages
@@ -179,6 +192,11 @@ export interface DeepLinkPayload {
   url: string;
 }
 
+export interface AuthSessionResult {
+  url?: string;
+  error?: string;
+}
+
 export interface ErrorMessage {
   code: string;
   message: string;
@@ -236,6 +254,7 @@ export type NativeToWebMessageType =
   | { type: 'notificationTapped'; payload: NotificationTapped }
   | { type: 'foregroundNotification'; payload: ForegroundNotification }
   | { type: 'deepLink'; payload: DeepLinkPayload }
+  | { type: 'authSessionResult'; payload: AuthSessionResult }
   | { type: 'error'; payload: ErrorMessage };
 
 // MARK: - Bridge Interface
