@@ -52,6 +52,12 @@ export interface StartRecordingPayload {
   includeSystemAudio?: boolean;
 }
 
+export interface ShareFilePayload {
+  filename: string;
+  mimeType: string;
+  data: string; // base64-encoded file content
+}
+
 export type WebToNativeMessageType =
   | { type: 'test'; payload: TestPayload }
   | { type: 'startRecording'; payload?: StartRecordingPayload }
@@ -69,7 +75,8 @@ export type WebToNativeMessageType =
   | { type: 'requestPushPermission' }
   | { type: 'getPushStatus' }
   | { type: 'unregisterPushNotifications' }
-  | { type: 'setBadge'; payload: SetBadgePayload };
+  | { type: 'setBadge'; payload: SetBadgePayload }
+  | { type: 'shareFile'; payload: ShareFilePayload };
 
 // MARK: - Native to Web Messages
 
