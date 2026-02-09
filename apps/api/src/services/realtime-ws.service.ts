@@ -13,6 +13,13 @@ export type AppEvent =
           updatedAt: string;
           notebookId?: string;
       }
+    | {
+          type: 'page.moved';
+          pageId: string;
+          previousNotebookId: string;
+          newNotebookId: string;
+          updatedAt: string;
+      }
     | { type: 'page.deleted'; pageId: string; notebookId?: string }
     | { type: 'page.trashed'; pageId: string; notebookId?: string }
     | { type: 'page.restored'; page: Page; notebookId?: string }

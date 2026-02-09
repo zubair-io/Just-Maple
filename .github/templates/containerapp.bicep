@@ -62,8 +62,8 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           name: 'api'
           image: imageTag
           resources: {
-            cpu: json('0.5')
-            memory: '1Gi'
+            cpu: json('0.25')
+            memory: '0.2Gi'
           }
           env: [
             {
@@ -89,7 +89,7 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           image: 'docker.io/library/mongo:7'
           resources: {
             cpu: json('0.25')
-            memory: '0.5Gi'
+            memory: '0.2Gi'
           }
         }
         {
@@ -97,12 +97,12 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
           image: 'docker.io/library/redis:7-alpine'
           resources: {
             cpu: json('0.25')
-            memory: '0.5Gi'
+            memory: '0.3Gi'
           }
         }
       ]
       scale: {
-        minReplicas: 1
+        minReplicas: 0
         maxReplicas: 1
       }
     }

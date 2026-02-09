@@ -12,11 +12,12 @@ export const test = base.extend<TestFixtures>({
     /**
      * Creates a test user and returns their credentials
      */
-    testUser: async ({ page }, use) => {
+    testUser: async ({ page, baseURL }, use) => {
         const email = `e2e-${Date.now()}-${Math.random().toString(36).substring(7)}@example.com`;
 
-        // Request magic link via API
-        const response = await page.request.post('http://localhost:7071/api/auth/magic-link', {
+        // Request magic link via API using baseURL
+        const apiBaseUrl = baseURL || 'http://localhost:7072';
+        const response = await page.request.post(`${apiBaseUrl}/api/auth/magic-link`, {
             data: { email },
         });
 
@@ -29,7 +30,7 @@ export const test = base.extend<TestFixtures>({
 
         // Verify the token to get JWT
         const verifyResponse = await page.request.get(
-            `http://localhost:7071/api/auth/verify?token=${devToken}`,
+            `${apiBaseUrl}/api/auth/verify?token=${devToken}`,
         );
 
         expect(verifyResponse.ok()).toBeTruthy();
@@ -81,16 +82,16 @@ export { expect };
 /**
  * Helper to create a test user via API without using fixtures
  */
-export async function createTestUser(page: Page) {
+export async function createTestUser(page: Page, baseURL: string = 'http://localhost:7072') {
     const email = `e2e-${Date.now()}-${Math.random().toString(36).substring(7)}@example.com`;
 
-    const response = await page.request.post('http://localhost:7071/api/auth/magic-link', {
+    const response = await page.request.post(`${baseURL}/api/auth/magic-link`, {
         data: { email },
     });
 
     const data = await response.json();
     const verifyResponse = await page.request.get(
-        `http://localhost:7071/api/auth/verify?token=${data.devToken}`,
+        `${baseURL}/api/auth/verify?token=${data.devToken}`,
     );
 
     const verifyData = await verifyResponse.json();

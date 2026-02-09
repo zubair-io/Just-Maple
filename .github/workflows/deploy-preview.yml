@@ -2,15 +2,16 @@ name: Deploy Preview Environment
 
 on:
     pull_request:
-        types: [opened, synchronize, reopened]
+        types: [opened, synchronize, reopened, labeled]
         paths:
             - 'apps/api/**'
             - 'apps/web/**'
             - 'packages/shared/**'
+            - '.github/workflows/deploy-preview.yml'
 
-    # Cleanup when PR is closed/merged
+    # Cleanup when PR is closed/merged or label is removed
     pull_request_target:
-        types: [closed]
+        types: [closed, unlabeled]
 
 env:
     REGISTRY: acrjustmaple.azurecr.io
@@ -20,7 +21,10 @@ env:
 
 jobs:
     deploy-preview:
-        if: github.event.action != 'closed'
+        if: >-
+            github.event.action != 'closed' &&
+            github.event.action != 'unlabeled' &&
+            contains(github.event.pull_request.labels.*.name, 'deploy-preview')
         runs-on: ubuntu-latest
         timeout-minutes: 10
         permissions:
@@ -136,7 +140,10 @@ jobs:
                       }
 
     cleanup-preview:
-        if: github.event.action == 'closed'
+        if: >-
+            github.event.action == 'closed' ||
+            (github.event.action == 'unlabeled' &&
+            github.event.label.name == 'deploy-preview')
         runs-on: ubuntu-latest
         timeout-minutes: 5
         permissions:

@@ -8,7 +8,7 @@ export default defineConfig({
     workers: process.env.CI ? 1 : undefined,
     reporter: process.env.CI ? [['html'], ['github']] : 'html',
     use: {
-        baseURL: 'http://localhost:4200',
+        baseURL: 'http://localhost:7072',
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
         video: 'retain-on-failure',
@@ -39,7 +39,7 @@ export default defineConfig({
           ],
     webServer: {
         command: 'bun run dev:e2e',
-        url: 'http://localhost:4200',
+        url: 'http://localhost:7072',
         reuseExistingServer: !process.env.CI,
         ignoreHTTPSErrors: true,
         timeout: 120000, // 2 minutes for both servers to start

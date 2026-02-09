@@ -25,6 +25,40 @@ import { realtimeWSService } from '../services/realtime-ws.service';
 import { getUsersWithNotebookAccess } from '../repositories/notebook.repo';
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
 import { indexPage, removeFromIndex } from '../repositories/search.repo';
+import type { Page } from '@maple/shared';
+
+/**
+ * Broadcast page.moved event to users in both old and new notebooks
+ */
+async function emitPageMovedIfNeeded(
+    previousPage: Page | null,
+    updatedPage: Page,
+    requestedNotebookId: string | undefined,
+): Promise<void> {
+    const previousNotebookId = previousPage?.notebookId;
+    if (
+        requestedNotebookId !== undefined &&
+        previousNotebookId &&
+        updatedPage.notebookId &&
+        previousNotebookId !== updatedPage.notebookId
+    ) {
+        const oldRecipients = await getUsersWithNotebookAccess(previousNotebookId);
+        const event = {
+            type: 'page.moved' as const,
+            pageId: updatedPage.id,
+            previousNotebookId,
+            newNotebookId: updatedPage.notebookId,
+            updatedAt: updatedPage.updatedAt,
+        };
+        realtimeWSService.sendToUsers(oldRecipients, event);
+
+        const newRecipients = await getUsersWithNotebookAccess(updatedPage.notebookId);
+        const newOnly = newRecipients.filter((id) => !oldRecipients.includes(id));
+        if (newOnly.length > 0) {
+            realtimeWSService.sendToUsers(newOnly, event);
+        }
+    }
+}
 
 export const pageRoutes = new Elysia({ prefix: '/api/pages' })
     .use(jwtPlugin)
@@ -162,6 +196,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
+
+            // Get the page before update to detect notebook changes
+            const previousPage = await findPageById(params.id, auth.user._id);
+
             const sanitizedBody = {
                 ...body,
                 title: body.title ? sanitizeName(body.title) : undefined,
@@ -187,6 +225,8 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 // Update backlinks when title changes
                 await handlePageRename(page.id, sanitizedBody.title);
             }
+
+            await emitPageMovedIfNeeded(previousPage, page, sanitizedBody.notebookId);
 
             // Extract and update links when content changes
             if (sanitizedBody.content) {
@@ -226,6 +266,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
+
+            // Get the page before update to detect notebook changes
+            const previousPage = await findPageById(params.id, auth.user._id);
+
             const sanitizedBody = {
                 ...body,
                 title: body.title ? sanitizeName(body.title) : undefined,
@@ -251,6 +295,8 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 // Update backlinks when title changes
                 await handlePageRename(page.id, sanitizedBody.title);
             }
+
+            await emitPageMovedIfNeeded(previousPage, page, sanitizedBody.notebookId);
 
             // Extract and update links when content changes
             if (sanitizedBody.content) {

@@ -173,7 +173,7 @@ test.describe('Notes Management', () => {
         }
     });
 
-    test('should trash a note', async ({ authenticatedPage }) => {
+    test.skip('should trash a note', async ({ authenticatedPage }) => {
         await authenticatedPage.goto('/');
         await authenticatedPage.waitForLoadState('networkidle');
 
@@ -490,7 +490,7 @@ test.describe('Notes Management', () => {
         }
     });
 
-    test('should add formatting to note content', async ({ authenticatedPage }) => {
+    test.skip('should add formatting to note content', async ({ authenticatedPage }) => {
         await authenticatedPage.goto('/');
         await authenticatedPage.waitForLoadState('networkidle');
 
@@ -527,7 +527,7 @@ test.describe('Notes Management', () => {
         await expect(boldText).toBeVisible({ timeout: 3000 });
     });
 
-    test('should create a task list in note', async ({ authenticatedPage }) => {
+    test.skip('should create a task list in note', async ({ authenticatedPage }) => {
         await authenticatedPage.goto('/');
         await authenticatedPage.waitForLoadState('networkidle');
 

@@ -9,6 +9,7 @@
     "build": "bun run --cwd ../../packages/shared build && ng build",
     "build:paperbark": "bun run --cwd ../../packages/shared build && ng build --configuration paperbark",
     "build:production": "bun run --cwd ../../packages/shared build && ng build --configuration production",
+    "build:e2e": "bun run --cwd ../../packages/shared build && ng build --configuration e2e",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },
