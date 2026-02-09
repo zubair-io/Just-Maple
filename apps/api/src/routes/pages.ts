@@ -161,6 +161,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
+
+            // Get the page before update to detect notebook changes
+            const previousPage = await findPageById(params.id, auth.user._id);
+
             const sanitizedBody = {
                 ...body,
                 title: body.title ? sanitizeName(body.title) : undefined,
@@ -185,6 +189,38 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
 
                 // Update backlinks when title changes
                 await handlePageRename(page.id, sanitizedBody.title);
+            }
+
+            // Send SSE event when page moves between notebooks
+            const previousNotebookId = previousPage?.notebookId;
+            if (
+                sanitizedBody.notebookId !== undefined &&
+                previousNotebookId &&
+                page.notebookId &&
+                previousNotebookId !== page.notebookId
+            ) {
+                // Notify users in the old notebook (page removed)
+                const oldRecipients = await getUsersWithNotebookAccess(previousNotebookId);
+                realtimeWSService.sendToUsers(oldRecipients, {
+                    type: 'page.moved',
+                    pageId: page.id,
+                    previousNotebookId,
+                    newNotebookId: page.notebookId,
+                    updatedAt: page.updatedAt,
+                });
+
+                // Notify users in the new notebook (page added)
+                const newRecipients = await getUsersWithNotebookAccess(page.notebookId);
+                const newOnly = newRecipients.filter((id) => !oldRecipients.includes(id));
+                if (newOnly.length > 0) {
+                    realtimeWSService.sendToUsers(newOnly, {
+                        type: 'page.moved',
+                        pageId: page.id,
+                        previousNotebookId,
+                        newNotebookId: page.notebookId,
+                        updatedAt: page.updatedAt,
+                    });
+                }
             }
 
             // Extract and update links when content changes
@@ -225,6 +261,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
+
+            // Get the page before update to detect notebook changes
+            const previousPage = await findPageById(params.id, auth.user._id);
+
             const sanitizedBody = {
                 ...body,
                 title: body.title ? sanitizeName(body.title) : undefined,
@@ -249,6 +289,38 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
 
                 // Update backlinks when title changes
                 await handlePageRename(page.id, sanitizedBody.title);
+            }
+
+            // Send SSE event when page moves between notebooks
+            const previousNotebookId = previousPage?.notebookId;
+            if (
+                sanitizedBody.notebookId !== undefined &&
+                previousNotebookId &&
+                page.notebookId &&
+                previousNotebookId !== page.notebookId
+            ) {
+                // Notify users in the old notebook (page removed)
+                const oldRecipients = await getUsersWithNotebookAccess(previousNotebookId);
+                realtimeWSService.sendToUsers(oldRecipients, {
+                    type: 'page.moved',
+                    pageId: page.id,
+                    previousNotebookId,
+                    newNotebookId: page.notebookId,
+                    updatedAt: page.updatedAt,
+                });
+
+                // Notify users in the new notebook (page added)
+                const newRecipients = await getUsersWithNotebookAccess(page.notebookId);
+                const newOnly = newRecipients.filter((id) => !oldRecipients.includes(id));
+                if (newOnly.length > 0) {
+                    realtimeWSService.sendToUsers(newOnly, {
+                        type: 'page.moved',
+                        pageId: page.id,
+                        previousNotebookId,
+                        newNotebookId: page.notebookId,
+                        updatedAt: page.updatedAt,
+                    });
+                }
             }
 
             // Extract and update links when content changes

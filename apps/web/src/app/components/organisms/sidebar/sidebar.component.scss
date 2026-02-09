@@ -29,6 +29,7 @@
 }
 
 .cdk-drop-list-receiving {
-  border-color: var(--color-primary) !important;
   background: rgba(217, 78, 59, 0.05);
+  outline: 1px dashed var(--color-primary);
+  outline-offset: -1px;
 }
