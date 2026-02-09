@@ -21,6 +21,7 @@ describe('GmailAuthService', () => {
       'decrypt',
       'clearKey',
       'clearUserData',
+      'isInitialized',
     ]);
 
     indexedDBServiceSpy = jasmine.createSpyObj('IndexedDBService', ['getAll', 'put', 'clear']);
@@ -30,6 +31,7 @@ describe('GmailAuthService', () => {
     });
 
     // Default return values
+    cryptoServiceSpy.isInitialized.and.returnValue(false);
     cryptoServiceSpy.initializeKey.and.returnValue(Promise.resolve());
     cryptoServiceSpy.encrypt.and.callFake((value: string) => Promise.resolve(`encrypted:${value}`));
     cryptoServiceSpy.decrypt.and.callFake((value: string) =>
@@ -87,7 +89,17 @@ describe('GmailAuthService', () => {
       ];
       indexedDBServiceSpy.getAll.and.returnValue(Promise.resolve(storedTokens));
 
-      // Recreate service to trigger initialization
+      // Reset TestBed and recreate service to trigger initialization
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          GmailAuthService,
+          { provide: GmailCryptoService, useValue: cryptoServiceSpy },
+          { provide: IndexedDBService, useValue: indexedDBServiceSpy },
+          { provide: AuthService, useValue: authServiceSpy },
+          { provide: PLATFORM_ID, useValue: 'browser' },
+        ],
+      });
       service = TestBed.inject(GmailAuthService);
       tick();
 

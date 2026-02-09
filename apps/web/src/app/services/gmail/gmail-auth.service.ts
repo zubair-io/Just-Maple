@@ -303,6 +303,10 @@ export class GmailAuthService {
 
     return from(this.getClientId()).pipe(
       switchMap((clientId) => {
+        if (!clientId) {
+          return throwError(() => new Error('Google OAuth client ID not configured'));
+        }
+
         const params = new URLSearchParams({
           client_id: clientId,
           code,
@@ -451,6 +455,10 @@ export class GmailAuthService {
     }
 
     const clientId = await this.getClientId();
+    if (!clientId) {
+      throw new Error('Google OAuth client ID not configured');
+    }
+
     const params = new URLSearchParams({
       client_id: clientId,
       refresh_token: this.currentTokens.refreshToken,

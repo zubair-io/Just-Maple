@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, from, throwError } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 import { map, switchMap, catchError, retry, delay } from 'rxjs/operators';
 import { GmailAuthService } from './gmail-auth.service';
 import type {
@@ -69,7 +70,11 @@ export class GmailApiService {
   ): Observable<GmailMessageListResponse> {
     const params = new URLSearchParams();
     if (options.query) params.set('q', options.query);
-    if (options.labelIds?.length) params.set('labelIds', options.labelIds.join(','));
+    if (options.labelIds?.length) {
+      for (const labelId of options.labelIds) {
+        params.append('labelIds', labelId);
+      }
+    }
     if (options.maxResults) params.set('maxResults', options.maxResults.toString());
     if (options.pageToken) params.set('pageToken', options.pageToken);
 
@@ -107,11 +112,7 @@ export class GmailApiService {
 
     for (const batch of batches) {
       const messages = await Promise.all(
-        batch.map((id) =>
-          this.getMessage(id)
-            .toPromise()
-            .catch(() => null),
-        ),
+        batch.map((id) => firstValueFrom(this.getMessage(id)).catch(() => null)),
       );
       results.push(...messages.filter((m): m is CachedEmail => m !== null));
     }
@@ -254,6 +255,13 @@ export class GmailApiService {
    */
   stopWatch(): Observable<void> {
     return this.request<void>('/stop', { method: 'POST' });
+  }
+
+  /**
+   * Get the user's Gmail profile, including the current historyId.
+   */
+  getProfile(): Observable<{ emailAddress: string; historyId: string }> {
+    return this.request<{ emailAddress: string; historyId: string }>('/profile');
   }
 
   /**
@@ -468,7 +476,7 @@ export class GmailApiService {
     lines.push(`Subject: ${input.subject}`);
     lines.push('MIME-Version: 1.0');
 
-    if (input.threadId) {
+    if (input.threadId && input.replyToMessageId) {
       lines.push(`References: <${input.replyToMessageId}>`);
       lines.push(`In-Reply-To: <${input.replyToMessageId}>`);
     }
@@ -504,16 +512,15 @@ export class GmailApiService {
    * Convert HTML to plain text (simple implementation).
    */
   private htmlToPlainText(html: string): string {
-    // Create a temporary element to parse HTML
-    const temp = document.createElement('div');
-    temp.innerHTML = html;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
 
     // Replace <br> and block elements with newlines
-    temp.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
-    temp.querySelectorAll('p, div').forEach((el) => {
+    doc.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+    doc.querySelectorAll('p, div').forEach((el) => {
       el.insertAdjacentText('afterend', '\n\n');
     });
 
-    return temp.textContent?.trim() || '';
+    return doc.body.textContent?.trim() || '';
   }
 }

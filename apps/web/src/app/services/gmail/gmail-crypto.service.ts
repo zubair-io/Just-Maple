@@ -36,7 +36,17 @@ export class GmailCryptoService {
       localStorage.setItem(saltKey, saltHex);
     } else {
       // Parse existing salt
-      salt = new Uint8Array(saltHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)));
+      const hexPairs = saltHex.match(/.{2}/g);
+      if (!hexPairs || hexPairs.length !== 16) {
+        // Salt is corrupted — regenerate
+        salt = crypto.getRandomValues(new Uint8Array(16));
+        saltHex = Array.from(salt)
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+        localStorage.setItem(saltKey, saltHex);
+      } else {
+        salt = new Uint8Array(hexPairs.map((byte) => parseInt(byte, 16)));
+      }
     }
 
     // Derive key from userId + salt using PBKDF2

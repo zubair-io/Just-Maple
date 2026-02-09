@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { GmailApiService } from './gmail-api.service';
 import { GmailAuthService } from './gmail-auth.service';
 import { signal } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 
 describe('GmailApiService', () => {
   let service: GmailApiService;
@@ -75,7 +75,7 @@ describe('GmailApiService', () => {
       await firstValueFrom(service.listMessages({ labelIds: ['INBOX', 'UNREAD'] }));
 
       expect(window.fetch).toHaveBeenCalledWith(
-        jasmine.stringContaining('labelIds=INBOX%2CUNREAD'),
+        jasmine.stringContaining('labelIds=INBOX&labelIds=UNREAD'),
         jasmine.any(Object),
       );
     });
@@ -285,7 +285,7 @@ describe('GmailApiService', () => {
   describe('markAsRead', () => {
     it('should remove UNREAD label', async () => {
       const modifySpy = spyOn(service, 'modifyMessage').and.returnValue(
-        Promise.resolve({ id: 'msg-123', labelIds: [] }) as any,
+        of({ id: 'msg-123', labelIds: [] }),
       );
 
       await firstValueFrom(service.markAsRead('msg-123'));
@@ -297,7 +297,7 @@ describe('GmailApiService', () => {
   describe('markAsUnread', () => {
     it('should add UNREAD label', async () => {
       const modifySpy = spyOn(service, 'modifyMessage').and.returnValue(
-        Promise.resolve({ id: 'msg-123', labelIds: ['UNREAD'] }) as any,
+        of({ id: 'msg-123', labelIds: ['UNREAD'] }),
       );
 
       await firstValueFrom(service.markAsUnread('msg-123'));
@@ -309,7 +309,7 @@ describe('GmailApiService', () => {
   describe('starMessage', () => {
     it('should add STARRED label', async () => {
       const modifySpy = spyOn(service, 'modifyMessage').and.returnValue(
-        Promise.resolve({ id: 'msg-123', labelIds: ['STARRED'] }) as any,
+        of({ id: 'msg-123', labelIds: ['STARRED'] }),
       );
 
       await firstValueFrom(service.starMessage('msg-123'));
@@ -321,7 +321,7 @@ describe('GmailApiService', () => {
   describe('unstarMessage', () => {
     it('should remove STARRED label', async () => {
       const modifySpy = spyOn(service, 'modifyMessage').and.returnValue(
-        Promise.resolve({ id: 'msg-123', labelIds: [] }) as any,
+        of({ id: 'msg-123', labelIds: [] }),
       );
 
       await firstValueFrom(service.unstarMessage('msg-123'));
@@ -333,7 +333,7 @@ describe('GmailApiService', () => {
   describe('archiveMessage', () => {
     it('should remove INBOX label', async () => {
       const modifySpy = spyOn(service, 'modifyMessage').and.returnValue(
-        Promise.resolve({ id: 'msg-123', labelIds: [] }) as any,
+        of({ id: 'msg-123', labelIds: [] }),
       );
 
       await firstValueFrom(service.archiveMessage('msg-123'));

@@ -2,7 +2,7 @@ import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, switchMap, tap } from 'rxjs';
 import { PageService } from '../../services/page.service';
 import { NotebookService } from '../../services/notebook.service';
 import { GmailAuthService } from '../../services/gmail/gmail-auth.service';
@@ -126,19 +126,21 @@ export class GmailViewComponent implements OnInit, OnDestroy {
 
   // Actions
   connectGmail(): void {
-    this.authService.authenticate().subscribe({
-      next: ({ email }) => {
-        console.log('Connected to Gmail:', email);
-        this.syncService.initialSync().subscribe();
-      },
-      error: (err) => {
-        console.error('Gmail connection failed:', err);
-      },
-    });
+    this.authService
+      .authenticate()
+      .pipe(
+        tap(({ email }) => console.log('Connected to Gmail:', email)),
+        switchMap(() => this.syncService.initialSync()),
+      )
+      .subscribe({
+        error: (err) => {
+          console.error('Gmail connection failed:', err);
+        },
+      });
   }
 
-  disconnectGmail(): void {
-    this.authService.disconnect();
+  async disconnectGmail(): Promise<void> {
+    await this.authService.disconnect();
   }
 
   refreshEmails(): void {

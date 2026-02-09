@@ -49,24 +49,24 @@ export class GmailSyncService {
     const after = Math.floor(Date.now() / 1000 - days * 24 * 60 * 60);
     const query = `after:${after}`;
 
-    return this.fetchAllMessages(query).pipe(
-      switchMap((emails) => from(this.storage.storeEmails(emails)).pipe(map(() => emails))),
-      switchMap((emails) => {
-        // Get the latest historyId for incremental sync
-        const latestEmail = emails.reduce(
-          (latest, e) => (e.internalDate > (latest?.internalDate || 0) ? e : latest),
-          null as CachedEmail | null,
-        );
+    // Fetch profile to get historyId, then fetch all messages
+    return this.api.getProfile().pipe(
+      catchError(() => of({ emailAddress: '', historyId: undefined as string | undefined })),
+      switchMap((profile) =>
+        this.fetchAllMessages(query).pipe(
+          switchMap((emails) => from(this.storage.storeEmails(emails)).pipe(map(() => emails))),
+          switchMap(() => {
+            const syncState: GmailSyncState = {
+              accountEmail: this.auth.connectedEmail() || '',
+              lastSyncAt: new Date().toISOString(),
+              historyId: profile.historyId,
+              status: 'idle',
+            };
 
-        const syncState: GmailSyncState = {
-          accountEmail: this.auth.connectedEmail() || '',
-          lastSyncAt: new Date().toISOString(),
-          historyId: undefined, // Will be set on next incremental sync
-          status: 'idle',
-        };
-
-        return from(this.storage.storeSyncState(syncState));
-      }),
+            return from(this.storage.storeSyncState(syncState));
+          }),
+        ),
+      ),
       tap(() => {
         this._lastSyncAt.set(new Date());
       }),
@@ -105,10 +105,18 @@ export class GmailSyncService {
         const modifiedMessageIds: string[] = [];
 
         historyResponse.history?.forEach((h) => {
-          h.messagesAdded?.forEach((m) => addedMessageIds.push(m.message.id));
-          h.messagesDeleted?.forEach((m) => deletedMessageIds.push(m.message.id));
-          h.labelsAdded?.forEach((m) => modifiedMessageIds.push(m.message.id));
-          h.labelsRemoved?.forEach((m) => modifiedMessageIds.push(m.message.id));
+          h.messagesAdded?.forEach((m) => {
+            addedMessageIds.push(m.message.id);
+          });
+          h.messagesDeleted?.forEach((m) => {
+            deletedMessageIds.push(m.message.id);
+          });
+          h.labelsAdded?.forEach((m) => {
+            modifiedMessageIds.push(m.message.id);
+          });
+          h.labelsRemoved?.forEach((m) => {
+            modifiedMessageIds.push(m.message.id);
+          });
         });
 
         // Remove duplicates
@@ -204,11 +212,9 @@ export class GmailSyncService {
    * Fetch a single message and add to cache.
    */
   fetchMessage(messageId: string): Observable<CachedEmail> {
-    return this.api.getMessage(messageId).pipe(
-      tap((email) => {
-        this.storage.storeEmail(email);
-      }),
-    );
+    return this.api
+      .getMessage(messageId)
+      .pipe(switchMap((email) => from(this.storage.storeEmail(email)).pipe(map(() => email))));
   }
 
   /**
