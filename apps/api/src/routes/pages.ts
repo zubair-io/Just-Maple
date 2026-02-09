@@ -25,6 +25,40 @@ import { realtimeWSService } from '../services/realtime-ws.service';
 import { getUsersWithNotebookAccess } from '../repositories/notebook.repo';
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
 import { indexPage, removeFromIndex } from '../repositories/search.repo';
+import type { Page } from '@maple/shared';
+
+/**
+ * Broadcast page.moved event to users in both old and new notebooks
+ */
+async function emitPageMovedIfNeeded(
+    previousPage: Page | null,
+    updatedPage: Page,
+    requestedNotebookId: string | undefined,
+): Promise<void> {
+    const previousNotebookId = previousPage?.notebookId;
+    if (
+        requestedNotebookId !== undefined &&
+        previousNotebookId &&
+        updatedPage.notebookId &&
+        previousNotebookId !== updatedPage.notebookId
+    ) {
+        const oldRecipients = await getUsersWithNotebookAccess(previousNotebookId);
+        const event = {
+            type: 'page.moved' as const,
+            pageId: updatedPage.id,
+            previousNotebookId,
+            newNotebookId: updatedPage.notebookId,
+            updatedAt: updatedPage.updatedAt,
+        };
+        realtimeWSService.sendToUsers(oldRecipients, event);
+
+        const newRecipients = await getUsersWithNotebookAccess(updatedPage.notebookId);
+        const newOnly = newRecipients.filter((id) => !oldRecipients.includes(id));
+        if (newOnly.length > 0) {
+            realtimeWSService.sendToUsers(newOnly, event);
+        }
+    }
+}
 
 export const pageRoutes = new Elysia({ prefix: '/api/pages' })
     .use(jwtPlugin)
@@ -191,37 +225,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 await handlePageRename(page.id, sanitizedBody.title);
             }
 
-            // Send SSE event when page moves between notebooks
-            const previousNotebookId = previousPage?.notebookId;
-            if (
-                sanitizedBody.notebookId !== undefined &&
-                previousNotebookId &&
-                page.notebookId &&
-                previousNotebookId !== page.notebookId
-            ) {
-                // Notify users in the old notebook (page removed)
-                const oldRecipients = await getUsersWithNotebookAccess(previousNotebookId);
-                realtimeWSService.sendToUsers(oldRecipients, {
-                    type: 'page.moved',
-                    pageId: page.id,
-                    previousNotebookId,
-                    newNotebookId: page.notebookId,
-                    updatedAt: page.updatedAt,
-                });
-
-                // Notify users in the new notebook (page added)
-                const newRecipients = await getUsersWithNotebookAccess(page.notebookId);
-                const newOnly = newRecipients.filter((id) => !oldRecipients.includes(id));
-                if (newOnly.length > 0) {
-                    realtimeWSService.sendToUsers(newOnly, {
-                        type: 'page.moved',
-                        pageId: page.id,
-                        previousNotebookId,
-                        newNotebookId: page.notebookId,
-                        updatedAt: page.updatedAt,
-                    });
-                }
-            }
+            await emitPageMovedIfNeeded(previousPage, page, sanitizedBody.notebookId);
 
             // Extract and update links when content changes
             if (sanitizedBody.content) {
@@ -291,37 +295,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 await handlePageRename(page.id, sanitizedBody.title);
             }
 
-            // Send SSE event when page moves between notebooks
-            const previousNotebookId = previousPage?.notebookId;
-            if (
-                sanitizedBody.notebookId !== undefined &&
-                previousNotebookId &&
-                page.notebookId &&
-                previousNotebookId !== page.notebookId
-            ) {
-                // Notify users in the old notebook (page removed)
-                const oldRecipients = await getUsersWithNotebookAccess(previousNotebookId);
-                realtimeWSService.sendToUsers(oldRecipients, {
-                    type: 'page.moved',
-                    pageId: page.id,
-                    previousNotebookId,
-                    newNotebookId: page.notebookId,
-                    updatedAt: page.updatedAt,
-                });
-
-                // Notify users in the new notebook (page added)
-                const newRecipients = await getUsersWithNotebookAccess(page.notebookId);
-                const newOnly = newRecipients.filter((id) => !oldRecipients.includes(id));
-                if (newOnly.length > 0) {
-                    realtimeWSService.sendToUsers(newOnly, {
-                        type: 'page.moved',
-                        pageId: page.id,
-                        previousNotebookId,
-                        newNotebookId: page.notebookId,
-                        updatedAt: page.updatedAt,
-                    });
-                }
-            }
+            await emitPageMovedIfNeeded(previousPage, page, sanitizedBody.notebookId);
 
             // Extract and update links when content changes
             if (sanitizedBody.content) {

@@ -139,13 +139,19 @@ export class PageService {
     this.realtimeWS
       .on('page.moved')
       .subscribe((event: Extract<AppEvent, { type: 'page.moved' }>) => {
-        this.store.update(
-          updateEntities(event.pageId, (page) => ({
-            ...page,
-            notebookId: event.newNotebookId,
-            updatedAt: event.updatedAt,
-          })),
-        );
+        const existing = this.store.query(getEntity(event.pageId));
+        if (existing) {
+          this.store.update(
+            updateEntities(event.pageId, (page) => ({
+              ...page,
+              notebookId: event.newNotebookId,
+              updatedAt: event.updatedAt,
+            })),
+          );
+        } else {
+          // Page not in local store — fetch from server and upsert
+          this.getPage(event.pageId).subscribe();
+        }
       });
     // Listen for page.deleted events
     this.realtimeWS
