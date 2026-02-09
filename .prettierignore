@@ -1,5 +1,6 @@
 .angular
 /apps/apple/
 /autumn-blaze/
-/.github/
+.github/
 /apps/remarkable/
+.claude/
