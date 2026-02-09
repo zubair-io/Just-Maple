@@ -823,41 +823,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
 
         case .openAuthSession(let payload):
             Task { @MainActor in
-                guard let authURL = URL(string: payload.url) else {
-                    send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
-                        url: nil,
-                        error: "Invalid auth URL"
-                    )))
-                    return
-                }
-
-                let session = ASWebAuthenticationSession(
-                    url: authURL,
-                    callbackURLScheme: payload.callbackScheme
-                ) { [weak self] callbackURL, error in
-                    self?.authSession = nil
-                    if let error = error as? ASWebAuthenticationSessionError,
-                       error.code == .canceledLogin {
-                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
-                            url: nil,
-                            error: "User cancelled"
-                        )))
-                    } else if let error = error {
-                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
-                            url: nil,
-                            error: error.localizedDescription
-                        )))
-                    } else if let callbackURL = callbackURL {
-                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
-                            url: callbackURL.absoluteString,
-                            error: nil
-                        )))
-                    }
-                }
-                session.presentationContextProvider = self
-                session.prefersEphemeralWebBrowserSession = false
-                self.authSession = session
-                session.start()
+                self.startAuthSession(payload: payload)
             }
 
         case .unknown:
@@ -1157,45 +1123,75 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
 
         case .openAuthSession(let payload):
             Task { @MainActor in
-                guard let authURL = URL(string: payload.url) else {
-                    send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
-                        url: nil,
-                        error: "Invalid auth URL"
-                    )))
-                    return
-                }
-
-                let session = ASWebAuthenticationSession(
-                    url: authURL,
-                    callbackURLScheme: payload.callbackScheme
-                ) { [weak self] callbackURL, error in
-                    self?.authSession = nil
-                    if let error = error as? ASWebAuthenticationSessionError,
-                       error.code == .canceledLogin {
-                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
-                            url: nil,
-                            error: "User cancelled"
-                        )))
-                    } else if let error = error {
-                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
-                            url: nil,
-                            error: error.localizedDescription
-                        )))
-                    } else if let callbackURL = callbackURL {
-                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
-                            url: callbackURL.absoluteString,
-                            error: nil
-                        )))
-                    }
-                }
-                session.presentationContextProvider = self
-                session.prefersEphemeralWebBrowserSession = false
-                self.authSession = session
-                session.start()
+                self.startAuthSession(payload: payload)
             }
 
         case .unknown:
             print("[Bridge] Unknown message type")
+        }
+    }
+
+    // MARK: - Auth Session
+
+    @MainActor
+    private func startAuthSession(payload: WebToNativeMessage.OpenAuthSessionPayload) {
+        guard authSession == nil else {
+            send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                url: nil,
+                error: "Auth session already in progress"
+            )))
+            return
+        }
+
+        guard !payload.callbackScheme.isEmpty else {
+            send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                url: nil,
+                error: "Invalid callback scheme"
+            )))
+            return
+        }
+
+        guard let authURL = URL(string: payload.url) else {
+            send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                url: nil,
+                error: "Invalid auth URL"
+            )))
+            return
+        }
+
+        let session = ASWebAuthenticationSession(
+            url: authURL,
+            callbackURLScheme: payload.callbackScheme
+        ) { [weak self] callbackURL, error in
+            self?.authSession = nil
+            if let error = error as? ASWebAuthenticationSessionError,
+               error.code == .canceledLogin {
+                self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                    url: nil,
+                    error: "User cancelled"
+                )))
+            } else if let error = error {
+                self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                    url: nil,
+                    error: error.localizedDescription
+                )))
+            } else if let callbackURL = callbackURL {
+                self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                    url: callbackURL.absoluteString,
+                    error: nil
+                )))
+            }
+        }
+        session.presentationContextProvider = self
+        session.prefersEphemeralWebBrowserSession = false
+        self.authSession = session
+
+        if !session.start() {
+            self.authSession = nil
+            send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                url: nil,
+                error: "Failed to start auth session"
+            )))
         }
     }
 

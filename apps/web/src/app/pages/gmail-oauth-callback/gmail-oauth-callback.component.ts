@@ -1,4 +1,5 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, inject, PLATFORM_ID } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { NativeBridgeService } from '../../services/native-bridge.service';
 
@@ -8,11 +9,17 @@ import { NativeBridgeService } from '../../services/native-bridge.service';
   templateUrl: './gmail-oauth-callback.component.html',
 })
 export class GmailOAuthCallbackComponent implements OnInit {
+  private readonly platformId = inject(PLATFORM_ID);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly nativeBridge = inject(NativeBridgeService);
 
   ngOnInit(): void {
+    if (!isPlatformBrowser(this.platformId)) {
+      this.router.navigate(['/']);
+      return;
+    }
+
     const params = this.route.snapshot.queryParams;
     const code = params['code'] as string | undefined;
     const state = params['state'] as string | undefined;

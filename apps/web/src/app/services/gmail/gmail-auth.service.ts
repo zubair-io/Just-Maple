@@ -93,7 +93,7 @@ export class GmailAuthService {
     const user = this.authService.user();
     if (!user) return;
 
-    await this.crypto.initializeKey(user._id);
+    await this.ensureCryptoInitialized();
 
     const tokens = await this.getStoredTokens();
     if (tokens) {
@@ -101,6 +101,16 @@ export class GmailAuthService {
       this._connectedEmail.set(tokens.accountEmail);
       this.currentTokens = tokens;
     }
+  }
+
+  /**
+   * Ensure the crypto key is initialized for the current user.
+   */
+  private async ensureCryptoInitialized(): Promise<void> {
+    if (this.crypto.isInitialized()) return;
+    const user = this.authService.user();
+    if (!user) throw new Error('No authenticated user');
+    await this.crypto.initializeKey(user._id);
   }
 
   /**
@@ -242,14 +252,14 @@ export class GmailAuthService {
         if (event.origin !== window.location.origin) return;
 
         if (event.data?.type === 'gmail_oauth_callback') {
-          window.removeEventListener('message', handleMessage);
-          clearInterval(checkClosed);
-          popup.close();
+          cleanup();
 
           if (event.data.error) {
             observer.error(new Error(event.data.error));
           } else if (event.data.state !== expectedState) {
             observer.error(new Error('OAuth state mismatch'));
+          } else if (!event.data.code) {
+            observer.error(new Error('Missing authorization code'));
           } else {
             observer.next(event.data.code);
             observer.complete();
@@ -262,11 +272,18 @@ export class GmailAuthService {
       // Check if popup was closed manually
       const checkClosed = setInterval(() => {
         if (popup.closed) {
-          clearInterval(checkClosed);
-          window.removeEventListener('message', handleMessage);
+          cleanup();
           observer.error(new Error('OAuth popup was closed'));
         }
       }, 500);
+
+      const cleanup = () => {
+        window.removeEventListener('message', handleMessage);
+        clearInterval(checkClosed);
+        if (!popup.closed) popup.close();
+      };
+
+      return cleanup;
     });
   }
 
@@ -349,6 +366,7 @@ export class GmailAuthService {
    * Store tokens encrypted in IndexedDB.
    */
   private async storeTokens(tokens: GmailTokens): Promise<void> {
+    await this.ensureCryptoInitialized();
     const encryptedTokens = {
       accountEmail: tokens.accountEmail,
       accessToken: await this.crypto.encrypt(tokens.accessToken),
@@ -368,6 +386,8 @@ export class GmailAuthService {
   private async getStoredTokens(): Promise<GmailTokens | null> {
     const user = this.authService.user();
     if (!user) return null;
+
+    await this.ensureCryptoInitialized();
 
     const stored = await this.indexedDB.getAll<{
       accountEmail: string;
