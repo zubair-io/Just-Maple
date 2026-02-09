@@ -14,6 +14,13 @@ export type AppEvent =
   | { type: 'connected'; userId: string; subscribedNotebooks: string[] }
   | { type: 'page.created'; page: Page; notebookId?: string }
   | { type: 'page.updated'; pageId: string; title?: string; updatedAt: string; notebookId?: string }
+  | {
+      type: 'page.moved';
+      pageId: string;
+      previousNotebookId: string;
+      newNotebookId: string;
+      updatedAt: string;
+    }
   | { type: 'page.deleted'; pageId: string; notebookId?: string }
   | { type: 'page.trashed'; pageId: string; notebookId?: string }
   | { type: 'page.restored'; page: Page; notebookId?: string }

@@ -60,7 +60,6 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
 
   readonly expandedNotebooks = signal<Set<string>>(new Set());
   readonly isNewDropdownOpen = signal(false);
-  readonly isDragging = signal(false);
 
   // Inline editing state
   readonly editingNotebookId = signal<string | null>(null);
@@ -214,15 +213,6 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
 
   onNotifications(): void {
     this.router.navigate(['/notifications']);
-  }
-
-  // Drag and drop methods
-  onDragStarted(): void {
-    this.isDragging.set(true);
-  }
-
-  onDragEnded(): void {
-    this.isDragging.set(false);
   }
 
   onPageDrop(event: CdkDragDrop<string, string, Page>): void {

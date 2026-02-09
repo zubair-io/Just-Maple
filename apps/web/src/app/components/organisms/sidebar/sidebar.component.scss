@@ -29,6 +29,5 @@
 }
 
 .cdk-drop-list-receiving {
-  border-color: var(--color-primary) !important;
-  background: rgba(217, 78, 59, 0.05);
+  @apply ring-1 ring-inset ring-[var(--color-primary)] bg-[var(--color-primary)]/5 rounded-md;
 }
