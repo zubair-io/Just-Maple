@@ -26,6 +26,7 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
 import BubbleMenu from '@tiptap/extension-bubble-menu';
 import { marked } from 'marked';
+import { NativeBridgeService } from '../../../services/native-bridge.service';
 import { MemoDocumentService } from '../../../services/memo-document.service';
 import { PageService } from '../../../services/page.service';
 import { AuthService } from '../../../services/auth.service';
@@ -121,6 +122,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
   private readonly router = inject(Router);
+  private readonly nativeBridge = inject(NativeBridgeService);
 
   readonly pageId = input.required<string>();
   readonly notebookId = input.required<string>();
@@ -1992,9 +1994,15 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   /**
-   * Download content as a file
+   * Download content as a file, or trigger native share sheet when in native app
    */
   private downloadFile(content: string, filename: string, mimeType: string): void {
+    if (this.nativeBridge.isNativeApp()) {
+      const base64 = btoa(unescape(encodeURIComponent(content)));
+      this.nativeBridge.shareFile(filename, mimeType, base64);
+      return;
+    }
+
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
 
