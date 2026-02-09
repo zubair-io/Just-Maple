@@ -1,5 +1,5 @@
 import { Component, OnInit, inject } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { NativeBridgeService } from '../../services/native-bridge.service';
 
 @Component({
@@ -9,6 +9,7 @@ import { NativeBridgeService } from '../../services/native-bridge.service';
 })
 export class GmailOAuthCallbackComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly nativeBridge = inject(NativeBridgeService);
 
   ngOnInit(): void {
@@ -28,6 +29,9 @@ export class GmailOAuthCallbackComponent implements OnInit {
       // Native app flow: relay result via native bridge
       this.nativeBridge.sendGmailOAuthResult({ code, state, error });
       window.close();
+    } else {
+      // Direct navigation fallback — redirect to app root
+      this.router.navigate(['/']);
     }
   }
 }

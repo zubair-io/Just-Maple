@@ -44,7 +44,14 @@ export class GmailAuthService {
   private readonly GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
   private readonly GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
   private readonly GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
-  private readonly REDIRECT_URI = `${window?.location?.origin || ''}/gmail/oauth/callback`;
+  private readonly NATIVE_CALLBACK_SCHEME = 'justmaple';
+
+  private get redirectUri(): string {
+    if (isPlatformBrowser(this.platformId) && this.nativeBridge.isNativeApp()) {
+      return `${this.NATIVE_CALLBACK_SCHEME}://gmail/oauth/callback`;
+    }
+    return `${window.location.origin}/gmail/oauth/callback`;
+  }
 
   // State
   private readonly _isConnected = signal(false);
@@ -127,7 +134,7 @@ export class GmailAuthService {
       switchMap(({ clientId, codeChallenge }) => {
         const params = new URLSearchParams({
           client_id: clientId,
-          redirect_uri: this.REDIRECT_URI,
+          redirect_uri: this.redirectUri,
           response_type: 'code',
           scope: environment.google.scopes.join(' '),
           access_type: 'offline',
@@ -203,9 +210,7 @@ export class GmailAuthService {
           }
         });
 
-      // Extract scheme from redirect URI for the native auth session callback
-      const callbackScheme = new URL(this.REDIRECT_URI).protocol.replace(':', '');
-      this.nativeBridge.openAuthSession(authUrl, callbackScheme);
+      this.nativeBridge.openAuthSession(authUrl, this.NATIVE_CALLBACK_SCHEME);
 
       return () => sub.unsubscribe();
     });
@@ -286,7 +291,7 @@ export class GmailAuthService {
           code,
           code_verifier: codeVerifier,
           grant_type: 'authorization_code',
-          redirect_uri: this.REDIRECT_URI,
+          redirect_uri: this.redirectUri,
         });
 
         return from(

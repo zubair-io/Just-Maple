@@ -7,6 +7,7 @@
 
 import Foundation
 import WebKit
+import AuthenticationServices
 
 // MARK: - Message Types
 
@@ -28,6 +29,7 @@ enum WebToNativeMessage: Codable {
     case unregisterPushNotifications
     case getPushStatus
     case setBadge(SetBadgePayload)
+    case openAuthSession(OpenAuthSessionPayload)
     case unknown
 
     struct TestPayload: Codable {
@@ -72,6 +74,11 @@ enum WebToNativeMessage: Codable {
 
     struct SetBadgePayload: Codable {
         let count: Int
+    }
+
+    struct OpenAuthSessionPayload: Codable {
+        let url: String
+        let callbackScheme: String
     }
 
     enum CodingKeys: String, CodingKey {
@@ -128,6 +135,9 @@ enum WebToNativeMessage: Codable {
         case "setBadge":
             let payload = try container.decode(SetBadgePayload.self, forKey: .payload)
             self = .setBadge(payload)
+        case "openAuthSession":
+            let payload = try container.decode(OpenAuthSessionPayload.self, forKey: .payload)
+            self = .openAuthSession(payload)
         default:
             self = .unknown
         }
@@ -187,6 +197,9 @@ enum WebToNativeMessage: Codable {
         case .setBadge(let payload):
             try container.encode("setBadge", forKey: .type)
             try container.encode(payload, forKey: .payload)
+        case .openAuthSession(let payload):
+            try container.encode("openAuthSession", forKey: .type)
+            try container.encode(payload, forKey: .payload)
         case .unknown:
             try container.encode("unknown", forKey: .type)
         }
@@ -214,6 +227,7 @@ enum NativeToWebMessage {
     case notificationTapped(NotificationTapped)
     case foregroundNotification(ForegroundNotification)
     case deepLink(DeepLinkPayload)
+    case authSessionResult(AuthSessionResult)
     case error(ErrorMessage)
 
     struct InitialState: Codable {
@@ -344,6 +358,11 @@ enum NativeToWebMessage {
         let url: String
     }
 
+    struct AuthSessionResult: Codable {
+        let url: String?
+        let error: String?
+    }
+
     enum CodingKeys: String, CodingKey {
         case type
         case payload
@@ -414,6 +433,9 @@ extension NativeToWebMessage: Encodable {
         case .deepLink(let payload):
             try container.encode("deepLink", forKey: .type)
             try container.encode(payload, forKey: .payload)
+        case .authSessionResult(let payload):
+            try container.encode("authSessionResult", forKey: .type)
+            try container.encode(payload, forKey: .payload)
         case .error(let payload):
             try container.encode("error", forKey: .type)
             try container.encode(payload, forKey: .payload)
@@ -428,6 +450,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private var audioLevelTask: Task<Void, Never>?
+    private var authSession: ASWebAuthenticationSession?
 
     init(webView: WKWebView?) {
         self.webView = webView
@@ -798,6 +821,45 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             // macOS doesn't have app icon badges like iOS
             print("[Bridge] Badge not supported on macOS (requested: \(payload.count))")
 
+        case .openAuthSession(let payload):
+            Task { @MainActor in
+                guard let authURL = URL(string: payload.url) else {
+                    send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                        url: nil,
+                        error: "Invalid auth URL"
+                    )))
+                    return
+                }
+
+                let session = ASWebAuthenticationSession(
+                    url: authURL,
+                    callbackURLScheme: payload.callbackScheme
+                ) { [weak self] callbackURL, error in
+                    self?.authSession = nil
+                    if let error = error as? ASWebAuthenticationSessionError,
+                       error.code == .canceledLogin {
+                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                            url: nil,
+                            error: "User cancelled"
+                        )))
+                    } else if let error = error {
+                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                            url: nil,
+                            error: error.localizedDescription
+                        )))
+                    } else if let callbackURL = callbackURL {
+                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                            url: callbackURL.absoluteString,
+                            error: nil
+                        )))
+                    }
+                }
+                session.presentationContextProvider = self
+                session.prefersEphemeralWebBrowserSession = false
+                self.authSession = session
+                session.start()
+            }
+
         case .unknown:
             print("[Bridge] Unknown message type")
         }
@@ -1093,6 +1155,45 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             print("[Bridge] Badge not supported on macOS (requested: \(payload.count))")
         #endif
 
+        case .openAuthSession(let payload):
+            Task { @MainActor in
+                guard let authURL = URL(string: payload.url) else {
+                    send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                        url: nil,
+                        error: "Invalid auth URL"
+                    )))
+                    return
+                }
+
+                let session = ASWebAuthenticationSession(
+                    url: authURL,
+                    callbackURLScheme: payload.callbackScheme
+                ) { [weak self] callbackURL, error in
+                    self?.authSession = nil
+                    if let error = error as? ASWebAuthenticationSessionError,
+                       error.code == .canceledLogin {
+                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                            url: nil,
+                            error: "User cancelled"
+                        )))
+                    } else if let error = error {
+                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                            url: nil,
+                            error: error.localizedDescription
+                        )))
+                    } else if let callbackURL = callbackURL {
+                        self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                            url: callbackURL.absoluteString,
+                            error: nil
+                        )))
+                    }
+                }
+                session.presentationContextProvider = self
+                session.prefersEphemeralWebBrowserSession = false
+                self.authSession = session
+                session.start()
+            }
+
         case .unknown:
             print("[Bridge] Unknown message type")
         }
@@ -1172,5 +1273,20 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             tagId: tagId,
             messageId: messageId
         )))
+    }
+}
+
+// MARK: - ASWebAuthenticationPresentationContextProviding
+
+extension NativeBridge: ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        #if os(iOS)
+        return UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+        #else
+        return NSApplication.shared.keyWindow ?? ASPresentationAnchor()
+        #endif
     }
 }
