@@ -95,6 +95,19 @@
                   "with": "src/environments/environment.signalr-local.ts"
                 }
               ]
+            },
+            "e2e": {
+              "outputPath": "dist/web-e2e",
+              "optimization": true,
+              "extractLicenses": false,
+              "sourceMap": false,
+              "outputHashing": "none",
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.e2e.ts"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"

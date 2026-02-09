@@ -132,6 +132,12 @@ async function main() {
                 return { error: 'Not found' };
             }
 
+            // Block /Doc and /docs routes (documentation folder should not be served)
+            if (path === '/Doc' || path.startsWith('/Doc/') || path.startsWith('/docs/')) {
+                set.status = 404;
+                return { error: 'Not found' };
+            }
+
             // Try to serve static file first
             const filePath = join(STATIC_DIR, path);
             const file = Bun.file(filePath);

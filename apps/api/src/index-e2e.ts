@@ -1,5 +1,6 @@
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { MongoClient, Db } from 'mongodb';
+import { resolve } from 'path';
 
 // Start mongodb-memory-server and override config
 let mongoServer: MongoMemoryServer | null = null;
@@ -16,10 +17,15 @@ async function startE2EDatabase() {
     const uri = mongoServer.getUri();
     console.log(`MongoDB Memory Server started: ${uri}`);
 
-    // Override the MongoDB URI in environment
+    // Override the MongoDB URI and PORT in environment
     process.env.MONGODB_URI = uri;
+    process.env.PORT = '7072';
 
-    // Import and start the main server AFTER setting the env var
+    // Point to the e2e frontend build
+    // When running from apps/api, go up to project root then to web build
+    process.env.STATIC_DIR = resolve(process.cwd(), '../web/dist/web-e2e/browser');
+
+    // Import and start the main server AFTER setting the env vars
     await import('./index');
 }
 
