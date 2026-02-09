@@ -1998,9 +1998,18 @@ export class NotebookEditorComponent implements OnDestroy {
    */
   private downloadFile(content: string, filename: string, mimeType: string): void {
     if (this.nativeBridge.isNativeApp()) {
-      const base64 = btoa(unescape(encodeURIComponent(content)));
-      this.nativeBridge.shareFile(filename, mimeType, base64);
-      return;
+      try {
+        const bytes = new TextEncoder().encode(content);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        }
+        const base64 = btoa(binary);
+        this.nativeBridge.shareFile(filename, mimeType, base64);
+        return;
+      } catch (error) {
+        console.error('[NotebookEditor] Failed to encode file for native share:', error);
+      }
     }
 
     const blob = new Blob([content], { type: mimeType });
