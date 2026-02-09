@@ -22,7 +22,7 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 11, // Bump version for message id migration
+    dbVersion: 12, // Add fs-handles store for local file system persistence
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.COLLECTABLE, keyPath: '_id', autoIncrement: false },
@@ -31,6 +31,7 @@ export class IndexedDBService {
       { name: DB_STORES.SYNC_METADATA, keyPath: 'key', autoIncrement: false },
       { name: DB_STORES.MESSAGE, keyPath: 'id', autoIncrement: false },
       { name: DB_STORES.OFFLINE_QUEUE, keyPath: 'id', autoIncrement: false },
+      { name: DB_STORES.FS_HANDLES, keyPath: 'key', autoIncrement: false },
     ],
   };
 

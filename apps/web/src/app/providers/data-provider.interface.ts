@@ -19,13 +19,13 @@ export type DataSourceType = 'api' | 'local';
  * Prefix for local file system notebook IDs.
  * Used to distinguish local notebooks from API-backed ones.
  */
-export const LOCAL_NOTEBOOK_PREFIX = 'local-';
+export const LOCAL_NOTEBOOK_PREFIX = 'local-notebook-';
 
 /**
  * Prefix for local file system page IDs.
  * Used to distinguish local pages from API-backed ones.
  */
-export const LOCAL_PAGE_PREFIX = 'local-';
+export const LOCAL_PAGE_PREFIX = 'local-page-';
 
 /**
  * Check if a notebook ID belongs to a local file system notebook

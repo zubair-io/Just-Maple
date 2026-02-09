@@ -3,16 +3,19 @@ import { Observable, from, of, throwError } from 'rxjs';
 import { map, switchMap, catchError } from 'rxjs/operators';
 import { NativeBridgeService } from './native-bridge.service';
 import { IndexedDBService } from './indexed-db.service';
+import { DB_STORES } from './db-stores';
 import { LOCAL_NOTEBOOK_PREFIX, LOCAL_PAGE_PREFIX } from '../providers/data-provider.interface';
 
 /**
  * Represents an open folder (notebook) from the local file system
  */
 export interface LocalFolder {
-  /** Unique ID for this folder: local-{sanitized-name} */
+  /** Unique ID for this folder: local-notebook-{uuid} */
   id: string;
-  /** Display name (folder name) */
+  /** Display name (folder name from disk) */
   name: string;
+  /** User-set display label override (persisted in IndexedDB) */
+  labelOverride?: string;
   /** Web File System Access API handle (web only) */
   handle?: FileSystemDirectoryHandle;
   /** Native file path (Mac/iOS only) */
@@ -42,7 +45,7 @@ export interface LocalFile {
 }
 
 /** IndexedDB store for persisting folder handles across sessions */
-const FS_HANDLES_STORE = 'fs-handles';
+const FS_HANDLES_STORE = DB_STORES.FS_HANDLES;
 
 @Injectable({ providedIn: 'root' })
 export class FileSystemService {
@@ -149,9 +152,32 @@ export class FileSystemService {
   }
 
   /**
+   * Validate and sanitize a filename to prevent path traversal.
+   * Rejects filenames with path separators or '..' sequences.
+   */
+  private validateFilename(filename: string): string {
+    // Reject path separators and parent directory references
+    if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+      throw new Error(`Invalid filename: ${filename}`);
+    }
+    // Remove null bytes
+    const sanitized = filename.replace(/\0/g, '');
+    if (!sanitized || sanitized === '.' || sanitized === '..') {
+      throw new Error(`Invalid filename: ${filename}`);
+    }
+    return sanitized;
+  }
+
+  /**
    * Create a new markdown file in a folder
    */
   createFile(folderId: string, filename: string, content: string = ''): Observable<LocalFile> {
+    try {
+      filename = this.validateFilename(filename);
+    } catch (e) {
+      return throwError(() => e);
+    }
+
     const folder = this._openFolders().find((f) => f.id === folderId);
     if (!folder) {
       return throwError(() => new Error(`Folder not found: ${folderId}`));
@@ -194,12 +220,45 @@ export class FileSystemService {
    * so we read + create new + delete old.
    */
   renameFile(folderId: string, fileId: string, newName: string): Observable<LocalFile> {
+    const mdName = newName.endsWith('.md') ? newName : `${newName}.md`;
     return this.readFile(folderId, fileId).pipe(
-      switchMap((content) =>
-        this.createFile(folderId, newName.endsWith('.md') ? newName : `${newName}.md`, content),
+      switchMap((content) => this.createFile(folderId, mdName, content)),
+      switchMap((newFile) =>
+        this.deleteFile(folderId, fileId).pipe(
+          catchError(() => {
+            // Rollback: delete the newly created file if old file deletion fails
+            return this.deleteFile(folderId, newFile.id).pipe(
+              switchMap(() =>
+                throwError(() => new Error('Failed to delete old file during rename')),
+              ),
+              catchError(() =>
+                throwError(() => new Error('Failed to delete old file during rename')),
+              ),
+            );
+          }),
+          map(() => newFile),
+        ),
       ),
-      switchMap((newFile) => this.deleteFile(folderId, fileId).pipe(map(() => newFile))),
     );
+  }
+
+  /**
+   * Update the display label for a local folder.
+   * Persists the override to IndexedDB.
+   */
+  updateFolderLabel(folderId: string, label: string): void {
+    this._openFolders.update((folders) =>
+      folders.map((f) => (f.id === folderId ? { ...f, labelOverride: label } : f)),
+    );
+    this.persistFolders();
+  }
+
+  /**
+   * Get the display label for a folder (labelOverride or name).
+   */
+  getFolderDisplayName(folderId: string): string {
+    const folder = this._openFolders().find((f) => f.id === folderId);
+    return folder?.labelOverride || folder?.name || 'Untitled';
   }
 
   /**
@@ -211,30 +270,43 @@ export class FileSystemService {
   }
 
   /**
-   * Generate a stable ID for a folder based on its name
+   * Generate a stable ID for a folder.
+   * Uses a UUID suffix to avoid collisions between same-named folders.
    */
-  generateFolderId(name: string): string {
-    const sanitized = name.toLowerCase().replace(/[^a-z0-9-_]/g, '-');
-    return `${LOCAL_NOTEBOOK_PREFIX}${sanitized}`;
+  generateFolderId(name: string, uuid?: string): string {
+    const id = uuid || crypto.randomUUID();
+    return `${LOCAL_NOTEBOOK_PREFIX}${id}`;
   }
 
   /**
-   * Generate a stable ID for a file based on folder and filename
+   * Generate a reversible ID for a file based on folder and filename.
+   * Uses URI-safe encoding so the original filename can be recovered.
    */
   generateFileId(folderId: string, filename: string): string {
-    const sanitized = filename
-      .toLowerCase()
-      .replace(/\.md$/, '')
-      .replace(/[^a-z0-9-_]/g, '-');
-    return `${LOCAL_PAGE_PREFIX}${folderId.replace(LOCAL_NOTEBOOK_PREFIX, '')}-${sanitized}`;
+    const nameWithoutExt = filename.replace(/\.md$/i, '');
+    const encoded = encodeURIComponent(nameWithoutExt);
+    const folderKey = folderId.replace(LOCAL_NOTEBOOK_PREFIX, '');
+    return `${LOCAL_PAGE_PREFIX}${folderKey}::${encoded}`;
   }
 
   /**
-   * Get the filename from a file ID (reverse of generateFileId)
+   * Get the filename from a file ID (reverse of generateFileId).
+   * Returns the original filename with .md extension.
    */
   getFilenameFromId(fileId: string, folderId: string): string {
-    const prefix = `${LOCAL_PAGE_PREFIX}${folderId.replace(LOCAL_NOTEBOOK_PREFIX, '')}-`;
-    return fileId.replace(prefix, '') + '.md';
+    const folderKey = folderId.replace(LOCAL_NOTEBOOK_PREFIX, '');
+    const prefix = `${LOCAL_PAGE_PREFIX}${folderKey}::`;
+    const encoded = fileId.startsWith(prefix) ? fileId.slice(prefix.length) : fileId;
+    return decodeURIComponent(encoded) + '.md';
+  }
+
+  /**
+   * Check if a page ID belongs to a specific folder ID.
+   */
+  pageBelongsToFolder(pageId: string, folderId: string): boolean {
+    const folderKey = folderId.replace(LOCAL_NOTEBOOK_PREFIX, '');
+    const prefix = `${LOCAL_PAGE_PREFIX}${folderKey}::`;
+    return pageId.startsWith(prefix);
   }
 
   // ============ Web File System Access API ============
@@ -245,14 +317,14 @@ export class FileSystemService {
 
   private async openWebFolderPickerAsync(): Promise<LocalFolder | null> {
     try {
-      const handle = await (window as any).showDirectoryPicker({
+      const handle = await window.showDirectoryPicker({
         mode: 'readwrite',
       });
 
       const id = this.generateFolderId(handle.name);
 
-      // Check if already open
-      const existing = this._openFolders().find((f) => f.id === id);
+      // Check if already open by native path or handle name
+      const existing = this._openFolders().find((f) => f.handle?.name === handle.name);
       if (existing) {
         return existing;
       }
@@ -268,9 +340,9 @@ export class FileSystemService {
       this.persistFolders();
 
       return folder;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // User cancelled the picker
-      if (error.name === 'AbortError') {
+      if (error instanceof DOMException && error.name === 'AbortError') {
         return null;
       }
       throw error;
@@ -285,9 +357,9 @@ export class FileSystemService {
     if (!folder.handle) return [];
 
     // Verify we still have permission
-    const permission = await (folder.handle as any).queryPermission({ mode: 'readwrite' });
+    const permission = await folder.handle.queryPermission({ mode: 'readwrite' });
     if (permission !== 'granted') {
-      const requested = await (folder.handle as any).requestPermission({ mode: 'readwrite' });
+      const requested = await folder.handle.requestPermission({ mode: 'readwrite' });
       if (requested !== 'granted') {
         throw new Error('Permission denied to read folder');
       }
@@ -295,7 +367,7 @@ export class FileSystemService {
 
     const files: LocalFile[] = [];
 
-    for await (const [name, handle] of (folder.handle as any).entries()) {
+    for await (const [name, handle] of folder.handle.entries()) {
       if (handle.kind !== 'file') continue;
       if (!name.endsWith('.md')) continue;
 
@@ -351,7 +423,7 @@ export class FileSystemService {
 
     const filename = this.getFilenameFromId(fileId, folder.id);
     const fileHandle = await folder.handle.getFileHandle(filename, { create: true });
-    const writable = await (fileHandle as any).createWritable();
+    const writable = await fileHandle.createWritable();
     await writable.write(content);
     await writable.close();
   }
@@ -373,7 +445,7 @@ export class FileSystemService {
 
     const mdFilename = filename.endsWith('.md') ? filename : `${filename}.md`;
     const fileHandle = await folder.handle.getFileHandle(mdFilename, { create: true });
-    const writable = await (fileHandle as any).createWritable();
+    const writable = await fileHandle.createWritable();
     await writable.write(content);
     await writable.close();
 
@@ -395,7 +467,7 @@ export class FileSystemService {
     if (!folder.handle) throw new Error('No folder handle');
 
     const filename = this.getFilenameFromId(fileId, folder.id);
-    await (folder.handle as any).removeEntry(filename);
+    await folder.handle.removeEntry(filename);
   }
 
   // ============ Native File System (Mac/iOS) ============
@@ -414,10 +486,9 @@ export class FileSystemService {
         }
 
         const folderName = result.path.split('/').pop() || 'Untitled';
-        const id = this.generateFolderId(folderName);
 
-        // Check if already open
-        const existing = this._openFolders().find((f) => f.id === id);
+        // Check if already open by native path
+        const existing = this._openFolders().find((f) => f.nativePath === result.path);
         if (existing) {
           subscriber.next(existing);
           subscriber.complete();
@@ -425,7 +496,7 @@ export class FileSystemService {
         }
 
         const folder: LocalFolder = {
-          id,
+          id: this.generateFolderId(folderName),
           name: folderName,
           nativePath: result.path,
           openedAt: new Date().toISOString(),
@@ -452,7 +523,12 @@ export class FileSystemService {
       this.nativeBridge.listFiles(folder.nativePath, '.md');
 
       const sub = this.nativeBridge.onFileListResult().subscribe((result) => {
-        const files: LocalFile[] = result.files.map((f) => ({
+        if (result.error) {
+          subscriber.error(new Error(result.error));
+          return;
+        }
+
+        const files: LocalFile[] = (result.files || []).map((f) => ({
           id: this.generateFileId(folder.id, f.name),
           name: f.name.replace(/\.md$/, ''),
           extension: '.md',
@@ -578,6 +654,7 @@ export class FileSystemService {
     const serializable = folders.map((f) => ({
       id: f.id,
       name: f.name,
+      labelOverride: f.labelOverride,
       nativePath: f.nativePath,
       openedAt: f.openedAt,
       // Store handle reference for web (IndexedDB can store handles)
@@ -598,6 +675,7 @@ export class FileSystemService {
         value: Array<{
           id: string;
           name: string;
+          labelOverride?: string;
           nativePath?: string;
           openedAt: string;
           handle?: FileSystemDirectoryHandle;
@@ -611,6 +689,7 @@ export class FileSystemService {
         const folder: LocalFolder = {
           id: item.id,
           name: item.name,
+          labelOverride: item.labelOverride,
           nativePath: item.nativePath,
           openedAt: item.openedAt,
           handle: item.handle,
@@ -630,10 +709,10 @@ export class FileSystemService {
    */
   async verifyPermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
     try {
-      const permission = await (handle as any).queryPermission({ mode: 'readwrite' });
+      const permission = await handle.queryPermission({ mode: 'readwrite' });
       if (permission === 'granted') return true;
 
-      const requested = await (handle as any).requestPermission({ mode: 'readwrite' });
+      const requested = await handle.requestPermission({ mode: 'readwrite' });
       return requested === 'granted';
     } catch {
       return false;

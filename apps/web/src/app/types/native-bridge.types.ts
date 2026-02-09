@@ -246,6 +246,7 @@ export interface FileListResult {
     path: string;
     lastModified?: string;
   }>;
+  error?: string;
 }
 
 export interface FileReadResult {

@@ -11,7 +11,7 @@ import type {
   ProviderCapabilities,
   DataSourceType,
 } from './data-provider.interface';
-import { LOCAL_FS_CAPABILITIES, LOCAL_NOTEBOOK_PREFIX } from './data-provider.interface';
+import { LOCAL_FS_CAPABILITIES, isLocalNotebook } from './data-provider.interface';
 import type {
   Notebook,
   CreateNotebookInput,
@@ -30,7 +30,7 @@ function folderToNotebook(folder: LocalFolder): Notebook {
     _id: folder.id,
     type: 'folder',
     value: 'notes',
-    label: folder.name,
+    label: folder.labelOverride || folder.name,
     sharing: {
       sharedWith: [],
       isPublic: false,
@@ -108,20 +108,22 @@ export class FileSystemNotebookProvider implements NotebookDataProvider {
   /**
    * Update a notebook (rename folder).
    * Note: Renaming folders is not supported via File System Access API.
-   * We update the display label in memory only.
+   * We persist the display label override to IndexedDB.
    */
-  updateNotebook(id: string, _data: UpdateNotebookInput): Observable<Notebook> {
+  updateNotebook(id: string, data: UpdateNotebookInput): Observable<Notebook> {
     const folders = this.fsService.openFolders();
     const folder = folders.find((f) => f.id === id);
     if (!folder) {
       return throwError(() => new Error(`Local folder not found: ${id}`));
     }
 
-    // Can't actually rename the folder on disk, but we can update the display name
-    const notebook = folderToNotebook(folder);
-    if (_data.label) {
-      notebook.label = _data.label;
+    if (data.label) {
+      this.fsService.updateFolderLabel(id, data.label);
     }
+
+    // Re-read the folder after update to get the persisted state
+    const updatedFolder = this.fsService.openFolders().find((f) => f.id === id) || folder;
+    const notebook = folderToNotebook(updatedFolder);
     notebook.updatedAt = new Date().toISOString();
     return of(notebook);
   }
@@ -157,7 +159,7 @@ export class FileSystemPageProvider implements PageDataProvider {
 
     if (filters?.notebookId) {
       // Only load if this is a local notebook
-      if (!filters.notebookId.startsWith(LOCAL_NOTEBOOK_PREFIX)) {
+      if (!isLocalNotebook(filters.notebookId)) {
         return of([]);
       }
 
@@ -211,7 +213,7 @@ export class FileSystemPageProvider implements PageDataProvider {
     // Find which folder this page belongs to
     const folders = this.fsService.openFolders();
     for (const folder of folders) {
-      if (pageId.includes(folder.id.replace(LOCAL_NOTEBOOK_PREFIX, ''))) {
+      if (this.fsService.pageBelongsToFolder(pageId, folder.id)) {
         return this.fsService.readFile(folder.id, pageId).pipe(
           map((content) => {
             const filename = this.fsService.getFilenameFromId(pageId, folder.id);
@@ -238,11 +240,13 @@ export class FileSystemPageProvider implements PageDataProvider {
    */
   createPage(data: CreatePageInput): Observable<Page> {
     const notebookId = data.notebookId;
-    if (!notebookId || !notebookId.startsWith(LOCAL_NOTEBOOK_PREFIX)) {
+    if (!notebookId || !isLocalNotebook(notebookId)) {
       return throwError(() => new Error('Must specify a local notebook ID'));
     }
 
-    const title = data.title || 'Untitled';
+    const rawTitle = data.title || 'Untitled';
+    // Strip existing .md extension to avoid double extension
+    const title = rawTitle.replace(/\.md$/i, '');
     const filename = `${title}.md`;
     const initialContent = `# ${title}\n\n`;
 
@@ -261,7 +265,7 @@ export class FileSystemPageProvider implements PageDataProvider {
   updatePage(id: string, data: UpdatePageInput): Observable<Page> {
     const folders = this.fsService.openFolders();
     for (const folder of folders) {
-      if (id.includes(folder.id.replace(LOCAL_NOTEBOOK_PREFIX, ''))) {
+      if (this.fsService.pageBelongsToFolder(id, folder.id)) {
         if (data.title) {
           // Rename the file
           return this.fsService.renameFile(folder.id, id, data.title).pipe(
@@ -287,7 +291,7 @@ export class FileSystemPageProvider implements PageDataProvider {
   deletePage(id: string): Observable<void> {
     const folders = this.fsService.openFolders();
     for (const folder of folders) {
-      if (id.includes(folder.id.replace(LOCAL_NOTEBOOK_PREFIX, ''))) {
+      if (this.fsService.pageBelongsToFolder(id, folder.id)) {
         return this.fsService.deleteFile(folder.id, id);
       }
     }
@@ -301,7 +305,7 @@ export class FileSystemPageProvider implements PageDataProvider {
   getMarkdownContent(pageId: string): Observable<string | null> {
     const folders = this.fsService.openFolders();
     for (const folder of folders) {
-      if (pageId.includes(folder.id.replace(LOCAL_NOTEBOOK_PREFIX, ''))) {
+      if (this.fsService.pageBelongsToFolder(pageId, folder.id)) {
         return this.fsService.readFile(folder.id, pageId);
       }
     }
@@ -314,7 +318,7 @@ export class FileSystemPageProvider implements PageDataProvider {
   saveMarkdownContent(pageId: string, content: string): Observable<void> {
     const folders = this.fsService.openFolders();
     for (const folder of folders) {
-      if (pageId.includes(folder.id.replace(LOCAL_NOTEBOOK_PREFIX, ''))) {
+      if (this.fsService.pageBelongsToFolder(pageId, folder.id)) {
         return this.fsService.writeFile(folder.id, pageId, content);
       }
     }

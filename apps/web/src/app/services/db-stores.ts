@@ -11,6 +11,7 @@ export const DB_STORES = {
   MESSAGE: 'message',
   NOTIFICATION: 'notification',
   OFFLINE_QUEUE: 'offline-queue',
+  FS_HANDLES: 'fs-handles',
 } as const;
 
 export type DBStoreName = (typeof DB_STORES)[keyof typeof DB_STORES];
