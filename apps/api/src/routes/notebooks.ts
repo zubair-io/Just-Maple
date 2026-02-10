@@ -18,6 +18,7 @@ import {
     shareNotebook,
     unshareNotebook,
     updateNotebookPublicStatus,
+    updateNotebookPublicConfig,
     getNotebookMembers,
     getNotebookMembersWithUserData,
     getAccessLevel,
@@ -293,6 +294,67 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
             }),
             body: t.Object({
                 isPublic: t.Boolean(),
+            }),
+        },
+    )
+
+    // Update notebook's public configuration (slug, displayName, etc.)
+    .patch(
+        '/:id/public',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            // Sanitize slug if provided
+            const sanitizedBody = { ...body };
+            if (sanitizedBody.slug) {
+                sanitizedBody.slug = sanitizedBody.slug
+                    .toLowerCase()
+                    .replace(/[^a-z0-9-]/g, '-')
+                    .replace(/-+/g, '-')
+                    .replace(/^-|-$/g, '');
+            }
+
+            const notebook = await updateNotebookPublicConfig(
+                params.id,
+                auth.user._id,
+                sanitizedBody,
+            );
+
+            if (!notebook) {
+                set.status = 400;
+                return {
+                    error: 'Bad request',
+                    message: 'Could not update public config. Slug may already be taken.',
+                };
+            }
+
+            // If notebook was just made public, bulk-publish existing pages
+            if (body.isPublic === true) {
+                const { bulkPublishPagesForNotebook } = await import('../repositories/page.repo');
+                await bulkPublishPagesForNotebook(params.id);
+            }
+
+            return { notebook };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            body: t.Object({
+                isPublic: t.Optional(t.Boolean()),
+                slug: t.Optional(t.String({ minLength: 1, maxLength: 100 })),
+                publicConfig: t.Optional(
+                    t.Object({
+                        displayName: t.Optional(t.String()),
+                        description: t.Optional(t.String()),
+                        faviconUrl: t.Optional(t.String()),
+                        logoUrl: t.Optional(t.String()),
+                        landingPageId: t.Optional(t.String()),
+                        showPageList: t.Optional(t.Boolean()),
+                    }),
+                ),
             }),
         },
     )

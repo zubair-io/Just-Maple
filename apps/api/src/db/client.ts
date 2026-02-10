@@ -191,6 +191,21 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('search_index').createIndex({ type: 1 });
     await database.collection('search_index').createIndex({ updatedAt: -1 });
 
+    // Notebook slug index (sparse - only public notebooks have slugs)
+    await database.collection('notebooks').createIndex({ slug: 1 }, { unique: true, sparse: true });
+
+    // Page publishing indexes
+    await database
+        .collection('pages')
+        .createIndex({ notebookId: 1, publishedSlug: 1 }, { sparse: true });
+    await database
+        .collection('pages')
+        .createIndex({ notebookId: 1, isPublished: 1, publishedOrder: 1 }, { sparse: true });
+
+    // Custom domains collection
+    await createUniqueIndex(database, 'custom_domains', { domain: 1 }, 'domain');
+    await database.collection('custom_domains').createIndex({ notebookId: 1 });
+
     console.log('Database indexes created');
 }
 

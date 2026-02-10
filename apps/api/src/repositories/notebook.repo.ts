@@ -9,6 +9,7 @@ import type {
     ShareNotebookInput,
     NotebookValue,
     NotebookMember,
+    UpdatePublicConfigInput,
 } from '@maple/shared';
 import { isDevMode, isDocNotebook, getDocNotebook } from '../services/docs.service';
 
@@ -27,12 +28,23 @@ interface NotebookSharingDocument {
     sharedBots?: SharedBotEntryDocument[];
 }
 
+interface PublicConfigDocument {
+    displayName?: string;
+    description?: string;
+    faviconUrl?: string;
+    logoUrl?: string;
+    landingPageId?: string;
+    showPageList?: boolean;
+}
+
 interface NotebookDocument {
     _id: ObjectId;
     type: 'folder';
     value: NotebookValue;
     label: string;
     sharing: NotebookSharingDocument;
+    slug?: string;
+    publicConfig?: PublicConfigDocument;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -52,6 +64,8 @@ interface LegacyNotebookDocument {
     parentId?: ObjectId;
     order?: number;
     sharing?: NotebookSharingDocument;
+    slug?: string;
+    publicConfig?: PublicConfigDocument;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -87,6 +101,8 @@ function toNotebookResponse(doc: LegacyNotebookDocument): Notebook {
         value,
         label: doc.label,
         sharing,
+        slug: doc.slug,
+        publicConfig: doc.publicConfig,
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
     };
@@ -121,15 +137,6 @@ export function getAccessLevel(notebook: Notebook, userId: string): AccessLevel 
     if (entry) return entry.accessLevel;
     if (notebook.sharing.isPublic) return 'read';
     return null;
-}
-
-function labelToSlug(label: string): string {
-    return label
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .trim();
 }
 
 /**
@@ -403,6 +410,70 @@ export async function updateNotebookPublicStatus(
         { returnDocument: 'after' },
     );
     return result ? toNotebookResponse(result) : null;
+}
+
+/**
+ * Update notebook's public configuration (requires owner access)
+ * Handles isPublic, slug, and publicConfig in one operation
+ */
+export async function updateNotebookPublicConfig(
+    notebookId: string,
+    ownerId: string,
+    data: UpdatePublicConfigInput,
+): Promise<Notebook | null> {
+    const notebook = await findNotebookByIdWithAccess(notebookId, ownerId, 'owner');
+    if (!notebook) return null;
+
+    const updateFields: Record<string, unknown> = { updatedAt: new Date() };
+
+    if (data.isPublic !== undefined) {
+        updateFields['sharing.isPublic'] = data.isPublic;
+    }
+    if (data.slug !== undefined) {
+        // Validate slug uniqueness
+        const existing = await findNotebookBySlugAny(data.slug);
+        if (existing && existing._id !== notebookId) {
+            return null; // Slug already taken
+        }
+        updateFields.slug = data.slug;
+    }
+    if (data.publicConfig !== undefined) {
+        updateFields.publicConfig = data.publicConfig;
+    }
+
+    const result = await getCollection().findOneAndUpdate(
+        { _id: new ObjectId(notebookId) },
+        { $set: updateFields },
+        { returnDocument: 'after' },
+    );
+    return result ? toNotebookResponse(result) : null;
+}
+
+/**
+ * Find a public notebook by its slug (no auth required)
+ */
+export async function findNotebookBySlug(slug: string): Promise<Notebook | null> {
+    try {
+        const doc = await getCollection().findOne({
+            slug,
+            'sharing.isPublic': true,
+        });
+        return doc ? toNotebookResponse(doc) : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Find a notebook by slug without requiring it to be public (for slug uniqueness checks)
+ */
+async function findNotebookBySlugAny(slug: string): Promise<Notebook | null> {
+    try {
+        const doc = await getCollection().findOne({ slug });
+        return doc ? toNotebookResponse(doc) : null;
+    } catch {
+        return null;
+    }
 }
 
 /**

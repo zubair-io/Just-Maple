@@ -56,6 +56,11 @@ export const PageSchema = Type.Object({
     tags: Type.Optional(Type.Array(Type.String())),
     // Gmail page configuration (only for type: 'gmail')
     gmailConfig: Type.Optional(GmailConfigSchema),
+    // Public publishing fields
+    isPublished: Type.Optional(Type.Boolean()),
+    publishedSlug: Type.Optional(Type.String()),
+    publishedAt: Type.Optional(Type.String({ format: 'date-time' })),
+    publishedOrder: Type.Optional(Type.Number()),
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
 });
@@ -87,6 +92,15 @@ export const UpdatePageSchema = Type.Object({
 });
 
 export type UpdatePageInput = Static<typeof UpdatePageSchema>;
+
+// Publish page input
+export const PublishPageSchema = Type.Object({
+    isPublished: Type.Optional(Type.Boolean()),
+    publishedSlug: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+    publishedOrder: Type.Optional(Type.Number()),
+});
+
+export type PublishPageInput = Static<typeof PublishPageSchema>;
 
 // Default empty page content - starts with H1 heading as title
 export const DEFAULT_PAGE_CONTENT: PageContent = {

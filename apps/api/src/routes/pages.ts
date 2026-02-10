@@ -19,6 +19,7 @@ import {
     movePageToTrash,
     restorePageFromTrash,
     emptyTrash,
+    publishPage,
 } from '../repositories/page.repo';
 import { otService } from '../services/ot.service';
 import { realtimeWSService } from '../services/realtime-ws.service';
@@ -450,6 +451,45 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
         {
             params: t.Object({
                 id: t.String(),
+            }),
+        },
+    )
+
+    // Update page publish state
+    .patch(
+        '/:id/publish',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            // Sanitize slug if provided
+            const sanitizedBody = { ...body };
+            if (sanitizedBody.publishedSlug) {
+                sanitizedBody.publishedSlug = sanitizedBody.publishedSlug
+                    .toLowerCase()
+                    .replace(/[^a-z0-9-]/g, '-')
+                    .replace(/-+/g, '-')
+                    .replace(/^-|-$/g, '');
+            }
+
+            const page = await publishPage(params.id, auth.user._id, sanitizedBody);
+
+            if (!page) {
+                set.status = 404;
+                return { error: 'Page not found or access denied' };
+            }
+
+            return { page };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            body: t.Object({
+                isPublished: t.Optional(t.Boolean()),
+                publishedSlug: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
+                publishedOrder: t.Optional(t.Number()),
             }),
         },
     )

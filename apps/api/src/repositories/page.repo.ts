@@ -8,6 +8,7 @@ import type {
     CreatePageInput,
     UpdatePageInput,
     PageTodoMeta,
+    PublishPageInput,
 } from '@maple/shared';
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
 import { deleteMemo, deleteMemosByPageId } from './memo.repo';
@@ -38,6 +39,11 @@ interface PageDocument {
     todoMeta?: PageTodoMeta;
     // Tags extracted from content (e.g., #work, #ideas)
     tags?: string[];
+    // Public publishing fields
+    isPublished?: boolean;
+    publishedSlug?: string;
+    publishedAt?: Date;
+    publishedOrder?: number;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -61,6 +67,10 @@ function toPageResponse(doc: PageDocument): Page {
         trashedAt: doc.trashedAt?.toISOString(),
         todoMeta: doc.todoMeta, // Todo metadata
         tags: doc.tags, // Tags extracted from content
+        isPublished: doc.isPublished,
+        publishedSlug: doc.publishedSlug,
+        publishedAt: doc.publishedAt?.toISOString(),
+        publishedOrder: doc.publishedOrder,
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
     };
@@ -813,5 +823,154 @@ export async function getTagCountsForUser(
         return results.map((r) => ({ tag: r._id as string, count: r.count as number }));
     } catch {
         return [];
+    }
+}
+
+// ============================================
+// Public Page Functions
+// ============================================
+
+/**
+ * Generate a URL-friendly slug from a title
+ */
+function titleToSlug(title: string): string {
+    return title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 200);
+}
+
+/**
+ * Update a page's publish state (slug, order, visibility)
+ * Requires write access to the page's notebook
+ */
+export async function publishPage(
+    pageId: string,
+    userId: string,
+    data: PublishPageInput,
+): Promise<Page | null> {
+    try {
+        const doc = await getCollection().findOne({ id: pageId });
+        if (!doc) return null;
+
+        // Check write access
+        if (doc.notebookId) {
+            const notebook = await findNotebookByIdWithAccess(
+                doc.notebookId.toString(),
+                userId,
+                'write',
+            );
+            if (!notebook) return null;
+        } else {
+            if (doc.userId.toString() !== userId) return null;
+        }
+
+        const updateData: Record<string, unknown> = { updatedAt: new Date() };
+
+        if (data.isPublished !== undefined) {
+            updateData.isPublished = data.isPublished;
+            if (data.isPublished && !doc.publishedAt) {
+                updateData.publishedAt = new Date();
+            }
+        }
+        if (data.publishedSlug !== undefined) {
+            updateData.publishedSlug = data.publishedSlug;
+        } else if (data.isPublished && !doc.publishedSlug) {
+            // Auto-generate slug from title if publishing and no slug set
+            updateData.publishedSlug = titleToSlug(doc.title || 'untitled');
+        }
+        if (data.publishedOrder !== undefined) {
+            updateData.publishedOrder = data.publishedOrder;
+        }
+
+        const result = await getCollection().findOneAndUpdate(
+            { id: pageId },
+            { $set: updateData },
+            { returnDocument: 'after' },
+        );
+
+        return result ? toPageResponse(result) : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Find all published pages for a notebook (no auth - for public access)
+ */
+export async function findPublishedPagesByNotebookId(notebookId: string): Promise<Page[]> {
+    try {
+        const docs = await getCollection()
+            .find({
+                notebookId: new ObjectId(notebookId),
+                isPublished: true,
+                isTrashed: { $ne: true },
+                type: { $ne: 'message' }, // Never publish message pages
+            })
+            .sort({ publishedOrder: 1, title: 1 })
+            .toArray();
+        return docs.map(toPageResponse);
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Find a single published page by slug within a notebook (no auth - for public access)
+ */
+export async function findPublishedPageBySlug(
+    notebookId: string,
+    pageSlug: string,
+): Promise<Page | null> {
+    try {
+        const doc = await getCollection().findOne({
+            notebookId: new ObjectId(notebookId),
+            publishedSlug: pageSlug,
+            isPublished: true,
+            isTrashed: { $ne: true },
+        });
+        return doc ? toPageResponse(doc) : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Bulk publish all pages in a notebook (when notebook is made public)
+ * Sets isPublished=true and auto-generates slugs for all non-message pages
+ */
+export async function bulkPublishPagesForNotebook(notebookId: string): Promise<number> {
+    try {
+        const docs = await getCollection()
+            .find({
+                notebookId: new ObjectId(notebookId),
+                isTrashed: { $ne: true },
+                type: { $ne: 'message' },
+                isPublished: { $ne: true },
+            })
+            .toArray();
+
+        let count = 0;
+        for (const doc of docs) {
+            const slug = titleToSlug(doc.title || 'untitled');
+            await getCollection().updateOne(
+                { _id: doc._id },
+                {
+                    $set: {
+                        isPublished: true,
+                        publishedSlug: slug,
+                        publishedAt: new Date(),
+                        updatedAt: new Date(),
+                    },
+                },
+            );
+            count++;
+        }
+        return count;
+    } catch {
+        return 0;
     }
 }
