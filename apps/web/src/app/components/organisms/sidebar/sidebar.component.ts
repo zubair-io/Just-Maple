@@ -61,6 +61,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
 
   readonly expandedNotebooks = signal<Set<string>>(new Set());
   readonly isNewDropdownOpen = signal(false);
+  readonly dragHoverNotebookId = signal<string | null>(null);
   readonly isSelectedNotebookLocal = computed(() =>
     isLocalNotebook(this.selectedNotebookId() ?? ''),
   );
@@ -242,7 +243,16 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
     this.router.navigate(['/notifications']);
   }
 
+  onDropListEntered(notebookId: string): void {
+    this.dragHoverNotebookId.set(notebookId);
+  }
+
+  onDropListExited(): void {
+    this.dragHoverNotebookId.set(null);
+  }
+
   onPageDrop(event: CdkDragDrop<string, string, Page>): void {
+    this.dragHoverNotebookId.set(null);
     const page = event.item.data;
     const targetNotebookId = event.container.data;
     const sourceNotebookId = event.previousContainer.data;

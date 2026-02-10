@@ -172,8 +172,11 @@
           cdkDropList
           [cdkDropListData]="notebook._id"
           (cdkDropListDropped)="onPageDrop($event)"
+          (cdkDropListEntered)="onDropListEntered(notebook._id)"
+          (cdkDropListExited)="onDropListExited()"
           [cdkDropListSortingDisabled]="true"
           class="rounded-md transition-colors"
+          [class.drag-hover]="dragHoverNotebookId() === notebook._id"
         >
           <!-- Notebook Header -->
           <div
