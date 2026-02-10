@@ -218,6 +218,47 @@
     }
   }
 
+  .local-file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    .local-file-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.625rem 1rem;
+      border: none;
+      border-radius: 0.5rem;
+      background: transparent;
+      color: var(--color-text-main);
+      font-size: 0.875rem;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+      transition: background 0.15s ease;
+
+      &:hover {
+        background: var(--color-surface-hover);
+      }
+
+      .file-name {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .empty-files {
+      padding: 2rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+    }
+  }
+
   .loading-summary {
     display: flex;
     flex-direction: column;

@@ -22,7 +22,7 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 13, // Add fs-handles + Gmail stores
+    dbVersion: 14, // Add local-notebook-bots store
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.COLLECTABLE, keyPath: '_id', autoIncrement: false },
@@ -37,6 +37,8 @@ export class IndexedDBService {
       { name: DB_STORES.GMAIL_TOKENS, keyPath: 'accountEmail', autoIncrement: false },
       { name: DB_STORES.GMAIL_SYNC_STATE, keyPath: 'accountEmail', autoIncrement: false },
       { name: DB_STORES.GMAIL_DRAFTS, keyPath: 'id', autoIncrement: false },
+      // Local notebook bot associations
+      { name: DB_STORES.LOCAL_NOTEBOOK_BOTS, keyPath: 'notebookId', autoIncrement: false },
     ],
   };
 

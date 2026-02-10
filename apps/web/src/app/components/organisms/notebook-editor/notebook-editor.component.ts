@@ -86,6 +86,7 @@ import { AIWritingService } from '../../../services/ai-writing.service';
 import { TagService } from '../../../services/tag.service';
 import { SearchService } from '../../../services/search.service';
 import { UiStateService } from '../../../services/ui-state.service';
+import { isLocalPage, isLocalNotebook } from '../../../providers/data-provider.interface';
 import type { AIWritingType } from '@maple/shared';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
@@ -149,6 +150,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly viewReady = signal(false);
   private lastPageId: string | null = null;
   private titleUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
+  private localSaveTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastSyncedTitle: string = '';
   private tagUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastSyncedTags: string[] = [];
@@ -258,6 +260,9 @@ export class NotebookEditorComponent implements OnDestroy {
             document: false,
             undoRedo: false,
             codeBlock: false,
+            trailingNode: {
+              node: 'paragraph',
+            },
           } as any),
           // Code block with syntax highlighting and language selector
           CodeBlockWithLanguage,
@@ -404,8 +409,8 @@ export class NotebookEditorComponent implements OnDestroy {
         onUpdate: ({ editor }) => this.handleContentUpdate(editor),
       });
 
-      // For doc pages, set the markdown content as HTML
-      if (isDocPageView && markdownContent) {
+      // For doc pages or local pages with markdown content, set via HTML
+      if (markdownContent) {
         const htmlContent = await marked.parse(markdownContent);
         // Use setTimeout to ensure the editor is fully initialized
         setTimeout(() => {
@@ -1475,7 +1480,7 @@ export class NotebookEditorComponent implements OnDestroy {
    */
   private fetchNotebookMembers(): void {
     const notebookId = this.notebookId();
-    if (!notebookId) return;
+    if (!notebookId || isLocalNotebook(notebookId)) return;
 
     this.notebookService.fetchNotebookMembers(notebookId).subscribe((members) => {
       const users: MentionableUser[] = members.map((member) => ({
@@ -1594,13 +1599,23 @@ export class NotebookEditorComponent implements OnDestroy {
    * Handle editor content updates - extract first heading and sync as title
    */
   private handleContentUpdate(editor: Editor): void {
-    console.log('[NotebookEditor] Content updated', this.lastSyncedTitle);
-
     const title = this.extractFirstHeadingText(editor)?.trim();
 
     // Always extract and emit tags and mentions (they have their own dedup/debounce)
     this.syncHashtags(this.pageId(), editor);
     this.syncMentions(editor);
+
+    // Debounced save to local file system for local pages
+    const currentPageId = this.pageId();
+    if (isLocalPage(currentPageId)) {
+      if (this.localSaveTimeout) {
+        clearTimeout(this.localSaveTimeout);
+      }
+      this.localSaveTimeout = setTimeout(() => {
+        const markdown = proseMirrorToMarkdown(editor.getJSON());
+        this.pageService.saveLocalPageMarkdown(currentPageId, markdown).subscribe();
+      }, 2000);
+    }
 
     // Skip title and todo syncs during initial load
     if (!this.lastSyncedTitle) {
@@ -1619,15 +1634,15 @@ export class NotebookEditorComponent implements OnDestroy {
       this.titleUpdateTimeout = setTimeout(() => {
         this.lastSyncedTitle = title;
         this.titleChanged.emit(title);
-        if (!this.skipPageSync()) {
+        if (!this.skipPageSync() && !isLocalPage(this.pageId())) {
           const pageId = this.pageId();
           this.pageService.updatePage(pageId, { title }).subscribe();
         }
       }, 500);
     }
 
-    // Skip page-level syncs for card memos (no Page record)
-    if (!this.skipPageSync()) {
+    // Skip page-level syncs for card memos (no Page record) and local pages
+    if (!this.skipPageSync() && !isLocalPage(this.pageId())) {
       // Sync todo metadata (debounced internally by TodoSyncService)
       const pageId = this.pageId();
       this.todoSyncService.syncTodoMeta(pageId, editor);
@@ -1659,8 +1674,8 @@ export class NotebookEditorComponent implements OnDestroy {
       // Always emit tagsChanged (for kanban card tag display)
       this.tagsChanged.emit(tags);
 
-      // Only sync to search index when page record exists
-      if (!this.skipPageSync()) {
+      // Only sync to search index when page record exists (skip local pages)
+      if (!this.skipPageSync() && !isLocalPage(pageId)) {
         this.searchService.updatePageTags(pageId, tags).subscribe({
           next: () => {
             console.log('[NotebookEditor] Tags synced:', tags);
@@ -1868,6 +1883,11 @@ export class NotebookEditorComponent implements OnDestroy {
       this.titleUpdateTimeout = null;
     }
 
+    if (this.localSaveTimeout) {
+      clearTimeout(this.localSaveTimeout);
+      this.localSaveTimeout = null;
+    }
+
     // Clear any pending todo sync
     if (this.lastPageId) {
       this.todoSyncService.clearPendingSync(this.lastPageId);
@@ -1963,7 +1983,7 @@ export class NotebookEditorComponent implements OnDestroy {
     const target = event.target as HTMLElement;
     if (target.classList.contains('editor-wrapper')) {
       this._editor?.commands.focus('end');
-      console.log('onEditorWrapperClick');
+      console.log('©');
     }
   }
 

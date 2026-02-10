@@ -71,8 +71,11 @@ export class FileSystemService {
     return this.isFileSystemAccessSupported() || this.isNativeFileSystemSupported();
   });
 
+  /** Resolves when persisted folders have been restored from IndexedDB */
+  readonly whenReady: Promise<void>;
+
   constructor() {
-    this.restorePersistedFolders();
+    this.whenReady = this.restorePersistedFolders();
   }
 
   /**
@@ -270,12 +273,11 @@ export class FileSystemService {
   }
 
   /**
-   * Generate a stable ID for a folder.
-   * Uses a UUID suffix to avoid collisions between same-named folders.
+   * Generate a deterministic ID for a folder based on its name.
+   * Uses the folder name so URLs are human-readable and stable across reloads.
    */
-  generateFolderId(name: string, uuid?: string): string {
-    const id = uuid || crypto.randomUUID();
-    return `${LOCAL_NOTEBOOK_PREFIX}${id}`;
+  generateFolderId(name: string): string {
+    return `${LOCAL_NOTEBOOK_PREFIX}${encodeURIComponent(name)}`;
   }
 
   /**
@@ -323,9 +325,16 @@ export class FileSystemService {
 
       const id = this.generateFolderId(handle.name);
 
-      // Check if already open by native path or handle name
-      const existing = this._openFolders().find((f) => f.handle?.name === handle.name);
+      // Check if already open by ID or handle name
+      const existing = this._openFolders().find(
+        (f) => f.id === id || f.handle?.name === handle.name,
+      );
       if (existing) {
+        // Update handle if it was restored from IndexedDB without one
+        if (!existing.handle) {
+          existing.handle = handle;
+          this.persistFolders();
+        }
         return existing;
       }
 
@@ -399,6 +408,9 @@ export class FileSystemService {
   private async readWebFileAsync(folder: LocalFolder, fileId: string): Promise<string> {
     if (!folder.handle) throw new Error('No folder handle');
 
+    const hasPermission = await this.verifyPermission(folder.handle);
+    if (!hasPermission) throw new Error('Permission denied to read folder');
+
     const filename = this.getFilenameFromId(fileId, folder.id);
 
     try {
@@ -420,6 +432,9 @@ export class FileSystemService {
     content: string,
   ): Promise<void> {
     if (!folder.handle) throw new Error('No folder handle');
+
+    const hasPermission = await this.verifyPermission(folder.handle);
+    if (!hasPermission) throw new Error('Permission denied to write folder');
 
     const filename = this.getFilenameFromId(fileId, folder.id);
     const fileHandle = await folder.handle.getFileHandle(filename, { create: true });

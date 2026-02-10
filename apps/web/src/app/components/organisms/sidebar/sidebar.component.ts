@@ -61,6 +61,9 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
 
   readonly expandedNotebooks = signal<Set<string>>(new Set());
   readonly isNewDropdownOpen = signal(false);
+  readonly isSelectedNotebookLocal = computed(() =>
+    isLocalNotebook(this.selectedNotebookId() ?? ''),
+  );
 
   // Inline editing state
   readonly editingNotebookId = signal<string | null>(null);

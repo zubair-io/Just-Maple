@@ -23,6 +23,7 @@ export class NotebookHeaderComponent {
   readonly contextIcon = input<string>('chat'); // Icon for current context
   readonly contextLabel = input<string>('Messages'); // Label for current context
   readonly showNewButton = input<boolean>(true);
+  readonly isLocal = input<boolean>(false);
 
   // Outputs
   readonly shareClicked = output<void>();

@@ -6,6 +6,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription, switchMap, of, combineLatest, map, catchError } from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
 import { NotificationService } from '../../services/notification.service';
+import { PageService } from '../../services/page.service';
 import {
   ShareModalComponent,
   NotebookHeaderComponent,
@@ -15,7 +16,8 @@ import {
   type GraphStats,
 } from '../../components';
 import { getPageTypeLabel as getLabel, getPageTypeIcon as getIcon } from '../../utils/page-types';
-import type { NotebookMember } from '@maple/shared';
+import { isLocalNotebook } from '../../providers/data-provider.interface';
+import type { NotebookMember, Page } from '@maple/shared';
 
 interface NotebookSummary {
   pageCounts: Record<string, number>;
@@ -47,6 +49,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   readonly notebookService = inject(NotebookService);
   private readonly notificationService = inject(NotificationService);
+  private readonly pageService = inject(PageService);
 
   private routeSubscription?: Subscription;
 
@@ -64,7 +67,9 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       toObservable(this.membersRefreshTrigger),
     ]).pipe(
       switchMap(([notebookId, _trigger]) =>
-        notebookId ? this.notebookService.fetchNotebookMembers(notebookId) : of([]),
+        notebookId && !isLocalNotebook(notebookId)
+          ? this.notebookService.fetchNotebookMembers(notebookId)
+          : of([]),
       ),
     ),
     { initialValue: [] as NotebookMember[] },
@@ -77,7 +82,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       toObservable(this.summaryRefreshTrigger),
     ]).pipe(
       switchMap(([notebookId, _trigger]) =>
-        notebookId
+        notebookId && !isLocalNotebook(notebookId)
           ? this.notebookService.getNotebookSummary(notebookId).pipe(
               map((response) => response.summary),
               catchError(() => of(null)),
@@ -95,7 +100,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       toObservable(this.summaryRefreshTrigger),
     ]).pipe(
       switchMap(([notebookId, _trigger]) =>
-        notebookId
+        notebookId && !isLocalNotebook(notebookId)
           ? this.notebookService.getConnectionGraph(notebookId).pipe(
               map((response) => response.graph as ConnectionGraphData),
               catchError(() => of(null)),
@@ -121,6 +126,14 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     return this.notebookService.notebooks().find((n) => n._id === notebookId) || null;
   });
 
+  readonly isLocal = computed(() => isLocalNotebook(this.selectedNotebookId() ?? ''));
+
+  readonly localPages = computed(() => {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId || !this.isLocal()) return [];
+    return this.pageService.pages().filter((p) => p.notebookId === notebookId);
+  });
+
   // Delegate to shared utilities
   getPageTypeLabel = getLabel;
   getPageTypeIcon = getIcon;
@@ -128,7 +141,13 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Subscribe to route params and set ID directly - let computed handle the rest
     this.routeSubscription = this.route.params.subscribe((params) => {
-      this.selectedNotebookId.set(params['notebookId'] || null);
+      const notebookId = params['notebookId'] || null;
+      this.selectedNotebookId.set(notebookId);
+
+      // For local notebooks, load pages into store
+      if (notebookId && isLocalNotebook(notebookId)) {
+        this.pageService.loadLocalPages(notebookId).subscribe();
+      }
     });
   }
 
@@ -184,6 +203,13 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       this.saveNotebookName();
     } else if (event.key === 'Escape') {
       this.cancelEditingName();
+    }
+  }
+
+  onFileClicked(pageId: string): void {
+    const notebookId = this.selectedNotebookId();
+    if (notebookId) {
+      this.router.navigate(['/', notebookId, pageId]);
     }
   }
 

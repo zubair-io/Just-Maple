@@ -118,7 +118,7 @@
             "proxyConfig": "proxy.conf.js",
             "host": "0.0.0.0",
             "port": 4200,
-            "ssl": true
+            "ssl": false
           },
           "configurations": {
             "production": {

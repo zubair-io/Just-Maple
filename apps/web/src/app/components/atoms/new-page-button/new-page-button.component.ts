@@ -22,6 +22,9 @@ export class NewPageButtonComponent {
   /** Whether to show the "New from Template" option in the dropdown */
   readonly showTemplate = input<boolean>(true);
 
+  /** Whether this is a local notebook (only memo supported) */
+  readonly isLocal = input<boolean>(false);
+
   /** Emits when "New from Template" is clicked */
   readonly newFromTemplate = output<void>();
 

@@ -17,7 +17,7 @@
       <div class="flex items-center gap-1.5 font-medium truncate">
         <span
           class="material-symbols-rounded text-base text-[var(--color-primary)] flex-shrink-0 !hidden md:!block"
-          >book_2</span
+          >{{ isLocal() ? 'folder' : 'book_2' }}</span
         >
         <span class="truncate">{{ notebook().label }}</span>
       </div>
@@ -25,8 +25,8 @@
 
     <!-- Actions -->
     <div class="flex items-center gap-3">
-      <!-- Shared Members -->
-      @if (members().length > 1) {
+      <!-- Shared Members (hide for local notebooks) -->
+      @if (!isLocal() && members().length > 1) {
         <div
           class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors"
           title="Click to manage sharing"
@@ -42,8 +42,20 @@
       }
 
       <div class="flex items-center gap-1">
-        <!-- Share button (only when not shared) -->
-        @if (members().length <= 1) {
+        <!-- Bots button (local notebooks only) -->
+        @if (isLocal()) {
+          <button
+            (click)="shareClicked.emit()"
+            class="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] text-xs font-medium rounded-lg transition-colors"
+            title="Manage Bots"
+          >
+            <span class="material-symbols-rounded text-sm">smart_toy</span>
+            <span class="!hidden md:!inline">Bots</span>
+          </button>
+        }
+
+        <!-- Share button (only when not shared, hide for local notebooks) -->
+        @if (!isLocal() && members().length <= 1) {
           <button
             (click)="shareClicked.emit()"
             class="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] text-xs font-medium rounded-lg transition-colors"
@@ -65,6 +77,7 @@
             <app-new-page-button
               [notebookId]="notebook()._id"
               [showConversation]="true"
+              [isLocal]="isLocal()"
               (newFromTemplate)="onNewFromTemplate()"
             />
           </div>

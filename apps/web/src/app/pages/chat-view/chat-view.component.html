@@ -2,6 +2,7 @@
 <app-notebook-header
   [notebook]="selectedNotebook()!"
   [members]="members()"
+  [isLocal]="isLocal()"
   contextIcon="folder"
   contextLabel="Summary"
   (shareClicked)="openShareModal()"
@@ -37,10 +38,32 @@
           </button>
         </div>
       }
-      <p class="summary-subtitle">Notebook Overview</p>
+      <p class="summary-subtitle">{{ isLocal() ? 'Local Folder' : 'Notebook Overview' }}</p>
     </div>
 
-    @if (summary()) {
+    @if (isLocal()) {
+      <!-- Local notebook: show file list -->
+      <div class="page-counts">
+        <div class="total-count">
+          <span class="material-symbols-rounded">description</span>
+          <span class="count">{{ localPages().length }}</span>
+          <span class="label">Files</span>
+        </div>
+      </div>
+
+      <div class="local-file-list">
+        @for (page of localPages(); track page.id) {
+          <button type="button" class="local-file-item" (click)="onFileClicked(page.id)">
+            <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+              >description</span
+            >
+            <span class="file-name">{{ page.title }}</span>
+          </button>
+        } @empty {
+          <p class="empty-files">No files yet. Create a new note to get started.</p>
+        }
+      </div>
+    } @else if (summary()) {
       <div class="page-counts">
         <div class="total-count">
           <span class="material-symbols-rounded">description</span>
@@ -122,7 +145,7 @@
   </div>
 }
 
-<!-- Share Modal -->
+<!-- Share / Bots Modal -->
 @if (showShareModal() && selectedNotebook()) {
   <app-share-modal
     [notebook]="selectedNotebook()!"

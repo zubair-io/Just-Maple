@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap, map, catchError, of, throwError } from 'rxjs';
+import { Observable, tap, map, catchError, of, throwError, from, switchMap } from 'rxjs';
 import type {
   BotTemplate,
   UserBot,
@@ -13,6 +13,9 @@ import type {
   Message,
   Notebook,
 } from '@maple/shared';
+import { isLocalNotebook } from '../providers/data-provider.interface';
+import { IndexedDBService } from './indexed-db.service';
+import { DB_STORES } from './db-stores';
 
 export interface BotSuggestion {
   id: string;
@@ -52,9 +55,15 @@ export interface CustomBotWithToken extends CustomBot {
   webhookSecret?: string; // Only present on creation
 }
 
+interface LocalNotebookBotEntry {
+  notebookId: string;
+  bots: Array<{ userBotId: string; handle: string; addedAt: string }>;
+}
+
 @Injectable({ providedIn: 'root' })
 export class BotService {
   private readonly http = inject(HttpClient);
+  private readonly indexedDB = inject(IndexedDBService);
 
   // Bot templates (system-defined)
   private readonly _templates = signal<BotTemplate[]>([]);
@@ -302,10 +311,103 @@ export class BotService {
   }
 
   // ============================================
+  // Local Notebook Bot Management (IndexedDB)
+  // ============================================
+
+  private getLocalBotEntry(notebookId: string): Observable<LocalNotebookBotEntry> {
+    return from(
+      this.indexedDB.get<LocalNotebookBotEntry>(notebookId, DB_STORES.LOCAL_NOTEBOOK_BOTS),
+    ).pipe(map((entry) => entry ?? { notebookId, bots: [] }));
+  }
+
+  getLocalNotebookBots(notebookId: string): Observable<BotSuggestion[]> {
+    return this.getLocalBotEntry(notebookId).pipe(
+      map((entry) => {
+        const userBots = this._userBots();
+        const results: BotSuggestion[] = [];
+        for (const localBot of entry.bots) {
+          const userBot = userBots.find((ub) => ub._id === localBot.userBotId);
+          if (!userBot) continue;
+          results.push({
+            id: userBot._id,
+            handle: userBot.handle,
+            displayName: userBot.displayName || userBot.templateName || userBot.handle,
+            avatar: userBot.templateAvatar,
+            description: userBot.templateDescription,
+            type: 'bot',
+            ownerId: userBot.userId,
+            ownerName: userBot.ownerName || '',
+            ownerAvatar: userBot.ownerAvatar,
+          });
+        }
+        return results;
+      }),
+    );
+  }
+
+  addBotToLocalNotebook(notebookId: string, userBotId: string): Observable<void> {
+    const userBot = this._userBots().find((ub) => ub._id === userBotId);
+    if (!userBot) {
+      return throwError(() => new Error('Bot not found'));
+    }
+
+    return this.getLocalBotEntry(notebookId).pipe(
+      switchMap((entry) => {
+        if (entry.bots.some((b) => b.userBotId === userBotId)) {
+          return of(undefined as void);
+        }
+        entry.bots.push({
+          userBotId,
+          handle: userBot.handle,
+          addedAt: new Date().toISOString(),
+        });
+        return from(this.indexedDB.put(entry, DB_STORES.LOCAL_NOTEBOOK_BOTS)).pipe(
+          map(() => undefined as void),
+        );
+      }),
+      tap(() => this.clearNotebookBotsCache(notebookId)),
+    );
+  }
+
+  removeBotFromLocalNotebook(notebookId: string, userBotId: string): Observable<void> {
+    return this.getLocalBotEntry(notebookId).pipe(
+      switchMap((entry) => {
+        entry.bots = entry.bots.filter((b) => b.userBotId !== userBotId);
+        return from(this.indexedDB.put(entry, DB_STORES.LOCAL_NOTEBOOK_BOTS)).pipe(
+          map(() => undefined as void),
+        );
+      }),
+      tap(() => this.clearNotebookBotsCache(notebookId)),
+    );
+  }
+
+  getLocalNotebookSharedBots(notebookId: string): Observable<EnrichedUserBot[]> {
+    return this.getLocalBotEntry(notebookId).pipe(
+      map((entry) => {
+        const userBots = this._userBots();
+        return entry.bots
+          .map((localBot) => userBots.find((ub) => ub._id === localBot.userBotId))
+          .filter((b): b is EnrichedUserBot => b !== undefined);
+      }),
+    );
+  }
+
+  // ============================================
   // Bot Search (for @mentions)
   // ============================================
 
   getNotebookBots(notebookId: string): Observable<BotSuggestion[]> {
+    // Route local notebooks to IndexedDB
+    if (isLocalNotebook(notebookId)) {
+      // Return cached if available
+      const cached = this._notebookBotsCache.get(notebookId);
+      if (cached) return of(cached);
+
+      return this.getLocalNotebookBots(notebookId).pipe(
+        tap((bots) => this._notebookBotsCache.set(notebookId, bots)),
+      );
+    }
+
     // Return cached if available
     const cached = this._notebookBotsCache.get(notebookId);
     if (cached) {
@@ -411,6 +513,10 @@ export class BotService {
 
   // Get bots shared with a notebook (with owner info)
   getNotebookSharedBots(notebookId: string): Observable<EnrichedUserBot[]> {
+    if (isLocalNotebook(notebookId)) {
+      return this.getLocalNotebookSharedBots(notebookId);
+    }
+
     return this.http
       .get<{ bots: EnrichedUserBot[] }>(`/api/notebooks/${notebookId}/shared-bots`)
       .pipe(
@@ -421,6 +527,12 @@ export class BotService {
 
   // Share bot with notebook
   shareBotToNotebook(notebookId: string, userBotId: string): Observable<Notebook> {
+    if (isLocalNotebook(notebookId)) {
+      return this.addBotToLocalNotebook(notebookId, userBotId).pipe(
+        map(() => ({ _id: notebookId }) as Notebook),
+      );
+    }
+
     return this.http
       .post<{ notebook: Notebook }>(`/api/notebooks/${notebookId}/bots`, { userBotId })
       .pipe(
@@ -437,6 +549,12 @@ export class BotService {
 
   // Remove bot from notebook
   unshareBotFromNotebook(notebookId: string, userBotId: string): Observable<Notebook> {
+    if (isLocalNotebook(notebookId)) {
+      return this.removeBotFromLocalNotebook(notebookId, userBotId).pipe(
+        map(() => ({ _id: notebookId }) as Notebook),
+      );
+    }
+
     return this.http
       .delete<{ notebook: Notebook }>(`/api/notebooks/${notebookId}/bots/${userBotId}`)
       .pipe(

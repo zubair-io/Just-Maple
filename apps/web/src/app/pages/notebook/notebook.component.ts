@@ -13,6 +13,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { PageService } from '../../services/page.service';
 import { NotebookService } from '../../services/notebook.service';
+import { isLocalNotebook } from '../../providers/data-provider.interface';
 import { UiStateService } from '../../services/ui-state.service';
 import { MemoVersionService } from '../../services/memo-version.service';
 import { NotificationService } from '../../services/notification.service';
@@ -70,6 +71,11 @@ export class NotebookComponent implements OnDestroy {
 
       if (id) {
         this.pageService.setActivePageId(id);
+      }
+
+      // For local notebooks, load pages into store (needed on reload)
+      if (notebookId && isLocalNotebook(notebookId)) {
+        this.pageService.loadLocalPages(notebookId).subscribe();
       }
     });
 

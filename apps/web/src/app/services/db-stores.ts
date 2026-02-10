@@ -17,6 +17,8 @@ export const DB_STORES = {
   GMAIL_TOKENS: 'gmail-tokens',
   GMAIL_SYNC_STATE: 'gmail-sync-state',
   GMAIL_DRAFTS: 'gmail-drafts',
+  // Local notebook bot associations (local-only, never synced to server)
+  LOCAL_NOTEBOOK_BOTS: 'local-notebook-bots',
 } as const;
 
 export type DBStoreName = (typeof DB_STORES)[keyof typeof DB_STORES];
