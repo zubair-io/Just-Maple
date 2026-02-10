@@ -32,6 +32,31 @@ export const routes: Routes = [
       ),
   },
 
+  // Public notebook viewer - /!/notebook-slug/page-slug
+  {
+    path: '!/:notebookSlug',
+    loadComponent: () =>
+      import('./pages/public-notebook/public-notebook-layout.component').then(
+        (m) => m.PublicNotebookLayoutComponent,
+      ),
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./pages/public-notebook/public-landing.component').then(
+            (m) => m.PublicLandingComponent,
+          ),
+      },
+      {
+        path: ':pageSlug',
+        loadComponent: () =>
+          import('./pages/public-notebook/public-page.component').then(
+            (m) => m.PublicPageComponent,
+          ),
+      },
+    ],
+  },
+
   // Authenticated app routes - matched first if user is authenticated
   {
     path: '',
