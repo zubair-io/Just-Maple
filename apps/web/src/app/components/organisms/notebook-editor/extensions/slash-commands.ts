@@ -96,6 +96,20 @@ export const defaultSlashCommands: SlashCommandItem[] = [
     },
   },
   {
+    title: 'API Block',
+    description: 'Interactive API endpoint tester',
+    icon: '{}',
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .setCodeBlock({ language: 'api' })
+        .insertContent('path: /api/v1/resource\nmethod: GET\nserver: http://localhost:3000')
+        .run();
+    },
+  },
+  {
     title: 'Divider',
     description: 'Visual divider line',
     icon: '—',

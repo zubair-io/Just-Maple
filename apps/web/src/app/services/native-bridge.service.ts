@@ -30,6 +30,8 @@ import type {
   FileReadResult,
   FileWriteResult,
   FileDeleteResult,
+  ApiRequestPayload,
+  ApiResponsePayload,
 } from '../types/native-bridge.types';
 
 @Injectable({
@@ -457,6 +459,45 @@ export class NativeBridgeService {
     return this.messages$.pipe(
       filter((msg) => msg.type === 'fileDeleteResult'),
       map((msg) => msg.payload as FileDeleteResult),
+    );
+  }
+
+  // MARK: - API Requests
+
+  /**
+   * Send an HTTP request through the native networking layer.
+   * Returns a promise that resolves with the response.
+   * Only works in native apps — web has no access to this.
+   */
+  sendApiRequest(payload: ApiRequestPayload): Promise<ApiResponsePayload> {
+    return new Promise((resolve, reject) => {
+      if (!this._isNativeApp) {
+        reject(new Error('API requests are only available in the native app'));
+        return;
+      }
+
+      const sub = this.onApiResponse().subscribe((response) => {
+        sub.unsubscribe();
+        resolve(response);
+      });
+
+      // Timeout after 60 seconds
+      setTimeout(() => {
+        sub.unsubscribe();
+        reject(new Error('Request timed out'));
+      }, 60_000);
+
+      this.sendMessage({
+        type: 'apiRequest',
+        payload,
+      });
+    });
+  }
+
+  onApiResponse(): Observable<ApiResponsePayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'apiResponse'),
+      map((msg) => msg.payload as ApiResponsePayload),
     );
   }
 

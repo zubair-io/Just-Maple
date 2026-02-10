@@ -89,6 +89,23 @@ export interface ShareFilePayload {
   data: string; // base64-encoded file content
 }
 
+// MARK: - API Request Payloads
+
+export interface ApiRequestPayload {
+  url: string;
+  method: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+export interface ApiResponsePayload {
+  status: number;
+  statusText: string;
+  durationMs: number;
+  body: string; // JSON string
+  headers?: Record<string, string>;
+}
+
 export type WebToNativeMessageType =
   | { type: 'test'; payload: TestPayload }
   | { type: 'startRecording'; payload?: StartRecordingPayload }
@@ -114,7 +131,8 @@ export type WebToNativeMessageType =
   | { type: 'deleteFile'; payload: DeleteFilePayload }
   | { type: 'openAuthSession'; payload: OpenAuthSessionPayload }
   | { type: 'gmailOAuthResult'; payload: GmailOAuthResultPayload }
-  | { type: 'shareFile'; payload: ShareFilePayload };
+  | { type: 'shareFile'; payload: ShareFilePayload }
+  | { type: 'apiRequest'; payload: ApiRequestPayload };
 
 // MARK: - Native to Web Messages
 
@@ -316,6 +334,7 @@ export type NativeToWebMessageType =
   | { type: 'fileWriteResult'; payload: FileWriteResult }
   | { type: 'fileDeleteResult'; payload: FileDeleteResult }
   | { type: 'authSessionResult'; payload: AuthSessionResult }
+  | { type: 'apiResponse'; payload: ApiResponsePayload }
   | { type: 'error'; payload: ErrorMessage };
 
 // MARK: - Bridge Interface
