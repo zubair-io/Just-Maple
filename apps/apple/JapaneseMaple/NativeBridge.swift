@@ -30,6 +30,11 @@ enum WebToNativeMessage: Codable {
     case getPushStatus
     case setBadge(SetBadgePayload)
     case openAuthSession(OpenAuthSessionPayload)
+    case openFolderPicker
+    case listFiles(ListFilesPayload)
+    case readFile(ReadFilePayload)
+    case writeFile(WriteFilePayload)
+    case deleteFile(DeleteFilePayload)
     case unknown
 
     struct TestPayload: Codable {
@@ -79,6 +84,24 @@ enum WebToNativeMessage: Codable {
     struct OpenAuthSessionPayload: Codable {
         let url: String
         let callbackScheme: String
+    }
+
+    struct ListFilesPayload: Codable {
+        let path: String
+        let `extension`: String?
+    }
+
+    struct ReadFilePayload: Codable {
+        let path: String
+    }
+
+    struct WriteFilePayload: Codable {
+        let path: String
+        let content: String
+    }
+
+    struct DeleteFilePayload: Codable {
+        let path: String
     }
 
     enum CodingKeys: String, CodingKey {
@@ -138,6 +161,20 @@ enum WebToNativeMessage: Codable {
         case "openAuthSession":
             let payload = try container.decode(OpenAuthSessionPayload.self, forKey: .payload)
             self = .openAuthSession(payload)
+        case "openFolderPicker":
+            self = .openFolderPicker
+        case "listFiles":
+            let payload = try container.decode(ListFilesPayload.self, forKey: .payload)
+            self = .listFiles(payload)
+        case "readFile":
+            let payload = try container.decode(ReadFilePayload.self, forKey: .payload)
+            self = .readFile(payload)
+        case "writeFile":
+            let payload = try container.decode(WriteFilePayload.self, forKey: .payload)
+            self = .writeFile(payload)
+        case "deleteFile":
+            let payload = try container.decode(DeleteFilePayload.self, forKey: .payload)
+            self = .deleteFile(payload)
         default:
             self = .unknown
         }
@@ -200,6 +237,20 @@ enum WebToNativeMessage: Codable {
         case .openAuthSession(let payload):
             try container.encode("openAuthSession", forKey: .type)
             try container.encode(payload, forKey: .payload)
+        case .openFolderPicker:
+            try container.encode("openFolderPicker", forKey: .type)
+        case .listFiles(let payload):
+            try container.encode("listFiles", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .readFile(let payload):
+            try container.encode("readFile", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .writeFile(let payload):
+            try container.encode("writeFile", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .deleteFile(let payload):
+            try container.encode("deleteFile", forKey: .type)
+            try container.encode(payload, forKey: .payload)
         case .unknown:
             try container.encode("unknown", forKey: .type)
         }
@@ -228,6 +279,11 @@ enum NativeToWebMessage {
     case foregroundNotification(ForegroundNotification)
     case deepLink(DeepLinkPayload)
     case authSessionResult(AuthSessionResult)
+    case folderPickerResult(FolderPickerResult)
+    case fileListResult(FileListResult)
+    case fileReadResult(FileReadResult)
+    case fileWriteResult(FileWriteResult)
+    case fileDeleteResult(FileDeleteResult)
     case error(ErrorMessage)
 
     struct InitialState: Codable {
@@ -363,6 +419,37 @@ enum NativeToWebMessage {
         let error: String?
     }
 
+    struct FolderPickerResult: Codable {
+        let path: String?
+        let name: String?
+    }
+
+    struct FileListResult: Codable {
+        let files: [FileInfo]
+        let error: String?
+
+        struct FileInfo: Codable {
+            let name: String
+            let path: String
+            let lastModified: String?
+        }
+    }
+
+    struct FileReadResult: Codable {
+        let content: String?
+        let error: String?
+    }
+
+    struct FileWriteResult: Codable {
+        let success: Bool
+        let error: String?
+    }
+
+    struct FileDeleteResult: Codable {
+        let success: Bool
+        let error: String?
+    }
+
     enum CodingKeys: String, CodingKey {
         case type
         case payload
@@ -436,6 +523,21 @@ extension NativeToWebMessage: Encodable {
         case .authSessionResult(let payload):
             try container.encode("authSessionResult", forKey: .type)
             try container.encode(payload, forKey: .payload)
+        case .folderPickerResult(let payload):
+            try container.encode("folderPickerResult", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .fileListResult(let payload):
+            try container.encode("fileListResult", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .fileReadResult(let payload):
+            try container.encode("fileReadResult", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .fileWriteResult(let payload):
+            try container.encode("fileWriteResult", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .fileDeleteResult(let payload):
+            try container.encode("fileDeleteResult", forKey: .type)
+            try container.encode(payload, forKey: .payload)
         case .error(let payload):
             try container.encode("error", forKey: .type)
             try container.encode(payload, forKey: .payload)
@@ -451,12 +553,23 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
     private let decoder = JSONDecoder()
     private var audioLevelTask: Task<Void, Never>?
     private var authSession: ASWebAuthenticationSession?
+    private var folderPickerObserver: NSObjectProtocol?
+    /// Security-scoped folder URLs granted by the user via folder picker.
+    /// Must be kept alive so file operations within these folders are allowed by the sandbox.
+    private var grantedFolderURLs: [URL] = []
 
     init(webView: WKWebView?) {
         self.webView = webView
         super.init()
         encoder.dateEncodingStrategy = .iso8601
         decoder.dateDecodingStrategy = .iso8601
+    }
+
+    deinit {
+        // Balance all startAccessingSecurityScopedResource() calls
+        for url in grantedFolderURLs {
+            url.stopAccessingSecurityScopedResource()
+        }
     }
 
     // MARK: - Receive from Web
@@ -826,6 +939,49 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 self.startAuthSession(payload: payload)
             }
 
+        case .openFolderPicker:
+            Task { @MainActor in
+                let panel = NSOpenPanel()
+                panel.canChooseDirectories = true
+                panel.canChooseFiles = false
+                panel.allowsMultipleSelection = false
+                panel.message = "Choose a folder to open"
+
+                let response = panel.runModal()
+                if response == .OK, let url = panel.url {
+                    // Start accessing the security-scoped resource and store the URL
+                    // so file operations within this folder are permitted by the sandbox.
+                    // stopAccessingSecurityScopedResource() is called when the URL is
+                    // removed from grantedFolderURLs (e.g. folder closed / app quit).
+                    _ = url.startAccessingSecurityScopedResource()
+
+                    self.grantedFolderURLs.removeAll { $0.path == url.path }
+                    self.grantedFolderURLs.append(url)
+
+                    self.send(.folderPickerResult(NativeToWebMessage.FolderPickerResult(
+                        path: url.path,
+                        name: url.lastPathComponent
+                    )))
+                } else {
+                    self.send(.folderPickerResult(NativeToWebMessage.FolderPickerResult(
+                        path: nil,
+                        name: nil
+                    )))
+                }
+            }
+
+        case .listFiles(let payload):
+            handleListFiles(payload)
+
+        case .readFile(let payload):
+            handleReadFile(payload)
+
+        case .writeFile(let payload):
+            handleWriteFile(payload)
+
+        case .deleteFile(let payload):
+            handleDeleteFile(payload)
+
         case .unknown:
             print("[Bridge] Unknown message type")
         }
@@ -1126,6 +1282,64 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 self.startAuthSession(payload: payload)
             }
 
+        case .openFolderPicker:
+            #if os(iOS)
+            // Post notification for ContentView to present folder picker
+            Task { @MainActor in
+                // Remove previous observer if any
+                if let prev = self.folderPickerObserver {
+                    NotificationCenter.default.removeObserver(prev)
+                    self.folderPickerObserver = nil
+                }
+
+                // Listen for result before posting request
+                let observer = NotificationCenter.default.addObserver(
+                    forName: NSNotification.Name("FolderPickerResult"),
+                    object: nil,
+                    queue: .main
+                ) { [weak self] notification in
+                    // Remove observer after receiving result
+                    if let obs = self?.folderPickerObserver {
+                        NotificationCenter.default.removeObserver(obs)
+                        self?.folderPickerObserver = nil
+                    }
+
+                    let path = notification.userInfo?["path"] as? String
+                    let name = notification.userInfo?["name"] as? String
+
+                    // Store the security-scoped URL for later file operations
+                    if let url = notification.userInfo?["url"] as? URL {
+                        self?.grantedFolderURLs.removeAll { $0.path == url.path }
+                        self?.grantedFolderURLs.append(url)
+                    }
+
+                    self?.send(.folderPickerResult(NativeToWebMessage.FolderPickerResult(
+                        path: path,
+                        name: name
+                    )))
+                }
+
+                self.folderPickerObserver = observer
+
+                NotificationCenter.default.post(name: NSNotification.Name("FolderPickerRequested"), object: nil)
+            }
+            #else
+            // macOS fallback (shouldn't reach here since macOS uses handleWithMultiTrack)
+            send(.folderPickerResult(NativeToWebMessage.FolderPickerResult(path: nil, name: nil)))
+            #endif
+
+        case .listFiles(let payload):
+            handleListFiles(payload)
+
+        case .readFile(let payload):
+            handleReadFile(payload)
+
+        case .writeFile(let payload):
+            handleWriteFile(payload)
+
+        case .deleteFile(let payload):
+            handleDeleteFile(payload)
+
         case .unknown:
             print("[Bridge] Unknown message type")
         }
@@ -1191,6 +1405,137 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
                 url: nil,
                 error: "Failed to start auth session"
+            )))
+        }
+    }
+
+    // MARK: - File System Operations
+
+    /// Find the granted security-scoped folder URL that contains the given path.
+    private func grantedFolderURL(for path: String) -> URL? {
+        return grantedFolderURLs.first { folderURL in
+            let folderPath = folderURL.path.hasSuffix("/") ? folderURL.path : folderURL.path + "/"
+            return path.hasPrefix(folderPath) || path == folderURL.path
+        }
+    }
+
+    /// Convert a path string to a URL, preferring a security-scoped URL derived
+    /// from a previously granted folder when available.
+    private func securityScopedURL(for path: String) -> URL {
+        if let folderURL = grantedFolderURL(for: path) {
+            // Build URL relative to the security-scoped folder URL so the
+            // sandbox grant carries over to the child path.
+            let folderPath = folderURL.path
+            let relative = String(path.dropFirst(folderPath.count))
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if relative.isEmpty {
+                return folderURL
+            }
+            return folderURL.appendingPathComponent(relative)
+        }
+        return URL(fileURLWithPath: path)
+    }
+
+    private func handleListFiles(_ payload: WebToNativeMessage.ListFilesPayload) {
+        let fileManager = FileManager.default
+        let dirURL = securityScopedURL(for: payload.path)
+        do {
+            let contents = try fileManager.contentsOfDirectory(
+                at: dirURL,
+                includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )
+            let filterExt = payload.extension
+
+            let fileInfos: [NativeToWebMessage.FileListResult.FileInfo] = contents.compactMap { fileURL in
+                let name = fileURL.lastPathComponent
+
+                // Filter by extension if specified
+                if let ext = filterExt {
+                    let normalizedExt = ext.hasPrefix(".") ? ext : ".\(ext)"
+                    guard name.hasSuffix(normalizedExt) else { return nil }
+                }
+
+                // Skip directories
+                let resourceValues = try? fileURL.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
+                if resourceValues?.isDirectory == true { return nil }
+
+                // Get last modified date
+                var lastModified: String? = nil
+                if let modDate = resourceValues?.contentModificationDate {
+                    lastModified = ISO8601DateFormatter().string(from: modDate)
+                }
+
+                return NativeToWebMessage.FileListResult.FileInfo(
+                    name: name,
+                    path: fileURL.path,
+                    lastModified: lastModified
+                )
+            }
+
+            send(.fileListResult(NativeToWebMessage.FileListResult(
+                files: fileInfos,
+                error: nil
+            )))
+        } catch {
+            send(.fileListResult(NativeToWebMessage.FileListResult(
+                files: [],
+                error: error.localizedDescription
+            )))
+        }
+    }
+
+    private func handleReadFile(_ payload: WebToNativeMessage.ReadFilePayload) {
+        let fileURL = securityScopedURL(for: payload.path)
+        do {
+            let content = try String(contentsOf: fileURL, encoding: .utf8)
+            send(.fileReadResult(NativeToWebMessage.FileReadResult(
+                content: content,
+                error: nil
+            )))
+        } catch {
+            send(.fileReadResult(NativeToWebMessage.FileReadResult(
+                content: nil,
+                error: error.localizedDescription
+            )))
+        }
+    }
+
+    private func handleWriteFile(_ payload: WebToNativeMessage.WriteFilePayload) {
+        let fileURL = securityScopedURL(for: payload.path)
+        do {
+            // Create intermediate directories if needed
+            let dirURL = fileURL.deletingLastPathComponent()
+            let fileManager = FileManager.default
+            if !fileManager.fileExists(atPath: dirURL.path) {
+                try fileManager.createDirectory(at: dirURL, withIntermediateDirectories: true)
+            }
+
+            try payload.content.write(to: fileURL, atomically: true, encoding: .utf8)
+            send(.fileWriteResult(NativeToWebMessage.FileWriteResult(
+                success: true,
+                error: nil
+            )))
+        } catch {
+            send(.fileWriteResult(NativeToWebMessage.FileWriteResult(
+                success: false,
+                error: error.localizedDescription
+            )))
+        }
+    }
+
+    private func handleDeleteFile(_ payload: WebToNativeMessage.DeleteFilePayload) {
+        let fileURL = securityScopedURL(for: payload.path)
+        do {
+            try FileManager.default.removeItem(at: fileURL)
+            send(.fileDeleteResult(NativeToWebMessage.FileDeleteResult(
+                success: true,
+                error: nil
+            )))
+        } catch {
+            send(.fileDeleteResult(NativeToWebMessage.FileDeleteResult(
+                success: false,
+                error: error.localizedDescription
             )))
         }
     }

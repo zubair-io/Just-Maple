@@ -25,6 +25,11 @@ import type {
   AuthSessionResult,
   GmailOAuthResultPayload,
   ErrorMessage,
+  FolderPickerResult,
+  FileListResult,
+  FileReadResult,
+  FileWriteResult,
+  FileDeleteResult,
 } from '../types/native-bridge.types';
 
 @Injectable({
@@ -361,6 +366,98 @@ export class NativeBridgeService {
 
   cancelRecording(): void {
     this.sendMessage({ type: 'cancelRecording' });
+  }
+
+  // MARK: - File System Operations
+
+  /**
+   * Open a native folder picker dialog
+   */
+  openFolderPicker(): void {
+    this.sendMessage({ type: 'openFolderPicker' });
+  }
+
+  /**
+   * List files in a directory
+   * @param path - Directory path
+   * @param extension - Optional file extension filter (e.g., '.md')
+   */
+  listFiles(path: string, extension?: string): void {
+    this.sendMessage({
+      type: 'listFiles',
+      payload: { path, extension },
+    });
+  }
+
+  /**
+   * Read a file's contents
+   * @param path - Full file path
+   */
+  readFile(path: string): void {
+    this.sendMessage({
+      type: 'readFile',
+      payload: { path },
+    });
+  }
+
+  /**
+   * Write content to a file
+   * @param path - Full file path
+   * @param content - File content to write
+   */
+  writeFile(path: string, content: string): void {
+    this.sendMessage({
+      type: 'writeFile',
+      payload: { path, content },
+    });
+  }
+
+  /**
+   * Delete a file
+   * @param path - Full file path
+   */
+  deleteFile(path: string): void {
+    this.sendMessage({
+      type: 'deleteFile',
+      payload: { path },
+    });
+  }
+
+  // MARK: - File System Response Observables
+
+  onFolderPickerResult(): Observable<FolderPickerResult> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'folderPickerResult'),
+      map((msg) => msg.payload as FolderPickerResult),
+    );
+  }
+
+  onFileListResult(): Observable<FileListResult> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'fileListResult'),
+      map((msg) => msg.payload as FileListResult),
+    );
+  }
+
+  onFileReadResult(): Observable<FileReadResult> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'fileReadResult'),
+      map((msg) => msg.payload as FileReadResult),
+    );
+  }
+
+  onFileWriteResult(): Observable<FileWriteResult> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'fileWriteResult'),
+      map((msg) => msg.payload as FileWriteResult),
+    );
+  }
+
+  onFileDeleteResult(): Observable<FileDeleteResult> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'fileDeleteResult'),
+      map((msg) => msg.payload as FileDeleteResult),
+    );
   }
 
   // MARK: - OAuth

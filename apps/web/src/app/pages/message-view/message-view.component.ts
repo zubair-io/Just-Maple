@@ -10,6 +10,7 @@ import { PageService } from '../../services/page.service';
 import { ShareModalComponent } from '../../components/organisms/share-modal/share-modal.component';
 import { NotebookHeaderComponent } from '../../components/molecules/notebook-header/notebook-header.component';
 import { ChatComponent } from '../../components/organisms/chat/chat.component';
+import { isLocalNotebook } from '../../providers/data-provider.interface';
 import type { NotebookMember } from '@maple/shared';
 
 @Component({
@@ -40,7 +41,9 @@ export class MessageViewComponent implements OnInit, OnDestroy {
       toObservable(this.membersRefreshTrigger),
     ]).pipe(
       switchMap(([notebookId, _trigger]) =>
-        notebookId ? this.notebookService.fetchNotebookMembers(notebookId) : of([]),
+        notebookId && !isLocalNotebook(notebookId)
+          ? this.notebookService.fetchNotebookMembers(notebookId)
+          : of([]),
       ),
     ),
     { initialValue: [] as NotebookMember[] },

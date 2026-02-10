@@ -23,6 +23,7 @@ import { MessageService } from '../../../services/message.service';
 import { NotificationService } from '../../../services/notification.service';
 import { NetworkService } from '../../../services/network.service';
 import { ProfileAvatarComponent } from '../../atoms';
+import { isLocalNotebook } from '../../../providers/data-provider.interface';
 import type { Page } from '@maple/shared';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map, switchMap } from 'rxjs';
@@ -60,6 +61,9 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
 
   readonly expandedNotebooks = signal<Set<string>>(new Set());
   readonly isNewDropdownOpen = signal(false);
+  readonly isSelectedNotebookLocal = computed(() =>
+    isLocalNotebook(this.selectedNotebookId() ?? ''),
+  );
 
   // Inline editing state
   readonly editingNotebookId = signal<string | null>(null);
@@ -147,11 +151,8 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   }
 
   toggleNotebook(notebookId: string): void {
-    // if (notebookId === this.selectedNotebookId()) {
-    //   const notebook = this.notebookService.getNotebookById(notebookId);
-    //   this.startEditingNotebook(notebookId, notebook?.label || '', new Event('click'));
-    //   return;
-    // }
+    const isExpanding = !this.expandedNotebooks().has(notebookId);
+
     this.expandedNotebooks.update((notebooks) => {
       const newNotebooks = new Set(notebooks);
       if (newNotebooks.has(notebookId)) {
@@ -161,9 +162,35 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
       }
       return newNotebooks;
     });
+
+    // Load local pages when expanding a local notebook
+    if (isExpanding && isLocalNotebook(notebookId)) {
+      this.pageService.loadLocalPages(notebookId).subscribe();
+    }
+
     this.selectNotebook.emit(notebookId);
     this.pageService.setActivePageId(null);
     this.router.navigate(['/', notebookId]);
+  }
+
+  /**
+   * Open a local folder as a notebook via file picker
+   */
+  onOpenLocalFolder(): void {
+    this.isNewDropdownOpen.set(false);
+    this.notebookService.openLocalFolder().subscribe((notebook) => {
+      if (notebook) {
+        // Expand the new local notebook and load its pages
+        this.expandedNotebooks.update((notebooks) => {
+          const updated = new Set(notebooks);
+          updated.add(notebook._id);
+          return updated;
+        });
+        this.pageService.loadLocalPages(notebook._id).subscribe();
+        this.selectNotebook.emit(notebook._id);
+        this.router.navigate(['/', notebook._id]);
+      }
+    });
   }
 
   getPageRouterLink(page: Page, notebookId: string): string[] {

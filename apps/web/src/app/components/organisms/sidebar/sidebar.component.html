@@ -84,33 +84,35 @@
             >
             <span>New Note</span>
           </button>
-          <button
-            (click)="onNewPage('whiteboard')"
-            class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-          >
-            <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
-              >draw</span
+          @if (!isSelectedNotebookLocal()) {
+            <button
+              (click)="onNewPage('whiteboard')"
+              class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
             >
-            <span>New Whiteboard</span>
-          </button>
-          <button
-            (click)="onNewPage('kanban')"
-            class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-          >
-            <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
-              >view_kanban</span
+              <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                >draw</span
+              >
+              <span>New Whiteboard</span>
+            </button>
+            <button
+              (click)="onNewPage('kanban')"
+              class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
             >
-            <span>New Kanban Board</span>
-          </button>
-          <button
-            (click)="onNewPage('message')"
-            class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-          >
-            <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
-              >chat</span
+              <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                >view_kanban</span
+              >
+              <span>New Kanban Board</span>
+            </button>
+            <button
+              (click)="onNewPage('message')"
+              class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
             >
-            <span>New Conversation</span>
-          </button>
+              <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                >chat</span
+              >
+              <span>New Conversation</span>
+            </button>
+          }
           <div class="my-1 border-t border-[var(--color-border)]"></div>
           <button
             (click)="onCreateNotebook()"
@@ -121,15 +123,29 @@
             >
             <span>New Notebook</span>
           </button>
-          <button
-            (click)="onNewFromTemplate()"
-            class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-          >
-            <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
-              >auto_awesome</span
+          @if (!isSelectedNotebookLocal()) {
+            <button
+              (click)="onNewFromTemplate()"
+              class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
             >
-            <span>New from Template</span>
-          </button>
+              <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                >auto_awesome</span
+              >
+              <span>New from Template</span>
+            </button>
+          }
+          @if (notebookService.isLocalFSSupported()) {
+            <div class="my-1 border-t border-[var(--color-border)]"></div>
+            <button
+              (click)="onOpenLocalFolder()"
+              class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+            >
+              <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                >folder_open</span
+              >
+              <span>Open Local Folder</span>
+            </button>
+          }
         </div>
       }
     </div>
@@ -175,7 +191,9 @@
                 [class.text-[var(--color-primary)]]="selectedNotebookId() === notebook._id"
                 [class.text-[var(--color-text-muted)]]="selectedNotebookId() !== notebook._id"
               >
-                @if (selectedNotebookId() === notebook._id) {
+                @if (notebookService.isLocal(notebook._id)) {
+                  folder_open
+                } @else if (selectedNotebookId() === notebook._id) {
                   book_5
                 } @else {
                   book_2

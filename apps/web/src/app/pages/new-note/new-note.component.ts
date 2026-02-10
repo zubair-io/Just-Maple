@@ -5,6 +5,7 @@ import { PageService } from '../../services/page.service';
 import { MemoDocumentService } from '../../services/memo-document.service';
 import { WhiteboardDocumentService } from '../../services/whiteboard-document.service';
 import { KanbanDocumentService } from '../../services/kanban-document.service';
+import { isLocalNotebook } from '../../providers/data-provider.interface';
 import type { PageType } from '@maple/shared';
 
 @Component({
@@ -34,7 +35,27 @@ export class NewNoteComponent implements OnInit {
 
   private async createPage(notebookId: string | null, type: PageType): Promise<void> {
     try {
-      if (type === 'memo') {
+      if (type === 'memo' && notebookId && isLocalNotebook(notebookId)) {
+        // Local notebooks: create via page service which writes .md file to disk
+        const id = crypto.randomUUID();
+        this.pageService
+          .createPage({
+            id,
+            title: 'Untitled',
+            content: { type: 'doc', content: [] },
+            notebookId,
+            type: 'memo',
+          })
+          .subscribe({
+            next: (page) => {
+              this.router.navigate(['/', notebookId, page.id], { replaceUrl: true });
+            },
+            error: (err) => {
+              console.error('Failed to create local page:', err);
+              this.router.navigate(['/', notebookId], { replaceUrl: true });
+            },
+          });
+      } else if (type === 'memo') {
         // Create memo using the offline-first memo service
         const { memoId } = await this.memoService.createMemo(notebookId || undefined);
         this.router.navigate(['/', notebookId, memoId], { replaceUrl: true });

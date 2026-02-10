@@ -1,4 +1,4 @@
-import { Injectable, inject, PLATFORM_ID, signal, computed } from '@angular/core';
+import { Injectable, inject, PLATFORM_ID, signal, computed, effect } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, map, catchError, throwError, of, switchMap } from 'rxjs';
@@ -27,6 +27,14 @@ import { AuthService } from './auth.service';
 import { NetworkService } from './network.service';
 import { VisibilityService } from './visibility.service';
 import { DB_STORES } from './db-stores';
+import {
+  isLocalNotebook,
+  type ProviderCapabilities,
+  API_CAPABILITIES,
+  LOCAL_FS_CAPABILITIES,
+} from '../providers/data-provider.interface';
+import { FileSystemNotebookProvider } from '../providers/filesystem-data.provider';
+import { FileSystemService } from './file-system.service';
 import type {
   Notebook,
   CreateNotebookInput,
@@ -46,6 +54,8 @@ export class NotebookService {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly network = inject(NetworkService);
   private readonly visibilityService = inject(VisibilityService);
+  private readonly fsProvider = inject(FileSystemNotebookProvider);
+  private readonly fsService = inject(FileSystemService);
 
   // ELF Store
   private readonly store = createStore(
@@ -70,12 +80,21 @@ export class NotebookService {
   readonly error = this._error.asReadonly();
   readonly opened = this._opened.asReadonly();
 
+  /** Whether local file system notebooks are supported on this platform */
+  readonly isLocalFSSupported = this.fsService.isSupported;
+
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
       this.hydrateFromIndexedDB();
 
       // Refresh notebooks when document becomes visible (user returns to tab)
       this.visibilityService.becameVisible$.pipe(switchMap(() => this.loadNotebooks())).subscribe();
+
+      // Sync local folders into the store when they change
+      effect(() => {
+        const folders = this.fsService.openFolders();
+        this.syncLocalFolders();
+      });
     }
   }
 
@@ -87,6 +106,30 @@ export class NotebookService {
   }
 
   /**
+   * Sync local file system folders into the Elf store as notebooks.
+   * Called reactively when open folders change.
+   */
+  private syncLocalFolders(): void {
+    this.fsProvider.loadNotebooks().subscribe((localNotebooks) => {
+      // Remove stale local notebooks from store
+      const current = this.store.query(getAllEntities());
+      const staleLocalIds = current
+        .filter((n) => isLocalNotebook(n._id))
+        .filter((n) => !localNotebooks.find((ln) => ln._id === n._id))
+        .map((n) => n._id);
+
+      if (staleLocalIds.length > 0) {
+        this.store.update(deleteEntities(staleLocalIds));
+      }
+
+      // Upsert current local notebooks
+      if (localNotebooks.length > 0) {
+        this.store.update(upsertEntities(localNotebooks));
+      }
+    });
+  }
+
+  /**
    * Get all notebooks as a reactive signal
    */
   notebooks(): Notebook[] {
@@ -94,7 +137,50 @@ export class NotebookService {
   }
 
   /**
-   * Load notebooks from API
+   * Get capabilities for a specific notebook.
+   * Local notebooks have limited capabilities (no sharing, collaboration, etc.)
+   */
+  getCapabilities(notebookId: string): ProviderCapabilities {
+    return isLocalNotebook(notebookId) ? LOCAL_FS_CAPABILITIES : API_CAPABILITIES;
+  }
+
+  /**
+   * Check if a notebook is backed by the local file system
+   */
+  isLocal(notebookId: string): boolean {
+    return isLocalNotebook(notebookId);
+  }
+
+  /**
+   * Open a local folder as a notebook via file picker.
+   * The folder will appear in the sidebar alongside API notebooks.
+   */
+  openLocalFolder(): Observable<Notebook | null> {
+    return this.fsService.openFolderPicker().pipe(
+      tap((folder) => {
+        if (folder) {
+          // Sync will happen via the effect, but also upsert immediately for responsiveness
+          this.syncLocalFolders();
+        }
+      }),
+      map((folder) => {
+        if (!folder) return null;
+        return this.store.query(getEntity(folder.id)) || null;
+      }),
+    );
+  }
+
+  /**
+   * Close/remove a local folder notebook.
+   * Does NOT delete the folder from disk.
+   */
+  closeLocalFolder(notebookId: string): void {
+    this.fsService.closeFolder(notebookId);
+    this.store.update(deleteEntities(notebookId));
+  }
+
+  /**
+   * Load notebooks from API and merge with local file system notebooks
    */
   loadNotebooks(): Observable<Notebook[]> {
     this._isLoading.set(true);
@@ -102,11 +188,18 @@ export class NotebookService {
 
     return this.http.get<{ notebooks: Notebook[] }>('/api/notebooks').pipe(
       tap((response) => {
-        this.store.update(setEntities(response.notebooks));
+        // Keep local notebooks in the store, replace only API notebooks
+        const localNotebooks = this.store
+          .query(getAllEntities())
+          .filter((n) => isLocalNotebook(n._id));
+        this.store.update(setEntities([...response.notebooks, ...localNotebooks]));
         this.persistToIndexedDB(response.notebooks);
         this._isLoading.set(false);
       }),
-      map((response) => response.notebooks),
+      map((response) => {
+        // Return all notebooks including local ones
+        return this.store.query(getAllEntities());
+      }),
       catchError((err) => {
         let message = err?.error?.error || 'Failed to load notebooks';
 
@@ -169,9 +262,19 @@ export class NotebookService {
   }
 
   /**
-   * Update a notebook with optimistic update
+   * Update a notebook with optimistic update.
+   * Routes to file system provider for local notebooks.
    */
   updateNotebook(id: string, data: UpdateNotebookInput): Observable<Notebook> {
+    // Route local notebooks to file system provider
+    if (isLocalNotebook(id)) {
+      return this.fsProvider.updateNotebook(id, data).pipe(
+        tap((notebook) => {
+          this.store.update(updateEntities(id, () => notebook));
+        }),
+      );
+    }
+
     this._isLoading.set(true);
     this._error.set(null);
 
@@ -206,9 +309,16 @@ export class NotebookService {
   }
 
   /**
-   * Delete a notebook with optimistic update
+   * Delete a notebook with optimistic update.
+   * For local notebooks, this closes the folder (doesn't delete from disk).
    */
   deleteNotebook(id: string): Observable<void> {
+    // Route local notebooks to file system provider
+    if (isLocalNotebook(id)) {
+      this.store.update(deleteEntities(id));
+      return this.fsProvider.deleteNotebook(id);
+    }
+
     this._isLoading.set(true);
     this._error.set(null);
 

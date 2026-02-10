@@ -22,7 +22,7 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 12, // Bump version for Gmail integration
+    dbVersion: 14, // Add local-notebook-bots store
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.COLLECTABLE, keyPath: '_id', autoIncrement: false },
@@ -31,11 +31,14 @@ export class IndexedDBService {
       { name: DB_STORES.SYNC_METADATA, keyPath: 'key', autoIncrement: false },
       { name: DB_STORES.MESSAGE, keyPath: 'id', autoIncrement: false },
       { name: DB_STORES.OFFLINE_QUEUE, keyPath: 'id', autoIncrement: false },
+      { name: DB_STORES.FS_HANDLES, keyPath: 'key', autoIncrement: false },
       // Gmail stores (local-only, email content never sent to server)
       { name: DB_STORES.GMAIL_EMAILS, keyPath: 'id', autoIncrement: false },
       { name: DB_STORES.GMAIL_TOKENS, keyPath: 'accountEmail', autoIncrement: false },
       { name: DB_STORES.GMAIL_SYNC_STATE, keyPath: 'accountEmail', autoIncrement: false },
       { name: DB_STORES.GMAIL_DRAFTS, keyPath: 'id', autoIncrement: false },
+      // Local notebook bot associations
+      { name: DB_STORES.LOCAL_NOTEBOOK_BOTS, keyPath: 'notebookId', autoIncrement: false },
     ],
   };
 
@@ -53,18 +56,15 @@ export class IndexedDBService {
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
 
-        // Delete existing stores that need schema changes
-        // This clears cached data but ensures correct keyPaths
-        for (const storeName of db.objectStoreNames) {
-          db.deleteObjectStore(storeName);
-        }
-
-        // Recreate all stores with current schema
+        // Only create stores that don't already exist.
+        // This preserves offline queue, sync metadata, and cached data on upgrade.
         this.config.stores.forEach((store) => {
-          db.createObjectStore(store.name, {
-            keyPath: store.keyPath,
-            autoIncrement: store.autoIncrement,
-          });
+          if (!db.objectStoreNames.contains(store.name)) {
+            db.createObjectStore(store.name, {
+              keyPath: store.keyPath,
+              autoIncrement: store.autoIncrement,
+            });
+          }
         });
       };
 

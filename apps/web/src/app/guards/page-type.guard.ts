@@ -3,6 +3,7 @@ import { CanMatchFn, Route, UrlSegment } from '@angular/router';
 import { map, take, timeout, catchError, tap } from 'rxjs/operators';
 import { of } from 'rxjs';
 import { PageService } from '../services/page.service';
+import { isLocalPage } from '../providers/data-provider.interface';
 import type { PageType } from '@maple/shared';
 
 /**
@@ -20,6 +21,15 @@ function createPageTypeGuard(expectedType: PageType): CanMatchFn {
     // Allow 'new' route to pass to NewNoteComponent
     if (id === 'new') {
       return false;
+    }
+
+    // Local pages are always memos — match immediately without store lookup
+    if (isLocalPage(id)) {
+      const matches = expectedType === 'memo';
+      if (matches) {
+        pageService.setActivePageId(id);
+      }
+      return matches;
     }
 
     // If not in store, wait briefly for it to load (max 5 seconds)

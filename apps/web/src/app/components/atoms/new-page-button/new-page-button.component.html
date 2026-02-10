@@ -3,26 +3,30 @@
     <!-- Main button -->
     <button
       (click)="createPage('memo')"
-      class="flex items-center gap-1.5 px-2 md:px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-l-lg transition-colors"
+      class="flex items-center gap-1.5 px-2 md:px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium transition-colors"
+      [class.rounded-lg]="isLocal()"
+      [class.rounded-l-lg]="!isLocal()"
       title="New Note"
     >
       <span class="material-symbols-rounded text-sm">add</span>
       <span class="!hidden md:!inline">New Note</span>
     </button>
-    <!-- Dropdown toggle -->
-    <button
-      (click)="toggleDropdown($event)"
-      class="flex items-center px-1.5 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-r-lg border-l border-white/20 transition-colors"
-      title="More options"
-    >
-      <span class="material-symbols-rounded text-sm">
-        {{ isDropdownOpen() ? 'expand_less' : 'expand_more' }}
-      </span>
-    </button>
+    <!-- Dropdown toggle (hidden for local notebooks) -->
+    @if (!isLocal()) {
+      <button
+        (click)="toggleDropdown($event)"
+        class="flex items-center px-1.5 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-r-lg border-l border-white/20 transition-colors"
+        title="More options"
+      >
+        <span class="material-symbols-rounded text-sm">
+          {{ isDropdownOpen() ? 'expand_less' : 'expand_more' }}
+        </span>
+      </button>
+    }
   </div>
 
-  <!-- Dropdown menu -->
-  @if (isDropdownOpen()) {
+  <!-- Dropdown menu (hidden for local notebooks) -->
+  @if (!isLocal() && isDropdownOpen()) {
     <div
       class="absolute right-0 top-full mt-1 w-44 bg-[var(--color-surface)] rounded-lg shadow-lg border border-[var(--color-border)] py-1 z-50"
     >

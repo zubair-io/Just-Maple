@@ -220,7 +220,6 @@ export class YJSWSProvider {
     }
 
     // Send update via WebSocket with pageType for routing to correct backend service
-    console.log(`[YJS-WS] Sending update for ${this.pageId}, size: ${update.length} bytes`);
     this.realtimeWS.sendMemoUpdate(this.pageId, update, this.pageType);
   }
 

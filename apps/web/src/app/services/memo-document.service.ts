@@ -14,6 +14,7 @@ import { RealtimeWSService } from './realtime-ws.service';
 import { VisibilityService } from './visibility.service';
 import { YJSWSProvider } from './yjs-ws-provider';
 import { getUserColor } from '../utils/user-colors';
+import { isLocalPage } from '../providers/data-provider.interface';
 import type { Page, SyncStatus } from '@maple/shared';
 
 // Doc page prefix for virtual documentation pages
@@ -153,6 +154,21 @@ export class MemoDocumentService {
     // Check if document is empty (no content from IndexedDB)
     const prosemirror = ydoc.getXmlFragment('prosemirror');
     const isDocEmpty = prosemirror.length === 0;
+
+    // Local pages: skip server sync, load from file system instead
+    if (isLocalPage(pageId)) {
+      if (isDocEmpty) {
+        try {
+          const markdown = await firstValueFrom(this.pageService.getLocalPageMarkdown(pageId));
+          if (markdown) {
+            return { ydoc, awareness, markdownContent: markdown };
+          }
+        } catch (error) {
+          console.error(`[MemoDocumentService] Failed to load local page ${pageId}:`, error);
+        }
+      }
+      return { ydoc, awareness };
+    }
 
     // If document is empty and we're online, fetch initial content from server
     // This handles templates and other server-side page creation

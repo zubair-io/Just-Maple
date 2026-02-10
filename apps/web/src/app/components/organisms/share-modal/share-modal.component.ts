@@ -7,6 +7,7 @@ import { ProfileAvatarComponent } from '../../atoms';
 import { DialogService } from '../../molecules';
 import { NotebookService } from '../../../services/notebook.service';
 import { BotService, type EnrichedUserBot } from '../../../services/bot.service';
+import { isLocalNotebook } from '../../../providers/data-provider.interface';
 import type { NotebookMember, Notebook } from '@maple/shared';
 
 @Component({
@@ -38,6 +39,7 @@ export class ShareModalComponent {
   private readonly sharedBotsRefreshTrigger = signal<number>(0);
 
   readonly notebookId = computed(() => this.notebook()?._id);
+  readonly isLocal = computed(() => isLocalNotebook(this.notebook()?._id ?? ''));
 
   // Reactively load shared bots when notebook changes or refresh is triggered
   readonly sharedBots = toSignal(
@@ -165,6 +167,8 @@ export class ShareModalComponent {
   }
 
   isOwner(): boolean {
+    // For local notebooks, the user is always the owner
+    if (this.isLocal()) return true;
     const currentUser = this.members().find((m) => m.accessLevel === 'owner');
     return !!currentUser; // Simplified - in real app, check if current user is owner
   }
