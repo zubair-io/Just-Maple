@@ -56,18 +56,15 @@ export class IndexedDBService {
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
 
-        // Delete existing stores that need schema changes
-        // This clears cached data but ensures correct keyPaths
-        for (const storeName of db.objectStoreNames) {
-          db.deleteObjectStore(storeName);
-        }
-
-        // Recreate all stores with current schema
+        // Only create stores that don't already exist.
+        // This preserves offline queue, sync metadata, and cached data on upgrade.
         this.config.stores.forEach((store) => {
-          db.createObjectStore(store.name, {
-            keyPath: store.keyPath,
-            autoIncrement: store.autoIncrement,
-          });
+          if (!db.objectStoreNames.contains(store.name)) {
+            db.createObjectStore(store.name, {
+              keyPath: store.keyPath,
+              autoIncrement: store.autoIncrement,
+            });
+          }
         });
       };
 

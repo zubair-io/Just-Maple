@@ -43,11 +43,19 @@ struct ContentView: View {
                 }
 
                 // Start accessing the security-scoped resource
-                let didStart = url.startAccessingSecurityScopedResource()
-                if didStart {
-                    print("[ContentView] Started accessing security-scoped resource: \(url.path)")
+                guard url.startAccessingSecurityScopedResource() else {
+                    print("[ContentView] Failed to access security-scoped resource: \(url.path)")
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("FolderPickerResult"),
+                        object: nil,
+                        userInfo: ["path": NSNull(), "name": NSNull()]
+                    )
+                    return
                 }
 
+                // Note: stopAccessingSecurityScopedResource() is NOT called here —
+                // the NativeBridge retains the URL in grantedFolderURLs and will
+                // stop access when the folder is closed or the app terminates.
                 NotificationCenter.default.post(
                     name: NSNotification.Name("FolderPickerResult"),
                     object: nil,

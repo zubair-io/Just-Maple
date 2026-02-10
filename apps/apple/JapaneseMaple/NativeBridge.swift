@@ -565,6 +565,13 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         decoder.dateDecodingStrategy = .iso8601
     }
 
+    deinit {
+        // Balance all startAccessingSecurityScopedResource() calls
+        for url in grantedFolderURLs {
+            url.stopAccessingSecurityScopedResource()
+        }
+    }
+
     // MARK: - Receive from Web
 
     func userContentController(_ userContentController: WKUserContentController,
@@ -943,11 +950,11 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 let response = panel.runModal()
                 if response == .OK, let url = panel.url {
                     // Start accessing the security-scoped resource and store the URL
-                    // so file operations within this folder are permitted by the sandbox
-                    let didStart = url.startAccessingSecurityScopedResource()
-                    if didStart {
-                        print("[Bridge] Started accessing security-scoped resource: \(url.path)")
-                    }
+                    // so file operations within this folder are permitted by the sandbox.
+                    // stopAccessingSecurityScopedResource() is called when the URL is
+                    // removed from grantedFolderURLs (e.g. folder closed / app quit).
+                    _ = url.startAccessingSecurityScopedResource()
+
                     self.grantedFolderURLs.removeAll { $0.path == url.path }
                     self.grantedFolderURLs.append(url)
 

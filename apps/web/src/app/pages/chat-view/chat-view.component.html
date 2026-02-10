@@ -51,16 +51,22 @@
         </div>
       </div>
 
-      <div class="local-file-list">
+      <div class="flex flex-col gap-0.5">
         @for (page of localPages(); track page.id) {
-          <button type="button" class="local-file-item" (click)="onFileClicked(page.id)">
+          <button
+            type="button"
+            class="flex items-center gap-3 px-4 py-2.5 border-none rounded-lg bg-transparent text-[var(--color-text-main)] text-sm text-left w-full cursor-pointer transition-colors hover:bg-[var(--color-surface-hover)]"
+            (click)="onFileClicked(page.id)"
+          >
             <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
               >description</span
             >
-            <span class="file-name">{{ page.title }}</span>
+            <span class="flex-1 min-w-0 truncate">{{ page.title }}</span>
           </button>
         } @empty {
-          <p class="empty-files">No files yet. Create a new note to get started.</p>
+          <p class="py-8 text-center text-sm text-[var(--color-text-muted)]">
+            No files yet. Create a new note to get started.
+          </p>
         }
       </div>
     } @else if (summary()) {

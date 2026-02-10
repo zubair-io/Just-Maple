@@ -1983,7 +1983,6 @@ export class NotebookEditorComponent implements OnDestroy {
     const target = event.target as HTMLElement;
     if (target.classList.contains('editor-wrapper')) {
       this._editor?.commands.focus('end');
-      console.log('©');
     }
   }
 

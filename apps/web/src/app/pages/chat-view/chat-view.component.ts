@@ -3,7 +3,7 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Subscription, switchMap, of, combineLatest, map, catchError } from 'rxjs';
+import { Subscription, switchMap, of, combineLatest, map, catchError, take } from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
 import { NotificationService } from '../../services/notification.service';
 import { PageService } from '../../services/page.service';
@@ -146,7 +146,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
 
       // For local notebooks, load pages into store
       if (notebookId && isLocalNotebook(notebookId)) {
-        this.pageService.loadLocalPages(notebookId).subscribe();
+        this.pageService.loadLocalPages(notebookId).pipe(take(1)).subscribe();
       }
     });
   }
