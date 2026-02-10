@@ -430,12 +430,13 @@ export async function updateNotebookPublicConfig(
         updateFields['sharing.isPublic'] = data.isPublic;
     }
     if (data.slug !== undefined) {
+        const normalizedSlug = data.slug.trim().toLowerCase();
         // Validate slug uniqueness
-        const existing = await findNotebookBySlugAny(data.slug);
+        const existing = await findNotebookBySlugAny(normalizedSlug);
         if (existing && existing._id !== notebookId) {
             return null; // Slug already taken
         }
-        updateFields.slug = data.slug;
+        updateFields.slug = normalizedSlug;
     }
     if (data.publicConfig !== undefined) {
         updateFields.publicConfig = data.publicConfig;

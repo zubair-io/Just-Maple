@@ -463,6 +463,17 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
+            // Check page exists and is not a message-type page
+            const existingPage = await findPageById(params.id, auth.user._id);
+            if (!existingPage) {
+                set.status = 404;
+                return { error: 'Not found', message: 'Page not found or access denied' };
+            }
+            if (existingPage.type === 'message') {
+                set.status = 400;
+                return { error: 'Bad request', message: 'Message pages cannot be published' };
+            }
+
             // Sanitize slug if provided
             const sanitizedBody = { ...body };
             if (sanitizedBody.publishedSlug) {
@@ -471,13 +482,21 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                     .replace(/[^a-z0-9-]/g, '-')
                     .replace(/-+/g, '-')
                     .replace(/^-|-$/g, '');
+
+                if (!sanitizedBody.publishedSlug) {
+                    set.status = 400;
+                    return {
+                        error: 'Bad request',
+                        message: 'Slug must contain at least one alphanumeric character',
+                    };
+                }
             }
 
             const page = await publishPage(params.id, auth.user._id, sanitizedBody);
 
             if (!page) {
                 set.status = 404;
-                return { error: 'Page not found or access denied' };
+                return { error: 'Not found', message: 'Page not found or access denied' };
             }
 
             return { page };

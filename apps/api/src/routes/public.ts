@@ -12,7 +12,7 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
             const notebook = await findNotebookBySlug(params.slug);
             if (!notebook) {
                 set.status = 404;
-                return { error: 'Notebook not found' };
+                return { error: 'Not found', message: 'Notebook not found' };
             }
 
             const pages = await findPublishedPagesByNotebookId(notebook._id);
@@ -50,13 +50,13 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
             const notebook = await findNotebookBySlug(params.slug);
             if (!notebook) {
                 set.status = 404;
-                return { error: 'Notebook not found' };
+                return { error: 'Not found', message: 'Notebook not found' };
             }
 
             const page = await findPublishedPageBySlug(notebook._id, params.pageSlug);
             if (!page) {
                 set.status = 404;
-                return { error: 'Page not found' };
+                return { error: 'Not found', message: 'Page not found' };
             }
 
             const pageTitle = page.publishedTitle || page.title;
@@ -108,7 +108,7 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
             const customDomain = await findCustomDomainByDomain(params.domain);
             if (!customDomain) {
                 set.status = 404;
-                return { error: 'Domain not found' };
+                return { error: 'Not found', message: 'Domain not found' };
             }
 
             // Find the notebook associated with this domain
@@ -116,7 +116,7 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
             const notebook = await findNotebookByIdUnsafe(customDomain.notebookId);
             if (!notebook || !notebook.sharing.isPublic) {
                 set.status = 404;
-                return { error: 'Notebook not found' };
+                return { error: 'Not found', message: 'Notebook not found' };
             }
 
             const pages = await findPublishedPagesByNotebookId(notebook._id);

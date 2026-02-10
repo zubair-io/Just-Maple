@@ -197,7 +197,7 @@ async function createIndexes(database: Db): Promise<void> {
     // Page publishing indexes
     await database
         .collection('pages')
-        .createIndex({ notebookId: 1, publishedSlug: 1 }, { sparse: true });
+        .createIndex({ notebookId: 1, publishedSlug: 1 }, { unique: true, sparse: true });
     await database
         .collection('pages')
         .createIndex({ notebookId: 1, isPublished: 1, publishedOrder: 1 }, { sparse: true });

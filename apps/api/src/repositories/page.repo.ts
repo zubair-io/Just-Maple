@@ -848,8 +848,36 @@ function titleToSlug(title: string): string {
 }
 
 /**
+ * Ensure a publishedSlug is unique within a notebook.
+ * If taken, appends -2, -3, etc. until unique.
+ */
+async function ensureUniqueSlug(
+    slug: string,
+    notebookId: ObjectId | undefined,
+    excludePageId?: string,
+): Promise<string> {
+    let candidate = slug;
+    let suffix = 2;
+    while (true) {
+        const query: Record<string, unknown> = { publishedSlug: candidate };
+        if (notebookId) {
+            query.notebookId = notebookId;
+        }
+        const existing = await getCollection().findOne(query);
+        if (!existing || (excludePageId && existing.id === excludePageId)) {
+            return candidate;
+        }
+        candidate = `${slug}-${suffix}`;
+        suffix++;
+        if (suffix > 100) break; // Safety limit
+    }
+    return candidate;
+}
+
+/**
  * Update a page's publish state (slug, order, visibility)
- * Requires write access to the page's notebook
+ * Requires write access to the page's notebook.
+ * Message-type pages cannot be published.
  */
 export async function publishPage(
     pageId: string,
@@ -859,6 +887,9 @@ export async function publishPage(
     try {
         const doc = await getCollection().findOne({ id: pageId });
         if (!doc) return null;
+
+        // Message pages cannot be published
+        if (doc.type === 'message') return null;
 
         // Check write access
         if (doc.notebookId) {
@@ -884,10 +915,15 @@ export async function publishPage(
             }
         }
         if (data.publishedSlug !== undefined) {
-            updateData.publishedSlug = data.publishedSlug;
+            updateData.publishedSlug = await ensureUniqueSlug(
+                data.publishedSlug,
+                doc.notebookId,
+                pageId,
+            );
         } else if (data.isPublished && !doc.publishedSlug) {
             // Auto-generate slug from title if publishing and no slug set
-            updateData.publishedSlug = titleToSlug(doc.title || 'untitled');
+            const baseSlug = titleToSlug(doc.title || 'untitled');
+            updateData.publishedSlug = await ensureUniqueSlug(baseSlug, doc.notebookId, pageId);
         }
         if (data.publishedOrder !== undefined) {
             updateData.publishedOrder = data.publishedOrder;
@@ -938,6 +974,7 @@ export async function findPublishedPageBySlug(
             publishedSlug: pageSlug,
             isPublished: true,
             isTrashed: { $ne: true },
+            type: { $ne: 'message' },
         });
         return doc ? toPageResponse(doc) : null;
     } catch {
@@ -961,8 +998,10 @@ export async function bulkPublishPagesForNotebook(notebookId: string): Promise<n
             .toArray();
 
         let count = 0;
+        const notebookOid = new ObjectId(notebookId);
         for (const doc of docs) {
-            const slug = titleToSlug(doc.title || 'untitled');
+            const baseSlug = titleToSlug(doc.title || 'untitled');
+            const slug = await ensureUniqueSlug(baseSlug, notebookOid, doc.id);
             await getCollection().updateOne(
                 { _id: doc._id },
                 {

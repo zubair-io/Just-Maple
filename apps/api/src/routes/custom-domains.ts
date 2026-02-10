@@ -42,7 +42,7 @@ export const customDomainRoutes = new Elysia({ prefix: '/api/notebooks' })
             const notebook = await findNotebookByIdWithAccess(params.id, auth.user._id, 'owner');
             if (!notebook) {
                 set.status = 404;
-                return { error: 'Notebook not found' };
+                return { error: 'Not found', message: 'Notebook not found' };
             }
 
             const domains = await findCustomDomainsByNotebookId(params.id);
@@ -66,7 +66,7 @@ export const customDomainRoutes = new Elysia({ prefix: '/api/notebooks' })
             const notebook = await findNotebookByIdWithAccess(params.id, auth.user._id, 'owner');
             if (!notebook) {
                 set.status = 404;
-                return { error: 'Notebook not found' };
+                return { error: 'Not found', message: 'Notebook not found' };
             }
 
             // Validate domain format
@@ -74,14 +74,14 @@ export const customDomainRoutes = new Elysia({ prefix: '/api/notebooks' })
             const domainRegex = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
             if (!domainRegex.test(domain)) {
                 set.status = 400;
-                return { error: 'Invalid domain format' };
+                return { error: 'Bad request', message: 'Invalid domain format' };
             }
 
             // Check if domain is already taken
             const taken = await isDomainTaken(domain);
             if (taken) {
                 set.status = 409;
-                return { error: 'Domain already registered' };
+                return { error: 'Conflict', message: 'Domain already registered' };
             }
 
             const customDomain = await createCustomDomain(params.id, auth.user._id, { domain });
@@ -108,13 +108,13 @@ export const customDomainRoutes = new Elysia({ prefix: '/api/notebooks' })
             const notebook = await findNotebookByIdWithAccess(params.id, auth.user._id, 'owner');
             if (!notebook) {
                 set.status = 404;
-                return { error: 'Notebook not found' };
+                return { error: 'Not found', message: 'Notebook not found' };
             }
 
             const domain = await findCustomDomainById(params.domainId);
             if (!domain || domain.notebookId !== params.id) {
                 set.status = 404;
-                return { error: 'Domain not found' };
+                return { error: 'Not found', message: 'Domain not found' };
             }
 
             // Set status to verifying
@@ -131,7 +131,7 @@ export const customDomainRoutes = new Elysia({ prefix: '/api/notebooks' })
 
                 if (hasCname) {
                     const updated = await updateDomainStatus(params.domainId, 'active', 'active');
-                    return { domain: updated, verified: true };
+                    return { domain: updated ?? { ...domain, status: 'active' }, verified: true };
                 } else {
                     await updateDomainStatus(params.domainId, 'pending');
                     return {
@@ -168,13 +168,13 @@ export const customDomainRoutes = new Elysia({ prefix: '/api/notebooks' })
             const notebook = await findNotebookByIdWithAccess(params.id, auth.user._id, 'owner');
             if (!notebook) {
                 set.status = 404;
-                return { error: 'Notebook not found' };
+                return { error: 'Not found', message: 'Notebook not found' };
             }
 
             const deleted = await deleteCustomDomain(params.domainId, params.id);
             if (!deleted) {
                 set.status = 404;
-                return { error: 'Domain not found' };
+                return { error: 'Not found', message: 'Domain not found' };
             }
 
             return { message: 'Domain removed successfully' };

@@ -314,6 +314,14 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
                     .replace(/[^a-z0-9-]/g, '-')
                     .replace(/-+/g, '-')
                     .replace(/^-|-$/g, '');
+
+                if (!sanitizedBody.slug) {
+                    set.status = 400;
+                    return {
+                        error: 'Bad request',
+                        message: 'Slug must contain at least one alphanumeric character',
+                    };
+                }
             }
 
             const notebook = await updateNotebookPublicConfig(

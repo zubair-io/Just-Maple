@@ -64,19 +64,26 @@ export async function createCustomDomain(
         userId: new ObjectId(userId),
     };
 
-    const result = await getCollection().insertOne(doc as CustomDomainDocument);
+    try {
+        const result = await getCollection().insertOne(doc as CustomDomainDocument);
 
-    return {
-        _id: result.insertedId.toString(),
-        notebookId,
-        domain,
-        status: 'pending',
-        verificationMethod: 'cname',
-        verificationToken: doc.verificationToken,
-        sslStatus: 'pending',
-        createdAt: now.toISOString(),
-        userId,
-    };
+        return {
+            _id: result.insertedId.toString(),
+            notebookId,
+            domain,
+            status: 'pending',
+            verificationMethod: 'cname',
+            verificationToken: doc.verificationToken,
+            sslStatus: 'pending',
+            createdAt: now.toISOString(),
+            userId,
+        };
+    } catch (e: any) {
+        if (e.code === 11000 || e.codeName === 'DuplicateKey') {
+            throw new Error('DOMAIN_TAKEN');
+        }
+        throw e;
+    }
 }
 
 /**
