@@ -61,6 +61,8 @@ export const PageSchema = Type.Object({
     publishedSlug: Type.Optional(Type.String()),
     publishedAt: Type.Optional(Type.String({ format: 'date-time' })),
     publishedOrder: Type.Optional(Type.Number()),
+    publishedContent: Type.Optional(PageContentSchema), // Snapshot of content at last publish
+    publishedTitle: Type.Optional(Type.String()), // Snapshot of title at last publish
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
 });

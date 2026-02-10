@@ -44,6 +44,8 @@ interface PageDocument {
     publishedSlug?: string;
     publishedAt?: Date;
     publishedOrder?: number;
+    publishedContent?: PageContent;
+    publishedTitle?: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -71,6 +73,8 @@ function toPageResponse(doc: PageDocument): Page {
         publishedSlug: doc.publishedSlug,
         publishedAt: doc.publishedAt?.toISOString(),
         publishedOrder: doc.publishedOrder,
+        publishedContent: doc.publishedContent,
+        publishedTitle: doc.publishedTitle,
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
     };
@@ -872,7 +876,10 @@ export async function publishPage(
 
         if (data.isPublished !== undefined) {
             updateData.isPublished = data.isPublished;
-            if (data.isPublished && !doc.publishedAt) {
+            if (data.isPublished) {
+                // Snapshot current content and title for public readers
+                updateData.publishedContent = doc.content;
+                updateData.publishedTitle = doc.title;
                 updateData.publishedAt = new Date();
             }
         }
@@ -940,7 +947,7 @@ export async function findPublishedPageBySlug(
 
 /**
  * Bulk publish all pages in a notebook (when notebook is made public)
- * Sets isPublished=true and auto-generates slugs for all non-message pages
+ * Sets isPublished=true, auto-generates slugs, and snapshots content for all non-message pages
  */
 export async function bulkPublishPagesForNotebook(notebookId: string): Promise<number> {
     try {
@@ -962,6 +969,8 @@ export async function bulkPublishPagesForNotebook(notebookId: string): Promise<n
                     $set: {
                         isPublished: true,
                         publishedSlug: slug,
+                        publishedContent: doc.content,
+                        publishedTitle: doc.title,
                         publishedAt: new Date(),
                         updatedAt: new Date(),
                     },

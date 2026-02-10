@@ -29,9 +29,9 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
                 },
                 pages: pages.map((page) => ({
                     slug: page.publishedSlug,
-                    title: page.title,
+                    title: page.publishedTitle || page.title,
                     type: page.type,
-                    updatedAt: page.updatedAt,
+                    updatedAt: page.publishedAt || page.updatedAt,
                     order: page.publishedOrder ?? 0,
                 })),
             };
@@ -59,30 +59,33 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
                 return { error: 'Page not found' };
             }
 
+            const pageTitle = page.publishedTitle || page.title;
+            const pageContent = page.publishedContent || page.content;
+
             // Get backlinks: other published pages that link to this page
             const allPages = await findPublishedPagesByNotebookId(notebook._id);
             const backlinks = allPages
                 .filter((p) => {
                     if (p.id === page.id) return false;
-                    // Check if page content contains a link to this page
-                    const contentStr = JSON.stringify(p.content);
+                    // Check if published content contains a link to this page
+                    const contentStr = JSON.stringify(p.publishedContent || p.content);
                     return (
-                        contentStr.includes(page.title) ||
+                        contentStr.includes(pageTitle) ||
                         contentStr.includes(page.publishedSlug || '')
                     );
                 })
                 .map((p) => ({
                     slug: p.publishedSlug,
-                    title: p.title,
+                    title: p.publishedTitle || p.title,
                 }));
 
             return {
                 page: {
                     slug: page.publishedSlug,
-                    title: page.title,
+                    title: pageTitle,
                     type: page.type,
-                    content: page.content,
-                    updatedAt: page.updatedAt,
+                    content: pageContent,
+                    publishedAt: page.publishedAt,
                     todoMeta: page.todoMeta,
                 },
                 links: {
@@ -130,9 +133,9 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
                 },
                 pages: pages.map((page) => ({
                     slug: page.publishedSlug,
-                    title: page.title,
+                    title: page.publishedTitle || page.title,
                     type: page.type,
-                    updatedAt: page.updatedAt,
+                    updatedAt: page.publishedAt || page.updatedAt,
                     order: page.publishedOrder ?? 0,
                 })),
                 domain: {
