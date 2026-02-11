@@ -5,13 +5,6 @@
     </div>
   } @else if (publicNotebookService.activePage(); as page) {
     <article class="page-article">
-      <header class="page-header">
-        <h1>{{ page.title }}</h1>
-        @if (page.publishedAt) {
-          <time class="page-date">{{ page.publishedAt | date: 'mediumDate' }}</time>
-        }
-      </header>
-
       <div class="page-body">
         <app-content-renderer [content]="page.content" />
       </div>

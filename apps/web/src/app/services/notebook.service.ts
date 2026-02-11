@@ -562,6 +562,29 @@ export class NotebookService {
       );
   }
 
+  /**
+   * Update notebook's public configuration (slug, displayName, etc.)
+   */
+  updatePublicConfig(
+    notebookId: string,
+    data: { isPublic?: boolean; slug?: string },
+  ): Observable<Notebook> {
+    return this.http
+      .patch<{ notebook: Notebook }>(`/api/notebooks/${notebookId}/public`, data)
+      .pipe(
+        tap((response) => {
+          this.store.update(updateEntities(notebookId, () => response.notebook));
+          this.persistToIndexedDB([response.notebook]);
+        }),
+        map((response) => response.notebook),
+        catchError((err) => {
+          const message =
+            err?.error?.message || err?.error?.error || 'Failed to update public config';
+          return throwError(() => new Error(message));
+        }),
+      );
+  }
+
   // ============ Summary Methods ============
 
   /**

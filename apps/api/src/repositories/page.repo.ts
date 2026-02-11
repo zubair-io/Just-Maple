@@ -11,10 +11,12 @@ import type {
     PublishPageInput,
 } from '@maple/shared';
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
-import { deleteMemo, deleteMemosByPageId } from './memo.repo';
+import { deleteMemo, deleteMemosByPageId, getMemoState } from './memo.repo';
 import { deleteWhiteboard } from './whiteboard.repo';
 import { deleteKanbanBoard } from './kanban-board.repo';
 import { isDevMode, isDocPage, getDocPage, pageIdToSlug } from '../services/docs.service';
+import * as Y from 'yjs';
+import { createSnapshotFromState } from '../services/memo-version.service';
 
 /**
  * Generate a UUID v4 for page routing
@@ -875,6 +877,87 @@ async function ensureUniqueSlug(
 }
 
 /**
+ * Convert Y.js binary state to ProseMirror JSON.
+ */
+function yDocStateToJSON(state: Uint8Array): PageContent | null {
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, state);
+    const fragment = ydoc.getXmlFragment('prosemirror');
+    if (fragment.length === 0) {
+        ydoc.destroy();
+        return null;
+    }
+
+    const content: PageContent['content'] = [];
+    for (let i = 0; i < fragment.length; i++) {
+        const child = fragment.get(i);
+        if (child instanceof Y.XmlElement) {
+            content.push(yXmlElementToJSON(child));
+        } else if (child instanceof Y.XmlText) {
+            content.push(...yXmlTextToNodes(child));
+        }
+    }
+    ydoc.destroy();
+    return { type: 'doc', content };
+}
+
+function yXmlElementToJSON(element: Y.XmlElement): Record<string, unknown> {
+    const result: Record<string, unknown> = { type: element.nodeName };
+    const attrs = element.getAttributes();
+    if (Object.keys(attrs).length > 0) result.attrs = attrs;
+
+    const content: Record<string, unknown>[] = [];
+    for (let i = 0; i < element.length; i++) {
+        const child = element.get(i);
+        if (child instanceof Y.XmlElement) {
+            content.push(yXmlElementToJSON(child));
+        } else if (child instanceof Y.XmlText) {
+            // A single Y.XmlText can produce multiple ProseMirror text nodes
+            content.push(...yXmlTextToNodes(child));
+        }
+    }
+    if (content.length > 0) result.content = content;
+    return result;
+}
+
+/**
+ * Convert a Y.XmlText to one or more ProseMirror text nodes.
+ * Each delta segment becomes a separate node with its own marks.
+ * Empty text nodes are filtered out (ProseMirror rejects them).
+ */
+function yXmlTextToNodes(textNode: Y.XmlText): Record<string, unknown>[] {
+    const delta = textNode.toDelta();
+    const nodes: Record<string, unknown>[] = [];
+
+    for (const segment of delta) {
+        const text = typeof segment.insert === 'string' ? segment.insert : '';
+        if (!text) continue; // Skip empty text nodes
+
+        const node: Record<string, unknown> = { type: 'text', text };
+
+        if (segment.attributes) {
+            const marks: Array<{ type: string; attrs?: Record<string, unknown> }> = [];
+            for (const [key, value] of Object.entries(segment.attributes)) {
+                if (value === null || value === false) continue;
+                if (
+                    value === true ||
+                    (typeof value === 'object' && Object.keys(value as object).length === 0)
+                ) {
+                    marks.push({ type: key });
+                } else {
+                    marks.push({ type: key, attrs: value as Record<string, unknown> });
+                }
+            }
+            if (marks.length > 0) node.marks = marks;
+        }
+
+        nodes.push(node);
+    }
+
+    return nodes;
+}
+
+/**
  * Update a page's publish state (slug, order, visibility)
  * Requires write access to the page's notebook.
  * Message-type pages cannot be published.
@@ -908,10 +991,19 @@ export async function publishPage(
         if (data.isPublished !== undefined) {
             updateData.isPublished = data.isPublished;
             if (data.isPublished) {
-                // Snapshot current content and title for public readers
-                updateData.publishedContent = doc.content;
+                // Snapshot current Y.js content and title for public readers
+                const memoState = await getMemoState(pageId);
+                const yContent = memoState ? yDocStateToJSON(memoState) : null;
+                updateData.publishedContent = yContent || doc.content;
                 updateData.publishedTitle = doc.title;
                 updateData.publishedAt = new Date();
+
+                // Create a version history snapshot
+                if (memoState) {
+                    createSnapshotFromState(pageId, memoState, 'manual', 'Published').catch((err) =>
+                        console.error('[publishPage] Failed to create version snapshot:', err),
+                    );
+                }
             }
         }
         if (data.publishedSlug !== undefined) {
@@ -946,17 +1038,25 @@ export async function publishPage(
  */
 export async function findPublishedPagesByNotebookId(notebookId: string): Promise<Page[]> {
     try {
+        const oid = new ObjectId(notebookId);
+        // Try both ObjectId and string notebookId (some pages may have string format)
         const docs = await getCollection()
             .find({
-                notebookId: new ObjectId(notebookId),
+                $or: [{ notebookId: oid }, { notebookId: notebookId }],
                 isPublished: true,
                 isTrashed: { $ne: true },
                 type: { $ne: 'message' }, // Never publish message pages
             })
-            .sort({ publishedOrder: 1, title: 1 })
             .toArray();
+        // Sort in application code (Cosmos DB doesn't support $or with .sort())
+        docs.sort(
+            (a, b) =>
+                (a.publishedOrder ?? 0) - (b.publishedOrder ?? 0) ||
+                (a.title || '').localeCompare(b.title || ''),
+        );
         return docs.map(toPageResponse);
-    } catch {
+    } catch (err) {
+        console.error('[findPublishedPagesByNotebookId] Error:', err);
         return [];
     }
 }
@@ -969,8 +1069,9 @@ export async function findPublishedPageBySlug(
     pageSlug: string,
 ): Promise<Page | null> {
     try {
+        const oid = new ObjectId(notebookId);
         const doc = await getCollection().findOne({
-            notebookId: new ObjectId(notebookId),
+            $or: [{ notebookId: oid }, { notebookId: notebookId }],
             publishedSlug: pageSlug,
             isPublished: true,
             isTrashed: { $ne: true },
@@ -988,9 +1089,10 @@ export async function findPublishedPageBySlug(
  */
 export async function bulkPublishPagesForNotebook(notebookId: string): Promise<number> {
     try {
+        const oid = new ObjectId(notebookId);
         const docs = await getCollection()
             .find({
-                notebookId: new ObjectId(notebookId),
+                $or: [{ notebookId: oid }, { notebookId: notebookId }],
                 isTrashed: { $ne: true },
                 type: { $ne: 'message' },
                 isPublished: { $ne: true },
@@ -998,17 +1100,18 @@ export async function bulkPublishPagesForNotebook(notebookId: string): Promise<n
             .toArray();
 
         let count = 0;
-        const notebookOid = new ObjectId(notebookId);
         for (const doc of docs) {
             const baseSlug = titleToSlug(doc.title || 'untitled');
-            const slug = await ensureUniqueSlug(baseSlug, notebookOid, doc.id);
+            const slug = await ensureUniqueSlug(baseSlug, oid, doc.id);
+            const bulkMemoState = await getMemoState(doc.id);
+            const yContent = bulkMemoState ? yDocStateToJSON(bulkMemoState) : null;
             await getCollection().updateOne(
                 { _id: doc._id },
                 {
                     $set: {
                         isPublished: true,
                         publishedSlug: slug,
-                        publishedContent: doc.content,
+                        publishedContent: yContent || doc.content,
                         publishedTitle: doc.title,
                         publishedAt: new Date(),
                         updatedAt: new Date(),

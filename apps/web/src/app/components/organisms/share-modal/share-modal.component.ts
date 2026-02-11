@@ -38,8 +38,17 @@ export class ShareModalComponent {
   readonly isLoadingBots = signal(false);
   private readonly sharedBotsRefreshTrigger = signal<number>(0);
 
+  readonly isTogglingPublic = signal(false);
+
   readonly notebookId = computed(() => this.notebook()?._id);
   readonly isLocal = computed(() => isLocalNotebook(this.notebook()?._id ?? ''));
+  readonly isPublic = computed(() => !!this.notebook()?.sharing?.isPublic);
+  readonly publicUrl = computed(() => {
+    const slug = this.notebook()?.slug;
+    if (!this.isPublic() || !slug) return null;
+    return `${window.location.origin}/!/${slug}`;
+  });
+  readonly linkCopied = signal(false);
 
   // Reactively load shared bots when notebook changes or refresh is triggered
   readonly sharedBots = toSignal(
@@ -161,6 +170,52 @@ export class ShareModalComponent {
         this.dialogService.alert({
           title: 'Error',
           message: 'Failed to remove bot: ' + err.message,
+        });
+      },
+    });
+  }
+
+  copyPublicLink(): void {
+    const url = this.publicUrl();
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+      this.linkCopied.set(true);
+      setTimeout(() => this.linkCopied.set(false), 2000);
+    });
+  }
+
+  togglePublic(): void {
+    const notebook = this.notebook();
+    const newValue = !this.isPublic();
+    this.isTogglingPublic.set(true);
+
+    let call;
+    if (newValue) {
+      // Always use PATCH when turning ON — it triggers bulkPublishPagesForNotebook on the backend
+      const slug =
+        notebook.slug ||
+        notebook.label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '') +
+          '-' +
+          Math.random().toString(16).slice(2, 8);
+      call = this.notebookService.updatePublicConfig(notebook._id, { isPublic: true, slug });
+    } else {
+      call = this.notebookService.setPublic(notebook._id, false);
+    }
+
+    call.subscribe({
+      next: () => {
+        this.isTogglingPublic.set(false);
+        this.membersChanged.emit();
+      },
+      error: (err) => {
+        this.isTogglingPublic.set(false);
+        console.error('Failed to toggle public access:', err);
+        this.dialogService.alert({
+          title: 'Error',
+          message: 'Failed to update public access: ' + err.message,
         });
       },
     });

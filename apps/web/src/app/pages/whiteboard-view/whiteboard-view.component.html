@@ -5,6 +5,7 @@
       [notebook]="selectedNotebook()"
       (toggleFavorite)="toggleFavorite()"
       (deleteRequested)="handleDelete()"
+      (publishToggled)="handlePublishToggle($event)"
     />
 
     <div class="whiteboard-content">

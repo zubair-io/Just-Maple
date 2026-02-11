@@ -1,109 +1,66 @@
 <div class="public-layout">
   <!-- Header -->
-  <header class="public-header">
-    <div class="header-left">
+  <header
+    class="flex items-center justify-between px-4 h-12 border-b border-[var(--color-border)] flex-shrink-0 bg-[var(--color-sidebar)]"
+  >
+    <div class="flex items-center gap-2.5">
       @if (publicNotebookService.notebook()?.showPageList) {
-        <button class="menu-btn" (click)="toggleSidebar()">
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
+        <button
+          class="md:hidden flex items-center justify-center p-1 rounded text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)] transition-colors"
+          (click)="toggleSidebar()"
+        >
+          <span class="material-symbols-rounded text-xl">menu</span>
         </button>
       }
       @if (publicNotebookService.notebook()?.logoUrl) {
-        <img [src]="publicNotebookService.notebook()!.logoUrl" alt="" class="header-logo" />
+        <img [src]="publicNotebookService.notebook()!.logoUrl" alt="" class="h-7 w-auto rounded" />
+      } @else {
+        <img
+          src="https://hornbeam.justmaple.app/data/assets/justmaple.svg"
+          alt="Maple"
+          class="w-7 h-7"
+        />
       }
-      <span class="header-title">{{
+      <span class="font-serif font-bold text-base tracking-tight text-[var(--color-text-main)]">{{
         publicNotebookService.notebook()?.displayName || 'Loading...'
       }}</span>
     </div>
-    <div class="header-right">
-      <a href="https://justmaple.app" target="_blank" rel="noopener" class="powered-by">
-        Just Maple
-      </a>
-    </div>
+    <a
+      href="https://justmaple.app"
+      target="_blank"
+      rel="noopener"
+      class="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] no-underline hover:text-[var(--color-primary)] transition-colors"
+    >
+      Just Maple
+    </a>
   </header>
 
   <div class="public-body">
     <!-- Sidebar -->
     @if (publicNotebookService.notebook()?.showPageList) {
-      <aside class="public-sidebar" [class.open]="sidebarOpen()">
-        <nav class="page-list">
+      <aside
+        class="public-sidebar w-72 flex-shrink-0 bg-[var(--color-sidebar)] border-r border-[var(--color-border)] overflow-y-auto"
+        [class.open]="sidebarOpen()"
+      >
+        <!-- Page list -->
+        <nav class="px-3 pt-4 pb-4 space-y-0.5">
           @for (page of publicNotebookService.sortedPages(); track page.slug) {
             <a
-              class="page-item"
+              class="flex items-center gap-1.5 px-2 py-1.5 text-sm rounded-md cursor-pointer transition-colors text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)]"
               [routerLink]="['/!', notebookSlug(), page.slug]"
-              routerLinkActive="active"
+              routerLinkActive="active-page"
               (click)="closeSidebar()"
             >
-              <span class="page-icon">
-                @switch (page.type) {
-                  @case ('memo') {
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                      <polyline points="14 2 14 8 20 8" />
-                      <line x1="16" y1="13" x2="8" y2="13" />
-                      <line x1="16" y1="17" x2="8" y2="17" />
-                    </svg>
-                  }
-                  @case ('whiteboard') {
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <rect x="3" y="3" width="18" height="18" rx="2" />
-                      <path d="M3 9h18" />
-                    </svg>
-                  }
-                  @case ('kanban') {
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <rect x="3" y="3" width="5" height="18" rx="1" />
-                      <rect x="10" y="3" width="5" height="12" rx="1" />
-                      <rect x="17" y="3" width="5" height="8" rx="1" />
-                    </svg>
-                  }
-                  @default {
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                      <polyline points="14 2 14 8 20 8" />
-                    </svg>
-                  }
+              <span class="material-symbols-rounded text-xs opacity-60 flex-shrink-0">
+                @if (page.type === 'whiteboard') {
+                  draw
+                } @else if (page.type === 'kanban') {
+                  view_kanban
+                } @else {
+                  description
                 }
               </span>
-              <span class="page-title">{{ page.title }}</span>
+              <span class="truncate">{{ page.title }}</span>
             </a>
           }
         </nav>

@@ -22,12 +22,14 @@ export class PublicLandingComponent {
       const pages = this.publicNotebookService.sortedPages();
       if (!notebook || pages.length === 0) return;
 
+      const notebookSlug = this.route.parent?.snapshot.paramMap.get('notebookSlug');
+      if (!notebookSlug) return;
+
       // Find the landing page slug
       if (notebook.landingPageId) {
         const landingPage = pages.find((p) => p.slug === notebook.landingPageId);
         if (landingPage) {
-          this.router.navigate(['../', landingPage.slug], {
-            relativeTo: this.route,
+          this.router.navigate(['/', '!', notebookSlug, landingPage.slug], {
             replaceUrl: true,
           });
           return;
@@ -36,8 +38,7 @@ export class PublicLandingComponent {
 
       // Default: redirect to first page
       if (pages.length > 0) {
-        this.router.navigate(['../', pages[0].slug], {
-          relativeTo: this.route,
+        this.router.navigate(['/', '!', notebookSlug, pages[0].slug], {
           replaceUrl: true,
         });
       }

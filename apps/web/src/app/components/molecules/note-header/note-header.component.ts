@@ -35,6 +35,16 @@ export class NoteHeaderComponent {
   readonly versionRestored = output<void>();
   readonly deleteRequested = output<void>();
   readonly titleChanged = output<string>();
+  readonly publishToggled = output<boolean>();
+
+  // Publish state
+  readonly contentDirty = input<boolean>(false);
+  readonly isNotebookPublic = computed(() => !!this.notebook()?.sharing?.isPublic);
+  readonly isPagePublished = computed(() => !!this.page()?.isPublished);
+  readonly isPublishStale = computed(() => {
+    if (!this.isPagePublished()) return false;
+    return this.contentDirty();
+  });
 
   readonly showExportMenu = signal(false);
   readonly showVersionHistory = signal(false);

@@ -41,6 +41,7 @@ export class NotebookComponent implements OnDestroy {
   private readonly dialogService = inject(DialogService);
 
   private isSavingCheckpoint = false;
+  private publishedDocRef: unknown = null;
 
   private routeSubscription?: Subscription;
   private editorUpdateInterval?: ReturnType<typeof setInterval>;
@@ -52,6 +53,7 @@ export class NotebookComponent implements OnDestroy {
   readonly canUndo = signal(false);
   readonly canRedo = signal(false);
   readonly isFullWidth = signal(false);
+  readonly contentDirty = signal(false);
 
   // Get the page from the store
   readonly selectedPage = toSignal(this.pageService.activePage$, { initialValue: null });
@@ -68,9 +70,14 @@ export class NotebookComponent implements OnDestroy {
       const notebookId = params['notebookId'] || null;
       this.pageId.set(id);
       this.notebookId.set(notebookId);
+      this.publishedDocRef = null;
+      this.contentDirty.set(false);
 
       if (id) {
         this.pageService.setActivePageId(id);
+      }
+      if (notebookId) {
+        this.notebookService.setActiveNotebook(notebookId);
       }
 
       // For local notebooks, load pages into store (needed on reload)
@@ -104,6 +111,16 @@ export class NotebookComponent implements OnDestroy {
         this.canUndo.set(editor.can().undo());
         this.canRedo.set(editor.can().redo());
         this.isFullWidth.set(this.editorComponent?.isFullWidth() ?? false);
+
+        // Track content changes since last publish
+        const page = this.selectedPage();
+        if (!this.publishedDocRef && page?.isPublished) {
+          // Snapshot initial doc state when page is published
+          this.publishedDocRef = editor.state.doc;
+        }
+        if (this.publishedDocRef && !editor.state.doc.eq(this.publishedDocRef as any)) {
+          this.contentDirty.set(true);
+        }
       });
     }
   }
@@ -153,6 +170,20 @@ export class NotebookComponent implements OnDestroy {
     // Reload the page to get the restored version
     // This ensures all Y.js state is properly reset
     window.location.reload();
+  }
+
+  handlePublishToggle(isPublished: boolean): void {
+    const id = this.pageId();
+    if (!id) return;
+    this.pageService.publishPage(id, isPublished).subscribe({
+      next: () => {
+        if (isPublished) {
+          this.publishedDocRef = this.editorComponent?.getEditor()?.state.doc ?? null;
+          this.contentDirty.set(false);
+        }
+      },
+      error: (err) => console.error('Failed to toggle publish:', err),
+    });
   }
 
   async handleDelete(): Promise<void> {
