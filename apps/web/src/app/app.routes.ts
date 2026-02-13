@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { AuthGuard, PublicGuard } from './guards/auth.guard';
+import { NotebookGuard } from './guards/notebook.guard';
 import {
   CollectablePageGuard,
   WhiteboardPageGuard,
@@ -52,6 +53,28 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./pages/public-notebook/public-page.component').then(
             (m) => m.PublicPageComponent,
+          ),
+      },
+    ],
+  },
+
+  // Notebook public redirect / unauthenticated access handler.
+  // Intercepts /:notebookId(/:pageId) BEFORE the auth-protected routes.
+  // The guard either redirects (public → /!/slug/slug, private+unauthed → /login)
+  // or falls through (private+authed → handled by the auth root below).
+  {
+    path: ':notebookId',
+    canMatch: [NotebookGuard],
+    loadComponent: () =>
+      import('./pages/notebook-layout/notebook-layout.component').then(
+        (m) => m.NotebookLayoutComponent,
+      ),
+    children: [
+      {
+        path: '**',
+        loadComponent: () =>
+          import('./pages/notebook-layout/notebook-layout.component').then(
+            (m) => m.NotebookLayoutComponent,
           ),
       },
     ],

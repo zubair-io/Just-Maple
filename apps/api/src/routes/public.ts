@@ -1,9 +1,54 @@
 import { Elysia, t } from 'elysia';
-import { findNotebookBySlug } from '../repositories/notebook.repo';
+import { findNotebookBySlug, findNotebookByIdUnsafe } from '../repositories/notebook.repo';
 import { findPublishedPagesByNotebookId, findPublishedPageBySlug } from '../repositories/page.repo';
 import { findCustomDomainByDomain } from '../repositories/custom-domain.repo';
 
 export const publicRoutes = new Elysia({ prefix: '/api/public' })
+
+    // Check if a notebook is public and return its slugs for redirect
+    // Used by the frontend guard to redirect ID-based URLs to slug-based public URLs
+    .get(
+        '/notebooks/:id/public-info',
+        async ({ params, query, set }) => {
+            const notebook = await findNotebookByIdUnsafe(params.id);
+
+            // Return 404 for both private and nonexistent notebooks
+            // to avoid revealing whether a notebook exists
+            if (!notebook || !notebook.sharing.isPublic || !notebook.slug) {
+                set.status = 404;
+                return { error: 'Not found' };
+            }
+
+            const pages = await findPublishedPagesByNotebookId(notebook._id);
+
+            let pageSlug: string | undefined;
+
+            if (query.pageId) {
+                // Find the specific page's published slug
+                const matchingPage = pages.find((p) => p.id === query.pageId);
+                pageSlug = matchingPage?.publishedSlug ?? undefined;
+            }
+
+            if (!pageSlug && pages.length > 0) {
+                // Default to the first published page
+                pageSlug = pages[0].publishedSlug ?? undefined;
+            }
+
+            return {
+                isPublic: true,
+                notebookSlug: notebook.slug,
+                pageSlug: pageSlug || undefined,
+            };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            query: t.Object({
+                pageId: t.Optional(t.String()),
+            }),
+        },
+    )
 
     // Get public notebook metadata + page list by slug
     .get(
