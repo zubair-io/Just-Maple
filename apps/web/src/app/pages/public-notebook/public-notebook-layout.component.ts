@@ -1,4 +1,4 @@
-import { Component, inject, effect, signal, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { PublicNotebookService } from '../../services/public-notebook.service';
@@ -18,15 +18,12 @@ export class PublicNotebookLayoutComponent implements OnDestroy {
   readonly notebookSlug = signal<string>('');
 
   constructor() {
-    effect(() => {
-      const slug = this.notebookSlug();
-      if (slug) {
+    this.route.params.subscribe((params) => {
+      const slug = params['notebookSlug'] || '';
+      if (slug && slug !== this.notebookSlug()) {
+        this.notebookSlug.set(slug);
         this.publicNotebookService.loadNotebook(slug);
       }
-    });
-
-    this.route.params.subscribe((params) => {
-      this.notebookSlug.set(params['notebookSlug'] || '');
     });
   }
 

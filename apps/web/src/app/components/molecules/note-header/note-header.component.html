@@ -84,40 +84,30 @@
         <span class="material-symbols-rounded text-lg">history</span>
       </button>
 
-      <!-- Publish toggle (only for public notebooks) -->
+      <!-- Publish button (only for public notebooks) -->
       @if (isNotebookPublic()) {
         <button
-          (click)="publishToggled.emit(!isPagePublished())"
+          (click)="openPublishModal()"
           class="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
           [class]="
-            isPagePublished()
-              ? 'text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-500/10'
-              : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)]'
+            isPublishStale()
+              ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10'
+              : isPagePublished()
+                ? 'text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-500/10'
+                : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)]'
           "
-          [title]="isPagePublished() ? 'Published' : 'Not published — click to publish'"
+          [title]="
+            isPublishStale()
+              ? 'Changes pending — click to manage'
+              : isPagePublished()
+                ? 'Published — click to manage'
+                : 'Not published — click to publish'
+          "
         >
           <span class="material-symbols-rounded text-lg">{{
             isPagePublished() ? 'public' : 'public_off'
           }}</span>
         </button>
-        @if (isPagePublished()) {
-          <button
-            (click)="publishToggled.emit(true)"
-            class="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
-            [class]="
-              isPublishStale()
-                ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10'
-                : 'text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-500/10'
-            "
-            [title]="
-              isPublishStale()
-                ? 'Publish latest changes to public page'
-                : 'Public page is up to date'
-            "
-          >
-            <span class="material-symbols-rounded text-sm">cloud_upload</span>
-          </button>
-        }
       }
 
       <!-- Export button with dropdown -->
@@ -174,4 +164,90 @@
     (close)="closeVersionHistory()"
     (restored)="onVersionRestored()"
   />
+
+  <!-- Publish Modal -->
+  @if (showPublishModal()) {
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      (click)="closePublishModal()"
+    >
+      <div
+        class="bg-[var(--color-bg)] rounded-xl shadow-xl border border-[var(--color-border)] w-full max-w-sm mx-4 p-5"
+        (click)="$event.stopPropagation()"
+      >
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-semibold text-[var(--color-text-main)]">Publish page</h3>
+          <button
+            (click)="closePublishModal()"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+          >
+            <span class="material-symbols-rounded text-lg">close</span>
+          </button>
+        </div>
+
+        <!-- Toggle -->
+        <div class="flex items-center justify-between py-3">
+          <div class="flex items-center gap-2">
+            <span
+              class="material-symbols-rounded text-lg"
+              [class]="isPagePublished() ? 'text-green-600' : 'text-[var(--color-text-muted)]'"
+              >{{ isPagePublished() ? 'public' : 'public_off' }}</span
+            >
+            <span class="text-sm text-[var(--color-text-main)]">{{
+              isPagePublished() ? 'Published' : 'Not published'
+            }}</span>
+          </div>
+          <button
+            (click)="onPublishToggle()"
+            [disabled]="isTogglingPublish()"
+            class="relative w-10 h-6 rounded-full transition-colors"
+            [class]="isPagePublished() ? 'bg-green-600' : 'bg-[var(--color-border)]'"
+          >
+            <span
+              class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+              [class.translate-x-4]="isPagePublished()"
+            ></span>
+          </button>
+        </div>
+
+        <!-- Republish button (when stale) -->
+        @if (isPagePublished() && isPublishStale()) {
+          <button
+            (click)="onRepublish()"
+            [disabled]="isTogglingPublish()"
+            class="w-full mt-2 px-3 py-2 text-sm font-medium rounded-lg flex items-center justify-center gap-2 text-amber-700 bg-amber-50 hover:bg-amber-100 dark:text-amber-400 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+          >
+            <span class="material-symbols-rounded text-base">cloud_upload</span>
+            Publish latest changes
+          </button>
+        }
+
+        <!-- Public link (when published) -->
+        @if (isPagePublished() && publicPageUrl()) {
+          <div class="mt-4 pt-4 border-t border-[var(--color-border)]">
+            <label class="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 block"
+              >Public link</label
+            >
+            <div
+              class="flex items-center gap-2 rounded-lg bg-[var(--color-surface-hover)] px-3 py-2"
+            >
+              <span class="text-sm text-[var(--color-text-main)] truncate flex-1">{{
+                publicPageUrl()
+              }}</span>
+              <button
+                (click)="copyPublicLink()"
+                class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-bg)] transition-colors"
+                [title]="linkCopied() ? 'Copied!' : 'Copy link'"
+              >
+                <span class="material-symbols-rounded text-base">{{
+                  linkCopied() ? 'check' : 'content_copy'
+                }}</span>
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
 }

@@ -3,12 +3,27 @@ import { findNotebookBySlug, findNotebookByIdUnsafe } from '../repositories/note
 import { findPublishedPagesByNotebookId, findPublishedPageBySlug } from '../repositories/page.repo';
 import { findCustomDomainByDomain } from '../repositories/custom-domain.repo';
 
+/**
+ * Build a display slug: "{slugified-title}-{shortId}".
+ * Used in URLs for SEO/readability; only the shortId is stored in DB.
+ */
+function toDisplaySlug(title: string, shortId: string): string {
+    const prefix = title
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 60);
+    return prefix ? `${prefix}-${shortId}` : shortId;
+}
+
 export const publicRoutes = new Elysia({ prefix: '/api/public' })
 
     // Check if a notebook is public and return its slugs for redirect
     // Used by the frontend guard to redirect ID-based URLs to slug-based public URLs
     .get(
-        '/notebooks/:id/public-info',
+        '/notebook-info/:id',
         async ({ params, query, set }) => {
             const notebook = await findNotebookByIdUnsafe(params.id);
 
@@ -21,23 +36,28 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
 
             const pages = await findPublishedPagesByNotebookId(notebook._id);
 
-            let pageSlug: string | undefined;
+            let matchedPage: (typeof pages)[number] | undefined;
 
             if (query.pageId) {
-                // Find the specific page's published slug
-                const matchingPage = pages.find((p) => p.id === query.pageId);
-                pageSlug = matchingPage?.publishedSlug ?? undefined;
+                matchedPage = pages.find((p) => p.id === query.pageId);
             }
 
-            if (!pageSlug && pages.length > 0) {
-                // Default to the first published page
-                pageSlug = pages[0].publishedSlug ?? undefined;
+            if (!matchedPage && pages.length > 0) {
+                matchedPage = pages[0];
             }
+
+            const notebookDisplaySlug = toDisplaySlug(notebook.label, notebook.slug!);
+            const pageDisplaySlug = matchedPage?.publishedSlug
+                ? toDisplaySlug(
+                      matchedPage.publishedTitle || matchedPage.title,
+                      matchedPage.publishedSlug,
+                  )
+                : undefined;
 
             return {
                 isPublic: true,
-                notebookSlug: notebook.slug,
-                pageSlug: pageSlug || undefined,
+                notebookSlug: notebookDisplaySlug,
+                pageSlug: pageDisplaySlug,
             };
         },
         {
@@ -73,7 +93,9 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
                     landingPageId: notebook.publicConfig?.landingPageId,
                 },
                 pages: pages.map((page) => ({
-                    slug: page.publishedSlug,
+                    slug: page.publishedSlug
+                        ? toDisplaySlug(page.publishedTitle || page.title, page.publishedSlug)
+                        : page.publishedSlug,
                     title: page.publishedTitle || page.title,
                     type: page.type,
                     updatedAt: page.publishedAt || page.updatedAt,
@@ -120,13 +142,19 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
                     );
                 })
                 .map((p) => ({
-                    slug: p.publishedSlug,
+                    slug: p.publishedSlug
+                        ? toDisplaySlug(p.publishedTitle || p.title, p.publishedSlug)
+                        : p.publishedSlug,
                     title: p.publishedTitle || p.title,
                 }));
 
+            const pageDisplaySlug = page.publishedSlug
+                ? toDisplaySlug(pageTitle, page.publishedSlug)
+                : page.publishedSlug;
+
             return {
                 page: {
-                    slug: page.publishedSlug,
+                    slug: pageDisplaySlug,
                     title: pageTitle,
                     type: page.type,
                     content: pageContent,
@@ -177,7 +205,9 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
                     landingPageId: notebook.publicConfig?.landingPageId,
                 },
                 pages: pages.map((page) => ({
-                    slug: page.publishedSlug,
+                    slug: page.publishedSlug
+                        ? toDisplaySlug(page.publishedTitle || page.title, page.publishedSlug)
+                        : page.publishedSlug,
                     title: page.publishedTitle || page.title,
                     type: page.type,
                     updatedAt: page.publishedAt || page.updatedAt,

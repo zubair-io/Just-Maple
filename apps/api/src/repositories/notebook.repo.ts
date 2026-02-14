@@ -12,6 +12,7 @@ import type {
     UpdatePublicConfigInput,
 } from '@maple/shared';
 import { isDevMode, isDocNotebook, getDocNotebook } from '../services/docs.service';
+import { customAlphabet } from 'nanoid';
 
 interface SharedWithEntryDocument {
     userId: string;
@@ -148,7 +149,6 @@ export async function findNotebooksByUserId(userId: string): Promise<Notebook[]>
         .find({
             $or: [
                 { 'sharing.sharedWith.userId': userId },
-                { 'sharing.isPublic': true },
                 { userId: new ObjectId(userId) }, // Legacy format
             ],
         })
@@ -179,7 +179,6 @@ export async function findNotebookById(id: string, userId: string): Promise<Note
             _id: new ObjectId(id),
             $or: [
                 { 'sharing.sharedWith.userId': userId },
-                { 'sharing.isPublic': true },
                 { userId: new ObjectId(userId) }, // Legacy format
             ],
         });
@@ -413,8 +412,25 @@ export async function updateNotebookPublicStatus(
 }
 
 /**
+ * Generate a unique slug for a notebook (shortId only).
+ * The title prefix is added at display time so title changes don't affect the stored slug.
+ */
+const generateSlugId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 8);
+
+async function generateUniqueSlug(): Promise<string> {
+    for (let i = 0; i < 10; i++) {
+        const slug = generateSlugId();
+        const existing = await findNotebookBySlugAny(slug);
+        if (!existing) return slug;
+    }
+    // Fallback: longer slug to avoid collision
+    return customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 12)();
+}
+
+/**
  * Update notebook's public configuration (requires owner access)
- * Handles isPublic, slug, and publicConfig in one operation
+ * Handles isPublic, slug, and publicConfig in one operation.
+ * Auto-generates a unique slug when making public if none exists.
  */
 export async function updateNotebookPublicConfig(
     notebookId: string,
@@ -429,15 +445,12 @@ export async function updateNotebookPublicConfig(
     if (data.isPublic !== undefined) {
         updateFields['sharing.isPublic'] = data.isPublic;
     }
-    if (data.slug !== undefined) {
-        const normalizedSlug = data.slug.trim().toLowerCase();
-        // Validate slug uniqueness
-        const existing = await findNotebookBySlugAny(normalizedSlug);
-        if (existing && existing._id !== notebookId) {
-            return null; // Slug already taken
-        }
-        updateFields.slug = normalizedSlug;
+
+    // Auto-generate a unique slug when making public and none exists
+    if (data.isPublic === true && !notebook.slug) {
+        updateFields.slug = await generateUniqueSlug();
     }
+
     if (data.publicConfig !== undefined) {
         updateFields.publicConfig = data.publicConfig;
     }
@@ -453,8 +466,18 @@ export async function updateNotebookPublicConfig(
 /**
  * Find a public notebook by its slug (no auth required)
  */
-export async function findNotebookBySlug(slug: string): Promise<Notebook | null> {
+/**
+ * Extract the shortId from a display slug like "my-notebook-a3k9m2x7" → "a3k9m2x7".
+ * If no prefix, returns the slug as-is.
+ */
+export function extractSlugId(displaySlug: string): string {
+    const lastDash = displaySlug.lastIndexOf('-');
+    return lastDash >= 0 ? displaySlug.slice(lastDash + 1) : displaySlug;
+}
+
+export async function findNotebookBySlug(displaySlug: string): Promise<Notebook | null> {
     try {
+        const slug = extractSlugId(displaySlug);
         const doc = await getCollection().findOne({
             slug,
             'sharing.isPublic': true,

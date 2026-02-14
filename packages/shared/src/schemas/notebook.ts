@@ -102,7 +102,6 @@ export type NotebookMember = Static<typeof NotebookMemberSchema>;
 // Update public config input
 export const UpdatePublicConfigSchema = Type.Object({
     isPublic: Type.Optional(Type.Boolean()),
-    slug: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
     publicConfig: Type.Optional(PublicConfigSchema),
 });
 export type UpdatePublicConfigInput = Static<typeof UpdatePublicConfigSchema>;

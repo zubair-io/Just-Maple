@@ -52,6 +52,12 @@ function getUserColor(userId: string): string {
     return USER_COLORS[hash % USER_COLORS.length];
 }
 
+// Per-memo client info (tracks access level)
+interface MemoClientInfo {
+    clientId: string;
+    canWrite: boolean;
+}
+
 // WebSocket context stored per connection
 interface WSContext {
     userId: string;
@@ -60,7 +66,7 @@ interface WSContext {
     userColor: string;
     connection: ReturnType<typeof realtimeWSService.registerConnection>;
     subscribedNotebooks: Set<string>;
-    memoClients: Map<string, string>; // noteId -> clientId (for Y.Doc memo sync)
+    memoClients: Map<string, MemoClientInfo>; // noteId -> client info (for Y.Doc memo sync)
 }
 
 /**
@@ -220,7 +226,8 @@ async function handleMemoMessage(
                             `[Memo] Card memo - authorized via parent kanban page: ${memo.pageId}`,
                         );
                         // Use 'memo' type so the YJS document service handles it
-                        page = { type: 'memo' } as any;
+                        // Preserve notebookId from parent for access level check
+                        page = { type: 'memo', notebookId: parentPage.notebookId } as any;
                     }
                 }
             }
@@ -233,7 +240,8 @@ async function handleMemoMessage(
                         `[Memo] Embedded whiteboard - authorized via parent memo: ${parentPageId}`,
                     );
                     // Create a virtual page object for embedded whiteboard
-                    page = { type: 'whiteboard' } as any;
+                    // Preserve notebookId from parent for access level check
+                    page = { type: 'whiteboard', notebookId: parentPage.notebookId } as any;
                 }
             }
 
@@ -251,6 +259,20 @@ async function handleMemoMessage(
                 return;
             }
 
+            // Determine if user has write access
+            let canWrite = false;
+            if (page.notebookId) {
+                const writeNotebook = await findNotebookByIdWithAccess(
+                    page.notebookId,
+                    context.userId,
+                    'write',
+                );
+                canWrite = !!writeNotebook;
+            } else {
+                // No notebook = user is the owner (findPageById already verified)
+                canWrite = true;
+            }
+
             // Generate client ID for this memo session
             const clientId = payload.clientId || nanoid();
 
@@ -261,8 +283,8 @@ async function handleMemoMessage(
                 userColor: context.userColor,
             });
 
-            // Track in context
-            context.memoClients.set(noteId, clientId);
+            // Track in context (including write access)
+            context.memoClients.set(noteId, { clientId, canWrite });
             context.connection.subscribedNotebooks.add(noteId);
 
             // Get initial state from appropriate service based on page type
@@ -281,7 +303,7 @@ async function handleMemoMessage(
             // Send initial state
             realtimeWSService.sendInitialState(noteId, clientId, state, 1);
 
-            // Send join confirmation with clientId
+            // Send join confirmation with clientId and access level
             ws.send(
                 JSON.stringify({
                     channel: 'memo',
@@ -290,6 +312,7 @@ async function handleMemoMessage(
                         type: 'joined',
                         pageId: noteId,
                         clientId,
+                        canWrite,
                     },
                 }),
             );
@@ -304,7 +327,6 @@ async function handleMemoMessage(
 
             realtimeWSService.leaveNotebook(noteId, ws.raw as unknown as WebSocket);
             context.memoClients.delete(noteId);
-            context.connection.subscribedNotebooks.delete(noteId);
             break;
         }
 
@@ -321,11 +343,27 @@ async function handleMemoMessage(
                 return;
             }
 
-            const clientId = context.memoClients.get(noteId);
-            if (!clientId) {
+            const memoClient = context.memoClients.get(noteId);
+            if (!memoClient) {
                 console.log(`[Memo] Update rejected - client not in memoClients for ${noteId}`);
                 return;
             }
+
+            // Enforce write access
+            if (!memoClient.canWrite) {
+                console.log(
+                    `[Memo] Update rejected - user ${context.userId} has read-only access to ${noteId}`,
+                );
+                ws.send(
+                    JSON.stringify({
+                        channel: 'memo',
+                        event: { type: 'error', message: 'Write access denied' },
+                    }),
+                );
+                return;
+            }
+
+            const clientId = memoClient.clientId;
 
             // Decode update
             const update = base64ToUint8Array(updateBase64);
@@ -358,8 +396,8 @@ async function handleMemoMessage(
             const { update: awarenessBase64 } = payload;
             if (!noteId || !awarenessBase64) return;
 
-            const clientId = context.memoClients.get(noteId);
-            if (!clientId) {
+            const memoClient = context.memoClients.get(noteId);
+            if (!memoClient) {
                 // Not subscribed to this memo
                 return;
             }
@@ -368,7 +406,7 @@ async function handleMemoMessage(
             const awarenessUpdate = base64ToUint8Array(awarenessBase64);
 
             // Broadcast awareness to other clients in the room (don't persist)
-            realtimeWSService.broadcastAwareness(noteId, awarenessUpdate, clientId);
+            realtimeWSService.broadcastAwareness(noteId, awarenessUpdate, memoClient.clientId);
             break;
         }
 

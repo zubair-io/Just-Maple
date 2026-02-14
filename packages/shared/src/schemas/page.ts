@@ -98,7 +98,6 @@ export type UpdatePageInput = Static<typeof UpdatePageSchema>;
 // Publish page input
 export const PublishPageSchema = Type.Object({
     isPublished: Type.Optional(Type.Boolean()),
-    publishedSlug: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
     publishedOrder: Type.Optional(Type.Number()),
 });
 

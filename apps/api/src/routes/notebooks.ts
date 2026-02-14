@@ -306,29 +306,7 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Sanitize slug if provided
-            const sanitizedBody = { ...body };
-            if (sanitizedBody.slug) {
-                sanitizedBody.slug = sanitizedBody.slug
-                    .toLowerCase()
-                    .replace(/[^a-z0-9-]/g, '-')
-                    .replace(/-+/g, '-')
-                    .replace(/^-|-$/g, '');
-
-                if (!sanitizedBody.slug) {
-                    set.status = 400;
-                    return {
-                        error: 'Bad request',
-                        message: 'Slug must contain at least one alphanumeric character',
-                    };
-                }
-            }
-
-            const notebook = await updateNotebookPublicConfig(
-                params.id,
-                auth.user._id,
-                sanitizedBody,
-            );
+            const notebook = await updateNotebookPublicConfig(params.id, auth.user._id, body);
 
             if (!notebook) {
                 set.status = 400;
@@ -352,7 +330,6 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
             }),
             body: t.Object({
                 isPublic: t.Optional(t.Boolean()),
-                slug: t.Optional(t.String({ minLength: 1, maxLength: 100 })),
                 publicConfig: t.Optional(
                     t.Object({
                         displayName: t.Optional(t.String()),

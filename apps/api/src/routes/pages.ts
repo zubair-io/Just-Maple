@@ -474,25 +474,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 return { error: 'Bad request', message: 'Message pages cannot be published' };
             }
 
-            // Sanitize slug if provided
-            const sanitizedBody = { ...body };
-            if (sanitizedBody.publishedSlug) {
-                sanitizedBody.publishedSlug = sanitizedBody.publishedSlug
-                    .toLowerCase()
-                    .replace(/[^a-z0-9-]/g, '-')
-                    .replace(/-+/g, '-')
-                    .replace(/^-|-$/g, '');
-
-                if (!sanitizedBody.publishedSlug) {
-                    set.status = 400;
-                    return {
-                        error: 'Bad request',
-                        message: 'Slug must contain at least one alphanumeric character',
-                    };
-                }
-            }
-
-            const page = await publishPage(params.id, auth.user._id, sanitizedBody);
+            const page = await publishPage(params.id, auth.user._id, body);
 
             if (!page) {
                 set.status = 404;
@@ -507,7 +489,6 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             }),
             body: t.Object({
                 isPublished: t.Optional(t.Boolean()),
-                publishedSlug: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
                 publishedOrder: t.Optional(t.Number()),
             }),
         },

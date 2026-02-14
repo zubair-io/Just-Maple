@@ -210,7 +210,15 @@ export class HomeComponent implements OnInit, OnDestroy {
     if (segments.length === 0) return false;
     const firstSegment = segments[0];
     // Exclude special routes that should not be cached
-    const excludedRoutes = ['settings', 'notifications', 'favorites', 'trash', 'login', 'verify'];
+    const excludedRoutes = [
+      'settings',
+      'notifications',
+      'favorites',
+      'trash',
+      'login',
+      'verify',
+      '!',
+    ];
     return !excludedRoutes.includes(firstSegment);
   }
 

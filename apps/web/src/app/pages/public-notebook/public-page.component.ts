@@ -1,4 +1,4 @@
-import { Component, inject, effect, signal, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { PublicNotebookService } from '../../services/public-notebook.service';
@@ -19,22 +19,29 @@ export class PublicPageComponent implements OnDestroy {
   readonly pageSlug = signal<string>('');
 
   constructor() {
-    effect(() => {
-      const notebookSlug = this.notebookSlug();
-      const pageSlug = this.pageSlug();
-      if (notebookSlug && pageSlug) {
-        this.publicNotebookService.loadPage(notebookSlug, pageSlug);
+    this.route.params.subscribe((params) => {
+      const slug = params['pageSlug'] || '';
+      if (slug !== this.pageSlug()) {
+        this.pageSlug.set(slug);
+        this.tryLoadPage();
       }
     });
 
-    this.route.params.subscribe((params) => {
-      this.pageSlug.set(params['pageSlug'] || '');
-    });
-
-    // Get notebookSlug from parent route
     this.route.parent?.params.subscribe((params) => {
-      this.notebookSlug.set(params['notebookSlug'] || '');
+      const slug = params['notebookSlug'] || '';
+      if (slug !== this.notebookSlug()) {
+        this.notebookSlug.set(slug);
+        this.tryLoadPage();
+      }
     });
+  }
+
+  private tryLoadPage(): void {
+    const nb = this.notebookSlug();
+    const pg = this.pageSlug();
+    if (nb && pg) {
+      this.publicNotebookService.loadPage(nb, pg);
+    }
   }
 
   ngOnDestroy(): void {

@@ -1,5 +1,6 @@
 import { ObjectId, Collection } from 'mongodb';
 import { randomUUID } from 'crypto';
+import { customAlphabet } from 'nanoid';
 import { getDb } from '../db/client';
 import type {
     Page,
@@ -837,43 +838,23 @@ export async function getTagCountsForUser(
 // ============================================
 
 /**
- * Generate a URL-friendly slug from a title
+ * Generate a unique slug for a page (shortId only).
+ * The title prefix is added at display time so title changes don't affect the stored slug.
  */
-function titleToSlug(title: string): string {
-    return title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '')
-        .slice(0, 200);
-}
+const generatePageSlugId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 8);
 
-/**
- * Ensure a publishedSlug is unique within a notebook.
- * If taken, appends -2, -3, etc. until unique.
- */
-async function ensureUniqueSlug(
-    slug: string,
-    notebookId: ObjectId | undefined,
-    excludePageId?: string,
-): Promise<string> {
-    let candidate = slug;
-    let suffix = 2;
-    while (true) {
-        const query: Record<string, unknown> = { publishedSlug: candidate };
+async function generateUniquePageSlug(notebookId: ObjectId | undefined): Promise<string> {
+    for (let i = 0; i < 10; i++) {
+        const slug = generatePageSlugId();
+        const query: Record<string, unknown> = { publishedSlug: slug };
         if (notebookId) {
             query.notebookId = notebookId;
         }
         const existing = await getCollection().findOne(query);
-        if (!existing || (excludePageId && existing.id === excludePageId)) {
-            return candidate;
-        }
-        candidate = `${slug}-${suffix}`;
-        suffix++;
-        if (suffix > 100) break; // Safety limit
+        if (!existing) return slug;
     }
-    return candidate;
+    // Fallback: longer slug to avoid collision
+    return customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 12)();
 }
 
 /**
@@ -1006,16 +987,9 @@ export async function publishPage(
                 }
             }
         }
-        if (data.publishedSlug !== undefined) {
-            updateData.publishedSlug = await ensureUniqueSlug(
-                data.publishedSlug,
-                doc.notebookId,
-                pageId,
-            );
-        } else if (data.isPublished && !doc.publishedSlug) {
-            // Auto-generate slug from title if publishing and no slug set
-            const baseSlug = titleToSlug(doc.title || 'untitled');
-            updateData.publishedSlug = await ensureUniqueSlug(baseSlug, doc.notebookId, pageId);
+        if (data.isPublished && !doc.publishedSlug) {
+            // Auto-generate slug when publishing and no slug exists
+            updateData.publishedSlug = await generateUniquePageSlug(doc.notebookId);
         }
         if (data.publishedOrder !== undefined) {
             updateData.publishedOrder = data.publishedOrder;
@@ -1064,11 +1038,20 @@ export async function findPublishedPagesByNotebookId(notebookId: string): Promis
 /**
  * Find a single published page by slug within a notebook (no auth - for public access)
  */
+/**
+ * Extract the shortId from a display slug like "my-page-a3k9m2x7" → "a3k9m2x7".
+ */
+function extractPageSlugId(displaySlug: string): string {
+    const lastDash = displaySlug.lastIndexOf('-');
+    return lastDash >= 0 ? displaySlug.slice(lastDash + 1) : displaySlug;
+}
+
 export async function findPublishedPageBySlug(
     notebookId: string,
-    pageSlug: string,
+    displaySlug: string,
 ): Promise<Page | null> {
     try {
+        const pageSlug = extractPageSlugId(displaySlug);
         const oid = new ObjectId(notebookId);
         const doc = await getCollection().findOne({
             $or: [{ notebookId: oid }, { notebookId: notebookId }],
@@ -1101,8 +1084,7 @@ export async function bulkPublishPagesForNotebook(notebookId: string): Promise<n
 
         let count = 0;
         for (const doc of docs) {
-            const baseSlug = titleToSlug(doc.title || 'untitled');
-            const slug = await ensureUniqueSlug(baseSlug, oid, doc.id);
+            const slug = await generateUniquePageSlug(oid);
             const bulkMemoState = await getMemoState(doc.id);
             const yContent = bulkMemoState ? yDocStateToJSON(bulkMemoState) : null;
             await getCollection().updateOne(
