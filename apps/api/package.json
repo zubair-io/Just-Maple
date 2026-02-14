@@ -24,6 +24,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/sharp": "^0.32.0",
     "@types/ws": "^8.18.1",
+    "ajv": "^8.17.1",
     "axios": "^1.13.2",
     "csvtojson": "^2.0.14",
     "dotenv": "^17.2.3",

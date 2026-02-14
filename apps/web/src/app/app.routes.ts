@@ -7,6 +7,7 @@ import {
   MemoPageGuard,
   MessagePageGuard,
   GmailPageGuard,
+  JsonPageGuard,
 } from './guards/page-type.guard';
 import { swUpdateGuard } from './guards/sw-update.guard';
 
@@ -153,6 +154,13 @@ export const routes: Routes = [
             canMatch: [GmailPageGuard],
             loadComponent: () =>
               import('./pages/gmail-view/gmail-view.component').then((m) => m.GmailViewComponent),
+          },
+          // JSON-type page - shows JSON data editor (code + form)
+          {
+            path: ':id',
+            canMatch: [JsonPageGuard],
+            loadComponent: () =>
+              import('./pages/json-view/json-view.component').then((m) => m.JsonViewComponent),
           },
           // Memo-type page - shows collaborative notebook editor (default for pages)
           {

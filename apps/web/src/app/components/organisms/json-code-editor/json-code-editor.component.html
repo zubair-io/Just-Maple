@@ -1,0 +1,45 @@
+<div class="code-editor-container">
+  <div class="editor-header">
+    <span class="text-xs text-[var(--color-text-muted)] font-medium uppercase tracking-wider"
+      >JSON</span
+    >
+    <div class="flex items-center gap-2">
+      @if (validationError()) {
+        <span class="text-xs text-red-500 max-w-[300px] truncate" [title]="validationError()!">{{
+          validationError()
+        }}</span>
+      } @else {
+        <span class="text-xs text-green-600">Valid</span>
+      }
+      <button
+        class="px-2 py-1 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-border)] rounded transition-colors"
+        (click)="formatJson()"
+        title="Format JSON (prettify)"
+      >
+        Format
+      </button>
+    </div>
+  </div>
+
+  <div class="editor-body">
+    <div class="line-numbers">
+      @for (i of [].constructor(lineCount()); track $index) {
+        <span>{{ $index + 1 }}</span>
+      }
+    </div>
+    <textarea
+      #editor
+      class="code-textarea"
+      [value]="jsonText()"
+      [readOnly]="readonly()"
+      (input)="onTextChange($event)"
+      (keydown)="onKeydown($event)"
+      (scroll)="onScroll($event)"
+      spellcheck="false"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      wrap="off"
+    ></textarea>
+  </div>
+</div>

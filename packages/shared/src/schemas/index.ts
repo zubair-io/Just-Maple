@@ -22,3 +22,4 @@ export * from './link';
 export * from './search';
 export * from './kanban';
 export * from './gmail';
+export * from './json-document';

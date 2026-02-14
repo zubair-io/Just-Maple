@@ -3,7 +3,14 @@
  * Used across connection graph, chat view, and other components.
  */
 
-export type PageType = 'memo' | 'whiteboard' | 'message' | 'kanban' | 'collectable' | 'recording';
+export type PageType =
+  | 'memo'
+  | 'whiteboard'
+  | 'message'
+  | 'kanban'
+  | 'collectable'
+  | 'recording'
+  | 'json';
 
 /**
  * Display labels for page types
@@ -15,6 +22,7 @@ export const PAGE_TYPE_LABELS: Record<string, string> = {
   collectable: 'Collectables',
   kanban: 'Kanban Boards',
   recording: 'Recordings',
+  json: 'JSON Documents',
 };
 
 /**
@@ -27,6 +35,7 @@ export const PAGE_TYPE_ICONS: Record<string, string> = {
   collectable: 'grid_view',
   kanban: 'view_kanban',
   recording: 'mic',
+  json: 'data_object',
 };
 
 /**
@@ -39,6 +48,7 @@ export const PAGE_TYPE_COLORS: Record<string, string> = {
   kanban: '#f59e0b', // amber
   collectable: '#8b5cf6', // purple
   recording: '#ef4444', // red
+  json: '#06b6d4', // cyan
 };
 
 /**

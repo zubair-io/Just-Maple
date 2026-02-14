@@ -1,0 +1,129 @@
+<div class="form-builder-container">
+  <div class="form-header">
+    <span class="text-xs text-[var(--color-text-muted)] font-medium uppercase tracking-wider"
+      >Form</span
+    >
+  </div>
+
+  <div class="form-body">
+    @if (fields().length === 0) {
+      <div class="empty-state">
+        <span class="text-sm text-[var(--color-text-muted)]">Empty JSON object</span>
+      </div>
+    } @else {
+      <ng-container *ngTemplateOutlet="fieldList; context: { $implicit: fields() }" />
+    }
+  </div>
+</div>
+
+<!-- Recursive field template -->
+<ng-template #fieldList let-fields>
+  @for (field of fields; track field.path) {
+    <div class="form-field" [style.padding-left.px]="field.depth * 16">
+      @if (field.type === 'object' || field.type === 'array') {
+        <!-- Collapsible container -->
+        <div class="field-header" (click)="toggleExpand(field)">
+          <span class="expand-icon material-symbols-outlined text-sm">{{
+            field.isExpanded ? 'expand_more' : 'chevron_right'
+          }}</span>
+          <span class="field-key">{{ field.key }}</span>
+          <span class="field-type-badge">{{ field.type }}</span>
+          @if (field.type === 'array') {
+            <span class="field-count">{{ field.children?.length || 0 }} items</span>
+          }
+          @if (field.type === 'object') {
+            <span class="field-count">{{ field.children?.length || 0 }} keys</span>
+          }
+          <div class="field-actions">
+            @if (field.type === 'array') {
+              <button
+                class="action-btn"
+                (click)="addArrayItem(field); $event.stopPropagation()"
+                title="Add item"
+              >
+                <span class="material-symbols-outlined text-sm">add</span>
+              </button>
+            }
+            @if (field.type === 'object') {
+              <button
+                class="action-btn"
+                (click)="addObjectKey(field); $event.stopPropagation()"
+                title="Add key"
+              >
+                <span class="material-symbols-outlined text-sm">add</span>
+              </button>
+            }
+            @if (field.depth > 0) {
+              <button
+                class="action-btn text-red-500"
+                (click)="removeObjectKey(field); $event.stopPropagation()"
+                title="Remove"
+              >
+                <span class="material-symbols-outlined text-sm">delete</span>
+              </button>
+            }
+          </div>
+        </div>
+
+        @if (field.isExpanded && field.children) {
+          <ng-container *ngTemplateOutlet="fieldList; context: { $implicit: field.children }" />
+        }
+      } @else {
+        <!-- Leaf field -->
+        <div class="field-row">
+          <label class="field-key">{{ field.key }}</label>
+
+          @if (field.type === 'string') {
+            <input
+              type="text"
+              class="field-input"
+              [value]="field.value"
+              (change)="onStringChange(field, $event)"
+            />
+          } @else if (field.type === 'number') {
+            <input
+              type="number"
+              class="field-input"
+              [value]="field.value"
+              (change)="onNumberChange(field, $event)"
+            />
+          } @else if (field.type === 'boolean') {
+            <label class="toggle-label">
+              <input
+                type="checkbox"
+                [checked]="!!field.value"
+                (change)="onBooleanChange(field, $event)"
+              />
+              <span class="text-sm">{{ field.value ? 'true' : 'false' }}</span>
+            </label>
+          } @else if (field.type === 'null') {
+            <div class="null-field">
+              <span class="text-sm text-[var(--color-text-muted)] italic">null</span>
+              <div class="null-type-buttons">
+                <button class="type-btn" (click)="setNullToType(field, 'string')">Abc</button>
+                <button class="type-btn" (click)="setNullToType(field, 'number')">123</button>
+                <button class="type-btn" (click)="setNullToType(field, 'boolean')">T/F</button>
+                <button class="type-btn" (click)="setNullToType(field, 'object')">
+                  &#123;&#125;
+                </button>
+                <button class="type-btn" (click)="setNullToType(field, 'array')">[]</button>
+              </div>
+            </div>
+          }
+
+          <div class="field-actions">
+            @if (field.depth > 0) {
+              <button
+                class="action-btn text-red-500"
+                (click)="removeObjectKey(field)"
+                title="Remove"
+              >
+                <span class="material-symbols-outlined text-sm">close</span>
+              </button>
+            }
+          </div>
+        </div>
+      }
+    </div>
+  }
+</ng-template>

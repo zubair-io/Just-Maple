@@ -13,6 +13,7 @@ import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.re
 import { deleteMemo, deleteMemosByPageId } from './memo.repo';
 import { deleteWhiteboard } from './whiteboard.repo';
 import { deleteKanbanBoard } from './kanban-board.repo';
+import { deleteJsonDocument } from './json-document.repo';
 import { isDevMode, isDocPage, getDocPage, pageIdToSlug } from '../services/docs.service';
 
 /**
@@ -351,6 +352,8 @@ export async function deletePage(id: string, userId: string): Promise<boolean> {
             await deleteKanbanBoard(doc.id);
             // Also delete all card memos that reference this kanban page
             await deleteMemosByPageId(doc.id);
+        } else if (doc.type === 'json') {
+            await deleteJsonDocument(doc.id);
         }
 
         const result = await getCollection().deleteOne({ id });

@@ -1,0 +1,76 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.code-editor-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-elevated, var(--color-bg));
+  flex-shrink: 0;
+}
+
+.editor-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.line-numbers {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 8px 12px 12px;
+  text-align: right;
+  user-select: none;
+  color: var(--color-text-muted);
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow: hidden;
+  flex-shrink: 0;
+  min-width: 40px;
+  background: var(--color-bg-elevated, var(--color-bg));
+  border-right: 1px solid var(--color-border);
+
+  span {
+    display: block;
+    opacity: 0.5;
+  }
+}
+
+.code-textarea {
+  flex: 1;
+  padding: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  border: none;
+  outline: none;
+  resize: none;
+  background: var(--color-bg);
+  color: var(--color-text-main);
+  overflow: auto;
+  white-space: pre;
+  tab-size: 4;
+  -moz-tab-size: 4;
+
+  &:focus {
+    outline: none;
+  }
+
+  &[readonly] {
+    opacity: 0.7;
+    cursor: default;
+  }
+}

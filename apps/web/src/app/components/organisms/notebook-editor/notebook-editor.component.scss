@@ -1441,6 +1441,189 @@
       }
     }
 
+    // JSON Data Reference styles (inline live values)
+    .json-data-ref {
+      display: inline-flex;
+      align-items: center;
+      vertical-align: middle;
+      gap: 4px;
+      padding: 1px 6px;
+      background: rgba(6, 182, 212, 0.1);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: #06b6d4;
+      font-weight: 500;
+      white-space: nowrap;
+      font-family: 'JetBrains Mono', 'SF Mono', monospace;
+      cursor: default;
+      transition:
+        background 0.15s ease,
+        border-color 0.15s ease;
+
+      &:hover {
+        background: rgba(6, 182, 212, 0.18);
+        border-color: rgba(6, 182, 212, 0.5);
+      }
+
+      .json-ref-icon {
+        font-size: 12px;
+        opacity: 0.8;
+      }
+
+      .json-ref-value {
+        color: var(--color-text-main);
+        font-family: inherit;
+      }
+
+      .json-ref-loading {
+        color: var(--color-text-muted);
+        font-style: italic;
+      }
+    }
+
+    // JSON Loop Block styles (tables/lists from JSON arrays)
+    .json-loop-block {
+      margin: 1rem 0;
+      border: 1px solid var(--color-border);
+      border-left: 3px solid #06b6d4;
+      border-radius: 6px;
+      overflow: hidden;
+      cursor: default;
+
+      &:hover {
+        border-color: rgba(6, 182, 212, 0.5);
+      }
+
+      .json-loop-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        background: rgba(6, 182, 212, 0.06);
+        border-bottom: 1px solid var(--color-border);
+        font-size: 11px;
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+
+        .json-loop-icon {
+          font-size: 14px;
+          color: #06b6d4;
+        }
+      }
+
+      .json-loop-empty {
+        padding: 1rem;
+        text-align: center;
+        color: var(--color-text-muted);
+        font-size: 0.875rem;
+        font-style: italic;
+      }
+
+      .json-loop-table {
+        width: 100%;
+        border-collapse: collapse;
+
+        th {
+          background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+          font-weight: 600;
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          color: var(--color-text-muted);
+          padding: 6px 10px;
+          text-align: left;
+          border-bottom: 1px solid var(--color-border);
+        }
+
+        td {
+          padding: 6px 10px;
+          font-size: 13px;
+          border-bottom: 1px solid var(--color-border);
+          color: var(--color-text-main);
+        }
+
+        tr:last-child td {
+          border-bottom: none;
+        }
+
+        tr:hover td {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.02));
+        }
+      }
+
+      .json-loop-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+
+        li {
+          padding: 6px 10px;
+          font-size: 13px;
+          border-bottom: 1px solid var(--color-border);
+          color: var(--color-text-main);
+
+          &:last-child {
+            border-bottom: none;
+          }
+
+          &:hover {
+            background: var(--color-bg-hover, rgba(0, 0, 0, 0.02));
+          }
+        }
+      }
+    }
+
+    // Dark mode adjustments for JSON ref/loop
+    :host-context(.dark-mode) & {
+      .json-data-ref {
+        background: rgba(6, 182, 212, 0.15);
+        border-color: rgba(6, 182, 212, 0.35);
+
+        &:hover {
+          background: rgba(6, 182, 212, 0.25);
+          border-color: rgba(6, 182, 212, 0.5);
+        }
+      }
+
+      .json-loop-block {
+        border-color: rgba(255, 255, 255, 0.1);
+
+        &:hover {
+          border-color: rgba(6, 182, 212, 0.4);
+        }
+
+        .json-loop-header {
+          background: rgba(6, 182, 212, 0.08);
+          border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .json-loop-table {
+          th {
+            background: rgba(255, 255, 255, 0.03);
+            border-color: rgba(255, 255, 255, 0.1);
+          }
+
+          td {
+            border-color: rgba(255, 255, 255, 0.1);
+          }
+
+          tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+          }
+        }
+
+        .json-loop-list li {
+          border-color: rgba(255, 255, 255, 0.1);
+
+          &:hover {
+            background: rgba(255, 255, 255, 0.03);
+          }
+        }
+      }
+    }
+
     // Memo image block styles
     .memo-image-block {
       margin: 1.5rem 0;

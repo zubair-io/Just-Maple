@@ -63,6 +63,8 @@ import {
   PageLinkBlock,
   HashTag,
   MarkdownPaste,
+  JsonDataRef,
+  JsonLoopBlock,
   formatTime,
   formatDate,
   type SlashCommandItem,
@@ -86,6 +88,12 @@ import { AIWritingService } from '../../../services/ai-writing.service';
 import { TagService } from '../../../services/tag.service';
 import { SearchService } from '../../../services/search.service';
 import { UiStateService } from '../../../services/ui-state.service';
+import { JsonDocumentService } from '../../../services/json-document.service';
+import {
+  JsonRefConfigComponent,
+  type JsonRefConfig,
+  type JsonLoopConfig,
+} from '../../molecules/json-ref-config/json-ref-config.component';
 import { isLocalPage, isLocalNotebook } from '../../../providers/data-provider.interface';
 import type { AIWritingType } from '@maple/shared';
 import type * as Y from 'yjs';
@@ -119,6 +127,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly tagService = inject(TagService);
   private readonly searchService = inject(SearchService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly jsonDocService = inject(JsonDocumentService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
@@ -353,6 +362,16 @@ export class NotebookEditorComponent implements OnDestroy {
               render: () => this.createHashTagSuggestionRenderer(),
             },
           }),
+          // JSON data references (inline live values from JSON pages)
+          JsonDataRef.configure({
+            getJsonValue$: (pageId: string, path: string) =>
+              this.jsonDocService.getJsonValue$(pageId, path),
+          }),
+          // JSON loop blocks (tables/lists from JSON arrays)
+          JsonLoopBlock.configure({
+            getJsonArray$: (pageId: string, path: string) =>
+              this.jsonDocService.getJsonArray$(pageId, path),
+          }),
           // Drag handles for blocks
           DragHandle.configure({
             render: () => {
@@ -469,6 +488,9 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up page link listeners
         this.setupPageLinkListeners();
+
+        // Set up JSON ref/loop listeners
+        this.setupJsonRefListeners();
 
         // Set up bubble menu component
         this.setupBubbleMenuComponent();
@@ -1931,6 +1953,8 @@ export class NotebookEditorComponent implements OnDestroy {
 
     // Clean up page link listeners
     this.cleanupPageLinkListeners();
+    this.cleanupJsonRefListeners();
+    this.closeJsonRefConfig();
 
     if (this._editor) {
       this._editor.destroy();
@@ -2151,6 +2175,114 @@ export class NotebookEditorComponent implements OnDestroy {
       }
     } catch (error) {
       console.error('[NotebookEditor] Failed to create new page:', error);
+    }
+  }
+
+  // ==========================================
+  // JSON Reference / Loop Methods
+  // ==========================================
+
+  private jsonRefListeners: { event: string; handler: EventListener }[] = [];
+  private jsonRefConfigElement: HTMLElement | null = null;
+
+  private setupJsonRefListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    const addListener = (event: string, handler: EventListener) => {
+      editorElement.addEventListener(event, handler);
+      this.jsonRefListeners.push({ event, handler });
+    };
+
+    addListener('insert-json-ref', ((event: CustomEvent) => {
+      event.stopPropagation();
+      this.openJsonRefConfig('ref');
+    }) as EventListener);
+
+    addListener('insert-json-loop', ((event: CustomEvent) => {
+      event.stopPropagation();
+      this.openJsonRefConfig('loop');
+    }) as EventListener);
+
+    addListener('json-loop-configure', ((event: CustomEvent) => {
+      event.stopPropagation();
+      const { pageId, arrayPath, template, renderAs, columns } = event.detail;
+      this.openJsonRefConfig('loop', { pageId, arrayPath, template, renderAs, columns });
+    }) as EventListener);
+  }
+
+  private cleanupJsonRefListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    for (const { event, handler } of this.jsonRefListeners) {
+      editorElement.removeEventListener(event, handler);
+    }
+    this.jsonRefListeners = [];
+  }
+
+  private openJsonRefConfig(
+    mode: 'ref' | 'loop',
+    initialConfig?: Partial<JsonRefConfig & JsonLoopConfig>,
+  ): void {
+    // Remove any existing config modal
+    this.closeJsonRefConfig();
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    this.jsonRefConfigElement = container;
+
+    const componentRef = createComponent(JsonRefConfigComponent, {
+      environmentInjector: this.injector,
+      hostElement: container,
+    });
+
+    componentRef.setInput('mode', mode);
+    componentRef.setInput('notebookId', this.notebookId());
+    if (initialConfig) {
+      componentRef.setInput('initialConfig', initialConfig);
+    }
+
+    componentRef.instance.confirmed.subscribe((config: JsonRefConfig | JsonLoopConfig) => {
+      if (mode === 'ref' && 'path' in config) {
+        this._editor
+          ?.chain()
+          .focus()
+          .insertJsonDataRef({
+            pageId: config.pageId,
+            path: config.path,
+            label: config.label,
+          })
+          .run();
+      } else if ('arrayPath' in config) {
+        this._editor
+          ?.chain()
+          .focus()
+          .insertJsonLoopBlock({
+            pageId: config.pageId,
+            arrayPath: config.arrayPath,
+            template: config.template,
+            renderAs: config.renderAs,
+            columns: config.columns
+              ? JSON.stringify(config.columns.split(',').map((c) => c.trim()))
+              : '[]',
+          })
+          .run();
+      }
+      this.closeJsonRefConfig();
+    });
+
+    componentRef.instance.cancelled.subscribe(() => {
+      this.closeJsonRefConfig();
+    });
+
+    this.appRef.attachView(componentRef.hostView);
+  }
+
+  private closeJsonRefConfig(): void {
+    if (this.jsonRefConfigElement) {
+      this.jsonRefConfigElement.remove();
+      this.jsonRefConfigElement = null;
     }
   }
 
