@@ -477,8 +477,8 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             const page = await publishPage(params.id, auth.user._id, body);
 
             if (!page) {
-                set.status = 404;
-                return { error: 'Not found', message: 'Page not found or access denied' };
+                set.status = 403;
+                return { error: 'Forbidden', message: 'Could not publish page' };
             }
 
             return { page };

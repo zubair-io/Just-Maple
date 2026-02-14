@@ -11,6 +11,7 @@ import type {
     NotebookMember,
     UpdatePublicConfigInput,
 } from '@maple/shared';
+import { extractSlugId } from '@maple/shared/utils/slug';
 import { isDevMode, isDocNotebook, getDocNotebook } from '../services/docs.service';
 import { customAlphabet } from 'nanoid';
 
@@ -466,15 +467,6 @@ export async function updateNotebookPublicConfig(
 /**
  * Find a public notebook by its slug (no auth required)
  */
-/**
- * Extract the shortId from a display slug like "my-notebook-a3k9m2x7" → "a3k9m2x7".
- * If no prefix, returns the slug as-is.
- */
-export function extractSlugId(displaySlug: string): string {
-    const lastDash = displaySlug.lastIndexOf('-');
-    return lastDash >= 0 ? displaySlug.slice(lastDash + 1) : displaySlug;
-}
-
 export async function findNotebookBySlug(displaySlug: string): Promise<Notebook | null> {
     try {
         const slug = extractSlugId(displaySlug);

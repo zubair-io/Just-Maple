@@ -103,6 +103,11 @@ export class NotebookService {
         const folders = this.fsService.openFolders();
         this.syncLocalFolders();
       });
+    } else {
+      this._cacheReady$.next();
+      this._cacheReady$.complete();
+      this._httpReady$.next();
+      this._httpReady$.complete();
     }
   }
 

@@ -118,8 +118,8 @@ export class NotebookComponent implements OnDestroy {
           // Snapshot initial doc state when page is published
           this.publishedDocRef = editor.state.doc;
         }
-        if (this.publishedDocRef && !editor.state.doc.eq(this.publishedDocRef as any)) {
-          this.contentDirty.set(true);
+        if (this.publishedDocRef) {
+          this.contentDirty.set(!editor.state.doc.eq(this.publishedDocRef as any));
         }
       });
     }

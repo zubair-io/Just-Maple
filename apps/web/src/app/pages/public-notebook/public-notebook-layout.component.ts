@@ -1,6 +1,7 @@
-import { Component, inject, signal, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnDestroy, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PublicNotebookService } from '../../services/public-notebook.service';
 
 @Component({
@@ -12,13 +13,14 @@ import { PublicNotebookService } from '../../services/public-notebook.service';
 })
 export class PublicNotebookLayoutComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
+  private readonly destroyRef = inject(DestroyRef);
   readonly publicNotebookService = inject(PublicNotebookService);
 
   readonly sidebarOpen = signal(false);
   readonly notebookSlug = signal<string>('');
 
   constructor() {
-    this.route.params.subscribe((params) => {
+    this.route.params.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       const slug = params['notebookSlug'] || '';
       if (slug && slug !== this.notebookSlug()) {
         this.notebookSlug.set(slug);

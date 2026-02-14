@@ -27,7 +27,7 @@ export class PublicLandingComponent {
 
       // Find the landing page slug
       if (notebook.landingPageId) {
-        const landingPage = pages.find((p) => p.slug === notebook.landingPageId);
+        const landingPage = pages.find((p) => p.id === notebook.landingPageId);
         if (landingPage) {
           this.router.navigate(['/', '!', notebookSlug, landingPage.slug], {
             replaceUrl: true,

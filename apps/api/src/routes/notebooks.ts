@@ -309,10 +309,10 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
             const notebook = await updateNotebookPublicConfig(params.id, auth.user._id, body);
 
             if (!notebook) {
-                set.status = 400;
+                set.status = 403;
                 return {
-                    error: 'Bad request',
-                    message: 'Could not update public config. Slug may already be taken.',
+                    error: 'Forbidden',
+                    message: 'Could not update public configuration.',
                 };
             }
 

@@ -2,21 +2,7 @@ import { Elysia, t } from 'elysia';
 import { findNotebookBySlug, findNotebookByIdUnsafe } from '../repositories/notebook.repo';
 import { findPublishedPagesByNotebookId, findPublishedPageBySlug } from '../repositories/page.repo';
 import { findCustomDomainByDomain } from '../repositories/custom-domain.repo';
-
-/**
- * Build a display slug: "{slugified-title}-{shortId}".
- * Used in URLs for SEO/readability; only the shortId is stored in DB.
- */
-function toDisplaySlug(title: string, shortId: string): string {
-    const prefix = title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '')
-        .slice(0, 60);
-    return prefix ? `${prefix}-${shortId}` : shortId;
-}
+import { toDisplaySlug } from '@maple/shared/utils/slug';
 
 export const publicRoutes = new Elysia({ prefix: '/api/public' })
 
@@ -93,6 +79,7 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
                     landingPageId: notebook.publicConfig?.landingPageId,
                 },
                 pages: pages.map((page) => ({
+                    id: page.id,
                     slug: page.publishedSlug
                         ? toDisplaySlug(page.publishedTitle || page.title, page.publishedSlug)
                         : page.publishedSlug,
@@ -185,7 +172,6 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
             }
 
             // Find the notebook associated with this domain
-            const { findNotebookByIdUnsafe } = await import('../repositories/notebook.repo');
             const notebook = await findNotebookByIdUnsafe(customDomain.notebookId);
             if (!notebook || !notebook.sharing.isPublic) {
                 set.status = 404;
@@ -205,6 +191,7 @@ export const publicRoutes = new Elysia({ prefix: '/api/public' })
                     landingPageId: notebook.publicConfig?.landingPageId,
                 },
                 pages: pages.map((page) => ({
+                    id: page.id,
                     slug: page.publishedSlug
                         ? toDisplaySlug(page.publishedTitle || page.title, page.publishedSlug)
                         : page.publishedSlug,

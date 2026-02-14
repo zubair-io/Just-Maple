@@ -11,6 +11,7 @@ import type {
     PageTodoMeta,
     PublishPageInput,
 } from '@maple/shared';
+import { extractSlugId } from '@maple/shared/utils/slug';
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
 import { deleteMemo, deleteMemosByPageId, getMemoState } from './memo.repo';
 import { deleteWhiteboard } from './whiteboard.repo';
@@ -1038,20 +1039,12 @@ export async function findPublishedPagesByNotebookId(notebookId: string): Promis
 /**
  * Find a single published page by slug within a notebook (no auth - for public access)
  */
-/**
- * Extract the shortId from a display slug like "my-page-a3k9m2x7" → "a3k9m2x7".
- */
-function extractPageSlugId(displaySlug: string): string {
-    const lastDash = displaySlug.lastIndexOf('-');
-    return lastDash >= 0 ? displaySlug.slice(lastDash + 1) : displaySlug;
-}
-
 export async function findPublishedPageBySlug(
     notebookId: string,
     displaySlug: string,
 ): Promise<Page | null> {
     try {
-        const pageSlug = extractPageSlugId(displaySlug);
+        const pageSlug = extractSlugId(displaySlug);
         const oid = new ObjectId(notebookId);
         const doc = await getCollection().findOne({
             $or: [{ notebookId: oid }, { notebookId: notebookId }],

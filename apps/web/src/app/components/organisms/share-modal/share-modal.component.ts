@@ -9,6 +9,7 @@ import { NotebookService } from '../../../services/notebook.service';
 import { BotService, type EnrichedUserBot } from '../../../services/bot.service';
 import { isLocalNotebook } from '../../../providers/data-provider.interface';
 import type { NotebookMember, Notebook } from '@maple/shared';
+import { toDisplaySlug } from '@maple/shared/utils/slug';
 
 @Component({
   selector: 'app-share-modal',
@@ -178,10 +179,13 @@ export class ShareModalComponent {
   copyPublicLink(): void {
     const url = this.publicUrl();
     if (!url) return;
-    navigator.clipboard.writeText(url).then(() => {
-      this.linkCopied.set(true);
-      setTimeout(() => this.linkCopied.set(false), 2000);
-    });
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        this.linkCopied.set(true);
+        setTimeout(() => this.linkCopied.set(false), 2000);
+      })
+      .catch(() => {});
   }
 
   togglePublic(): void {
@@ -220,15 +224,4 @@ export class ShareModalComponent {
     const currentUser = this.members().find((m) => m.accessLevel === 'owner');
     return !!currentUser; // Simplified - in real app, check if current user is owner
   }
-}
-
-function toDisplaySlug(title: string, shortId: string): string {
-  const prefix = title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-  return prefix ? `${prefix}-${shortId}` : shortId;
 }

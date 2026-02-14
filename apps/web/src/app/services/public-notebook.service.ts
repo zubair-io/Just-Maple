@@ -14,6 +14,7 @@ export interface PublicNotebook {
 }
 
 export interface PublicPageSummary {
+  id: string;
   slug: string;
   title: string;
   type: string;
@@ -105,5 +106,6 @@ export class PublicNotebookService {
     this.activePage.set(null);
     this.backlinks.set([]);
     this.error.set(null);
+    this.loading.set(false);
   }
 }

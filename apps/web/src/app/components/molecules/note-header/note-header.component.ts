@@ -2,6 +2,7 @@ import { Component, input, output, computed, signal, inject } from '@angular/cor
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import type { Page, Notebook } from '@maple/shared';
+import { toDisplaySlug } from '@maple/shared/utils/slug';
 import { VersionHistoryComponent } from '../version-history/version-history.component';
 import { UiStateService } from '../../../services/ui-state.service';
 
@@ -139,10 +140,13 @@ export class NoteHeaderComponent {
   copyPublicLink(): void {
     const url = this.publicPageUrl();
     if (!url) return;
-    navigator.clipboard.writeText(url).then(() => {
-      this.linkCopied.set(true);
-      setTimeout(() => this.linkCopied.set(false), 2000);
-    });
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        this.linkCopied.set(true);
+        setTimeout(() => this.linkCopied.set(false), 2000);
+      })
+      .catch(() => {});
   }
 
   private formatDateValue(dateString: string): string {
@@ -162,15 +166,4 @@ export class NoteHeaderComponent {
 
     return date.toLocaleDateString();
   }
-}
-
-function toDisplaySlug(title: string, shortId: string): string {
-  const prefix = title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 60);
-  return prefix ? `${prefix}-${shortId}` : shortId;
 }

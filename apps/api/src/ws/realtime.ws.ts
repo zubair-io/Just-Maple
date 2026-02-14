@@ -29,7 +29,13 @@ import {
     unsubscribeFromNotebookChat,
 } from '../services/realtime.service';
 import { customAlphabet } from 'nanoid';
-import type { ChatEvent, TypingEvent, PageContent } from '@maple/shared';
+import type { ChatEvent, TypingEvent, PageContent, Page } from '@maple/shared';
+
+/** Minimal page context for authorization of embedded/card memos */
+interface SyntheticPageContext {
+    type: 'memo' | 'whiteboard';
+    notebookId: string | undefined;
+}
 
 // Generate client IDs
 const nanoid = customAlphabet('1234567890abcdefghijklmnopqrstuvwxyz', 16);
@@ -214,7 +220,10 @@ async function handleMemoMessage(
             console.log(`[Memo] Join request for noteId: ${noteId}, parentPageId: ${parentPageId}`);
 
             // Verify user has access to this page (must be memo, whiteboard, or kanban type)
-            let page = await findPageById(noteId, context.userId);
+            let page: Page | SyntheticPageContext | null = await findPageById(
+                noteId,
+                context.userId,
+            );
 
             // If no page found, check if this is a card memo (memo.pageId references parent kanban page)
             if (!page) {
@@ -227,7 +236,7 @@ async function handleMemoMessage(
                         );
                         // Use 'memo' type so the YJS document service handles it
                         // Preserve notebookId from parent for access level check
-                        page = { type: 'memo', notebookId: parentPage.notebookId } as any;
+                        page = { type: 'memo', notebookId: parentPage.notebookId };
                     }
                 }
             }
@@ -241,7 +250,7 @@ async function handleMemoMessage(
                     );
                     // Create a virtual page object for embedded whiteboard
                     // Preserve notebookId from parent for access level check
-                    page = { type: 'whiteboard', notebookId: parentPage.notebookId } as any;
+                    page = { type: 'whiteboard', notebookId: parentPage.notebookId };
                 }
             }
 

@@ -136,10 +136,10 @@ export class HomeComponent implements OnInit, OnDestroy {
     const segments = pathOnly.split('/').filter(Boolean);
 
     if (segments.length >= 1) {
-      // First segment is notebookId (if not a special route like 'favorites', 'trash')
-      const firstSegment = segments[0];
-      if (!['favorites', 'trash', 'login', 'verify'].includes(firstSegment)) {
-        this.selectedNotebookId.set(firstSegment);
+      if (this.isNotebookRoute(segments)) {
+        this.selectedNotebookId.set(segments[0]);
+      } else {
+        this.selectedNotebookId.set(null);
       }
     }
 
