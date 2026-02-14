@@ -34,6 +34,7 @@ import { botMemosRoutes } from './routes/bot-api/memos';
 import { publicRoutes } from './routes/public';
 import { customDomainRoutes } from './routes/custom-domains';
 import { redisPubSub } from './services/redis.service';
+import { createSsrRoutes } from './routes/ssr';
 import { config } from './config';
 
 function getStaticDir(): string {
@@ -103,7 +104,8 @@ async function main() {
         .use(botMemosRoutes)
         .use(publicRoutes)
         .use(customDomainRoutes)
-        .use(realtimeWebSocket); // Unified WebSocket for app events + notebook sync + chat
+        .use(realtimeWebSocket) // Unified WebSocket for app events + notebook sync + chat
+        .use(createSsrRoutes(STATIC_DIR)); // SSR meta tags for public routes
 
     // App version for client version checking
     const APP_VERSION = process.env.APP_VERSION || '0.9.0';
