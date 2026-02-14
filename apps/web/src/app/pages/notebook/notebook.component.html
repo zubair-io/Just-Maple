@@ -7,6 +7,7 @@
       [canRedo]="canRedo()"
       [isFullWidth]="isFullWidth()"
       [pageId]="pageId() ?? ''"
+      [contentDirty]="contentDirty()"
       (toggleFavorite)="toggleFavorite()"
       (exportRequested)="handleExport($event)"
       (undoRequested)="handleUndo()"
@@ -14,6 +15,7 @@
       (toggleWidthRequested)="handleToggleWidth()"
       (versionRestored)="handleVersionRestored()"
       (deleteRequested)="handleDelete()"
+      (publishToggled)="handlePublishToggle($event)"
     />
 
     <div class="notebook-content">

@@ -219,6 +219,14 @@ export class NotebookEditorComponent implements OnDestroy {
       }
     });
 
+    // Disable editing when server indicates read-only access
+    effect(() => {
+      const pageId = this.pageId();
+      if (pageId && this.memoService.isReadOnly(pageId) && this._editor) {
+        this._editor.setEditable(false);
+      }
+    });
+
     this.destroyRef.onDestroy(() => {
       this.cleanup();
     });

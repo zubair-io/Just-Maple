@@ -716,6 +716,24 @@ export class PageService {
   }
 
   /**
+   * Publish or unpublish a page
+   */
+  publishPage(id: string, isPublished: boolean): Observable<Page> {
+    return this.http.patch<{ page: Page }>(`/api/pages/${id}/publish`, { isPublished }).pipe(
+      tap((response) => {
+        this.store.update(updateEntities(id, () => response.page));
+        this.persistToIndexedDB([response.page]);
+      }),
+      map((response) => response.page),
+      catchError((err) => {
+        const message = err?.error?.error || 'Failed to update publish state';
+        this._error.set(message);
+        return throwError(() => new Error(message));
+      }),
+    );
+  }
+
+  /**
    * Add or update a page locally (offline-first)
    * Used for pages created offline before server sync
    */

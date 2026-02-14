@@ -1,0 +1,91 @@
+<div class="public-layout">
+  <!-- Header -->
+  <header
+    class="flex items-center justify-between px-4 h-12 border-b border-[var(--color-border)] flex-shrink-0 bg-[var(--color-sidebar)]"
+  >
+    <div class="flex items-center gap-2.5">
+      @if (publicNotebookService.notebook()?.showPageList) {
+        <button
+          class="md:hidden flex items-center justify-center p-1 rounded text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)] transition-colors"
+          (click)="toggleSidebar()"
+        >
+          <span class="material-symbols-rounded text-xl">menu</span>
+        </button>
+      }
+      @if (publicNotebookService.notebook()?.logoUrl) {
+        <img [src]="publicNotebookService.notebook()!.logoUrl" alt="" class="h-7 w-auto rounded" />
+      } @else {
+        <img
+          src="https://hornbeam.justmaple.app/data/assets/justmaple.svg"
+          alt="Maple"
+          class="w-7 h-7"
+        />
+      }
+      <span class="font-serif font-bold text-base tracking-tight text-[var(--color-text-main)]">{{
+        publicNotebookService.notebook()?.displayName || 'Loading...'
+      }}</span>
+    </div>
+    <a
+      href="https://justmaple.app"
+      target="_blank"
+      rel="noopener"
+      class="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] no-underline hover:text-[var(--color-primary)] transition-colors"
+    >
+      Just Maple
+    </a>
+  </header>
+
+  <div class="public-body">
+    <!-- Sidebar -->
+    @if (publicNotebookService.notebook()?.showPageList) {
+      <aside
+        class="public-sidebar w-72 flex-shrink-0 bg-[var(--color-sidebar)] border-r border-[var(--color-border)] overflow-y-auto"
+        [class.open]="sidebarOpen()"
+      >
+        <!-- Page list -->
+        <nav class="px-3 pt-4 pb-4 space-y-0.5">
+          @for (page of publicNotebookService.sortedPages(); track page.slug) {
+            <a
+              class="flex items-center gap-1.5 px-2 py-1.5 text-sm rounded-md cursor-pointer transition-colors text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)]"
+              [routerLink]="['/!', notebookSlug(), page.slug]"
+              routerLinkActive="active-page"
+              (click)="closeSidebar()"
+            >
+              <span class="material-symbols-rounded text-xs opacity-60 flex-shrink-0">
+                @if (page.type === 'whiteboard') {
+                  draw
+                } @else if (page.type === 'kanban') {
+                  view_kanban
+                } @else {
+                  description
+                }
+              </span>
+              <span class="truncate">{{ page.title }}</span>
+            </a>
+          }
+        </nav>
+      </aside>
+    }
+
+    <!-- Backdrop for mobile sidebar -->
+    @if (sidebarOpen()) {
+      <div class="sidebar-backdrop" (click)="closeSidebar()"></div>
+    }
+
+    <!-- Main content -->
+    <main class="public-content">
+      @if (publicNotebookService.loading() && !publicNotebookService.notebook()) {
+        <div class="loading-state">
+          <div class="loading-spinner"></div>
+        </div>
+      } @else if (publicNotebookService.error()) {
+        <div class="error-state">
+          <h2>Something went wrong</h2>
+          <p>{{ publicNotebookService.error() }}</p>
+        </div>
+      } @else {
+        <router-outlet />
+      }
+    </main>
+  </div>
+</div>

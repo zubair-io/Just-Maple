@@ -37,12 +37,25 @@ export const NotebookValueSchema = Type.Union([
 ]);
 export type NotebookValue = Static<typeof NotebookValueSchema>;
 
+// Public notebook configuration
+export const PublicConfigSchema = Type.Object({
+    displayName: Type.Optional(Type.String()),
+    description: Type.Optional(Type.String()),
+    faviconUrl: Type.Optional(Type.String()),
+    logoUrl: Type.Optional(Type.String()),
+    landingPageId: Type.Optional(Type.String()),
+    showPageList: Type.Optional(Type.Boolean()),
+});
+export type PublicConfig = Static<typeof PublicConfigSchema>;
+
 export const NotebookSchema = Type.Object({
     _id: Type.String(),
     type: Type.Literal('folder'),
     value: NotebookValueSchema,
     label: Type.String(),
     sharing: NotebookSharingSchema,
+    slug: Type.Optional(Type.String()),
+    publicConfig: Type.Optional(PublicConfigSchema),
     createdAt: Type.String({ format: 'date-time' }),
     updatedAt: Type.String({ format: 'date-time' }),
 });
@@ -85,3 +98,10 @@ export const NotebookMemberSchema = Type.Object({
     accessLevel: AccessLevelSchema,
 });
 export type NotebookMember = Static<typeof NotebookMemberSchema>;
+
+// Update public config input
+export const UpdatePublicConfigSchema = Type.Object({
+    isPublic: Type.Optional(Type.Boolean()),
+    publicConfig: Type.Optional(PublicConfigSchema),
+});
+export type UpdatePublicConfigInput = Static<typeof UpdatePublicConfigSchema>;

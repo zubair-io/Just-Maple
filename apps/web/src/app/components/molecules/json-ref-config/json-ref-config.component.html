@@ -74,7 +74,7 @@
             <label class="form-label"
               >Template
               <span class="text-xs text-[var(--color-text-muted)]"
-                >(use &#123;&#123;field&#125;&#125;)</span
+                >(use {{'{{field}}' }})</span
               ></label
             >
             <input
@@ -82,7 +82,7 @@
               class="form-input"
               [value]="template()"
               (input)="template.set($any($event.target).value)"
-              placeholder="{{ name }} - {{ value }}"
+              [placeholder]="'{{name}} - {{value}}'"
             />
           </div>
         }

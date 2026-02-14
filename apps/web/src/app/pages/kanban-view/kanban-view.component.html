@@ -5,6 +5,7 @@
       [notebook]="selectedNotebook()"
       (favoriteClicked)="toggleFavorite()"
       (titleChanged)="onTitleChanged($event)"
+      (publishToggled)="handlePublishToggle($event)"
     />
 
     <div class="kanban-content">

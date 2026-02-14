@@ -2,7 +2,7 @@ import { Component, input, output, computed, signal, inject } from '@angular/cor
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import type { Page, Notebook } from '@maple/shared';
-import { SyncStatusComponent } from '../../atoms/sync-status/sync-status.component';
+import { toDisplaySlug } from '@maple/shared/utils/slug';
 import { VersionHistoryComponent } from '../version-history/version-history.component';
 import { UiStateService } from '../../../services/ui-state.service';
 
@@ -11,7 +11,7 @@ export type ExportFormat = 'markdown' | 'html';
 @Component({
   selector: 'app-note-header',
   standalone: true,
-  imports: [CommonModule, FormsModule, SyncStatusComponent, VersionHistoryComponent],
+  imports: [CommonModule, FormsModule, VersionHistoryComponent],
   templateUrl: './note-header.component.html',
   styleUrl: './note-header.component.scss',
 })
@@ -35,6 +35,28 @@ export class NoteHeaderComponent {
   readonly versionRestored = output<void>();
   readonly deleteRequested = output<void>();
   readonly titleChanged = output<string>();
+  readonly publishToggled = output<boolean>();
+
+  // Publish state
+  readonly contentDirty = input<boolean>(false);
+  readonly isNotebookPublic = computed(() => !!this.notebook()?.sharing?.isPublic);
+  readonly isPagePublished = computed(() => !!this.page()?.isPublished);
+  readonly isPublishStale = computed(() => {
+    if (!this.isPagePublished()) return false;
+    return this.contentDirty();
+  });
+
+  readonly showPublishModal = signal(false);
+  readonly isTogglingPublish = signal(false);
+  readonly linkCopied = signal(false);
+  readonly publicPageUrl = computed(() => {
+    const nb = this.notebook();
+    const pg = this.page();
+    if (!nb?.slug || !pg?.publishedSlug) return null;
+    const nbSlug = toDisplaySlug(nb.label, nb.slug);
+    const pgSlug = toDisplaySlug(pg.title, pg.publishedSlug);
+    return `${window.location.origin}/!/${nbSlug}/${pgSlug}`;
+  });
 
   readonly showExportMenu = signal(false);
   readonly showVersionHistory = signal(false);
@@ -92,6 +114,39 @@ export class NoteHeaderComponent {
 
   onVersionRestored(): void {
     this.versionRestored.emit();
+  }
+
+  openPublishModal(): void {
+    this.showPublishModal.set(true);
+  }
+
+  closePublishModal(): void {
+    this.showPublishModal.set(false);
+  }
+
+  onPublishToggle(): void {
+    this.isTogglingPublish.set(true);
+    this.publishToggled.emit(!this.isPagePublished());
+    // Parent will update the page; reset after a short delay
+    setTimeout(() => this.isTogglingPublish.set(false), 1500);
+  }
+
+  onRepublish(): void {
+    this.isTogglingPublish.set(true);
+    this.publishToggled.emit(true);
+    setTimeout(() => this.isTogglingPublish.set(false), 1500);
+  }
+
+  copyPublicLink(): void {
+    const url = this.publicPageUrl();
+    if (!url) return;
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        this.linkCopied.set(true);
+        setTimeout(() => this.linkCopied.set(false), 2000);
+      })
+      .catch(() => {});
   }
 
   private formatDateValue(dateString: string): string {

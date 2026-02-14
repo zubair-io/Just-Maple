@@ -193,6 +193,24 @@ export class AuthService {
     }
   }
 
+  /**
+   * Navigate to the returnUrl query parameter if present, otherwise to '/'.
+   * Validates that the URL is a relative path to prevent open redirect attacks.
+   */
+  private navigateAfterAuth(): Promise<boolean> {
+    if (isPlatformBrowser(this.platformId)) {
+      const params = new URLSearchParams(window.location.search);
+      const returnUrl = params.get('returnUrl');
+      if (returnUrl) {
+        const url = returnUrl.startsWith('/') ? returnUrl : '/' + returnUrl;
+        if (!url.startsWith('//')) {
+          return this.router.navigateByUrl(url);
+        }
+      }
+    }
+    return this.router.navigate(['/']);
+  }
+
   private clearStorage(): void {
     if (!isPlatformBrowser(this.platformId)) {
       return;
@@ -240,7 +258,7 @@ export class AuthService {
         user: response.user,
       });
 
-      await this.router.navigate(['/']);
+      await this.navigateAfterAuth();
     } catch (err: any) {
       const message = err?.error?.error || 'Verification failed';
       this._error.set(message);
@@ -266,7 +284,7 @@ export class AuthService {
         user: response.user,
       });
 
-      await this.router.navigate(['/']);
+      await this.navigateAfterAuth();
     } catch (err: any) {
       const message = err?.error?.error || 'Invalid or expired code';
       this._error.set(message);
@@ -422,7 +440,7 @@ export class AuthService {
         user: response.user,
       });
 
-      await this.router.navigate(['/']);
+      await this.navigateAfterAuth();
     } catch (err: any) {
       const message = err?.error?.error || err?.message || 'Passkey login failed';
       this._error.set(message);
