@@ -31,6 +31,8 @@ import { botAuthRoutes } from './routes/bot-auth';
 import { customBotRoutes } from './routes/custom-bots';
 import { botMessagesRoutes } from './routes/bot-api/messages';
 import { botMemosRoutes } from './routes/bot-api/memos';
+import { publicRoutes } from './routes/public';
+import { customDomainRoutes } from './routes/custom-domains';
 import { redisPubSub } from './services/redis.service';
 import { config } from './config';
 
@@ -99,6 +101,8 @@ async function main() {
         .use(customBotRoutes)
         .use(botMessagesRoutes)
         .use(botMemosRoutes)
+        .use(publicRoutes)
+        .use(customDomainRoutes)
         .use(realtimeWebSocket); // Unified WebSocket for app events + notebook sync + chat
 
     // App version for client version checking

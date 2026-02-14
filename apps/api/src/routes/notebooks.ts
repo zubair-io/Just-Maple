@@ -18,6 +18,7 @@ import {
     shareNotebook,
     unshareNotebook,
     updateNotebookPublicStatus,
+    updateNotebookPublicConfig,
     getNotebookMembers,
     getNotebookMembersWithUserData,
     getAccessLevel,
@@ -293,6 +294,52 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
             }),
             body: t.Object({
                 isPublic: t.Boolean(),
+            }),
+        },
+    )
+
+    // Update notebook's public configuration (slug, displayName, etc.)
+    .patch(
+        '/:id/public',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            const notebook = await updateNotebookPublicConfig(params.id, auth.user._id, body);
+
+            if (!notebook) {
+                set.status = 403;
+                return {
+                    error: 'Forbidden',
+                    message: 'Could not update public configuration.',
+                };
+            }
+
+            // If notebook was just made public, bulk-publish existing pages
+            if (body.isPublic === true) {
+                const { bulkPublishPagesForNotebook } = await import('../repositories/page.repo');
+                await bulkPublishPagesForNotebook(params.id);
+            }
+
+            return { notebook };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            body: t.Object({
+                isPublic: t.Optional(t.Boolean()),
+                publicConfig: t.Optional(
+                    t.Object({
+                        displayName: t.Optional(t.String()),
+                        description: t.Optional(t.String()),
+                        faviconUrl: t.Optional(t.String()),
+                        logoUrl: t.Optional(t.String()),
+                        landingPageId: t.Optional(t.String()),
+                        showPageList: t.Optional(t.Boolean()),
+                    }),
+                ),
             }),
         },
     )

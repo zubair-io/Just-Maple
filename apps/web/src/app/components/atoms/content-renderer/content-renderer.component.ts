@@ -10,10 +10,21 @@ import {
 import { CommonModule } from '@angular/common';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import TaskItem from '@tiptap/extension-task-item';
-import TaskList from '@tiptap/extension-task-list';
 import Highlight from '@tiptap/extension-highlight';
 import { Mention } from '../../organisms/chat/extensions/mention';
+import {
+  EnhancedTaskItem,
+  EnhancedTaskList,
+  ImageNode,
+  CodeBlockWithLanguage,
+  Agenda,
+  InlineMention,
+  PageLink,
+  PageLinkBlock,
+  EmbedNode,
+  HashTag,
+  getTableExtensions,
+} from '../../organisms/notebook-editor/extensions';
 import type { PageContent } from '@maple/shared';
 
 @Component({
@@ -72,16 +83,29 @@ export class ContentRendererComponent implements AfterViewInit, OnDestroy {
       element: this.editorRef.nativeElement,
       editable: false,
       extensions: [
-        StarterKit as any,
-        TaskItem.configure({
-          nested: true,
+        StarterKit.configure({
+          codeBlock: false,
         }) as any,
-        TaskList as any,
+        CodeBlockWithLanguage as any,
         Highlight as any,
         Mention.configure({
-          HTMLAttributes: {
-            class: 'mention',
-          },
+          HTMLAttributes: { class: 'mention' },
+        }) as any,
+        EnhancedTaskList as any,
+        EnhancedTaskItem.configure({ nested: true }) as any,
+        ...getTableExtensions().map((ext) => ext as any),
+        ImageNode as any,
+        EmbedNode as any,
+        Agenda as any,
+        InlineMention.configure({
+          suggestion: { items: () => [], render: () => ({}) },
+        }) as any,
+        PageLink.configure({
+          suggestion: { items: () => [], render: () => ({}) },
+        }) as any,
+        PageLinkBlock as any,
+        HashTag.configure({
+          suggestion: { items: () => [], render: () => ({}) },
         }) as any,
       ],
       content: '',

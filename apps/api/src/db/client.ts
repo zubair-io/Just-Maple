@@ -48,9 +48,10 @@ async function createUniqueIndex(
     collection: string,
     indexSpec: Record<string, 1 | -1>,
     indexName: string,
+    options?: { sparse?: boolean },
 ): Promise<void> {
     try {
-        await database.collection(collection).createIndex(indexSpec, { unique: true });
+        await database.collection(collection).createIndex(indexSpec, { unique: true, ...options });
     } catch (e: any) {
         // 67 = CannotCreateIndex (duplicate data prevents unique index)
         // 85 = IndexOptionsConflict (index exists with different options, e.g. non-unique)
@@ -94,7 +95,7 @@ async function createIndexes(database: Db): Promise<void> {
     } catch (e) {
         // Index doesn't exist, ignore
     }
-    await database.collection('pages').createIndex({ id: 1 }, { unique: true }); // For lookup by id
+    await createUniqueIndex(database, 'pages', { id: 1 }, 'id'); // For lookup by id
 
     // Memos collection (Y.Doc storage for notebook-type pages, formerly notebooks)
     // Migration: recreate collection handles old indexes. These are created fresh.
@@ -190,6 +191,27 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('search_index').createIndex({ notebookId: 1 });
     await database.collection('search_index').createIndex({ type: 1 });
     await database.collection('search_index').createIndex({ updatedAt: -1 });
+
+    // Notebook slug index (sparse - only public notebooks have slugs)
+    await createUniqueIndex(database, 'notebooks', { slug: 1 }, 'slug', { sparse: true });
+
+    // Page publishing indexes
+    await createUniqueIndex(
+        database,
+        'pages',
+        { notebookId: 1, publishedSlug: 1 },
+        'publishedSlug',
+        {
+            sparse: true,
+        },
+    );
+    await database
+        .collection('pages')
+        .createIndex({ notebookId: 1, isPublished: 1, publishedOrder: 1 }, { sparse: true });
+
+    // Custom domains collection
+    await createUniqueIndex(database, 'custom_domains', { domain: 1 }, 'domain');
+    await database.collection('custom_domains').createIndex({ notebookId: 1 });
 
     console.log('Database indexes created');
 }

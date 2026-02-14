@@ -63,6 +63,9 @@ export class MemoDocumentService {
   // Document sync status
   private readonly _syncStatuses = signal<Map<string, SyncStatus>>(new Map());
 
+  // Pages where the user has read-only access (server denied write)
+  private readonly _readOnlyPages = signal<Set<string>>(new Set());
+
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
       this.setupConnectivityListener();
@@ -421,6 +424,11 @@ export class MemoDocumentService {
       this.updateSyncStatus(pageId, synced ? 'synced' : 'syncing');
     };
 
+    // Track read-only access from server
+    doc.wsProvider.onReadOnly = () => {
+      this._readOnlyPages.update((set) => new Set([...set, pageId]));
+    };
+
     // Connect to memo room
     doc.wsProvider.connect();
   }
@@ -672,6 +680,15 @@ export class MemoDocumentService {
     // Peer count tracking would need to be implemented in the WebSocket provider
     // if needed. For now, return 0.
     return 0;
+  }
+
+  /**
+   * Check if the user has read-only access to a document.
+   * Returns true if the server indicated read-only access via WebSocket.
+   * This is a signal-based check so it can be used in Angular effects/computed.
+   */
+  isReadOnly(pageId: string): boolean {
+    return this._readOnlyPages().has(pageId);
   }
 
   /**

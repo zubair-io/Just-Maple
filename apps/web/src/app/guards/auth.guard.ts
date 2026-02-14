@@ -1,5 +1,12 @@
 import { Injectable, inject } from '@angular/core';
-import { CanActivate, CanMatch, Router, UrlTree } from '@angular/router';
+import {
+  CanActivate,
+  CanMatch,
+  Router,
+  UrlTree,
+  ActivatedRouteSnapshot,
+  RouterStateSnapshot,
+} from '@angular/router';
 import { Observable, map } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 
@@ -10,11 +17,15 @@ export class AuthGuard implements CanActivate, CanMatch {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
 
-  canActivate(): boolean | UrlTree {
+  canActivate(route?: ActivatedRouteSnapshot, state?: RouterStateSnapshot): boolean | UrlTree {
     if (this.authService.isAuthenticated()) {
       return true;
     }
-    return this.router.createUrlTree(['/login']);
+    const queryParams: Record<string, string> = {};
+    if (state?.url && state.url !== '/') {
+      queryParams['returnUrl'] = state.url;
+    }
+    return this.router.createUrlTree(['/login'], { queryParams });
   }
 
   canMatch(): Observable<boolean> {

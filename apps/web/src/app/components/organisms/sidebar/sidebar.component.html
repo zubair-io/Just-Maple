@@ -196,6 +196,8 @@
               >
                 @if (notebookService.isLocal(notebook._id)) {
                   folder_open
+                } @else if (notebook.sharing?.isPublic) {
+                  public
                 } @else if (selectedNotebookId() === notebook._id) {
                   book_5
                 } @else {
