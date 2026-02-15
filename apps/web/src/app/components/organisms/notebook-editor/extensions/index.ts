@@ -39,6 +39,8 @@ export {
   baseMentionSuggestions,
   formatTime,
   formatDate,
+  getCurrentTime,
+  getCurrentDate,
   type InlineMentionType,
   type InlineMentionAttrs,
   type InlineMentionSuggestion,
