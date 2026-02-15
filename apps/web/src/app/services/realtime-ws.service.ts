@@ -32,7 +32,8 @@ export type AppEvent =
   | { type: 'collectable.deleted'; collectableId: string; notebookId: string }
   | { type: 'recording.started'; id: string; notebookId?: string }
   | { type: 'recording.completed'; recording: Recording; notebookId?: string }
-  | { type: 'recording.failed'; id: string; error?: string; notebookId?: string };
+  | { type: 'recording.failed'; id: string; error?: string; notebookId?: string }
+  | { type: 'json.updated'; pageId: string; version: number; data: unknown; notebookId?: string };
 
 /**
  * Message from server
@@ -203,18 +204,10 @@ export class RealtimeWSService {
         const event = data.event as MemoSSEEvent;
         const pageId = data.pageId;
 
-        console.log(`[WS] Received memo event: ${event.type}, pageId: ${pageId}`);
-
         if (pageId) {
           const handler = this.memoHandlers.get(pageId);
           if (handler) {
-            console.log(`[WS] Found handler for pageId ${pageId}, invoking...`);
             handler(event);
-          } else {
-            console.log(
-              `[WS] No handler found for pageId ${pageId}. Registered handlers:`,
-              Array.from(this.memoHandlers.keys()),
-            );
           }
           this.memoEvents$.next({ pageId, event });
         } else {

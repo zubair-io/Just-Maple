@@ -48,6 +48,9 @@ export class WhiteboardViewComponent implements OnDestroy {
       if (id) {
         this.pageService.setActivePageId(id);
       }
+      if (notebookId) {
+        this.notebookService.setActiveNotebook(notebookId);
+      }
     });
   }
 
@@ -70,6 +73,14 @@ export class WhiteboardViewComponent implements OnDestroy {
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
       this.uiStateService.openSidebar();
     }
+  }
+
+  handlePublishToggle(isPublished: boolean): void {
+    const id = this.pageId();
+    if (!id) return;
+    this.pageService.publishPage(id, isPublished).subscribe({
+      error: (err) => console.error('Failed to toggle publish:', err),
+    });
   }
 
   async handleDelete(): Promise<void> {

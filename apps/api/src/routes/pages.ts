@@ -19,6 +19,7 @@ import {
     movePageToTrash,
     restorePageFromTrash,
     emptyTrash,
+    publishPage,
 } from '../repositories/page.repo';
 import { otService } from '../services/ot.service';
 import { realtimeWSService } from '../services/realtime-ws.service';
@@ -179,6 +180,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('message'),
                         t.Literal('recording'),
                         t.Literal('gmail'),
+                        t.Literal('json'),
                     ]),
                 ),
                 title: t.Optional(t.String({ maxLength: 255 })),
@@ -450,6 +452,45 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
         {
             params: t.Object({
                 id: t.String(),
+            }),
+        },
+    )
+
+    // Update page publish state
+    .patch(
+        '/:id/publish',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+
+            // Check page exists and is not a message-type page
+            const existingPage = await findPageById(params.id, auth.user._id);
+            if (!existingPage) {
+                set.status = 404;
+                return { error: 'Not found', message: 'Page not found or access denied' };
+            }
+            if (existingPage.type === 'message') {
+                set.status = 400;
+                return { error: 'Bad request', message: 'Message pages cannot be published' };
+            }
+
+            const page = await publishPage(params.id, auth.user._id, body);
+
+            if (!page) {
+                set.status = 403;
+                return { error: 'Forbidden', message: 'Could not publish page' };
+            }
+
+            return { page };
+        },
+        {
+            params: t.Object({
+                id: t.String(),
+            }),
+            body: t.Object({
+                isPublished: t.Optional(t.Boolean()),
+                publishedOrder: t.Optional(t.Number()),
             }),
         },
     )

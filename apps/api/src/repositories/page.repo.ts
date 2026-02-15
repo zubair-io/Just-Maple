@@ -1,5 +1,6 @@
 import { ObjectId, Collection } from 'mongodb';
 import { randomUUID } from 'crypto';
+import { customAlphabet } from 'nanoid';
 import { getDb } from '../db/client';
 import type {
     Page,
@@ -8,12 +9,17 @@ import type {
     CreatePageInput,
     UpdatePageInput,
     PageTodoMeta,
+    PublishPageInput,
 } from '@maple/shared';
+import { extractSlugId } from '@maple/shared/utils/slug';
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
-import { deleteMemo, deleteMemosByPageId } from './memo.repo';
+import { deleteMemo, deleteMemosByPageId, getMemoState } from './memo.repo';
 import { deleteWhiteboard } from './whiteboard.repo';
 import { deleteKanbanBoard } from './kanban-board.repo';
+import { deleteJsonDocument } from './json-document.repo';
 import { isDevMode, isDocPage, getDocPage, pageIdToSlug } from '../services/docs.service';
+import * as Y from 'yjs';
+import { createSnapshotFromState } from '../services/memo-version.service';
 
 /**
  * Generate a UUID v4 for page routing
@@ -38,6 +44,13 @@ interface PageDocument {
     todoMeta?: PageTodoMeta;
     // Tags extracted from content (e.g., #work, #ideas)
     tags?: string[];
+    // Public publishing fields
+    isPublished?: boolean;
+    publishedSlug?: string;
+    publishedAt?: Date;
+    publishedOrder?: number;
+    publishedContent?: PageContent;
+    publishedTitle?: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -61,6 +74,12 @@ function toPageResponse(doc: PageDocument): Page {
         trashedAt: doc.trashedAt?.toISOString(),
         todoMeta: doc.todoMeta, // Todo metadata
         tags: doc.tags, // Tags extracted from content
+        isPublished: doc.isPublished,
+        publishedSlug: doc.publishedSlug,
+        publishedAt: doc.publishedAt?.toISOString(),
+        publishedOrder: doc.publishedOrder,
+        publishedContent: doc.publishedContent,
+        publishedTitle: doc.publishedTitle,
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
     };
@@ -351,6 +370,8 @@ export async function deletePage(id: string, userId: string): Promise<boolean> {
             await deleteKanbanBoard(doc.id);
             // Also delete all card memos that reference this kanban page
             await deleteMemosByPageId(doc.id);
+        } else if (doc.type === 'json') {
+            await deleteJsonDocument(doc.id);
         }
 
         const result = await getCollection().deleteOne({ id });
@@ -813,5 +834,272 @@ export async function getTagCountsForUser(
         return results.map((r) => ({ tag: r._id as string, count: r.count as number }));
     } catch {
         return [];
+    }
+}
+
+// ============================================
+// Public Page Functions
+// ============================================
+
+/**
+ * Generate a unique slug for a page (shortId only).
+ * The title prefix is added at display time so title changes don't affect the stored slug.
+ */
+const generatePageSlugId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 8);
+
+async function generateUniquePageSlug(notebookId: ObjectId | undefined): Promise<string> {
+    for (let i = 0; i < 10; i++) {
+        const slug = generatePageSlugId();
+        const query: Record<string, unknown> = { publishedSlug: slug };
+        if (notebookId) {
+            query.notebookId = notebookId;
+        }
+        const existing = await getCollection().findOne(query);
+        if (!existing) return slug;
+    }
+    // Fallback: longer slug to avoid collision
+    return customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 12)();
+}
+
+/**
+ * Convert Y.js binary state to ProseMirror JSON.
+ */
+function yDocStateToJSON(state: Uint8Array): PageContent | null {
+    const ydoc = new Y.Doc();
+    Y.applyUpdate(ydoc, state);
+    const fragment = ydoc.getXmlFragment('prosemirror');
+    if (fragment.length === 0) {
+        ydoc.destroy();
+        return null;
+    }
+
+    const content: PageContent['content'] = [];
+    for (let i = 0; i < fragment.length; i++) {
+        const child = fragment.get(i);
+        if (child instanceof Y.XmlElement) {
+            content.push(yXmlElementToJSON(child));
+        } else if (child instanceof Y.XmlText) {
+            content.push(...yXmlTextToNodes(child));
+        }
+    }
+    ydoc.destroy();
+    return { type: 'doc', content };
+}
+
+function yXmlElementToJSON(element: Y.XmlElement): Record<string, unknown> {
+    const result: Record<string, unknown> = { type: element.nodeName };
+    const attrs = element.getAttributes();
+    if (Object.keys(attrs).length > 0) result.attrs = attrs;
+
+    const content: Record<string, unknown>[] = [];
+    for (let i = 0; i < element.length; i++) {
+        const child = element.get(i);
+        if (child instanceof Y.XmlElement) {
+            content.push(yXmlElementToJSON(child));
+        } else if (child instanceof Y.XmlText) {
+            // A single Y.XmlText can produce multiple ProseMirror text nodes
+            content.push(...yXmlTextToNodes(child));
+        }
+    }
+    if (content.length > 0) result.content = content;
+    return result;
+}
+
+/**
+ * Convert a Y.XmlText to one or more ProseMirror text nodes.
+ * Each delta segment becomes a separate node with its own marks.
+ * Empty text nodes are filtered out (ProseMirror rejects them).
+ */
+function yXmlTextToNodes(textNode: Y.XmlText): Record<string, unknown>[] {
+    const delta = textNode.toDelta();
+    const nodes: Record<string, unknown>[] = [];
+
+    for (const segment of delta) {
+        const text = typeof segment.insert === 'string' ? segment.insert : '';
+        if (!text) continue; // Skip empty text nodes
+
+        const node: Record<string, unknown> = { type: 'text', text };
+
+        if (segment.attributes) {
+            const marks: Array<{ type: string; attrs?: Record<string, unknown> }> = [];
+            for (const [key, value] of Object.entries(segment.attributes)) {
+                if (value === null || value === false) continue;
+                if (
+                    value === true ||
+                    (typeof value === 'object' && Object.keys(value as object).length === 0)
+                ) {
+                    marks.push({ type: key });
+                } else {
+                    marks.push({ type: key, attrs: value as Record<string, unknown> });
+                }
+            }
+            if (marks.length > 0) node.marks = marks;
+        }
+
+        nodes.push(node);
+    }
+
+    return nodes;
+}
+
+/**
+ * Update a page's publish state (slug, order, visibility)
+ * Requires write access to the page's notebook.
+ * Message-type pages cannot be published.
+ */
+export async function publishPage(
+    pageId: string,
+    userId: string,
+    data: PublishPageInput,
+): Promise<Page | null> {
+    try {
+        const doc = await getCollection().findOne({ id: pageId });
+        if (!doc) return null;
+
+        // Message pages cannot be published
+        if (doc.type === 'message') return null;
+
+        // Check write access
+        if (doc.notebookId) {
+            const notebook = await findNotebookByIdWithAccess(
+                doc.notebookId.toString(),
+                userId,
+                'write',
+            );
+            if (!notebook) return null;
+        } else {
+            if (doc.userId.toString() !== userId) return null;
+        }
+
+        const updateData: Record<string, unknown> = { updatedAt: new Date() };
+
+        if (data.isPublished !== undefined) {
+            updateData.isPublished = data.isPublished;
+            if (data.isPublished) {
+                // Snapshot current Y.js content and title for public readers
+                const memoState = await getMemoState(pageId);
+                const yContent = memoState ? yDocStateToJSON(memoState) : null;
+                updateData.publishedContent = yContent || doc.content;
+                updateData.publishedTitle = doc.title;
+                updateData.publishedAt = new Date();
+
+                // Create a version history snapshot
+                if (memoState) {
+                    createSnapshotFromState(pageId, memoState, 'manual', 'Published').catch((err) =>
+                        console.error('[publishPage] Failed to create version snapshot:', err),
+                    );
+                }
+            }
+        }
+        if (data.isPublished && !doc.publishedSlug) {
+            // Auto-generate slug when publishing and no slug exists
+            updateData.publishedSlug = await generateUniquePageSlug(doc.notebookId);
+        }
+        if (data.publishedOrder !== undefined) {
+            updateData.publishedOrder = data.publishedOrder;
+        }
+
+        const result = await getCollection().findOneAndUpdate(
+            { id: pageId },
+            { $set: updateData },
+            { returnDocument: 'after' },
+        );
+
+        return result ? toPageResponse(result) : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Find all published pages for a notebook (no auth - for public access)
+ */
+export async function findPublishedPagesByNotebookId(notebookId: string): Promise<Page[]> {
+    try {
+        const oid = new ObjectId(notebookId);
+        // Try both ObjectId and string notebookId (some pages may have string format)
+        const docs = await getCollection()
+            .find({
+                $or: [{ notebookId: oid }, { notebookId: notebookId }],
+                isPublished: true,
+                isTrashed: { $ne: true },
+                type: { $ne: 'message' }, // Never publish message pages
+            })
+            .toArray();
+        // Sort in application code (Cosmos DB doesn't support $or with .sort())
+        docs.sort(
+            (a, b) =>
+                (a.publishedOrder ?? 0) - (b.publishedOrder ?? 0) ||
+                (a.title || '').localeCompare(b.title || ''),
+        );
+        return docs.map(toPageResponse);
+    } catch (err) {
+        console.error('[findPublishedPagesByNotebookId] Error:', err);
+        return [];
+    }
+}
+
+/**
+ * Find a single published page by slug within a notebook (no auth - for public access)
+ */
+export async function findPublishedPageBySlug(
+    notebookId: string,
+    displaySlug: string,
+): Promise<Page | null> {
+    try {
+        const pageSlug = extractSlugId(displaySlug);
+        const oid = new ObjectId(notebookId);
+        const doc = await getCollection().findOne({
+            $or: [{ notebookId: oid }, { notebookId: notebookId }],
+            publishedSlug: pageSlug,
+            isPublished: true,
+            isTrashed: { $ne: true },
+            type: { $ne: 'message' },
+        });
+        return doc ? toPageResponse(doc) : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Bulk publish all pages in a notebook (when notebook is made public)
+ * Sets isPublished=true, auto-generates slugs, and snapshots content for all non-message pages
+ */
+export async function bulkPublishPagesForNotebook(notebookId: string): Promise<number> {
+    try {
+        const oid = new ObjectId(notebookId);
+        const docs = await getCollection()
+            .find({
+                $or: [{ notebookId: oid }, { notebookId: notebookId }],
+                isTrashed: { $ne: true },
+                type: { $ne: 'message' },
+                isPublished: { $ne: true },
+            })
+            .toArray();
+
+        let count = 0;
+        for (const doc of docs) {
+            const slug = await generateUniquePageSlug(oid);
+            const bulkMemoState = await getMemoState(doc.id);
+            const yContent = bulkMemoState ? yDocStateToJSON(bulkMemoState) : null;
+            await getCollection().updateOne(
+                { _id: doc._id },
+                {
+                    $set: {
+                        isPublished: true,
+                        publishedSlug: slug,
+                        publishedContent: yContent || doc.content,
+                        publishedTitle: doc.title,
+                        publishedAt: new Date(),
+                        updatedAt: new Date(),
+                    },
+                },
+            );
+            count++;
+        }
+        return count;
+    } catch {
+        return 0;
     }
 }

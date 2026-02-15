@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { AuthGuard, PublicGuard } from './guards/auth.guard';
+import { NotebookGuard } from './guards/notebook.guard';
 import {
   CollectablePageGuard,
   WhiteboardPageGuard,
@@ -7,6 +8,7 @@ import {
   MemoPageGuard,
   MessagePageGuard,
   GmailPageGuard,
+  JsonPageGuard,
 } from './guards/page-type.guard';
 import { swUpdateGuard } from './guards/sw-update.guard';
 
@@ -30,6 +32,53 @@ export const routes: Routes = [
       import('./pages/gmail-oauth-callback/gmail-oauth-callback.component').then(
         (m) => m.GmailOAuthCallbackComponent,
       ),
+  },
+
+  // Public notebook viewer - /!/notebook-slug/page-slug
+  {
+    path: '!/:notebookSlug',
+    loadComponent: () =>
+      import('./pages/public-notebook/public-notebook-layout.component').then(
+        (m) => m.PublicNotebookLayoutComponent,
+      ),
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./pages/public-notebook/public-landing.component').then(
+            (m) => m.PublicLandingComponent,
+          ),
+      },
+      {
+        path: ':pageSlug',
+        loadComponent: () =>
+          import('./pages/public-notebook/public-page.component').then(
+            (m) => m.PublicPageComponent,
+          ),
+      },
+    ],
+  },
+
+  // Notebook public redirect / unauthenticated access handler.
+  // Intercepts /:notebookId(/:pageId) BEFORE the auth-protected routes.
+  // The guard either redirects (public → /!/slug/slug, private+unauthed → /login)
+  // or falls through (private+authed → handled by the auth root below).
+  {
+    path: ':notebookId',
+    canMatch: [NotebookGuard],
+    loadComponent: () =>
+      import('./pages/notebook-layout/notebook-layout.component').then(
+        (m) => m.NotebookLayoutComponent,
+      ),
+    children: [
+      {
+        path: '**',
+        loadComponent: () =>
+          import('./pages/notebook-layout/notebook-layout.component').then(
+            (m) => m.NotebookLayoutComponent,
+          ),
+      },
+    ],
   },
 
   // Authenticated app routes - matched first if user is authenticated
@@ -153,6 +202,13 @@ export const routes: Routes = [
             canMatch: [GmailPageGuard],
             loadComponent: () =>
               import('./pages/gmail-view/gmail-view.component').then((m) => m.GmailViewComponent),
+          },
+          // JSON-type page - shows JSON data editor (code + form)
+          {
+            path: ':id',
+            canMatch: [JsonPageGuard],
+            loadComponent: () =>
+              import('./pages/json-view/json-view.component').then((m) => m.JsonViewComponent),
           },
           // Memo-type page - shows collaborative notebook editor (default for pages)
           {

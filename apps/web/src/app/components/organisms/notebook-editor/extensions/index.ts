@@ -73,3 +73,9 @@ export {
   type HashTagOptions,
 } from './hashtag';
 export { MarkdownPaste, isMarkdownContent, markdownToHtml } from './markdown-paste';
+export { JsonDataRef, type JsonDataRefAttrs, type JsonDataRefOptions } from './json-data-ref';
+export {
+  JsonLoopBlock,
+  type JsonLoopBlockAttrs,
+  type JsonLoopBlockOptions,
+} from './json-loop-block';

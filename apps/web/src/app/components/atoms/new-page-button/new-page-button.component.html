@@ -46,6 +46,15 @@
         <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">draw</span>
         <span>New Whiteboard</span>
       </button>
+      <button
+        (click)="createPage('json')"
+        class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+      >
+        <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+          >data_object</span
+        >
+        <span>New JSON Page</span>
+      </button>
       @if (showConversation()) {
         <button
           (click)="createPage('message')"

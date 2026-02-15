@@ -25,6 +25,7 @@ export class YJSWSProvider {
   readonly connected = signal(false);
   readonly synced = signal(false);
   readonly error = signal<string | null>(null);
+  readonly canWrite = signal(true);
 
   // Connection event handlers
   onConnected?: () => void;
@@ -38,6 +39,9 @@ export class YJSWSProvider {
     userColor: string;
   }) => void;
   onPeerLeave?: (clientId: string) => void;
+
+  // Access control callback
+  onReadOnly?: () => void;
 
   constructor(
     private readonly pageId: string,
@@ -70,22 +74,13 @@ export class YJSWSProvider {
    * Connect to memo room via WebSocket
    */
   connect(): void {
-    console.log(
-      `[YJS-WS] Connecting to memo: ${this.pageId}, clientId: ${this._clientId}, parentPageId: ${this.parentPageId}`,
-    );
-
     // Register event handler for this memo
     this.realtimeWS.onMemoEvent(this.pageId, this.handleEvent.bind(this));
 
     // Join the memo room (pass parentPageId for embedded whiteboards)
     this.realtimeWS.joinMemo(this.pageId, this._clientId, this.parentPageId);
 
-    // Track connection state based on realtimeWS
-    // Note: The actual connected state depends on the WebSocket connection
-    // and whether we've successfully joined the room
     this.connected.set(this.realtimeWS.isConnected());
-
-    console.log(`[YJS-WS] WS connected: ${this.realtimeWS.isConnected()}`);
 
     if (this.realtimeWS.isConnected()) {
       this.onConnected?.();
@@ -106,8 +101,6 @@ export class YJSWSProvider {
    * Handle incoming memo event
    */
   private handleEvent(event: MemoSSEEvent): void {
-    console.log(`[YJS-WS] Received event: ${event.type}`, event);
-
     switch (event.type) {
       case 'ydoc-init':
         this.handleInit(event.data);
@@ -128,11 +121,13 @@ export class YJSWSProvider {
         // Keepalive, no action needed
         break;
       case 'joined':
-        // Join confirmation received - connection is ready
-        console.log(`[YJS-WS] Joined room for ${this.pageId}`);
+        if ((event as any).canWrite === false) {
+          this.canWrite.set(false);
+          this.onReadOnly?.();
+        }
         break;
       default:
-        console.log(`[YJS-WS] Unhandled event type: ${(event as any).type}`);
+        break;
     }
   }
 
@@ -140,16 +135,9 @@ export class YJSWSProvider {
    * Handle initial document state from server
    */
   private handleInit(data: { state: string; version: number; peers: any[] }): void {
-    console.log(
-      `[YJS-WS] handleInit - state size: ${data.state?.length || 0}, version: ${data.version}, peers: ${data.peers?.length || 0}`,
-    );
-
     try {
       const state = this.base64ToUint8Array(data.state);
-      console.log(`[YJS-WS] Decoded state: ${state.length} bytes`);
-
       Y.applyUpdate(this.ydoc, state, 'remote');
-      console.log(`[YJS-WS] Applied update to ydoc`);
 
       this.connected.set(true);
       this.synced.set(true);
@@ -169,14 +157,10 @@ export class YJSWSProvider {
       const serverStateVector = Y.encodeStateVectorFromUpdate(state);
       const clientDiff = Y.encodeStateAsUpdate(this.ydoc, serverStateVector);
       if (clientDiff.length > 2) {
-        // More than just header = we have data to send
-        console.log(`[YJS-WS] Sending client state diff to server: ${clientDiff.length} bytes`);
         this.realtimeWS.sendMemoUpdate(this.pageId, clientDiff, this.pageType);
       }
-
-      console.log(`[YJS-WS] Initial sync complete`);
     } catch (err) {
-      console.error(`[YJS-WS] handleInit error:`, err);
+      console.error('[YJS-WS] handleInit error:', err);
       this.error.set('Failed to load document');
     }
   }
@@ -213,11 +197,11 @@ export class YJSWSProvider {
 
     // Only send if connected and synced
     if (!this.connected() || !this.synced()) {
-      console.log(
-        `[YJS-WS] Skipping update - connected: ${this.connected()}, synced: ${this.synced()}, pageId: ${this.pageId}`,
-      );
       return;
     }
+
+    // Don't send updates if user has read-only access
+    if (!this.canWrite()) return;
 
     // Send update via WebSocket with pageType for routing to correct backend service
     this.realtimeWS.sendMemoUpdate(this.pageId, update, this.pageType);

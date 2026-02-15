@@ -12,6 +12,10 @@
     "./schemas": {
       "types": "./dist/schemas/index.d.ts",
       "import": "./dist/schemas/index.js"
+    },
+    "./utils/slug": {
+      "types": "./dist/utils/slug.d.ts",
+      "import": "./dist/utils/slug.js"
     }
   },
   "scripts": {

@@ -5,6 +5,7 @@ import { PageService } from '../../services/page.service';
 import { MemoDocumentService } from '../../services/memo-document.service';
 import { WhiteboardDocumentService } from '../../services/whiteboard-document.service';
 import { KanbanDocumentService } from '../../services/kanban-document.service';
+import { JsonDocumentService } from '../../services/json-document.service';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
 import type { PageType } from '@maple/shared';
 
@@ -25,6 +26,7 @@ export class NewNoteComponent implements OnInit {
   private readonly memoService = inject(MemoDocumentService);
   private readonly whiteboardService = inject(WhiteboardDocumentService);
   private readonly kanbanService = inject(KanbanDocumentService);
+  private readonly jsonDocService = inject(JsonDocumentService);
 
   ngOnInit(): void {
     const notebookId = this.route.snapshot.paramMap.get('notebookId');
@@ -66,6 +68,10 @@ export class NewNoteComponent implements OnInit {
       } else if (type === 'kanban') {
         // Create kanban board using the kanban document service
         const { page } = await this.kanbanService.createKanban(notebookId || undefined);
+        this.router.navigate(['/', notebookId, page.id], { replaceUrl: true });
+      } else if (type === 'json') {
+        // Create JSON document using the JSON document service
+        const { page } = await this.jsonDocService.createJsonPage(notebookId || undefined);
         this.router.navigate(['/', notebookId, page.id], { replaceUrl: true });
       } else {
         // Create other page types using the regular page service

@@ -1,0 +1,20 @@
+<div class="public-landing">
+  @if (publicNotebookService.notebook(); as notebook) {
+    <div class="landing-content">
+      @if (notebook.logoUrl) {
+        <img [src]="notebook.logoUrl" alt="" class="landing-logo" />
+      }
+      <h1>{{ notebook.displayName }}</h1>
+      @if (notebook.description) {
+        <p class="landing-description">{{ notebook.description }}</p>
+      }
+      @if (publicNotebookService.sortedPages().length === 0) {
+        <p class="no-pages">No published pages yet.</p>
+      }
+    </div>
+  } @else {
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+    </div>
+  }
+</div>

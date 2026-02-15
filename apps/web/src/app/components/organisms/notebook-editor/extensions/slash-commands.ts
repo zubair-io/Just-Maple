@@ -259,6 +259,34 @@ export const defaultSlashCommands: SlashCommandItem[] = [
       editor.chain().focus().deleteRange(range).insertContent('#').run();
     },
   },
+  {
+    title: 'JSON Reference',
+    description: 'Insert a live value from a JSON page',
+    icon: '{ }',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('insert-json-ref', {
+          bubbles: true,
+          detail: { range },
+        }),
+      );
+    },
+  },
+  {
+    title: 'JSON Table',
+    description: 'Display JSON array data as a table or list',
+    icon: '[ ]',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).run();
+      editor.view.dom.dispatchEvent(
+        new CustomEvent('insert-json-loop', {
+          bubbles: true,
+          detail: { range, renderAs: 'table' },
+        }),
+      );
+    },
+  },
 ];
 
 export interface SlashCommandsOptions {
