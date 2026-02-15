@@ -1,0 +1,158 @@
+<div class="json-ref-config-overlay" (click)="cancel()">
+  <div class="json-ref-config-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3 class="text-sm font-semibold text-[var(--color-text-main)]">
+        {{ mode() === 'loop' ? 'Configure JSON Table/List' : 'Insert JSON Reference' }}
+      </h3>
+      <button class="close-btn" (click)="cancel()">
+        <span class="material-symbols-outlined text-lg">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Page selector -->
+      <div class="form-group">
+        <label class="form-label">JSON Page</label>
+        <select class="form-select" (change)="onPageSelect($event)">
+          <option value="">Select a JSON page...</option>
+          @for (page of jsonPages(); track page.id) {
+            <option [value]="page.id" [selected]="selectedPageId() === page.id">
+              {{ page.title || 'Untitled JSON' }}
+            </option>
+          }
+        </select>
+      </div>
+
+      <!-- Data tree browser -->
+      @if (selectedPageId()) {
+        <div class="form-group">
+          <label class="form-label">Data Path</label>
+          @if (isLoading()) {
+            <div class="text-xs text-[var(--color-text-muted)]">Loading...</div>
+          } @else {
+            <div class="data-tree">
+              <ng-container
+                *ngTemplateOutlet="treeTemplate; context: { $implicit: dataTree(), depth: 0 }"
+              />
+            </div>
+            <div class="selected-path">
+              <span class="text-xs text-[var(--color-text-muted)]">Selected: </span>
+              <code class="text-xs">{{ selectedPath() || '(root)' }}</code>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- Loop mode settings -->
+      @if (mode() === 'loop') {
+        <div class="form-group">
+          <label class="form-label">Title</label>
+          <input
+            type="text"
+            class="form-input"
+            [value]="title()"
+            (input)="title.set($any($event.target).value)"
+            placeholder="e.g. User List"
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Render As</label>
+          <div class="flex gap-2">
+            <button
+              class="px-3 py-1.5 text-sm border rounded-md transition-colors"
+              [class.bg-[var(--color-primary)]]="renderAs() === 'table'"
+              [class.text-white]="renderAs() === 'table'"
+              [class.border-[var(--color-border)]]="renderAs() !== 'table'"
+              (click)="renderAs.set('table')"
+            >
+              Table
+            </button>
+            <button
+              class="px-3 py-1.5 text-sm border rounded-md transition-colors"
+              [class.bg-[var(--color-primary)]]="renderAs() === 'list'"
+              [class.text-white]="renderAs() === 'list'"
+              [class.border-[var(--color-border)]]="renderAs() !== 'list'"
+              (click)="renderAs.set('list')"
+            >
+              List
+            </button>
+          </div>
+        </div>
+
+        @if (renderAs() === 'list') {
+          <div class="form-group">
+            <label class="form-label"
+              >Template
+              <span class="text-xs text-[var(--color-text-muted)]"
+                >(use {{'{{field}}' }})</span
+              ></label
+            >
+            <input
+              type="text"
+              class="form-input"
+              [value]="template()"
+              (input)="template.set($any($event.target).value)"
+              [placeholder]="'{{name}} - {{value}}'"
+            />
+          </div>
+        }
+
+        @if (renderAs() === 'table') {
+          <div class="form-group">
+            <label class="form-label"
+              >Columns
+              <span class="text-xs text-[var(--color-text-muted)]"
+                >(comma-separated, empty = auto)</span
+              ></label
+            >
+            <input
+              type="text"
+              class="form-input"
+              [value]="columns()"
+              (input)="columns.set($any($event.target).value)"
+              placeholder="name, age, email"
+            />
+          </div>
+        }
+      }
+    </div>
+
+    <div class="modal-footer">
+      <button
+        class="px-4 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-colors"
+        (click)="cancel()"
+      >
+        Cancel
+      </button>
+      <button
+        class="px-4 py-2 text-sm bg-[var(--color-primary)] text-white rounded-md hover:opacity-90 transition-opacity disabled:opacity-50"
+        [disabled]="!selectedPageId()"
+        (click)="confirm()"
+      >
+        Insert
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Recursive tree template -->
+<ng-template #treeTemplate let-nodes let-depth="depth">
+  @for (node of nodes; track node.path) {
+    <div class="tree-node" [style.padding-left.px]="depth * 12">
+      <div
+        class="tree-node-row"
+        [class.selected]="selectedPath() === node.path"
+        (click)="selectPath(node.path)"
+      >
+        <span class="tree-key">{{ node.key }}</span>
+        <span class="tree-type">{{ node.type }}</span>
+      </div>
+      @if (node.children) {
+        <ng-container
+          *ngTemplateOutlet="treeTemplate; context: { $implicit: node.children, depth: depth + 1 }"
+        />
+      }
+    </div>
+  }
+</ng-template>

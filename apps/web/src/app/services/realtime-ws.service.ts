@@ -32,7 +32,8 @@ export type AppEvent =
   | { type: 'collectable.deleted'; collectableId: string; notebookId: string }
   | { type: 'recording.started'; id: string; notebookId?: string }
   | { type: 'recording.completed'; recording: Recording; notebookId?: string }
-  | { type: 'recording.failed'; id: string; error?: string; notebookId?: string };
+  | { type: 'recording.failed'; id: string; error?: string; notebookId?: string }
+  | { type: 'json.updated'; pageId: string; version: number; data: unknown; notebookId?: string };
 
 /**
  * Message from server

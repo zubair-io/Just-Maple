@@ -51,7 +51,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   readonly selectedNotebookId = input<string | null>(null);
   readonly selectedPageId = toSignal(this.pageService.activeId$, { initialValue: null });
 
-  readonly newPage = output<'memo' | 'whiteboard' | 'message' | 'kanban'>();
+  readonly newPage = output<'memo' | 'whiteboard' | 'message' | 'kanban' | 'json'>();
   readonly newFromTemplate = output<void>();
   readonly selectPage = output<string>();
   readonly selectNotebook = output<string>();
@@ -199,7 +199,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
     return ['/', notebookId, urlParam];
   }
 
-  onNewPage(type: 'memo' | 'whiteboard' | 'message' | 'kanban' = 'memo'): void {
+  onNewPage(type: 'memo' | 'whiteboard' | 'message' | 'kanban' | 'json' = 'memo'): void {
     this.isNewDropdownOpen.set(false);
     this.newPage.emit(type);
   }

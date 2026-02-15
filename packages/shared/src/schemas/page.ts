@@ -31,6 +31,7 @@ export const PageTypeSchema = Type.Union([
     Type.Literal('message'), // Chat messages container
     Type.Literal('recording'),
     Type.Literal('gmail'), // Gmail integration - owner-only, local email storage
+    Type.Literal('json'), // JSON data document - API-editable structured data
 ]);
 
 export type PageType = Static<typeof PageTypeSchema>;

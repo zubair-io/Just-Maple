@@ -1,0 +1,93 @@
+<div class="json-page">
+  @if (selectedPage(); as page) {
+    <app-note-header
+      [page]="page"
+      [notebook]="selectedNotebook()"
+      (favoriteClicked)="toggleFavorite()"
+      (titleChanged)="onTitleChanged($event)"
+    />
+
+    <!-- View mode toolbar -->
+    <div class="json-toolbar">
+      <div class="view-mode-toggle">
+        <button
+          class="px-3 py-1.5 text-sm rounded-l-md border border-[var(--color-border)] transition-colors"
+          [class.bg-[var(--color-primary)]]="viewMode() === 'code'"
+          [class.text-white]="viewMode() === 'code'"
+          [class.bg-[var(--color-bg)]]="viewMode() !== 'code'"
+          [class.text-[var(--color-text-main)]]="viewMode() !== 'code'"
+          (click)="setViewMode('code')"
+        >
+          <span class="material-symbols-rounded text-base align-middle mr-1">code</span>
+          Code
+        </button>
+        <button
+          class="px-3 py-1.5 text-sm border-y border-[var(--color-border)] transition-colors"
+          [class.bg-[var(--color-primary)]]="viewMode() === 'split'"
+          [class.text-white]="viewMode() === 'split'"
+          [class.bg-[var(--color-bg)]]="viewMode() !== 'split'"
+          [class.text-[var(--color-text-main)]]="viewMode() !== 'split'"
+          (click)="setViewMode('split')"
+        >
+          <span class="material-symbols-rounded text-base align-middle mr-1">vertical_split</span>
+          Split
+        </button>
+        <button
+          class="px-3 py-1.5 text-sm rounded-r-md border border-[var(--color-border)] transition-colors"
+          [class.bg-[var(--color-primary)]]="viewMode() === 'form'"
+          [class.text-white]="viewMode() === 'form'"
+          [class.bg-[var(--color-bg)]]="viewMode() !== 'form'"
+          [class.text-[var(--color-text-main)]]="viewMode() !== 'form'"
+          (click)="setViewMode('form')"
+        >
+          <span class="material-symbols-rounded text-base align-middle mr-1">list_alt</span>
+          Form
+        </button>
+      </div>
+
+      <div class="flex items-center gap-2">
+        @if (isSaving()) {
+          <span class="text-xs text-[var(--color-text-muted)]">Saving...</span>
+        }
+        @if (error()) {
+          <span class="text-xs text-red-500">{{ error() }}</span>
+        }
+        <span class="text-xs text-[var(--color-text-muted)]">v{{ version() }}</span>
+      </div>
+    </div>
+
+    <!-- Editor content -->
+    @if (isLoading()) {
+      <div class="loading-state">
+        <div class="loading-spinner"></div>
+        <span>Loading JSON document...</span>
+      </div>
+    } @else {
+      <div class="json-content" [class.split-mode]="viewMode() === 'split'">
+        @if (viewMode() === 'code' || viewMode() === 'split') {
+          <div class="json-editor-pane">
+            <app-json-code-editor
+              [data]="data()"
+              [schema]="schema()"
+              (dataChange)="onDataChange($event)"
+            />
+          </div>
+        }
+        @if (viewMode() === 'form' || viewMode() === 'split') {
+          <div class="json-form-pane">
+            <app-json-form-builder
+              [data]="data()"
+              [schema]="schema()"
+              (dataChange)="onDataChange($event)"
+            />
+          </div>
+        }
+      </div>
+    }
+  } @else {
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+      <span>Loading...</span>
+    </div>
+  }
+</div>

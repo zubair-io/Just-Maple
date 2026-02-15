@@ -67,3 +67,6 @@ export const MessagePageGuard = createPageTypeGuard('message');
 
 /** Guard that matches gmail-type pages (email integration) */
 export const GmailPageGuard = createPageTypeGuard('gmail');
+
+/** Guard that matches json-type pages (JSON data documents) */
+export const JsonPageGuard = createPageTypeGuard('json');
