@@ -22,24 +22,6 @@
   </div>
 
   <div class="editor-body">
-    <div class="line-numbers">
-      @for (i of [].constructor(lineCount()); track $index) {
-        <span>{{ $index + 1 }}</span>
-      }
-    </div>
-    <textarea
-      #editor
-      class="code-textarea"
-      [value]="jsonText()"
-      [readOnly]="readonly()"
-      (input)="onTextChange($event)"
-      (keydown)="onKeydown($event)"
-      (scroll)="onScroll($event)"
-      spellcheck="false"
-      autocomplete="off"
-      autocorrect="off"
-      autocapitalize="off"
-      wrap="off"
-    ></textarea>
+    <div #editorHost class="editor-host"></div>
   </div>
 </div>

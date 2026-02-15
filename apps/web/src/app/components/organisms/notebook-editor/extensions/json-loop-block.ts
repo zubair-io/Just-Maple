@@ -11,6 +11,7 @@ export interface JsonLoopBlockAttrs {
   template: string;
   renderAs: 'list' | 'table';
   columns: string | null; // JSON-encoded string[] or null (auto-detect)
+  title: string;
 }
 
 export interface JsonLoopBlockOptions {
@@ -87,6 +88,13 @@ export const JsonLoopBlock = Node.create<JsonLoopBlockOptions>({
           'data-columns': attributes['columns'] || '',
         }),
       },
+      title: {
+        default: '',
+        parseHTML: (element) => element.getAttribute('data-title') || '',
+        renderHTML: (attributes) => ({
+          'data-title': attributes['title'] || '',
+        }),
+      },
     };
   },
 
@@ -117,6 +125,7 @@ export const JsonLoopBlock = Node.create<JsonLoopBlockOptions>({
               template: attrs.template,
               renderAs: attrs.renderAs,
               columns: attrs.columns,
+              title: attrs.title,
             },
           });
         },
@@ -125,33 +134,25 @@ export const JsonLoopBlock = Node.create<JsonLoopBlockOptions>({
 
   addNodeView() {
     return ({ node }) => {
-      const pageId = node.attrs['pageId'] as string;
-      const arrayPath = node.attrs['arrayPath'] as string;
-      const template = node.attrs['template'] as string;
-      const renderAs = node.attrs['renderAs'] as 'list' | 'table';
-      const columnsAttr = node.attrs['columns'] as string | null;
-
-      let columns: string[] | null = null;
-      if (columnsAttr) {
-        try {
-          columns = JSON.parse(columnsAttr);
-        } catch {
-          columns = null;
-        }
-      }
+      // Mutable state that gets updated when attrs change
+      let currentPageId = node.attrs['pageId'] as string;
+      let currentArrayPath = node.attrs['arrayPath'] as string;
+      let currentTemplate = node.attrs['template'] as string;
+      let currentRenderAs = node.attrs['renderAs'] as 'list' | 'table';
+      let currentColumnsAttr = node.attrs['columns'] as string | null;
+      let currentTitle = node.attrs['title'] as string;
+      let currentColumns = parseColumns(currentColumnsAttr);
 
       // Create block container
       const dom = document.createElement('div');
       dom.setAttribute('data-type', 'json-loop-block');
-      dom.setAttribute('data-page-id', pageId);
+      dom.setAttribute('data-page-id', currentPageId);
       dom.classList.add('json-loop-block');
       dom.contentEditable = 'false';
 
       // Header bar
       const header = document.createElement('div');
       header.classList.add('json-loop-block-header');
-      header.innerHTML = `<span class="json-loop-block-icon">&#123;&#125;</span>
-                <span class="json-loop-block-label">${escapeHtml(arrayPath)} (${renderAs})</span>`;
       dom.appendChild(header);
 
       // Content area
@@ -160,29 +161,54 @@ export const JsonLoopBlock = Node.create<JsonLoopBlockOptions>({
       content.innerHTML = '<div class="json-loop-block-empty">Loading data...</div>';
       dom.appendChild(content);
 
+      const updateHeader = () => {
+        const label = currentTitle
+          ? escapeHtml(currentTitle)
+          : `${escapeHtml(currentArrayPath || '(root)')} (${currentRenderAs})`;
+        header.innerHTML = `<span class="json-loop-block-icon">&#123;&#125;</span>
+                  <span class="json-loop-block-label">${label}</span>`;
+      };
+
+      const renderContent = (items: unknown[]) => {
+        if (!items || items.length === 0) {
+          content.innerHTML = '<div class="json-loop-block-empty">No data</div>';
+          return;
+        }
+        if (currentRenderAs === 'table') {
+          content.innerHTML = renderTable(items, currentColumns);
+        } else {
+          content.innerHTML = renderList(items, currentTemplate);
+        }
+      };
+
       // Subscribe to array data
       let subscription: Subscription | undefined;
-      if (this.options.getJsonArray$) {
-        subscription = this.options.getJsonArray$(pageId, arrayPath).subscribe((items) => {
-          if (!items || items.length === 0) {
-            content.innerHTML = '<div class="json-loop-block-empty">No data</div>';
-            return;
-          }
+      const subscribe = () => {
+        subscription?.unsubscribe();
+        if (this.options.getJsonArray$) {
+          content.innerHTML = '<div class="json-loop-block-empty">Loading data...</div>';
+          subscription = this.options
+            .getJsonArray$(currentPageId, currentArrayPath)
+            .subscribe(renderContent);
+        }
+      };
 
-          if (renderAs === 'table') {
-            content.innerHTML = renderTable(items, columns);
-          } else {
-            content.innerHTML = renderList(items, template);
-          }
-        });
-      }
+      updateHeader();
+      subscribe();
 
       // Double-click to configure
       dom.addEventListener('dblclick', () => {
         dom.dispatchEvent(
           new CustomEvent('json-loop-configure', {
             bubbles: true,
-            detail: { pageId, arrayPath, template, renderAs, columns: columnsAttr },
+            detail: {
+              pageId: currentPageId,
+              arrayPath: currentArrayPath,
+              template: currentTemplate,
+              renderAs: currentRenderAs,
+              columns: currentColumnsAttr,
+              title: currentTitle,
+            },
           }),
         );
       });
@@ -190,7 +216,33 @@ export const JsonLoopBlock = Node.create<JsonLoopBlockOptions>({
       return {
         dom,
         update: (updatedNode) => {
-          return updatedNode.type.name === this.name;
+          if (updatedNode.type.name !== this.name) return false;
+
+          const newPageId = updatedNode.attrs['pageId'] as string;
+          const newArrayPath = updatedNode.attrs['arrayPath'] as string;
+          const newTemplate = updatedNode.attrs['template'] as string;
+          const newRenderAs = updatedNode.attrs['renderAs'] as 'list' | 'table';
+          const newColumnsAttr = updatedNode.attrs['columns'] as string | null;
+          const newTitle = updatedNode.attrs['title'] as string;
+
+          const sourceChanged = newPageId !== currentPageId || newArrayPath !== currentArrayPath;
+
+          currentPageId = newPageId;
+          currentArrayPath = newArrayPath;
+          currentTemplate = newTemplate;
+          currentRenderAs = newRenderAs;
+          currentColumnsAttr = newColumnsAttr;
+          currentTitle = newTitle;
+          currentColumns = parseColumns(newColumnsAttr);
+
+          updateHeader();
+          dom.setAttribute('data-page-id', currentPageId);
+
+          if (sourceChanged) {
+            subscribe();
+          }
+
+          return true;
         },
         destroy: () => {
           subscription?.unsubscribe();
@@ -203,6 +255,16 @@ export const JsonLoopBlock = Node.create<JsonLoopBlockOptions>({
 // ============================================
 // Render helpers
 // ============================================
+
+function parseColumns(columnsAttr: string | null): string[] | null {
+  if (!columnsAttr) return null;
+  try {
+    const parsed = JSON.parse(columnsAttr);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 function escapeHtml(str: string): string {
   return str
@@ -222,10 +284,11 @@ function renderTable(items: unknown[], columns: string[] | null): string {
 
   // Infer columns from first item if not specified
   const cols =
-    columns ||
-    (typeof items[0] === 'object' && items[0] !== null
-      ? Object.keys(items[0] as Record<string, unknown>)
-      : ['value']);
+    columns && columns.length > 0
+      ? columns
+      : typeof items[0] === 'object' && items[0] !== null
+        ? Object.keys(items[0] as Record<string, unknown>)
+        : ['value'];
 
   let html = '<table class="json-loop-table">';
   html += '<thead><tr>';

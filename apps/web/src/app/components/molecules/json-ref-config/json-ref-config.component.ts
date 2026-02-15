@@ -18,6 +18,7 @@ export interface JsonLoopConfig {
   template: string;
   renderAs: 'list' | 'table';
   columns: string | null;
+  title: string;
 }
 
 /**
@@ -53,6 +54,7 @@ export class JsonRefConfigComponent implements OnInit {
   readonly renderAs = signal<'list' | 'table'>('table');
   readonly template = signal('');
   readonly columns = signal<string>('');
+  readonly title = signal('');
 
   async ngOnInit(): Promise<void> {
     // Load JSON pages in the notebook
@@ -69,6 +71,7 @@ export class JsonRefConfigComponent implements OnInit {
       if (config.renderAs) this.renderAs.set(config.renderAs);
       if (config.template) this.template.set(config.template);
       if (config.columns) this.columns.set(config.columns);
+      if (config.title) this.title.set(config.title);
     }
   }
 
@@ -87,7 +90,22 @@ export class JsonRefConfigComponent implements OnInit {
     this.isLoading.set(true);
     try {
       const doc = await firstValueFrom(this.jsonDocService.fetchDocument(pageId));
-      this.dataTree.set(buildTree(doc.data, ''));
+      const tree = buildTree(doc.data, '');
+
+      // If root data is an array, wrap in a selectable root node
+      if (Array.isArray(doc.data)) {
+        this.dataTree.set([
+          {
+            key: '(root array)',
+            path: '',
+            type: `array[${doc.data.length}]`,
+            children: tree,
+            isArray: true,
+          },
+        ]);
+      } else {
+        this.dataTree.set(tree);
+      }
     } catch {
       this.dataTree.set([]);
     } finally {
@@ -110,6 +128,7 @@ export class JsonRefConfigComponent implements OnInit {
         template: this.template(),
         renderAs: this.renderAs(),
         columns: this.columns() || null,
+        title: this.title(),
       } satisfies JsonLoopConfig);
     } else {
       this.confirmed.emit({

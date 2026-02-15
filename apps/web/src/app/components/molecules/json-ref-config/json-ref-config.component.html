@@ -46,6 +46,17 @@
       <!-- Loop mode settings -->
       @if (mode() === 'loop') {
         <div class="form-group">
+          <label class="form-label">Title</label>
+          <input
+            type="text"
+            class="form-input"
+            [value]="title()"
+            (input)="title.set($any($event.target).value)"
+            placeholder="e.g. User List"
+          />
+        </div>
+
+        <div class="form-group">
           <label class="form-label">Render As</label>
           <div class="flex gap-2">
             <button

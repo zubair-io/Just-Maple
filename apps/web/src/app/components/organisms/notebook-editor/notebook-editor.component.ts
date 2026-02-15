@@ -2279,7 +2279,8 @@ export class NotebookEditorComponent implements OnDestroy {
             renderAs: config.renderAs,
             columns: config.columns
               ? JSON.stringify(config.columns.split(',').map((c) => c.trim()))
-              : '[]',
+              : null,
+            title: config.title,
           })
           .run();
       }
