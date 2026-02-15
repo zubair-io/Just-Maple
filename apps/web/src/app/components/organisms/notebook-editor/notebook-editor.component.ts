@@ -2217,6 +2217,12 @@ export class NotebookEditorComponent implements OnDestroy {
       const { pageId, arrayPath, template, renderAs, columns } = event.detail;
       this.openJsonRefConfig('loop', { pageId, arrayPath, template, renderAs, columns });
     }) as EventListener);
+
+    addListener('json-ref-configure', ((event: CustomEvent) => {
+      event.stopPropagation();
+      const { pageId, path, label } = event.detail;
+      this.openJsonRefConfig('ref', { pageId, path, label });
+    }) as EventListener);
   }
 
   private cleanupJsonRefListeners(): void {

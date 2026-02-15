@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, Subject, firstValueFrom, of } from 'rxjs';
-import { map, catchError, tap, filter } from 'rxjs/operators';
+import { Observable, Subject, firstValueFrom, lastValueFrom, of } from 'rxjs';
+import { map, catchError, tap, filter, startWith, switchMap } from 'rxjs/operators';
 import { PageService } from './page.service';
 import { RealtimeWSService } from './realtime-ws.service';
 import type { Page, JsonDocument } from '@maple/shared';
@@ -77,22 +77,44 @@ export class JsonDocumentService {
   }
 
   /**
-   * Get array data as Observable for loop blocks
+   * Get array data as Observable for loop blocks.
+   * Emits the current cached value immediately, fetches if not cached,
+   * and emits on future updates.
    */
   getJsonArray$(pageId: string, path: string): Observable<unknown[]> {
-    return this.getData$(pageId).pipe(
-      map((data) => {
-        const resolved = resolveDataPath(data, path);
-        return Array.isArray(resolved) ? resolved : [];
-      }),
-    );
+    const resolve = (data: unknown) => {
+      const resolved = resolveDataPath(data, path);
+      return Array.isArray(resolved) ? resolved : [];
+    };
+
+    return this.getDataWithInitial$(pageId).pipe(map(resolve));
   }
 
   /**
-   * Get a specific value by path as Observable
+   * Get a specific value by path as Observable.
+   * Emits the current cached value immediately, fetches if not cached,
+   * and emits on future updates.
    */
   getJsonValue$(pageId: string, path: string): Observable<unknown> {
-    return this.getData$(pageId).pipe(map((data) => resolveDataPath(data, path)));
+    return this.getDataWithInitial$(pageId).pipe(map((data) => resolveDataPath(data, path)));
+  }
+
+  /**
+   * Get data Observable that emits the current cached value (or fetches it)
+   * then emits on future updates.
+   */
+  private getDataWithInitial$(pageId: string): Observable<unknown> {
+    const cached = this._documents().get(pageId);
+    if (cached) {
+      // Cached: emit immediately, then subscribe to future updates
+      return this.getData$(pageId).pipe(startWith(cached.data));
+    }
+    // Not cached: fetch first, then subscribe to updates
+    return this.fetchDocument(pageId).pipe(
+      map((doc) => doc.data),
+      catchError(() => of(undefined)),
+      switchMap((initialData) => this.getData$(pageId).pipe(startWith(initialData))),
+    );
   }
 
   /**
@@ -221,7 +243,7 @@ export class JsonDocumentService {
   async createJsonPage(notebookId?: string): Promise<{ page: Page }> {
     const id = crypto.randomUUID();
 
-    const page = await firstValueFrom(
+    const page = await lastValueFrom(
       this.pageService.createPage({
         id,
         title: 'Untitled JSON',

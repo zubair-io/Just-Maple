@@ -1,4 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { Observable, Subscription } from 'rxjs';
 
 // ============================================
@@ -149,6 +150,8 @@ export const JsonDataRef = Node.create<JsonDataRefOptions>({
         });
       }
 
+      dom.style.cursor = 'pointer';
+
       // Dispatch mount event for Angular
       dom.dispatchEvent(
         new CustomEvent('json-data-ref-mounted', {
@@ -175,5 +178,32 @@ export const JsonDataRef = Node.create<JsonDataRefOptions>({
         },
       };
     };
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('jsonDataRefClick'),
+        props: {
+          handleClickOn: (view, pos, node, nodePos, event) => {
+            if (node.type.name !== this.name) return false;
+
+            const attrs = node.attrs;
+            const editorEl = view.dom.closest('[data-editor]') || view.dom.parentElement;
+            editorEl?.dispatchEvent(
+              new CustomEvent('json-ref-configure', {
+                bubbles: true,
+                detail: {
+                  pageId: attrs['pageId'],
+                  path: attrs['path'],
+                  label: attrs['label'],
+                },
+              }),
+            );
+            return true;
+          },
+        },
+      }),
+    ];
   },
 });

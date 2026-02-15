@@ -104,6 +104,15 @@
               <span>New Kanban Board</span>
             </button>
             <button
+              (click)="onNewPage('json')"
+              class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+            >
+              <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                >data_object</span
+              >
+              <span>New JSON Page</span>
+            </button>
+            <button
               (click)="onNewPage('message')"
               class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
             >
@@ -196,7 +205,7 @@
               >
                 @if (notebookService.isLocal(notebook._id)) {
                   folder_open
-                } @else if (notebook.sharing?.isPublic) {
+                } @else if (notebook.sharing['isPublic']) {
                   public
                 } @else if (selectedNotebookId() === notebook._id) {
                   book_5
