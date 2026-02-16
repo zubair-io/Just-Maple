@@ -814,7 +814,10 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
 
       // ── Load Events ─────────────────────────────────────────────
 
-      async function loadEvents(): Promise<void> {
+      const POLL_INTERVAL_MS = 60_000; // 60 seconds
+      let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+      async function loadEvents(showLoading = true): Promise<void> {
         const calendarId = node.attrs['calendarId'];
         if (!calendarId || !options.isConnected()) {
           currentEvents = [];
@@ -822,12 +825,14 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
           return;
         }
 
-        // Show loading state
-        daysContainer.innerHTML = '';
-        const loading = document.createElement('div');
-        loading.classList.add('gcal-agenda-loading');
-        loading.textContent = 'Loading events...';
-        daysContainer.appendChild(loading);
+        // Show loading state only on initial/manual loads
+        if (showLoading) {
+          daysContainer.innerHTML = '';
+          const loading = document.createElement('div');
+          loading.classList.add('gcal-agenda-loading');
+          loading.textContent = 'Loading events...';
+          daysContainer.appendChild(loading);
+        }
 
         try {
           currentEvents = await options.getEvents(
@@ -837,16 +842,58 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
           );
           renderDays();
         } catch (err) {
-          daysContainer.innerHTML = '';
-          const errorEl = document.createElement('div');
-          errorEl.classList.add('gcal-agenda-error');
-          errorEl.textContent = err instanceof Error ? err.message : 'Failed to load events';
-          daysContainer.appendChild(errorEl);
+          // Only show error on foreground loads; silently ignore background poll errors
+          if (showLoading) {
+            daysContainer.innerHTML = '';
+            const errorEl = document.createElement('div');
+            errorEl.classList.add('gcal-agenda-error');
+            errorEl.textContent = err instanceof Error ? err.message : 'Failed to load events';
+            daysContainer.appendChild(errorEl);
+          }
         }
       }
 
-      // Initial load
+      /** Refresh events by clearing cache first (silent background refresh). */
+      async function refreshEvents(): Promise<void> {
+        options.onRefresh();
+        await loadEvents(false);
+      }
+
+      // ── Polling & Focus Refresh ───────────────────────────────────
+
+      function shouldPoll(): boolean {
+        return !node.attrs['collapsed'] && !!node.attrs['calendarId'] && options.isConnected();
+      }
+
+      function startPolling(): void {
+        stopPolling();
+        if (shouldPoll()) {
+          pollTimer = setInterval(() => {
+            refreshEvents();
+          }, POLL_INTERVAL_MS);
+        }
+      }
+
+      function stopPolling(): void {
+        if (pollTimer !== null) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }
+
+      function handleVisibilityChange(): void {
+        if (document.visibilityState === 'visible' && shouldPoll()) {
+          refreshEvents();
+          // Restart polling interval so next tick is a full interval from now
+          startPolling();
+        }
+      }
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      // Initial load and start polling
       loadEvents();
+      startPolling();
 
       // ── Return NodeView ─────────────────────────────────────────
 
@@ -898,7 +945,14 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
             renderDays();
           }
 
+          // Restart polling (adjusts based on new collapsed/calendar state)
+          startPolling();
+
           return true;
+        },
+        destroy: () => {
+          stopPolling();
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
         },
         stopEvent: () => true,
         ignoreMutation: () => true,
