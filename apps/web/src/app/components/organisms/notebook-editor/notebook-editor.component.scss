@@ -1097,9 +1097,16 @@
 
     // Google Calendar Agenda block styles
     div[data-type='google-calendar-agenda'] {
-      border-left: 3px solid #4285f4;
+      --gcal-accent: #4285f4;
+      --gcal-accent-hover: rgba(66, 133, 244, 0.08);
+      --gcal-bg: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+      --gcal-hover: rgba(0, 0, 0, 0.03);
+      --gcal-hover-strong: rgba(0, 0, 0, 0.06);
+      --gcal-hover-subtle: rgba(0, 0, 0, 0.02);
+
+      border-left: 3px solid var(--gcal-accent);
       margin: 1rem 0;
-      background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+      background: var(--gcal-bg);
       border-radius: 0 8px 8px 0;
 
       .gcal-agenda-header {
@@ -1112,7 +1119,7 @@
         user-select: none;
 
         &:hover {
-          background: rgba(0, 0, 0, 0.03);
+          background: var(--gcal-hover);
         }
       }
 
@@ -1124,7 +1131,7 @@
 
       .gcal-agenda-icon {
         font-size: 18px;
-        color: #4285f4;
+        color: var(--gcal-accent);
         flex-shrink: 0;
       }
 
@@ -1140,7 +1147,7 @@
         min-width: 60px;
 
         &:focus {
-          background: rgba(66, 133, 244, 0.08);
+          background: var(--gcal-accent-hover);
         }
       }
 
@@ -1171,7 +1178,7 @@
         }
 
         &:hover {
-          background: rgba(0, 0, 0, 0.06);
+          background: var(--gcal-hover-strong);
           color: var(--color-text-main);
         }
       }
@@ -1213,7 +1220,7 @@
           outline: none;
 
           &:focus {
-            border-color: #4285f4;
+            border-color: var(--gcal-accent);
           }
         }
 
@@ -1233,23 +1240,23 @@
           min-width: 180px;
 
           &:focus {
-            border-color: #4285f4;
+            border-color: var(--gcal-accent);
           }
         }
       }
 
       .gcal-connect-btn {
         padding: 6px 14px;
-        border: 1px solid #4285f4;
+        border: 1px solid var(--gcal-accent);
         border-radius: 6px;
         background: transparent;
-        color: #4285f4;
+        color: var(--gcal-accent);
         font-size: 0.8rem;
         font-weight: 500;
         cursor: pointer;
 
         &:hover {
-          background: rgba(66, 133, 244, 0.08);
+          background: var(--gcal-accent-hover);
         }
       }
 
@@ -1268,7 +1275,7 @@
       }
 
       .gcal-agenda-error {
-        color: #dc2626;
+        color: var(--color-error, #dc3545);
       }
 
       // Day rows
@@ -1289,7 +1296,7 @@
         user-select: none;
 
         &:hover {
-          background: rgba(0, 0, 0, 0.02);
+          background: var(--gcal-hover-subtle);
         }
       }
 
@@ -1330,7 +1337,7 @@
         font-size: 0.85rem;
 
         &:hover {
-          background: rgba(0, 0, 0, 0.03);
+          background: var(--gcal-hover);
         }
       }
 
@@ -1338,7 +1345,7 @@
         width: 6px;
         height: 6px;
         border-radius: 50%;
-        background: #4285f4;
+        background: var(--gcal-accent);
         flex-shrink: 0;
         margin-top: 7px;
       }
@@ -1384,34 +1391,14 @@
       }
     }
 
-    // Dark mode adjustments for Google Calendar agenda
+    // Dark mode overrides for Google Calendar agenda custom properties
     :host-context(.dark-mode) & {
       div[data-type='google-calendar-agenda'] {
-        background: rgba(255, 255, 255, 0.03);
-
-        .gcal-agenda-header:hover {
-          background: rgba(255, 255, 255, 0.05);
-        }
-
-        .gcal-agenda-title:focus {
-          background: rgba(66, 133, 244, 0.15);
-        }
-
-        .gcal-agenda-btn:hover {
-          background: rgba(255, 255, 255, 0.08);
-        }
-
-        .gcal-day-header:hover {
-          background: rgba(255, 255, 255, 0.03);
-        }
-
-        .gcal-event:hover {
-          background: rgba(255, 255, 255, 0.05);
-        }
-
-        .gcal-connect-btn:hover {
-          background: rgba(66, 133, 244, 0.15);
-        }
+        --gcal-bg: rgba(255, 255, 255, 0.03);
+        --gcal-hover: rgba(255, 255, 255, 0.05);
+        --gcal-hover-strong: rgba(255, 255, 255, 0.08);
+        --gcal-hover-subtle: rgba(255, 255, 255, 0.03);
+        --gcal-accent-hover: rgba(66, 133, 244, 0.15);
       }
     }
 

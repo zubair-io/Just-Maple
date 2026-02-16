@@ -451,7 +451,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
       titleEl.addEventListener('blur', () => {
         const newTitle = titleEl.textContent?.trim() || 'Google Calendar';
         if (newTitle !== node.attrs['title']) {
-          (editor.commands as any).updateGoogleCalendarAgendaAttrs(nodeId, {
+          editor.commands.updateGoogleCalendarAgendaAttrs(nodeId, {
             title: newTitle,
           });
         }
@@ -544,7 +544,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
         startInput.value = node.attrs['startDate'];
         startInput.classList.add('gcal-settings-input');
         startInput.addEventListener('change', () => {
-          (editor.commands as any).updateGoogleCalendarAgendaAttrs(nodeId, {
+          editor.commands.updateGoogleCalendarAgendaAttrs(nodeId, {
             startDate: startInput.value,
           });
         });
@@ -560,7 +560,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
         endInput.value = node.attrs['endDate'];
         endInput.classList.add('gcal-settings-input');
         endInput.addEventListener('change', () => {
-          (editor.commands as any).updateGoogleCalendarAgendaAttrs(nodeId, {
+          editor.commands.updateGoogleCalendarAgendaAttrs(nodeId, {
             endDate: endInput.value,
           });
         });
@@ -597,36 +597,48 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
           calRow.appendChild(calSelect);
 
           // Fetch calendars
-          options.getCalendarList().then((calendars) => {
-            calSelect.innerHTML = '';
+          options
+            .getCalendarList()
+            .then((calendars) => {
+              calSelect.innerHTML = '';
 
-            if (calendars.length === 0) {
-              const noOpt = document.createElement('option');
-              noOpt.value = '';
-              noOpt.textContent = 'No calendars found';
-              calSelect.appendChild(noOpt);
-              return;
-            }
-
-            const placeholderOpt = document.createElement('option');
-            placeholderOpt.value = '';
-            placeholderOpt.textContent = 'Select a calendar...';
-            calSelect.appendChild(placeholderOpt);
-
-            for (const cal of calendars) {
-              const opt = document.createElement('option');
-              opt.value = cal.id;
-              opt.textContent = cal.summary;
-              if (cal.id === node.attrs['calendarId']) {
-                opt.selected = true;
+              if (calendars.length === 0) {
+                const noOpt = document.createElement('option');
+                noOpt.value = '';
+                noOpt.textContent = 'No calendars found';
+                calSelect.appendChild(noOpt);
+                return;
               }
-              calSelect.appendChild(opt);
-            }
-          });
+
+              const placeholderOpt = document.createElement('option');
+              placeholderOpt.value = '';
+              placeholderOpt.textContent = 'Select a calendar...';
+              calSelect.appendChild(placeholderOpt);
+
+              for (const cal of calendars) {
+                const opt = document.createElement('option');
+                opt.value = cal.id;
+                opt.textContent = cal.summary;
+                if (cal.id === node.attrs['calendarId']) {
+                  opt.selected = true;
+                }
+                calSelect.appendChild(opt);
+              }
+            })
+            .catch((err) => {
+              console.error('Failed to load Google Calendar list:', err);
+              calSelect.innerHTML = '';
+              const errorOpt = document.createElement('option');
+              errorOpt.value = '';
+              errorOpt.textContent = 'Failed to load calendars';
+              errorOpt.disabled = true;
+              calSelect.appendChild(errorOpt);
+              calSelect.disabled = true;
+            });
 
           calSelect.addEventListener('change', () => {
             const selectedOption = calSelect.options[calSelect.selectedIndex];
-            (editor.commands as any).updateGoogleCalendarAgendaAttrs(nodeId, {
+            editor.commands.updateGoogleCalendarAgendaAttrs(nodeId, {
               calendarId: calSelect.value || null,
               calendarName: calSelect.value ? selectedOption?.textContent || null : null,
             });
@@ -718,7 +730,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
               collapsedDays.add(date);
             }
 
-            (editor.commands as any).updateGoogleCalendarAgendaAttrs(nodeId, {
+            editor.commands.updateGoogleCalendarAgendaAttrs(nodeId, {
               collapsedDays: JSON.stringify([...collapsedDays]),
             });
           });
@@ -792,7 +804,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
         ) {
           return;
         }
-        (editor.commands as any).toggleGoogleCalendarAgendaCollapsed(nodeId);
+        editor.commands.toggleGoogleCalendarAgendaCollapsed(nodeId);
       });
 
       // Refresh
