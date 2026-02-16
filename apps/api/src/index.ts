@@ -26,6 +26,7 @@ import { searchRoutes } from './routes/search';
 import { tagRoutes } from './routes/tags';
 import { mcpRoutes } from './routes/mcp';
 import { gmailRoutes } from './routes/gmail';
+import { googleCalendarRoutes } from './routes/google-calendar';
 import { jsonDocumentRoutes } from './routes/json-documents';
 import { realtimeWebSocket } from './ws/realtime.ws';
 import { botAuthRoutes } from './routes/bot-auth';
@@ -98,6 +99,7 @@ async function main() {
         .use(tagRoutes)
         .use(mcpRoutes)
         .use(gmailRoutes)
+        .use(googleCalendarRoutes)
         .use(jsonDocumentRoutes)
         .use(botAuthRoutes)
         .use(customBotRoutes)

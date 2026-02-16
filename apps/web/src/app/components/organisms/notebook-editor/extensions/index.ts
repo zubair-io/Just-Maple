@@ -71,6 +71,11 @@ export {
   type HashTagSuggestion,
   type HashTagOptions,
 } from './hashtag';
+export {
+  GoogleCalendarAgenda,
+  type GoogleCalendarAgendaAttrs,
+  type GoogleCalendarAgendaOptions,
+} from './google-calendar-agenda';
 export { MarkdownPaste, isMarkdownContent, markdownToHtml } from './markdown-paste';
 export { JsonDataRef, type JsonDataRefAttrs, type JsonDataRefOptions } from './json-data-ref';
 export {
