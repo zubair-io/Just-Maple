@@ -14,5 +14,6 @@ export const environment = {
       'https://www.googleapis.com/auth/gmail.send',
       'https://www.googleapis.com/auth/gmail.modify',
     ],
+    calendarScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
   },
 };

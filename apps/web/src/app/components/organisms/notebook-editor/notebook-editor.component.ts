@@ -57,6 +57,7 @@ import {
   AiBotWidget,
   ImageNode,
   Agenda,
+  GoogleCalendarAgenda,
   InlineMention,
   CodeBlockWithLanguage,
   PageLink,
@@ -89,6 +90,7 @@ import { TagService } from '../../../services/tag.service';
 import { SearchService } from '../../../services/search.service';
 import { UiStateService } from '../../../services/ui-state.service';
 import { JsonDocumentService } from '../../../services/json-document.service';
+import { GoogleCalendarService } from '../../../services/google-calendar/google-calendar.service';
 import {
   JsonRefConfigComponent,
   type JsonRefConfig,
@@ -128,6 +130,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly searchService = inject(SearchService);
   private readonly uiStateService = inject(UiStateService);
   private readonly jsonDocService = inject(JsonDocumentService);
+  private readonly googleCalendarService = inject(GoogleCalendarService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
@@ -339,6 +342,15 @@ export class NotebookEditorComponent implements OnDestroy {
           ImageNode,
           // Agenda node for date-based content organization
           Agenda,
+          // Google Calendar agenda node
+          GoogleCalendarAgenda.configure({
+            getCalendarList: () => this.googleCalendarService.getCalendarList(),
+            getEvents: (calendarId: string, startDate: string, endDate: string) =>
+              this.googleCalendarService.getEvents(calendarId, startDate, endDate),
+            isConnected: () => this.googleCalendarService.isConnected(),
+            onConnect: () => this.connectGoogleCalendar(),
+            onRefresh: () => this.googleCalendarService.clearEventCache(),
+          }),
           // Inline mentions (@time, @date, @user)
           InlineMention.configure({
             getUsers: () => this.mentionableUsers(),
@@ -1623,6 +1635,23 @@ export class NotebookEditorComponent implements OnDestroy {
       const fallbackSummary = agendaContent.trim().split('\n')[0].slice(0, 100);
       (this._editor?.commands as any).setAgendaSummary(agendaId, fallbackSummary);
     }
+  }
+
+  /**
+   * Connect Google Calendar via OAuth.
+   */
+  private connectGoogleCalendar(): void {
+    this.googleCalendarService.authenticate().subscribe({
+      next: () => {
+        // Re-render all Google Calendar agenda nodes after connecting
+        if (this._editor) {
+          this._editor.view.updateState(this._editor.view.state);
+        }
+      },
+      error: (err) => {
+        console.error('[NotebookEditor] Google Calendar connection failed:', err);
+      },
+    });
   }
 
   /**

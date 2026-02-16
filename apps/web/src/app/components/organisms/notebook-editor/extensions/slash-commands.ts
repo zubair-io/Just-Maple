@@ -173,6 +173,14 @@ export const defaultSlashCommands: SlashCommandItem[] = [
     },
   },
   {
+    title: 'Google Calendar',
+    description: 'Show events from Google Calendar',
+    icon: '📆',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).insertGoogleCalendarAgenda().run();
+    },
+  },
+  {
     title: 'Voice Recording',
     description: 'Record audio with your microphone',
     icon: '🎙️',
