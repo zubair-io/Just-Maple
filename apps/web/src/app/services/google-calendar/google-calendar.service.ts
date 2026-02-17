@@ -50,7 +50,6 @@ export class GoogleCalendarService {
   private readonly nativeBridge = inject(NativeBridgeService);
 
   private readonly GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
-  private readonly GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
   private readonly GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
   private readonly GOOGLE_CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
   private readonly NATIVE_CALLBACK_SCHEME = 'justmaple';
@@ -74,8 +73,8 @@ export class GoogleCalendarService {
   // In-memory token cache
   private currentTokens: StoredCalendarTokens | null = null;
 
-  // Cached OAuth config (fetched once per session)
-  private oauthConfigPromise: Promise<{ clientId: string; clientSecret: string }> | null = null;
+  // Cached client ID (fetched once per session)
+  private clientIdPromise: Promise<string> | null = null;
 
   // In-memory event cache keyed by "calendarId|startDate|endDate"
   private eventCache = new Map<string, { events: GoogleCalendarEvent[]; fetchedAt: number }>();
@@ -87,18 +86,13 @@ export class GoogleCalendarService {
     }
   }
 
-  private getOAuthConfig(): Promise<{ clientId: string; clientSecret: string }> {
-    if (!this.oauthConfigPromise) {
-      this.oauthConfigPromise = firstValueFrom(
-        this.http.get<{ clientId: string; clientSecret: string }>('/api/google-calendar/config'),
-      );
+  private getClientId(): Promise<string> {
+    if (!this.clientIdPromise) {
+      this.clientIdPromise = firstValueFrom(
+        this.http.get<{ clientId: string }>('/api/google-calendar/config'),
+      ).then((res) => res.clientId);
     }
-    return this.oauthConfigPromise;
-  }
-
-  private async getClientId(): Promise<string> {
-    const config = await this.getOAuthConfig();
-    return config.clientId;
+    return this.clientIdPromise;
   }
 
   private async initializeFromStorage(): Promise<void> {
@@ -283,40 +277,17 @@ export class GoogleCalendarService {
     sessionStorage.removeItem('gcal_code_verifier');
     sessionStorage.removeItem('gcal_oauth_state');
 
-    return from(this.getOAuthConfig()).pipe(
-      switchMap(({ clientId, clientSecret }) => {
-        if (!clientId) {
-          return throwError(() => new Error('Google OAuth client ID not configured'));
-        }
-
-        const params = new URLSearchParams({
-          client_id: clientId,
-          client_secret: clientSecret,
-          code,
-          code_verifier: codeVerifier,
-          grant_type: 'authorization_code',
-          redirect_uri: this.redirectUri,
-        });
-
-        return from(
-          fetch(this.GOOGLE_TOKEN_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: params.toString(),
-          }),
-        );
-      }),
-      switchMap((response) => {
-        if (!response.ok) {
-          return from(response.json()).pipe(
-            switchMap((error) =>
-              throwError(() => new Error(error.error_description || 'Token exchange failed')),
-            ),
-          );
-        }
-        return from(response.json()) as Observable<GoogleTokenResponse>;
-      }),
-    );
+    return this.http
+      .post<GoogleTokenResponse>('/api/google-calendar/token', {
+        code,
+        code_verifier: codeVerifier,
+        redirect_uri: this.redirectUri,
+      })
+      .pipe(
+        catchError((err) =>
+          throwError(() => new Error(err.error?.error_description || 'Token exchange failed')),
+        ),
+      );
   }
 
   private fetchUserInfoAndStore(tokens: GoogleTokenResponse): Observable<{ email: string }> {
@@ -416,42 +387,28 @@ export class GoogleCalendarService {
       throw new Error('No refresh token available');
     }
 
-    const { clientId, clientSecret } = await this.getOAuthConfig();
-    if (!clientId) {
-      throw new Error('Google OAuth client ID not configured');
-    }
+    try {
+      const tokens = await firstValueFrom(
+        this.http.post<GoogleTokenResponse>('/api/google-calendar/refresh', {
+          refresh_token: this.currentTokens.refreshToken,
+        }),
+      );
 
-    const params = new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: this.currentTokens.refreshToken,
-      grant_type: 'refresh_token',
-    });
+      this.currentTokens = {
+        ...this.currentTokens,
+        accessToken: tokens.access_token,
+        expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+      };
 
-    const response = await fetch(this.GOOGLE_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      if (error.error === 'invalid_grant') {
+      await this.storeTokens(this.currentTokens);
+    } catch (err: unknown) {
+      const httpErr = err as { error?: { error?: string; error_description?: string } };
+      if (httpErr.error?.error === 'invalid_grant') {
         await this.disconnect();
         throw new Error('Google Calendar access was revoked. Please reconnect.');
       }
-      throw new Error(error.error_description || 'Token refresh failed');
+      throw new Error(httpErr.error?.error_description || 'Token refresh failed');
     }
-
-    const tokens: GoogleTokenResponse = await response.json();
-
-    this.currentTokens = {
-      ...this.currentTokens,
-      accessToken: tokens.access_token,
-      expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-    };
-
-    await this.storeTokens(this.currentTokens);
   }
 
   async disconnect(): Promise<void> {
