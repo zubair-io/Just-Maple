@@ -65,8 +65,8 @@ export class GmailAuthService {
   // In-memory token cache for current session
   private currentTokens: GmailTokens | null = null;
 
-  // Cached client ID fetched from API (fetched once per session)
-  private clientIdPromise: Promise<string> | null = null;
+  // Cached OAuth config fetched from API (fetched once per session)
+  private oauthConfigPromise: Promise<{ clientId: string; clientSecret: string }> | null = null;
 
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
@@ -75,15 +75,20 @@ export class GmailAuthService {
   }
 
   /**
-   * Fetch and cache the Google OAuth client ID from the API.
+   * Fetch and cache the Google OAuth config from the API.
    */
-  private getClientId(): Promise<string> {
-    if (!this.clientIdPromise) {
-      this.clientIdPromise = firstValueFrom(
-        this.http.get<{ clientId: string }>('/api/gmail/config'),
-      ).then((res) => res.clientId);
+  private getOAuthConfig(): Promise<{ clientId: string; clientSecret: string }> {
+    if (!this.oauthConfigPromise) {
+      this.oauthConfigPromise = firstValueFrom(
+        this.http.get<{ clientId: string; clientSecret: string }>('/api/gmail/config'),
+      );
     }
-    return this.clientIdPromise;
+    return this.oauthConfigPromise;
+  }
+
+  private async getClientId(): Promise<string> {
+    const config = await this.getOAuthConfig();
+    return config.clientId;
   }
 
   /**
@@ -301,14 +306,15 @@ export class GmailAuthService {
     sessionStorage.removeItem('gmail_code_verifier');
     sessionStorage.removeItem('gmail_oauth_state');
 
-    return from(this.getClientId()).pipe(
-      switchMap((clientId) => {
+    return from(this.getOAuthConfig()).pipe(
+      switchMap(({ clientId, clientSecret }) => {
         if (!clientId) {
           return throwError(() => new Error('Google OAuth client ID not configured'));
         }
 
         const params = new URLSearchParams({
           client_id: clientId,
+          client_secret: clientSecret,
           code,
           code_verifier: codeVerifier,
           grant_type: 'authorization_code',
@@ -454,13 +460,14 @@ export class GmailAuthService {
       throw new Error('No refresh token available');
     }
 
-    const clientId = await this.getClientId();
+    const { clientId, clientSecret } = await this.getOAuthConfig();
     if (!clientId) {
       throw new Error('Google OAuth client ID not configured');
     }
 
     const params = new URLSearchParams({
       client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: this.currentTokens.refreshToken,
       grant_type: 'refresh_token',
     });

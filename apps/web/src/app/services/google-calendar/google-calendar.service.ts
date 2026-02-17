@@ -74,8 +74,8 @@ export class GoogleCalendarService {
   // In-memory token cache
   private currentTokens: StoredCalendarTokens | null = null;
 
-  // Cached client ID (fetched once per session)
-  private clientIdPromise: Promise<string> | null = null;
+  // Cached OAuth config (fetched once per session)
+  private oauthConfigPromise: Promise<{ clientId: string; clientSecret: string }> | null = null;
 
   // In-memory event cache keyed by "calendarId|startDate|endDate"
   private eventCache = new Map<string, { events: GoogleCalendarEvent[]; fetchedAt: number }>();
@@ -87,13 +87,18 @@ export class GoogleCalendarService {
     }
   }
 
-  private getClientId(): Promise<string> {
-    if (!this.clientIdPromise) {
-      this.clientIdPromise = firstValueFrom(
-        this.http.get<{ clientId: string }>('/api/google-calendar/config'),
-      ).then((res) => res.clientId);
+  private getOAuthConfig(): Promise<{ clientId: string; clientSecret: string }> {
+    if (!this.oauthConfigPromise) {
+      this.oauthConfigPromise = firstValueFrom(
+        this.http.get<{ clientId: string; clientSecret: string }>('/api/google-calendar/config'),
+      );
     }
-    return this.clientIdPromise;
+    return this.oauthConfigPromise;
+  }
+
+  private async getClientId(): Promise<string> {
+    const config = await this.getOAuthConfig();
+    return config.clientId;
   }
 
   private async initializeFromStorage(): Promise<void> {
@@ -278,14 +283,15 @@ export class GoogleCalendarService {
     sessionStorage.removeItem('gcal_code_verifier');
     sessionStorage.removeItem('gcal_oauth_state');
 
-    return from(this.getClientId()).pipe(
-      switchMap((clientId) => {
+    return from(this.getOAuthConfig()).pipe(
+      switchMap(({ clientId, clientSecret }) => {
         if (!clientId) {
           return throwError(() => new Error('Google OAuth client ID not configured'));
         }
 
         const params = new URLSearchParams({
           client_id: clientId,
+          client_secret: clientSecret,
           code,
           code_verifier: codeVerifier,
           grant_type: 'authorization_code',
@@ -410,13 +416,14 @@ export class GoogleCalendarService {
       throw new Error('No refresh token available');
     }
 
-    const clientId = await this.getClientId();
+    const { clientId, clientSecret } = await this.getOAuthConfig();
     if (!clientId) {
       throw new Error('Google OAuth client ID not configured');
     }
 
     const params = new URLSearchParams({
       client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: this.currentTokens.refreshToken,
       grant_type: 'refresh_token',
     });
