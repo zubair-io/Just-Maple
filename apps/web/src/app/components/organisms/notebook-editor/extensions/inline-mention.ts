@@ -27,7 +27,7 @@ export function formatDate(dateStr: string): string {
 /**
  * Get current time in HH:mm format
  */
-function getCurrentTime(): string {
+export function getCurrentTime(): string {
   const now = new Date();
   return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 }
@@ -35,7 +35,7 @@ function getCurrentTime(): string {
 /**
  * Get current date in YYYY-MM-DD format
  */
-function getCurrentDate(): string {
+export function getCurrentDate(): string {
   return new Date().toISOString().split('T')[0];
 }
 
@@ -69,17 +69,8 @@ export interface InlineMentionSuggestion {
   description: string;
 }
 
-// Base suggestions for time and date (users are added dynamically)
-export const baseMentionSuggestions: InlineMentionSuggestion[] = [
-  { id: 'time', type: 'time', label: 'Time', icon: 'schedule', description: 'Insert current time' },
-  {
-    id: 'date',
-    type: 'date',
-    label: 'Date',
-    icon: 'calendar_today',
-    description: 'Insert current date',
-  },
-];
+// Base suggestions (users are added dynamically; date/time moved to slash commands)
+export const baseMentionSuggestions: InlineMentionSuggestion[] = [];
 
 export interface InlineMentionOptions {
   HTMLAttributes: Record<string, unknown>;
