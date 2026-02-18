@@ -107,19 +107,22 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('messages').createIndex({ notebookId: 1, createdAt: -1 }); // For unread counts
 
     // Unread tracking collection
+    // Drop legacy unique index on userId+notebookId which causes E11000 duplicate key errors
+    // when page-based tracking inserts multiple docs with null notebookId for the same user
     try {
-        await database
-            .collection('unread_tracking')
-            .createIndex({ userId: 1, notebookId: 1 }, { unique: true });
-    } catch (e: any) {
-        if (e.code === 67 || e.code === 85) {
-            console.warn(
-                'Warning: Could not create unique index on unread_tracking.userId+notebookId - possible duplicate data or index conflict',
-            );
-        } else {
-            throw e;
-        }
+        await database.collection('unread_tracking').dropIndex('userId_1_notebookId_1');
+    } catch {
+        // Index doesn't exist, ignore
     }
+    await createUniqueIndex(
+        database,
+        'unread_tracking',
+        { userId: 1, pageId: 1 },
+        'userId+pageId',
+        {
+            sparse: true,
+        },
+    );
 
     // Bot templates collection
     await createUniqueIndex(database, 'bot_templates', { handle: 1 }, 'handle');
