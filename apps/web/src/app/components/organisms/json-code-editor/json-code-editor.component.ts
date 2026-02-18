@@ -11,7 +11,13 @@ import {
   ViewEncapsulation,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+  type ViewUpdate,
+} from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { json } from '@codemirror/lang-json';
 import {
@@ -185,7 +191,7 @@ export class JsonCodeEditorComponent implements AfterViewInit, OnDestroy {
             },
           ]),
           this.readonlyCompartment.of(EditorState.readOnly.of(this.readonly())),
-          EditorView.updateListener.of((update) => {
+          EditorView.updateListener.of((update: ViewUpdate) => {
             if (update.docChanged && !this.isExternalUpdate) {
               this.onDocChange(update.state.doc.toString());
             }

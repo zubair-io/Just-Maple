@@ -9,7 +9,7 @@ import { config } from '../config';
  * web browser popup or a native app:
  *
  *   - web:    Returns an HTML page that posts the result back to the
- *             opener window via postMessage and closes itself.
+ *             opener window via BroadcastChannel and closes itself.
  *   - native: 302 → justmaple://gmail/oauth/callback?code=...&state=...
  *             (caught by ASWebAuthenticationSession)
  */

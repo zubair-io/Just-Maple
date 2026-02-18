@@ -53,6 +53,7 @@ export {
   type EnhancedTaskListOptions,
 } from './enhanced-task-list';
 export { CodeBlockWithLanguage, lowlight, supportedLanguages } from './code-block-with-language';
+export { ApiCodeBlock } from './api-code-block';
 export {
   PageLink,
   PageLinkPluginKey,
