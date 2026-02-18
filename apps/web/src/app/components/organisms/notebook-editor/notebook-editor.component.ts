@@ -59,7 +59,7 @@ import {
   Agenda,
   GoogleCalendarAgenda,
   InlineMention,
-  CodeBlockWithLanguage,
+  ApiCodeBlock,
   PageLink,
   PageLinkBlock,
   HashTag,
@@ -284,8 +284,8 @@ export class NotebookEditorComponent implements OnDestroy {
               node: 'paragraph',
             },
           } as any),
-          // Code block with syntax highlighting and language selector
-          CodeBlockWithLanguage,
+          // Code block with syntax highlighting, language selector, and interactive API blocks
+          ApiCodeBlock,
           // Placeholder with different text for headings
           // Placeholder.configure({
           //   placeholder: ({ node }) => {

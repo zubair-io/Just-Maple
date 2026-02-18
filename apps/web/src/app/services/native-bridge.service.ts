@@ -30,6 +30,8 @@ import type {
   FileReadResult,
   FileWriteResult,
   FileDeleteResult,
+  ApiRequestPayload,
+  ApiResponsePayload,
 } from '../types/native-bridge.types';
 
 @Injectable({
@@ -82,6 +84,12 @@ export class NativeBridgeService {
         // Store initial state
         if (message.type === 'initialize') {
           this._initialState = message.payload as InitialState;
+        }
+
+        // Dispatch CustomEvent for apiResponse so non-Angular listeners
+        // (e.g. vanilla DOM NodeViews) can receive responses by requestId
+        if (message.type === 'apiResponse') {
+          window.dispatchEvent(new CustomEvent('maple:apiResponse', { detail: message.payload }));
         }
 
         this._messages$.next(message);
@@ -457,6 +465,49 @@ export class NativeBridgeService {
     return this.messages$.pipe(
       filter((msg) => msg.type === 'fileDeleteResult'),
       map((msg) => msg.payload as FileDeleteResult),
+    );
+  }
+
+  // MARK: - API Requests
+
+  /**
+   * Send an HTTP request through the native networking layer.
+   * Returns a promise that resolves with the response.
+   * Only works in native apps — web has no access to this.
+   */
+  sendApiRequest(payload: ApiRequestPayload): Promise<ApiResponsePayload> {
+    return new Promise((resolve, reject) => {
+      if (!this._isNativeApp) {
+        reject(new Error('API requests are only available in the native app'));
+        return;
+      }
+
+      const requestId = crypto.randomUUID();
+
+      const timeoutId = setTimeout(() => {
+        sub.unsubscribe();
+        reject(new Error('Request timed out'));
+      }, 60_000);
+
+      const sub = this.onApiResponse()
+        .pipe(filter((response) => response.requestId === requestId))
+        .subscribe((response) => {
+          clearTimeout(timeoutId);
+          sub.unsubscribe();
+          resolve(response);
+        });
+
+      this.sendMessage({
+        type: 'apiRequest',
+        payload: { ...payload, requestId },
+      });
+    });
+  }
+
+  onApiResponse(): Observable<ApiResponsePayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'apiResponse'),
+      map((msg) => msg.payload as ApiResponsePayload),
     );
   }
 
