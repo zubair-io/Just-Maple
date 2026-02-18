@@ -6,6 +6,7 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 export const gmailRoutes = new Elysia({ prefix: '/api/gmail' })
     .get('/config', () => ({
         clientId: config.gmailClientId,
+        redirectUri: `${config.origin}/api/oauth/callback`,
     }))
     .post(
         '/token',

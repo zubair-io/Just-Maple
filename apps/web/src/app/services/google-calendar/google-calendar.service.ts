@@ -54,13 +54,6 @@ export class GoogleCalendarService {
   private readonly GOOGLE_CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
   private readonly NATIVE_CALLBACK_SCHEME = 'justmaple';
 
-  private get redirectUri(): string {
-    if (isPlatformBrowser(this.platformId) && this.nativeBridge.isNativeApp()) {
-      return `${this.NATIVE_CALLBACK_SCHEME}://gmail/oauth/callback`;
-    }
-    return `${window.location.origin}/gmail/oauth/callback`;
-  }
-
   // State
   private readonly _isConnected = signal(false);
   private readonly _connectedEmail = signal<string | null>(null);
@@ -73,8 +66,8 @@ export class GoogleCalendarService {
   // In-memory token cache
   private currentTokens: StoredCalendarTokens | null = null;
 
-  // Cached client ID (fetched once per session)
-  private clientIdPromise: Promise<string> | null = null;
+  // Cached OAuth config (fetched once per session)
+  private oauthConfigPromise: Promise<{ clientId: string; redirectUri: string }> | null = null;
 
   // In-memory event cache keyed by "calendarId|startDate|endDate"
   private eventCache = new Map<string, { events: GoogleCalendarEvent[]; fetchedAt: number }>();
@@ -86,13 +79,27 @@ export class GoogleCalendarService {
     }
   }
 
-  private getClientId(): Promise<string> {
-    if (!this.clientIdPromise) {
-      this.clientIdPromise = firstValueFrom(
-        this.http.get<{ clientId: string }>('/api/google-calendar/config'),
-      ).then((res) => res.clientId);
+  private getOAuthConfig(): Promise<{ clientId: string; redirectUri: string }> {
+    if (!this.oauthConfigPromise) {
+      this.oauthConfigPromise = firstValueFrom(
+        this.http.get<{ clientId: string; redirectUri: string }>('/api/google-calendar/config'),
+      );
     }
-    return this.clientIdPromise;
+    return this.oauthConfigPromise;
+  }
+
+  /**
+   * Encode the OAuth state with platform info so the API callback
+   * knows where to redirect (web vs native).
+   */
+  private encodeOAuthState(rawState: string): string {
+    const platform =
+      isPlatformBrowser(this.platformId) && this.nativeBridge.isNativeApp() ? 'native' : 'web';
+    const payload: Record<string, string> = { s: rawState, p: platform };
+    if (platform === 'web') {
+      payload['o'] = window.location.origin;
+    }
+    return btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
   private async initializeFromStorage(): Promise<void> {
@@ -127,35 +134,37 @@ export class GoogleCalendarService {
     this._isAuthenticating.set(true);
 
     const codeVerifier = this.generateCodeVerifier();
-    const state = crypto.randomUUID();
+    const rawState = crypto.randomUUID();
 
     sessionStorage.setItem('gcal_code_verifier', codeVerifier);
-    sessionStorage.setItem('gcal_oauth_state', state);
+    sessionStorage.setItem('gcal_oauth_state', rawState);
 
-    return from(this.getClientId()).pipe(
-      switchMap((clientId) => {
+    const encodedState = this.encodeOAuthState(rawState);
+
+    return from(this.getOAuthConfig()).pipe(
+      switchMap(({ clientId, redirectUri }) => {
         if (!clientId) {
           return throwError(() => new Error('Google OAuth client ID not configured'));
         }
         return from(this.generateCodeChallenge(codeVerifier)).pipe(
-          map((codeChallenge) => ({ clientId, codeChallenge })),
+          map((codeChallenge) => ({ clientId, redirectUri, codeChallenge })),
         );
       }),
-      switchMap(({ clientId, codeChallenge }) => {
+      switchMap(({ clientId, redirectUri, codeChallenge }) => {
         const params = new URLSearchParams({
           client_id: clientId,
-          redirect_uri: this.redirectUri,
+          redirect_uri: redirectUri,
           response_type: 'code',
           scope: environment.google.calendarScopes.join(' '),
           access_type: 'offline',
           prompt: 'consent',
-          state,
+          state: encodedState,
           code_challenge: codeChallenge,
           code_challenge_method: 'S256',
         });
 
         const authUrl = `${this.GOOGLE_AUTH_URL}?${params.toString()}`;
-        return this.openOAuthPopup(authUrl, state);
+        return this.openOAuthPopup(authUrl, rawState);
       }),
       switchMap((code) => this.exchangeCodeForTokens(code)),
       switchMap((tokens) => this.fetchUserInfoAndStore(tokens)),
@@ -277,17 +286,18 @@ export class GoogleCalendarService {
     sessionStorage.removeItem('gcal_code_verifier');
     sessionStorage.removeItem('gcal_oauth_state');
 
-    return this.http
-      .post<GoogleTokenResponse>('/api/google-calendar/token', {
-        code,
-        code_verifier: codeVerifier,
-        redirect_uri: this.redirectUri,
-      })
-      .pipe(
-        catchError((err) =>
-          throwError(() => new Error(err.error?.error_description || 'Token exchange failed')),
-        ),
-      );
+    return from(this.getOAuthConfig()).pipe(
+      switchMap(({ redirectUri }) =>
+        this.http.post<GoogleTokenResponse>('/api/google-calendar/token', {
+          code,
+          code_verifier: codeVerifier,
+          redirect_uri: redirectUri,
+        }),
+      ),
+      catchError((err) =>
+        throwError(() => new Error(err.error?.error_description || 'Token exchange failed')),
+      ),
+    );
   }
 
   private fetchUserInfoAndStore(tokens: GoogleTokenResponse): Observable<{ email: string }> {
