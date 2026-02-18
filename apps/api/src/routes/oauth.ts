@@ -10,7 +10,7 @@ import { config } from '../config';
  *
  *   - web:    Returns an HTML page that posts the result back to the
  *             opener window via BroadcastChannel and closes itself.
- *   - native: 302 → justmaple://gmail/oauth/callback?code=...&state=...
+ *   - native: Returns an HTML page that navigates to justmaple:// scheme
  *             (caught by ASWebAuthenticationSession)
  */
 export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
