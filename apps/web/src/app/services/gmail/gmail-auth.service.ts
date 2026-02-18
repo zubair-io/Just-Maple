@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Observable, from, throwError, of } from 'rxjs';
+import { Observable, from, throwError } from 'rxjs';
 import { map, switchMap, tap, catchError, take } from 'rxjs/operators';
 import { firstValueFrom } from 'rxjs';
 import { IndexedDBService } from '../indexed-db.service';
@@ -42,16 +42,8 @@ export class GmailAuthService {
   private readonly nativeBridge = inject(NativeBridgeService);
 
   private readonly GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
-  private readonly GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
   private readonly GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
   private readonly NATIVE_CALLBACK_SCHEME = 'justmaple';
-
-  private get redirectUri(): string {
-    if (isPlatformBrowser(this.platformId) && this.nativeBridge.isNativeApp()) {
-      return `${this.NATIVE_CALLBACK_SCHEME}://gmail/oauth/callback`;
-    }
-    return `${window.location.origin}/gmail/oauth/callback`;
-  }
 
   // State
   private readonly _isConnected = signal(false);
@@ -65,8 +57,8 @@ export class GmailAuthService {
   // In-memory token cache for current session
   private currentTokens: GmailTokens | null = null;
 
-  // Cached client ID fetched from API (fetched once per session)
-  private clientIdPromise: Promise<string> | null = null;
+  // Cached OAuth config fetched from API (fetched once per session)
+  private oauthConfigPromise: Promise<{ clientId: string; redirectUri: string }> | null = null;
 
   constructor() {
     if (isPlatformBrowser(this.platformId)) {
@@ -75,15 +67,29 @@ export class GmailAuthService {
   }
 
   /**
-   * Fetch and cache the Google OAuth client ID from the API.
+   * Fetch and cache the Google OAuth config from the API.
    */
-  private getClientId(): Promise<string> {
-    if (!this.clientIdPromise) {
-      this.clientIdPromise = firstValueFrom(
-        this.http.get<{ clientId: string }>('/api/gmail/config'),
-      ).then((res) => res.clientId);
+  private getOAuthConfig(): Promise<{ clientId: string; redirectUri: string }> {
+    if (!this.oauthConfigPromise) {
+      this.oauthConfigPromise = firstValueFrom(
+        this.http.get<{ clientId: string; redirectUri: string }>('/api/gmail/config'),
+      );
     }
-    return this.clientIdPromise;
+    return this.oauthConfigPromise;
+  }
+
+  /**
+   * Encode the OAuth state with platform info so the API callback
+   * knows where to redirect (web vs native).
+   */
+  private encodeOAuthState(rawState: string): string {
+    const platform =
+      isPlatformBrowser(this.platformId) && this.nativeBridge.isNativeApp() ? 'native' : 'web';
+    const payload: Record<string, string> = { s: rawState, p: platform };
+    if (platform === 'web') {
+      payload['o'] = window.location.origin;
+    }
+    return btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
   /**
@@ -126,37 +132,39 @@ export class GmailAuthService {
 
     // Generate PKCE code verifier and challenge
     const codeVerifier = this.generateCodeVerifier();
-    const state = crypto.randomUUID();
+    const rawState = crypto.randomUUID();
 
     // Store verifier and state for callback validation
     sessionStorage.setItem('gmail_code_verifier', codeVerifier);
-    sessionStorage.setItem('gmail_oauth_state', state);
+    sessionStorage.setItem('gmail_oauth_state', rawState);
 
-    return from(this.getClientId()).pipe(
-      switchMap((clientId) => {
+    const encodedState = this.encodeOAuthState(rawState);
+
+    return from(this.getOAuthConfig()).pipe(
+      switchMap(({ clientId, redirectUri }) => {
         if (!clientId) {
           return throwError(() => new Error('Google OAuth client ID not configured'));
         }
         return from(this.generateCodeChallenge(codeVerifier)).pipe(
-          map((codeChallenge) => ({ clientId, codeChallenge })),
+          map((codeChallenge) => ({ clientId, redirectUri, codeChallenge })),
         );
       }),
-      switchMap(({ clientId, codeChallenge }) => {
+      switchMap(({ clientId, redirectUri, codeChallenge }) => {
         const params = new URLSearchParams({
           client_id: clientId,
-          redirect_uri: this.redirectUri,
+          redirect_uri: redirectUri,
           response_type: 'code',
           scope: environment.google.scopes.join(' '),
           access_type: 'offline',
           prompt: 'consent',
-          state,
+          state: encodedState,
           code_challenge: codeChallenge,
           code_challenge_method: 'S256',
         });
 
         const authUrl = `${this.GOOGLE_AUTH_URL}?${params.toString()}`;
 
-        return this.openOAuthPopup(authUrl, state);
+        return this.openOAuthPopup(authUrl, rawState);
       }),
       switchMap((code) => this.exchangeCodeForTokens(code)),
       switchMap((tokens) => this.fetchUserInfoAndStore(tokens)),
@@ -227,7 +235,8 @@ export class GmailAuthService {
   }
 
   /**
-   * Browser flow: open popup window and listen for postMessage.
+   * Browser flow: open popup window and listen via BroadcastChannel.
+   * BroadcastChannel works even when Cross-Origin-Opener-Policy blocks window.opener.
    */
   private openBrowserPopup(authUrl: string, expectedState: string): Observable<string> {
     return new Observable((observer) => {
@@ -247,10 +256,10 @@ export class GmailAuthService {
         return;
       }
 
-      // Listen for message from callback page
-      const handleMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
+      // Use BroadcastChannel to receive the OAuth result from the popup
+      const bc = new BroadcastChannel('oauth_callback');
 
+      const handleMessage = (event: MessageEvent) => {
         if (event.data?.type === 'gmail_oauth_callback') {
           cleanup();
 
@@ -267,20 +276,28 @@ export class GmailAuthService {
         }
       };
 
-      window.addEventListener('message', handleMessage);
+      bc.onmessage = handleMessage;
 
       // Check if popup was closed manually
       const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          cleanup();
-          observer.error(new Error('OAuth popup was closed'));
+        try {
+          if (popup.closed) {
+            cleanup();
+            observer.error(new Error('OAuth popup was closed'));
+          }
+        } catch {
+          // COOP may block popup.closed — ignore and wait for BroadcastChannel
         }
       }, 500);
 
       const cleanup = () => {
-        window.removeEventListener('message', handleMessage);
+        bc.close();
         clearInterval(checkClosed);
-        if (!popup.closed) popup.close();
+        try {
+          if (!popup.closed) popup.close();
+        } catch {
+          // ignore COOP errors
+        }
       };
 
       return cleanup;
@@ -301,38 +318,17 @@ export class GmailAuthService {
     sessionStorage.removeItem('gmail_code_verifier');
     sessionStorage.removeItem('gmail_oauth_state');
 
-    return from(this.getClientId()).pipe(
-      switchMap((clientId) => {
-        if (!clientId) {
-          return throwError(() => new Error('Google OAuth client ID not configured'));
-        }
-
-        const params = new URLSearchParams({
-          client_id: clientId,
+    return from(this.getOAuthConfig()).pipe(
+      switchMap(({ redirectUri }) =>
+        this.http.post<GoogleTokenResponse>('/api/gmail/token', {
           code,
           code_verifier: codeVerifier,
-          grant_type: 'authorization_code',
-          redirect_uri: this.redirectUri,
-        });
-
-        return from(
-          fetch(this.GOOGLE_TOKEN_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: params.toString(),
-          }),
-        );
-      }),
-      switchMap((response) => {
-        if (!response.ok) {
-          return from(response.json()).pipe(
-            switchMap((error) =>
-              throwError(() => new Error(error.error_description || 'Token exchange failed')),
-            ),
-          );
-        }
-        return from(response.json()) as Observable<GoogleTokenResponse>;
-      }),
+          redirect_uri: redirectUri,
+        }),
+      ),
+      catchError((err) =>
+        throwError(() => new Error(err.error?.error_description || 'Token exchange failed')),
+      ),
     );
   }
 
@@ -454,42 +450,28 @@ export class GmailAuthService {
       throw new Error('No refresh token available');
     }
 
-    const clientId = await this.getClientId();
-    if (!clientId) {
-      throw new Error('Google OAuth client ID not configured');
-    }
+    try {
+      const tokens = await firstValueFrom(
+        this.http.post<GoogleTokenResponse>('/api/gmail/refresh', {
+          refresh_token: this.currentTokens.refreshToken,
+        }),
+      );
 
-    const params = new URLSearchParams({
-      client_id: clientId,
-      refresh_token: this.currentTokens.refreshToken,
-      grant_type: 'refresh_token',
-    });
+      this.currentTokens = {
+        ...this.currentTokens,
+        accessToken: tokens.access_token,
+        expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+      };
 
-    const response = await fetch(this.GOOGLE_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      if (error.error === 'invalid_grant') {
-        // Refresh token revoked - need to re-authenticate
+      await this.storeTokens(this.currentTokens);
+    } catch (err: unknown) {
+      const httpErr = err as { error?: { error?: string; error_description?: string } };
+      if (httpErr.error?.error === 'invalid_grant') {
         await this.disconnect();
         throw new Error('Gmail access was revoked. Please reconnect.');
       }
-      throw new Error(error.error_description || 'Token refresh failed');
+      throw new Error(httpErr.error?.error_description || 'Token refresh failed');
     }
-
-    const tokens: GoogleTokenResponse = await response.json();
-
-    this.currentTokens = {
-      ...this.currentTokens,
-      accessToken: tokens.access_token,
-      expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-    };
-
-    await this.storeTokens(this.currentTokens);
   }
 
   /**

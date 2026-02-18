@@ -1,5 +1,6 @@
 import { Extension, type Editor, type Range } from '@tiptap/core';
 import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion';
+import { getCurrentTime, getCurrentDate } from './inline-mention';
 
 /**
  * Slash command item definition
@@ -140,11 +141,57 @@ export const defaultSlashCommands: SlashCommandItem[] = [
     },
   },
   {
-    title: 'Agenda',
-    description: 'Add a date-based section',
+    title: 'Date',
+    description: 'Insert current date',
     icon: '📅',
     command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent([
+          {
+            type: 'inlineMention',
+            attrs: { type: 'date', value: getCurrentDate() },
+          },
+          { type: 'text', text: ' ' },
+        ])
+        .run();
+    },
+  },
+  {
+    title: 'Time',
+    description: 'Insert current time',
+    icon: '🕐',
+    command: ({ editor, range }) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertContent([
+          {
+            type: 'inlineMention',
+            attrs: { type: 'time', value: getCurrentTime() },
+          },
+          { type: 'text', text: ' ' },
+        ])
+        .run();
+    },
+  },
+  {
+    title: 'Agenda',
+    description: 'Add a date-based section',
+    icon: '📆',
+    command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).insertAgenda().run();
+    },
+  },
+  {
+    title: 'Google Calendar',
+    description: 'Show events from Google Calendar',
+    icon: '📆',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).insertGoogleCalendarAgenda().run();
     },
   },
   {

@@ -44,27 +44,44 @@ export async function getLastReadAtByPageId(userId: string, pageId: string): Pro
 export async function markAsReadByPageId(userId: string, pageId: string): Promise<UnreadTracking> {
     const now = new Date();
 
-    const result = await getCollection().findOneAndUpdate(
-        {
-            userId: new ObjectId(userId),
-            pageId: pageId,
-        },
-        {
-            $set: {
-                lastReadAt: now,
-            },
-            $setOnInsert: {
+    try {
+        const result = await getCollection().findOneAndUpdate(
+            {
                 userId: new ObjectId(userId),
                 pageId: pageId,
             },
-        },
-        {
-            upsert: true,
-            returnDocument: 'after',
-        },
-    );
+            {
+                $set: {
+                    lastReadAt: now,
+                },
+                $setOnInsert: {
+                    userId: new ObjectId(userId),
+                    pageId: pageId,
+                },
+            },
+            {
+                upsert: true,
+                returnDocument: 'after',
+            },
+        );
 
-    return toUnreadTrackingResponse(result!);
+        return toUnreadTrackingResponse(result!);
+    } catch (e: any) {
+        // E11000 duplicate key error - race condition where concurrent requests
+        // both try to upsert. Retry as a simple update since the doc now exists.
+        if (e.code === 11000) {
+            const result = await getCollection().findOneAndUpdate(
+                {
+                    userId: new ObjectId(userId),
+                    pageId: pageId,
+                },
+                { $set: { lastReadAt: now } },
+                { returnDocument: 'after' },
+            );
+            return toUnreadTrackingResponse(result!);
+        }
+        throw e;
+    }
 }
 
 export async function getUnreadCountForPage(userId: string, pageId: string): Promise<number> {

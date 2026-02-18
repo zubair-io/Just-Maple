@@ -17,6 +17,9 @@ export const DB_STORES = {
   GMAIL_TOKENS: 'gmail-tokens',
   GMAIL_SYNC_STATE: 'gmail-sync-state',
   GMAIL_DRAFTS: 'gmail-drafts',
+  // Google Calendar stores (local-only, never synced to server)
+  GOOGLE_CALENDAR_TOKENS: 'google-calendar-tokens',
+  GOOGLE_CALENDAR_EVENTS: 'google-calendar-events',
   // Local notebook bot associations (local-only, never synced to server)
   LOCAL_NOTEBOOK_BOTS: 'local-notebook-bots',
 } as const;
