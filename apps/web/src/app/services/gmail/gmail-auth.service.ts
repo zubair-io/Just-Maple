@@ -235,7 +235,8 @@ export class GmailAuthService {
   }
 
   /**
-   * Browser flow: open popup window and listen for postMessage.
+   * Browser flow: open popup window and listen via BroadcastChannel.
+   * BroadcastChannel works even when Cross-Origin-Opener-Policy blocks window.opener.
    */
   private openBrowserPopup(authUrl: string, expectedState: string): Observable<string> {
     return new Observable((observer) => {
@@ -255,10 +256,10 @@ export class GmailAuthService {
         return;
       }
 
-      // Listen for message from callback page
-      const handleMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
+      // Use BroadcastChannel to receive the OAuth result from the popup
+      const bc = new BroadcastChannel('oauth_callback');
 
+      const handleMessage = (event: MessageEvent) => {
         if (event.data?.type === 'gmail_oauth_callback') {
           cleanup();
 
@@ -275,20 +276,28 @@ export class GmailAuthService {
         }
       };
 
-      window.addEventListener('message', handleMessage);
+      bc.onmessage = handleMessage;
 
       // Check if popup was closed manually
       const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          cleanup();
-          observer.error(new Error('OAuth popup was closed'));
+        try {
+          if (popup.closed) {
+            cleanup();
+            observer.error(new Error('OAuth popup was closed'));
+          }
+        } catch {
+          // COOP may block popup.closed — ignore and wait for BroadcastChannel
         }
       }, 500);
 
       const cleanup = () => {
-        window.removeEventListener('message', handleMessage);
+        bc.close();
         clearInterval(checkClosed);
-        if (!popup.closed) popup.close();
+        try {
+          if (!popup.closed) popup.close();
+        } catch {
+          // ignore COOP errors
+        }
       };
 
       return cleanup;

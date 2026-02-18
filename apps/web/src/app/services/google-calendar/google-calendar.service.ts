@@ -241,8 +241,11 @@ export class GoogleCalendarService {
         return;
       }
 
+      // Use BroadcastChannel to receive the OAuth result from the popup.
+      // This works even when Cross-Origin-Opener-Policy blocks window.opener.
+      const bc = new BroadcastChannel('oauth_callback');
+
       const handleMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
         if (event.data?.type === 'gmail_oauth_callback') {
           cleanup();
           if (event.data.error) {
@@ -258,19 +261,27 @@ export class GoogleCalendarService {
         }
       };
 
-      window.addEventListener('message', handleMessage);
+      bc.onmessage = handleMessage;
 
       const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          cleanup();
-          observer.error(new Error('OAuth popup was closed'));
+        try {
+          if (popup.closed) {
+            cleanup();
+            observer.error(new Error('OAuth popup was closed'));
+          }
+        } catch {
+          // COOP may block popup.closed — ignore and wait for BroadcastChannel
         }
       }, 500);
 
       const cleanup = () => {
-        window.removeEventListener('message', handleMessage);
+        bc.close();
         clearInterval(checkClosed);
-        if (!popup.closed) popup.close();
+        try {
+          if (!popup.closed) popup.close();
+        } catch {
+          // ignore COOP errors
+        }
       };
 
       return cleanup;
