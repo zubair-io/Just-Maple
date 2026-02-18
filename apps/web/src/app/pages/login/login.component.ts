@@ -5,6 +5,7 @@ import { AuthService } from '../../services/auth.service';
 import { PreferencesService } from '../../services/preferences.service';
 import { ButtonComponent, InputComponent, IconComponent } from '../../components/atoms';
 import { FormFieldComponent, DividerComponent } from '../../components/molecules';
+import { isLocalhost, getApiTarget, setApiTarget, type ApiTarget } from '../../utils/runtime-env';
 
 @Component({
   selector: 'app-login',
@@ -23,6 +24,9 @@ import { FormFieldComponent, DividerComponent } from '../../components/molecules
 export class LoginComponent {
   readonly authService = inject(AuthService);
   readonly preferences = inject(PreferencesService);
+
+  readonly isLocal = isLocalhost();
+  readonly apiTarget = signal<ApiTarget>(getApiTarget());
 
   readonly email = signal('');
   readonly emailSent = signal(false);
@@ -74,6 +78,12 @@ export class LoginComponent {
     this.devCode.set(null);
     this.code.set('');
     this.codeError.set(null);
+  }
+
+  onApiTargetChange(event: Event): void {
+    const target = (event.target as HTMLSelectElement).value as ApiTarget;
+    setApiTarget(target);
+    this.apiTarget.set(target);
   }
 
   async loginWithPasskey(): Promise<void> {

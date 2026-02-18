@@ -4,7 +4,7 @@ import { Subject, Observable } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { VisibilityService } from './visibility.service';
-import { environment } from '../../environments/environment';
+import { getWsUrl } from '../utils/runtime-env';
 import type { Page, Notebook, Collectable, MemoSSEEvent, Recording } from '@maple/shared';
 
 /**
@@ -107,7 +107,7 @@ export class RealtimeWSService {
     }
 
     // Build WebSocket URL
-    let wsUrl = environment.wsUrl || '';
+    let wsUrl = getWsUrl();
     if (!wsUrl) {
       // Use relative URL with same host
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';

@@ -19,6 +19,20 @@
         <p class="text-[var(--color-mist)] text-sm font-medium">Enter your email to sign in</p>
       </div>
 
+      @if (isLocal) {
+        <div class="mb-6 flex items-center justify-center gap-2">
+          <span class="text-xs text-[var(--color-mist)]">Server:</span>
+          <select
+            class="text-xs px-2 py-1 rounded border border-[var(--color-pearl)] bg-[var(--color-snow)] text-[var(--color-charcoal)] focus:border-[var(--color-maple)] focus:outline-none transition-colors"
+            [value]="apiTarget()"
+            (change)="onApiTargetChange($event)"
+          >
+            <option value="local">Local (localhost)</option>
+            <option value="production">Production (paperbark)</option>
+          </select>
+        </div>
+      }
+
       @if (!emailSent()) {
         <!-- Login Form -->
         <form (ngSubmit)="onSubmit()" class="space-y-6">

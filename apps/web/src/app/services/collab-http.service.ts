@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, lastValueFrom } from 'rxjs';
-import { environment } from '../../environments/environment';
+import { getApiUrl } from '../utils/runtime-env';
 
 /**
  * HTTP API service for ProseMirror collaboration
@@ -10,7 +10,9 @@ import { environment } from '../../environments/environment';
 @Injectable({ providedIn: 'root' })
 export class CollabHttpService {
   private readonly http = inject(HttpClient);
-  private readonly apiUrl = environment.apiUrl || '';
+  private get apiUrl(): string {
+    return getApiUrl();
+  }
 
   /**
    * Join a collaboration session for a note

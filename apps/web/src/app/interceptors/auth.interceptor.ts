@@ -2,7 +2,7 @@ import { HttpInterceptorFn, HttpRequest, HttpHandlerFn } from '@angular/common/h
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
-import { environment } from '../../environments/environment';
+import { getApiUrl } from '../utils/runtime-env';
 import { catchError, throwError } from 'rxjs';
 
 export const authInterceptor: HttpInterceptorFn = (
@@ -15,9 +15,10 @@ export const authInterceptor: HttpInterceptorFn = (
 
   let url = req.url;
 
-  // Prepend API URL for /api requests in production
-  if (environment.apiUrl && url.startsWith('/api')) {
-    url = `${environment.apiUrl}${url}`;
+  // Prepend API URL for production or when targeting remote server
+  const apiUrl = getApiUrl();
+  if (apiUrl && url.startsWith('/api')) {
+    url = `${apiUrl}${url}`;
   }
 
   // Skip auth header for certain endpoints
