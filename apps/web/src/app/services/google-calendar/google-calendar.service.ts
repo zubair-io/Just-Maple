@@ -95,7 +95,7 @@ export class GoogleCalendarService {
   private encodeOAuthState(rawState: string): string {
     const platform =
       isPlatformBrowser(this.platformId) && this.nativeBridge.isNativeApp() ? 'native' : 'web';
-    const payload: Record<string, string> = { s: rawState, p: platform };
+    const payload: Record<string, string> = { s: rawState, p: platform, svc: 'gcal' };
     if (platform === 'web') {
       payload['o'] = window.location.origin;
     }
@@ -125,6 +125,9 @@ export class GoogleCalendarService {
 
   /**
    * Start the Google Calendar OAuth flow.
+   * - Native: opens ASWebAuthenticationSession (stays in-app).
+   * - Web: saves return URL then does a full-page redirect to Google.
+   *   The returned Observable never emits for web (page navigates away).
    */
   authenticate(): Observable<{ email: string }> {
     if (!isPlatformBrowser(this.platformId)) {
@@ -151,9 +154,16 @@ export class GoogleCalendarService {
         );
       }),
       switchMap(({ clientId, redirectUri, codeChallenge }) => {
+        // Web: Google redirects directly to Angular callback route
+        // Native: Google redirects to API callback (for justmaple:// scheme)
+        const isNative = this.nativeBridge.isNativeApp();
+        const actualRedirectUri = isNative
+          ? redirectUri
+          : `${window.location.origin}/gmail/oauth/callback`;
+
         const params = new URLSearchParams({
           client_id: clientId,
-          redirect_uri: redirectUri,
+          redirect_uri: actualRedirectUri,
           response_type: 'code',
           scope: environment.google.calendarScopes.join(' '),
           access_type: 'offline',
@@ -164,7 +174,16 @@ export class GoogleCalendarService {
         });
 
         const authUrl = `${this.GOOGLE_AUTH_URL}?${params.toString()}`;
-        return this.openOAuthPopup(authUrl, rawState);
+
+        if (isNative) {
+          return this.openNativeAuthSession(authUrl, rawState);
+        }
+
+        // Save return URL + redirect URI for token exchange, then navigate
+        sessionStorage.setItem('oauth_return_url', window.location.href);
+        sessionStorage.setItem('gcal_redirect_uri', actualRedirectUri);
+        window.location.href = authUrl;
+        return new Observable<string>(() => {});
       }),
       switchMap((code) => this.exchangeCodeForTokens(code)),
       switchMap((tokens) => this.fetchUserInfoAndStore(tokens)),
@@ -180,11 +199,19 @@ export class GoogleCalendarService {
     );
   }
 
-  private openOAuthPopup(authUrl: string, expectedState: string): Observable<string> {
-    if (this.nativeBridge.isNativeApp()) {
-      return this.openNativeAuthSession(authUrl, expectedState);
-    }
-    return this.openBrowserPopup(authUrl, expectedState);
+  /**
+   * Complete the OAuth flow from the redirect callback (web only).
+   * Called by the callback component after validating the state.
+   */
+  completeOAuthFromCallback(code: string): Observable<{ email: string }> {
+    return this.exchangeCodeForTokens(code).pipe(
+      switchMap((tokens) => this.fetchUserInfoAndStore(tokens)),
+      tap((result) => {
+        this._isConnected.set(true);
+        this._connectedEmail.set(result.email);
+        this._isAuthenticating.set(false);
+      }),
+    );
   }
 
   private openNativeAuthSession(authUrl: string, expectedState: string): Observable<string> {
@@ -223,79 +250,32 @@ export class GoogleCalendarService {
     });
   }
 
-  private openBrowserPopup(authUrl: string, expectedState: string): Observable<string> {
-    return new Observable((observer) => {
-      const width = 500;
-      const height = 600;
-      const left = window.screenX + (window.outerWidth - width) / 2;
-      const top = window.screenY + (window.outerHeight - height) / 2;
-
-      const popup = window.open(
-        authUrl,
-        'gcal_oauth',
-        `width=${width},height=${height},left=${left},top=${top},popup=1`,
-      );
-
-      if (!popup) {
-        observer.error(new Error('Failed to open OAuth popup. Please allow popups.'));
-        return;
-      }
-
-      // Use BroadcastChannel to receive the OAuth result from the popup.
-      // This works even when Cross-Origin-Opener-Policy blocks window.opener.
-      const bc = new BroadcastChannel('oauth_callback');
-
-      const handleMessage = (event: MessageEvent) => {
-        if (event.data?.type === 'gmail_oauth_callback') {
-          cleanup();
-          if (event.data.error) {
-            observer.error(new Error(event.data.error));
-          } else if (event.data.state !== expectedState) {
-            observer.error(new Error('OAuth state mismatch'));
-          } else if (!event.data.code) {
-            observer.error(new Error('Missing authorization code'));
-          } else {
-            observer.next(event.data.code);
-            observer.complete();
-          }
-        }
-      };
-
-      bc.onmessage = handleMessage;
-
-      const checkClosed = setInterval(() => {
-        try {
-          if (popup.closed) {
-            cleanup();
-            observer.error(new Error('OAuth popup was closed'));
-          }
-        } catch {
-          // COOP may block popup.closed — ignore and wait for BroadcastChannel
-        }
-      }, 500);
-
-      const cleanup = () => {
-        bc.close();
-        clearInterval(checkClosed);
-        try {
-          if (!popup.closed) popup.close();
-        } catch {
-          // ignore COOP errors
-        }
-      };
-
-      return cleanup;
-    });
-  }
-
   private exchangeCodeForTokens(code: string): Observable<GoogleTokenResponse> {
     const codeVerifier = sessionStorage.getItem('gcal_code_verifier');
     if (!codeVerifier) {
       return throwError(() => new Error('Code verifier not found'));
     }
 
+    // Web redirect flow saves the redirect URI; native flow uses the config endpoint
+    const savedRedirectUri = sessionStorage.getItem('gcal_redirect_uri');
+
     sessionStorage.removeItem('gcal_code_verifier');
     sessionStorage.removeItem('gcal_oauth_state');
+    sessionStorage.removeItem('gcal_redirect_uri');
+
+    if (savedRedirectUri) {
+      return this.http
+        .post<GoogleTokenResponse>('/api/google-calendar/token', {
+          code,
+          code_verifier: codeVerifier,
+          redirect_uri: savedRedirectUri,
+        })
+        .pipe(
+          catchError((err) =>
+            throwError(() => new Error(err.error?.error_description || 'Token exchange failed')),
+          ),
+        );
+    }
 
     return from(this.getOAuthConfig()).pipe(
       switchMap(({ redirectUri }) =>

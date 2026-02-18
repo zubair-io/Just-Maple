@@ -6,10 +6,10 @@ import { config } from '../config';
  *
  * Google OAuth redirects here after user consent. The endpoint decodes
  * the `state` parameter to determine whether the request came from a
- * web browser popup or a native app:
+ * web browser or a native app:
  *
- *   - web:    Returns an HTML page that posts the result back to the
- *             opener window via BroadcastChannel and closes itself.
+ *   - web:    302 redirects to {origin}/gmail/oauth/callback with code,
+ *             state, and svc query params for the Angular callback route.
  *   - native: Returns an HTML page that navigates to justmaple:// scheme
  *             (caught by ASWebAuthenticationSession)
  */
@@ -23,6 +23,7 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
         let originalState = rawState;
         let platform = 'web';
         let origin = config.origin;
+        let svc = 'gmail'; // default service identifier
 
         try {
             const json = JSON.parse(
@@ -33,6 +34,7 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
             originalState = json.s || rawState;
             platform = json.p || 'web';
             if (json.o) origin = json.o;
+            if (json.svc) svc = json.svc;
         } catch {
             // State isn't encoded — pass through as-is
         }
@@ -47,11 +49,6 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
             }
         }
 
-        const safeCode = escapeHtml(code || '');
-        const safeState = escapeHtml(originalState);
-        const safeError = escapeHtml(error || '');
-
-        set.headers['content-type'] = 'text/html; charset=utf-8';
         set.headers['cache-control'] = 'no-store';
 
         // Native: use JS redirect to custom scheme.
@@ -66,6 +63,7 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
 
             const nativeUrl = `justmaple://gmail/oauth/callback?${params.toString()}`;
 
+            set.headers['content-type'] = 'text/html; charset=utf-8';
             return `<!DOCTYPE html>
 <html><head><title>Completing sign-in…</title></head>
 <body>
@@ -74,46 +72,16 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
 </body></html>`;
         }
 
-        // Web: post the result via BroadcastChannel and close.
-        // BroadcastChannel works across same-origin tabs/popups even when
-        // Cross-Origin-Opener-Policy blocks window.opener access.
-        return `<!DOCTYPE html>
-<html><head><title>Completing sign-in…</title></head>
-<body>
-<p>Completing sign-in…</p>
-<script>
-(function() {
-  var data = {
-    type: 'gmail_oauth_callback',
-    code: ${JSON.stringify(safeCode)} || undefined,
-    state: ${JSON.stringify(safeState)},
-    error: ${JSON.stringify(safeError)} || undefined
-  };
+        // Web: 302 redirect to the Angular callback route.
+        // The callback component handles token exchange and navigation.
+        const redirectParams = new URLSearchParams();
+        if (code) redirectParams.set('code', code);
+        redirectParams.set('state', originalState);
+        redirectParams.set('svc', svc);
+        if (error) redirectParams.set('error', error);
 
-  // Use BroadcastChannel (works with Cross-Origin-Opener-Policy)
-  try {
-    var bc = new BroadcastChannel('oauth_callback');
-    bc.postMessage(data);
-    bc.close();
-  } catch(e) {}
-
-  window.close();
-
-  // Fallback: if window.close() is blocked, show a message
-  setTimeout(function() {
-    document.body.innerHTML = '<p>Sign-in complete. You can close this window.</p>';
-  }, 300);
-})();
-</script>
-</body></html>`;
+        set.status = 302;
+        set.headers['location'] = `${origin}/gmail/oauth/callback?${redirectParams.toString()}`;
+        return;
     },
 );
-
-function escapeHtml(str: string): string {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}

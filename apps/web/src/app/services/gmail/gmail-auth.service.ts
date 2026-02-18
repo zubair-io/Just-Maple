@@ -85,7 +85,7 @@ export class GmailAuthService {
   private encodeOAuthState(rawState: string): string {
     const platform =
       isPlatformBrowser(this.platformId) && this.nativeBridge.isNativeApp() ? 'native' : 'web';
-    const payload: Record<string, string> = { s: rawState, p: platform };
+    const payload: Record<string, string> = { s: rawState, p: platform, svc: 'gmail' };
     if (platform === 'web') {
       payload['o'] = window.location.origin;
     }
@@ -120,8 +120,10 @@ export class GmailAuthService {
   }
 
   /**
-   * Start the OAuth flow by opening a popup window to Google.
-   * Uses PKCE for additional security.
+   * Start the OAuth flow.
+   * - Native: opens ASWebAuthenticationSession (stays in-app).
+   * - Web: saves return URL then does a full-page redirect to Google.
+   *   The returned Observable never emits for web (page navigates away).
    */
   authenticate(): Observable<{ email: string }> {
     if (!isPlatformBrowser(this.platformId)) {
@@ -130,11 +132,9 @@ export class GmailAuthService {
 
     this._isAuthenticating.set(true);
 
-    // Generate PKCE code verifier and challenge
     const codeVerifier = this.generateCodeVerifier();
     const rawState = crypto.randomUUID();
 
-    // Store verifier and state for callback validation
     sessionStorage.setItem('gmail_code_verifier', codeVerifier);
     sessionStorage.setItem('gmail_oauth_state', rawState);
 
@@ -150,9 +150,16 @@ export class GmailAuthService {
         );
       }),
       switchMap(({ clientId, redirectUri, codeChallenge }) => {
+        // Web: Google redirects directly to Angular callback route
+        // Native: Google redirects to API callback (for justmaple:// scheme)
+        const isNative = this.nativeBridge.isNativeApp();
+        const actualRedirectUri = isNative
+          ? redirectUri
+          : `${window.location.origin}/gmail/oauth/callback`;
+
         const params = new URLSearchParams({
           client_id: clientId,
-          redirect_uri: redirectUri,
+          redirect_uri: actualRedirectUri,
           response_type: 'code',
           scope: environment.google.scopes.join(' '),
           access_type: 'offline',
@@ -164,7 +171,15 @@ export class GmailAuthService {
 
         const authUrl = `${this.GOOGLE_AUTH_URL}?${params.toString()}`;
 
-        return this.openOAuthPopup(authUrl, rawState);
+        if (isNative) {
+          return this.openNativeAuthSession(authUrl, rawState);
+        }
+
+        // Save return URL + redirect URI for token exchange, then navigate
+        sessionStorage.setItem('oauth_return_url', window.location.href);
+        sessionStorage.setItem('gmail_redirect_uri', actualRedirectUri);
+        window.location.href = authUrl;
+        return new Observable<string>(() => {});
       }),
       switchMap((code) => this.exchangeCodeForTokens(code)),
       switchMap((tokens) => this.fetchUserInfoAndStore(tokens)),
@@ -181,15 +196,18 @@ export class GmailAuthService {
   }
 
   /**
-   * Open OAuth popup and wait for callback.
-   * Uses ASWebAuthenticationSession on native apps, browser popup otherwise.
+   * Complete the OAuth flow from the redirect callback (web only).
+   * Called by the callback component after validating the state.
    */
-  private openOAuthPopup(authUrl: string, expectedState: string): Observable<string> {
-    if (this.nativeBridge.isNativeApp()) {
-      return this.openNativeAuthSession(authUrl, expectedState);
-    }
-
-    return this.openBrowserPopup(authUrl, expectedState);
+  completeOAuthFromCallback(code: string): Observable<{ email: string }> {
+    return this.exchangeCodeForTokens(code).pipe(
+      switchMap((tokens) => this.fetchUserInfoAndStore(tokens)),
+      tap((result) => {
+        this._isConnected.set(true);
+        this._connectedEmail.set(result.email);
+        this._isAuthenticating.set(false);
+      }),
+    );
   }
 
   /**
@@ -235,76 +253,6 @@ export class GmailAuthService {
   }
 
   /**
-   * Browser flow: open popup window and listen via BroadcastChannel.
-   * BroadcastChannel works even when Cross-Origin-Opener-Policy blocks window.opener.
-   */
-  private openBrowserPopup(authUrl: string, expectedState: string): Observable<string> {
-    return new Observable((observer) => {
-      const width = 500;
-      const height = 600;
-      const left = window.screenX + (window.outerWidth - width) / 2;
-      const top = window.screenY + (window.outerHeight - height) / 2;
-
-      const popup = window.open(
-        authUrl,
-        'gmail_oauth',
-        `width=${width},height=${height},left=${left},top=${top},popup=1`,
-      );
-
-      if (!popup) {
-        observer.error(new Error('Failed to open OAuth popup. Please allow popups.'));
-        return;
-      }
-
-      // Use BroadcastChannel to receive the OAuth result from the popup
-      const bc = new BroadcastChannel('oauth_callback');
-
-      const handleMessage = (event: MessageEvent) => {
-        if (event.data?.type === 'gmail_oauth_callback') {
-          cleanup();
-
-          if (event.data.error) {
-            observer.error(new Error(event.data.error));
-          } else if (event.data.state !== expectedState) {
-            observer.error(new Error('OAuth state mismatch'));
-          } else if (!event.data.code) {
-            observer.error(new Error('Missing authorization code'));
-          } else {
-            observer.next(event.data.code);
-            observer.complete();
-          }
-        }
-      };
-
-      bc.onmessage = handleMessage;
-
-      // Check if popup was closed manually
-      const checkClosed = setInterval(() => {
-        try {
-          if (popup.closed) {
-            cleanup();
-            observer.error(new Error('OAuth popup was closed'));
-          }
-        } catch {
-          // COOP may block popup.closed — ignore and wait for BroadcastChannel
-        }
-      }, 500);
-
-      const cleanup = () => {
-        bc.close();
-        clearInterval(checkClosed);
-        try {
-          if (!popup.closed) popup.close();
-        } catch {
-          // ignore COOP errors
-        }
-      };
-
-      return cleanup;
-    });
-  }
-
-  /**
    * Exchange authorization code for tokens.
    */
   private exchangeCodeForTokens(code: string): Observable<GoogleTokenResponse> {
@@ -314,9 +262,27 @@ export class GmailAuthService {
       return throwError(() => new Error('Code verifier not found'));
     }
 
+    // Web redirect flow saves the redirect URI; native flow uses the config endpoint
+    const savedRedirectUri = sessionStorage.getItem('gmail_redirect_uri');
+
     // Clean up session storage
     sessionStorage.removeItem('gmail_code_verifier');
     sessionStorage.removeItem('gmail_oauth_state');
+    sessionStorage.removeItem('gmail_redirect_uri');
+
+    if (savedRedirectUri) {
+      return this.http
+        .post<GoogleTokenResponse>('/api/gmail/token', {
+          code,
+          code_verifier: codeVerifier,
+          redirect_uri: savedRedirectUri,
+        })
+        .pipe(
+          catchError((err) =>
+            throwError(() => new Error(err.error?.error_description || 'Token exchange failed')),
+          ),
+        );
+    }
 
     return from(this.getOAuthConfig()).pipe(
       switchMap(({ redirectUri }) =>
