@@ -500,6 +500,83 @@ export class GoogleCalendarService {
   }
 
   /**
+   * Create a new event on a specific calendar.
+   */
+  async createEvent(
+    calendarId: string,
+    event: {
+      summary: string;
+      start: { dateTime?: string; date?: string; timeZone?: string };
+      end: { dateTime?: string; date?: string; timeZone?: string };
+      location?: string;
+      description?: string;
+    },
+  ): Promise<GoogleCalendarEvent> {
+    const accessToken = await this.getAccessToken();
+
+    const response = await fetch(
+      `${this.GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(event),
+      },
+    );
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Calendar access expired. Please reconnect.');
+      }
+      throw new Error('Failed to create event');
+    }
+
+    this.eventCache.clear();
+    return (await response.json()) as GoogleCalendarEvent;
+  }
+
+  /**
+   * Update an existing event on a specific calendar.
+   */
+  async updateEvent(
+    calendarId: string,
+    eventId: string,
+    updates: {
+      summary?: string;
+      start?: { dateTime?: string; date?: string; timeZone?: string };
+      end?: { dateTime?: string; date?: string; timeZone?: string };
+      location?: string;
+      description?: string;
+    },
+  ): Promise<GoogleCalendarEvent> {
+    const accessToken = await this.getAccessToken();
+
+    const response = await fetch(
+      `${this.GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+      },
+    );
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Calendar access expired. Please reconnect.');
+      }
+      throw new Error('Failed to update event');
+    }
+
+    this.eventCache.clear();
+    return (await response.json()) as GoogleCalendarEvent;
+  }
+
+  /**
    * Clear the event cache (e.g., on refresh).
    */
   clearEventCache(): void {

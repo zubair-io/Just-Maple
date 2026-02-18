@@ -96,15 +96,16 @@ import {
   type JsonRefConfig,
   type JsonLoopConfig,
 } from '../../molecules/json-ref-config/json-ref-config.component';
+import { GcalEventPopupComponent } from '../../molecules/gcal-event-popup/gcal-event-popup.component';
 import { isLocalPage, isLocalNotebook } from '../../../providers/data-provider.interface';
-import type { AIWritingType } from '@maple/shared';
+import type { AIWritingType, GoogleCalendarEvent } from '@maple/shared';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 
 @Component({
   selector: 'app-notebook-editor',
   standalone: true,
-  imports: [CommonModule, EditorToolbarComponent, PageLinkSearchComponent],
+  imports: [CommonModule, EditorToolbarComponent, PageLinkSearchComponent, GcalEventPopupComponent],
   templateUrl: './notebook-editor.component.html',
   styleUrl: './notebook-editor.component.scss',
   // encapsulation: ViewEncapsulation.None,
@@ -155,6 +156,14 @@ export class NotebookEditorComponent implements OnDestroy {
   // Page link search state
   readonly pageLinkSearchOpen = signal(false);
   readonly pageLinkSearchMode = signal<'inline' | 'block'>('inline');
+
+  // Google Calendar event popup state
+  readonly gcalPopupOpen = signal(false);
+  readonly gcalPopupMode = signal<'create' | 'edit'>('create');
+  readonly gcalPopupCalendarId = signal<string | null>(null);
+  readonly gcalPopupEvent = signal<GoogleCalendarEvent | null>(null);
+  readonly gcalPopupDefaultDate = signal<string | null>(null);
+  readonly gcalPopupTimezone = signal<string | null>(null);
 
   private _editor: Editor | null = null;
   private ydoc: Y.Doc | null = null;
@@ -350,6 +359,7 @@ export class NotebookEditorComponent implements OnDestroy {
             isConnected: () => this.googleCalendarService.isConnected(),
             onConnect: () => this.connectGoogleCalendar(),
             onRefresh: () => this.googleCalendarService.clearEventCache(),
+            onEventsChanged: () => {},
           }),
           // Inline mentions (@time, @date, @user)
           InlineMention.configure({
@@ -511,6 +521,9 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up JSON ref/loop listeners
         this.setupJsonRefListeners();
+
+        // Set up Google Calendar popup listener
+        this.setupGcalPopupListener();
 
         // Set up bubble menu component
         this.setupBubbleMenuComponent();
@@ -1634,6 +1647,36 @@ export class NotebookEditorComponent implements OnDestroy {
       // Fallback to simple first line extraction
       const fallbackSummary = agendaContent.trim().split('\n')[0].slice(0, 100);
       (this._editor?.commands as any).setAgendaSummary(agendaId, fallbackSummary);
+    }
+  }
+
+  /**
+   * Set up listener for Google Calendar event popup CustomEvents.
+   */
+  private setupGcalPopupListener(): void {
+    const el = this.editorRef?.nativeElement;
+    if (!el) return;
+
+    el.addEventListener('gcal-event-popup', ((e: CustomEvent) => {
+      const { mode, calendarId, event, defaultDate, timeZone } = e.detail;
+      this.gcalPopupMode.set(mode);
+      this.gcalPopupCalendarId.set(calendarId);
+      this.gcalPopupEvent.set(event ?? null);
+      this.gcalPopupDefaultDate.set(defaultDate ?? null);
+      this.gcalPopupTimezone.set(timeZone ?? null);
+      this.gcalPopupOpen.set(true);
+    }) as EventListener);
+  }
+
+  /**
+   * Handle event saved from popup — clear cache and notify the extension to re-fetch.
+   */
+  onGcalEventSaved(): void {
+    this.googleCalendarService.clearEventCache();
+    // Dispatch on the ProseMirror DOM so the extension's listener on editor.view.dom picks it up
+    const el = this._editor?.view.dom;
+    if (el) {
+      el.dispatchEvent(new CustomEvent('gcal-events-changed', { bubbles: true }));
     }
   }
 

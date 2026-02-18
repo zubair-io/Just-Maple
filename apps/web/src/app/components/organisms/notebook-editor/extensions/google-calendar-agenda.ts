@@ -11,6 +11,8 @@ export interface GoogleCalendarAgendaAttrs {
   calendarName: string | null;
   collapsed: boolean;
   collapsedDays: string; // JSON array of collapsed date strings
+  hideAllDay: boolean;
+  timeZone: string | null;
 }
 
 export interface GoogleCalendarAgendaOptions {
@@ -24,6 +26,7 @@ export interface GoogleCalendarAgendaOptions {
   isConnected: () => boolean;
   onConnect: () => void;
   onRefresh: () => void;
+  onEventsChanged: () => void;
 }
 
 declare module '@tiptap/core' {
@@ -104,7 +107,7 @@ function formatDayLabel(dateStr: string): string {
 /**
  * Format event time for display.
  */
-function formatEventTime(event: GoogleCalendarEvent): string {
+function formatEventTime(event: GoogleCalendarEvent, timeZone?: string | null): string {
   if (event.start.date) {
     return 'All day';
   }
@@ -112,18 +115,17 @@ function formatEventTime(event: GoogleCalendarEvent): string {
     const start = new Date(event.start.dateTime);
     const end = event.end.dateTime ? new Date(event.end.dateTime) : null;
 
-    const startStr = start.toLocaleTimeString('en-US', {
+    const opts: Intl.DateTimeFormatOptions = {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-    });
+    };
+    if (timeZone) opts.timeZone = timeZone;
+
+    const startStr = start.toLocaleTimeString('en-US', opts);
 
     if (end) {
-      const endStr = end.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-      });
+      const endStr = end.toLocaleTimeString('en-US', opts);
       return `${startStr} – ${endStr}`;
     }
 
@@ -204,6 +206,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
       isConnected: () => false,
       onConnect: () => {},
       onRefresh: () => {},
+      onEventsChanged: () => {},
     };
   },
 
@@ -267,6 +270,22 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
         renderHTML: (attributes) => {
           if (attributes['collapsedDays'] === '[]') return {};
           return { 'data-gcal-collapsed-days': attributes['collapsedDays'] };
+        },
+      },
+      hideAllDay: {
+        default: false,
+        parseHTML: (element) => element.getAttribute('data-gcal-hide-all-day') === 'true',
+        renderHTML: (attributes) => {
+          if (!attributes['hideAllDay']) return {};
+          return { 'data-gcal-hide-all-day': 'true' };
+        },
+      },
+      timeZone: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-gcal-timezone'),
+        renderHTML: (attributes) => {
+          if (!attributes['timeZone']) return {};
+          return { 'data-gcal-timezone': attributes['timeZone'] };
         },
       },
     };
@@ -646,6 +665,102 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
         }
 
         settingsPanel.appendChild(calRow);
+
+        // Hide all-day events checkbox
+        const hideAllDayRow = document.createElement('div');
+        hideAllDayRow.classList.add('gcal-settings-row');
+
+        const hideAllDayLabel = document.createElement('label');
+        hideAllDayLabel.classList.add('gcal-settings-label');
+        hideAllDayLabel.textContent = 'Display';
+        hideAllDayRow.appendChild(hideAllDayLabel);
+
+        const hideAllDayCheckbox = document.createElement('input');
+        hideAllDayCheckbox.type = 'checkbox';
+        hideAllDayCheckbox.classList.add('gcal-settings-checkbox');
+        hideAllDayCheckbox.checked = !!node.attrs['hideAllDay'];
+        hideAllDayCheckbox.id = `gcal-hide-allday-${nodeId}`;
+        hideAllDayRow.appendChild(hideAllDayCheckbox);
+
+        const hideAllDayText = document.createElement('label');
+        hideAllDayText.textContent = 'Hide all-day events';
+        hideAllDayText.htmlFor = `gcal-hide-allday-${nodeId}`;
+        hideAllDayText.classList.add('gcal-settings-checkbox-label');
+        hideAllDayRow.appendChild(hideAllDayText);
+
+        hideAllDayCheckbox.addEventListener('change', () => {
+          editor.commands.updateGoogleCalendarAgendaAttrs(nodeId, {
+            hideAllDay: hideAllDayCheckbox.checked,
+          });
+        });
+
+        settingsPanel.appendChild(hideAllDayRow);
+
+        // Timezone selection row
+        const tzRow = document.createElement('div');
+        tzRow.classList.add('gcal-settings-row');
+
+        const tzLabel = document.createElement('label');
+        tzLabel.textContent = 'Timezone';
+        tzLabel.classList.add('gcal-settings-label');
+        tzRow.appendChild(tzLabel);
+
+        const tzSelect = document.createElement('select');
+        tzSelect.classList.add('gcal-settings-select');
+
+        const browserDefault = document.createElement('option');
+        browserDefault.value = '';
+        browserDefault.textContent = `Browser default (${Intl.DateTimeFormat().resolvedOptions().timeZone})`;
+        tzSelect.appendChild(browserDefault);
+
+        try {
+          const timezones = Intl.supportedValuesOf('timeZone');
+          for (const tz of timezones) {
+            const opt = document.createElement('option');
+            opt.value = tz;
+            opt.textContent = tz.replace(/_/g, ' ');
+            if (tz === node.attrs['timeZone']) {
+              opt.selected = true;
+            }
+            tzSelect.appendChild(opt);
+          }
+        } catch {
+          // Fallback: add a few common timezones if Intl.supportedValuesOf is not available
+          const common = [
+            'America/New_York',
+            'America/Chicago',
+            'America/Denver',
+            'America/Los_Angeles',
+            'America/Anchorage',
+            'Pacific/Honolulu',
+            'Europe/London',
+            'Europe/Paris',
+            'Europe/Berlin',
+            'Asia/Tokyo',
+            'Asia/Shanghai',
+            'Asia/Kolkata',
+            'Australia/Sydney',
+            'Pacific/Auckland',
+          ];
+          for (const tz of common) {
+            const opt = document.createElement('option');
+            opt.value = tz;
+            opt.textContent = tz.replace(/_/g, ' ');
+            if (tz === node.attrs['timeZone']) {
+              opt.selected = true;
+            }
+            tzSelect.appendChild(opt);
+          }
+        }
+
+        tzSelect.addEventListener('change', () => {
+          editor.commands.updateGoogleCalendarAgendaAttrs(nodeId, {
+            timeZone: tzSelect.value || null,
+          });
+        });
+
+        tzRow.appendChild(tzSelect);
+        settingsPanel.appendChild(tzRow);
       }
 
       // ── Render Days ─────────────────────────────────────────────
@@ -655,6 +770,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
 
         const startDate = node.attrs['startDate'];
         const endDate = node.attrs['endDate'];
+        const hideAllDay = !!node.attrs['hideAllDay'];
         const dates = getDateRange(startDate, endDate);
         const grouped = groupEventsByDate(currentEvents, dates);
 
@@ -681,7 +797,13 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
         }
 
         for (const date of dates) {
-          const dayEvents = grouped.get(date) || [];
+          let dayEvents = grouped.get(date) || [];
+
+          // Filter all-day events if setting is enabled
+          if (hideAllDay) {
+            dayEvents = dayEvents.filter((ev) => !ev.start.date);
+          }
+
           const isDayCollapsed = collapsedDays.has(date);
 
           // Day row
@@ -722,6 +844,31 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
               : '';
           dayHeader.appendChild(eventCount);
 
+          // Add event "+" button
+          const addBtn = document.createElement('button');
+          addBtn.classList.add('gcal-agenda-btn', 'gcal-day-add-btn');
+          addBtn.type = 'button';
+          addBtn.title = 'Add event';
+          const addIcon = document.createElement('span');
+          addIcon.classList.add('material-symbols-rounded');
+          addIcon.textContent = 'add';
+          addBtn.appendChild(addIcon);
+          addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dom.dispatchEvent(
+              new CustomEvent('gcal-event-popup', {
+                bubbles: true,
+                detail: {
+                  mode: 'create' as const,
+                  calendarId: node.attrs['calendarId'],
+                  defaultDate: date,
+                  timeZone: node.attrs['timeZone'],
+                },
+              }),
+            );
+          });
+          dayHeader.appendChild(addBtn);
+
           // Toggle day collapse
           dayHeader.addEventListener('click', () => {
             if (collapsedDays.has(date)) {
@@ -758,7 +905,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
 
                 const eventTime = document.createElement('span');
                 eventTime.classList.add('gcal-event-time');
-                eventTime.textContent = formatEventTime(event);
+                eventTime.textContent = formatEventTime(event, node.attrs['timeZone']);
                 eventEl.appendChild(eventTime);
 
                 const eventTitle = document.createElement('span');
@@ -773,13 +920,21 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
                   eventEl.appendChild(eventLocation);
                 }
 
-                // Open in Google Calendar on click
-                if (event.htmlLink) {
-                  eventEl.style.cursor = 'pointer';
-                  eventEl.addEventListener('click', () => {
-                    window.open(event.htmlLink, '_blank');
-                  });
-                }
+                // Open event popup on click
+                eventEl.style.cursor = 'pointer';
+                eventEl.addEventListener('click', () => {
+                  dom.dispatchEvent(
+                    new CustomEvent('gcal-event-popup', {
+                      bubbles: true,
+                      detail: {
+                        mode: 'edit' as const,
+                        calendarId: node.attrs['calendarId'],
+                        event,
+                        timeZone: node.attrs['timeZone'],
+                      },
+                    }),
+                  );
+                });
 
                 eventsContainer.appendChild(eventEl);
               }
@@ -903,6 +1058,16 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
 
       document.addEventListener('visibilitychange', handleVisibilityChange);
 
+      // Listen for events-changed to re-fetch after popup creates/updates.
+      // Listen on the editor's root DOM so we catch the event dispatched from
+      // the notebook-editor component (which fires on the editor element, a
+      // parent of this node's dom — events bubble up, not down).
+      const editorRoot = editor.view.dom;
+      function handleEventsChanged(): void {
+        loadEvents();
+      }
+      editorRoot.addEventListener('gcal-events-changed', handleEventsChanged);
+
       // Initial load and start polling
       loadEvents();
       startPolling();
@@ -953,7 +1118,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
           ) {
             loadEvents();
           } else {
-            // Just re-render days (for collapse state changes)
+            // Re-render days (for collapse state changes, hideAllDay toggle, etc.)
             renderDays();
           }
 
@@ -964,6 +1129,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
         },
         destroy: () => {
           stopPolling();
+          editorRoot.removeEventListener('gcal-events-changed', handleEventsChanged);
           document.removeEventListener('visibilitychange', handleVisibilityChange);
         },
         stopEvent: () => true,

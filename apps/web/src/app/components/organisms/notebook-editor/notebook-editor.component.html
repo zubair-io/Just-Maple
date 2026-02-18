@@ -35,5 +35,17 @@
       (selected)="onPageLinkSelected($event)"
       (createNew)="onPageLinkCreateNew($event)"
     />
+
+    <!-- Google Calendar Event Popup -->
+    <app-gcal-event-popup
+      [isOpen]="gcalPopupOpen()"
+      [mode]="gcalPopupMode()"
+      [calendarId]="gcalPopupCalendarId()"
+      [event]="gcalPopupEvent()"
+      [defaultDate]="gcalPopupDefaultDate()"
+      [timezone]="gcalPopupTimezone()"
+      (closed)="gcalPopupOpen.set(false)"
+      (saved)="onGcalEventSaved()"
+    />
   }
 </div>

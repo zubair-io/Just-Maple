@@ -1474,6 +1474,7 @@
 
         &:focus {
           background: var(--gcal-accent-hover);
+          border-bottom: 1px solid var(--gcal-accent);
         }
       }
 
@@ -1569,6 +1570,19 @@
             border-color: var(--gcal-accent);
           }
         }
+
+        .gcal-settings-checkbox {
+          width: 16px;
+          height: 16px;
+          cursor: pointer;
+          accent-color: var(--gcal-accent);
+        }
+
+        .gcal-settings-checkbox-label {
+          font-size: 0.8rem;
+          color: var(--color-text-main);
+          cursor: pointer;
+        }
       }
 
       .gcal-connect-btn {
@@ -1647,6 +1661,12 @@
         margin-left: auto;
         font-size: 0.75rem;
         color: var(--color-text-muted);
+      }
+
+      .gcal-day-add-btn {
+        .material-symbols-rounded {
+          font-size: 16px;
+        }
       }
 
       // Events
