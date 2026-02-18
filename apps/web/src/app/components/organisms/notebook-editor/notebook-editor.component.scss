@@ -243,7 +243,7 @@
     }
 
     // Standalone pre (fallback)
-    pre:not(.code-block-container pre):not(.api-block__response-body) {
+    pre:not(.code-block-container pre, .api-block__response-body) {
       background: #1e1e1e;
       color: #d4d4d4;
       padding: 1rem;
@@ -270,26 +270,26 @@
     }
 
     .api-block {
-      border: 1px solid var(--color-border, #e2e8f0);
+      border: 1px solid var(--color-border);
       border-radius: 8px;
       overflow: hidden;
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-family: var(--font-mono);
       font-size: 13px;
 
       &--get {
-        border-left: 3px solid #22c55e;
+        border-left: 3px solid var(--color-method-get);
       }
       &--post {
-        border-left: 3px solid #3b82f6;
+        border-left: 3px solid var(--color-method-post);
       }
       &--put {
-        border-left: 3px solid #f59e0b;
+        border-left: 3px solid var(--color-method-put);
       }
       &--patch {
-        border-left: 3px solid #a855f7;
+        border-left: 3px solid var(--color-method-patch);
       }
       &--delete {
-        border-left: 3px solid #ef4444;
+        border-left: 3px solid var(--color-method-delete);
       }
     }
 
@@ -298,8 +298,8 @@
       align-items: center;
       gap: 8px;
       padding: 8px 12px;
-      background: var(--color-bg-secondary, #f8fafc);
-      border-bottom: 1px solid var(--color-border, #e2e8f0);
+      background: var(--color-bg-secondary);
+      border-bottom: 1px solid var(--color-border);
     }
 
     .api-block__method {
@@ -312,19 +312,19 @@
       flex-shrink: 0;
 
       &.method--get {
-        background: #22c55e;
+        background: var(--color-method-get);
       }
       &.method--post {
-        background: #3b82f6;
+        background: var(--color-method-post);
       }
       &.method--put {
-        background: #f59e0b;
+        background: var(--color-method-put);
       }
       &.method--patch {
-        background: #a855f7;
+        background: var(--color-method-patch);
       }
       &.method--delete {
-        background: #ef4444;
+        background: var(--color-method-delete);
       }
     }
 
@@ -334,7 +334,7 @@
     }
 
     .api-block__summary {
-      color: var(--color-text-muted, #94a3b8);
+      color: var(--color-text-muted);
       font-size: 12px;
       margin-left: auto;
       flex-shrink: 0;
@@ -364,18 +364,18 @@
         font-size: 12px;
         color: var(--color-text-muted);
         text-align: right;
-        font-family: var(--font-sans, system-ui);
+        font-family: var(--font-sans);
       }
 
       .required {
-        color: #ef4444;
+        color: var(--color-error);
       }
 
       .auth-hint {
         grid-column: 2;
         font-size: 11px;
         color: var(--color-text-muted);
-        font-family: var(--font-sans, system-ui);
+        font-family: var(--font-sans);
       }
 
       input {
@@ -393,15 +393,15 @@
         }
 
         &.invalid {
-          border-color: #ef4444;
+          border-color: var(--color-error);
         }
       }
 
       .field-error {
         grid-column: 2;
         font-size: 11px;
-        color: #ef4444;
-        font-family: var(--font-sans, system-ui);
+        color: var(--color-error);
+        font-family: var(--font-sans);
       }
     }
 
@@ -413,7 +413,7 @@
       label {
         font-size: 12px;
         color: var(--color-text-muted);
-        font-family: var(--font-sans, system-ui);
+        font-family: var(--font-sans);
       }
 
       textarea {
@@ -421,7 +421,7 @@
         padding: 8px;
         border: 1px solid var(--color-border);
         border-radius: 4px;
-        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-family: var(--font-mono);
         font-size: 13px;
         resize: vertical;
         background: var(--color-bg);
@@ -445,14 +445,14 @@
       align-items: center;
       gap: 6px;
       padding: 8px 16px;
-      background: var(--color-primary, #3b82f6);
+      background: var(--color-primary);
       color: white;
       border: none;
       border-radius: 6px;
       cursor: pointer;
       font-weight: 600;
       font-size: 13px;
-      font-family: var(--font-sans, system-ui);
+      font-family: var(--font-sans);
 
       .material-symbols-rounded {
         font-size: 16px;
@@ -476,12 +476,12 @@
       align-items: center;
       gap: 6px;
       padding: 8px 12px;
-      background: var(--color-bg-secondary, #f8fafc);
-      border: 1px solid var(--color-border, #e2e8f0);
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
       border-radius: 6px;
       font-size: 12px;
-      color: var(--color-text-muted, #64748b);
-      font-family: var(--font-sans, system-ui);
+      color: var(--color-text-muted);
+      font-family: var(--font-sans);
 
       .material-symbols-rounded {
         font-size: 16px;
@@ -507,12 +507,12 @@
       border-radius: 4px;
 
       &.success {
-        background: #dcfce7;
-        color: #166534;
+        background: var(--color-status-success-bg);
+        color: var(--color-status-success-text);
       }
       &.error {
-        background: #fee2e2;
-        color: #991b1b;
+        background: var(--color-status-error-bg);
+        color: var(--color-status-error-text);
       }
     }
 
@@ -530,20 +530,20 @@
       font-size: 12px;
       line-height: 1.5;
       white-space: pre-wrap;
-      background: #1e293b;
-      color: #e2e8f0;
-      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      font-family: var(--font-mono);
     }
 
     .api-block__error {
       padding: 8px 12px;
-      background: #fef2f2;
-      color: #991b1b;
+      background: var(--color-status-error-bg);
+      color: var(--color-status-error-text);
       font-size: 12px;
       display: flex;
       align-items: center;
       gap: 6px;
-      font-family: var(--font-sans, system-ui);
+      font-family: var(--font-sans);
 
       .material-symbols-rounded {
         font-size: 16px;
@@ -562,7 +562,7 @@
           background: none;
           padding: 0;
           color: #d4d4d4;
-          font-family: 'JetBrains Mono', 'Fira Code', monospace;
+          font-family: var(--font-mono);
           font-size: 0.875rem;
         }
       }
@@ -583,65 +583,8 @@
       }
 
       &:hover {
-        background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+        background: var(--color-bg-hover);
         color: var(--color-text-main);
-      }
-    }
-
-    // Dark mode adjustments for API blocks
-    :host-context(.dark-mode) & {
-      .api-block {
-        border-color: rgba(255, 255, 255, 0.1);
-      }
-
-      .api-block__header {
-        background: rgba(255, 255, 255, 0.03);
-        border-color: rgba(255, 255, 255, 0.1);
-      }
-
-      .api-block__field input {
-        background: rgba(255, 255, 255, 0.05);
-        border-color: rgba(255, 255, 255, 0.15);
-        color: var(--color-text-main);
-      }
-
-      .api-block__body textarea {
-        background: rgba(255, 255, 255, 0.05);
-        border-color: rgba(255, 255, 255, 0.15);
-        color: var(--color-text-main);
-      }
-
-      .api-block__send-disabled {
-        background: rgba(255, 255, 255, 0.03);
-        border-color: rgba(255, 255, 255, 0.1);
-      }
-
-      .api-block__response-header {
-        background: rgba(255, 255, 255, 0.03);
-      }
-
-      .api-block__status {
-        &.success {
-          background: rgba(34, 197, 94, 0.2);
-          color: #4ade80;
-        }
-        &.error {
-          background: rgba(239, 68, 68, 0.2);
-          color: #f87171;
-        }
-      }
-
-      .api-block__error {
-        background: rgba(239, 68, 68, 0.1);
-        color: #f87171;
-      }
-
-      .api-block .icon-btn {
-        border-color: rgba(255, 255, 255, 0.15);
-
-        &:hover {
-          background: rgba(255, 255, 255, 0.08);
-        }
       }
     }
 

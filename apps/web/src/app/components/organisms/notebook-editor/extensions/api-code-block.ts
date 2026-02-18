@@ -1,4 +1,6 @@
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import type { Editor } from '@tiptap/core';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { lowlight, supportedLanguages } from './code-block-with-language';
 import * as yaml from 'js-yaml';
 import { isAbsoluteUrl, resolveApiUrl } from '../../../../utils/api-url';
@@ -58,6 +60,8 @@ function isNativeApp(): boolean {
 
 /**
  * Send a request through the native bridge. Returns a promise.
+ * Uses a per-request requestId and listens for CustomEvents dispatched
+ * by NativeBridgeService, avoiding global receiver overwrites.
  */
 function sendNativeRequest(payload: {
   url: string;
@@ -71,34 +75,41 @@ function sendNativeRequest(payload: {
   body: string;
 }> {
   return new Promise((resolve, reject) => {
-    const bridge = window.__nativeBridge__;
-    if (!bridge) {
+    const handler = window.webkit?.messageHandlers?.nativeBridge;
+    if (!handler) {
       reject(new Error('Native bridge not available'));
       return;
     }
 
-    // Listen for response
-    const originalReceive = bridge.receive;
-    bridge.receive = (message: { type: string; payload: unknown }) => {
-      if (message.type === 'apiResponse') {
-        bridge.receive = originalReceive;
-        resolve(message.payload as any);
-      } else {
-        originalReceive(message as any);
-      }
-    };
+    const requestId = crypto.randomUUID();
 
-    // Timeout after 60s
-    setTimeout(() => {
-      bridge.receive = originalReceive;
+    const timeoutId = setTimeout(() => {
+      window.removeEventListener('maple:apiResponse', listener);
       reject(new Error('Request timed out'));
     }, 60_000);
 
-    // Send
-    const handler = window.webkit?.messageHandlers?.nativeBridge;
-    if (handler) {
-      handler.postMessage(JSON.stringify({ type: 'apiRequest', payload }));
+    function listener(event: Event) {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.requestId !== requestId) return;
+
+      window.removeEventListener('maple:apiResponse', listener);
+      clearTimeout(timeoutId);
+      resolve({
+        status: detail.status,
+        statusText: detail.statusText,
+        durationMs: detail.durationMs,
+        body: detail.body,
+      });
     }
+
+    window.addEventListener('maple:apiResponse', listener);
+
+    handler.postMessage(
+      JSON.stringify({
+        type: 'apiRequest',
+        payload: { ...payload, requestId },
+      }),
+    );
   });
 }
 
@@ -543,6 +554,11 @@ function createApiBlockDom(
     const url = resolveApiUrl(serverUrl || spec.server, spec.path);
     if (!url) {
       sending = false;
+      sendBtnIcon.textContent = 'send';
+      sendBtnIcon.classList.remove('spin');
+      sendBtnText.textContent = ' Send';
+      sendBtn.disabled = false;
+      updateSendState();
       return;
     }
 
@@ -649,7 +665,11 @@ export const ApiCodeBlock = CodeBlockLowlight.extend({
 /**
  * Create the NodeView for an `api` code block.
  */
-function createApiNodeView(node: any, _getPos: (() => number | undefined) | boolean, _editor: any) {
+function createApiNodeView(
+  node: ProseMirrorNode,
+  _getPos: (() => number | undefined) | boolean,
+  _editor: Editor,
+) {
   const wrapper = document.createElement('div');
   wrapper.classList.add('api-block-wrapper');
 
@@ -703,7 +723,7 @@ function createApiNodeView(node: any, _getPos: (() => number | undefined) | bool
   return {
     dom: wrapper,
     contentDOM,
-    update: (updatedNode: any) => {
+    update: (updatedNode: ProseMirrorNode) => {
       if (updatedNode.type.name !== 'codeBlock') return false;
       if (updatedNode.attrs['language'] !== 'api') return false;
 
@@ -711,24 +731,25 @@ function createApiNodeView(node: any, _getPos: (() => number | undefined) | bool
       const newContent = updatedNode.textContent;
       const { spec: newSpec, error: newError } = parseApiYaml(newContent);
 
-      // Clear wrapper
+      // Clear wrapper but preserve the original contentDOM reference
       while (wrapper.firstChild) wrapper.removeChild(wrapper.firstChild);
 
       if (newSpec && !newError) {
-        const newContentDOM = document.createElement('code');
-        newContentDOM.style.display = 'none';
-        const apiBlock = createApiBlockDom(newSpec, newContentDOM, () => updatedNode.textContent);
+        // Reuse the original contentDOM — ProseMirror requires the same element
+        contentDOM.style.display = 'none';
+        const apiBlock = createApiBlockDom(newSpec, contentDOM, () => updatedNode.textContent);
         wrapper.appendChild(apiBlock);
-        // Move contentDOM reference — ProseMirror needs the same element
-        // so we keep original contentDOM in the hidden source view
         return true;
       } else {
+        // Error path: keep original contentDOM hidden but attached
         const errorEl = document.createElement('div');
         errorEl.classList.add('api-block', 'api-block--error');
         const errMsg = document.createElement('div');
         errMsg.classList.add('api-block__error');
         errMsg.textContent = newError || 'Invalid YAML';
         errorEl.appendChild(errMsg);
+        contentDOM.style.display = 'none';
+        errorEl.appendChild(contentDOM);
         wrapper.appendChild(errorEl);
         return true;
       }
@@ -740,9 +761,9 @@ function createApiNodeView(node: any, _getPos: (() => number | undefined) | bool
  * Create the default code block NodeView (same as CodeBlockWithLanguage).
  */
 function createDefaultCodeBlockView(
-  node: any,
+  node: ProseMirrorNode,
   getPos: (() => number | undefined) | boolean,
-  editor: any,
+  editor: Editor,
 ) {
   const container = document.createElement('div');
   container.classList.add('code-block-container');
@@ -784,7 +805,7 @@ function createDefaultCodeBlockView(
   return {
     dom: container,
     contentDOM: code,
-    update: (updatedNode: any) => {
+    update: (updatedNode: ProseMirrorNode) => {
       if (updatedNode.type.name !== 'codeBlock') return false;
       // If switched to api, signal that this view can't handle it
       if (updatedNode.attrs['language'] === 'api') return false;

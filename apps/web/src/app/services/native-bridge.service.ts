@@ -86,6 +86,12 @@ export class NativeBridgeService {
           this._initialState = message.payload as InitialState;
         }
 
+        // Dispatch CustomEvent for apiResponse so non-Angular listeners
+        // (e.g. vanilla DOM NodeViews) can receive responses by requestId
+        if (message.type === 'apiResponse') {
+          window.dispatchEvent(new CustomEvent('maple:apiResponse', { detail: message.payload }));
+        }
+
         this._messages$.next(message);
       },
     };
@@ -476,20 +482,24 @@ export class NativeBridgeService {
         return;
       }
 
-      const sub = this.onApiResponse().subscribe((response) => {
-        sub.unsubscribe();
-        resolve(response);
-      });
+      const requestId = crypto.randomUUID();
 
-      // Timeout after 60 seconds
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         sub.unsubscribe();
         reject(new Error('Request timed out'));
       }, 60_000);
 
+      const sub = this.onApiResponse()
+        .pipe(filter((response) => response.requestId === requestId))
+        .subscribe((response) => {
+          clearTimeout(timeoutId);
+          sub.unsubscribe();
+          resolve(response);
+        });
+
       this.sendMessage({
         type: 'apiRequest',
-        payload,
+        payload: { ...payload, requestId },
       });
     });
   }

@@ -92,6 +92,7 @@ export interface ShareFilePayload {
 // MARK: - API Request Payloads
 
 export interface ApiRequestPayload {
+  requestId?: string;
   url: string;
   method: string;
   headers?: Record<string, string>;
@@ -99,6 +100,7 @@ export interface ApiRequestPayload {
 }
 
 export interface ApiResponsePayload {
+  requestId?: string;
   status: number;
   statusText: string;
   durationMs: number;
