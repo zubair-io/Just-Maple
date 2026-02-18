@@ -61,11 +61,12 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
             return;
         }
 
-        // Web: return a minimal HTML page that posts the result to the opener and closes
+        // Web: return a minimal HTML page that posts the result via BroadcastChannel and closes.
+        // BroadcastChannel works across same-origin tabs/popups even when
+        // Cross-Origin-Opener-Policy blocks window.opener access.
         const safeCode = escapeHtml(code || '');
         const safeState = escapeHtml(originalState);
         const safeError = escapeHtml(error || '');
-        const safeOrigin = escapeHtml(origin);
 
         set.headers['content-type'] = 'text/html; charset=utf-8';
         set.headers['cache-control'] = 'no-store';
@@ -82,11 +83,14 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
     state: ${JSON.stringify(safeState)},
     error: ${JSON.stringify(safeError)} || undefined
   };
-  var target = ${JSON.stringify(safeOrigin)};
 
-  if (window.opener) {
-    window.opener.postMessage(data, target);
-  }
+  // Use BroadcastChannel (works with Cross-Origin-Opener-Policy)
+  try {
+    var bc = new BroadcastChannel('oauth_callback');
+    bc.postMessage(data);
+    bc.close();
+  } catch(e) {}
+
   window.close();
 
   // Fallback: if window.close() is blocked, show a message
