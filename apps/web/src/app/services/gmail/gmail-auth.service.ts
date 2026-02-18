@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Observable, from, throwError, of } from 'rxjs';
+import { Observable, from, throwError } from 'rxjs';
 import { map, switchMap, tap, catchError, take } from 'rxjs/operators';
 import { firstValueFrom } from 'rxjs';
 import { IndexedDBService } from '../indexed-db.service';
@@ -42,7 +42,6 @@ export class GmailAuthService {
   private readonly nativeBridge = inject(NativeBridgeService);
 
   private readonly GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
-  private readonly GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
   private readonly GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
   private readonly NATIVE_CALLBACK_SCHEME = 'justmaple';
 
@@ -301,39 +300,17 @@ export class GmailAuthService {
     sessionStorage.removeItem('gmail_code_verifier');
     sessionStorage.removeItem('gmail_oauth_state');
 
-    return from(this.getClientId()).pipe(
-      switchMap((clientId) => {
-        if (!clientId) {
-          return throwError(() => new Error('Google OAuth client ID not configured'));
-        }
-
-        const params = new URLSearchParams({
-          client_id: clientId,
-          code,
-          code_verifier: codeVerifier,
-          grant_type: 'authorization_code',
-          redirect_uri: this.redirectUri,
-        });
-
-        return from(
-          fetch(this.GOOGLE_TOKEN_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: params.toString(),
-          }),
-        );
-      }),
-      switchMap((response) => {
-        if (!response.ok) {
-          return from(response.json()).pipe(
-            switchMap((error) =>
-              throwError(() => new Error(error.error_description || 'Token exchange failed')),
-            ),
-          );
-        }
-        return from(response.json()) as Observable<GoogleTokenResponse>;
-      }),
-    );
+    return this.http
+      .post<GoogleTokenResponse>('/api/gmail/token', {
+        code,
+        code_verifier: codeVerifier,
+        redirect_uri: this.redirectUri,
+      })
+      .pipe(
+        catchError((err) =>
+          throwError(() => new Error(err.error?.error_description || 'Token exchange failed')),
+        ),
+      );
   }
 
   /**
@@ -454,42 +431,28 @@ export class GmailAuthService {
       throw new Error('No refresh token available');
     }
 
-    const clientId = await this.getClientId();
-    if (!clientId) {
-      throw new Error('Google OAuth client ID not configured');
-    }
+    try {
+      const tokens = await firstValueFrom(
+        this.http.post<GoogleTokenResponse>('/api/gmail/refresh', {
+          refresh_token: this.currentTokens.refreshToken,
+        }),
+      );
 
-    const params = new URLSearchParams({
-      client_id: clientId,
-      refresh_token: this.currentTokens.refreshToken,
-      grant_type: 'refresh_token',
-    });
+      this.currentTokens = {
+        ...this.currentTokens,
+        accessToken: tokens.access_token,
+        expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+      };
 
-    const response = await fetch(this.GOOGLE_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      if (error.error === 'invalid_grant') {
-        // Refresh token revoked - need to re-authenticate
+      await this.storeTokens(this.currentTokens);
+    } catch (err: unknown) {
+      const httpErr = err as { error?: { error?: string; error_description?: string } };
+      if (httpErr.error?.error === 'invalid_grant') {
         await this.disconnect();
         throw new Error('Gmail access was revoked. Please reconnect.');
       }
-      throw new Error(error.error_description || 'Token refresh failed');
+      throw new Error(httpErr.error?.error_description || 'Token refresh failed');
     }
-
-    const tokens: GoogleTokenResponse = await response.json();
-
-    this.currentTokens = {
-      ...this.currentTokens,
-      accessToken: tokens.access_token,
-      expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-    };
-
-    await this.storeTokens(this.currentTokens);
   }
 
   /**

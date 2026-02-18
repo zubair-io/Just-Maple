@@ -22,7 +22,7 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 14, // Add local-notebook-bots store
+    dbVersion: 15, // Add google-calendar-tokens and google-calendar-events stores
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.COLLECTABLE, keyPath: '_id', autoIncrement: false },
@@ -37,6 +37,9 @@ export class IndexedDBService {
       { name: DB_STORES.GMAIL_TOKENS, keyPath: 'accountEmail', autoIncrement: false },
       { name: DB_STORES.GMAIL_SYNC_STATE, keyPath: 'accountEmail', autoIncrement: false },
       { name: DB_STORES.GMAIL_DRAFTS, keyPath: 'id', autoIncrement: false },
+      // Google Calendar stores (local-only, never synced to server)
+      { name: DB_STORES.GOOGLE_CALENDAR_TOKENS, keyPath: 'accountEmail', autoIncrement: false },
+      { name: DB_STORES.GOOGLE_CALENDAR_EVENTS, keyPath: 'id', autoIncrement: false },
       // Local notebook bot associations
       { name: DB_STORES.LOCAL_NOTEBOOK_BOTS, keyPath: 'notebookId', autoIncrement: false },
     ],
