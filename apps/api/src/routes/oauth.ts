@@ -10,7 +10,7 @@ import { config } from '../config';
  *
  *   - web:    Returns an HTML page that posts the result back to the
  *             opener window via BroadcastChannel and closes itself.
- *   - native: 302 → justmaple://gmail/oauth/callback?code=...&state=...
+ *   - native: Returns an HTML page that navigates to justmaple:// scheme
  *             (caught by ASWebAuthenticationSession)
  */
 export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
@@ -47,23 +47,6 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
             }
         }
 
-        // Native: redirect to custom scheme (ASWebAuthenticationSession catches it)
-        if (platform === 'native') {
-            const params = new URLSearchParams();
-            if (code) params.set('code', code);
-            if (error) params.set('error', error);
-            if (scope) params.set('scope', scope);
-            params.set('state', originalState);
-
-            set.status = 302;
-            set.headers['location'] = `justmaple://gmail/oauth/callback?${params.toString()}`;
-            set.headers['cache-control'] = 'no-store';
-            return;
-        }
-
-        // Web: return a minimal HTML page that posts the result via BroadcastChannel and closes.
-        // BroadcastChannel works across same-origin tabs/popups even when
-        // Cross-Origin-Opener-Policy blocks window.opener access.
         const safeCode = escapeHtml(code || '');
         const safeState = escapeHtml(originalState);
         const safeError = escapeHtml(error || '');
@@ -71,6 +54,29 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
         set.headers['content-type'] = 'text/html; charset=utf-8';
         set.headers['cache-control'] = 'no-store';
 
+        // Native: use JS redirect to custom scheme.
+        // ASWebAuthenticationSession detects JS-initiated navigation to the
+        // callback scheme more reliably than a 302 redirect.
+        if (platform === 'native') {
+            const params = new URLSearchParams();
+            if (code) params.set('code', code);
+            if (error) params.set('error', error);
+            if (scope) params.set('scope', scope);
+            params.set('state', originalState);
+
+            const nativeUrl = `justmaple://gmail/oauth/callback?${params.toString()}`;
+
+            return `<!DOCTYPE html>
+<html><head><title>Completing sign-in…</title></head>
+<body>
+<p>Completing sign-in…</p>
+<script>window.location.href = ${JSON.stringify(nativeUrl)};</script>
+</body></html>`;
+        }
+
+        // Web: post the result via BroadcastChannel and close.
+        // BroadcastChannel works across same-origin tabs/popups even when
+        // Cross-Origin-Opener-Policy blocks window.opener access.
         return `<!DOCTYPE html>
 <html><head><title>Completing sign-in…</title></head>
 <body>
