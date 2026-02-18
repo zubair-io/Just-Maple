@@ -1,6 +1,7 @@
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import type { ApiResponsePayload } from '../../../../types/native-bridge.types';
 import { lowlight, supportedLanguages } from './code-block-with-language';
 import * as yaml from 'js-yaml';
 import { isAbsoluteUrl, resolveApiUrl } from '../../../../utils/api-url';
@@ -89,8 +90,8 @@ function sendNativeRequest(payload: {
     }, 60_000);
 
     function listener(event: Event) {
-      const detail = (event as CustomEvent).detail;
-      if (detail?.requestId !== requestId) return;
+      const { detail } = event as CustomEvent<ApiResponsePayload>;
+      if (!detail || detail.requestId !== requestId) return;
 
       window.removeEventListener('maple:apiResponse', listener);
       clearTimeout(timeoutId);
@@ -158,7 +159,7 @@ function defaultForType(type?: string): unknown {
  */
 function buildBodyFromSchema(schema?: ApiSchema): string {
   if (!schema) return '{}';
-  if (schema.example) return JSON.stringify(schema.example, null, 2);
+  if (schema.example !== undefined) return JSON.stringify(schema.example, null, 2);
   if (!schema.properties) return '{}';
 
   const skeleton: Record<string, unknown> = {};
@@ -189,6 +190,23 @@ function buildCurl(
   return curl;
 }
 
+/** Static maps so Tailwind's scanner detects the full class strings. */
+const METHOD_BG: Record<string, string> = {
+  get: 'bg-method-get',
+  post: 'bg-method-post',
+  put: 'bg-method-put',
+  patch: 'bg-method-patch',
+  delete: 'bg-method-delete',
+};
+
+const METHOD_BORDER: Record<string, string> = {
+  get: 'border-l-method-get',
+  post: 'border-l-method-post',
+  put: 'border-l-method-put',
+  patch: 'border-l-method-patch',
+  delete: 'border-l-method-delete',
+};
+
 /**
  * Create the interactive API block DOM for a given spec.
  * This is a self-contained DOM builder — no Angular dependency.
@@ -199,9 +217,18 @@ function createApiBlockDom(
   _getContent: () => string,
 ): HTMLElement {
   const container = document.createElement('div');
-  container.classList.add('api-block');
+  container.classList.add(
+    'api-block',
+    'border',
+    'border-border',
+    'rounded-lg',
+    'overflow-hidden',
+    'font-mono',
+    'text-[13px]',
+    'border-l-[3px]',
+  );
   const methodLower = spec.method.toLowerCase();
-  container.classList.add(`api-block--${methodLower}`);
+  container.classList.add(METHOD_BORDER[methodLower] ?? 'border-l-border');
 
   // State
   let showSource = false;
@@ -234,32 +261,65 @@ function createApiBlockDom(
 
   // -- Header --
   const header = document.createElement('div');
-  header.classList.add('api-block__header');
+  header.classList.add(
+    'api-block__header',
+    'flex',
+    'items-center',
+    'gap-2',
+    'px-3',
+    'py-2',
+    'bg-bg-secondary',
+    'border-b',
+    'border-border',
+  );
 
   const methodBadge = document.createElement('span');
-  methodBadge.classList.add('api-block__method', `method--${methodLower}`);
+  methodBadge.classList.add(
+    'font-bold',
+    'text-[11px]',
+    'uppercase',
+    'px-1.5',
+    'py-0.5',
+    'rounded',
+    'text-white',
+    'shrink-0',
+  );
+  methodBadge.classList.add(METHOD_BG[methodLower] ?? 'bg-method-get');
   methodBadge.textContent = spec.method.toUpperCase();
   header.appendChild(methodBadge);
 
   const pathEl = document.createElement('span');
-  pathEl.classList.add('api-block__path');
+  pathEl.classList.add('font-semibold', 'break-all');
   pathEl.textContent = spec.path;
   header.appendChild(pathEl);
 
   if (spec.summary) {
     const summaryEl = document.createElement('span');
-    summaryEl.classList.add('api-block__summary');
+    summaryEl.classList.add('text-text-muted', 'text-xs', 'ml-auto', 'shrink-0');
     summaryEl.textContent = spec.summary;
     header.appendChild(summaryEl);
   }
 
   const headerActions = document.createElement('div');
-  headerActions.classList.add('api-block__header-actions');
+  headerActions.classList.add('flex', 'items-center', 'ml-auto', 'shrink-0');
   const toggleBtn = document.createElement('button');
-  toggleBtn.classList.add('icon-btn');
+  toggleBtn.classList.add(
+    'bg-transparent',
+    'border',
+    'border-border',
+    'rounded',
+    'px-2',
+    'py-1',
+    'cursor-pointer',
+    'text-text-muted',
+    'flex',
+    'items-center',
+    'hover:bg-bg-hover',
+    'hover:text-text-main',
+  );
   toggleBtn.title = 'Edit YAML';
   toggleBtn.contentEditable = 'false';
-  toggleBtn.innerHTML = `<span class="material-symbols-rounded">code</span>`;
+  toggleBtn.innerHTML = `<span class="material-symbols-rounded text-base">code</span>`;
   headerActions.appendChild(toggleBtn);
   header.appendChild(headerActions);
 
@@ -267,18 +327,29 @@ function createApiBlockDom(
 
   // -- Source view (hidden initially) --
   const sourceView = document.createElement('div');
-  sourceView.classList.add('api-block__source');
+  sourceView.classList.add('api-block__source', 'p-0');
   sourceView.style.display = 'none';
   sourceView.appendChild(contentDOM);
 
   // -- Error view --
   const errorView = document.createElement('div');
-  errorView.classList.add('api-block__error');
+  errorView.classList.add(
+    'api-block__error',
+    'px-3',
+    'py-2',
+    'bg-status-error-bg',
+    'text-status-error-text',
+    'text-xs',
+    'flex',
+    'items-center',
+    'gap-1.5',
+    'font-sans',
+  );
   errorView.style.display = 'none';
 
   // -- Form view --
   const formView = document.createElement('div');
-  formView.classList.add('api-block__form');
+  formView.classList.add('api-block__form', 'p-3', 'flex', 'flex-col', 'gap-2');
   formView.contentEditable = 'false';
 
   // Helper: create field row
@@ -295,13 +366,20 @@ function createApiBlockDom(
     },
   ): HTMLElement {
     const field = document.createElement('div');
-    field.classList.add('api-block__field');
+    field.classList.add(
+      'api-block__field',
+      'grid',
+      'grid-cols-[120px_1fr]',
+      'items-center',
+      'gap-2',
+    );
 
     const labelEl = document.createElement('label');
+    labelEl.classList.add('text-xs', 'text-text-muted', 'text-right', 'font-sans');
     labelEl.textContent = label;
     if (opts.required) {
       const req = document.createElement('span');
-      req.classList.add('required');
+      req.classList.add('text-error');
       req.textContent = ' *';
       labelEl.appendChild(req);
     }
@@ -311,6 +389,19 @@ function createApiBlockDom(
     input.type = opts.isPassword ? 'password' : opts.type || 'text';
     input.placeholder = opts.placeholder || '';
     input.value = opts.value || '';
+    input.classList.add(
+      'px-2',
+      'py-1.5',
+      'border',
+      'border-border',
+      'rounded',
+      'font-[inherit]',
+      'text-[13px]',
+      'bg-bg',
+      'text-text-main',
+      'focus:outline-none',
+      'focus:border-primary',
+    );
     input.addEventListener('input', () => {
       opts.onInput?.(input.value);
     });
@@ -318,7 +409,7 @@ function createApiBlockDom(
 
     if (opts.hint) {
       const hintEl = document.createElement('span');
-      hintEl.classList.add('auth-hint');
+      hintEl.classList.add('col-start-2', 'text-[11px]', 'text-text-muted', 'font-sans');
       hintEl.textContent = opts.hint;
       field.appendChild(hintEl);
     }
@@ -337,15 +428,15 @@ function createApiBlockDom(
       const input = serverField.querySelector('input')!;
       const existing = serverField.querySelector('.field-error');
       if (val && !isAbsoluteUrl(val)) {
-        input.classList.add('invalid');
+        input.classList.add('!border-error');
         if (!existing) {
           const err = document.createElement('span');
-          err.classList.add('field-error');
+          err.classList.add('field-error', 'col-start-2', 'text-[11px]', 'text-error', 'font-sans');
           err.textContent = 'Must be a full URL (http:// or https://)';
           serverField.appendChild(err);
         }
       } else {
-        input.classList.remove('invalid');
+        input.classList.remove('!border-error');
         existing?.remove();
       }
     },
@@ -398,14 +489,29 @@ function createApiBlockDom(
   // Request body
   if (hasBody) {
     const bodyField = document.createElement('div');
-    bodyField.classList.add('api-block__body');
+    bodyField.classList.add('api-block__body', 'flex', 'flex-col', 'gap-1');
     const bodyLabel = document.createElement('label');
+    bodyLabel.classList.add('text-xs', 'text-text-muted', 'font-sans');
     bodyLabel.textContent = 'Body';
     bodyField.appendChild(bodyLabel);
     const textarea = document.createElement('textarea');
     textarea.rows = 6;
     textarea.value = requestBody;
     textarea.placeholder = '{}';
+    textarea.classList.add(
+      'w-full',
+      'p-2',
+      'border',
+      'border-border',
+      'rounded',
+      'font-mono',
+      'text-[13px]',
+      'resize-y',
+      'bg-bg',
+      'text-text-main',
+      'focus:outline-none',
+      'focus:border-primary',
+    );
     textarea.addEventListener('input', () => {
       requestBody = textarea.value;
     });
@@ -429,21 +535,53 @@ function createApiBlockDom(
 
   // Actions row
   const actions = document.createElement('div');
-  actions.classList.add('api-block__actions');
+  actions.classList.add('api-block__actions', 'flex', 'gap-2', 'items-center');
 
   const sendBtn = document.createElement('button');
-  sendBtn.classList.add('api-block__send');
+  sendBtn.classList.add(
+    'api-block__send',
+    'flex',
+    'items-center',
+    'gap-1.5',
+    'px-4',
+    'py-2',
+    'bg-primary',
+    'text-white',
+    'border-none',
+    'rounded-md',
+    'cursor-pointer',
+    'font-semibold',
+    'text-[13px]',
+    'font-sans',
+    'hover:opacity-90',
+    'disabled:opacity-50',
+    'disabled:cursor-not-allowed',
+  );
   const sendBtnIcon = document.createElement('span');
-  sendBtnIcon.classList.add('material-symbols-rounded');
+  sendBtnIcon.classList.add('material-symbols-rounded', 'text-base');
   sendBtnIcon.textContent = 'send';
   sendBtn.appendChild(sendBtnIcon);
   const sendBtnText = document.createTextNode(' Send');
   sendBtn.appendChild(sendBtnText);
 
   const sendDisabled = document.createElement('div');
-  sendDisabled.classList.add('api-block__send-disabled');
+  sendDisabled.classList.add(
+    'api-block__send-disabled',
+    'flex',
+    'items-center',
+    'gap-1.5',
+    'px-3',
+    'py-2',
+    'bg-bg-secondary',
+    'border',
+    'border-border',
+    'rounded-md',
+    'text-xs',
+    'text-text-muted',
+    'font-sans',
+  );
   const infoIcon = document.createElement('span');
-  infoIcon.classList.add('material-symbols-rounded');
+  infoIcon.classList.add('material-symbols-rounded', 'text-base');
   infoIcon.textContent = 'info';
   sendDisabled.appendChild(infoIcon);
   const disabledText = document.createElement('span');
@@ -453,9 +591,22 @@ function createApiBlockDom(
   actions.appendChild(sendDisabled);
 
   const curlBtn = document.createElement('button');
-  curlBtn.classList.add('icon-btn');
+  curlBtn.classList.add(
+    'bg-transparent',
+    'border',
+    'border-border',
+    'rounded',
+    'px-2',
+    'py-1',
+    'cursor-pointer',
+    'text-text-muted',
+    'flex',
+    'items-center',
+    'hover:bg-bg-hover',
+    'hover:text-text-main',
+  );
   curlBtn.title = 'Copy as cURL';
-  curlBtn.innerHTML = `<span class="material-symbols-rounded">content_copy</span>`;
+  curlBtn.innerHTML = `<span class="material-symbols-rounded text-base">content_copy</span>`;
   curlBtn.addEventListener('click', () => {
     const base = serverUrl || spec.server || '';
     let url = base + spec.path;
@@ -481,21 +632,41 @@ function createApiBlockDom(
 
   // Response area
   const responseArea = document.createElement('div');
-  responseArea.classList.add('api-block__response');
+  responseArea.classList.add('api-block__response', 'border-t', 'border-border');
   responseArea.style.display = 'none';
 
   const responseHeader = document.createElement('div');
-  responseHeader.classList.add('api-block__response-header');
+  responseHeader.classList.add(
+    'api-block__response-header',
+    'flex',
+    'items-center',
+    'gap-2',
+    'px-3',
+    'py-2',
+    'bg-bg-secondary',
+  );
   const statusEl = document.createElement('span');
-  statusEl.classList.add('api-block__status');
+  statusEl.classList.add('api-block__status', 'font-bold', 'text-xs', 'px-2', 'py-0.5', 'rounded');
   const timingEl = document.createElement('span');
-  timingEl.classList.add('api-block__timing');
+  timingEl.classList.add('text-text-muted', 'text-xs', 'ml-auto');
   responseHeader.appendChild(statusEl);
   responseHeader.appendChild(timingEl);
   responseArea.appendChild(responseHeader);
 
   const responseBody = document.createElement('pre');
-  responseBody.classList.add('api-block__response-body');
+  responseBody.classList.add(
+    'api-block__response-body',
+    'p-3',
+    'm-0',
+    'max-h-[300px]',
+    'overflow-auto',
+    'text-xs',
+    'leading-relaxed',
+    'whitespace-pre-wrap',
+    'bg-code-bg',
+    'text-code-text',
+    'font-mono',
+  );
   responseArea.appendChild(responseBody);
 
   // Assemble
@@ -529,7 +700,7 @@ function createApiBlockDom(
     e.preventDefault();
     e.stopPropagation();
     showSource = !showSource;
-    toggleBtn.innerHTML = `<span class="material-symbols-rounded">${showSource ? 'visibility' : 'code'}</span>`;
+    toggleBtn.innerHTML = `<span class="material-symbols-rounded text-base">${showSource ? 'visibility' : 'code'}</span>`;
 
     if (showSource) {
       sourceView.style.display = '';
@@ -547,7 +718,7 @@ function createApiBlockDom(
     if (sending) return;
     sending = true;
     sendBtnIcon.textContent = 'progress_activity';
-    sendBtnIcon.classList.add('spin');
+    sendBtnIcon.classList.add('animate-spin');
     sendBtnText.textContent = ' Sending...';
     sendBtn.disabled = true;
 
@@ -555,7 +726,7 @@ function createApiBlockDom(
     if (!url) {
       sending = false;
       sendBtnIcon.textContent = 'send';
-      sendBtnIcon.classList.remove('spin');
+      sendBtnIcon.classList.remove('animate-spin');
       sendBtnText.textContent = ' Send';
       sendBtn.disabled = false;
       updateSendState();
@@ -613,7 +784,7 @@ function createApiBlockDom(
 
     sending = false;
     sendBtnIcon.textContent = 'send';
-    sendBtnIcon.classList.remove('spin');
+    sendBtnIcon.classList.remove('animate-spin');
     sendBtnText.textContent = ' Send';
     sendBtn.disabled = false;
     updateSendState();
@@ -621,8 +792,11 @@ function createApiBlockDom(
     // Show response
     responseArea.style.display = '';
     statusEl.textContent = `${response.status} ${response.statusText}`;
-    statusEl.classList.toggle('success', response.status > 0 && response.status < 400);
-    statusEl.classList.toggle('error', response.status === 0 || response.status >= 400);
+    const isSuccess = response.status > 0 && response.status < 400;
+    statusEl.classList.toggle('bg-status-success-bg', isSuccess);
+    statusEl.classList.toggle('text-status-success-text', isSuccess);
+    statusEl.classList.toggle('bg-status-error-bg', !isSuccess);
+    statusEl.classList.toggle('text-status-error-text', !isSuccess);
     timingEl.textContent = `${response.durationMs}ms`;
 
     // Try to pretty-print JSON
@@ -671,7 +845,7 @@ function createApiNodeView(
   _editor: Editor,
 ) {
   const wrapper = document.createElement('div');
-  wrapper.classList.add('api-block-wrapper');
+  wrapper.classList.add('api-block-wrapper', 'my-3');
 
   // The contentDOM is the editable area for ProseMirror text content
   const contentDOM = document.createElement('code');
@@ -686,33 +860,72 @@ function createApiNodeView(
   } else {
     // Show error + raw source
     const errorEl = document.createElement('div');
-    errorEl.classList.add('api-block');
+    errorEl.classList.add(
+      'api-block',
+      'border',
+      'border-border',
+      'rounded-lg',
+      'overflow-hidden',
+      'font-mono',
+      'text-[13px]',
+    );
 
     const errorHeader = document.createElement('div');
-    errorHeader.classList.add('api-block__header');
+    errorHeader.classList.add(
+      'flex',
+      'items-center',
+      'gap-2',
+      'px-3',
+      'py-2',
+      'bg-bg-secondary',
+      'border-b',
+      'border-border',
+    );
     const badge = document.createElement('span');
-    badge.classList.add('api-block__method', 'method--get');
+    badge.classList.add(
+      'font-bold',
+      'text-[11px]',
+      'uppercase',
+      'px-1.5',
+      'py-0.5',
+      'rounded',
+      'text-white',
+      'shrink-0',
+      'bg-method-get',
+    );
     badge.textContent = 'API';
     errorHeader.appendChild(badge);
     const pathEl = document.createElement('span');
-    pathEl.classList.add('api-block__path');
+    pathEl.classList.add('font-semibold', 'break-all');
     pathEl.textContent = 'Invalid spec';
     errorHeader.appendChild(pathEl);
     errorEl.appendChild(errorHeader);
 
     const errMsg = document.createElement('div');
-    errMsg.classList.add('api-block__error');
+    errMsg.classList.add(
+      'px-3',
+      'py-2',
+      'bg-status-error-bg',
+      'text-status-error-text',
+      'text-xs',
+      'flex',
+      'items-center',
+      'gap-1.5',
+      'font-sans',
+    );
     const errIcon = document.createElement('span');
-    errIcon.classList.add('material-symbols-rounded');
+    errIcon.classList.add('material-symbols-rounded', 'text-base');
     errIcon.textContent = 'error';
     errMsg.appendChild(errIcon);
     errMsg.appendChild(document.createTextNode(` ${error}`));
     errorEl.appendChild(errMsg);
 
     const sourceView = document.createElement('div');
-    sourceView.classList.add('api-block__source');
+    sourceView.classList.add('p-0');
     const pre = document.createElement('pre');
+    pre.classList.add('m-0', 'bg-code-bg', 'p-4');
     pre.appendChild(contentDOM);
+    contentDOM.classList.add('bg-transparent', 'p-0', 'text-code-text', 'font-mono', 'text-sm');
     contentDOM.style.display = '';
     sourceView.appendChild(pre);
     errorEl.appendChild(sourceView);
@@ -743,9 +956,27 @@ function createApiNodeView(
       } else {
         // Error path: keep original contentDOM hidden but attached
         const errorEl = document.createElement('div');
-        errorEl.classList.add('api-block', 'api-block--error');
+        errorEl.classList.add(
+          'api-block',
+          'border',
+          'border-border',
+          'rounded-lg',
+          'overflow-hidden',
+          'font-mono',
+          'text-[13px]',
+        );
         const errMsg = document.createElement('div');
-        errMsg.classList.add('api-block__error');
+        errMsg.classList.add(
+          'px-3',
+          'py-2',
+          'bg-status-error-bg',
+          'text-status-error-text',
+          'text-xs',
+          'flex',
+          'items-center',
+          'gap-1.5',
+          'font-sans',
+        );
         errMsg.textContent = newError || 'Invalid YAML';
         errorEl.appendChild(errMsg);
         contentDOM.style.display = 'none';
