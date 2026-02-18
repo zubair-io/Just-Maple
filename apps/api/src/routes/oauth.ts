@@ -6,10 +6,12 @@ import { config } from '../config';
  *
  * Google OAuth redirects here after user consent. The endpoint decodes
  * the `state` parameter to determine whether the request came from a
- * web browser popup or a native app, then redirects accordingly:
+ * web browser popup or a native app:
  *
- *   - web:    302 → {origin}/gmail/oauth/callback?code=...&state=...
+ *   - web:    Returns an HTML page that posts the result back to the
+ *             opener window via postMessage and closes itself.
  *   - native: 302 → justmaple://gmail/oauth/callback?code=...&state=...
+ *             (caught by ASWebAuthenticationSession)
  */
 export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
     '/callback',
@@ -45,22 +47,63 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
             }
         }
 
-        // Build the target callback URL
-        const params = new URLSearchParams();
-        if (code) params.set('code', code);
-        if (error) params.set('error', error);
-        if (scope) params.set('scope', scope);
-        params.set('state', originalState);
-
-        let redirectUrl: string;
+        // Native: redirect to custom scheme (ASWebAuthenticationSession catches it)
         if (platform === 'native') {
-            redirectUrl = `justmaple://gmail/oauth/callback?${params.toString()}`;
-        } else {
-            redirectUrl = `${origin}/gmail/oauth/callback?${params.toString()}`;
+            const params = new URLSearchParams();
+            if (code) params.set('code', code);
+            if (error) params.set('error', error);
+            if (scope) params.set('scope', scope);
+            params.set('state', originalState);
+
+            set.status = 302;
+            set.headers['location'] = `justmaple://gmail/oauth/callback?${params.toString()}`;
+            set.headers['cache-control'] = 'no-store';
+            return;
         }
 
-        set.status = 302;
-        set.headers['location'] = redirectUrl;
+        // Web: return a minimal HTML page that posts the result to the opener and closes
+        const safeCode = escapeHtml(code || '');
+        const safeState = escapeHtml(originalState);
+        const safeError = escapeHtml(error || '');
+        const safeOrigin = escapeHtml(origin);
+
+        set.headers['content-type'] = 'text/html; charset=utf-8';
         set.headers['cache-control'] = 'no-store';
+
+        return `<!DOCTYPE html>
+<html><head><title>Completing sign-in…</title></head>
+<body>
+<p>Completing sign-in…</p>
+<script>
+(function() {
+  var data = {
+    type: 'gmail_oauth_callback',
+    code: ${JSON.stringify(safeCode)} || undefined,
+    state: ${JSON.stringify(safeState)},
+    error: ${JSON.stringify(safeError)} || undefined
+  };
+  var target = ${JSON.stringify(safeOrigin)};
+
+  if (window.opener) {
+    window.opener.postMessage(data, target);
+  }
+  window.close();
+
+  // Fallback: if window.close() is blocked, show a message
+  setTimeout(function() {
+    document.body.innerHTML = '<p>Sign-in complete. You can close this window.</p>';
+  }, 300);
+})();
+</script>
+</body></html>`;
     },
 );
+
+function escapeHtml(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
