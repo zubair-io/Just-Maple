@@ -39,13 +39,13 @@ struct JapaneseMapleApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
+                    if let url = userActivity.webpageURL {
+                        handleDeepLink(url: url)
+                    }
+                }
         }
         .modelContainer(sharedModelContainer)
-        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
-            if let url = userActivity.webpageURL {
-                handleDeepLink(url: url)
-            }
-        }
     }
 
     private func handleDeepLink(url: URL) {
