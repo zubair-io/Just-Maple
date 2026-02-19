@@ -19,7 +19,9 @@
     "exactOptionalPropertyTypes": false,
     "paths": {
       "@maple/shared": ["./packages/shared/src"],
-      "@maple/shared/*": ["./packages/shared/src/*"]
+      "@maple/shared/*": ["./packages/shared/src/*"],
+      "@maple/whiteboard": ["./packages/whiteboard/src"],
+      "@maple/whiteboard/*": ["./packages/whiteboard/src/*"]
     }
   }
 }

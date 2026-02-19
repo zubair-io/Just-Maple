@@ -85,6 +85,7 @@
         "@ngneat/elf": "^2.5.1",
         "@ngneat/elf-entities": "^5.0.2",
         "@simplewebauthn/browser": "^13.2.2",
+        "@sinclair/typebox": "^0.34.48",
         "@tiptap/core": "^3.15.3",
         "@tiptap/extension-bubble-menu": "^3.18.0",
         "@tiptap/extension-code-block-lowlight": "^3.18.0",
@@ -161,6 +162,23 @@
       },
       "devDependencies": {
         "typescript": "^5.3.0",
+      },
+    },
+    "packages/whiteboard": {
+      "name": "@maple/whiteboard",
+      "version": "0.1.0",
+      "peerDependencies": {
+        "@angular/common": ">=19.0.0",
+        "@angular/core": ">=19.0.0",
+        "@maple/shared": "workspace:*",
+        "nanoid": ">=5.0.0",
+        "perfect-freehand": ">=1.0.0",
+        "rxjs": ">=7.0.0",
+        "simplify-js": ">=1.0.0",
+        "tslib": ">=2.0.0",
+        "y-indexeddb": ">=9.0.0",
+        "y-protocols": ">=1.0.0",
+        "yjs": ">=13.0.0",
       },
     },
   },
@@ -550,6 +568,8 @@
     "@maple/api": ["@maple/api@workspace:apps/api"],
 
     "@maple/shared": ["@maple/shared@workspace:packages/shared"],
+
+    "@maple/whiteboard": ["@maple/whiteboard@workspace:packages/whiteboard"],
 
     "@marijn/find-cluster-break": ["@marijn/find-cluster-break@1.0.2", "", {}, "sha512-l0h88YhZFyKdXIFNfSWpyjStDjGHwZ/U7iobcK1cQQD8sejsONdQtTVU+1wVN1PBw40PiiHB1vA5S7VTfQiP9g=="],
 

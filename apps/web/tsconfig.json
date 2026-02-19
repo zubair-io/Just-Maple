@@ -13,7 +13,13 @@
     "experimentalDecorators": true,
     "importHelpers": true,
     "target": "ES2022",
-    "module": "preserve"
+    "module": "preserve",
+    "paths": {
+      "@maple/whiteboard": ["../../packages/whiteboard/src"],
+      "@maple/whiteboard/*": ["../../packages/whiteboard/src/*"],
+      "@maple/shared": ["../../packages/shared/src"],
+      "@maple/shared/*": ["../../packages/shared/src/*"]
+    }
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,

@@ -12,6 +12,7 @@ import { routes } from './app.routes';
 import { authInterceptor } from './interceptors/auth.interceptor';
 import { SwUpdateService } from './services/sw-update.service';
 import { LogRocketService } from './services/logrocket.service';
+import { whiteboardProviders } from './whiteboard-providers';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -36,5 +37,7 @@ export const appConfig: ApplicationConfig = {
       deps: [LogRocketService],
       multi: true,
     },
+    // Whiteboard package DI tokens
+    ...whiteboardProviders,
   ],
 };

@@ -1,6 +1,6 @@
 import { Component, input, ChangeDetectionStrategy, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { WhiteboardComponent } from '../../organisms/whiteboard/whiteboard.component';
+import { WhiteboardComponent } from '@maple/whiteboard';
 
 @Component({
   selector: 'app-whiteboard-embed',

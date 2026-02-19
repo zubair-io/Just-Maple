@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PageService } from '../../services/page.service';
 import { MemoDocumentService } from '../../services/memo-document.service';
-import { WhiteboardDocumentService } from '../../services/whiteboard-document.service';
+import { WhiteboardDocumentService } from '@maple/whiteboard';
 import { KanbanDocumentService } from '../../services/kanban-document.service';
 import { JsonDocumentService } from '../../services/json-document.service';
 import { isLocalNotebook } from '../../providers/data-provider.interface';

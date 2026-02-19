@@ -7,6 +7,6 @@ export { BarcodeScannerComponent } from './barcode-scanner/barcode-scanner.compo
 export { CollectibleItemViewComponent } from './collectible-item-view/collectible-item-view.component';
 export { ShareModalComponent } from './share-modal/share-modal.component';
 export { SearchModalComponent } from './search-modal/search-modal.component';
-export { WhiteboardComponent } from './whiteboard/whiteboard.component';
+export { WhiteboardComponent } from '@maple/whiteboard';
 export { TemplateGalleryModalComponent } from './template-gallery-modal/template-gallery-modal.component';
 export { KanbanCardModalComponent } from './kanban-card-modal/kanban-card-modal.component';

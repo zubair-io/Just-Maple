@@ -1,0 +1,205 @@
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: var(--color-bg, #ffffff);
+    border-radius: 0.75rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--color-border, #e5e7eb);
+}
+
+.tool-group {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.tool-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: transparent;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    color: var(--color-text-muted, #6b7280);
+    transition:
+        background-color 0.15s,
+        color 0.15s;
+
+    svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    &:hover {
+        background: var(--color-hover, #f3f4f6);
+        color: var(--color-text-main, #111827);
+    }
+
+    &.active {
+        background: var(--color-primary, #d94e3b);
+        color: white;
+    }
+}
+
+.divider {
+    width: 1px;
+    height: 24px;
+    background: var(--color-border, #e5e7eb);
+    margin: 0 0.25rem;
+}
+
+.color-picker-wrapper,
+.size-picker-wrapper {
+    position: relative;
+}
+
+.color-button {
+    width: 28px;
+    height: 28px;
+    border: 2px solid var(--color-border, #e5e7eb);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.15s;
+
+    &:hover {
+        transform: scale(1.1);
+    }
+}
+
+.color-picker-popup,
+.size-picker-popup {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: var(--color-bg, #ffffff);
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border: 1px solid var(--color-border, #e5e7eb);
+}
+
+.color-option {
+    width: 28px;
+    height: 28px;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    cursor: pointer;
+    transition:
+        transform 0.15s,
+        border-color 0.15s;
+
+    &:hover {
+        transform: scale(1.1);
+    }
+
+    &.active {
+        border-color: var(--color-primary, #d94e3b);
+    }
+}
+
+.size-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: transparent;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    color: var(--color-text-main, #111827);
+
+    svg {
+        width: 24px;
+        height: 24px;
+    }
+
+    &:hover {
+        background: var(--color-hover, #f3f4f6);
+    }
+}
+
+.size-picker-popup {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+.size-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 2px solid transparent;
+    border-radius: 0.5rem;
+    background: transparent;
+    cursor: pointer;
+    color: var(--color-text-main, #111827);
+
+    svg {
+        width: 24px;
+        height: 24px;
+    }
+
+    &:hover {
+        background: var(--color-hover, #f3f4f6);
+    }
+
+    &.active {
+        border-color: var(--color-primary, #d94e3b);
+    }
+}
+
+.zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.zoom-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    color: var(--color-text-muted, #6b7280);
+
+    svg {
+        width: 16px;
+        height: 16px;
+    }
+
+    &:hover {
+        background: var(--color-hover, #f3f4f6);
+        color: var(--color-text-main, #111827);
+    }
+}
+
+.zoom-level {
+    min-width: 50px;
+    padding: 0.25rem 0.5rem;
+    border: none;
+    background: transparent;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-text-muted, #6b7280);
+    cursor: pointer;
+    text-align: center;
+
+    &:hover {
+        background: var(--color-hover, #f3f4f6);
+        color: var(--color-text-main, #111827);
+    }
+}

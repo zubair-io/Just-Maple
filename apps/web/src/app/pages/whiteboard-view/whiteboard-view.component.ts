@@ -6,7 +6,7 @@ import { Subscription } from 'rxjs';
 import { PageService } from '../../services/page.service';
 import { NotebookService } from '../../services/notebook.service';
 import { UiStateService } from '../../services/ui-state.service';
-import { WhiteboardComponent } from '../../components/organisms/whiteboard/whiteboard.component';
+import { WhiteboardComponent } from '@maple/whiteboard';
 import { NoteHeaderComponent, DialogService } from '../../components';
 
 @Component({

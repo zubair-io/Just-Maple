@@ -110,7 +110,7 @@ export function extractText(
     const parts: string[] = [];
     let currentLength = 0;
 
-    traverseContent(content, (node) => {
+    traverseContent(content, (node): boolean | void => {
         // Check if we've hit max length
         if (maxLength && currentLength >= maxLength) {
             return false; // Stop traversal

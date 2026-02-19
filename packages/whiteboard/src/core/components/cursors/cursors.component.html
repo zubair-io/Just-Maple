@@ -1,0 +1,36 @@
+@for (cursor of remoteCursors(); track trackByCursor($index, cursor)) {
+    @let pos = getScreenPosition(cursor);
+    <div
+        class="remote-cursor"
+        [style.left.px]="pos.x"
+        [style.top.px]="pos.y"
+        [style.--cursor-color]="cursor.odlUserColor"
+    >
+        <!-- Cursor pointer -->
+        <svg
+            class="cursor-pointer"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            [attr.fill]="cursor.odlUserColor"
+        >
+            <path d="M5.5 3.21V20.8l4.86-4.86h7.36L5.5 3.21z" />
+            <path
+                d="M5.5 3.21V20.8l4.86-4.86h7.36L5.5 3.21z"
+                fill="none"
+                stroke="white"
+                stroke-width="1.5"
+            />
+        </svg>
+
+        <!-- Tool indicator -->
+        <svg class="tool-indicator" width="12" height="12" viewBox="0 0 24 24">
+            <path [attr.d]="getCursorIcon(cursor.odlTool)" [attr.fill]="cursor.odlUserColor" />
+        </svg>
+
+        <!-- User name label -->
+        <div class="cursor-label" [style.background-color]="cursor.odlUserColor">
+            {{ cursor.odlUserName }}
+        </div>
+    </div>
+}
