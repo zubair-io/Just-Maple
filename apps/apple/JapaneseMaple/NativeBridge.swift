@@ -84,6 +84,7 @@ enum WebToNativeMessage: Codable {
     struct OpenAuthSessionPayload: Codable {
         let url: String
         let callbackScheme: String
+        let callbackURL: String?
     }
 
     struct ListFilesPayload: Codable {
@@ -1357,14 +1358,6 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             return
         }
 
-        guard !payload.callbackScheme.isEmpty else {
-            send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
-                url: nil,
-                error: "Invalid callback scheme"
-            )))
-            return
-        }
-
         guard let authURL = URL(string: payload.url) else {
             send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
                 url: nil,
@@ -1373,10 +1366,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             return
         }
 
-        let session = ASWebAuthenticationSession(
-            url: authURL,
-            callbackURLScheme: payload.callbackScheme
-        ) { [weak self] callbackURL, error in
+        let completionHandler: ASWebAuthenticationSession.CompletionHandler = { [weak self] callbackURL, error in
             self?.authSession = nil
             if let error = error as? ASWebAuthenticationSessionError,
                error.code == .canceledLogin {
@@ -1395,14 +1385,50 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                     error: nil
                 )))
             } else {
-                // Neither callbackURL nor error provided — send an error
-                // to prevent the web side from hanging indefinitely.
                 self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
                     url: nil,
                     error: "Auth session completed without a callback URL"
                 )))
             }
         }
+
+        // Prefer HTTPS Universal Link callback (iOS 17.4+/macOS 14.4+).
+        // ASWebAuthenticationSession intercepts the redirect at the network
+        // level before it reaches the server, which reliably dismisses the
+        // auth sheet. Falls back to custom URL scheme for older OS versions.
+        let session: ASWebAuthenticationSession
+        if let callbackURLString = payload.callbackURL,
+           let callbackParsed = URL(string: callbackURLString),
+           let host = callbackParsed.host {
+            if #available(iOS 17.4, macOS 14.4, *) {
+                session = ASWebAuthenticationSession(
+                    url: authURL,
+                    callback: .https(host: host, path: callbackParsed.path),
+                    completionHandler: completionHandler
+                )
+            } else {
+                // HTTPS callback not available — fall back to custom scheme
+                session = ASWebAuthenticationSession(
+                    url: authURL,
+                    callbackURLScheme: payload.callbackScheme,
+                    completionHandler: completionHandler
+                )
+            }
+        } else {
+            guard !payload.callbackScheme.isEmpty else {
+                send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                    url: nil,
+                    error: "Invalid callback scheme"
+                )))
+                return
+            }
+            session = ASWebAuthenticationSession(
+                url: authURL,
+                callbackURLScheme: payload.callbackScheme,
+                completionHandler: completionHandler
+            )
+        }
+
         session.presentationContextProvider = self
         session.prefersEphemeralWebBrowserSession = false
         self.authSession = session

@@ -51,6 +51,7 @@ export interface SetBadgePayload {
 export interface OpenAuthSessionPayload {
   url: string;
   callbackScheme: string;
+  callbackURL?: string;
 }
 
 export interface GmailOAuthResultPayload {

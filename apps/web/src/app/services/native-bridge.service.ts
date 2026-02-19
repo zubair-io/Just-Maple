@@ -513,10 +513,10 @@ export class NativeBridgeService {
 
   // MARK: - OAuth
 
-  openAuthSession(url: string, callbackScheme: string): void {
+  openAuthSession(url: string, callbackScheme: string, callbackURL?: string): void {
     this.sendMessage({
       type: 'openAuthSession',
-      payload: { url, callbackScheme },
+      payload: { url, callbackScheme, callbackURL },
     });
   }
 
