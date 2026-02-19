@@ -260,7 +260,11 @@
                 page of getPagesForNotebook()[notebook._id || 'no_notebook'] || [];
                 track page.id
               ) {
-                <li cdkDrag [cdkDragData]="page" [cdkDragDisabled]="page.type === 'message'">
+                <li
+                  cdkDrag
+                  [cdkDragData]="page"
+                  [cdkDragDisabled]="page.type === 'message' || isMobile()"
+                >
                   <a
                     [routerLink]="
                       editingPageId() !== page.id ? getPageRouterLink(page, notebook._id) : null

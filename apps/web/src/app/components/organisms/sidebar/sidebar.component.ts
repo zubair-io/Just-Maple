@@ -16,6 +16,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { AuthService } from '../../../services/auth.service';
 import { NotebookService } from '../../../services/notebook.service';
 import { PageService } from '../../../services/page.service';
@@ -26,7 +27,7 @@ import { ProfileAvatarComponent } from '../../atoms';
 import { isLocalNotebook } from '../../../providers/data-provider.interface';
 import type { Page } from '@maple/shared';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { filter, map, switchMap } from 'rxjs';
+import { map } from 'rxjs';
 
 @Component({
   selector: 'app-sidebar',
@@ -37,6 +38,7 @@ import { filter, map, switchMap } from 'rxjs';
 })
 export class SidebarComponent implements OnInit, AfterViewChecked {
   private readonly router = inject(Router);
+  private readonly breakpointObserver = inject(BreakpointObserver);
   readonly authService = inject(AuthService);
 
   @ViewChildren('editInput') editInputs!: QueryList<ElementRef<HTMLInputElement>>;
@@ -64,6 +66,11 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   readonly dragHoverNotebookId = signal<string | null>(null);
   readonly isSelectedNotebookLocal = computed(() =>
     isLocalNotebook(this.selectedNotebookId() ?? ''),
+  );
+
+  readonly isMobile = toSignal(
+    this.breakpointObserver.observe('(max-width: 767px)').pipe(map((result) => result.matches)),
+    { initialValue: typeof window !== 'undefined' && window.innerWidth < 768 },
   );
 
   // Inline editing state
