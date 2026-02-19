@@ -171,6 +171,12 @@ export class GmailAuthService {
         });
 
         const authUrl = `${this.GOOGLE_AUTH_URL}?${params.toString()}`;
+        console.log(
+          '[GmailAuth] authenticate: isNative=%s, redirectUri=%s',
+          isNative,
+          actualRedirectUri,
+        );
+        console.log('[GmailAuth] authenticate: authUrl=%s', authUrl);
 
         if (isNative) {
           sessionStorage.setItem('gmail_redirect_uri', actualRedirectUri);
@@ -221,11 +227,16 @@ export class GmailAuthService {
     callbackURL: string,
   ): Observable<string> {
     return new Observable((observer) => {
+      console.log(
+        '[GmailAuth] openNativeAuthSession: opening session, callbackURL=%s',
+        callbackURL,
+      );
       const sub = this.nativeBridge
         .onAuthSessionResult()
         .pipe(take(1))
         .subscribe({
           next: (result) => {
+            console.log('[GmailAuth] openNativeAuthSession: auth result received', result);
             try {
               if (result.error) {
                 observer.error(new Error(result.error));
@@ -241,6 +252,13 @@ export class GmailAuthService {
               const code = callbackUrl.searchParams.get('code');
               const encodedState = callbackUrl.searchParams.get('state');
               const error = callbackUrl.searchParams.get('error');
+
+              console.log(
+                '[GmailAuth] openNativeAuthSession: code=%s, state=%s, error=%s',
+                code ? 'present' : 'null',
+                encodedState ? 'present' : 'null',
+                error,
+              );
 
               // With HTTPS Universal Link callback, Google returns the encoded
               // state directly (the backend no longer decodes it for us).
@@ -292,6 +310,11 @@ export class GmailAuthService {
 
     // Web redirect flow saves the redirect URI; native flow uses the config endpoint
     const savedRedirectUri = sessionStorage.getItem('gmail_redirect_uri');
+    console.log(
+      '[GmailAuth] exchangeCodeForTokens: code=%s, redirectUri=%s',
+      code ? 'present' : 'null',
+      savedRedirectUri,
+    );
 
     // Clean up session storage
     sessionStorage.removeItem('gmail_code_verifier');

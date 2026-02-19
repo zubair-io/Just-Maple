@@ -215,6 +215,14 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
 
     func handleDeepLink(_ urlString: String) {
         print("[WebViewController] Handling deep link: \(urlString)")
+
+        // Check if this is an OAuth callback during an active auth session
+        if let url = URL(string: urlString),
+           bridge?.handleOAuthDeepLink(url: url) == true {
+            print("[WebViewController] Deep link handled as OAuth callback")
+            return
+        }
+
         bridge?.sendDeepLink(url: urlString)
     }
 

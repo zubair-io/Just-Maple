@@ -175,6 +175,12 @@ export class GoogleCalendarService {
         });
 
         const authUrl = `${this.GOOGLE_AUTH_URL}?${params.toString()}`;
+        console.log(
+          '[GCalService] authenticate: isNative=%s, redirectUri=%s',
+          isNative,
+          actualRedirectUri,
+        );
+        console.log('[GCalService] authenticate: authUrl=%s', authUrl);
 
         if (isNative) {
           sessionStorage.setItem('gcal_redirect_uri', actualRedirectUri);
@@ -222,11 +228,16 @@ export class GoogleCalendarService {
     callbackURL: string,
   ): Observable<string> {
     return new Observable((observer) => {
+      console.log(
+        '[GCalService] openNativeAuthSession: opening session, callbackURL=%s',
+        callbackURL,
+      );
       const sub = this.nativeBridge
         .onAuthSessionResult()
         .pipe(take(1))
         .subscribe({
           next: (result) => {
+            console.log('[GCalService] openNativeAuthSession: auth result received', result);
             try {
               if (result.error) {
                 observer.error(new Error(result.error));
@@ -240,6 +251,13 @@ export class GoogleCalendarService {
               const code = callbackUrl.searchParams.get('code');
               const encodedState = callbackUrl.searchParams.get('state');
               const error = callbackUrl.searchParams.get('error');
+
+              console.log(
+                '[GCalService] openNativeAuthSession: code=%s, state=%s, error=%s',
+                code ? 'present' : 'null',
+                encodedState ? 'present' : 'null',
+                error,
+              );
 
               // With HTTPS Universal Link callback, Google returns the encoded
               // state directly (the backend no longer decodes it for us).
@@ -286,6 +304,11 @@ export class GoogleCalendarService {
 
     // Web redirect flow saves the redirect URI; native flow uses the config endpoint
     const savedRedirectUri = sessionStorage.getItem('gcal_redirect_uri');
+    console.log(
+      '[GCalService] exchangeCodeForTokens: code=%s, redirectUri=%s',
+      code ? 'present' : 'null',
+      savedRedirectUri,
+    );
 
     sessionStorage.removeItem('gcal_code_verifier');
     sessionStorage.removeItem('gcal_oauth_state');

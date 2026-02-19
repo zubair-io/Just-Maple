@@ -41,28 +41,21 @@ struct JapaneseMapleApp: App {
             ContentView()
         }
         .modelContainer(sharedModelContainer)
-        // TODO: Re-enable deep linking once .onOpenURL is available in stable SDK
-        // .onOpenURL { url in
-        //     handleDeepLink(url: url)
-        // }
-        // .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
-        //     if let url = userActivity.webpageURL {
-        //         handleDeepLink(url: url)
-        //     }
-        // }
+        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { userActivity in
+            if let url = userActivity.webpageURL {
+                handleDeepLink(url: url)
+            }
+        }
     }
 
-    // TODO: Re-enable when deep linking is restored
-    // private func handleDeepLink(url: URL) {
-    //     print("[JapaneseMapleApp] Received deep link: \(url)")
-    //
-    //     // Send notification to WebViewController to handle the deep link
-    //     NotificationCenter.default.post(
-    //         name: NSNotification.Name("DeepLinkReceived"),
-    //         object: nil,
-    //         userInfo: ["url": url.absoluteString]
-    //     )
-    // }
+    private func handleDeepLink(url: URL) {
+        print("[JapaneseMapleApp] Received deep link: \(url)")
+        NotificationCenter.default.post(
+            name: NSNotification.Name("DeepLinkReceived"),
+            object: nil,
+            userInfo: ["url": url.absoluteString]
+        )
+    }
 }
 
 // MARK: - AppDelegate for Push Notifications

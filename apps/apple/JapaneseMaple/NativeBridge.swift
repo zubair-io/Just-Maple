@@ -554,6 +554,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
     private let decoder = JSONDecoder()
     private var audioLevelTask: Task<Void, Never>?
     private var authSession: ASWebAuthenticationSession?
+    private var pendingOAuthCompletion = false
     private var folderPickerObserver: NSObjectProtocol?
     /// Security-scoped folder URLs granted by the user via folder picker.
     /// Must be kept alive so file operations within these folders are allowed by the sandbox.
@@ -1366,29 +1367,57 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             return
         }
 
+        let usesHttpsCallback = payload.callbackURL != nil
+        print("[Bridge] startAuthSession: authURL=\(authURL)")
+        print("[Bridge] startAuthSession: callbackScheme=\(payload.callbackScheme), callbackURL=\(payload.callbackURL ?? "nil"), usesHttps=\(usesHttpsCallback)")
+
+        pendingOAuthCompletion = true
+
         let completionHandler: ASWebAuthenticationSession.CompletionHandler = { [weak self] callbackURL, error in
-            self?.authSession = nil
-            if let error = error as? ASWebAuthenticationSessionError,
-               error.code == .canceledLogin {
-                self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+            guard let self else { return }
+            self.authSession = nil
+
+            // If already handled via Universal Link fallback, ignore
+            guard self.pendingOAuthCompletion else {
+                print("[Bridge] authSession completionHandler: ignoring — already handled via deep link")
+                return
+            }
+
+            if let callbackURL = callbackURL {
+                print("[Bridge] authSession completionHandler: got URL = \(callbackURL)")
+                self.pendingOAuthCompletion = false
+                self.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                    url: callbackURL.absoluteString,
+                    error: nil
+                )))
+            } else if let error = error as? ASWebAuthenticationSessionError,
+                      error.code == .canceledLogin {
+                print("[Bridge] authSession completionHandler: user cancelled")
+                self.pendingOAuthCompletion = false
+                self.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
                     url: nil,
                     error: "User cancelled"
                 )))
             } else if let error = error {
-                self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                print("[Bridge] authSession completionHandler: error = \(error.localizedDescription)")
+                self.pendingOAuthCompletion = false
+                self.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
                     url: nil,
                     error: error.localizedDescription
                 )))
-            } else if let callbackURL = callbackURL {
-                self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
-                    url: callbackURL.absoluteString,
-                    error: nil
-                )))
             } else {
-                self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
-                    url: nil,
-                    error: "Auth session completed without a callback URL"
-                )))
+                // nil URL, nil error — callback likely went to Universal Link handler.
+                // Keep pendingOAuthCompletion=true, wait for deep link fallback.
+                print("[Bridge] authSession completionHandler: nil URL & nil error — waiting for Universal Link fallback")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) { [weak self] in
+                    guard let self, self.pendingOAuthCompletion else { return }
+                    print("[Bridge] authSession: Universal Link fallback timed out after 10s")
+                    self.pendingOAuthCompletion = false
+                    self.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                        url: nil,
+                        error: "Auth timeout — Universal Link fallback did not arrive"
+                    )))
+                }
             }
         }
 
@@ -1401,6 +1430,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
            let callbackParsed = URL(string: callbackURLString),
            let host = callbackParsed.host {
             if #available(iOS 17.4, macOS 14.4, *) {
+                print("[Bridge] startAuthSession: using HTTPS callback host=\(host) path=\(callbackParsed.path)")
                 session = ASWebAuthenticationSession(
                     url: authURL,
                     callback: .https(host: host, path: callbackParsed.path),
@@ -1408,6 +1438,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 )
             } else {
                 // HTTPS callback not available — fall back to custom scheme
+                print("[Bridge] startAuthSession: HTTPS callback unavailable, falling back to scheme=\(payload.callbackScheme)")
                 session = ASWebAuthenticationSession(
                     url: authURL,
                     callbackURLScheme: payload.callbackScheme,
@@ -1416,12 +1447,14 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             }
         } else {
             guard !payload.callbackScheme.isEmpty else {
+                pendingOAuthCompletion = false
                 send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
                     url: nil,
                     error: "Invalid callback scheme"
                 )))
                 return
             }
+            print("[Bridge] startAuthSession: using custom scheme=\(payload.callbackScheme)")
             session = ASWebAuthenticationSession(
                 url: authURL,
                 callbackURLScheme: payload.callbackScheme,
@@ -1430,20 +1463,46 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         }
 
         session.presentationContextProvider = self
-        // HTTPS callback URLs require an ephemeral session so the system
-        // correctly routes the callback to the completion handler instead
-        // of the Universal Link handler.
-        let usesHttpsCallback = payload.callbackURL != nil
-        session.prefersEphemeralWebBrowserSession = usesHttpsCallback
+        // Non-ephemeral so cookies are shared with Safari (user already signed in).
+        // If the HTTPS callback goes to the Universal Link handler instead of the
+        // completion handler, handleOAuthDeepLink() catches it as a fallback.
+        session.prefersEphemeralWebBrowserSession = false
+        print("[Bridge] startAuthSession: prefersEphemeralWebBrowserSession = false")
         self.authSession = session
 
         if !session.start() {
             self.authSession = nil
+            self.pendingOAuthCompletion = false
             send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
                 url: nil,
                 error: "Failed to start auth session"
             )))
+        } else {
+            print("[Bridge] startAuthSession: session started successfully")
         }
+    }
+
+    /// Called when a Universal Link arrives during an active OAuth session.
+    /// Returns true if the URL was handled as an OAuth callback.
+    func handleOAuthDeepLink(url: URL) -> Bool {
+        guard pendingOAuthCompletion else {
+            print("[Bridge] handleOAuthDeepLink: no pending OAuth — ignoring \(url)")
+            return false
+        }
+        guard url.path.contains("/api/oauth/callback") else {
+            print("[Bridge] handleOAuthDeepLink: path does not match OAuth callback — ignoring \(url.path)")
+            return false
+        }
+
+        print("[Bridge] handleOAuthDeepLink: handling OAuth callback via Universal Link fallback: \(url)")
+        pendingOAuthCompletion = false
+        authSession?.cancel()
+        authSession = nil
+        send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+            url: url.absoluteString,
+            error: nil
+        )))
+        return true
     }
 
     // MARK: - File System Operations

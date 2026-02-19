@@ -35,8 +35,15 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
             platform = json.p || 'web';
             if (json.o) origin = json.o;
             if (json.svc) svc = json.svc;
+            console.log(
+                '[OAuth] Decoded state: platform=%s, svc=%s, origin=%s',
+                platform,
+                svc,
+                origin,
+            );
         } catch {
             // State isn't encoded — pass through as-is
+            console.log('[OAuth] State not encoded, using raw state');
         }
 
         // Validate origin against CORS allowlist to prevent open redirects
@@ -63,6 +70,7 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
             params.set('state', originalState);
 
             const nativeUrl = `justmaple://gmail/oauth/callback?${params.toString()}`;
+            console.log('[OAuth] Redirecting native to: %s', nativeUrl);
 
             set.status = 302;
             set.headers['location'] = nativeUrl;
@@ -77,8 +85,11 @@ export const oauthRoutes = new Elysia({ prefix: '/api/oauth' }).get(
         redirectParams.set('svc', svc);
         if (error) redirectParams.set('error', error);
 
+        const webRedirect = `${origin}/gmail/oauth/callback?${redirectParams.toString()}`;
+        console.log('[OAuth] Redirecting web to: %s', webRedirect);
+
         set.status = 302;
-        set.headers['location'] = `${origin}/gmail/oauth/callback?${redirectParams.toString()}`;
+        set.headers['location'] = webRedirect;
         return;
     },
 );

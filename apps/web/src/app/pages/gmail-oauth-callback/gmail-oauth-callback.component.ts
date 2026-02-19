@@ -30,6 +30,14 @@ export class GmailOAuthCallbackComponent implements OnInit {
     const error = params['error'] as string | undefined;
     const svc = params['svc'] as string | undefined;
 
+    console.log(
+      '[OAuthCallback] params: code=%s, state=%s, error=%s, svc=%s',
+      code ? 'present' : 'null',
+      state ? 'present' : 'null',
+      error,
+      svc,
+    );
+
     // Native app flow: relay result via native bridge
     if (this.nativeBridge.isNativeApp()) {
       this.nativeBridge.sendGmailOAuthResult({ code, state, error });
@@ -52,16 +60,23 @@ export class GmailOAuthCallbackComponent implements OnInit {
     // Decode it to extract the raw state and svc for validation.
     const { rawState, decodedSvc } = this.decodeOAuthState(state);
     const service = svc || decodedSvc || 'gmail';
+    console.log(
+      '[OAuthCallback] decoded service=%s, rawState=%s',
+      service,
+      rawState ? 'present' : 'null',
+    );
 
     // Validate raw state against sessionStorage
     const stateKey = service === 'gcal' ? 'gcal_oauth_state' : 'gmail_oauth_state';
     const expectedState = sessionStorage.getItem(stateKey);
 
     if (rawState !== expectedState) {
-      console.error('OAuth state mismatch');
+      console.error('[OAuthCallback] state mismatch: expected=%s, got=%s', expectedState, rawState);
       this.navigateToReturnUrl();
       return;
     }
+
+    console.log('[OAuthCallback] state validated, completing %s token exchange', service);
 
     // Complete token exchange via the appropriate service
     const completion$ =
