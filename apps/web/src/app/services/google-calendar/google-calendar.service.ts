@@ -155,7 +155,8 @@ export class GoogleCalendarService {
       }),
       switchMap(({ clientId, redirectUri, codeChallenge }) => {
         // Web: Google redirects directly to Angular callback route
-        // Native: Google redirects to API callback (for justmaple:// scheme)
+        // Native: Google redirects to API OAuth callback; ASWebAuthenticationSession
+        //   intercepts via HTTPS Universal Link before the server processes it
         const isNative = this.nativeBridge.isNativeApp();
         const actualRedirectUri = isNative
           ? redirectUri
@@ -176,7 +177,8 @@ export class GoogleCalendarService {
         const authUrl = `${this.GOOGLE_AUTH_URL}?${params.toString()}`;
 
         if (isNative) {
-          return this.openNativeAuthSession(authUrl, rawState);
+          sessionStorage.setItem('gcal_redirect_uri', actualRedirectUri);
+          return this.openNativeAuthSession(authUrl, rawState, actualRedirectUri);
         }
 
         // Save return URL + redirect URI for token exchange, then navigate
@@ -214,7 +216,11 @@ export class GoogleCalendarService {
     );
   }
 
-  private openNativeAuthSession(authUrl: string, expectedState: string): Observable<string> {
+  private openNativeAuthSession(
+    authUrl: string,
+    expectedState: string,
+    callbackURL: string,
+  ): Observable<string> {
     return new Observable((observer) => {
       const sub = this.nativeBridge
         .onAuthSessionResult()
@@ -230,8 +236,13 @@ export class GoogleCalendarService {
           }
           const callbackUrl = new URL(result.url);
           const code = callbackUrl.searchParams.get('code');
-          const state = callbackUrl.searchParams.get('state');
+          const encodedState = callbackUrl.searchParams.get('state');
           const error = callbackUrl.searchParams.get('error');
+
+          // With HTTPS Universal Link callback, Google returns the encoded
+          // state directly (the backend no longer decodes it for us).
+          // Decode to extract the raw state for validation.
+          const state = this.decodeRawState(encodedState);
 
           if (error) {
             observer.error(new Error(error));
@@ -245,9 +256,19 @@ export class GoogleCalendarService {
           }
         });
 
-      this.nativeBridge.openAuthSession(authUrl, this.NATIVE_CALLBACK_SCHEME);
+      this.nativeBridge.openAuthSession(authUrl, this.NATIVE_CALLBACK_SCHEME, callbackURL);
       return () => sub.unsubscribe();
     });
+  }
+
+  private decodeRawState(encoded: string | null): string | null {
+    if (!encoded) return null;
+    try {
+      const json = JSON.parse(atob(encoded.replace(/-/g, '+').replace(/_/g, '/')));
+      return json.s || encoded;
+    } catch {
+      return encoded;
+    }
   }
 
   private exchangeCodeForTokens(code: string): Observable<GoogleTokenResponse> {
