@@ -132,6 +132,15 @@ class ServerConfigService {
 
     private let keychainService = "com.just.maple.JapaneseMaple"
     private let tokenKeyPrefix = "bearer_token"
+    /// Shared keychain access group for iOS + Watch. Omitted on macOS to avoid
+    /// the login-keychain password prompt (macOS doesn't need cross-target sharing).
+    private let keychainAccessGroup: String? = {
+        #if os(iOS)
+        return "group.com.just.maple.JapaneseMaple"
+        #else
+        return nil
+        #endif
+    }()
 
     /// Get the keychain account name for a server
     private func tokenKey(for serverId: String?) -> String {
@@ -142,52 +151,55 @@ class ServerConfigService {
         return "\(tokenKeyPrefix):\(getActiveServer().url)"
     }
 
+    /// Build a keychain query dictionary, conditionally including the access group.
+    private func keychainQuery(account: String, extras: [String: Any] = [:]) -> [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: account,
+        ]
+        if let group = keychainAccessGroup {
+            query[kSecAttrAccessGroup as String] = group
+        }
+        for (key, value) in extras {
+            query[key] = value
+        }
+        return query
+    }
+
     func saveToken(_ token: String, serverId: String? = nil) -> Bool {
         let data = token.data(using: .utf8)!
         let account = tokenKey(for: serverId)
 
         // Delete existing token first
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: "group.com.just.maple.JapaneseMaple"
-        ]
+        let deleteQuery = keychainQuery(account: account)
         SecItemDelete(deleteQuery as CFDictionary)
 
-        // Add new token with shared access group
-        let addQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: account,
+        // Add new token
+        let addQuery = keychainQuery(account: account, extras: [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-            kSecAttrAccessGroup as String: "group.com.just.maple.JapaneseMaple"
-        ]
+        ])
 
         let status = SecItemAdd(addQuery as CFDictionary, nil)
         let success = status == errSecSuccess
-        
+
         if success {
-            print("[ServerConfigService] Saved token to shared keychain for account: \(account)")
+            print("[ServerConfigService] Saved token to keychain for account: \(account)")
         } else {
             print("[ServerConfigService] Failed to save token: \(status)")
         }
-        
+
         return success
     }
 
     func getToken(serverId: String? = nil) -> String? {
         let account = tokenKey(for: serverId)
 
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: account,
+        let query = keychainQuery(account: account, extras: [
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecAttrAccessGroup as String: "group.com.just.maple.JapaneseMaple"
-        ]
+        ])
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -204,12 +216,7 @@ class ServerConfigService {
     func clearToken(serverId: String? = nil) -> Bool {
         let account = tokenKey(for: serverId)
 
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: "group.com.just.maple.JapaneseMaple"
-        ]
+        let query = keychainQuery(account: account)
 
         let status = SecItemDelete(query as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound
