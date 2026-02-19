@@ -31,6 +31,8 @@ export const googleCalendarRoutes = new Elysia({ prefix: '/api/google-calendar' 
     .post(
         '/token',
         async ({ body, set }) => {
+            console.log('[GCal Token] exchange request: redirect_uri=%s', body.redirect_uri);
+
             const params = new URLSearchParams({
                 client_id: config.gmailClientId,
                 client_secret: config.gmailClientSecret,
@@ -49,10 +51,19 @@ export const googleCalendarRoutes = new Elysia({ prefix: '/api/google-calendar' 
             const data = await response.json();
 
             if (!response.ok) {
+                console.log(
+                    '[GCal Token] exchange failed: %s - %s',
+                    data.error,
+                    data.error_description,
+                );
                 set.status = response.status;
                 return { error: data.error, error_description: data.error_description };
             }
 
+            console.log(
+                '[GCal Token] exchange success, has refresh_token=%s',
+                !!data.refresh_token,
+            );
             return data;
         },
         {

@@ -194,13 +194,16 @@ export class GoogleCalendarService {
         return new Observable<string>(() => {});
       }),
       switchMap((code) => this.exchangeCodeForTokens(code)),
+      tap((tokens) => console.log('[GCalService] token exchange result:', tokens)),
       switchMap((tokens) => this.fetchUserInfoAndStore(tokens)),
       tap((result) => {
+        console.log('[GCalService] auth complete, email=%s', result.email);
         this._isConnected.set(true);
         this._connectedEmail.set(result.email);
         this._isAuthenticating.set(false);
       }),
       catchError((error) => {
+        console.error('[GCalService] auth error:', error);
         this._isAuthenticating.set(false);
         return throwError(() => error);
       }),
