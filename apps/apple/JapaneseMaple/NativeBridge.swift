@@ -1394,6 +1394,13 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                     url: callbackURL.absoluteString,
                     error: nil
                 )))
+            } else {
+                // Neither callbackURL nor error provided — send an error
+                // to prevent the web side from hanging indefinitely.
+                self?.send(.authSessionResult(NativeToWebMessage.AuthSessionResult(
+                    url: nil,
+                    error: "Auth session completed without a callback URL"
+                )))
             }
         }
         session.presentationContextProvider = self
