@@ -224,37 +224,44 @@ export class GmailAuthService {
       const sub = this.nativeBridge
         .onAuthSessionResult()
         .pipe(take(1))
-        .subscribe((result) => {
-          if (result.error) {
-            observer.error(new Error(result.error));
-            return;
-          }
+        .subscribe({
+          next: (result) => {
+            try {
+              if (result.error) {
+                observer.error(new Error(result.error));
+                return;
+              }
 
-          if (!result.url) {
-            observer.error(new Error('No callback URL received'));
-            return;
-          }
+              if (!result.url) {
+                observer.error(new Error('No callback URL received'));
+                return;
+              }
 
-          const callbackUrl = new URL(result.url);
-          const code = callbackUrl.searchParams.get('code');
-          const encodedState = callbackUrl.searchParams.get('state');
-          const error = callbackUrl.searchParams.get('error');
+              const callbackUrl = new URL(result.url);
+              const code = callbackUrl.searchParams.get('code');
+              const encodedState = callbackUrl.searchParams.get('state');
+              const error = callbackUrl.searchParams.get('error');
 
-          // With HTTPS Universal Link callback, Google returns the encoded
-          // state directly (the backend no longer decodes it for us).
-          // Decode to extract the raw state for validation.
-          const state = this.decodeRawState(encodedState);
+              // With HTTPS Universal Link callback, Google returns the encoded
+              // state directly (the backend no longer decodes it for us).
+              // Decode to extract the raw state for validation.
+              const state = this.decodeRawState(encodedState);
 
-          if (error) {
-            observer.error(new Error(error));
-          } else if (state !== expectedState) {
-            observer.error(new Error('OAuth state mismatch'));
-          } else if (!code) {
-            observer.error(new Error('No authorization code received'));
-          } else {
-            observer.next(code);
-            observer.complete();
-          }
+              if (error) {
+                observer.error(new Error(error));
+              } else if (state !== expectedState) {
+                observer.error(new Error('OAuth state mismatch'));
+              } else if (!code) {
+                observer.error(new Error('No authorization code received'));
+              } else {
+                observer.next(code);
+                observer.complete();
+              }
+            } catch (e) {
+              observer.error(e);
+            }
+          },
+          error: (err) => observer.error(err),
         });
 
       this.nativeBridge.openAuthSession(authUrl, this.NATIVE_CALLBACK_SCHEME, callbackURL);
