@@ -1430,7 +1430,11 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         }
 
         session.presentationContextProvider = self
-        session.prefersEphemeralWebBrowserSession = false
+        // HTTPS callback URLs require an ephemeral session so the system
+        // correctly routes the callback to the completion handler instead
+        // of the Universal Link handler.
+        let usesHttpsCallback = payload.callbackURL != nil
+        session.prefersEphemeralWebBrowserSession = usesHttpsCallback
         self.authSession = session
 
         if !session.start() {
