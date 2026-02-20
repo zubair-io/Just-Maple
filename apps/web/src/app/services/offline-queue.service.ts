@@ -258,12 +258,14 @@ export class OfflineQueueService {
   }
 
   private async processCreateMemo(item: OfflineQueueItem): Promise<void> {
-    await firstValueFrom(
-      this.http.post('/api/memos', {
-        id: item.payload.id,
-        pageId: item.payload.pageId,
-      }),
-    );
+    const body: Record<string, unknown> = {
+      id: item.payload.id,
+      pageId: item.payload.pageId,
+    };
+    if (item.payload.meta) {
+      body['meta'] = item.payload.meta;
+    }
+    await firstValueFrom(this.http.post('/api/memos', body));
   }
 
   /**

@@ -540,6 +540,7 @@ export class MemoDocumentService {
     parentPageId?: string,
     title?: string,
     existingMemoId?: string,
+    laneId?: string,
   ): Promise<{
     page?: Page;
     memoId: string;
@@ -605,10 +606,14 @@ export class MemoDocumentService {
       // === Card memo mode: no Page record, just a memo entity ===
 
       // Queue create-memo action (POST /api/memos)
-      await this.offlineQueue.enqueue('create-memo', memoId, memoId, {
+      const payload: Record<string, unknown> = {
         id: memoId,
         pageId: parentPageId,
-      });
+      };
+      if (laneId) {
+        payload['meta'] = { kanban: { laneId } };
+      }
+      await this.offlineQueue.enqueue('create-memo', memoId, memoId, payload);
 
       // Queue memo Y.Doc sync
       const state = Y.encodeStateAsUpdate(ydoc);

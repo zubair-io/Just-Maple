@@ -3,7 +3,7 @@ import { jwt } from '@elysiajs/jwt';
 import { config } from '../config';
 import { findUserById } from '../repositories/user.repo';
 import { findPageById } from '../repositories/page.repo';
-import { findMemoById, createMemo } from '../repositories/memo.repo';
+import { findMemoById, createMemo, updateMemoMeta } from '../repositories/memo.repo';
 import { yjsDocumentService } from '../services/yjs-document.service';
 import { deleteMemo } from '../repositories/memo.repo';
 import { isDevMode, isDocPage, getDocContent, pageIdToSlug } from '../services/docs.service';
@@ -70,7 +70,7 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                 return { error: 'Unauthorized' };
             }
 
-            const { id, pageId } = body;
+            const { id, pageId, meta } = body;
 
             // Verify user has access to the parent page
             const page = await findPageById(pageId, auth.user._id);
@@ -87,7 +87,7 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
                 const state = Y.encodeStateAsUpdate(ydoc);
                 ydoc.destroy();
 
-                const memo = await createMemo({ id, pageId, state });
+                const memo = await createMemo({ id, pageId, state, meta });
 
                 console.log(`[Memo] Created memo entity ${id} for parent page ${pageId}`);
 
@@ -102,6 +102,60 @@ export const memoRoutes = new Elysia({ prefix: '/api/memos' })
             body: t.Object({
                 id: t.String(),
                 pageId: t.String(),
+                meta: t.Optional(
+                    t.Object({
+                        kanban: t.Optional(
+                            t.Object({
+                                laneId: t.String(),
+                            }),
+                        ),
+                    }),
+                ),
+            }),
+        },
+    )
+    /**
+     * Update memo metadata (e.g., kanban lane assignment)
+     */
+    .patch(
+        '/:id/meta',
+        async ({ auth, params, body, set }) => {
+            if (!auth) {
+                set.status = 401;
+                return { error: 'Unauthorized' };
+            }
+
+            const { id } = params;
+
+            // Look up memo and verify access via parent page
+            const page = await findPageForMemo(id, auth.user._id);
+            if (!page) {
+                set.status = 404;
+                return { error: 'Memo not found' };
+            }
+
+            try {
+                const updated = await updateMemoMeta(id, body.meta);
+                if (!updated) {
+                    set.status = 404;
+                    return { error: 'Memo not found' };
+                }
+                return { success: true };
+            } catch (error) {
+                console.error(`[Memo] Failed to update meta for ${id}:`, error);
+                set.status = 500;
+                return { error: 'Failed to update memo metadata' };
+            }
+        },
+        {
+            body: t.Object({
+                meta: t.Object({
+                    kanban: t.Optional(
+                        t.Object({
+                            laneId: t.String(),
+                        }),
+                    ),
+                }),
             }),
         },
     )

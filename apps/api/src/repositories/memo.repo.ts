@@ -1,6 +1,6 @@
 import { ObjectId, Collection, Binary } from 'mongodb';
 import { getDb } from '../db/client';
-import type { Memo, CreateMemoInput } from '@maple/shared';
+import type { Memo, CreateMemoInput, MemoMetaField } from '@maple/shared';
 
 interface MemoDocument {
     _id: ObjectId;
@@ -9,6 +9,7 @@ interface MemoDocument {
     state: Binary; // Y.Doc encoded state
     version: number;
     updatedAt: Date;
+    meta?: MemoMetaField;
 }
 
 function getCollection(): Collection<MemoDocument> {
@@ -23,6 +24,7 @@ function toMemoResponse(doc: MemoDocument): Memo {
         state: doc.state.buffer, // Convert Binary to Buffer/Uint8Array
         version: doc.version,
         updatedAt: doc.updatedAt.toISOString(),
+        ...(doc.meta ? { meta: doc.meta } : {}),
     };
 }
 
@@ -43,6 +45,7 @@ export async function createMemo(input: CreateMemoInput): Promise<Memo> {
         state: new Binary(Buffer.from(stateBuffer)),
         version: 1,
         updatedAt: now,
+        ...(input.meta ? { meta: input.meta } : {}),
     };
 
     const result = await getCollection().insertOne(doc as MemoDocument);
@@ -54,6 +57,7 @@ export async function createMemo(input: CreateMemoInput): Promise<Memo> {
         state: stateBuffer,
         version: doc.version,
         updatedAt: now.toISOString(),
+        ...(input.meta ? { meta: input.meta } : {}),
     };
 }
 
@@ -213,6 +217,18 @@ export async function deleteMemosByPageId(pageId: string): Promise<number> {
         return result.deletedCount;
     } catch {
         return 0;
+    }
+}
+
+/**
+ * Update memo metadata (e.g., kanban lane assignment)
+ */
+export async function updateMemoMeta(id: string, meta: MemoMetaField): Promise<boolean> {
+    try {
+        const result = await getCollection().updateOne({ id }, { $set: { meta } });
+        return result.matchedCount === 1;
+    } catch {
+        return false;
     }
 }
 

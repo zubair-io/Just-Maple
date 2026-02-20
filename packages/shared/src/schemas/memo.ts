@@ -1,5 +1,18 @@
 import { Type, Static } from '@sinclair/typebox';
 
+// Kanban-specific metadata stored on card memos
+export const MemoKanbanMetaSchema = Type.Object({
+    laneId: Type.String(), // Which lane this card belongs to
+});
+
+export type MemoKanbanMeta = Static<typeof MemoKanbanMetaSchema>;
+
+export const MemoMetaFieldSchema = Type.Object({
+    kanban: Type.Optional(MemoKanbanMetaSchema),
+});
+
+export type MemoMetaField = Static<typeof MemoMetaFieldSchema>;
+
 // Memo document stored in MongoDB 'memos' collection
 // Separate from pages collection to store Y.Doc binary state
 export const MemoSchema = Type.Object({
@@ -9,6 +22,7 @@ export const MemoSchema = Type.Object({
     state: Type.Any(), // Y.Doc encoded state (Uint8Array stored as Binary)
     version: Type.Number(), // Increments on each update, for cache invalidation
     updatedAt: Type.String({ format: 'date-time' }),
+    meta: Type.Optional(MemoMetaFieldSchema),
 });
 
 export type Memo = Static<typeof MemoSchema>;
@@ -18,6 +32,7 @@ export const CreateMemoSchema = Type.Object({
     id: Type.String(), // Unique memo ID
     pageId: Type.String(), // Parent page ID
     state: Type.Any(), // Y.Doc encoded state
+    meta: Type.Optional(MemoMetaFieldSchema),
 });
 
 export type CreateMemoInput = Static<typeof CreateMemoSchema>;

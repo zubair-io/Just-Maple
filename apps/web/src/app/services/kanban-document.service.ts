@@ -184,12 +184,6 @@ export class KanbanDocumentService {
     // Recover any orphaned cards (in cards map but not in any lane)
     this.recoverOrphanedCards(ydoc);
 
-    // If online and no cards in the board, try to recover from memo collection
-    const cards = ydoc.getMap<Y.Map<unknown>>('cards');
-    if (this.connectivity.canSync() && cards.size === 0) {
-      await this.recoverCardsFromMemos(pageId, ydoc);
-    }
-
     return this.getKanbanHelpers(doc);
   }
 
@@ -293,6 +287,63 @@ export class KanbanDocumentService {
   }
 
   /**
+   * Remove duplicate cards that reference the same memoPageId.
+   * This happens when multiple clients independently reconcile cards from the
+   * memos collection, each creating new Y.Doc entries for the same memo.
+   * Keeps the first card found, removes duplicates from both the cards map
+   * and lane cardIds arrays.
+   */
+  private deduplicateCardsByMemo(ydoc: Y.Doc): void {
+    const cards = ydoc.getMap<Y.Map<unknown>>('cards');
+    const lanes = ydoc.getArray<Y.Map<unknown>>('lanes');
+    if (cards.size === 0) return;
+
+    // Group card IDs by memoPageId
+    const memoToCards = new Map<string, string[]>();
+    cards.forEach((card, cardId) => {
+      const memoPageId = card.get('memoPageId') as string | undefined;
+      if (!memoPageId) return;
+      const existing = memoToCards.get(memoPageId);
+      if (existing) {
+        existing.push(cardId);
+      } else {
+        memoToCards.set(memoPageId, [cardId]);
+      }
+    });
+
+    // Find duplicate card IDs to remove (keep first, remove rest)
+    const toRemove = new Set<string>();
+    for (const [, cardIds] of memoToCards) {
+      if (cardIds.length > 1) {
+        for (let i = 1; i < cardIds.length; i++) {
+          toRemove.add(cardIds[i]);
+        }
+      }
+    }
+
+    if (toRemove.size === 0) return;
+
+    ydoc.transact(() => {
+      // Remove from lane cardIds arrays (reverse iterate to keep indices valid)
+      for (let i = 0; i < lanes.length; i++) {
+        const laneCardIds = lanes.get(i).get('cardIds') as Y.Array<string> | undefined;
+        if (!laneCardIds) continue;
+        for (let j = laneCardIds.length - 1; j >= 0; j--) {
+          if (toRemove.has(laneCardIds.get(j))) {
+            laneCardIds.delete(j, 1);
+          }
+        }
+      }
+      // Remove from cards map
+      for (const cardId of toRemove) {
+        cards.delete(cardId);
+      }
+    });
+
+    console.log(`[Kanban] Deduplicated ${toRemove.size} duplicate card(s) by memoPageId`);
+  }
+
+  /**
    * Recover orphaned cards — cards in the cards map that aren't in any lane's cardIds.
    * Adds them to the first lane (usually "To Do").
    */
@@ -335,38 +386,66 @@ export class KanbanDocumentService {
    * Recover cards from the memo collection when the kanban Y.Doc has lost all cards.
    * Fetches card memos from the server and recreates card entries in the Y.Doc.
    */
-  private async recoverCardsFromMemos(pageId: string, ydoc: Y.Doc): Promise<void> {
+  /**
+   * Reconcile Y.Doc cards with memos stored in the DB.
+   * Adds any memos that are not already represented as cards
+   * into the first lane (To Do). This ensures all cards are visible
+   * regardless of which client created them or whether they were online.
+   */
+  private async reconcileCardsWithMemos(pageId: string, ydoc: Y.Doc): Promise<void> {
     try {
       const response = await firstValueFrom(
-        this.http.get<{ cards: { memoId: string; title: string }[] }>(
+        this.http.get<{ cards: { memoId: string; title: string; laneId: string | null }[] }>(
           `/api/kanban-boards/${pageId}/card-memos`,
         ),
       );
 
       if (!response.cards || response.cards.length === 0) return;
 
-      console.warn(`Recovering ${response.cards.length} card(s) from memo collection`);
-
       const cards = ydoc.getMap<Y.Map<unknown>>('cards');
       const lanes = ydoc.getArray<Y.Map<unknown>>('lanes');
       if (lanes.length === 0) return;
 
-      const firstLane = lanes.get(0);
-      const laneCardIds = firstLane.get('cardIds') as Y.Array<string>;
+      // Collect all memoPageIds already referenced by existing cards
+      const existingMemoIds = new Set<string>();
+      cards.forEach((card) => {
+        const memoPageId = card.get('memoPageId') as string | undefined;
+        if (memoPageId) {
+          existingMemoIds.add(memoPageId);
+        }
+      });
+
+      // Find memos not yet in the Y.Doc
+      const missing = response.cards.filter((c) => !existingMemoIds.has(c.memoId));
+      if (missing.length === 0) return;
+
+      console.log(`[Kanban] Reconciling ${missing.length} missing card(s) from memos`);
+
+      // Build a laneId → lane index map for quick lookup
+      const laneIndexById = new Map<string, number>();
+      for (let i = 0; i < lanes.length; i++) {
+        const id = lanes.get(i).get('id') as string;
+        if (id) laneIndexById.set(id, i);
+      }
 
       ydoc.transact(() => {
-        for (const { memoId, title } of response.cards) {
+        for (const { memoId, title, laneId } of missing) {
           const cardId = generateId();
           const card = new Y.Map<unknown>();
           card.set('id', cardId);
           card.set('memoPageId', memoId);
           card.set('title', title);
           cards.set(cardId, card);
+
+          // Place in the lane from memo metadata, fall back to first lane
+          const targetIdx = laneId && laneIndexById.has(laneId) ? laneIndexById.get(laneId)! : 0;
+          const targetLane = lanes.get(targetIdx);
+          const laneCardIds = targetLane.get('cardIds') as Y.Array<string>;
           laneCardIds.push([cardId]);
         }
       });
     } catch (e) {
-      console.warn('Failed to recover cards from memos:', e);
+      console.warn('[Kanban] Failed to reconcile cards with memos:', e);
     }
   }
 
@@ -386,6 +465,8 @@ export class KanbanDocumentService {
 
   /**
    * Create a new card in a lane
+   * Returns the generated card ID. The caller should pass laneId to
+   * MemoDocumentService.createMemo() so that the memo gets kanban metadata.
    */
   createCard(
     pageId: string,
@@ -556,6 +637,19 @@ export class KanbanDocumentService {
         }
       }
     });
+
+    // Update memo metadata with the new lane (fire-and-forget)
+    const memoPageId = card.get('memoPageId') as string | undefined;
+    if (memoPageId) {
+      this.http
+        .patch(`/api/memos/${memoPageId}/meta`, {
+          meta: { kanban: { laneId: toLaneId } },
+        })
+        .subscribe({
+          error: (err) =>
+            console.warn(`[Kanban] Failed to update memo meta for ${memoPageId}:`, err),
+        });
+    }
   }
 
   /**
@@ -1142,9 +1236,12 @@ export class KanbanDocumentService {
     doc.wsProvider.onSynced = (synced: boolean) => {
       this.updateSyncStatus(pageId, synced ? 'synced' : 'syncing');
       if (synced) {
-        // After server state is merged, deduplicate lanes and recover orphans
+        // After server state is merged, clean up the Y.Doc
         this.deduplicateLanes(doc.ydoc);
+        this.deduplicateCardsByMemo(doc.ydoc);
         this.recoverOrphanedCards(doc.ydoc);
+        // Then reconcile with memos DB to pick up cards from other clients
+        this.reconcileCardsWithMemos(pageId, doc.ydoc);
       }
     };
 

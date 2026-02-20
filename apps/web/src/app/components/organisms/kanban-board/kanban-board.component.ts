@@ -377,8 +377,9 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
     this.kanbanDocService.createCard(pageId, laneId, title, memoId);
 
     // Async: create the backing memo document in the background
+    // Pass laneId so the memo gets kanban metadata for reconciliation
     this.memoDocService
-      .createMemo(notebookId ?? undefined, pageId, title, memoId)
+      .createMemo(notebookId ?? undefined, pageId, title, memoId, laneId)
       .catch((error) => {
         console.error('Failed to create card memo:', error);
       });

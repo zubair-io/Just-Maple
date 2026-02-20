@@ -295,7 +295,11 @@ export const kanbanBoardRoutes = new Elysia({ prefix: '/api/kanban-boards' })
                     // Fallback to 'Untitled' on parse failure
                 }
 
-                return { memoId: memo.id, title };
+                return {
+                    memoId: memo.id,
+                    title,
+                    laneId: memo.meta?.kanban?.laneId ?? null,
+                };
             });
 
             return { cards };
