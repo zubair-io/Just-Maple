@@ -301,6 +301,7 @@ async function handleMemoMessage(
             if (page.type === 'whiteboard') {
                 state = await yjsWhiteboardService.getStateAsUpdate(noteId);
             } else if (page.type === 'kanban') {
+                yjsKanbanService.registerMeta(noteId, page.notebookId || '');
                 state = await yjsKanbanService.getStateAsUpdate(noteId);
             } else {
                 state = await yjsDocumentService.getStateAsUpdate(noteId);

@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 import {
     getKanbanBoardState,
-    updateKanbanBoardState,
+    upsertKanbanBoard,
     kanbanBoardExists,
 } from '../repositories/kanban-board.repo';
 import { realtimeWSService } from './realtime-ws.service';
@@ -28,6 +28,9 @@ class YJSKanbanService {
     // Last activity timestamp per document
     private lastActivity = new Map<string, number>();
 
+    // Document metadata for upsert (notebookId needed to create kanban_boards entry)
+    private documentMeta = new Map<string, { notebookId: string }>();
+
     // Cleanup interval
     private cleanupInterval: Timer;
 
@@ -36,6 +39,15 @@ class YJSKanbanService {
         this.cleanupInterval = setInterval(() => {
             this.cleanupIdleDocuments();
         }, 60000); // Check every minute
+    }
+
+    /**
+     * Register metadata for a document (needed for DB upsert on first save)
+     */
+    registerMeta(documentId: string, notebookId: string): void {
+        if (!this.documentMeta.has(documentId)) {
+            this.documentMeta.set(documentId, { notebookId });
+        }
     }
 
     /**
@@ -268,7 +280,9 @@ class YJSKanbanService {
      */
     private async persistDocument(documentId: string, ydoc: Y.Doc): Promise<void> {
         const state = Y.encodeStateAsUpdate(ydoc);
-        await updateKanbanBoardState(documentId, state);
+        const meta = this.documentMeta.get(documentId);
+        const notebookId = meta?.notebookId ?? '';
+        await upsertKanbanBoard(documentId, documentId, notebookId, state);
     }
 
     /**
@@ -309,6 +323,7 @@ class YJSKanbanService {
         // Remove from memory
         this.documents.delete(documentId);
         this.lastActivity.delete(documentId);
+        this.documentMeta.delete(documentId);
 
         console.log(`[YJS-Kanban] Unloaded document from memory: ${documentId}`);
     }

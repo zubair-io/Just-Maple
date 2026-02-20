@@ -1141,6 +1141,11 @@ export class KanbanDocumentService {
 
     doc.wsProvider.onSynced = (synced: boolean) => {
       this.updateSyncStatus(pageId, synced ? 'synced' : 'syncing');
+      if (synced) {
+        // After server state is merged, deduplicate lanes and recover orphans
+        this.deduplicateLanes(doc.ydoc);
+        this.recoverOrphanedCards(doc.ydoc);
+      }
     };
 
     doc.wsProvider.connect();
