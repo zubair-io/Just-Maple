@@ -70,6 +70,7 @@ export class MemoDocumentService {
     if (isPlatformBrowser(this.platformId)) {
       this.setupConnectivityListener();
       this.setupVisibilityListener();
+      this.setupReconnectionListener();
     }
   }
 
@@ -115,6 +116,25 @@ export class MemoDocumentService {
           // Disconnect when offline
           doc.wsProvider?.disconnect();
           doc.wsProvider = null;
+        }
+      }
+    });
+  }
+
+  /**
+   * Re-join WebSocket rooms when the connection is re-established.
+   * After a WebSocket reconnection, the server creates a fresh context with
+   * no room memberships. Without re-joining, Y.Doc updates are silently
+   * rejected and real-time sync stops working for shared users.
+   */
+  private setupReconnectionListener(): void {
+    effect(() => {
+      const ready = this.realtimeWS.ready();
+      if (ready) {
+        for (const [, doc] of this.openDocs) {
+          if (doc.wsProvider) {
+            doc.wsProvider.connect();
+          }
         }
       }
     });

@@ -75,6 +75,7 @@ export class KanbanDocumentService {
     if (isPlatformBrowser(this.platformId)) {
       this.setupConnectivityListener();
       this.setupVisibilityListener();
+      this.setupReconnectionListener();
     }
   }
 
@@ -120,6 +121,25 @@ export class KanbanDocumentService {
   }
 
   /**
+   * Re-join WebSocket rooms when the connection is re-established.
+   * After a WebSocket reconnection, the server creates a fresh context with
+   * no room memberships. Without re-joining, Y.Doc updates are silently
+   * rejected and real-time sync stops working for shared users.
+   */
+  private setupReconnectionListener(): void {
+    effect(() => {
+      const ready = this.realtimeWS.ready();
+      if (ready) {
+        for (const [, doc] of this.openDocs) {
+          if (doc.wsProvider) {
+            doc.wsProvider.connect();
+          }
+        }
+      }
+    });
+  }
+
+  /**
    * Open a kanban board document
    * Returns typed helpers for kanban-specific Y.Doc structures
    */
@@ -157,6 +177,9 @@ export class KanbanDocumentService {
     if (ydoc.getArray('lanes').length === 0) {
       this.initializeEmptyKanban(ydoc);
     }
+
+    // Merge duplicate lanes (same ID) that can occur from concurrent init
+    this.deduplicateLanes(ydoc);
 
     // Recover any orphaned cards (in cards map but not in any lane)
     this.recoverOrphanedCards(ydoc);
@@ -205,6 +228,68 @@ export class KanbanDocumentService {
     if (!settings.has('doneReset')) {
       settings.set('doneReset', DEFAULT_KANBAN_SETTINGS.doneReset);
     }
+  }
+
+  /**
+   * Merge duplicate lanes that share the same ID.
+   * This can happen when two users open a new kanban board simultaneously
+   * and both initialize default lanes concurrently via Y.js CRDT merge.
+   * Cards from duplicate lanes are merged into the first occurrence.
+   */
+  private deduplicateLanes(ydoc: Y.Doc): void {
+    const lanes = ydoc.getArray<Y.Map<unknown>>('lanes');
+    if (lanes.length <= 3) return; // No duplicates possible with default 3
+
+    const seenIds = new Map<string, number>(); // laneId -> first index
+    const duplicateIndices: number[] = [];
+
+    for (let i = 0; i < lanes.length; i++) {
+      const lane = lanes.get(i);
+      const id = lane.get('id') as string;
+      if (!id) continue;
+
+      if (seenIds.has(id)) {
+        // Merge cardIds from this duplicate into the first occurrence
+        const firstIdx = seenIds.get(id)!;
+        const firstLane = lanes.get(firstIdx);
+        const firstCardIds = firstLane.get('cardIds') as Y.Array<string> | undefined;
+        const dupCardIds = lane.get('cardIds') as Y.Array<string> | undefined;
+
+        if (firstCardIds && dupCardIds && dupCardIds.length > 0) {
+          // Collect existing card IDs in the first lane to avoid duplicates
+          const existing = new Set<string>();
+          for (let j = 0; j < firstCardIds.length; j++) {
+            existing.add(firstCardIds.get(j));
+          }
+          // Append new card IDs from the duplicate
+          const toAdd: string[] = [];
+          for (let j = 0; j < dupCardIds.length; j++) {
+            const cardId = dupCardIds.get(j);
+            if (!existing.has(cardId)) {
+              toAdd.push(cardId);
+            }
+          }
+          if (toAdd.length > 0) {
+            firstCardIds.push(toAdd);
+          }
+        }
+
+        duplicateIndices.push(i);
+      } else {
+        seenIds.set(id, i);
+      }
+    }
+
+    if (duplicateIndices.length === 0) return;
+
+    // Remove duplicates in reverse order to keep indices valid
+    ydoc.transact(() => {
+      for (let i = duplicateIndices.length - 1; i >= 0; i--) {
+        lanes.delete(duplicateIndices[i], 1);
+      }
+    });
+
+    console.log(`[Kanban] Deduplicated ${duplicateIndices.length} duplicate lane(s)`);
   }
 
   /**

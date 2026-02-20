@@ -20,6 +20,7 @@ export class YJSWSProvider {
   private readonly _clientId: string;
   private unsubscribeHandler: (() => void) | null = null;
   private awarenessUpdateHandler: ((changes: any) => void) | null = null;
+  private readonly boundHandleLocalUpdate: (update: Uint8Array, origin: any) => void;
 
   // Reactive state
   readonly connected = signal(false);
@@ -53,8 +54,11 @@ export class YJSWSProvider {
   ) {
     this._clientId = generateClientId();
 
+    // Store bound reference so we can properly remove it in destroy()
+    this.boundHandleLocalUpdate = this.handleLocalUpdate.bind(this);
+
     // Listen for local Y.Doc changes
-    this.ydoc.on('update', this.handleLocalUpdate.bind(this));
+    this.ydoc.on('update', this.boundHandleLocalUpdate);
 
     // Listen for local awareness changes
     if (this.awareness) {
@@ -258,8 +262,8 @@ export class YJSWSProvider {
   destroy(): void {
     this.disconnect();
 
-    // Remove Y.Doc update listener
-    this.ydoc.off('update', this.handleLocalUpdate.bind(this));
+    // Remove Y.Doc update listener (using stored bound reference)
+    this.ydoc.off('update', this.boundHandleLocalUpdate);
 
     // Remove awareness listener
     if (this.awareness && this.awarenessUpdateHandler) {
