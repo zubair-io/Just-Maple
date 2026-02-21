@@ -5,9 +5,6 @@ import type {
   NativeToWebMessage,
   WebToNativeMessageType,
   InitialState,
-  ServerListResponse,
-  ActiveServerResponse,
-  ServerValidationResponse,
   TokenSavedResponse,
   CurrentTokenResponse,
   TokenClearedResponse,
@@ -103,27 +100,6 @@ export class NativeBridgeService {
     return this.messages$.pipe(
       filter((msg) => msg.type === 'initialize'),
       map((msg) => msg.payload as InitialState),
-    );
-  }
-
-  onServerList(): Observable<ServerListResponse> {
-    return this.messages$.pipe(
-      filter((msg) => msg.type === 'serverList'),
-      map((msg) => msg.payload as ServerListResponse),
-    );
-  }
-
-  onActiveServer(): Observable<ActiveServerResponse> {
-    return this.messages$.pipe(
-      filter((msg) => msg.type === 'activeServer'),
-      map((msg) => msg.payload as ActiveServerResponse),
-    );
-  }
-
-  onServerValidation(): Observable<ServerValidationResponse> {
-    return this.messages$.pipe(
-      filter((msg) => msg.type === 'serverValidationResult'),
-      map((msg) => msg.payload as ServerValidationResponse),
     );
   }
 
@@ -252,44 +228,6 @@ export class NativeBridgeService {
     }
 
     handler.postMessage(JSON.stringify(message));
-  }
-
-  // MARK: - Server Management
-
-  getServerList(): void {
-    this.sendMessage({ type: 'getServerList' });
-  }
-
-  getActiveServer(): void {
-    this.sendMessage({ type: 'getActiveServer' });
-  }
-
-  setActiveServer(serverId: string): void {
-    this.sendMessage({
-      type: 'setActiveServer',
-      payload: { serverId },
-    });
-  }
-
-  validateServer(url: string): void {
-    this.sendMessage({
-      type: 'validateServer',
-      payload: { url },
-    });
-  }
-
-  addServer(name: string, url: string, apiUrl?: string): void {
-    this.sendMessage({
-      type: 'addServer',
-      payload: { name, url, apiUrl },
-    });
-  }
-
-  removeServer(serverId: string): void {
-    this.sendMessage({
-      type: 'removeServer',
-      payload: { serverId },
-    });
   }
 
   // MARK: - Token Management

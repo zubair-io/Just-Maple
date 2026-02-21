@@ -24,7 +24,6 @@ import { templateRoutes } from './routes/templates';
 import { linkRoutes } from './routes/links';
 import { searchRoutes } from './routes/search';
 import { tagRoutes } from './routes/tags';
-import { mcpRoutes } from './routes/mcp';
 import { gmailRoutes } from './routes/gmail';
 import { googleCalendarRoutes } from './routes/google-calendar';
 import { oauthRoutes } from './routes/oauth';
@@ -99,7 +98,6 @@ async function main() {
         .use(linkRoutes)
         .use(searchRoutes)
         .use(tagRoutes)
-        .use(mcpRoutes)
         .use(gmailRoutes)
         .use(googleCalendarRoutes)
         .use(oauthRoutes)
