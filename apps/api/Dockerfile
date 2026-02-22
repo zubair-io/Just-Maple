@@ -6,6 +6,7 @@ WORKDIR /app
 # Copy workspace package files and tsconfig
 COPY package.json bun.lock tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/whiteboard/package.json ./packages/whiteboard/
 COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 
@@ -14,6 +15,7 @@ RUN bun install
 
 # Copy source code
 COPY packages/shared ./packages/shared
+COPY packages/whiteboard ./packages/whiteboard
 COPY apps/api ./apps/api
 COPY apps/web ./apps/web
 
