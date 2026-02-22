@@ -289,19 +289,13 @@ export class TodoService {
 
     this.pages.set(updatedPages);
 
-    // Sync to server
-    const page = previousPages.find((p) => p.id === todo.memoId);
+    // Sync to server — use updatedPages (already toggled) to avoid double-toggle
+    const page = updatedPages.find((p) => p.id === todo.memoId);
     if (!page?.todoMeta) {
       return of(undefined);
     }
 
-    const updatedMeta = {
-      ...page.todoMeta,
-      todos: page.todoMeta.todos.map((t) => (t.id === todo.id ? { ...t, checked: !t.checked } : t)),
-    };
-    updatedMeta.completedCount = updatedMeta.todos.filter((t) => t.checked).length;
-
-    return this.http.patch(`/api/pages/${todo.memoId}`, { todoMeta: updatedMeta }).pipe(
+    return this.http.patch(`/api/pages/${todo.memoId}`, { todoMeta: page.todoMeta }).pipe(
       map(() => undefined),
       catchError((err) => {
         console.error('[TodoService] Failed to toggle todo:', err);

@@ -706,6 +706,10 @@ img.ProseMirror-separator {
   animation: cdk-backdrop-enter 0.15s ease-out;
 }
 
+.cdk-overlay-transparent-backdrop {
+  background: transparent;
+}
+
 @keyframes cdk-backdrop-enter {
   from {
     opacity: 0;
