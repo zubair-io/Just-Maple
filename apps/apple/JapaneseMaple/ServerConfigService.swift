@@ -11,11 +11,20 @@ import Security
 class ServerConfigService {
     static let shared = ServerConfigService()
 
-    private let productionServer = ServerConfig(
-        name: "Production",
-        url: "https://justmaple.app",
-        apiUrl: "https://paperbark.justmaple.app"
-    )
+    private let server: ServerConfig = {
+        #if DEBUG
+        return ServerConfig(
+            name: "Development",
+            url: "http://192.168.1.123:4200"
+        )
+        #else
+        return ServerConfig(
+            name: "Production",
+            url: "https://justmaple.app",
+            apiUrl: "https://paperbark.justmaple.app"
+        )
+        #endif
+    }()
 
     private init() {}
 
@@ -41,11 +50,11 @@ class ServerConfigService {
     }
 
     func getActiveServer() -> ServerConfig {
-        return productionServer
+        return server
     }
 
     func getAPIUrl() -> String {
-        return productionServer.getAPIUrl()
+        return server.getAPIUrl()
     }
 
     // MARK: - Token Management (Keychain)
@@ -67,7 +76,7 @@ class ServerConfigService {
         if let serverId = serverId, !serverId.isEmpty {
             return "\(tokenKeyPrefix):\(serverId)"
         }
-        return "\(tokenKeyPrefix):\(productionServer.url)"
+        return "\(tokenKeyPrefix):\(server.url)"
     }
 
     /// Build a keychain query dictionary, conditionally including the access group.
