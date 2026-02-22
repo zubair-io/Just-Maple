@@ -17,6 +17,11 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { BreakpointObserver } from '@angular/cdk/layout';
+import {
+  CdkConnectedOverlay,
+  CdkOverlayOrigin,
+  type ConnectedPosition,
+} from '@angular/cdk/overlay';
 import { AuthService } from '../../../services/auth.service';
 import { NotebookService } from '../../../services/notebook.service';
 import { PageService } from '../../../services/page.service';
@@ -32,7 +37,14 @@ import { map } from 'rxjs';
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [CommonModule, RouterLink, ProfileAvatarComponent, DragDropModule],
+  imports: [
+    CommonModule,
+    RouterLink,
+    ProfileAvatarComponent,
+    DragDropModule,
+    CdkOverlayOrigin,
+    CdkConnectedOverlay,
+  ],
   templateUrl: './sidebar.component.html',
   styleUrl: './sidebar.component.scss',
 })
@@ -63,6 +75,10 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
 
   readonly expandedNotebooks = signal<Set<string>>(new Set());
   readonly isNewDropdownOpen = signal(false);
+  readonly newDropdownPositions: ConnectedPosition[] = [
+    { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+    { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+  ];
   readonly dragHoverNotebookId = signal<string | null>(null);
   readonly isSelectedNotebookLocal = computed(() =>
     isLocalNotebook(this.selectedNotebookId() ?? ''),

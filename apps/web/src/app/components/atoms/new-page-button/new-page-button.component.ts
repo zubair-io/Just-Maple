@@ -1,12 +1,17 @@
-import { Component, input, output, signal, HostListener, inject } from '@angular/core';
+import { Component, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+import {
+  CdkConnectedOverlay,
+  CdkOverlayOrigin,
+  type ConnectedPosition,
+} from '@angular/cdk/overlay';
 import type { PageType } from '@maple/shared';
 
 @Component({
   selector: 'app-new-page-button',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, CdkOverlayOrigin, CdkConnectedOverlay],
   templateUrl: './new-page-button.component.html',
   styleUrl: './new-page-button.component.scss',
 })
@@ -31,6 +36,12 @@ export class NewPageButtonComponent {
   /** Dropdown state */
   readonly isDropdownOpen = signal(false);
 
+  /** CDK overlay positions: below-right, then above-right */
+  readonly dropdownPositions: ConnectedPosition[] = [
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+  ];
+
   createPage(type: PageType = 'memo'): void {
     const notebookId = this.notebookId();
     if (type === 'memo') {
@@ -41,18 +52,12 @@ export class NewPageButtonComponent {
     this.isDropdownOpen.set(false);
   }
 
-  toggleDropdown(event: Event): void {
-    event.stopPropagation();
+  toggleDropdown(): void {
     this.isDropdownOpen.update((open) => !open);
   }
 
   onNewFromTemplate(): void {
     this.newFromTemplate.emit();
-    this.isDropdownOpen.set(false);
-  }
-
-  @HostListener('document:click')
-  onDocumentClick(): void {
     this.isDropdownOpen.set(false);
   }
 }

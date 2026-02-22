@@ -1,8 +1,16 @@
-import { Injectable, inject, PLATFORM_ID, signal, computed, effect } from '@angular/core';
+import {
+  Injectable,
+  inject,
+  PLATFORM_ID,
+  signal,
+  computed,
+  effect,
+  DestroyRef,
+} from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, map, catchError, throwError, of, switchMap, ReplaySubject } from 'rxjs';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { createStore, filterNil } from '@ngneat/elf';
 import {
   withEntities,
@@ -56,6 +64,7 @@ export class NotebookService {
   private readonly visibilityService = inject(VisibilityService);
   private readonly fsProvider = inject(FileSystemNotebookProvider);
   private readonly fsService = inject(FileSystemService);
+  private readonly destroyRef = inject(DestroyRef);
 
   // ELF Store
   private readonly store = createStore(
@@ -96,7 +105,12 @@ export class NotebookService {
       this.hydrateFromIndexedDB();
 
       // Refresh notebooks when document becomes visible (user returns to tab)
-      this.visibilityService.becameVisible$.pipe(switchMap(() => this.loadNotebooks())).subscribe();
+      this.visibilityService.becameVisible$
+        .pipe(
+          takeUntilDestroyed(this.destroyRef),
+          switchMap(() => this.loadNotebooks()),
+        )
+        .subscribe();
 
       // Sync local folders into the store when they change
       effect(() => {

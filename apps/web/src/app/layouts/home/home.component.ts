@@ -9,25 +9,12 @@ import { RealtimeService } from '../../services/realtime.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { RealtimeWSService } from '../../services/realtime-ws.service';
 import { LastVisitedService } from '../../services/last-visited.service';
-import {
-  SidebarComponent,
-  TemplateGalleryModalComponent,
-  SearchModalComponent,
-  DialogComponent,
-  DialogService,
-} from '../../components';
+import { SidebarComponent, DialogService } from '../../components';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [
-    CommonModule,
-    RouterOutlet,
-    SidebarComponent,
-    TemplateGalleryModalComponent,
-    SearchModalComponent,
-    DialogComponent,
-  ],
+  imports: [CommonModule, RouterOutlet, SidebarComponent],
   templateUrl: './home.component.html',
   styleUrl: './home.component.scss',
 })
@@ -46,9 +33,6 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly selectedPageId = signal<string | null>(null);
   readonly selectedNotebookId = signal<string | null>(null);
   readonly sidebarOpen = this.uiStateService.sidebarOpen;
-  readonly showTemplateGallery = this.uiStateService.showTemplateGallery;
-  readonly showSearchModal = this.uiStateService.showSearchModal;
-
   // Keyboard shortcut for search (Cmd+K / Ctrl+K)
   @HostListener('document:keydown', ['$event'])
   onKeyDown(event: KeyboardEvent): void {
@@ -267,25 +251,19 @@ export class HomeComponent implements OnInit, OnDestroy {
     }
   }
 
-  onNewFromTemplate(): void {
+  async onNewFromTemplate(): Promise<void> {
     this.closeSidebar();
-    this.uiStateService.openTemplateGallery();
-  }
-
-  onTemplateGalleryClosed(): void {
-    this.uiStateService.closeTemplateGallery();
-  }
-
-  onSearchClosed(): void {
-    this.uiStateService.closeSearchModal();
-  }
-
-  onTemplateCreated(event: { pageId: string }): void {
-    this.uiStateService.closeTemplateGallery();
     const notebookId = this.selectedNotebookId() || this.notebookService.notebooks()[0]?._id;
-    if (notebookId) {
+    if (!notebookId) return;
+
+    const result = await this.uiStateService.openTemplateGallery({
+      notebookId,
+      notebookName: this.getSelectedNotebookName(),
+    });
+
+    if (result?.pageId) {
       // Page is already in store (optimistic update from client-side creation)
-      this.router.navigate(['/', notebookId, event.pageId]);
+      this.router.navigate(['/', notebookId, result.pageId]);
     }
   }
 

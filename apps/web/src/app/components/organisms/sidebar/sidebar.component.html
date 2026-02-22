@@ -35,7 +35,7 @@
     </div> -->
 
     <!-- New Note Button with Dropdown + Search -->
-    <div class="px-4 pb-4 relative">
+    <div class="px-4 pb-4">
       <div class="flex gap-2">
         <!-- New button group -->
         <div class="flex flex-1">
@@ -50,6 +50,8 @@
           </button>
           <!-- Dropdown toggle -->
           <button
+            cdkOverlayOrigin
+            #newDropdownTrigger="cdkOverlayOrigin"
             (click)="toggleNewDropdown()"
             class="flex items-center px-2 py-2 bg-[var(--color-primary)] text-white rounded-r-md hover:bg-[var(--color-primary-hover)] transition-all border-l border-white/20"
             title="More options"
@@ -69,11 +71,19 @@
         </button>
       </div>
 
-      <!-- Dropdown menu -->
-      @if (isNewDropdownOpen()) {
-        <div class="fixed inset-0 z-40" (click)="closeNewDropdown()"></div>
+      <!-- Dropdown menu via CDK Overlay -->
+      <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="newDropdownTrigger"
+        [cdkConnectedOverlayOpen]="isNewDropdownOpen()"
+        [cdkConnectedOverlayHasBackdrop]="true"
+        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+        [cdkConnectedOverlayPositions]="newDropdownPositions"
+        [cdkConnectedOverlayWidth]="220"
+        (backdropClick)="closeNewDropdown()"
+      >
         <div
-          class="absolute left-4 right-4 top-full mt-1 bg-[var(--color-surface)] rounded-lg shadow-lg border border-[var(--color-border)] py-1 z-50"
+          class="bg-[var(--color-surface)] rounded-lg shadow-lg border border-[var(--color-border)] py-1"
         >
           <button
             (click)="onNewPage('memo')"
@@ -156,7 +166,7 @@
             </button>
           }
         </div>
-      }
+      </ng-template>
     </div>
   </div>
 

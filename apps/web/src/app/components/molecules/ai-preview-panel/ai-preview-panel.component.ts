@@ -13,6 +13,7 @@ import {
   HostListener,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Clipboard } from '@angular/cdk/clipboard';
 import { AIWritingService, type AIStreamEvent } from '../../../services/ai-writing.service';
 import type { AIWritingType } from '@maple/shared';
 import { Subscription } from 'rxjs';
@@ -26,6 +27,7 @@ import { Subscription } from 'rxjs';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AIPreviewPanelComponent implements AfterViewInit, OnDestroy {
+  private readonly clipboard = inject(Clipboard);
   private readonly aiWritingService = inject(AIWritingService);
 
   @ViewChild('panel') panelRef!: ElementRef<HTMLDivElement>;
@@ -133,7 +135,7 @@ export class AIPreviewPanelComponent implements AfterViewInit, OnDestroy {
   }
 
   onCopy(): void {
-    navigator.clipboard.writeText(this.generatedText());
+    this.clipboard.copy(this.generatedText());
   }
 
   getActionLabel(): string {

@@ -1,137 +1,131 @@
 <div
-  class="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-  (click)="onBackdropClick($event)"
-  (keydown)="onKeydown($event)"
+  class="modal-container w-full max-w-3xl max-h-[80vh] flex flex-col bg-[var(--color-bg)] rounded-xl shadow-xl overflow-hidden"
 >
+  <!-- Header -->
   <div
-    class="modal-container w-full max-w-3xl max-h-[80vh] flex flex-col bg-[var(--color-bg)] rounded-xl shadow-xl overflow-hidden"
+    class="modal-header flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]"
   >
-    <!-- Header -->
-    <div
-      class="modal-header flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]"
+    <h2 class="text-lg font-semibold text-[var(--color-text-main)]">Choose a Template</h2>
+    <button
+      class="p-1.5 rounded-lg hover:bg-[var(--color-bg-hover)] text-[var(--color-text-muted)] transition-colors"
+      (click)="close()"
     >
-      <h2 class="text-lg font-semibold text-[var(--color-text-main)]">Choose a Template</h2>
-      <button
-        class="p-1.5 rounded-lg hover:bg-[var(--color-bg-hover)] text-[var(--color-text-muted)] transition-colors"
-        (click)="close()"
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Filters -->
+  <div class="px-6 py-4 border-b border-[var(--color-border)] space-y-3">
+    <!-- Search -->
+    <input
+      type="text"
+      class="w-full px-4 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-main)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+      placeholder="Search templates..."
+      [ngModel]="searchQuery()"
+      (ngModelChange)="searchQuery.set($event)"
+    />
+
+    <!-- Category tabs -->
+    <div class="flex flex-wrap gap-2">
+      @for (cat of categories; track cat.value) {
+        <button
+          class="px-3 py-1.5 text-sm rounded-full transition-colors"
+          [class]="
+            selectedCategory() === cat.value
+              ? 'bg-[var(--color-primary)] text-white'
+              : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'
+          "
+          (click)="selectedCategory.set(cat.value)"
         >
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
-      </button>
-    </div>
-
-    <!-- Filters -->
-    <div class="px-6 py-4 border-b border-[var(--color-border)] space-y-3">
-      <!-- Search -->
-      <input
-        type="text"
-        class="w-full px-4 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-main)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
-        placeholder="Search templates..."
-        [ngModel]="searchQuery()"
-        (ngModelChange)="searchQuery.set($event)"
-      />
-
-      <!-- Category tabs -->
-      <div class="flex flex-wrap gap-2">
-        @for (cat of categories; track cat.value) {
-          <button
-            class="px-3 py-1.5 text-sm rounded-full transition-colors"
-            [class]="
-              selectedCategory() === cat.value
-                ? 'bg-[var(--color-primary)] text-white'
-                : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)]'
-            "
-            (click)="selectedCategory.set(cat.value)"
-          >
-            {{ cat.label }}
-          </button>
-        }
-      </div>
-    </div>
-
-    <!-- Content -->
-    <div class="modal-content flex-1 overflow-y-auto px-6 py-4">
-      @if (isLoading()) {
-        <div class="flex items-center justify-center py-12">
-          <div
-            class="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"
-          ></div>
-        </div>
-      } @else if (error()) {
-        <div class="text-center py-12 text-red-500 dark:text-red-400">
-          {{ error() }}
-        </div>
-      } @else {
-        @if (systemTemplates().length > 0) {
-          <div class="mb-6">
-            <h3
-              class="text-sm font-medium text-[var(--color-text-muted)] mb-3 uppercase tracking-wide"
-            >
-              System Templates
-            </h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              @for (template of systemTemplates(); track template.id) {
-                <app-template-card
-                  [template]="template"
-                  [isApplying]="isTemplateApplying(template.id)"
-                  (apply)="applyTemplate(template)"
-                />
-              }
-            </div>
-          </div>
-        }
-
-        @if (customTemplates().length > 0) {
-          <div class="mb-6">
-            <h3
-              class="text-sm font-medium text-[var(--color-text-muted)] mb-3 uppercase tracking-wide"
-            >
-              My Templates
-            </h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              @for (template of customTemplates(); track template.id) {
-                <app-template-card
-                  [template]="template"
-                  [isApplying]="isTemplateApplying(template.id)"
-                  [showDelete]="true"
-                  (apply)="applyTemplate(template)"
-                  (delete)="deleteTemplate(template)"
-                />
-              }
-            </div>
-          </div>
-        }
-
-        @if (filteredTemplates().length === 0) {
-          <div class="text-center py-12">
-            <p class="text-[var(--color-text-muted)]">No templates found</p>
-          </div>
-        }
+          {{ cat.label }}
+        </button>
       }
     </div>
+  </div>
 
-    <!-- Footer -->
-    <div
-      class="modal-footer flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)]"
+  <!-- Content -->
+  <div class="modal-content flex-1 overflow-y-auto px-6 py-4">
+    @if (isLoading()) {
+      <div class="flex items-center justify-center py-12">
+        <div
+          class="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin"
+        ></div>
+      </div>
+    } @else if (error()) {
+      <div class="text-center py-12 text-red-500 dark:text-red-400">
+        {{ error() }}
+      </div>
+    } @else {
+      @if (systemTemplates().length > 0) {
+        <div class="mb-6">
+          <h3
+            class="text-sm font-medium text-[var(--color-text-muted)] mb-3 uppercase tracking-wide"
+          >
+            System Templates
+          </h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            @for (template of systemTemplates(); track template.id) {
+              <app-template-card
+                [template]="template"
+                [isApplying]="isTemplateApplying(template.id)"
+                (apply)="applyTemplate(template)"
+              />
+            }
+          </div>
+        </div>
+      }
+
+      @if (customTemplates().length > 0) {
+        <div class="mb-6">
+          <h3
+            class="text-sm font-medium text-[var(--color-text-muted)] mb-3 uppercase tracking-wide"
+          >
+            My Templates
+          </h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            @for (template of customTemplates(); track template.id) {
+              <app-template-card
+                [template]="template"
+                [isApplying]="isTemplateApplying(template.id)"
+                [showDelete]="true"
+                (apply)="applyTemplate(template)"
+                (delete)="deleteTemplate(template)"
+              />
+            }
+          </div>
+        </div>
+      }
+
+      @if (filteredTemplates().length === 0) {
+        <div class="text-center py-12">
+          <p class="text-[var(--color-text-muted)]">No templates found</p>
+        </div>
+      }
+    }
+  </div>
+
+  <!-- Footer -->
+  <div
+    class="modal-footer flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--color-border)]"
+  >
+    <button
+      class="px-4 py-2 rounded-lg text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] transition-colors"
+      (click)="close()"
     >
-      <button
-        class="px-4 py-2 rounded-lg text-[var(--color-text-muted)] hover:bg-[var(--color-bg-hover)] transition-colors"
-        (click)="close()"
-      >
-        Cancel
-      </button>
-    </div>
+      Cancel
+    </button>
   </div>
 </div>

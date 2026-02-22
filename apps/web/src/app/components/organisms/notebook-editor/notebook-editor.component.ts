@@ -19,6 +19,8 @@ import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
+import { ComponentPortal } from '@angular/cdk/portal';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -135,6 +137,7 @@ export class NotebookEditorComponent implements OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
   private readonly appRef = inject(ApplicationRef);
   private readonly injector = inject(EnvironmentInjector);
+  private readonly overlay = inject(Overlay);
   private readonly router = inject(Router);
   private readonly nativeBridge = inject(NativeBridgeService);
 
@@ -192,9 +195,8 @@ export class NotebookEditorComponent implements OnDestroy {
 
   // AI Writing Assistant state
   private aiPreviewComponent: { componentRef: any; element: HTMLElement } | null = null;
-  private aiCommandMenuComponent: {
-    componentRef: any;
-    element: HTMLElement;
+  private aiCommandMenu: {
+    overlayRef: OverlayRef;
     capturedSelection: string;
     capturedContext: string;
     insertPosition: number;
@@ -1348,7 +1350,7 @@ export class NotebookEditorComponent implements OnDestroy {
    * Open the AI command menu
    */
   private openAICommandMenu(): void {
-    if (!this._editor || this.aiCommandMenuComponent) return;
+    if (!this._editor || this.aiCommandMenu) return;
 
     const { state, view } = this._editor;
     const { from, to, empty } = state.selection;
@@ -1367,26 +1369,30 @@ export class NotebookEditorComponent implements OnDestroy {
     // Get cursor position for menu placement
     const coords = view.coordsAtPos(from);
 
-    // Create menu element
-    const menuElement = document.createElement('div');
-    menuElement.classList.add('ai-command-menu-container');
-    document.body.appendChild(menuElement);
+    // Create CDK overlay positioned at cursor
+    const positionStrategy = this.overlay
+      .position()
+      .flexibleConnectedTo({ x: coords.left, y: coords.bottom })
+      .withPositions([
+        { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },
+        { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -8 },
+      ]);
 
-    // Create Angular component
-    const componentRef = createComponent(AICommandMenuComponent, {
-      environmentInjector: this.injector,
-      hostElement: menuElement,
+    const overlayRef = this.overlay.create({
+      positionStrategy,
+      hasBackdrop: true,
+      backdropClass: 'cdk-overlay-transparent-backdrop',
     });
 
-    // Set inputs
-    componentRef.setInput('position', { top: coords.bottom + 8, left: coords.left });
+    // Attach the component via portal
+    const portal = new ComponentPortal(AICommandMenuComponent, null, this.injector);
+    const componentRef = overlayRef.attach(portal);
     componentRef.setInput('hasSelection', !empty);
 
     // Handle command selection
     componentRef.instance.commandSelected.subscribe(
       (cmd: { type: AIWritingType; instruction?: string; targetLanguage?: string }) => {
-        // Use the captured selection from when menu was opened
-        const { capturedSelection, capturedContext, insertPosition } = this.aiCommandMenuComponent!;
+        const { capturedSelection, capturedContext, insertPosition } = this.aiCommandMenu!;
         this.closeAICommandMenu();
         this.handleAIWritingCommand(
           cmd.type,
@@ -1399,15 +1405,18 @@ export class NotebookEditorComponent implements OnDestroy {
       },
     );
 
-    // Handle close
+    // Handle close from component (Escape key)
     componentRef.instance.closed.subscribe(() => {
       this.closeAICommandMenu();
     });
 
-    this.appRef.attachView(componentRef.hostView);
-    this.aiCommandMenuComponent = {
-      componentRef,
-      element: menuElement,
+    // Handle backdrop click
+    overlayRef.backdropClick().subscribe(() => {
+      this.closeAICommandMenu();
+    });
+
+    this.aiCommandMenu = {
+      overlayRef,
       capturedSelection,
       capturedContext,
       insertPosition,
@@ -1418,12 +1427,10 @@ export class NotebookEditorComponent implements OnDestroy {
    * Close the AI command menu
    */
   private closeAICommandMenu(): void {
-    if (!this.aiCommandMenuComponent) return;
+    if (!this.aiCommandMenu) return;
 
-    this.appRef.detachView(this.aiCommandMenuComponent.componentRef.hostView);
-    this.aiCommandMenuComponent.componentRef.destroy();
-    this.aiCommandMenuComponent.element.remove();
-    this.aiCommandMenuComponent = null;
+    this.aiCommandMenu.overlayRef.dispose();
+    this.aiCommandMenu = null;
   }
 
   /**

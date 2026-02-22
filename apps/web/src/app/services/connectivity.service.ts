@@ -1,6 +1,7 @@
 import { Injectable, inject, signal, computed, effect, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
+import { firstValueFrom, timeout } from 'rxjs';
 import { NetworkService } from './network.service';
 
 /**
@@ -74,21 +75,18 @@ export class ConnectivityService {
     }
 
     try {
-      const response = await fetch('/api/health', {
-        method: 'GET',
-        cache: 'no-store',
-        signal: AbortSignal.timeout(5000), // 5 second timeout
-      });
+      await firstValueFrom(
+        this.http
+          .get('/api/health', {
+            headers: { 'Cache-Control': 'no-store' },
+          })
+          .pipe(timeout(5000)),
+      );
 
-      if (response.ok) {
-        this._isServerReachable.set(true);
-        this.consecutiveFailures = 0;
-        return true;
-      } else {
-        this.handleHealthCheckFailure();
-        return false;
-      }
-    } catch (error) {
+      this._isServerReachable.set(true);
+      this.consecutiveFailures = 0;
+      return true;
+    } catch {
       this.handleHealthCheckFailure();
       return false;
     }

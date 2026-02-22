@@ -1,7 +1,8 @@
-import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core';
+import { Injectable, signal, computed, inject, PLATFORM_ID, DestroyRef } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom, take, Observable, map, tap, of } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { nanoid } from 'nanoid';
 import { createStore } from '@ngneat/elf';
 import {
@@ -31,6 +32,7 @@ export class NotificationService {
   private readonly nativeBridge = inject(NativeBridgeService);
   private readonly router = inject(Router);
   private readonly indexedDB = inject(IndexedDBService);
+  private readonly destroyRef = inject(DestroyRef);
 
   // Elf Store for notifications
   private readonly store = createStore(
@@ -92,31 +94,43 @@ export class NotificationService {
 
     if (this.nativeBridge.isNativeApp()) {
       // Listen for push permission result
-      this.nativeBridge.onPushPermissionResult().subscribe((response) => {
-        this.permissionGranted.set(response.granted);
-        this.isRequestingPermission.set(false);
+      this.nativeBridge
+        .onPushPermissionResult()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe((response) => {
+          this.permissionGranted.set(response.granted);
+          this.isRequestingPermission.set(false);
 
-        if (response.granted) {
-          // Fetch push status after permission granted
-          this.checkPushStatus();
-        }
-      });
+          if (response.granted) {
+            // Fetch push status after permission granted
+            this.checkPushStatus();
+          }
+        });
 
       // Listen for push status updates
-      this.nativeBridge.onPushStatus().subscribe((response) => {
-        this.isRegistered.set(response.isRegistered);
-        this.serverId.set(response.serverId || null);
-      });
+      this.nativeBridge
+        .onPushStatus()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe((response) => {
+          this.isRegistered.set(response.isRegistered);
+          this.serverId.set(response.serverId || null);
+        });
 
       // Listen for notification taps
-      this.nativeBridge.onNotificationTapped().subscribe((notification) => {
-        this.handleNotificationTap(notification);
-      });
+      this.nativeBridge
+        .onNotificationTapped()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe((notification) => {
+          this.handleNotificationTap(notification);
+        });
 
       // Listen for foreground notifications
-      this.nativeBridge.onForegroundNotification().subscribe((notification) => {
-        this.handleForegroundNotification(notification);
-      });
+      this.nativeBridge
+        .onForegroundNotification()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe((notification) => {
+          this.handleForegroundNotification(notification);
+        });
 
       // Check initial push status
       await this.checkPushStatus();

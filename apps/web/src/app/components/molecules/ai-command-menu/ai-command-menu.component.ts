@@ -3,7 +3,6 @@ import {
   input,
   output,
   signal,
-  computed,
   ChangeDetectionStrategy,
   HostListener,
   ElementRef,
@@ -20,11 +19,6 @@ export interface AICommandItem {
   description: string;
   icon: string;
   requiresSelection: boolean;
-}
-
-export interface AICommandMenuPosition {
-  top: number;
-  left: number;
 }
 
 const AI_COMMANDS: AICommandItem[] = [
@@ -105,7 +99,6 @@ export class AICommandMenuComponent implements AfterViewInit {
   private readonly elementRef = inject(ElementRef);
 
   // Inputs
-  readonly position = input.required<AICommandMenuPosition>();
   readonly hasSelection = input<boolean>(false);
 
   // Outputs
@@ -135,25 +128,6 @@ export class AICommandMenuComponent implements AfterViewInit {
     'Russian',
     'Arabic',
   ];
-
-  // Estimated menu height (header + items + footer)
-  private readonly MENU_HEIGHT = 450;
-
-  // Adjusted position that doesn't go off the bottom of the screen
-  readonly adjustedPosition = computed(() => {
-    const pos = this.position();
-    const viewportHeight = window.innerHeight;
-    const bottomMargin = 16;
-
-    // Check if menu would go off the bottom
-    if (pos.top + this.MENU_HEIGHT > viewportHeight - bottomMargin) {
-      // Position above the cursor instead, or cap at top of screen
-      const adjustedTop = Math.max(bottomMargin, viewportHeight - this.MENU_HEIGHT - bottomMargin);
-      return { top: adjustedTop, left: pos.left };
-    }
-
-    return pos;
-  });
 
   get filteredCommands(): AICommandItem[] {
     const hasSelection = this.hasSelection();
@@ -239,12 +213,6 @@ export class AICommandMenuComponent implements AfterViewInit {
       type: 'translate',
       targetLanguage: language,
     });
-  }
-
-  onBackdropClick(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      this.closed.emit();
-    }
   }
 
   trackByType(index: number, command: AICommandItem): string {

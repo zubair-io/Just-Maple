@@ -3,6 +3,7 @@ import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { combineLatest, switchMap, of, tap, catchError } from 'rxjs';
+import { Clipboard } from '@angular/cdk/clipboard';
 import { ProfileAvatarComponent } from '../../atoms';
 import { DialogService } from '../../molecules';
 import { NotebookService } from '../../../services/notebook.service';
@@ -19,6 +20,7 @@ import { toDisplaySlug } from '@maple/shared/utils/slug';
   styleUrl: './share-modal.component.scss',
 })
 export class ShareModalComponent {
+  private readonly clipboard = inject(Clipboard);
   private readonly notebookService = inject(NotebookService);
   private readonly botService = inject(BotService);
   private readonly dialogService = inject(DialogService);
@@ -179,13 +181,10 @@ export class ShareModalComponent {
   copyPublicLink(): void {
     const url = this.publicUrl();
     if (!url) return;
-    navigator.clipboard
-      .writeText(url)
-      .then(() => {
-        this.linkCopied.set(true);
-        setTimeout(() => this.linkCopied.set(false), 2000);
-      })
-      .catch(() => {});
+    if (this.clipboard.copy(url)) {
+      this.linkCopied.set(true);
+      setTimeout(() => this.linkCopied.set(false), 2000);
+    }
   }
 
   togglePublic(): void {

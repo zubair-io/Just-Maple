@@ -1,73 +1,66 @@
-<div class="ai-command-backdrop" (click)="onBackdropClick($event)">
-  <div
-    class="ai-command-menu"
-    [style.top.px]="adjustedPosition().top"
-    [style.left.px]="adjustedPosition().left"
-    tabindex="0"
-  >
-    @if (showCustomPrompt()) {
-      <div class="ai-custom-prompt">
-        <div class="ai-custom-prompt-header">
-          <span>Custom AI Instructions</span>
-          <button class="ai-back-btn" (click)="showCustomPrompt.set(false)">Back</button>
-        </div>
-        <textarea
-          class="ai-custom-textarea"
-          placeholder="Enter your instructions for the AI..."
-          [value]="customInstruction()"
-          (input)="customInstruction.set($any($event.target).value)"
-          rows="3"
-          autofocus
-        ></textarea>
-        <button
-          class="ai-submit-btn"
-          [disabled]="!customInstruction().trim()"
-          (click)="submitCustomPrompt()"
-        >
-          Generate
-        </button>
+<div class="ai-command-menu" tabindex="0">
+  @if (showCustomPrompt()) {
+    <div class="ai-custom-prompt">
+      <div class="ai-custom-prompt-header">
+        <span>Custom AI Instructions</span>
+        <button class="ai-back-btn" (click)="showCustomPrompt.set(false)">Back</button>
       </div>
-    } @else if (showLanguageSelect()) {
-      <div class="ai-language-select">
-        <div class="ai-language-header">
-          <span>Select Language</span>
-          <button class="ai-back-btn" (click)="showLanguageSelect.set(false)">Back</button>
-        </div>
-        <div class="ai-language-list">
-          @for (lang of languages; track lang) {
-            <button class="ai-language-item" (click)="selectLanguage(lang)">
-              {{ lang }}
-            </button>
-          }
-        </div>
+      <textarea
+        class="ai-custom-textarea"
+        placeholder="Enter your instructions for the AI..."
+        [value]="customInstruction()"
+        (input)="customInstruction.set($any($event.target).value)"
+        rows="3"
+        autofocus
+      ></textarea>
+      <button
+        class="ai-submit-btn"
+        [disabled]="!customInstruction().trim()"
+        (click)="submitCustomPrompt()"
+      >
+        Generate
+      </button>
+    </div>
+  } @else if (showLanguageSelect()) {
+    <div class="ai-language-select">
+      <div class="ai-language-header">
+        <span>Select Language</span>
+        <button class="ai-back-btn" (click)="showLanguageSelect.set(false)">Back</button>
       </div>
-    } @else {
-      <div class="ai-command-header">
-        <span class="ai-command-title">AI Writing Assistant</span>
-        <span class="ai-command-shortcut">Ctrl+J</span>
-      </div>
-      <div class="ai-command-list">
-        @for (command of filteredCommands; track command.type; let i = $index) {
-          <button
-            class="ai-command-item"
-            [class.selected]="i === selectedIndex()"
-            (click)="selectCommand(command)"
-            (mouseenter)="selectedIndex.set(i)"
-          >
-            <span class="ai-command-icon">{{ command.icon }}</span>
-            <div class="ai-command-content">
-              <span class="ai-command-name">{{ command.title }}</span>
-              <span class="ai-command-desc">{{ command.description }}</span>
-            </div>
+      <div class="ai-language-list">
+        @for (lang of languages; track lang) {
+          <button class="ai-language-item" (click)="selectLanguage(lang)">
+            {{ lang }}
           </button>
         }
       </div>
-      <div class="ai-command-footer">
-        <span class="ai-hint">
-          <span class="hint-key">↑↓</span> Navigate <span class="hint-key">Enter</span> Select
-          <span class="hint-key">Esc</span> Close
-        </span>
-      </div>
-    }
-  </div>
+    </div>
+  } @else {
+    <div class="ai-command-header">
+      <span class="ai-command-title">AI Writing Assistant</span>
+      <span class="ai-command-shortcut">Ctrl+J</span>
+    </div>
+    <div class="ai-command-list">
+      @for (command of filteredCommands; track command.type; let i = $index) {
+        <button
+          class="ai-command-item"
+          [class.selected]="i === selectedIndex()"
+          (click)="selectCommand(command)"
+          (mouseenter)="selectedIndex.set(i)"
+        >
+          <span class="ai-command-icon">{{ command.icon }}</span>
+          <div class="ai-command-content">
+            <span class="ai-command-name">{{ command.title }}</span>
+            <span class="ai-command-desc">{{ command.description }}</span>
+          </div>
+        </button>
+      }
+    </div>
+    <div class="ai-command-footer">
+      <span class="ai-hint">
+        <span class="hint-key">↑↓</span> Navigate <span class="hint-key">Enter</span> Select
+        <span class="hint-key">Esc</span> Close
+      </span>
+    </div>
+  }
 </div>

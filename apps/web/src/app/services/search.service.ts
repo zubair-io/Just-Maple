@@ -1,6 +1,7 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, inject, signal, computed, DestroyRef } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, catchError, map, of, tap, Subject, debounceTime, switchMap } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { SearchResult, SearchResponse } from '@maple/shared';
 
 export interface SearchFilters {
@@ -19,6 +20,7 @@ const MAX_RECENT_SEARCHES = 10;
 @Injectable({ providedIn: 'root' })
 export class SearchService {
   private readonly http = inject(HttpClient);
+  private readonly destroyRef = inject(DestroyRef);
 
   // State signals
   private readonly _isSearching = signal(false);
@@ -43,6 +45,7 @@ export class SearchService {
     // Set up debounced search
     this.searchSubject
       .pipe(
+        takeUntilDestroyed(this.destroyRef),
         debounceTime(300),
         switchMap(({ query, filters }) => this.executeSearch(query, filters)),
       )

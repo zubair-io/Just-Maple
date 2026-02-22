@@ -1,72 +1,51 @@
-import { Component, inject, signal, effect } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DialogService } from './dialog.service';
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import type { DialogConfig } from './dialog.service';
 
 @Component({
-  selector: 'app-dialog',
+  selector: 'app-dialog-content',
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './dialog.component.html',
   styleUrl: './dialog.component.scss',
 })
-export class DialogComponent {
-  readonly dialogService = inject(DialogService);
-  readonly inputValue = signal('');
-
-  constructor() {
-    effect(() => {
-      const dialog = this.dialogService.activeDialog();
-      if (dialog?.type === 'prompt') {
-        this.inputValue.set(dialog.defaultValue ?? '');
-      }
-    });
-  }
+export class DialogContentComponent {
+  readonly dialogRef = inject(DialogRef);
+  readonly config = inject<DialogConfig>(DIALOG_DATA);
+  readonly inputValue = signal(this.config.defaultValue ?? '');
 
   onConfirm(): void {
-    const dialog = this.dialogService.activeDialog();
-    if (!dialog) return;
-
-    switch (dialog.type) {
+    switch (this.config.type) {
       case 'confirm':
-        this.dialogService._close(true);
+        this.dialogRef.close(true);
         break;
       case 'prompt':
-        this.dialogService._close(this.inputValue() || null);
+        this.dialogRef.close(this.inputValue() || null);
         break;
       case 'alert':
-        this.dialogService._close(undefined);
+        this.dialogRef.close(undefined);
         break;
     }
   }
 
   onCancel(): void {
-    const dialog = this.dialogService.activeDialog();
-    if (!dialog) return;
-
-    switch (dialog.type) {
+    switch (this.config.type) {
       case 'confirm':
-        this.dialogService._close(false);
+        this.dialogRef.close(false);
         break;
       case 'prompt':
-        this.dialogService._close(null);
+        this.dialogRef.close(null);
         break;
       case 'alert':
-        this.dialogService._close(undefined);
+        this.dialogRef.close(undefined);
         break;
-    }
-  }
-
-  onBackdropClick(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      this.onCancel();
     }
   }
 
   onKeyDown(event: KeyboardEvent): void {
-    if (event.key === 'Escape') {
-      this.onCancel();
-    } else if (event.key === 'Enter') {
+    if (event.key === 'Enter') {
       this.onConfirm();
     }
   }
