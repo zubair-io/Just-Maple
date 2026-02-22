@@ -176,33 +176,20 @@ class PushNotificationService: NSObject {
         print("[PushNotificationService] Successfully unregistered from server: \(serverId)")
     }
 
-    /// Unregister device from push notifications (all servers)
+    /// Unregister device from push notifications
     func unregister() async throws {
-        // Get all configured servers and try to unregister from each
-        let allServers = ServerConfigService.shared.getServers()
-        var unregisteredAny = false
-
-        for server in allServers {
-            do {
-                try await unregisterFromMapleAPI(serverId: server.id)
-                print("[PushNotificationService] Unregistered from server: \(server.id)")
-                unregisteredAny = true
-            } catch PushError.notAuthenticated {
-                // No token for this server, skip it
-                print("[PushNotificationService] No auth token for server \(server.id), skipping")
-            } catch {
-                print("[PushNotificationService] Failed to unregister from server \(server.id): \(error)")
-            }
+        let server = ServerConfigService.shared.getActiveServer()
+        do {
+            try await unregisterFromMapleAPI(serverId: server.id)
+            print("[PushNotificationService] Unregistered from server: \(server.id)")
+        } catch PushError.notAuthenticated {
+            print("[PushNotificationService] No auth token, skipping unregister")
+        } catch {
+            print("[PushNotificationService] Failed to unregister: \(error)")
         }
 
-        // Clear all local registration data (including any stale UUID-based IDs)
+        // Clear local registration data
         UserDefaults.standard.removeObject(forKey: registeredServersKey)
-
-        if unregisteredAny {
-            print("[PushNotificationService] Successfully unregistered from servers")
-        } else {
-            print("[PushNotificationService] No servers to unregister from")
-        }
     }
 
     /// Check if a server is registered for push notifications
@@ -264,12 +251,7 @@ class PushNotificationService: NSObject {
     }
 
     private func registerWithMapleAPI(serverId: String, deviceToken: String) async throws {
-        // Get server URL for this serverId
-        guard let server = ServerConfigService.shared.getServers().first(where: { $0.id == serverId }) else {
-            print("[PushNotificationService] ❌ Server not found: \(serverId)")
-            throw PushError.invalidURL
-        }
-
+        let server = ServerConfigService.shared.getActiveServer()
         let apiUrl = server.getAPIUrl()
         guard let url = URL(string: "\(apiUrl)/api/notifications/register") else {
             throw PushError.invalidURL
@@ -336,12 +318,7 @@ class PushNotificationService: NSObject {
     }
 
     private func unregisterFromMapleAPI(serverId: String) async throws {
-        // Get server URL for this serverId
-        guard let server = ServerConfigService.shared.getServers().first(where: { $0.id == serverId }) else {
-            print("[PushNotificationService] ❌ Server not found: \(serverId)")
-            throw PushError.invalidURL
-        }
-
+        let server = ServerConfigService.shared.getActiveServer()
         let apiUrl = server.getAPIUrl()
         guard let url = URL(string: "\(apiUrl)/api/notifications/unregister") else {
             throw PushError.invalidURL

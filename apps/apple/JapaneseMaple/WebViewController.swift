@@ -239,19 +239,13 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
 
         print("[WebViewController] 🔔 Notification ID: \(notificationId), Type: \(type)")
 
-        // Try to get serverUrl from payload (for multi-server support)
         let apiUrl: String
         if let serverUrl = userInfo["serverUrl"] as? String {
-            print("[WebViewController] 🔗 ServerUrl found in payload: \(serverUrl)")
             apiUrl = serverUrl
         } else {
-            // Fallback to active server API URL
-            print("[WebViewController] ℹ️ No serverUrl in payload, using active server")
             let activeServer = ServerConfigService.shared.getActiveServer()
             apiUrl = activeServer.getAPIUrl()
         }
-
-        print("[WebViewController] 🌐 Using API URL: \(apiUrl)")
 
         // Extract tagId and messageId if present
         let tagId = userInfo["tagId"] as? String
@@ -271,16 +265,10 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
             return
         }
 
-        print("[WebViewController] 🔔 Foreground Notification ID: \(notificationId), Type: \(type)")
-
-        // Try to get serverUrl from payload (for multi-server support)
         let apiUrl: String
         if let serverUrl = userInfo["serverUrl"] as? String {
-            print("[WebViewController] 🔗 ServerUrl found in payload: \(serverUrl)")
             apiUrl = serverUrl
         } else {
-            // Fallback to active server API URL
-            print("[WebViewController] ℹ️ No serverUrl in payload, using active server")
             let activeServer = ServerConfigService.shared.getActiveServer()
             apiUrl = activeServer.getAPIUrl()
         }
