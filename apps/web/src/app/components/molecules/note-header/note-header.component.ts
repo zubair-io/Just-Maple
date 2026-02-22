@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import type { Page, Notebook } from '@maple/shared';
 import { toDisplaySlug } from '@maple/shared/utils/slug';
+import { Clipboard } from '@angular/cdk/clipboard';
 import { VersionHistoryComponent } from '../version-history/version-history.component';
 import { UiStateService } from '../../../services/ui-state.service';
 
@@ -16,6 +17,7 @@ export type ExportFormat = 'markdown' | 'html';
   styleUrl: './note-header.component.scss',
 })
 export class NoteHeaderComponent {
+  private readonly clipboard = inject(Clipboard);
   private readonly uiStateService = inject(UiStateService);
 
   readonly page = input<Page | null>(null);
@@ -140,13 +142,10 @@ export class NoteHeaderComponent {
   copyPublicLink(): void {
     const url = this.publicPageUrl();
     if (!url) return;
-    navigator.clipboard
-      .writeText(url)
-      .then(() => {
-        this.linkCopied.set(true);
-        setTimeout(() => this.linkCopied.set(false), 2000);
-      })
-      .catch(() => {});
+    if (this.clipboard.copy(url)) {
+      this.linkCopied.set(true);
+      setTimeout(() => this.linkCopied.set(false), 2000);
+    }
   }
 
   private formatDateValue(dateString: string): string {

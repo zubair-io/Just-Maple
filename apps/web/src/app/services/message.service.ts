@@ -10,7 +10,7 @@ import {
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap, map, catchError, throwError, of, Subscription, switchMap } from 'rxjs';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { createStore } from '@ngneat/elf';
 import {
   withEntities,
@@ -99,7 +99,10 @@ export class MessageService {
 
       // Refresh unread counts when document becomes visible (user returns to tab)
       this.visibilityService.becameVisible$
-        .pipe(switchMap(() => this.loadUnreadCounts()))
+        .pipe(
+          takeUntilDestroyed(this.destroyRef),
+          switchMap(() => this.loadUnreadCounts()),
+        )
         .subscribe();
 
       // Sync total message unread count with NotificationService

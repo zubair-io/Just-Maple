@@ -11,8 +11,8 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { AIWritingService } from '../../../services/ai-writing.service';
 import type { Editor } from '@tiptap/core';
 
 export type AiBotWidgetStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -49,7 +49,7 @@ export interface HistoryEntry {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AiBotWidgetComponent implements AfterViewInit {
-  private readonly http = inject(HttpClient);
+  private readonly aiWritingService = inject(AIWritingService);
 
   @ViewChild('promptInput') promptInputRef?: ElementRef<HTMLInputElement>;
 
@@ -135,9 +135,9 @@ export class AiBotWidgetComponent implements AfterViewInit {
 
       // Call API - server fetches document and applies edits directly to Y.js
       const response = await firstValueFrom(
-        this.http.post<AiEditResponse>(`/api/notebooks/${notebookId}/ai-edit`, {
+        this.aiWritingService.aiEdit(notebookId, {
           prompt: promptText,
-          pageId, // Server uses this to fetch document and apply edits
+          pageId,
           context: {
             widgetPosition: widgetPos,
           },

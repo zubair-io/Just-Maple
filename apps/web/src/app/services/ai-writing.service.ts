@@ -191,6 +191,31 @@ export class AIWritingService {
   }
 
   /**
+   * Execute an AI edit on a document (non-streaming)
+   * Used by AI bot widgets to apply edits to a Y.js document
+   */
+  aiEdit(
+    notebookId: string,
+    request: {
+      prompt: string;
+      pageId: string;
+      context?: { widgetPosition?: number };
+    },
+  ): Observable<{
+    success: boolean;
+    appliedCount: number;
+    responseText?: string;
+    errors?: string[];
+  }> {
+    return this.http.post<{
+      success: boolean;
+      appliedCount: number;
+      responseText?: string;
+      errors?: string[];
+    }>(`/api/notebooks/${notebookId}/ai-edit`, request);
+  }
+
+  /**
    * Reset the service state
    */
   reset(): void {

@@ -8,6 +8,7 @@ import {
   type CustomBot,
   type CustomBotWithToken,
 } from '../../services/bot.service';
+import { Clipboard } from '@angular/cdk/clipboard';
 import { ProfileAvatarComponent } from '../../components/atoms/profile-avatar/profile-avatar.component';
 import { SettingsHeaderComponent, DialogService } from '../../components';
 import type { BotTemplate, CreateCustomBotInput } from '@maple/shared';
@@ -21,6 +22,7 @@ import { environment } from '../../../environments/environment';
   styleUrl: './bots.component.scss',
 })
 export class BotsComponent implements OnInit {
+  private readonly clipboard = inject(Clipboard);
   private readonly router = inject(Router);
   private readonly botService = inject(BotService);
   private readonly dialogService = inject(DialogService);
@@ -374,7 +376,7 @@ export class BotsComponent implements OnInit {
   copyToken(): void {
     const token = this.createdBotToken();
     if (token) {
-      navigator.clipboard.writeText(token);
+      this.clipboard.copy(token);
       this.tokenCopied.set(true);
     }
   }
@@ -382,7 +384,7 @@ export class BotsComponent implements OnInit {
   copySecret(): void {
     const secret = this.createdBotSecret();
     if (secret) {
-      navigator.clipboard.writeText(secret);
+      this.clipboard.copy(secret);
       this.secretCopied.set(true);
     }
   }
@@ -528,7 +530,7 @@ export class BotsComponent implements OnInit {
   copyRegeneratedToken(): void {
     const token = this.regeneratedToken();
     if (token) {
-      navigator.clipboard.writeText(token);
+      this.clipboard.copy(token);
       this.regeneratedTokenCopied.set(true);
     }
   }
@@ -568,7 +570,7 @@ export class BotsComponent implements OnInit {
   copyRegeneratedSecret(): void {
     const secret = this.regeneratedSecret();
     if (secret) {
-      navigator.clipboard.writeText(secret);
+      this.clipboard.copy(secret);
       this.regeneratedSecretCopied.set(true);
     }
   }

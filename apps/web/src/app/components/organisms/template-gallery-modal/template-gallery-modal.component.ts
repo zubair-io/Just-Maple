@@ -1,11 +1,21 @@
-import { Component, inject, input, output, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
 import type { Template } from '@maple/shared';
 import { TemplateService } from '../../../services/template.service';
 import { PageService } from '../../../services/page.service';
 import { TemplateCardComponent } from '../../molecules/template-card/template-card.component';
+
+export interface TemplateGalleryDialogData {
+  notebookId: string;
+  notebookName: string;
+}
+
+export interface TemplateGalleryDialogResult {
+  pageId: string;
+}
 
 type CategoryFilter = 'all' | 'work' | 'personal' | 'planning' | 'custom';
 
@@ -19,12 +29,9 @@ type CategoryFilter = 'all' | 'work' | 'personal' | 'planning' | 'custom';
 export class TemplateGalleryModalComponent implements OnInit {
   private readonly templateService = inject(TemplateService);
   private readonly pageService = inject(PageService);
-
-  readonly notebookId = input.required<string>();
-  readonly notebookName = input<string>('');
-
-  readonly closed = output<void>();
-  readonly created = output<{ pageId: string }>();
+  private readonly dialogRef =
+    inject<DialogRef<TemplateGalleryDialogResult | undefined>>(DialogRef);
+  private readonly data = inject<TemplateGalleryDialogData>(DIALOG_DATA);
 
   readonly templates = signal<Template[]>([]);
   readonly isLoading = signal(true);
@@ -93,13 +100,13 @@ export class TemplateGalleryModalComponent implements OnInit {
       // Process template variables client-side (enables offline support)
       const processedContent = this.templateService.processTemplateContent(template.content, {
         title: template.title,
-        notebook: this.notebookName(),
+        notebook: this.data.notebookName,
       });
 
       // Create page using standard page creation flow (works offline)
       const page = await firstValueFrom(
         this.pageService.createPage({
-          notebookId: this.notebookId(),
+          notebookId: this.data.notebookId,
           type: 'memo',
           title: template.title,
           content: processedContent,
@@ -109,7 +116,7 @@ export class TemplateGalleryModalComponent implements OnInit {
       // Track template usage (fire and forget, non-blocking)
       this.templateService.trackTemplateUsage(template.id);
 
-      this.created.emit({ pageId: page.id });
+      this.dialogRef.close({ pageId: page.id });
     } catch (err) {
       this.error.set('Failed to create page from template');
       console.error('Error applying template:', err);
@@ -136,18 +143,6 @@ export class TemplateGalleryModalComponent implements OnInit {
   }
 
   close(): void {
-    this.closed.emit();
-  }
-
-  onBackdropClick(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      this.close();
-    }
-  }
-
-  onKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Escape') {
-      this.close();
-    }
+    this.dialogRef.close(undefined);
   }
 }

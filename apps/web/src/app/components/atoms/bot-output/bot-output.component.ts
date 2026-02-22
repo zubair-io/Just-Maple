@@ -10,8 +10,8 @@ import {
   afterNextRender,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
 import { Editor } from '@tiptap/core';
+import { BotService } from '../../../services/bot.service';
 import StarterKit from '@tiptap/starter-kit';
 import type { BotInvocation, PageContent } from '@maple/shared';
 
@@ -26,7 +26,7 @@ export class BotOutputComponent implements OnDestroy {
   @ViewChild('editorElement', { static: false })
   private editorRef?: ElementRef<HTMLElement>;
 
-  private readonly http = inject(HttpClient);
+  private readonly botService = inject(BotService);
 
   readonly invocationId = input.required<string>();
 
@@ -111,9 +111,13 @@ export class BotOutputComponent implements OnDestroy {
     this.loading.set(true);
     this.error.set(null);
 
-    this.http.get<{ invocation: BotInvocation }>(`/api/invocations/${id}`).subscribe({
-      next: (response) => {
-        const inv = response.invocation;
+    this.botService.getInvocationStatus(id).subscribe({
+      next: (inv) => {
+        if (!inv) {
+          this.error.set('Invocation not found');
+          this.loading.set(false);
+          return;
+        }
         this.status.set(inv.status);
 
         if (inv.status === 'failed') {

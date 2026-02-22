@@ -1,4 +1,4 @@
-import { Injectable, inject, PLATFORM_ID, signal } from '@angular/core';
+import { Injectable, inject, PLATFORM_ID, signal, DestroyRef } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import {
@@ -15,7 +15,7 @@ import {
   merge,
   takeWhile,
 } from 'rxjs';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { createStore, filterNil, select } from '@ngneat/elf';
 import {
   withEntities,
@@ -76,6 +76,7 @@ export class PageService {
   private readonly visibilityService = inject(VisibilityService);
   private readonly realtimeWS = inject(RealtimeWSService);
   private readonly fsPageProvider = inject(FileSystemPageProvider);
+  private readonly destroyRef = inject(DestroyRef);
   private init = false;
 
   // ELF Store
@@ -108,7 +109,12 @@ export class PageService {
       this.hydrateFromIndexedDB();
 
       // Refresh pages when document becomes visible (user returns to tab)
-      this.visibilityService.becameVisible$.pipe(switchMap(() => this.loadPages())).subscribe();
+      this.visibilityService.becameVisible$
+        .pipe(
+          takeUntilDestroyed(this.destroyRef),
+          switchMap(() => this.loadPages()),
+        )
+        .subscribe();
     }
 
     this.setupEventStreamListeners();
@@ -119,6 +125,7 @@ export class PageService {
     this.realtimeWS
       .on('page.created')
       .pipe(
+        takeUntilDestroyed(this.destroyRef),
         tap((event: Extract<AppEvent, { type: 'page.created' }>) => {
           const documentId = event.page.id;
           if (!this.store.query(getEntity(documentId))) {
@@ -135,6 +142,7 @@ export class PageService {
     // Listen for page.updated events
     this.realtimeWS
       .on('page.updated')
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event: Extract<AppEvent, { type: 'page.updated' }>) => {
         this.store.update(
           updateEntities(event.pageId, (page) => ({
@@ -147,6 +155,7 @@ export class PageService {
     // Listen for page.moved events (page moved between notebooks)
     this.realtimeWS
       .on('page.moved')
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event: Extract<AppEvent, { type: 'page.moved' }>) => {
         const existing = this.store.query(getEntity(event.pageId));
         if (existing) {
@@ -165,6 +174,7 @@ export class PageService {
     // Listen for page.deleted events
     this.realtimeWS
       .on('page.deleted')
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event: Extract<AppEvent, { type: 'page.deleted' }>) => {
         this.store.update(deleteEntities(event.pageId));
         if (isPlatformBrowser(this.platformId)) {
@@ -174,6 +184,7 @@ export class PageService {
     // Listen for page.trashed events
     this.realtimeWS
       .on('page.trashed')
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event: Extract<AppEvent, { type: 'page.trashed' }>) => {
         // Remove from visible list (user can view trash separately)
         this.store.update(deleteEntities(event.pageId));
@@ -181,6 +192,7 @@ export class PageService {
     // Listen for page.restored events
     this.realtimeWS
       .on('page.restored')
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((event: Extract<AppEvent, { type: 'page.restored' }>) => {
         this.store.update(upsertEntities([event.page]));
         this.persistToIndexedDB([event.page]);

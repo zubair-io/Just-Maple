@@ -1,21 +1,13 @@
-import {
-  Component,
-  output,
-  signal,
-  inject,
-  HostListener,
-  OnInit,
-  OnDestroy,
-  computed,
-} from '@angular/core';
+import { Component, signal, inject, OnInit, OnDestroy, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { SearchService, type SearchFilters } from '../../../services/search.service';
 import { NotebookService } from '../../../services/notebook.service';
-import { UiStateService } from '../../../services/ui-state.service';
 import { TagService } from '../../../services/tag.service';
 import type { SearchResult } from '@maple/shared';
+import type { SearchModalOptions } from '../../../services/ui-state.service';
 
 @Component({
   selector: 'app-search-modal',
@@ -27,11 +19,10 @@ import type { SearchResult } from '@maple/shared';
 export class SearchModalComponent implements OnInit, OnDestroy {
   private readonly searchService = inject(SearchService);
   private readonly notebookService = inject(NotebookService);
-  private readonly uiStateService = inject(UiStateService);
   private readonly tagService = inject(TagService);
   private readonly router = inject(Router);
-
-  readonly closed = output<void>();
+  private readonly dialogRef = inject(DialogRef);
+  private readonly options = inject<SearchModalOptions | null>(DIALOG_DATA);
 
   readonly query = signal('');
   readonly selectedIndex = signal(0);
@@ -67,8 +58,8 @@ export class SearchModalComponent implements OnInit, OnDestroy {
   ];
 
   ngOnInit(): void {
-    // Apply initial options from UiStateService
-    const options = this.uiStateService.searchModalOptions();
+    // Apply initial options from DIALOG_DATA
+    const options = this.options;
     if (options) {
       if (options.query) {
         this.query.set(options.query);
@@ -102,14 +93,10 @@ export class SearchModalComponent implements OnInit, OnDestroy {
     this.searchService.clearResults();
   }
 
-  @HostListener('document:keydown', ['$event'])
   onKeyDown(event: KeyboardEvent): void {
     const results = this.results();
 
     switch (event.key) {
-      case 'Escape':
-        this.onClose();
-        break;
       case 'ArrowDown':
         event.preventDefault();
         if (results.length > 0) {
@@ -134,7 +121,7 @@ export class SearchModalComponent implements OnInit, OnDestroy {
   }
 
   onClose(): void {
-    this.closed.emit();
+    this.dialogRef.close();
   }
 
   onQueryChange(value: string): void {

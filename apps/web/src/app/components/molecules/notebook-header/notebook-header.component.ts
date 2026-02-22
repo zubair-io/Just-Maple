@@ -41,7 +41,11 @@ export class NotebookHeaderComponent {
   }
 
   onNewFromTemplate(): void {
-    this.uiStateService.openTemplateGallery();
+    const notebook = this.notebook();
+    this.uiStateService.openTemplateGallery({
+      notebookId: notebook._id,
+      notebookName: notebook.label,
+    });
     this.newFromTemplate.emit();
   }
 }

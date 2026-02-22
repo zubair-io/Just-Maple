@@ -1,8 +1,8 @@
 import { Component, effect, inject, input, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { forkJoin } from 'rxjs';
+import { LinkService } from '../../../services/link.service';
 import type { PageLink, UnlinkedMention } from '@maple/shared';
 
 @Component({
@@ -13,7 +13,7 @@ import type { PageLink, UnlinkedMention } from '@maple/shared';
   styleUrl: './backlinks-panel.component.scss',
 })
 export class BacklinksPanelComponent {
-  private readonly http = inject(HttpClient);
+  private readonly linkService = inject(LinkService);
   private readonly router = inject(Router);
 
   readonly pageId = input.required<string>();
@@ -34,28 +34,24 @@ export class BacklinksPanelComponent {
     });
   }
 
-  private async loadBacklinks(pageId: string): Promise<void> {
+  private loadBacklinks(pageId: string): void {
     this.isLoading.set(true);
 
-    try {
-      const [backlinksRes, unlinkedRes] = await Promise.all([
-        firstValueFrom(this.http.get<{ backlinks: PageLink[] }>(`/api/links/${pageId}/backlinks`)),
-        firstValueFrom(
-          this.http.get<{ mentions: UnlinkedMention[] }>(`/api/links/${pageId}/unlinked`, {
-            params: { notebookId: this.notebookId() },
-          }),
-        ),
-      ]);
-
-      this.backlinks.set(backlinksRes.backlinks);
-      this.unlinkedMentions.set(unlinkedRes.mentions);
-    } catch (error) {
-      console.error('Failed to load backlinks:', error);
-      this.backlinks.set([]);
-      this.unlinkedMentions.set([]);
-    } finally {
-      this.isLoading.set(false);
-    }
+    forkJoin({
+      backlinks: this.linkService.getBacklinks(pageId),
+      mentions: this.linkService.getUnlinkedMentions(pageId, this.notebookId()),
+    }).subscribe({
+      next: ({ backlinks, mentions }) => {
+        this.backlinks.set(backlinks);
+        this.unlinkedMentions.set(mentions);
+        this.isLoading.set(false);
+      },
+      error: () => {
+        this.backlinks.set([]);
+        this.unlinkedMentions.set([]);
+        this.isLoading.set(false);
+      },
+    });
   }
 
   navigateToPage(linkPageId: string): void {

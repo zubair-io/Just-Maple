@@ -9,8 +9,8 @@ import {
   ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { LinkService } from '../../../services/link.service';
 import type { LinkSearchResult } from '@maple/shared';
 
 @Component({
@@ -21,7 +21,7 @@ import type { LinkSearchResult } from '@maple/shared';
   styleUrl: './page-link-search.component.scss',
 })
 export class PageLinkSearchComponent {
-  private readonly http = inject(HttpClient);
+  private readonly linkService = inject(LinkService);
 
   @ViewChild('searchInput') searchInputRef!: ElementRef<HTMLInputElement>;
 
@@ -80,19 +80,16 @@ export class PageLinkSearchComponent {
     this.isLoading.set(true);
 
     try {
-      const params: Record<string, string> = { q: query, limit: '10' };
-      if (this.notebookId()) {
-        params['notebookId'] = this.notebookId()!;
-      }
-      if (this.excludePageId()) {
-        params['excludePageId'] = this.excludePageId()!;
-      }
-
-      const response = await firstValueFrom(
-        this.http.get<{ pages: LinkSearchResult[] }>('/api/links/search', { params }),
+      const results = await firstValueFrom(
+        this.linkService.search({
+          q: query,
+          limit: 10,
+          notebookId: this.notebookId(),
+          excludePageId: this.excludePageId(),
+        }),
       );
 
-      this.searchResults.set(response.pages);
+      this.searchResults.set(results);
     } catch (error) {
       console.error('Page search failed:', error);
       this.searchResults.set([]);
