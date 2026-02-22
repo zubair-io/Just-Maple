@@ -16,12 +16,6 @@ enum WebToNativeMessage: Codable {
     case startRecording(StartRecordingPayload?)
     case stopRecording
     case cancelRecording
-    case getServerList
-    case getActiveServer
-    case setActiveServer(SetActiveServerPayload)
-    case validateServer(ValidateServerPayload)
-    case addServer(AddServerPayload)
-    case removeServer(RemoveServerPayload)
     case saveToken(SaveTokenPayload)
     case getToken(GetTokenPayload?)
     case clearToken(ClearTokenPayload?)
@@ -44,24 +38,6 @@ enum WebToNativeMessage: Codable {
 
     struct StartRecordingPayload: Codable {
         let includeSystemAudio: Bool?
-    }
-
-    struct SetActiveServerPayload: Codable {
-        let serverId: String
-    }
-
-    struct ValidateServerPayload: Codable {
-        let url: String
-    }
-
-    struct AddServerPayload: Codable {
-        let name: String
-        let url: String
-        let apiUrl: String?
-    }
-
-    struct RemoveServerPayload: Codable {
-        let serverId: String
     }
 
     struct SaveTokenPayload: Codable {
@@ -125,22 +101,6 @@ enum WebToNativeMessage: Codable {
             self = .stopRecording
         case "cancelRecording":
             self = .cancelRecording
-        case "getServerList":
-            self = .getServerList
-        case "getActiveServer":
-            self = .getActiveServer
-        case "setActiveServer":
-            let payload = try container.decode(SetActiveServerPayload.self, forKey: .payload)
-            self = .setActiveServer(payload)
-        case "validateServer":
-            let payload = try container.decode(ValidateServerPayload.self, forKey: .payload)
-            self = .validateServer(payload)
-        case "addServer":
-            let payload = try container.decode(AddServerPayload.self, forKey: .payload)
-            self = .addServer(payload)
-        case "removeServer":
-            let payload = try container.decode(RemoveServerPayload.self, forKey: .payload)
-            self = .removeServer(payload)
         case "saveToken":
             let payload = try container.decode(SaveTokenPayload.self, forKey: .payload)
             self = .saveToken(payload)
@@ -197,22 +157,6 @@ enum WebToNativeMessage: Codable {
             try container.encode("stopRecording", forKey: .type)
         case .cancelRecording:
             try container.encode("cancelRecording", forKey: .type)
-        case .getServerList:
-            try container.encode("getServerList", forKey: .type)
-        case .getActiveServer:
-            try container.encode("getActiveServer", forKey: .type)
-        case .setActiveServer(let payload):
-            try container.encode("setActiveServer", forKey: .type)
-            try container.encode(payload, forKey: .payload)
-        case .validateServer(let payload):
-            try container.encode("validateServer", forKey: .type)
-            try container.encode(payload, forKey: .payload)
-        case .addServer(let payload):
-            try container.encode("addServer", forKey: .type)
-            try container.encode(payload, forKey: .payload)
-        case .removeServer(let payload):
-            try container.encode("removeServer", forKey: .type)
-            try container.encode(payload, forKey: .payload)
         case .saveToken(let payload):
             try container.encode("saveToken", forKey: .type)
             try container.encode(payload, forKey: .payload)
@@ -267,9 +211,6 @@ enum NativeToWebMessage {
     case audioLevel(AudioLevel)
     case transcriptionProgress(TranscriptionProgress)
     case transcriptionComplete(TranscriptionComplete)
-    case serverList(ServerListResponse)
-    case activeServer(ActiveServerResponse)
-    case serverValidationResult(ServerValidationResponse)
     case tokenSaved(TokenSavedResponse)
     case currentToken(CurrentTokenResponse)
     case tokenCleared(TokenClearedResponse)
@@ -340,32 +281,6 @@ enum NativeToWebMessage {
     struct ErrorMessage: Codable {
         let code: String
         let message: String
-    }
-
-    struct ServerListResponse: Codable {
-        let servers: [ServerInfo]
-
-        struct ServerInfo: Codable {
-            let id: String
-            let name: String
-            let url: String
-            let apiUrl: String?
-            let isCustom: Bool
-        }
-    }
-
-    struct ActiveServerResponse: Codable {
-        let id: String
-        let name: String
-        let url: String
-        let apiUrl: String?
-        let isCustom: Bool
-    }
-
-    struct ServerValidationResponse: Codable {
-        let url: String
-        let isValid: Bool
-        let error: String?
     }
 
     struct TokenSavedResponse: Codable {
@@ -484,15 +399,6 @@ extension NativeToWebMessage: Encodable {
             try container.encode(payload, forKey: .payload)
         case .transcriptionComplete(let payload):
             try container.encode("transcriptionComplete", forKey: .type)
-            try container.encode(payload, forKey: .payload)
-        case .serverList(let payload):
-            try container.encode("serverList", forKey: .type)
-            try container.encode(payload, forKey: .payload)
-        case .activeServer(let payload):
-            try container.encode("activeServer", forKey: .type)
-            try container.encode(payload, forKey: .payload)
-        case .serverValidationResult(let payload):
-            try container.encode("serverValidationResult", forKey: .type)
             try container.encode(payload, forKey: .payload)
         case .tokenSaved(let payload):
             try container.encode("tokenSaved", forKey: .type)
@@ -764,99 +670,6 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             await multiTrackRecorder.cancelRecording()
             send(.recordingCancelled)
 
-        case .getServerList:
-            let servers = ServerConfigService.shared.getServers()
-            let serverInfos = servers.map { server in
-                NativeToWebMessage.ServerListResponse.ServerInfo(
-                    id: server.id,
-                    name: server.name,
-                    url: server.url,
-                    apiUrl: server.apiUrl,
-                    isCustom: server.isCustom
-                )
-            }
-            send(.serverList(NativeToWebMessage.ServerListResponse(servers: serverInfos)))
-
-        case .getActiveServer:
-            let server = ServerConfigService.shared.getActiveServer()
-            send(.activeServer(NativeToWebMessage.ActiveServerResponse(
-                id: server.id,
-                name: server.name,
-                url: server.url,
-                apiUrl: server.apiUrl,
-                isCustom: server.isCustom
-            )))
-
-        case .setActiveServer(let payload):
-            ServerConfigService.shared.setActiveServer(id: payload.serverId)
-            let server = ServerConfigService.shared.getActiveServer()
-
-            // Navigate to root of new server
-            if let newURL = URL(string: server.url) {
-                DispatchQueue.main.async { [weak self] in
-                    let request = URLRequest(url: newURL)
-                    self?.webView?.load(request)
-                }
-            }
-
-            send(.activeServer(NativeToWebMessage.ActiveServerResponse(
-                id: server.id,
-                name: server.name,
-                url: server.url,
-                apiUrl: server.apiUrl,
-                isCustom: server.isCustom
-            )))
-
-        case .validateServer(let payload):
-            do {
-                let isValid = try await ServerConfigService.shared.validateServer(url: payload.url)
-                send(.serverValidationResult(NativeToWebMessage.ServerValidationResponse(
-                    url: payload.url,
-                    isValid: isValid,
-                    error: nil
-                )))
-            } catch {
-                send(.serverValidationResult(NativeToWebMessage.ServerValidationResponse(
-                    url: payload.url,
-                    isValid: false,
-                    error: error.localizedDescription
-                )))
-            }
-
-        case .addServer(let payload):
-            let server = ServerConfigService.ServerConfig(
-                name: payload.name,
-                url: payload.url,
-                apiUrl: payload.apiUrl,
-                isCustom: true
-            )
-            ServerConfigService.shared.addServer(server)
-            let servers = ServerConfigService.shared.getServers()
-            let serverInfos = servers.map { server in
-                NativeToWebMessage.ServerListResponse.ServerInfo(
-                    id: server.id,
-                    name: server.name,
-                    url: server.url,
-                    apiUrl: server.apiUrl,
-                    isCustom: server.isCustom
-                )
-            }
-            send(.serverList(NativeToWebMessage.ServerListResponse(servers: serverInfos)))
-
-        case .removeServer(let payload):
-            ServerConfigService.shared.removeServer(id: payload.serverId)
-            let servers = ServerConfigService.shared.getServers()
-            let serverInfos = servers.map { server in
-                NativeToWebMessage.ServerListResponse.ServerInfo(
-                    id: server.id,
-                    name: server.name,
-                    url: server.url,
-                    apiUrl: server.apiUrl,
-                    isCustom: server.isCustom
-                )
-            }
-            send(.serverList(NativeToWebMessage.ServerListResponse(servers: serverInfos)))
-
         case .saveToken(let payload):
             let success = ServerConfigService.shared.saveToken(payload.token, serverId: payload.serverId)
             if success {
@@ -1096,99 +909,6 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
 
             await audioRecorder.cancelRecording()
             send(.recordingCancelled)
-
-        case .getServerList:
-            let servers = ServerConfigService.shared.getServers()
-            let serverInfos = servers.map { server in
-                NativeToWebMessage.ServerListResponse.ServerInfo(
-                    id: server.id,
-                    name: server.name,
-                    url: server.url,
-                    apiUrl: server.apiUrl,
-                    isCustom: server.isCustom
-                )
-            }
-            send(.serverList(NativeToWebMessage.ServerListResponse(servers: serverInfos)))
-
-        case .getActiveServer:
-            let server = ServerConfigService.shared.getActiveServer()
-            send(.activeServer(NativeToWebMessage.ActiveServerResponse(
-                id: server.id,
-                name: server.name,
-                url: server.url,
-                apiUrl: server.apiUrl,
-                isCustom: server.isCustom
-            )))
-
-        case .setActiveServer(let payload):
-            ServerConfigService.shared.setActiveServer(id: payload.serverId)
-            let server = ServerConfigService.shared.getActiveServer()
-
-            // Navigate to root of new server
-            if let newURL = URL(string: server.url) {
-                DispatchQueue.main.async { [weak self] in
-                    let request = URLRequest(url: newURL)
-                    self?.webView?.load(request)
-                }
-            }
-
-            send(.activeServer(NativeToWebMessage.ActiveServerResponse(
-                id: server.id,
-                name: server.name,
-                url: server.url,
-                apiUrl: server.apiUrl,
-                isCustom: server.isCustom
-            )))
-
-        case .validateServer(let payload):
-            do {
-                let isValid = try await ServerConfigService.shared.validateServer(url: payload.url)
-                send(.serverValidationResult(NativeToWebMessage.ServerValidationResponse(
-                    url: payload.url,
-                    isValid: isValid,
-                    error: nil
-                )))
-            } catch {
-                send(.serverValidationResult(NativeToWebMessage.ServerValidationResponse(
-                    url: payload.url,
-                    isValid: false,
-                    error: error.localizedDescription
-                )))
-            }
-
-        case .addServer(let payload):
-            let server = ServerConfigService.ServerConfig(
-                name: payload.name,
-                url: payload.url,
-                apiUrl: payload.apiUrl,
-                isCustom: true
-            )
-            ServerConfigService.shared.addServer(server)
-            let servers = ServerConfigService.shared.getServers()
-            let serverInfos = servers.map { server in
-                NativeToWebMessage.ServerListResponse.ServerInfo(
-                    id: server.id,
-                    name: server.name,
-                    url: server.url,
-                    apiUrl: server.apiUrl,
-                    isCustom: server.isCustom
-                )
-            }
-            send(.serverList(NativeToWebMessage.ServerListResponse(servers: serverInfos)))
-
-        case .removeServer(let payload):
-            ServerConfigService.shared.removeServer(id: payload.serverId)
-            let servers = ServerConfigService.shared.getServers()
-            let serverInfos = servers.map { server in
-                NativeToWebMessage.ServerListResponse.ServerInfo(
-                    id: server.id,
-                    name: server.name,
-                    url: server.url,
-                    apiUrl: server.apiUrl,
-                    isCustom: server.isCustom
-                )
-            }
-            send(.serverList(NativeToWebMessage.ServerListResponse(servers: serverInfos)))
 
         case .saveToken(let payload):
             let success = ServerConfigService.shared.saveToken(payload.token, serverId: payload.serverId)

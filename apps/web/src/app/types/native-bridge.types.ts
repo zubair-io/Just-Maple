@@ -13,24 +13,6 @@ export interface TestPayload {
   timestamp: string;
 }
 
-export interface SetActiveServerPayload {
-  serverId: string;
-}
-
-export interface ValidateServerPayload {
-  url: string;
-}
-
-export interface AddServerPayload {
-  name: string;
-  url: string;
-  apiUrl?: string;
-}
-
-export interface RemoveServerPayload {
-  serverId: string;
-}
-
 export interface SaveTokenPayload {
   token: string;
   serverId?: string;
@@ -114,12 +96,6 @@ export type WebToNativeMessageType =
   | { type: 'startRecording'; payload?: StartRecordingPayload }
   | { type: 'stopRecording' }
   | { type: 'cancelRecording' }
-  | { type: 'getServerList' }
-  | { type: 'getActiveServer' }
-  | { type: 'setActiveServer'; payload: SetActiveServerPayload }
-  | { type: 'validateServer'; payload: ValidateServerPayload }
-  | { type: 'addServer'; payload: AddServerPayload }
-  | { type: 'removeServer'; payload: RemoveServerPayload }
   | { type: 'saveToken'; payload: SaveTokenPayload }
   | { type: 'getToken'; payload?: GetTokenPayload }
   | { type: 'clearToken'; payload?: ClearTokenPayload }
@@ -194,32 +170,6 @@ export interface TranscriptionComplete {
   text: string;
   duration: number;
   segments?: TranscriptSegment[];
-}
-
-export interface ServerInfo {
-  id: string;
-  name: string;
-  url: string;
-  apiUrl?: string;
-  isCustom: boolean;
-}
-
-export interface ServerListResponse {
-  servers: ServerInfo[];
-}
-
-export interface ActiveServerResponse {
-  id: string;
-  name: string;
-  url: string;
-  apiUrl?: string;
-  isCustom: boolean;
-}
-
-export interface ServerValidationResponse {
-  url: string;
-  isValid: boolean;
-  error?: string;
 }
 
 export interface TokenSavedResponse {
@@ -319,9 +269,6 @@ export type NativeToWebMessageType =
   | { type: 'audioLevel'; payload: AudioLevel }
   | { type: 'transcriptionProgress'; payload: TranscriptionProgress }
   | { type: 'transcriptionComplete'; payload: TranscriptionComplete }
-  | { type: 'serverList'; payload: ServerListResponse }
-  | { type: 'activeServer'; payload: ActiveServerResponse }
-  | { type: 'serverValidationResult'; payload: ServerValidationResponse }
   | { type: 'tokenSaved'; payload: TokenSavedResponse }
   | { type: 'currentToken'; payload: CurrentTokenResponse }
   | { type: 'tokenCleared'; payload: TokenClearedResponse }

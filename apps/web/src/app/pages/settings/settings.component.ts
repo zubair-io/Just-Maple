@@ -59,13 +59,6 @@ export class SettingsComponent implements OnInit {
   readonly passkeyError = signal<string | null>(null);
   readonly passkeySuccess = signal<string | null>(null);
 
-  readonly showAddServerDialog = signal(false);
-  readonly newServerName = signal('');
-  readonly newServerUrl = signal('');
-  readonly newServerApiUrl = signal('');
-  readonly showAdvanced = signal(false);
-  readonly serverError = signal<string | null>(null);
-
   readonly displayName = signal('');
   readonly isSavingName = signal(false);
   readonly nameError = signal<string | null>(null);
@@ -182,69 +175,6 @@ export class SettingsComponent implements OnInit {
       }
     }
     await this.authService.logout();
-  }
-
-  // Server Management
-  switchServer(serverId: string): void {
-    this.preferences.setActiveServer(serverId).subscribe();
-  }
-
-  openAddServerDialog(): void {
-    this.showAddServerDialog.set(true);
-    this.newServerName.set('');
-    this.newServerUrl.set('');
-    this.newServerApiUrl.set('');
-    this.showAdvanced.set(false);
-    this.serverError.set(null);
-  }
-
-  closeAddServerDialog(): void {
-    this.showAddServerDialog.set(false);
-  }
-
-  addServer(): void {
-    const name = this.newServerName().trim();
-    const url = this.newServerUrl().trim();
-    const apiUrl = this.newServerApiUrl().trim();
-
-    if (!name || !url) {
-      this.serverError.set('Please enter both name and URL');
-      return;
-    }
-
-    // Basic URL validation
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      this.serverError.set('URL must start with http:// or https://');
-      return;
-    }
-
-    // Validate API URL if provided
-    if (apiUrl && !apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
-      this.serverError.set('API URL must start with http:// or https://');
-      return;
-    }
-
-    this.serverError.set(null);
-
-    this.preferences.addServer(name, url, apiUrl || undefined).subscribe({
-      next: () => {
-        this.closeAddServerDialog();
-      },
-      error: (err: any) => {
-        this.serverError.set(err.message || 'Failed to add server');
-      },
-    });
-  }
-
-  async removeServer(serverId: string): Promise<void> {
-    const confirmed = await this.dialogService.confirm({
-      title: 'Remove Server',
-      message: 'Are you sure you want to remove this server?',
-      confirmLabel: 'Remove',
-    });
-    if (confirmed) {
-      this.preferences.removeServer(serverId).subscribe();
-    }
   }
 
   // Notification Management

@@ -45,7 +45,7 @@ Just Maple is a self-hosted note-taking and collaboration platform featuring:
 
 ### Feature Documentation
 
-- [**v0.9 Features**](./v0.9-features.md) - AI Writing Assistant, Templates, Bi-directional Linking, Memo Versioning, Full-text Search, MCP Server
+- [**v0.9 Features**](./v0.9-features.md) - AI Writing Assistant, Templates, Bi-directional Linking, Memo Versioning, Full-text Search
 
 ### Additional Resources
 
