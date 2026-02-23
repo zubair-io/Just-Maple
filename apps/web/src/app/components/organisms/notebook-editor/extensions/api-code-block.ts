@@ -1,14 +1,12 @@
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import type { Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
-import type { ApiResponsePayload } from '../../../../types/native-bridge.types';
 import { lowlight, supportedLanguages } from './code-block-with-language';
 import * as yaml from 'js-yaml';
 import { isAbsoluteUrl, resolveApiUrl } from '../../../../utils/api-url';
 
-/**
- * Parsed API spec from a ```api code block.
- */
+// ─── Types ───────────────────────────────────────────────────────────
+
 interface ApiSpec {
   path: string;
   method: string;
@@ -25,7 +23,6 @@ interface ApiSpec {
   };
   responses?: Record<string, { description: string }>;
   security?: Record<string, string[]>[];
-  error?: boolean;
 }
 
 interface ApiParameter {
@@ -49,74 +46,10 @@ interface ApiResponse {
   statusText: string;
   durationMs: number;
   body: string;
-  timestamp: string;
 }
 
-/**
- * Detect whether we're inside a native app (macOS/iOS).
- */
-function isNativeApp(): boolean {
-  return !!(window.webkit?.messageHandlers?.nativeBridge || window.__nativeBridge__);
-}
+// ─── Helpers ─────────────────────────────────────────────────────────
 
-/**
- * Send a request through the native bridge. Returns a promise.
- * Uses a per-request requestId and listens for CustomEvents dispatched
- * by NativeBridgeService, avoiding global receiver overwrites.
- */
-function sendNativeRequest(payload: {
-  url: string;
-  method: string;
-  headers?: Record<string, string>;
-  body?: string;
-}): Promise<{
-  status: number;
-  statusText: string;
-  durationMs: number;
-  body: string;
-}> {
-  return new Promise((resolve, reject) => {
-    const handler = window.webkit?.messageHandlers?.nativeBridge;
-    if (!handler) {
-      reject(new Error('Native bridge not available'));
-      return;
-    }
-
-    const requestId = crypto.randomUUID();
-
-    const timeoutId = setTimeout(() => {
-      window.removeEventListener('maple:apiResponse', listener);
-      reject(new Error('Request timed out'));
-    }, 60_000);
-
-    function listener(event: Event) {
-      const { detail } = event as CustomEvent<ApiResponsePayload>;
-      if (!detail || detail.requestId !== requestId) return;
-
-      window.removeEventListener('maple:apiResponse', listener);
-      clearTimeout(timeoutId);
-      resolve({
-        status: detail.status,
-        statusText: detail.statusText,
-        durationMs: detail.durationMs,
-        body: detail.body,
-      });
-    }
-
-    window.addEventListener('maple:apiResponse', listener);
-
-    handler.postMessage(
-      JSON.stringify({
-        type: 'apiRequest',
-        payload: { ...payload, requestId },
-      }),
-    );
-  });
-}
-
-/**
- * Try to parse YAML content into an ApiSpec.
- */
 function parseApiYaml(content: string): { spec: ApiSpec | null; error: string | null } {
   try {
     const parsed = yaml.load(content) as ApiSpec | null;
@@ -133,9 +66,6 @@ function parseApiYaml(content: string): { spec: ApiSpec | null; error: string | 
   }
 }
 
-/**
- * Get a default value for a JSON schema type.
- */
 function defaultForType(type?: string): unknown {
   switch (type) {
     case 'string':
@@ -154,9 +84,6 @@ function defaultForType(type?: string): unknown {
   }
 }
 
-/**
- * Build a JSON body string from schema examples/defaults.
- */
 function buildBodyFromSchema(schema?: ApiSchema): string {
   if (!schema) return '{}';
   if (schema.example !== undefined) return JSON.stringify(schema.example, null, 2);
@@ -169,9 +96,6 @@ function buildBodyFromSchema(schema?: ApiSchema): string {
   return JSON.stringify(skeleton, null, 2);
 }
 
-/**
- * Build a cURL command string from the current state.
- */
 function buildCurl(
   method: string,
   url: string,
@@ -190,7 +114,63 @@ function buildCurl(
   return curl;
 }
 
-/** Static maps so Tailwind's scanner detects the full class strings. */
+/** Stop ProseMirror from intercepting keyboard input inside form controls. */
+function isolateFromEditor(el: HTMLElement): void {
+  for (const event of ['keydown', 'keypress', 'keyup'] as const) {
+    el.addEventListener(event, (e) => e.stopPropagation());
+  }
+}
+
+/**
+ * Send an HTTP request via fetch() with a timeout.
+ * Returns a normalized response regardless of success or network error.
+ */
+async function sendRequest(payload: {
+  url: string;
+  method: string;
+  headers?: Record<string, string>;
+  body?: string;
+}): Promise<ApiResponse> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30_000);
+  const start = performance.now();
+
+  try {
+    const resp = await fetch(payload.url, {
+      method: payload.method,
+      headers: payload.headers,
+      body: payload.body,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    const body = await resp.text();
+    return {
+      status: resp.status,
+      statusText: resp.statusText,
+      durationMs: Math.round(performance.now() - start),
+      body,
+    };
+  } catch (err: unknown) {
+    clearTimeout(timeoutId);
+    const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+    const message = isTimeout
+      ? 'Request timed out after 30s'
+      : err instanceof Error
+        ? err.message
+        : String(err);
+
+    return {
+      status: 0,
+      statusText: isTimeout ? 'Timeout' : 'Network Error',
+      durationMs: Math.round(performance.now() - start),
+      body: JSON.stringify({ error: message }),
+    };
+  }
+}
+
+// ─── Tailwind class maps (so the scanner finds them) ─────────────────
+
 const METHOD_BG: Record<string, string> = {
   get: 'bg-method-get',
   post: 'bg-method-post',
@@ -207,10 +187,8 @@ const METHOD_BORDER: Record<string, string> = {
   delete: 'border-l-method-delete',
 };
 
-/**
- * Create the interactive API block DOM for a given spec.
- * This is a self-contained DOM builder — no Angular dependency.
- */
+// ─── DOM Builder ─────────────────────────────────────────────────────
+
 function createApiBlockDom(
   spec: ApiSpec,
   contentDOM: HTMLElement,
@@ -230,14 +208,15 @@ function createApiBlockDom(
   const methodLower = spec.method.toLowerCase();
   container.classList.add(METHOD_BORDER[methodLower] ?? 'border-l-border');
 
-  // State
+  // ── State ──
+
   let showSource = false;
   let sending = false;
   let serverUrl = spec.server ?? '';
   const paramValues: Record<string, string> = {};
   let requestBody = '';
   let authToken = '';
-  let response: ApiResponse | null = null;
+  let lastResponse: ApiResponse | null = null;
 
   const pathParams = (spec.parameters ?? []).filter((p) => p.in === 'path');
   const queryParams = (spec.parameters ?? []).filter((p) => p.in === 'query');
@@ -253,13 +232,13 @@ function createApiBlockDom(
       paramValues[key] = String(example);
     }
   }
-
   if (hasBody) {
     const schema = spec.requestBody?.content?.['application/json']?.schema;
     requestBody = buildBodyFromSchema(schema);
   }
 
-  // -- Header --
+  // ── Header ──
+
   const header = document.createElement('div');
   header.classList.add(
     'api-block__header',
@@ -302,6 +281,7 @@ function createApiBlockDom(
 
   const headerActions = document.createElement('div');
   headerActions.classList.add('flex', 'items-center', 'ml-auto', 'shrink-0');
+
   const toggleBtn = document.createElement('button');
   toggleBtn.classList.add(
     'bg-transparent',
@@ -322,37 +302,21 @@ function createApiBlockDom(
   toggleBtn.innerHTML = `<span class="material-symbols-rounded text-base">code</span>`;
   headerActions.appendChild(toggleBtn);
   header.appendChild(headerActions);
-
   container.appendChild(header);
 
-  // -- Source view (hidden initially) --
+  // ── Source view (hidden by default) ──
+
   const sourceView = document.createElement('div');
   sourceView.classList.add('api-block__source', 'p-0');
   sourceView.style.display = 'none';
   sourceView.appendChild(contentDOM);
 
-  // -- Error view --
-  const errorView = document.createElement('div');
-  errorView.classList.add(
-    'api-block__error',
-    'px-3',
-    'py-2',
-    'bg-status-error-bg',
-    'text-status-error-text',
-    'text-xs',
-    'flex',
-    'items-center',
-    'gap-1.5',
-    'font-sans',
-  );
-  errorView.style.display = 'none';
+  // ── Form view ──
 
-  // -- Form view --
   const formView = document.createElement('div');
   formView.classList.add('api-block__form', 'p-3', 'flex', 'flex-col', 'gap-2');
   formView.contentEditable = 'false';
 
-  // Helper: create field row
   function createField(
     label: string,
     opts: {
@@ -402,9 +366,8 @@ function createApiBlockDom(
       'focus:outline-none',
       'focus:border-primary',
     );
-    input.addEventListener('input', () => {
-      opts.onInput?.(input.value);
-    });
+    isolateFromEditor(input);
+    input.addEventListener('input', () => opts.onInput?.(input.value));
     field.appendChild(input);
 
     if (opts.hint) {
@@ -417,14 +380,13 @@ function createApiBlockDom(
     return field;
   }
 
-  // Server URL field
+  // Server URL
   const serverField = createField('Server', {
     placeholder: 'https://api.example.com',
     value: serverUrl,
     onInput: (val) => {
       serverUrl = val;
       updateSendState();
-      // Validation styling
       const input = serverField.querySelector('input')!;
       const existing = serverField.querySelector('.field-error');
       if (val && !isAbsoluteUrl(val)) {
@@ -486,7 +448,7 @@ function createApiBlockDom(
     );
   }
 
-  // Request body
+  // Request body textarea
   if (hasBody) {
     const bodyField = document.createElement('div');
     bodyField.classList.add('api-block__body', 'flex', 'flex-col', 'gap-1');
@@ -494,6 +456,7 @@ function createApiBlockDom(
     bodyLabel.classList.add('text-xs', 'text-text-muted', 'font-sans');
     bodyLabel.textContent = 'Body';
     bodyField.appendChild(bodyLabel);
+
     const textarea = document.createElement('textarea');
     textarea.rows = 6;
     textarea.value = requestBody;
@@ -512,6 +475,7 @@ function createApiBlockDom(
       'focus:outline-none',
       'focus:border-primary',
     );
+    isolateFromEditor(textarea);
     textarea.addEventListener('input', () => {
       requestBody = textarea.value;
     });
@@ -533,7 +497,8 @@ function createApiBlockDom(
     );
   }
 
-  // Actions row
+  // ── Actions row ──
+
   const actions = document.createElement('div');
   actions.classList.add('api-block__actions', 'flex', 'gap-2', 'items-center');
 
@@ -564,8 +529,8 @@ function createApiBlockDom(
   const sendBtnText = document.createTextNode(' Send');
   sendBtn.appendChild(sendBtnText);
 
-  const sendDisabled = document.createElement('div');
-  sendDisabled.classList.add(
+  const sendHint = document.createElement('div');
+  sendHint.classList.add(
     'api-block__send-disabled',
     'flex',
     'items-center',
@@ -583,12 +548,12 @@ function createApiBlockDom(
   const infoIcon = document.createElement('span');
   infoIcon.classList.add('material-symbols-rounded', 'text-base');
   infoIcon.textContent = 'info';
-  sendDisabled.appendChild(infoIcon);
-  const disabledText = document.createElement('span');
-  sendDisabled.appendChild(disabledText);
+  sendHint.appendChild(infoIcon);
+  const hintText = document.createElement('span');
+  sendHint.appendChild(hintText);
 
   actions.appendChild(sendBtn);
-  actions.appendChild(sendDisabled);
+  actions.appendChild(sendHint);
 
   const curlBtn = document.createElement('button');
   curlBtn.classList.add(
@@ -607,30 +572,11 @@ function createApiBlockDom(
   );
   curlBtn.title = 'Copy as cURL';
   curlBtn.innerHTML = `<span class="material-symbols-rounded text-base">content_copy</span>`;
-  curlBtn.addEventListener('click', () => {
-    const base = serverUrl || spec.server || '';
-    let url = base + spec.path;
-    for (const param of pathParams) {
-      url = url.replace(`{${param.name}}`, paramValues[param.name] ?? '');
-    }
-    const headers: Record<string, string> = {};
-    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-    for (const param of headerParams) {
-      const val = paramValues[`header:${param.name}`];
-      if (val) headers[param.name] = val;
-    }
-    const curl = buildCurl(
-      spec.method.toUpperCase(),
-      url,
-      headers,
-      hasBody ? requestBody : undefined,
-    );
-    navigator.clipboard.writeText(curl);
-  });
   actions.appendChild(curlBtn);
   formView.appendChild(actions);
 
-  // Response area
+  // ── Response area ──
+
   const responseArea = document.createElement('div');
   responseArea.classList.add('api-block__response', 'border-t', 'border-border');
   responseArea.style.display = 'none';
@@ -669,32 +615,82 @@ function createApiBlockDom(
   );
   responseArea.appendChild(responseBody);
 
-  // Assemble
-  container.appendChild(errorView);
+  // ── Assemble ──
+
   container.appendChild(formView);
   container.appendChild(sourceView);
   container.appendChild(responseArea);
 
-  // -- Event handlers --
+  // ── Behaviour ──
 
-  function updateSendState() {
-    const native = isNativeApp();
+  function updateSendState(): void {
     const validUrl = isAbsoluteUrl(serverUrl || spec.server || '');
-    const canSend = native && validUrl && !sending;
+    const canSend = validUrl && !sending;
 
     sendBtn.style.display = canSend ? 'flex' : 'none';
     sendBtn.disabled = sending;
 
-    if (!native) {
-      sendDisabled.style.display = 'flex';
-      disabledText.textContent = 'Open in Maple for macOS or iOS to test this endpoint';
-    } else if (!validUrl) {
-      sendDisabled.style.display = 'flex';
-      disabledText.textContent = 'Enter a full URL (e.g., https://api.example.com)';
+    if (!validUrl) {
+      sendHint.style.display = 'flex';
+      hintText.textContent = 'Enter a server URL to send requests';
     } else {
-      sendDisabled.style.display = 'none';
+      sendHint.style.display = 'none';
     }
   }
+
+  function showResponse(resp: ApiResponse): void {
+    lastResponse = resp;
+    responseArea.style.display = '';
+
+    const isSuccess = resp.status >= 200 && resp.status < 400;
+    const isTimeout = resp.status === 0;
+
+    statusEl.textContent = isTimeout ? `${resp.statusText}` : `${resp.status} ${resp.statusText}`;
+    statusEl.className =
+      'api-block__status font-bold text-xs px-2 py-0.5 rounded ' +
+      (isSuccess
+        ? 'bg-status-success-bg text-status-success-text'
+        : 'bg-status-error-bg text-status-error-text');
+
+    timingEl.textContent = `${resp.durationMs}ms`;
+
+    try {
+      const parsed = JSON.parse(resp.body);
+      responseBody.textContent = JSON.stringify(parsed, null, 2);
+    } catch {
+      responseBody.textContent = resp.body;
+    }
+  }
+
+  function buildResolvedUrl(): string | null {
+    const url = resolveApiUrl(serverUrl || spec.server, spec.path);
+    if (!url) return null;
+
+    let resolved = url;
+    for (const param of pathParams) {
+      const val = paramValues[param.name] ?? '';
+      resolved = resolved.replace(`{${param.name}}`, encodeURIComponent(val));
+    }
+
+    const qp = queryParams
+      .filter((p) => paramValues[p.name])
+      .map((p) => [p.name, paramValues[p.name]] as [string, string]);
+    if (qp.length) resolved += '?' + new URLSearchParams(qp).toString();
+
+    return resolved;
+  }
+
+  function buildHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    for (const param of headerParams) {
+      const val = paramValues[`header:${param.name}`];
+      if (val) headers[param.name] = val;
+    }
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    return headers;
+  }
+
+  // ── Event handlers ──
 
   toggleBtn.addEventListener('click', (e) => {
     e.preventDefault();
@@ -705,83 +701,38 @@ function createApiBlockDom(
     if (showSource) {
       sourceView.style.display = '';
       formView.style.display = 'none';
-      errorView.style.display = 'none';
       responseArea.style.display = 'none';
     } else {
       sourceView.style.display = 'none';
       formView.style.display = '';
-      if (response) responseArea.style.display = '';
+      if (lastResponse) responseArea.style.display = '';
     }
   });
 
-  sendBtn.addEventListener('click', async () => {
+  sendBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     if (sending) return;
+
+    const resolvedUrl = buildResolvedUrl();
+    if (!resolvedUrl) return;
+
+    // Enter sending state
     sending = true;
     sendBtnIcon.textContent = 'progress_activity';
     sendBtnIcon.classList.add('animate-spin');
     sendBtnText.textContent = ' Sending...';
     sendBtn.disabled = true;
 
-    const url = resolveApiUrl(serverUrl || spec.server, spec.path);
-    if (!url) {
-      sending = false;
-      sendBtnIcon.textContent = 'send';
-      sendBtnIcon.classList.remove('animate-spin');
-      sendBtnText.textContent = ' Send';
-      sendBtn.disabled = false;
-      updateSendState();
-      return;
-    }
+    const resp = await sendRequest({
+      url: resolvedUrl,
+      method: spec.method.toUpperCase(),
+      headers: buildHeaders(),
+      body: hasBody ? requestBody : undefined,
+    });
 
-    // Replace path params
-    let resolvedUrl = url;
-    for (const param of pathParams) {
-      const val = paramValues[param.name] ?? '';
-      resolvedUrl = resolvedUrl.replace(`{${param.name}}`, encodeURIComponent(val));
-    }
-
-    // Query params
-    const qp = queryParams
-      .filter((p) => paramValues[p.name])
-      .map((p) => [p.name, paramValues[p.name]] as [string, string]);
-    if (qp.length) resolvedUrl += '?' + new URLSearchParams(qp).toString();
-
-    // Headers
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    for (const param of headerParams) {
-      const val = paramValues[`header:${param.name}`];
-      if (val) headers[param.name] = val;
-    }
-    if (authToken) {
-      headers['Authorization'] = `Bearer ${authToken}`;
-    }
-
-    try {
-      const result = await sendNativeRequest({
-        url: resolvedUrl,
-        method: spec.method.toUpperCase(),
-        headers,
-        body: hasBody ? requestBody : undefined,
-      });
-
-      response = {
-        status: result.status,
-        statusText: result.statusText,
-        durationMs: result.durationMs,
-        body: result.body,
-        timestamp: new Date().toISOString(),
-      };
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      response = {
-        status: 0,
-        statusText: 'Request Failed',
-        durationMs: 0,
-        body: JSON.stringify({ error: message }),
-        timestamp: new Date().toISOString(),
-      };
-    }
-
+    // Reset button
     sending = false;
     sendBtnIcon.textContent = 'send';
     sendBtnIcon.classList.remove('animate-spin');
@@ -789,56 +740,111 @@ function createApiBlockDom(
     sendBtn.disabled = false;
     updateSendState();
 
-    // Show response
-    responseArea.style.display = '';
-    statusEl.textContent = `${response.status} ${response.statusText}`;
-    const isSuccess = response.status > 0 && response.status < 400;
-    statusEl.classList.toggle('bg-status-success-bg', isSuccess);
-    statusEl.classList.toggle('text-status-success-text', isSuccess);
-    statusEl.classList.toggle('bg-status-error-bg', !isSuccess);
-    statusEl.classList.toggle('text-status-error-text', !isSuccess);
-    timingEl.textContent = `${response.durationMs}ms`;
+    showResponse(resp);
+  });
 
-    // Try to pretty-print JSON
-    try {
-      const parsed = JSON.parse(response.body);
-      responseBody.textContent = JSON.stringify(parsed, null, 2);
-    } catch {
-      responseBody.textContent = response.body;
+  curlBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const base = serverUrl || spec.server || '';
+    let url = base + spec.path;
+    for (const param of pathParams) {
+      url = url.replace(`{${param.name}}`, paramValues[param.name] ?? '');
     }
+    const headers: Record<string, string> = {};
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    for (const param of headerParams) {
+      const val = paramValues[`header:${param.name}`];
+      if (val) headers[param.name] = val;
+    }
+    navigator.clipboard.writeText(
+      buildCurl(spec.method.toUpperCase(), url, headers, hasBody ? requestBody : undefined),
+    );
   });
 
   updateSendState();
-
   return container;
 }
 
-/**
- * CodeBlockWithLanguage extended to render `api` language blocks
- * as interactive API testing GUIs. All other languages render with
- * syntax highlighting as before.
- */
-export const ApiCodeBlock = CodeBlockLowlight.extend({
-  addNodeView() {
-    return ({ node, getPos, editor }) => {
-      const language = node.attrs['language'];
+// ─── Error view (invalid YAML) ───────────────────────────────────────
 
-      if (language === 'api') {
-        return createApiNodeView(node, getPos, editor);
-      }
+function createErrorBlock(error: string, contentDOM: HTMLElement): HTMLElement {
+  const errorEl = document.createElement('div');
+  errorEl.classList.add(
+    'api-block',
+    'border',
+    'border-border',
+    'rounded-lg',
+    'overflow-hidden',
+    'font-mono',
+    'text-[13px]',
+  );
 
-      // Default: normal code block with language selector
-      return createDefaultCodeBlockView(node, getPos, editor);
-    };
-  },
-}).configure({
-  lowlight,
-  defaultLanguage: 'plaintext',
-});
+  const errorHeader = document.createElement('div');
+  errorHeader.classList.add(
+    'flex',
+    'items-center',
+    'gap-2',
+    'px-3',
+    'py-2',
+    'bg-bg-secondary',
+    'border-b',
+    'border-border',
+  );
+  const badge = document.createElement('span');
+  badge.classList.add(
+    'font-bold',
+    'text-[11px]',
+    'uppercase',
+    'px-1.5',
+    'py-0.5',
+    'rounded',
+    'text-white',
+    'shrink-0',
+    'bg-method-get',
+  );
+  badge.textContent = 'API';
+  errorHeader.appendChild(badge);
+  const pathEl = document.createElement('span');
+  pathEl.classList.add('font-semibold', 'break-all');
+  pathEl.textContent = 'Invalid spec';
+  errorHeader.appendChild(pathEl);
+  errorEl.appendChild(errorHeader);
 
-/**
- * Create the NodeView for an `api` code block.
- */
+  const errMsg = document.createElement('div');
+  errMsg.classList.add(
+    'px-3',
+    'py-2',
+    'bg-status-error-bg',
+    'text-status-error-text',
+    'text-xs',
+    'flex',
+    'items-center',
+    'gap-1.5',
+    'font-sans',
+  );
+  const errIcon = document.createElement('span');
+  errIcon.classList.add('material-symbols-rounded', 'text-base');
+  errIcon.textContent = 'error';
+  errMsg.appendChild(errIcon);
+  errMsg.appendChild(document.createTextNode(` ${error}`));
+  errorEl.appendChild(errMsg);
+
+  const sourceView = document.createElement('div');
+  sourceView.classList.add('p-0');
+  const pre = document.createElement('pre');
+  pre.classList.add('m-0', 'bg-code-bg', 'p-4');
+  pre.appendChild(contentDOM);
+  contentDOM.classList.add('bg-transparent', 'p-0', 'text-code-text', 'font-mono', 'text-sm');
+  contentDOM.style.display = '';
+  sourceView.appendChild(pre);
+  errorEl.appendChild(sourceView);
+
+  return errorEl;
+}
+
+// ─── TipTap NodeView ─────────────────────────────────────────────────
+
 function createApiNodeView(
   node: ProseMirrorNode,
   _getPos: (() => number | undefined) | boolean,
@@ -847,90 +853,16 @@ function createApiNodeView(
   const wrapper = document.createElement('div');
   wrapper.classList.add('api-block-wrapper', 'my-3');
 
-  // The contentDOM is the editable area for ProseMirror text content
   const contentDOM = document.createElement('code');
-  contentDOM.style.display = 'none'; // Hidden when in interactive mode
+  contentDOM.style.display = 'none';
 
   const content = node.textContent;
   const { spec, error } = parseApiYaml(content);
 
   if (spec && !error) {
-    const apiBlock = createApiBlockDom(spec, contentDOM, () => node.textContent);
-    wrapper.appendChild(apiBlock);
+    wrapper.appendChild(createApiBlockDom(spec, contentDOM, () => node.textContent));
   } else {
-    // Show error + raw source
-    const errorEl = document.createElement('div');
-    errorEl.classList.add(
-      'api-block',
-      'border',
-      'border-border',
-      'rounded-lg',
-      'overflow-hidden',
-      'font-mono',
-      'text-[13px]',
-    );
-
-    const errorHeader = document.createElement('div');
-    errorHeader.classList.add(
-      'flex',
-      'items-center',
-      'gap-2',
-      'px-3',
-      'py-2',
-      'bg-bg-secondary',
-      'border-b',
-      'border-border',
-    );
-    const badge = document.createElement('span');
-    badge.classList.add(
-      'font-bold',
-      'text-[11px]',
-      'uppercase',
-      'px-1.5',
-      'py-0.5',
-      'rounded',
-      'text-white',
-      'shrink-0',
-      'bg-method-get',
-    );
-    badge.textContent = 'API';
-    errorHeader.appendChild(badge);
-    const pathEl = document.createElement('span');
-    pathEl.classList.add('font-semibold', 'break-all');
-    pathEl.textContent = 'Invalid spec';
-    errorHeader.appendChild(pathEl);
-    errorEl.appendChild(errorHeader);
-
-    const errMsg = document.createElement('div');
-    errMsg.classList.add(
-      'px-3',
-      'py-2',
-      'bg-status-error-bg',
-      'text-status-error-text',
-      'text-xs',
-      'flex',
-      'items-center',
-      'gap-1.5',
-      'font-sans',
-    );
-    const errIcon = document.createElement('span');
-    errIcon.classList.add('material-symbols-rounded', 'text-base');
-    errIcon.textContent = 'error';
-    errMsg.appendChild(errIcon);
-    errMsg.appendChild(document.createTextNode(` ${error}`));
-    errorEl.appendChild(errMsg);
-
-    const sourceView = document.createElement('div');
-    sourceView.classList.add('p-0');
-    const pre = document.createElement('pre');
-    pre.classList.add('m-0', 'bg-code-bg', 'p-4');
-    pre.appendChild(contentDOM);
-    contentDOM.classList.add('bg-transparent', 'p-0', 'text-code-text', 'font-mono', 'text-sm');
-    contentDOM.style.display = '';
-    sourceView.appendChild(pre);
-    errorEl.appendChild(sourceView);
-
-    wrapper.appendChild(errorEl);
+    wrapper.appendChild(createErrorBlock(error || 'Invalid YAML', contentDOM));
   }
 
   return {
@@ -940,23 +872,17 @@ function createApiNodeView(
       if (updatedNode.type.name !== 'codeBlock') return false;
       if (updatedNode.attrs['language'] !== 'api') return false;
 
-      // Re-parse and rebuild on update
       const newContent = updatedNode.textContent;
       const { spec: newSpec, error: newError } = parseApiYaml(newContent);
 
-      // Clear wrapper but preserve the original contentDOM reference
       while (wrapper.firstChild) wrapper.removeChild(wrapper.firstChild);
 
       if (newSpec && !newError) {
-        // Reuse the original contentDOM — ProseMirror requires the same element
         contentDOM.style.display = 'none';
-        const apiBlock = createApiBlockDom(newSpec, contentDOM, () => updatedNode.textContent);
-        wrapper.appendChild(apiBlock);
-        return true;
+        wrapper.appendChild(createApiBlockDom(newSpec, contentDOM, () => updatedNode.textContent));
       } else {
-        // Error path: keep original contentDOM hidden but attached
-        const errorEl = document.createElement('div');
-        errorEl.classList.add(
+        const errEl = document.createElement('div');
+        errEl.classList.add(
           'api-block',
           'border',
           'border-border',
@@ -978,19 +904,18 @@ function createApiNodeView(
           'font-sans',
         );
         errMsg.textContent = newError || 'Invalid YAML';
-        errorEl.appendChild(errMsg);
+        errEl.appendChild(errMsg);
         contentDOM.style.display = 'none';
-        errorEl.appendChild(contentDOM);
-        wrapper.appendChild(errorEl);
-        return true;
+        errEl.appendChild(contentDOM);
+        wrapper.appendChild(errEl);
       }
+      return true;
     },
   };
 }
 
-/**
- * Create the default code block NodeView (same as CodeBlockWithLanguage).
- */
+// ─── Default code block NodeView ─────────────────────────────────────
+
 function createDefaultCodeBlockView(
   node: ProseMirrorNode,
   getPos: (() => number | undefined) | boolean,
@@ -999,21 +924,16 @@ function createDefaultCodeBlockView(
   const container = document.createElement('div');
   container.classList.add('code-block-container');
 
-  // Language selector
   const select = document.createElement('select');
   select.classList.add('code-block-language');
   select.contentEditable = 'false';
 
-  // Add api as an option
   const allLanguages = [...supportedLanguages, { value: 'api', label: 'API' }];
-
   allLanguages.forEach((lang) => {
     const option = document.createElement('option');
     option.value = lang.value;
     option.textContent = lang.label;
-    if (node.attrs['language'] === lang.value) {
-      option.selected = true;
-    }
+    if (node.attrs['language'] === lang.value) option.selected = true;
     select.appendChild(option);
   });
 
@@ -1038,7 +958,6 @@ function createDefaultCodeBlockView(
     contentDOM: code,
     update: (updatedNode: ProseMirrorNode) => {
       if (updatedNode.type.name !== 'codeBlock') return false;
-      // If switched to api, signal that this view can't handle it
       if (updatedNode.attrs['language'] === 'api') return false;
       code.className = `language-${updatedNode.attrs['language'] || 'plaintext'}`;
       select.value = updatedNode.attrs['language'] || 'plaintext';
@@ -1046,3 +965,19 @@ function createDefaultCodeBlockView(
     },
   };
 }
+
+// ─── Extension export ────────────────────────────────────────────────
+
+export const ApiCodeBlock = CodeBlockLowlight.extend({
+  addNodeView() {
+    return ({ node, getPos, editor }) => {
+      if (node.attrs['language'] === 'api') {
+        return createApiNodeView(node, getPos, editor);
+      }
+      return createDefaultCodeBlockView(node, getPos, editor);
+    };
+  },
+}).configure({
+  lowlight,
+  defaultLanguage: 'plaintext',
+});

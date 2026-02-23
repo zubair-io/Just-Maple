@@ -7,6 +7,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script>
       document.addEventListener('gesturestart', (e) => e.preventDefault());
+      // Set up native bridge receiver early so Swift can send messages before Angular bootstraps.
+      // Messages are buffered and drained by NativeBridgeService once Angular is ready.
+      window.__nativeBridge__ = {
+        _buffer: [],
+        receive: function (msg) {
+          this._buffer.push(msg);
+        },
+      };
     </script>
     <meta
       name="viewport"

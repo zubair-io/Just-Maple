@@ -20,7 +20,7 @@ export class GmailCryptoService {
    * Must be called after user authentication.
    */
   async initializeKey(userId: string): Promise<void> {
-    if (!isPlatformBrowser(this.platformId)) return;
+    if (!isPlatformBrowser(this.platformId) || !crypto?.subtle) return;
 
     // Get or create a salt for this user (stored in localStorage, not sensitive)
     const saltKey = `gmail-crypto-salt-${userId}`;
@@ -78,7 +78,7 @@ export class GmailCryptoService {
    * Returns a base64-encoded string containing IV + ciphertext.
    */
   async encrypt(plaintext: string): Promise<string> {
-    if (!isPlatformBrowser(this.platformId)) {
+    if (!isPlatformBrowser(this.platformId) || !crypto?.subtle) {
       throw new Error('Encryption not available in this environment');
     }
     if (!this.cryptoKey) {
@@ -111,7 +111,7 @@ export class GmailCryptoService {
    * Expects a base64-encoded string containing IV + ciphertext.
    */
   async decrypt(encrypted: string): Promise<string> {
-    if (!isPlatformBrowser(this.platformId)) {
+    if (!isPlatformBrowser(this.platformId) || !crypto?.subtle) {
       throw new Error('Decryption not available in this environment');
     }
     if (!this.cryptoKey) {

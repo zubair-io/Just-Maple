@@ -52,7 +52,7 @@ export class NativeBridgeService {
   // MARK: - Detection
 
   private detectNativeApp(): void {
-    this._isNativeApp = !!(window.webkit?.messageHandlers?.nativeBridge || window.__nativeBridge__);
+    this._isNativeApp = !!window.webkit?.messageHandlers?.nativeBridge;
   }
 
   isNativeApp(): boolean {
@@ -76,22 +76,36 @@ export class NativeBridgeService {
   // MARK: - Message Reception
 
   private setupMessageReceiver(): void {
+    // Drain any messages that arrived before Angular bootstrapped
+    // (buffered by the inline script in index.html)
+    const buffered = (window.__nativeBridge__ as any)?._buffer as NativeToWebMessage[] | undefined;
+
     window.__nativeBridge__ = {
       receive: (message: NativeToWebMessage) => {
-        // Store initial state
-        if (message.type === 'initialize') {
-          this._initialState = message.payload as InitialState;
-        }
-
-        // Dispatch CustomEvent for apiResponse so non-Angular listeners
-        // (e.g. vanilla DOM NodeViews) can receive responses by requestId
-        if (message.type === 'apiResponse') {
-          window.dispatchEvent(new CustomEvent('maple:apiResponse', { detail: message.payload }));
-        }
-
-        this._messages$.next(message);
+        this.handleIncoming(message);
       },
     };
+
+    if (buffered) {
+      for (const message of buffered) {
+        this.handleIncoming(message);
+      }
+    }
+  }
+
+  private handleIncoming(message: NativeToWebMessage): void {
+    // Store initial state
+    if (message.type === 'initialize') {
+      this._initialState = message.payload as InitialState;
+    }
+
+    // Dispatch CustomEvent for apiResponse so non-Angular listeners
+    // (e.g. vanilla DOM NodeViews) can receive responses by requestId
+    if (message.type === 'apiResponse') {
+      window.dispatchEvent(new CustomEvent('maple:apiResponse', { detail: message.payload }));
+    }
+
+    this._messages$.next(message);
   }
 
   // MARK: - Typed Observables
