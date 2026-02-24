@@ -1,0 +1,2330 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Mercury Maple — Clean Minimal Mockups</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                width: 100%;
+                height: 100%;
+                font-family: 'Inter', sans-serif;
+                background-color: #fafaf9;
+                color: #1c1917;
+                overflow: hidden;
+            }
+
+            .container {
+                display: flex;
+                width: 100%;
+                height: 100%;
+                flex-direction: column;
+            }
+
+            .main-area {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+            }
+
+            /* Space Rail */
+            .space-rail {
+                width: 56px;
+                background: #ffffff;
+                border-right: 1px solid #f5f5f4;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                padding: 12px 0;
+            }
+
+            .space-item {
+                width: 32px;
+                height: 32px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                border-radius: 6px;
+                position: relative;
+                color: #a8a29e;
+                font-size: 20px;
+                transition: color 0.2s;
+            }
+
+            .space-item:hover {
+                color: #57534e;
+            }
+
+            .space-item.active {
+                color: #1c1917;
+            }
+
+            .space-item.active::after {
+                content: '';
+                position: absolute;
+                right: -12px;
+                width: 4px;
+                height: 4px;
+                background: #d94e3b;
+                border-radius: 50%;
+            }
+
+            /* Module Dock */
+            .module-dock {
+                width: 48px;
+                background: #ffffff;
+                border-right: 1px solid #f5f5f4;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 8px;
+                padding: 12px 0;
+                overflow-y: auto;
+            }
+
+            .module-dock-item {
+                width: 40px;
+                height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                border-radius: 6px;
+                background: #f5f5f4;
+                color: #57534e;
+                font-size: 18px;
+                position: relative;
+                transition: all 0.2s;
+            }
+
+            .module-dock-item:hover {
+                background: #efefed;
+                color: #1c1917;
+            }
+
+            .module-dock-item.active {
+                background: #ffffff;
+                border-left: 3px solid #d94e3b;
+                margin-left: -3px;
+            }
+
+            /* Center Module Area */
+            .center-content {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 32px;
+                overflow-y: auto;
+            }
+
+            .module-panel {
+                width: 100%;
+                max-width: 800px;
+                background: #ffffff;
+                border: 1px solid #e7e5e4;
+                border-radius: 12px;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+                display: none;
+                flex-direction: column;
+                max-height: 80vh;
+                overflow-y: auto;
+            }
+
+            .module-panel.active {
+                display: flex;
+            }
+
+            /* Module Header */
+            .module-header {
+                padding: 32px 32px 16px 32px;
+                border-bottom: 1px solid #f5f5f4;
+            }
+
+            .module-title {
+                font-size: 24px;
+                font-weight: 600;
+                color: #1c1917;
+                margin-bottom: 4px;
+            }
+
+            .module-subtitle {
+                font-size: 13px;
+                color: #a8a29e;
+            }
+
+            /* Module Content */
+            .module-content {
+                padding: 32px;
+                flex: 1;
+            }
+
+            /* Right Panel — Network/Connections */
+            .right-panel {
+                width: 200px;
+                background: #ffffff;
+                border-left: 1px solid #f5f5f4;
+                padding: 20px;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+            }
+
+            .right-panel-title {
+                font-size: 12px;
+                font-weight: 600;
+                color: #a8a29e;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .connection-item {
+                font-size: 13px;
+                color: #57534e;
+                padding: 8px 0;
+                border-bottom: 1px solid #f5f5f4;
+                padding-bottom: 8px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .connection-item:last-child {
+                border-bottom: none;
+            }
+
+            .connection-icon {
+                width: 16px;
+                font-size: 14px;
+                color: #d94e3b;
+                flex-shrink: 0;
+            }
+
+            /* Bottom Navigation */
+            .bottom-nav {
+                height: 60px;
+                background: #ffffff;
+                border-top: 1px solid #f5f5f4;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+
+            .nav-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: #e7e5e4;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+
+            .nav-dot.active {
+                background: #d94e3b;
+                width: 24px;
+                border-radius: 4px;
+            }
+
+            .screen-counter {
+                position: absolute;
+                right: 32px;
+                font-size: 13px;
+                color: #a8a29e;
+                font-weight: 500;
+            }
+
+            .module-name {
+                position: absolute;
+                left: 32px;
+                font-size: 13px;
+                color: #a8a29e;
+                font-weight: 500;
+            }
+
+            /* Content Styles */
+            .text-body {
+                font-size: 15px;
+                line-height: 1.8;
+                color: #1c1917;
+                margin-bottom: 16px;
+            }
+
+            .blockquote {
+                padding-left: 16px;
+                border-left: 1px solid #e7e5e4;
+                margin: 20px 0;
+                color: #57534e;
+                font-style: italic;
+            }
+
+            .wikilink {
+                color: #d94e3b;
+                text-decoration: underline;
+                cursor: pointer;
+            }
+
+            .chat-message {
+                margin-bottom: 16px;
+                display: flex;
+                gap: 12px;
+            }
+
+            .chat-message.sent {
+                justify-content: flex-end;
+            }
+
+            .chat-message-content {
+                max-width: 60%;
+                padding: 12px 16px;
+                border-radius: 8px;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+
+            .chat-message.received .chat-message-content {
+                background: #ffffff;
+            }
+
+            .chat-message.sent .chat-message-content {
+                background: #f5f5f4;
+            }
+
+            .chat-meta {
+                font-size: 12px;
+                color: #a8a29e;
+                margin-bottom: 4px;
+            }
+
+            .kanban-board {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 20px;
+                height: 500px;
+            }
+
+            .kanban-column {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .kanban-header {
+                font-size: 13px;
+                font-weight: 600;
+                color: #a8a29e;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid #f5f5f4;
+            }
+
+            .kanban-card {
+                background: #ffffff;
+                border: 1px solid #e7e5e4;
+                border-radius: 6px;
+                padding: 12px;
+                font-size: 13px;
+                line-height: 1.6;
+                border-left: 3px solid #e7e5e4;
+                cursor: pointer;
+            }
+
+            .kanban-card.priority-high {
+                border-left-color: #dc2626;
+            }
+
+            .kanban-card.priority-medium {
+                border-left-color: #f59e0b;
+            }
+
+            .kanban-card.priority-low {
+                border-left-color: #3b82f6;
+            }
+
+            .task-list {
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+            }
+
+            .task-item {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 8px 0;
+            }
+
+            .task-checkbox {
+                width: 20px;
+                height: 20px;
+                border: 1px solid #e7e5e4;
+                border-radius: 50%;
+                cursor: pointer;
+                flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+            }
+
+            .task-checkbox:hover {
+                border-color: #d94e3b;
+            }
+
+            .task-text {
+                flex: 1;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+
+            .task-item.completed .task-text {
+                opacity: 0.4;
+                text-decoration: line-through;
+            }
+
+            .task-date {
+                font-size: 12px;
+                color: #a8a29e;
+            }
+
+            .grid-2x3 {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 20px;
+            }
+
+            .grid-item {
+                padding: 16px;
+                border: 1px solid #e7e5e4;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+
+            .grid-item:hover {
+                background: #f5f5f4;
+            }
+
+            .grid-item-title {
+                font-weight: 600;
+                font-size: 14px;
+                margin-bottom: 8px;
+            }
+
+            .grid-item-tag {
+                display: inline-block;
+                font-size: 11px;
+                padding: 2px 6px;
+                background: #f5f5f4;
+                border-radius: 3px;
+                color: #a8a29e;
+                margin-bottom: 8px;
+            }
+
+            .grid-item-desc {
+                font-size: 12px;
+                color: #a8a29e;
+                line-height: 1.4;
+            }
+
+            .search-input {
+                width: 100%;
+                padding: 12px 16px;
+                border: 1px solid #e7e5e4;
+                border-radius: 8px;
+                font-size: 14px;
+                font-family: 'Inter', sans-serif;
+                margin-bottom: 20px;
+            }
+
+            .search-results {
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+            }
+
+            .result-item {
+                padding: 12px 0;
+                border-bottom: 1px solid #f5f5f4;
+            }
+
+            .result-item:last-child {
+                border-bottom: none;
+            }
+
+            .result-title {
+                font-weight: 600;
+                font-size: 14px;
+                color: #1c1917;
+                margin-bottom: 4px;
+            }
+
+            .result-snippet {
+                font-size: 13px;
+                color: #57534e;
+                line-height: 1.5;
+                margin-bottom: 4px;
+            }
+
+            .result-source {
+                font-size: 12px;
+                color: #a8a29e;
+            }
+
+            .stats-row {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 24px;
+                margin-bottom: 32px;
+                padding-bottom: 32px;
+                border-bottom: 1px solid #f5f5f4;
+            }
+
+            .stat-box {
+                text-align: center;
+            }
+
+            .stat-value {
+                font-size: 32px;
+                font-weight: 700;
+                color: #1c1917;
+                margin-bottom: 6px;
+            }
+
+            .stat-label {
+                font-size: 12px;
+                color: #a8a29e;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .timeline {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .timeline-item {
+                display: flex;
+                gap: 12px;
+                padding-left: 12px;
+                border-left: 1px solid #f5f5f4;
+            }
+
+            .timeline-time {
+                font-size: 12px;
+                color: #a8a29e;
+                font-weight: 500;
+                flex-shrink: 0;
+                width: 50px;
+            }
+
+            .timeline-content {
+                font-size: 14px;
+                color: #57534e;
+                line-height: 1.6;
+            }
+
+            .schedule-section {
+                margin-bottom: 24px;
+            }
+
+            .schedule-label {
+                font-size: 12px;
+                font-weight: 600;
+                color: #a8a29e;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 12px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid #f5f5f4;
+            }
+
+            .schedule-item {
+                display: flex;
+                gap: 12px;
+                margin-bottom: 12px;
+                padding: 8px 0;
+            }
+
+            .schedule-time {
+                font-family: 'Courier New', monospace;
+                font-size: 13px;
+                color: #57534e;
+                flex-shrink: 0;
+                width: 50px;
+            }
+
+            .schedule-desc {
+                font-size: 13px;
+                color: #1c1917;
+                flex: 1;
+            }
+
+            .waveform {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 2px;
+                height: 80px;
+                margin-bottom: 20px;
+            }
+
+            .waveform-bar {
+                width: 2px;
+                background: #e7e5e4;
+                border-radius: 1px;
+                flex: 1;
+            }
+
+            .waveform-bar.played {
+                background: #d94e3b;
+            }
+
+            .play-button {
+                width: 48px;
+                height: 48px;
+                border-radius: 50%;
+                background: #f5f5f4;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.2s;
+                position: absolute;
+            }
+
+            .play-button:hover {
+                background: #efefed;
+            }
+
+            .play-icon {
+                width: 0;
+                height: 0;
+                border-left: 8px solid #1c1917;
+                border-top: 5px solid transparent;
+                border-bottom: 5px solid transparent;
+                margin-left: 2px;
+            }
+
+            .transcript {
+                background: #f5f5f4;
+                padding: 16px;
+                border-radius: 6px;
+                font-size: 13px;
+                line-height: 1.8;
+                color: #57534e;
+            }
+
+            .transcript-marker {
+                color: #a8a29e;
+                font-weight: 500;
+            }
+
+            .form-group {
+                margin-bottom: 20px;
+            }
+
+            .form-label {
+                display: block;
+                font-size: 12px;
+                font-weight: 600;
+                color: #1c1917;
+                margin-bottom: 6px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .form-input {
+                width: 100%;
+                padding: 10px 0;
+                border: none;
+                border-bottom: 1px solid #e7e5e4;
+                font-family: 'Inter', sans-serif;
+                font-size: 14px;
+                color: #1c1917;
+                transition: all 0.2s;
+            }
+
+            .form-input:focus {
+                outline: none;
+                border-bottom-color: #d94e3b;
+            }
+
+            .form-textarea {
+                width: 100%;
+                padding: 12px;
+                border: 1px solid #e7e5e4;
+                border-radius: 6px;
+                font-family: 'Inter', sans-serif;
+                font-size: 14px;
+                color: #1c1917;
+                line-height: 1.6;
+                resize: vertical;
+                min-height: 200px;
+            }
+
+            .formatting-bar {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 16px;
+                padding-bottom: 16px;
+                border-bottom: 1px solid #f5f5f4;
+            }
+
+            .format-button {
+                width: 32px;
+                height: 32px;
+                border: 1px solid #e7e5e4;
+                background: #ffffff;
+                border-radius: 4px;
+                cursor: pointer;
+                font-weight: 600;
+                color: #57534e;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+            }
+
+            .format-button:hover {
+                background: #f5f5f4;
+                color: #1c1917;
+            }
+
+            .send-button {
+                width: 100%;
+                padding: 12px;
+                background: #d94e3b;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s;
+                margin-top: 16px;
+            }
+
+            .send-button:hover {
+                opacity: 0.9;
+            }
+
+            .email-subject {
+                font-size: 16px;
+                font-weight: 600;
+                color: #1c1917;
+                margin-bottom: 16px;
+                padding-bottom: 16px;
+                border-bottom: 1px solid #f5f5f4;
+            }
+
+            .email-meta {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 20px;
+                padding-bottom: 20px;
+                border-bottom: 1px solid #f5f5f4;
+            }
+
+            .email-avatar {
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                background: #e7e5e4;
+                flex-shrink: 0;
+            }
+
+            .email-sender {
+                flex: 1;
+            }
+
+            .email-sender-name {
+                font-weight: 600;
+                font-size: 13px;
+                color: #1c1917;
+            }
+
+            .email-sender-email {
+                font-size: 12px;
+                color: #a8a29e;
+            }
+
+            .email-body {
+                font-size: 14px;
+                line-height: 1.8;
+                color: #57534e;
+                margin-bottom: 20px;
+            }
+
+            .email-actions {
+                display: flex;
+                gap: 16px;
+                padding-top: 16px;
+                border-top: 1px solid #f5f5f4;
+            }
+
+            .email-action {
+                color: #d94e3b;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 500;
+                transition: all 0.2s;
+            }
+
+            .email-action:hover {
+                opacity: 0.8;
+            }
+
+            .calendar-grid {
+                display: grid;
+                grid-template-columns: repeat(7, 1fr);
+                gap: 1px;
+                background: #f5f5f4;
+                border: 1px solid #f5f5f4;
+            }
+
+            .calendar-cell {
+                background: #ffffff;
+                padding: 12px;
+                min-height: 100px;
+                font-size: 12px;
+                color: #a8a29e;
+                position: relative;
+            }
+
+            .calendar-cell.today {
+                background: #f5f5f4;
+            }
+
+            .calendar-event {
+                background: #fff5f4;
+                border-left: 4px solid #d94e3b;
+                padding: 4px 6px;
+                border-radius: 2px;
+                font-size: 11px;
+                color: #1c1917;
+                margin-bottom: 2px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .collectible-image {
+                width: 100%;
+                height: 200px;
+                background: #f5f5f4;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-bottom: 20px;
+                color: #a8a29e;
+                font-size: 40px;
+            }
+
+            .detail-row {
+                display: grid;
+                grid-template-columns: 100px 1fr;
+                gap: 16px;
+                margin-bottom: 16px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid #f5f5f4;
+            }
+
+            .detail-label {
+                font-size: 12px;
+                color: #a8a29e;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .detail-value {
+                font-size: 14px;
+                color: #1c1917;
+                font-weight: 500;
+            }
+
+            .status-tag {
+                display: inline-block;
+                padding: 4px 8px;
+                background: #f5f5f4;
+                border-radius: 3px;
+                font-size: 11px;
+                color: #a8a29e;
+            }
+
+            .progress-bar {
+                width: 100%;
+                height: 4px;
+                background: #f5f5f4;
+                border-radius: 2px;
+                overflow: hidden;
+                margin-bottom: 8px;
+            }
+
+            .progress-fill {
+                height: 100%;
+                background: #d94e3b;
+                width: 65%;
+            }
+
+            .progress-label {
+                font-size: 12px;
+                color: #a8a29e;
+            }
+
+            .icon {
+                font-family: 'Material Symbols Rounded';
+                font-size: 20px;
+                font-variation-settings:
+                    'FILL' 0,
+                    'wght' 400,
+                    'GRAD' 0,
+                    'opsz' 24;
+            }
+
+            .grid-4col {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 16px;
+            }
+
+            .module-card {
+                padding: 16px;
+                border: 1px solid #e7e5e4;
+                border-radius: 8px;
+                text-align: center;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+
+            .module-card:hover {
+                background: #f5f5f4;
+            }
+
+            .module-card.active {
+                background: #fff5f4;
+            }
+
+            .module-card-icon {
+                font-size: 32px;
+                margin-bottom: 8px;
+                color: #d94e3b;
+            }
+
+            .module-card-name {
+                font-weight: 600;
+                font-size: 13px;
+                color: #1c1917;
+                margin-bottom: 4px;
+            }
+
+            .module-card-time {
+                font-size: 11px;
+                color: #a8a29e;
+            }
+
+            .tree-list {
+                font-size: 13px;
+                line-height: 1.8;
+                color: #57534e;
+            }
+
+            .tree-item {
+                padding-left: 16px;
+            }
+
+            .tree-item.child {
+                padding-left: 32px;
+            }
+
+            .tree-item.grandchild {
+                padding-left: 48px;
+            }
+
+            .tree-icon {
+                width: 20px;
+                display: inline-block;
+                color: #a8a29e;
+                font-size: 12px;
+            }
+
+            .bot-avatar {
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                background: #e7e5e4;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                font-size: 18px;
+            }
+
+            .notification-item {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px;
+                border-bottom: 1px solid #f5f5f4;
+            }
+
+            .notification-item:last-child {
+                border-bottom: none;
+            }
+
+            .notification-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                flex-shrink: 0;
+            }
+
+            .notification-content {
+                flex: 1;
+                font-size: 13px;
+                line-height: 1.6;
+            }
+
+            .notification-time {
+                font-size: 12px;
+                color: #a8a29e;
+            }
+
+            /* Scrollbar */
+            ::-webkit-scrollbar {
+                width: 6px;
+            }
+
+            ::-webkit-scrollbar-track {
+                background: transparent;
+            }
+
+            ::-webkit-scrollbar-thumb {
+                background: #e7e5e4;
+                border-radius: 3px;
+            }
+
+            ::-webkit-scrollbar-thumb:hover {
+                background: #d0ccc8;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="main-area">
+                <!-- Space Rail -->
+                <div class="space-rail">
+                    <div class="space-item active" title="Workspace">
+                        <span class="icon">home</span>
+                    </div>
+                    <div class="space-item" title="Search">
+                        <span class="icon">search</span>
+                    </div>
+                    <div class="space-item" title="Notifications">
+                        <span class="icon">notifications</span>
+                    </div>
+                    <div class="space-item" title="Settings">
+                        <span class="icon">settings</span>
+                    </div>
+                </div>
+
+                <!-- Module Dock -->
+                <div class="module-dock">
+                    <div class="module-dock-item active" title="Memo">
+                        <span class="icon">description</span>
+                    </div>
+                    <div class="module-dock-item" title="Whiteboard">
+                        <span class="icon">draw</span>
+                    </div>
+                    <div class="module-dock-item" title="Messages">
+                        <span class="icon">chat</span>
+                    </div>
+                    <div class="module-dock-item" title="Kanban">
+                        <span class="icon">view_week</span>
+                    </div>
+                    <div class="module-dock-item" title="Data">
+                        <span class="icon">code</span>
+                    </div>
+                    <div class="module-dock-item" title="Todo">
+                        <span class="icon">task_alt</span>
+                    </div>
+                    <div class="module-dock-item" title="Recording">
+                        <span class="icon">mic</span>
+                    </div>
+                    <div class="module-dock-item" title="Bot Chat">
+                        <span class="icon">smart_toy</span>
+                    </div>
+                    <div class="module-dock-item" title="Gmail">
+                        <span class="icon">mail</span>
+                    </div>
+                    <div class="module-dock-item" title="Calendar">
+                        <span class="icon">calendar_today</span>
+                    </div>
+                    <div class="module-dock-item" title="Collectible">
+                        <span class="icon">card_membership</span>
+                    </div>
+                    <div class="module-dock-item" title="LEGO">
+                        <span class="icon">games</span>
+                    </div>
+                    <div class="module-dock-item" title="Graph">
+                        <span class="icon">share</span>
+                    </div>
+                    <div class="module-dock-item" title="Search">
+                        <span class="icon">manage_search</span>
+                    </div>
+                    <div class="module-dock-item" title="Inbox">
+                        <span class="icon">inbox</span>
+                    </div>
+                    <div class="module-dock-item" title="Template">
+                        <span class="icon">grid_3x3</span>
+                    </div>
+                    <div class="module-dock-item" title="Compose">
+                        <span class="icon">edit</span>
+                    </div>
+                    <div class="module-dock-item" title="Summary">
+                        <span class="icon">dashboard</span>
+                    </div>
+                    <div class="module-dock-item" title="Today">
+                        <span class="icon">today</span>
+                    </div>
+                    <div class="module-dock-item" title="Module Nav">
+                        <span class="icon">apps</span>
+                    </div>
+                </div>
+
+                <!-- Center Content -->
+                <div class="center-content">
+                    <!-- Screen 1: Memo -->
+                    <div class="module-panel active">
+                        <div class="module-header">
+                            <div class="module-title">Launch Strategy: Mercury Maple</div>
+                            <div class="module-subtitle">Last edited 2 hours ago</div>
+                        </div>
+                        <div class="module-content">
+                            <p class="text-body">
+                                Mercury Maple represents our most ambitious initiative to date. The
+                                platform unifies disparate tools and workflows into a single
+                                coherent experience.
+                            </p>
+                            <div class="blockquote">
+                                "Simplicity is the ultimate sophistication. We're building the
+                                future of personal information management."
+                            </div>
+                            <p class="text-body">
+                                Key initiatives include module integration, real-time collaboration,
+                                and <span class="wikilink">Mercury Framework</span> adoption across
+                                all teams.
+                            </p>
+                            <p class="text-body">
+                                Success metrics: 500K users by Q3, 95% uptime SLA, and sub-100ms API
+                                latency. The vision is clear. The execution begins now.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Screen 2: Whiteboard -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Whiteboard</div>
+                            <div class="module-subtitle">Untitled Whiteboard</div>
+                        </div>
+                        <div
+                            class="module-content"
+                            style="
+                                display: flex;
+                                flex-direction: column;
+                                gap: 20px;
+                                align-items: center;
+                            "
+                        >
+                            <div
+                                style="
+                                    width: 100%;
+                                    height: 400px;
+                                    background: #fafaf9;
+                                    border-radius: 8px;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    position: relative;
+                                    border: 1px dashed #e7e5e4;
+                                "
+                            >
+                                <div
+                                    style="
+                                        position: absolute;
+                                        width: 150px;
+                                        height: 100px;
+                                        border: 1px solid #e7e5e4;
+                                        border-radius: 4px;
+                                    "
+                                ></div>
+                                <div
+                                    style="
+                                        position: absolute;
+                                        width: 80px;
+                                        height: 80px;
+                                        border: 1px solid #e7e5e4;
+                                        border-radius: 50%;
+                                        right: 60px;
+                                    "
+                                ></div>
+                                <div
+                                    style="
+                                        position: absolute;
+                                        bottom: 60px;
+                                        left: 40px;
+                                        width: 100px;
+                                        height: 1px;
+                                        background: #e7e5e4;
+                                    "
+                                ></div>
+                                <div
+                                    style="
+                                        position: absolute;
+                                        bottom: 60px;
+                                        left: 100px;
+                                        width: 6px;
+                                        height: 6px;
+                                        background: #e7e5e4;
+                                        border-radius: 50%;
+                                        transform: translate(-50%, -50%);
+                                    "
+                                ></div>
+                            </div>
+                            <div style="display: flex; gap: 8px; justify-content: center">
+                                <button class="format-button" title="Rectangle">▢</button>
+                                <button class="format-button" title="Circle">●</button>
+                                <button class="format-button" title="Arrow">→</button>
+                                <button class="format-button" title="Line">—</button>
+                                <button class="format-button" title="Text">T</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 3: Messages -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Messages</div>
+                            <div class="module-subtitle">Mercury Launch Discussion</div>
+                        </div>
+                        <div class="module-content">
+                            <div class="chat-message received">
+                                <div>
+                                    <div class="chat-meta">Sarah Chen</div>
+                                    <div class="chat-message-content">
+                                        Have you reviewed the API specifications?
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chat-message sent">
+                                <div class="chat-message-content">
+                                    Just finished. Looking solid. Minor optimization suggestions in
+                                    comments.
+                                </div>
+                            </div>
+                            <div class="chat-message received">
+                                <div>
+                                    <div class="chat-meta">Sarah Chen</div>
+                                    <div class="chat-message-content">
+                                        Great! Let's sync tomorrow morning to discuss the deployment
+                                        strategy.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chat-message sent">
+                                <div class="chat-message-content">
+                                    9am works. I'll prepare a timeline.
+                                </div>
+                            </div>
+                            <div style="margin-top: 20px; display: flex; gap: 8px">
+                                <input
+                                    type="text"
+                                    class="form-input"
+                                    placeholder="Type a message..."
+                                    style="flex: 1"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 4: Kanban -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Kanban</div>
+                            <div class="module-subtitle">Mercury Launch Sprint</div>
+                        </div>
+                        <div class="module-content">
+                            <div class="kanban-board">
+                                <div class="kanban-column">
+                                    <div class="kanban-header">Todo</div>
+                                    <div class="kanban-card priority-high">
+                                        API authentication layer
+                                    </div>
+                                    <div class="kanban-card priority-medium">Dashboard styling</div>
+                                </div>
+                                <div class="kanban-column">
+                                    <div class="kanban-header">In Progress</div>
+                                    <div class="kanban-card priority-high">Database migrations</div>
+                                    <div class="kanban-card priority-medium">Search indexing</div>
+                                </div>
+                                <div class="kanban-column">
+                                    <div class="kanban-header">Done</div>
+                                    <div class="kanban-card">Module architecture</div>
+                                    <div class="kanban-card">Type definitions</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 5: JSON/Data -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Data Schema</div>
+                            <div class="module-subtitle">Mercury Configuration</div>
+                        </div>
+                        <div
+                            class="module-content"
+                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px"
+                        >
+                            <div
+                                style="
+                                    font-family: 'Courier New', monospace;
+                                    font-size: 12px;
+                                    line-height: 1.8;
+                                    color: #57534e;
+                                "
+                            >
+                                <span style="color: #d94e3b">{</span><br />
+                                &nbsp;&nbsp;<span style="color: #1c1917">"version"</span>:
+                                <span style="color: #3b82f6">"1.0.0"</span>,<br />
+                                &nbsp;&nbsp;<span style="color: #1c1917">"modules"</span>: [<br />
+                                &nbsp;&nbsp;&nbsp;&nbsp;{ <span style="color: #1c1917">"id"</span>:
+                                <span style="color: #3b82f6">"memo"</span> },<br />
+                                &nbsp;&nbsp;&nbsp;&nbsp;{ <span style="color: #1c1917">"id"</span>:
+                                <span style="color: #3b82f6">"kanban"</span> }<br />
+                                &nbsp;&nbsp;]<br />
+                                <span style="color: #d94e3b">}</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 16px">
+                                <div class="form-group">
+                                    <label class="form-label">API Key</label>
+                                    <input
+                                        type="text"
+                                        class="form-input"
+                                        placeholder="•••••••••••••••••••"
+                                        readonly
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Environment</label>
+                                    <input type="text" class="form-input" value="production" />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Timeout (ms)</label>
+                                    <input type="text" class="form-input" value="5000" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 6: Todo -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Tasks</div>
+                            <div class="module-subtitle">Mercury Launch Checklist</div>
+                        </div>
+                        <div class="module-content">
+                            <div class="task-list">
+                                <div class="task-item">
+                                    <div class="task-checkbox"></div>
+                                    <div class="task-text">Complete API documentation</div>
+                                    <div class="task-date">Mar 15</div>
+                                </div>
+                                <div class="task-item">
+                                    <div class="task-checkbox" style="border-color: #d94e3b">
+                                        <span style="font-size: 14px; color: #d94e3b">✓</span>
+                                    </div>
+                                    <div
+                                        class="task-text"
+                                        style="opacity: 0.4; text-decoration: line-through"
+                                    >
+                                        Set up staging environment
+                                    </div>
+                                    <div class="task-date">Mar 10</div>
+                                </div>
+                                <div class="task-item">
+                                    <div class="task-checkbox"></div>
+                                    <div class="task-text">Security audit review</div>
+                                    <div class="task-date">Mar 18</div>
+                                </div>
+                                <div class="task-item">
+                                    <div class="task-checkbox"></div>
+                                    <div class="task-text">Launch marketing campaign</div>
+                                    <div class="task-date">Mar 22</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 7: Recording -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Audio Recording</div>
+                            <div class="module-subtitle">Team Sync — Mar 10, 2:30 PM</div>
+                        </div>
+                        <div class="module-content">
+                            <div style="position: relative; margin-bottom: 32px">
+                                <div class="waveform">
+                                    <div class="waveform-bar played" style="height: 20%"></div>
+                                    <div class="waveform-bar played" style="height: 35%"></div>
+                                    <div class="waveform-bar played" style="height: 45%"></div>
+                                    <div class="waveform-bar played" style="height: 50%"></div>
+                                    <div class="waveform-bar" style="height: 40%"></div>
+                                    <div class="waveform-bar" style="height: 30%"></div>
+                                    <div class="waveform-bar" style="height: 25%"></div>
+                                    <div class="waveform-bar" style="height: 35%"></div>
+                                </div>
+                                <div class="play-button">
+                                    <div class="play-icon"></div>
+                                </div>
+                            </div>
+                            <div
+                                style="
+                                    text-align: center;
+                                    font-family: 'Courier New', monospace;
+                                    font-size: 12px;
+                                    color: #a8a29e;
+                                    margin-bottom: 20px;
+                                "
+                            >
+                                2:45 / 12:30
+                            </div>
+                            <div class="transcript">
+                                <div style="margin-bottom: 12px">
+                                    <span class="transcript-marker">[0:00]</span> Sarah: "Let's
+                                    start with the Mercury launch timeline..."
+                                </div>
+                                <div style="margin-bottom: 12px">
+                                    <span class="transcript-marker">[1:20]</span> You: "I've
+                                    reviewed the API specs and they look solid..."
+                                </div>
+                                <div>
+                                    <span class="transcript-marker">[2:45]</span> Sarah: "Great!
+                                    Let's sync tomorrow to discuss deployment..."
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 8: Bot Chat -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Mercury Assistant</div>
+                            <div class="module-subtitle">AI-powered module helper</div>
+                        </div>
+                        <div class="module-content">
+                            <div class="chat-message received">
+                                <div class="bot-avatar">✨</div>
+                                <div style="flex: 1">
+                                    <div class="chat-meta">Mercury Assistant</div>
+                                    <div class="chat-message-content">
+                                        I can help you with module setup, API integration, and best
+                                        practices. What would you like to know?
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="chat-message sent">
+                                <div class="chat-message-content">
+                                    How do I set up authentication for the API?
+                                </div>
+                            </div>
+                            <div class="chat-message received">
+                                <div class="bot-avatar">✨</div>
+                                <div style="flex: 1">
+                                    <div class="chat-meta">Mercury Assistant</div>
+                                    <div class="chat-message-content">
+                                        I recommend using JWT tokens. The authentication layer
+                                        requires Bearer tokens in the Authorization header. Check
+                                        the docs for implementation details.
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="margin-top: 20px; display: flex; gap: 8px">
+                                <input
+                                    type="text"
+                                    class="form-input"
+                                    placeholder="Ask me anything..."
+                                    style="flex: 1"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 9: Gmail -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Email</div>
+                            <div class="module-subtitle">Re: Mercury Launch Timeline</div>
+                        </div>
+                        <div class="module-content">
+                            <div class="email-subject">Mercury Launch Timeline — Updated Plan</div>
+                            <div class="email-meta">
+                                <div class="email-avatar"></div>
+                                <div class="email-sender">
+                                    <div class="email-sender-name">Sarah Chen</div>
+                                    <div class="email-sender-email">sarah.chen@company.com</div>
+                                </div>
+                            </div>
+                            <div class="email-body">
+                                <p>Hi there,</p>
+                                <p style="margin-top: 12px">
+                                    I've reviewed the timeline and have a few thoughts on the Q2
+                                    rollout. The API stability looks solid, and I think we can
+                                    accelerate the module integration phase by 1 week.
+                                </p>
+                                <p style="margin-top: 12px">Key points for our sync:</p>
+                                <div class="blockquote" style="margin: 12px 0">
+                                    <p>
+                                        "We should prioritize the real-time collaboration features
+                                        before the public launch."
+                                    </p>
+                                </div>
+                                <p style="margin-top: 12px">
+                                    Let me know your thoughts. Looking forward to our conversation.
+                                </p>
+                                <p style="margin-top: 12px">Best,<br />Sarah</p>
+                            </div>
+                            <div class="email-actions">
+                                <div class="email-action">Reply</div>
+                                <div class="email-action">Forward</div>
+                                <div class="email-action">Archive</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 10: Calendar -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Calendar</div>
+                            <div class="module-subtitle">Week of March 10</div>
+                        </div>
+                        <div class="module-content">
+                            <div class="calendar-grid">
+                                <div class="calendar-cell" style="grid-column: 2">
+                                    <div
+                                        style="
+                                            font-size: 11px;
+                                            font-weight: 600;
+                                            color: #1c1917;
+                                            margin-bottom: 6px;
+                                        "
+                                    >
+                                        Mon 10
+                                    </div>
+                                </div>
+                                <div class="calendar-cell">
+                                    <div
+                                        style="
+                                            font-size: 11px;
+                                            font-weight: 600;
+                                            color: #1c1917;
+                                            margin-bottom: 6px;
+                                        "
+                                    >
+                                        Tue 11
+                                    </div>
+                                </div>
+                                <div class="calendar-cell">
+                                    <div
+                                        style="
+                                            font-size: 11px;
+                                            font-weight: 600;
+                                            color: #1c1917;
+                                            margin-bottom: 6px;
+                                        "
+                                    >
+                                        Wed 12
+                                    </div>
+                                    <div class="calendar-event" style="border-left-color: #dc2626">
+                                        API Review
+                                    </div>
+                                </div>
+                                <div class="calendar-cell today">
+                                    <div
+                                        style="
+                                            font-size: 11px;
+                                            font-weight: 600;
+                                            color: #1c1917;
+                                            margin-bottom: 6px;
+                                        "
+                                    >
+                                        Thu 13
+                                    </div>
+                                    <div class="calendar-event" style="border-left-color: #f59e0b">
+                                        Team Sync
+                                    </div>
+                                </div>
+                                <div class="calendar-cell">
+                                    <div
+                                        style="
+                                            font-size: 11px;
+                                            font-weight: 600;
+                                            color: #1c1917;
+                                            margin-bottom: 6px;
+                                        "
+                                    >
+                                        Fri 14
+                                    </div>
+                                    <div class="calendar-event" style="border-left-color: #3b82f6">
+                                        Launch Prep
+                                    </div>
+                                </div>
+                                <div class="calendar-cell">
+                                    <div style="font-size: 11px; font-weight: 600; color: #a8a29e">
+                                        Sat 15
+                                    </div>
+                                </div>
+                                <div class="calendar-cell">
+                                    <div style="font-size: 11px; font-weight: 600; color: #a8a29e">
+                                        Sun 16
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 11: Collectible -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Collectible Item</div>
+                            <div class="module-subtitle">Vintage Watch</div>
+                        </div>
+                        <div class="module-content">
+                            <div class="collectible-image">⌚</div>
+                            <div class="detail-row">
+                                <div class="detail-label">Name</div>
+                                <div class="detail-value">Omega Seamaster 1969</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Year</div>
+                                <div class="detail-value">1969</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Condition</div>
+                                <div class="detail-value">
+                                    <span class="status-tag">Excellent</span>
+                                </div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Value</div>
+                                <div class="detail-value" style="color: #d94e3b; font-size: 18px">
+                                    $8,500
+                                </div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Progress</div>
+                                <div style="flex: 1">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" style="width: 85%"></div>
+                                    </div>
+                                    <div class="progress-label">Verified: 85%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 12: LEGO -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">LEGO Set</div>
+                            <div class="module-subtitle">Millennium Falcon</div>
+                        </div>
+                        <div class="module-content">
+                            <div
+                                style="
+                                    font-family: 'Courier New', monospace;
+                                    font-size: 20px;
+                                    font-weight: 700;
+                                    color: #1c1917;
+                                    margin-bottom: 24px;
+                                "
+                            >
+                                75257
+                            </div>
+                            <div
+                                class="stats-row"
+                                style="
+                                    grid-template-columns: repeat(2, 1fr);
+                                    margin-bottom: 24px;
+                                    padding-bottom: 24px;
+                                "
+                            >
+                                <div class="stat-box">
+                                    <div class="stat-value">7,541</div>
+                                    <div class="stat-label">Pieces</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">Star Wars</div>
+                                    <div class="stat-label">Theme</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">2020</div>
+                                    <div class="stat-label">Year</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">$799</div>
+                                    <div class="stat-label">Value</div>
+                                </div>
+                            </div>
+                            <div style="border-top: 1px solid #f5f5f4; padding-top: 24px">
+                                <div
+                                    style="
+                                        font-size: 12px;
+                                        color: #a8a29e;
+                                        font-weight: 600;
+                                        margin-bottom: 8px;
+                                    "
+                                >
+                                    BUILD PROGRESS
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" style="width: 42%"></div>
+                                </div>
+                                <div class="progress-label">42% Complete</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 13: Graph -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Knowledge Graph</div>
+                            <div class="module-subtitle">Mercury Launch Strategy</div>
+                        </div>
+                        <div class="module-content">
+                            <div class="tree-list">
+                                <div
+                                    class="tree-item"
+                                    style="font-weight: 600; color: #1c1917; margin-bottom: 16px"
+                                >
+                                    <span class="tree-icon">📄</span> Launch Strategy
+                                </div>
+                                <div class="tree-item child" style="margin-bottom: 12px">
+                                    <span class="tree-icon">📝</span> API Design
+                                </div>
+                                <div class="tree-item child" style="margin-bottom: 12px">
+                                    <span class="tree-icon">🎯</span> Timeline
+                                </div>
+                                <div class="tree-item child" style="margin-bottom: 12px">
+                                    <span class="tree-icon">👥</span> Team Structure
+                                </div>
+                                <div
+                                    class="tree-item grandchild"
+                                    style="margin-bottom: 12px; color: #a8a29e"
+                                >
+                                    <span class="tree-icon">→</span> Engineering
+                                </div>
+                                <div class="tree-item grandchild" style="color: #a8a29e">
+                                    <span class="tree-icon">→</span> Product
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 14: Search Results -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Search Results</div>
+                            <div class="module-subtitle">5 results for "Mercury"</div>
+                        </div>
+                        <div class="module-content">
+                            <input
+                                type="text"
+                                class="search-input"
+                                placeholder="Search..."
+                                value="Mercury"
+                            />
+                            <div class="search-results">
+                                <div class="result-item">
+                                    <div style="display: flex; gap: 8px; align-items: flex-start">
+                                        <span style="color: #a8a29e; font-size: 12px">📄</span>
+                                        <div style="flex: 1">
+                                            <div class="result-title">
+                                                Launch Strategy: Mercury Maple
+                                            </div>
+                                            <div class="result-snippet">
+                                                Mercury Maple represents our most ambitious
+                                                initiative to date. The platform unifies disparate
+                                                tools and workflows...
+                                            </div>
+                                            <div class="result-source">
+                                                Memo · Last edited 2 hours ago
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="result-item">
+                                    <div style="display: flex; gap: 8px; align-items: flex-start">
+                                        <span style="color: #a8a29e; font-size: 12px">💬</span>
+                                        <div style="flex: 1">
+                                            <div class="result-title">
+                                                Mercury Launch Discussion
+                                            </div>
+                                            <div class="result-snippet">
+                                                Have you reviewed the API specifications? Just
+                                                finished. Looking solid...
+                                            </div>
+                                            <div class="result-source">
+                                                Messages · Thread · 4 participants
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="result-item">
+                                    <div style="display: flex; gap: 8px; align-items: flex-start">
+                                        <span style="color: #a8a29e; font-size: 12px">✉️</span>
+                                        <div style="flex: 1">
+                                            <div class="result-title">
+                                                Mercury Launch Timeline — Updated Plan
+                                            </div>
+                                            <div class="result-snippet">
+                                                I've reviewed the timeline and have a few thoughts
+                                                on the Q2 rollout...
+                                            </div>
+                                            <div class="result-source">Email · From Sarah Chen</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 15: Inbox -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Inbox</div>
+                            <div class="module-subtitle">12 notifications</div>
+                        </div>
+                        <div class="module-content">
+                            <div style="display: flex; flex-direction: column; gap: 12px">
+                                <div
+                                    class="notification-item"
+                                    style="padding-bottom: 12px; border-bottom: 1px solid #f5f5f4"
+                                >
+                                    <div class="notification-dot" style="background: #d94e3b"></div>
+                                    <div class="notification-content" style="font-weight: 500">
+                                        Sarah Chen commented on Launch Strategy
+                                    </div>
+                                    <div class="notification-time">2m</div>
+                                </div>
+                                <div
+                                    class="notification-item"
+                                    style="padding-bottom: 12px; border-bottom: 1px solid #f5f5f4"
+                                >
+                                    <div class="notification-dot" style="background: #3b82f6"></div>
+                                    <div class="notification-content">
+                                        New message in Mercury Launch Discussion
+                                    </div>
+                                    <div class="notification-time">14m</div>
+                                </div>
+                                <div
+                                    class="notification-item"
+                                    style="padding-bottom: 12px; border-bottom: 1px solid #f5f5f4"
+                                >
+                                    <div class="notification-dot" style="background: #f59e0b"></div>
+                                    <div class="notification-content">
+                                        Reminder: API Review meeting in 1 hour
+                                    </div>
+                                    <div class="notification-time">1h</div>
+                                </div>
+                                <div class="notification-item">
+                                    <div class="notification-dot" style="background: #a8a29e"></div>
+                                    <div class="notification-content" style="opacity: 0.6">
+                                        Mercury status update published
+                                    </div>
+                                    <div class="notification-time">3h</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 16: Template -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Templates</div>
+                            <div class="module-subtitle">Browse and create from templates</div>
+                        </div>
+                        <div class="module-content">
+                            <input
+                                type="text"
+                                class="search-input"
+                                placeholder="Search templates..."
+                            />
+                            <div class="grid-2x3">
+                                <div class="grid-item">
+                                    <div class="grid-item-title">Project Plan</div>
+                                    <div class="grid-item-tag">Planning</div>
+                                    <div class="grid-item-desc">
+                                        Structured project timeline with milestones and deliverables
+                                    </div>
+                                </div>
+                                <div class="grid-item">
+                                    <div class="grid-item-title">Meeting Notes</div>
+                                    <div class="grid-item-tag">Documentation</div>
+                                    <div class="grid-item-desc">
+                                        Standard format for capturing action items and decisions
+                                    </div>
+                                </div>
+                                <div class="grid-item">
+                                    <div class="grid-item-title">Product Roadmap</div>
+                                    <div class="grid-item-tag">Strategy</div>
+                                    <div class="grid-item-desc">
+                                        Quarterly roadmap with feature priorities and release dates
+                                    </div>
+                                </div>
+                                <div class="grid-item">
+                                    <div class="grid-item-title">Weekly Review</div>
+                                    <div class="grid-item-tag">Reflection</div>
+                                    <div class="grid-item-desc">
+                                        Reflect on wins, challenges, and goals for next week
+                                    </div>
+                                </div>
+                                <div class="grid-item">
+                                    <div class="grid-item-title">Bug Report</div>
+                                    <div class="grid-item-tag">Development</div>
+                                    <div class="grid-item-desc">
+                                        Structured template for reporting and tracking bugs
+                                    </div>
+                                </div>
+                                <div class="grid-item">
+                                    <div class="grid-item-title">Brainstorm</div>
+                                    <div class="grid-item-tag">Ideation</div>
+                                    <div class="grid-item-desc">
+                                        Freeform space for capturing ideas and exploring concepts
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 17: Email Compose -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Compose Email</div>
+                            <div class="module-subtitle">New message</div>
+                        </div>
+                        <div class="module-content">
+                            <div class="form-group">
+                                <label class="form-label">To</label>
+                                <input
+                                    type="email"
+                                    class="form-input"
+                                    placeholder="recipient@example.com"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Cc</label>
+                                <input
+                                    type="email"
+                                    class="form-input"
+                                    placeholder="cc@example.com"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Subject</label>
+                                <input type="text" class="form-input" placeholder="Email subject" />
+                            </div>
+                            <div class="formatting-bar">
+                                <button class="format-button" title="Bold">B</button>
+                                <button class="format-button" title="Italic">I</button>
+                                <button class="format-button" title="Underline">U</button>
+                                <button class="format-button" title="Link">🔗</button>
+                            </div>
+                            <textarea
+                                class="form-textarea"
+                                placeholder="Write your message..."
+                            ></textarea>
+                            <button class="send-button">Send</button>
+                        </div>
+                    </div>
+
+                    <!-- Screen 18: Summary -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Summary</div>
+                            <div class="module-subtitle">Weekly overview</div>
+                        </div>
+                        <div class="module-content">
+                            <div class="stats-row">
+                                <div class="stat-box">
+                                    <div class="stat-value">24</div>
+                                    <div class="stat-label">Tasks Completed</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">8</div>
+                                    <div class="stat-label">Meetings</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">42</div>
+                                    <div class="stat-label">Messages</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-value">5</div>
+                                    <div class="stat-label">Documents</div>
+                                </div>
+                            </div>
+                            <div>
+                                <div
+                                    style="
+                                        font-size: 12px;
+                                        font-weight: 600;
+                                        color: #a8a29e;
+                                        text-transform: uppercase;
+                                        letter-spacing: 0.5px;
+                                        margin-bottom: 12px;
+                                    "
+                                >
+                                    Recent Activity
+                                </div>
+                                <div class="timeline">
+                                    <div class="timeline-item">
+                                        <div class="timeline-time">9:30 AM</div>
+                                        <div class="timeline-content">
+                                            Started Launch Strategy document
+                                        </div>
+                                    </div>
+                                    <div class="timeline-item">
+                                        <div class="timeline-time">11:00 AM</div>
+                                        <div class="timeline-content">
+                                            Reviewed API specifications
+                                        </div>
+                                    </div>
+                                    <div class="timeline-item">
+                                        <div class="timeline-time">2:30 PM</div>
+                                        <div class="timeline-content">
+                                            Team sync meeting — Mercury launch
+                                        </div>
+                                    </div>
+                                    <div class="timeline-item">
+                                        <div class="timeline-time">4:15 PM</div>
+                                        <div class="timeline-content">
+                                            Completed Q2 roadmap planning
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 19: Today -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Today</div>
+                            <div class="module-subtitle">Thursday, March 13</div>
+                        </div>
+                        <div class="module-content">
+                            <div class="schedule-section">
+                                <div class="schedule-label">Morning</div>
+                                <div class="schedule-item">
+                                    <div class="schedule-time">9:00</div>
+                                    <div class="schedule-desc">📧 Review API documentation</div>
+                                </div>
+                                <div class="schedule-item">
+                                    <div class="schedule-time">10:30</div>
+                                    <div class="schedule-desc">👥 Team standup</div>
+                                </div>
+                            </div>
+                            <div class="schedule-section">
+                                <div class="schedule-label">Afternoon</div>
+                                <div class="schedule-item">
+                                    <div class="schedule-time">2:00</div>
+                                    <div class="schedule-desc">🎯 Mercury launch sync</div>
+                                </div>
+                                <div class="schedule-item">
+                                    <div class="schedule-time">3:30</div>
+                                    <div class="schedule-desc">💻 Code review session</div>
+                                </div>
+                            </div>
+                            <div class="schedule-section">
+                                <div class="schedule-label">Evening</div>
+                                <div class="schedule-item">
+                                    <div class="schedule-time">5:30</div>
+                                    <div class="schedule-desc">📝 Document findings</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Screen 20: Module Nav -->
+                    <div class="module-panel">
+                        <div class="module-header">
+                            <div class="module-title">Modules</div>
+                            <div class="module-subtitle">Browse all available modules</div>
+                        </div>
+                        <div class="module-content">
+                            <input
+                                type="text"
+                                class="search-input"
+                                placeholder="Search modules..."
+                            />
+                            <div class="grid-4col">
+                                <div class="module-card active">
+                                    <div class="module-card-icon">📝</div>
+                                    <div class="module-card-name">Memo</div>
+                                    <div class="module-card-time">edited 2h ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">✏️</div>
+                                    <div class="module-card-name">Whiteboard</div>
+                                    <div class="module-card-time">edited 5h ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">💬</div>
+                                    <div class="module-card-name">Messages</div>
+                                    <div class="module-card-time">edited 30m ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">📊</div>
+                                    <div class="module-card-name">Kanban</div>
+                                    <div class="module-card-time">edited 1d ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">💾</div>
+                                    <div class="module-card-name">Data</div>
+                                    <div class="module-card-time">edited 3d ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">✓</div>
+                                    <div class="module-card-name">Todo</div>
+                                    <div class="module-card-time">edited 1h ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">🎙️</div>
+                                    <div class="module-card-name">Recording</div>
+                                    <div class="module-card-time">edited 6h ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">🤖</div>
+                                    <div class="module-card-name">Bot Chat</div>
+                                    <div class="module-card-time">edited 4h ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">✉️</div>
+                                    <div class="module-card-name">Email</div>
+                                    <div class="module-card-time">edited 10m ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">📅</div>
+                                    <div class="module-card-name">Calendar</div>
+                                    <div class="module-card-time">edited 2d ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">💎</div>
+                                    <div class="module-card-name">Collectible</div>
+                                    <div class="module-card-time">edited 1w ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">🧱</div>
+                                    <div class="module-card-name">LEGO</div>
+                                    <div class="module-card-time">edited 2w ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">🌐</div>
+                                    <div class="module-card-name">Graph</div>
+                                    <div class="module-card-time">edited 3h ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">🔍</div>
+                                    <div class="module-card-name">Search</div>
+                                    <div class="module-card-time">edited 45m ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">📬</div>
+                                    <div class="module-card-name">Inbox</div>
+                                    <div class="module-card-time">edited 20m ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">📋</div>
+                                    <div class="module-card-name">Template</div>
+                                    <div class="module-card-time">edited 1w ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">✍️</div>
+                                    <div class="module-card-name">Compose</div>
+                                    <div class="module-card-time">edited 7h ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">📊</div>
+                                    <div class="module-card-name">Summary</div>
+                                    <div class="module-card-time">edited 12h ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">⏰</div>
+                                    <div class="module-card-name">Today</div>
+                                    <div class="module-card-time">edited 8h ago</div>
+                                </div>
+                                <div class="module-card">
+                                    <div class="module-card-icon">🔲</div>
+                                    <div class="module-card-name">Module Nav</div>
+                                    <div class="module-card-time">edited now</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel -->
+                <div class="right-panel">
+                    <div class="right-panel-title">Connections</div>
+                    <div class="connection-item">
+                        <div class="connection-icon">→</div>
+                        <span>API Docs</span>
+                    </div>
+                    <div class="connection-item">
+                        <div class="connection-icon">→</div>
+                        <span>Timeline</span>
+                    </div>
+                    <div class="connection-item">
+                        <div class="connection-icon">→</div>
+                        <span>Team Plan</span>
+                    </div>
+                    <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #f5f5f4">
+                        <div class="right-panel-title" style="margin-bottom: 12px">Recent</div>
+                        <div class="connection-item" style="font-size: 12px; color: #a8a29e">
+                            Mercury Launch...
+                        </div>
+                        <div class="connection-item" style="font-size: 12px; color: #a8a29e">
+                            API Review
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Navigation -->
+            <div class="bottom-nav">
+                <div class="nav-dot active"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <div class="nav-dot"></div>
+                <span class="screen-counter"><span id="currentScreen">1</span> / 20</span>
+                <span class="module-name" id="moduleName">Memo</span>
+            </div>
+        </div>
+
+        <script>
+            const modules = [
+                'Memo',
+                'Whiteboard',
+                'Messages',
+                'Kanban',
+                'Data',
+                'Todo',
+                'Recording',
+                'Bot Chat',
+                'Gmail',
+                'Calendar',
+                'Collectible',
+                'LEGO',
+                'Graph',
+                'Search',
+                'Inbox',
+                'Template',
+                'Compose',
+                'Summary',
+                'Today',
+                'Module Nav',
+            ];
+
+            let currentScreen = 0;
+
+            function updateScreen(screenIndex) {
+                // Update module panels
+                document.querySelectorAll('.module-panel').forEach((panel, idx) => {
+                    panel.classList.toggle('active', idx === screenIndex);
+                });
+
+                // Update module dock items
+                document.querySelectorAll('.module-dock-item').forEach((item, idx) => {
+                    item.classList.toggle('active', idx === screenIndex);
+                });
+
+                // Update nav dots
+                document.querySelectorAll('.nav-dot').forEach((dot, idx) => {
+                    dot.classList.toggle('active', idx === screenIndex);
+                });
+
+                // Update counter and module name
+                document.getElementById('currentScreen').textContent = screenIndex + 1;
+                document.getElementById('moduleName').textContent = modules[screenIndex];
+
+                currentScreen = screenIndex;
+            }
+
+            // Keyboard navigation
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight') {
+                    updateScreen((currentScreen + 1) % modules.length);
+                } else if (e.key === 'ArrowLeft') {
+                    updateScreen((currentScreen - 1 + modules.length) % modules.length);
+                }
+            });
+
+            // Dot click navigation
+            document.querySelectorAll('.nav-dot').forEach((dot, idx) => {
+                dot.addEventListener('click', () => updateScreen(idx));
+            });
+
+            // Module dock click navigation
+            document.querySelectorAll('.module-dock-item').forEach((item, idx) => {
+                item.addEventListener('click', () => updateScreen(idx));
+            });
+
+            // Initialize first screen
+            updateScreen(0);
+        </script>
+    </body>
+</html>

@@ -1,0 +1,2692 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Mercury Maple — Metro Design System</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600&family=Inter:wght@300;400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link
+            rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:wght@200;400&display=block"
+        />
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                border-radius: 0 !important;
+            }
+
+            html,
+            body {
+                width: 100%;
+                height: 100%;
+                font-family:
+                    'Segoe UI',
+                    'Inter',
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    sans-serif;
+                background: #1d1d1d;
+                color: #ffffff;
+                overflow: hidden;
+            }
+
+            .app-container {
+                display: flex;
+                width: 100%;
+                height: 100%;
+                gap: 0;
+            }
+
+            /* Space Rail */
+            .space-rail {
+                width: 64px;
+                background: #1d1d1d;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 8px 0;
+                gap: 8px;
+                border-right: 1px solid #333333;
+            }
+
+            .space-tile {
+                width: 48px;
+                height: 48px;
+                background: #2d2d2d;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 150ms ease;
+                color: #666666;
+                font-size: 20px;
+            }
+
+            .space-tile:hover {
+                background: #3d3d3d;
+            }
+
+            .space-tile.active {
+                background: #d94e3b;
+                color: #ffffff;
+            }
+
+            /* Module Dock */
+            .module-dock {
+                width: 56px;
+                background: #1d1d1d;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 12px 0;
+                gap: 4px;
+                border-right: 1px solid #333333;
+                overflow-y: auto;
+            }
+
+            .module-tile {
+                width: 44px;
+                height: 44px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 150ms ease;
+                color: #ffffff;
+                font-size: 18px;
+                flex-shrink: 0;
+            }
+
+            .module-tile.memo {
+                background: #d94e3b;
+            }
+            .module-tile.whiteboard {
+                background: #2d7dd2;
+            }
+            .module-tile.messages {
+                background: #00b159;
+            }
+            .module-tile.kanban {
+                background: #8b5cf6;
+            }
+            .module-tile.json {
+                background: #f59e0b;
+            }
+            .module-tile.todo {
+                background: #ec4899;
+            }
+            .module-tile.recording {
+                background: #06b6d4;
+            }
+            .module-tile.bot {
+                background: #8b5cf6;
+            }
+            .module-tile.gmail {
+                background: #ea4335;
+            }
+            .module-tile.calendar {
+                background: #4285f4;
+            }
+            .module-tile.collectible {
+                background: #34a853;
+            }
+            .module-tile.lego {
+                background: #fbbc04;
+            }
+            .module-tile.graph {
+                background: #ea4335;
+            }
+            .module-tile.search {
+                background: #4285f4;
+            }
+            .module-tile.inbox {
+                background: #34a853;
+            }
+            .module-tile.template {
+                background: #8b5cf6;
+            }
+            .module-tile.compose {
+                background: #ea4335;
+            }
+            .module-tile.summary {
+                background: #2d7dd2;
+            }
+            .module-tile.today {
+                background: #f59e0b;
+            }
+            .module-tile.nav {
+                background: #d94e3b;
+            }
+
+            .module-tile:hover {
+                transform: scale(1.08);
+            }
+
+            .module-tile.active {
+                width: 48px;
+                height: 48px;
+                box-shadow: inset 0 0 0 2px #ffffff;
+            }
+
+            /* Main Content Area */
+            .content-wrapper {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                background: #1d1d1d;
+            }
+
+            .module-content {
+                flex: 1;
+                background: #1d1d1d;
+                overflow: auto;
+                display: none;
+                flex-direction: column;
+            }
+
+            .module-content.active {
+                display: flex;
+            }
+
+            /* Right Network Panel */
+            .network-panel {
+                width: 200px;
+                background: #2d2d2d;
+                border-left: 1px solid #333333;
+                display: flex;
+                flex-direction: column;
+                padding: 16px 0;
+                overflow-y: auto;
+            }
+
+            .network-title {
+                font-size: 14px;
+                font-weight: 600;
+                color: #999999;
+                padding: 8px 16px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .network-item {
+                padding: 8px 16px;
+                border-left: 3px solid transparent;
+                font-size: 12px;
+                color: #cccccc;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                transition: all 150ms ease;
+            }
+
+            .network-item:hover {
+                background: #3d3d3d;
+            }
+
+            .network-item.type-memo {
+                border-left-color: #d94e3b;
+            }
+            .network-item.type-msg {
+                border-left-color: #00b159;
+            }
+            .network-item.type-link {
+                border-left-color: #2d7dd2;
+            }
+
+            .network-dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 0;
+                flex-shrink: 0;
+            }
+
+            /* Bottom Navigation */
+            .bottom-nav {
+                height: 60px;
+                background: #1d1d1d;
+                border-top: 1px solid #333333;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 12px 20px;
+                gap: 40px;
+            }
+
+            .nav-arrows {
+                display: flex;
+                gap: 12px;
+            }
+
+            .nav-btn {
+                width: 32px;
+                height: 32px;
+                background: #2d2d2d;
+                border: none;
+                color: #999999;
+                cursor: pointer;
+                font-size: 18px;
+                transition: all 150ms ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .nav-btn:hover {
+                background: #3d3d3d;
+                color: #ffffff;
+            }
+
+            .screen-counter {
+                font-size: 28px;
+                font-weight: 300;
+                color: #999999;
+                font-family: 'Segoe UI', sans-serif;
+                min-width: 100px;
+                text-align: center;
+            }
+
+            .nav-dots {
+                display: flex;
+                gap: 8px;
+            }
+
+            .nav-dot {
+                width: 6px;
+                height: 6px;
+                background: #666666;
+                cursor: pointer;
+                transition: all 150ms ease;
+            }
+
+            .nav-dot.active {
+                background: #ffffff;
+                width: 24px;
+            }
+
+            /* Module Content Styles */
+            .module-content {
+                padding: 32px 40px;
+            }
+
+            /* Memo Module */
+            .memo-title {
+                font-size: 36px;
+                font-weight: 300;
+                margin-bottom: 24px;
+                color: #ffffff;
+            }
+
+            .memo-body {
+                font-size: 15px;
+                font-weight: 400;
+                line-height: 1.6;
+                color: #cccccc;
+                margin-bottom: 20px;
+            }
+
+            .memo-blockquote {
+                border-left: 6px solid #d94e3b;
+                padding-left: 16px;
+                font-size: 14px;
+                color: #999999;
+                font-style: italic;
+                margin: 20px 0;
+            }
+
+            .memo-link {
+                color: #2d7dd2;
+                font-weight: 600;
+                cursor: pointer;
+                text-decoration: none;
+            }
+
+            .memo-heading {
+                font-size: 24px;
+                font-weight: 300;
+                margin-top: 24px;
+                margin-bottom: 12px;
+                color: #ffffff;
+            }
+
+            /* Whiteboard Module */
+            .whiteboard-canvas {
+                flex: 1;
+                background: #1d1d1d;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+                overflow: hidden;
+            }
+
+            .whiteboard-shape {
+                position: absolute;
+                transition: all 200ms ease;
+            }
+
+            .whiteboard-toolbar {
+                height: 56px;
+                background: #2d2d2d;
+                border-top: 1px solid #333333;
+                display: flex;
+                align-items: center;
+                padding: 8px 16px;
+                gap: 8px;
+            }
+
+            .toolbar-btn {
+                width: 40px;
+                height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                color: #999999;
+                font-size: 18px;
+                transition: all 150ms ease;
+            }
+
+            .toolbar-btn:hover {
+                background: #3d3d3d;
+                color: #ffffff;
+            }
+
+            .toolbar-btn.rect {
+                background: #2d7dd2;
+                color: #ffffff;
+            }
+            .toolbar-btn.circle {
+                background: #00b159;
+                color: #ffffff;
+            }
+            .toolbar-btn.text {
+                background: #f59e0b;
+                color: #ffffff;
+            }
+
+            /* Messages Module */
+            .messages-list {
+                flex: 1;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                padding-bottom: 20px;
+            }
+
+            .message-tile {
+                background: #2d2d2d;
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .message-sender {
+                font-weight: 600;
+                color: #ffffff;
+                font-size: 13px;
+            }
+
+            .message-text {
+                font-size: 14px;
+                color: #cccccc;
+                line-height: 1.5;
+            }
+
+            .message-time {
+                font-size: 11px;
+                color: #666666;
+            }
+
+            .messages-input {
+                height: 56px;
+                background: #2d2d2d;
+                border-top: 1px solid #333333;
+                display: flex;
+                align-items: center;
+                padding: 0 16px;
+                gap: 12px;
+            }
+
+            .messages-input input {
+                flex: 1;
+                background: #1d1d1d;
+                border: none;
+                color: #ffffff;
+                font-size: 14px;
+                padding: 0;
+            }
+
+            .messages-input input::placeholder {
+                color: #666666;
+            }
+
+            .send-btn {
+                width: 36px;
+                height: 36px;
+                background: #d94e3b;
+                border: none;
+                color: #ffffff;
+                cursor: pointer;
+                font-size: 16px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            /* Kanban Module */
+            .kanban-board {
+                display: flex;
+                gap: 16px;
+                overflow-x: auto;
+                height: 100%;
+                padding-bottom: 20px;
+            }
+
+            .kanban-column {
+                flex-shrink: 0;
+                width: 300px;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .kanban-header {
+                font-size: 24px;
+                font-weight: 300;
+                color: #ffffff;
+                padding: 8px 0;
+            }
+
+            .kanban-card {
+                background: #2d2d2d;
+                padding: 16px;
+                border-left: 8px solid;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .kanban-card.todo {
+                border-left-color: #2d7dd2;
+            }
+            .kanban-card.inprogress {
+                border-left-color: #f59e0b;
+            }
+            .kanban-card.done {
+                border-left-color: #00b159;
+            }
+
+            .kanban-title {
+                font-weight: 600;
+                font-size: 14px;
+                color: #ffffff;
+            }
+
+            .kanban-avatar {
+                width: 24px;
+                height: 24px;
+                background: #8b5cf6;
+                color: #ffffff;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 10px;
+                font-weight: 600;
+            }
+
+            /* JSON Module */
+            .json-container {
+                display: flex;
+                gap: 20px;
+                height: 100%;
+            }
+
+            .json-left {
+                flex: 1;
+                overflow-y: auto;
+                background: #2d2d2d;
+                padding: 16px;
+                font-family: 'Monaco', 'Courier New', monospace;
+                font-size: 12px;
+                line-height: 1.6;
+            }
+
+            .json-key {
+                color: #2d7dd2;
+                font-weight: 600;
+            }
+            .json-string {
+                color: #00b159;
+            }
+            .json-number {
+                color: #f59e0b;
+            }
+            .json-bool {
+                color: #ec4899;
+            }
+
+            .json-right {
+                flex: 1;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+            }
+
+            .form-label {
+                font-size: 18px;
+                font-weight: 300;
+                color: #ffffff;
+                margin-top: 16px;
+            }
+
+            .form-input {
+                background: #2d2d2d;
+                border: none;
+                color: #ffffff;
+                padding: 12px 16px;
+                font-size: 14px;
+                width: 100%;
+            }
+
+            .form-input::placeholder {
+                color: #666666;
+            }
+
+            /* Todo Module */
+            .todo-list {
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                max-width: 600px;
+            }
+
+            .todo-section-header {
+                font-size: 24px;
+                font-weight: 300;
+                color: #ffffff;
+                margin-top: 20px;
+                margin-bottom: 12px;
+            }
+
+            .todo-item {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px 0;
+            }
+
+            .todo-checkbox {
+                width: 20px;
+                height: 20px;
+                background: #2d2d2d;
+                border: 1px solid #666666;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #ffffff;
+                font-size: 12px;
+                flex-shrink: 0;
+            }
+
+            .todo-checkbox.checked {
+                background: #d94e3b;
+                border-color: #d94e3b;
+            }
+
+            .todo-priority {
+                width: 8px;
+                height: 8px;
+                flex-shrink: 0;
+            }
+
+            .todo-priority.high {
+                background: #dc2626;
+            }
+            .todo-priority.medium {
+                background: #f59e0b;
+            }
+            .todo-priority.low {
+                background: #3b82f6;
+            }
+
+            .todo-text {
+                flex: 1;
+                font-size: 14px;
+                color: #cccccc;
+            }
+
+            .todo-text.completed {
+                text-decoration: line-through;
+                color: #666666;
+            }
+
+            .todo-due {
+                font-size: 12px;
+                color: #666666;
+            }
+
+            /* Recording Module */
+            .recording-container {
+                display: flex;
+                flex-direction: column;
+                gap: 24px;
+                max-width: 800px;
+            }
+
+            .recording-controls {
+                display: flex;
+                align-items: center;
+                gap: 20px;
+            }
+
+            .play-btn {
+                width: 56px;
+                height: 56px;
+                background: #d94e3b;
+                border: none;
+                color: #ffffff;
+                cursor: pointer;
+                font-size: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .recording-time {
+                font-size: 32px;
+                font-weight: 300;
+                color: #ffffff;
+                font-family: 'Monaco', monospace;
+            }
+
+            .waveform {
+                display: flex;
+                align-items: flex-end;
+                gap: 4px;
+                height: 60px;
+            }
+
+            .waveform-bar {
+                width: 3px;
+                background: #ffffff;
+                opacity: 0.4;
+                border-radius: 0;
+            }
+
+            .waveform-bar.played {
+                background: #d94e3b;
+                opacity: 1;
+            }
+
+            .transcript {
+                background: #2d2d2d;
+                padding: 16px;
+                font-size: 14px;
+                line-height: 1.6;
+                color: #cccccc;
+            }
+
+            .transcript-timestamp {
+                color: #00b159;
+                font-weight: 600;
+                cursor: pointer;
+            }
+
+            /* Bot Chat Module */
+            .bot-chat-list {
+                flex: 1;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                padding-bottom: 20px;
+            }
+
+            .bot-message {
+                display: flex;
+                gap: 12px;
+                align-items: flex-start;
+            }
+
+            .bot-avatar {
+                width: 36px;
+                height: 36px;
+                background: #8b5cf6;
+                color: #ffffff;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 18px;
+                flex-shrink: 0;
+            }
+
+            .bot-bubble {
+                background: #2d2d2d;
+                padding: 12px 16px;
+                max-width: 70%;
+                font-size: 14px;
+                color: #cccccc;
+                line-height: 1.5;
+            }
+
+            .bot-bubble strong {
+                color: #d94e3b;
+                font-weight: 600;
+            }
+
+            .user-message {
+                display: flex;
+                justify-content: flex-end;
+            }
+
+            .user-bubble {
+                background: #2d2d2d;
+                padding: 12px 16px;
+                max-width: 70%;
+                font-size: 14px;
+                color: #cccccc;
+            }
+
+            /* Gmail Module */
+            .email-header {
+                border-bottom: 1px solid #333333;
+                padding-bottom: 20px;
+                margin-bottom: 20px;
+            }
+
+            .email-subject {
+                font-size: 32px;
+                font-weight: 300;
+                color: #ffffff;
+                margin-bottom: 16px;
+            }
+
+            .email-from {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 12px;
+            }
+
+            .email-avatar {
+                width: 40px;
+                height: 40px;
+                background: #ea4335;
+                color: #ffffff;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: 600;
+                flex-shrink: 0;
+            }
+
+            .email-sender {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .email-sender-name {
+                font-weight: 600;
+                color: #ffffff;
+            }
+
+            .email-sender-addr {
+                font-size: 12px;
+                color: #999999;
+            }
+
+            .email-body {
+                font-size: 15px;
+                line-height: 1.7;
+                color: #cccccc;
+                margin-bottom: 20px;
+                max-width: 700px;
+            }
+
+            .email-quoted {
+                border-left: 6px solid #d94e3b;
+                padding-left: 16px;
+                margin-top: 20px;
+                padding-top: 16px;
+                font-size: 14px;
+                color: #999999;
+            }
+
+            .email-actions {
+                display: flex;
+                gap: 12px;
+                margin-top: 24px;
+            }
+
+            .action-btn {
+                padding: 12px 20px;
+                background: #d94e3b;
+                border: none;
+                color: #ffffff;
+                cursor: pointer;
+                font-size: 12px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .action-btn.secondary {
+                background: #2d2d2d;
+                color: #cccccc;
+            }
+
+            /* Calendar Module */
+            .calendar-view {
+                overflow-y: auto;
+            }
+
+            .calendar-header {
+                display: flex;
+                gap: 0;
+                margin-bottom: 16px;
+                border-bottom: 1px solid #333333;
+            }
+
+            .day-header {
+                flex: 1;
+                font-size: 22px;
+                font-weight: 300;
+                padding: 12px 8px;
+                text-align: center;
+                color: #ffffff;
+                border-right: 1px solid #333333;
+            }
+
+            .day-header:last-child {
+                border-right: none;
+            }
+
+            .calendar-grid {
+                display: flex;
+                gap: 0;
+            }
+
+            .calendar-day {
+                flex: 1;
+                min-height: 400px;
+                border-right: 1px solid #333333;
+                padding: 12px 8px;
+            }
+
+            .calendar-day:last-child {
+                border-right: none;
+            }
+
+            .event-tile {
+                margin: 8px 0;
+                padding: 8px;
+                color: #ffffff;
+                font-size: 12px;
+                font-weight: 600;
+            }
+
+            .event-tile.meeting {
+                background: #2d7dd2;
+            }
+            .event-tile.task {
+                background: #00b159;
+            }
+            .event-tile.personal {
+                background: #f59e0b;
+            }
+
+            .current-time-line {
+                height: 2px;
+                background: #d94e3b;
+                margin: 8px 0;
+            }
+
+            /* Collectible Module */
+            .collectible-card {
+                max-width: 500px;
+            }
+
+            .collectible-image {
+                width: 100%;
+                aspect-ratio: 1;
+                background: linear-gradient(135deg, #2d7dd2, #00b159);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 48px;
+                color: #ffffff;
+                margin-bottom: 24px;
+            }
+
+            .collectible-name {
+                font-size: 32px;
+                font-weight: 300;
+                color: #ffffff;
+                margin-bottom: 20px;
+            }
+
+            .collectible-stats {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+            }
+
+            .stat-tile {
+                padding: 16px;
+                color: #ffffff;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .stat-tile.rarity {
+                background: #8b5cf6;
+            }
+            .stat-tile.condition {
+                background: #00b159;
+            }
+            .stat-tile.year {
+                background: #f59e0b;
+            }
+            .stat-tile.value {
+                background: #d94e3b;
+            }
+
+            .stat-number {
+                font-size: 24px;
+                font-weight: 600;
+            }
+
+            .stat-label {
+                font-size: 11px;
+                color: rgba(255, 255, 255, 0.8);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            /* LEGO Module */
+            .lego-tile {
+                max-width: 600px;
+            }
+
+            .lego-set-number {
+                font-size: 48px;
+                font-weight: 300;
+                color: #ffffff;
+                margin-bottom: 24px;
+            }
+
+            .lego-stats-row {
+                display: flex;
+                gap: 12px;
+                margin-bottom: 24px;
+            }
+
+            .lego-stat {
+                flex: 1;
+                padding: 16px;
+                color: #ffffff;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                align-items: center;
+            }
+
+            .lego-stat.pieces {
+                background: #34a853;
+            }
+            .lego-stat.theme {
+                background: #4285f4;
+            }
+            .lego-stat.year {
+                background: #fbbc04;
+            }
+            .lego-stat.value {
+                background: #d94e3b;
+            }
+
+            .lego-stat-value {
+                font-size: 28px;
+                font-weight: 600;
+            }
+
+            .lego-stat-label {
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                text-align: center;
+            }
+
+            .lego-progress {
+                height: 24px;
+                background: #2d2d2d;
+                margin: 16px 0;
+                position: relative;
+                overflow: hidden;
+            }
+
+            .lego-progress-bar {
+                height: 100%;
+                background: linear-gradient(90deg, #d94e3b, #f59e0b);
+                width: 65%;
+            }
+
+            .lego-progress-text {
+                font-size: 12px;
+                color: #cccccc;
+                margin-top: 8px;
+            }
+
+            /* Graph Module */
+            .graph-canvas {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+            }
+
+            .graph-node {
+                position: absolute;
+                width: 48px;
+                height: 48px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #ffffff;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 150ms ease;
+            }
+
+            .graph-node.root {
+                background: #d94e3b;
+            }
+            .graph-node.child {
+                background: #2d7dd2;
+            }
+            .graph-node.leaf {
+                background: #00b159;
+            }
+
+            .graph-node.active {
+                width: 64px;
+                height: 64px;
+                background: #d94e3b;
+            }
+
+            svg {
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                z-index: 1;
+            }
+
+            /* Search Module */
+            .search-container {
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+            }
+
+            .search-input {
+                width: 100%;
+                background: #2d2d2d;
+                border: none;
+                color: #ffffff;
+                padding: 16px;
+                font-size: 16px;
+                margin-bottom: 8px;
+            }
+
+            .search-input::placeholder {
+                color: #666666;
+            }
+
+            .search-results {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .search-result {
+                border-left: 3px solid;
+                padding: 12px 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .search-result.type-page {
+                border-left-color: #d94e3b;
+            }
+            .search-result.type-msg {
+                border-left-color: #00b159;
+            }
+            .search-result.type-note {
+                border-left-color: #2d7dd2;
+            }
+
+            .search-result-title {
+                font-weight: 600;
+                color: #ffffff;
+                font-size: 14px;
+            }
+
+            .search-result-snippet {
+                font-size: 13px;
+                color: #cccccc;
+            }
+
+            .search-result-source {
+                font-size: 11px;
+                color: #666666;
+            }
+
+            /* Inbox Module */
+            .notification-list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                overflow-y: auto;
+            }
+
+            .notification-item {
+                border-left: 4px solid;
+                padding: 12px 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .notification-item.type-msg {
+                border-left-color: #00b159;
+            }
+            .notification-item.type-mention {
+                border-left-color: #2d7dd2;
+            }
+            .notification-item.type-update {
+                border-left-color: #f59e0b;
+            }
+
+            .notification-desc {
+                font-size: 14px;
+                color: #ffffff;
+            }
+
+            .notification-item.read .notification-desc {
+                color: #999999;
+            }
+
+            .notification-time {
+                font-size: 11px;
+                color: #666666;
+            }
+
+            .inbox-header {
+                padding: 12px 16px;
+                border-bottom: 1px solid #333333;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .inbox-title {
+                font-size: 18px;
+                font-weight: 300;
+                color: #ffffff;
+            }
+
+            .mark-all-read {
+                font-size: 11px;
+                color: #2d7dd2;
+                cursor: pointer;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                font-weight: 600;
+            }
+
+            /* Template Module */
+            .template-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 16px;
+                max-width: 600px;
+            }
+
+            .template-tile {
+                aspect-ratio: 1;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                color: #ffffff;
+                cursor: pointer;
+                font-size: 12px;
+                text-align: center;
+                font-weight: 600;
+                transition: all 150ms ease;
+            }
+
+            .template-tile.blog {
+                background: #ea4335;
+            }
+            .template-tile.doc {
+                background: #4285f4;
+            }
+            .template-tile.brief {
+                background: #34a853;
+            }
+            .template-tile.plan {
+                background: #8b5cf6;
+            }
+            .template-tile.list {
+                background: #fbbc04;
+            }
+            .template-tile.spec {
+                background: #2d7dd2;
+            }
+
+            .template-tile:hover {
+                transform: scale(1.05);
+            }
+
+            .template-icon {
+                font-size: 28px;
+            }
+
+            /* Email Compose Module */
+            .compose-form {
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                max-width: 700px;
+            }
+
+            .compose-field {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .compose-label {
+                font-size: 13px;
+                color: #999999;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                font-weight: 600;
+            }
+
+            .compose-input {
+                background: #2d2d2d;
+                border: none;
+                color: #ffffff;
+                padding: 12px 16px;
+                font-size: 14px;
+            }
+
+            .recipient-chip {
+                display: inline-block;
+                background: #2d7dd2;
+                color: #ffffff;
+                padding: 4px 8px;
+                font-size: 11px;
+                margin-right: 4px;
+            }
+
+            .compose-body {
+                background: #2d2d2d;
+                border: none;
+                color: #ffffff;
+                padding: 16px;
+                font-size: 14px;
+                font-family: inherit;
+                min-height: 300px;
+                resize: vertical;
+            }
+
+            .compose-body::placeholder {
+                color: #666666;
+            }
+
+            .compose-actions {
+                display: flex;
+                gap: 12px;
+            }
+
+            .send-email-btn {
+                padding: 14px 28px;
+                background: #ea4335;
+                border: none;
+                color: #ffffff;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            /* Summary Module */
+            .summary-container {
+                display: flex;
+                flex-direction: column;
+                gap: 24px;
+            }
+
+            .summary-stats {
+                display: flex;
+                gap: 16px;
+                margin-bottom: 24px;
+            }
+
+            .summary-stat-tile {
+                flex: 1;
+                padding: 20px;
+                color: #ffffff;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                align-items: center;
+            }
+
+            .summary-stat-tile.tasks {
+                background: #ec4899;
+            }
+            .summary-stat-tile.notes {
+                background: #2d7dd2;
+            }
+            .summary-stat-tile.messages {
+                background: #00b159;
+            }
+            .summary-stat-tile.events {
+                background: #f59e0b;
+            }
+
+            .stat-big-number {
+                font-size: 36px;
+                font-weight: 600;
+            }
+
+            .stat-small-label {
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .activity-list {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .activity-item {
+                border-left: 4px solid;
+                padding: 12px 16px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .activity-item.task {
+                border-left-color: #ec4899;
+            }
+            .activity-item.note {
+                border-left-color: #2d7dd2;
+            }
+            .activity-item.msg {
+                border-left-color: #00b159;
+            }
+
+            .activity-desc {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .activity-title {
+                font-weight: 600;
+                color: #ffffff;
+                font-size: 14px;
+            }
+
+            .activity-time {
+                font-size: 11px;
+                color: #666666;
+            }
+
+            /* Today Module */
+            .today-container {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+                overflow-y: auto;
+            }
+
+            .time-section {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .time-section-header {
+                font-size: 24px;
+                font-weight: 300;
+                color: #ffffff;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 8px;
+            }
+
+            .today-item {
+                border-left: 4px solid;
+                padding: 12px 16px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .today-item.task {
+                border-left-color: #ec4899;
+            }
+            .today-item.meeting {
+                border-left-color: #2d7dd2;
+            }
+            .today-item.note {
+                border-left-color: #00b159;
+            }
+
+            .today-content {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .today-title {
+                font-weight: 600;
+                color: #ffffff;
+                font-size: 14px;
+            }
+
+            .today-time {
+                font-size: 11px;
+                color: #666666;
+            }
+
+            /* Module Nav (Grid) */
+            .module-grid {
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 16px;
+                padding: 32px 40px;
+            }
+
+            .module-nav-tile {
+                aspect-ratio: 1;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                color: #ffffff;
+                cursor: pointer;
+                font-size: 12px;
+                text-align: center;
+                font-weight: 600;
+                transition: all 150ms ease;
+            }
+
+            .module-nav-tile.memo {
+                background: #d94e3b;
+            }
+            .module-nav-tile.whiteboard {
+                background: #2d7dd2;
+            }
+            .module-nav-tile.messages {
+                background: #00b159;
+            }
+            .module-nav-tile.kanban {
+                background: #8b5cf6;
+            }
+            .module-nav-tile.json {
+                background: #f59e0b;
+            }
+            .module-nav-tile.todo {
+                background: #ec4899;
+            }
+            .module-nav-tile.recording {
+                background: #06b6d4;
+            }
+            .module-nav-tile.bot {
+                background: #8b5cf6;
+            }
+            .module-nav-tile.gmail {
+                background: #ea4335;
+            }
+            .module-nav-tile.calendar {
+                background: #4285f4;
+            }
+            .module-nav-tile.collectible {
+                background: #34a853;
+            }
+            .module-nav-tile.lego {
+                background: #fbbc04;
+            }
+            .module-nav-tile.graph {
+                background: #ea4335;
+            }
+            .module-nav-tile.search {
+                background: #4285f4;
+            }
+            .module-nav-tile.inbox {
+                background: #34a853;
+            }
+            .module-nav-tile.template {
+                background: #8b5cf6;
+            }
+            .module-nav-tile.compose {
+                background: #ea4335;
+            }
+            .module-nav-tile.summary {
+                background: #2d7dd2;
+            }
+            .module-nav-tile.today {
+                background: #f59e0b;
+            }
+            .module-nav-tile.nav {
+                background: #d94e3b;
+            }
+
+            .module-nav-tile:hover {
+                transform: scale(1.05);
+            }
+
+            .module-nav-tile.active {
+                box-shadow: inset 0 0 0 3px #ffffff;
+            }
+
+            .module-nav-icon {
+                font-size: 32px;
+            }
+
+            .module-nav-name {
+                font-size: 12px;
+                text-transform: capitalize;
+            }
+
+            /* Scrollbar styling */
+            ::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+            }
+
+            ::-webkit-scrollbar-track {
+                background: #1d1d1d;
+            }
+
+            ::-webkit-scrollbar-thumb {
+                background: #444444;
+            }
+
+            ::-webkit-scrollbar-thumb:hover {
+                background: #555555;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="app-container">
+            <!-- Space Rail -->
+            <div class="space-rail">
+                <div class="space-tile active" title="Current Space">◆</div>
+                <div class="space-tile" title="Archive">⬚</div>
+                <div class="space-tile" title="Shared">⬛</div>
+            </div>
+
+            <!-- Module Dock -->
+            <div class="module-dock">
+                <div class="module-tile memo active" data-module="0" title="Memo"></div>
+                <div class="module-tile whiteboard" data-module="1" title="Whiteboard"></div>
+                <div class="module-tile messages" data-module="2" title="Messages"></div>
+                <div class="module-tile kanban" data-module="3" title="Kanban"></div>
+                <div class="module-tile json" data-module="4" title="JSON"></div>
+                <div class="module-tile todo" data-module="5" title="Todo"></div>
+                <div class="module-tile recording" data-module="6" title="Recording"></div>
+                <div class="module-tile bot" data-module="7" title="Bot"></div>
+                <div class="module-tile gmail" data-module="8" title="Gmail"></div>
+                <div class="module-tile calendar" data-module="9" title="Calendar"></div>
+                <div class="module-tile collectible" data-module="10" title="Collectible"></div>
+                <div class="module-tile lego" data-module="11" title="LEGO"></div>
+                <div class="module-tile graph" data-module="12" title="Graph"></div>
+                <div class="module-tile search" data-module="13" title="Search"></div>
+                <div class="module-tile inbox" data-module="14" title="Inbox"></div>
+                <div class="module-tile template" data-module="15" title="Template"></div>
+                <div class="module-tile compose" data-module="16" title="Compose"></div>
+                <div class="module-tile summary" data-module="17" title="Summary"></div>
+                <div class="module-tile today" data-module="18" title="Today"></div>
+                <div class="module-tile nav" data-module="19" title="Modules"></div>
+            </div>
+
+            <!-- Content Wrapper -->
+            <div class="content-wrapper">
+                <!-- 00 - MEMO -->
+                <div class="module-content active" data-module="0">
+                    <div class="memo-title">Launch Strategy</div>
+                    <div class="memo-body">
+                        We're planning a coordinated launch across three key markets. The strategy
+                        focuses on
+                        <span class="memo-link">@awareness campaigns</span> first, followed by
+                        <span class="memo-link">@partnership outreach</span>.
+                    </div>
+                    <div class="memo-blockquote">
+                        "Success depends on timing and market readiness" — Product team
+                    </div>
+                    <div class="memo-heading">Q2 Roadmap</div>
+                    <div class="memo-body">
+                        Key milestones include beta launch in March, feature completion by April,
+                        and full market rollout in May. Each milestone has dependencies on
+                        <span class="memo-link">@engineering team</span> delivery.
+                    </div>
+                    <div class="memo-heading">Resources</div>
+                    <div class="memo-body">
+                        Budget allocation: 40% marketing, 35% engineering, 25% operations. See
+                        <span class="memo-link">@budget doc</span> for details.
+                    </div>
+                </div>
+
+                <!-- 01 - WHITEBOARD -->
+                <div class="module-content" data-module="1">
+                    <div class="whiteboard-canvas">
+                        <svg style="position: absolute; z-index: 0" width="100%" height="100%">
+                            <line
+                                x1="250"
+                                y1="150"
+                                x2="350"
+                                y2="250"
+                                stroke="#666666"
+                                stroke-width="2"
+                                stroke-dasharray="4,2"
+                            />
+                            <line
+                                x1="350"
+                                y1="250"
+                                x2="250"
+                                y2="350"
+                                stroke="#666666"
+                                stroke-width="2"
+                                stroke-dasharray="4,2"
+                            />
+                            <line
+                                x1="350"
+                                y1="250"
+                                x2="450"
+                                y2="250"
+                                stroke="#666666"
+                                stroke-width="2"
+                                stroke-dasharray="4,2"
+                            />
+                        </svg>
+                        <div
+                            class="whiteboard-shape"
+                            style="
+                                left: 200px;
+                                top: 100px;
+                                width: 100px;
+                                height: 100px;
+                                background: #d94e3b;
+                                z-index: 1;
+                            "
+                        ></div>
+                        <div
+                            class="whiteboard-shape"
+                            style="
+                                left: 320px;
+                                top: 200px;
+                                width: 120px;
+                                height: 120px;
+                                background: #2d7dd2;
+                                z-index: 1;
+                            "
+                        ></div>
+                        <div
+                            class="whiteboard-shape"
+                            style="
+                                left: 480px;
+                                top: 180px;
+                                width: 100px;
+                                height: 100px;
+                                background: #00b159;
+                                z-index: 1;
+                                border-radius: 50%;
+                            "
+                        ></div>
+                        <div
+                            class="whiteboard-shape"
+                            style="
+                                left: 200px;
+                                top: 300px;
+                                width: 80px;
+                                height: 80px;
+                                background: #f59e0b;
+                                z-index: 1;
+                            "
+                        ></div>
+                    </div>
+                    <div class="whiteboard-toolbar">
+                        <div class="toolbar-btn rect">⬜</div>
+                        <div class="toolbar-btn circle">⭕</div>
+                        <div class="toolbar-btn text">A</div>
+                        <div style="flex: 1"></div>
+                        <div class="toolbar-btn">↶</div>
+                        <div class="toolbar-btn">🗑</div>
+                    </div>
+                </div>
+
+                <!-- 02 - MESSAGES -->
+                <div class="module-content" data-module="2">
+                    <div class="messages-list">
+                        <div class="message-tile">
+                            <div class="message-sender">Sarah Chen</div>
+                            <div class="message-text">
+                                Hey team, just finished the design specs. Ready for review whenever
+                                you are.
+                            </div>
+                            <div class="message-time">2:34 PM</div>
+                        </div>
+                        <div class="message-tile">
+                            <div class="message-sender">You</div>
+                            <div class="message-text">
+                                Great! I'll take a look and get feedback by EOD. Thanks for moving
+                                fast on this.
+                            </div>
+                            <div class="message-time">2:45 PM</div>
+                        </div>
+                        <div class="message-tile">
+                            <div class="message-sender">Alex Rodriguez</div>
+                            <div class="message-text">
+                                Just merged the feature branch. Tests are all passing.
+                            </div>
+                            <div class="message-time">3:12 PM</div>
+                        </div>
+                    </div>
+                    <div class="messages-input">
+                        <input type="text" placeholder="Write a message..." />
+                        <button class="send-btn">↗</button>
+                    </div>
+                </div>
+
+                <!-- 03 - KANBAN -->
+                <div class="module-content" data-module="3">
+                    <div class="kanban-board">
+                        <div class="kanban-column">
+                            <div class="kanban-header">TODO</div>
+                            <div class="kanban-card todo">
+                                <div class="kanban-title">Design dashboard layout</div>
+                                <div class="kanban-avatar">SC</div>
+                            </div>
+                            <div class="kanban-card todo">
+                                <div class="kanban-title">Create color palette</div>
+                                <div class="kanban-avatar">MK</div>
+                            </div>
+                        </div>
+                        <div class="kanban-column">
+                            <div class="kanban-header">IN PROGRESS</div>
+                            <div class="kanban-card inprogress">
+                                <div class="kanban-title">Build API endpoints</div>
+                                <div class="kanban-avatar">AR</div>
+                            </div>
+                            <div class="kanban-card inprogress">
+                                <div class="kanban-title">Integrate authentication</div>
+                                <div class="kanban-avatar">JP</div>
+                            </div>
+                        </div>
+                        <div class="kanban-column">
+                            <div class="kanban-header">DONE</div>
+                            <div class="kanban-card done">
+                                <div class="kanban-title">Setup project structure</div>
+                                <div class="kanban-avatar">TL</div>
+                            </div>
+                            <div class="kanban-card done">
+                                <div class="kanban-title">Configure database</div>
+                                <div class="kanban-avatar">NM</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 04 - JSON/DATA -->
+                <div class="module-content" data-module="4">
+                    <div class="json-container">
+                        <div class="json-left">
+                            {<br />
+                            &nbsp;&nbsp;<span class="json-key">"user"</span>: {<br />
+                            &nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"id"</span>:
+                            <span class="json-string">"usr_12345"</span>,<br />
+                            &nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"name"</span>:
+                            <span class="json-string">"Alex Rodriguez"</span>,<br />
+                            &nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"email"</span>:
+                            <span class="json-string">"alex@example.com"</span>,<br />
+                            &nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"role"</span>:
+                            <span class="json-string">"admin"</span>,<br />
+                            &nbsp;&nbsp;&nbsp;&nbsp;<span class="json-key">"active"</span>:
+                            <span class="json-bool">true</span><br />
+                            &nbsp;&nbsp;}<br />
+                            }
+                        </div>
+                        <div class="json-right">
+                            <div class="form-label">User ID</div>
+                            <input class="form-input" type="text" value="usr_12345" />
+
+                            <div class="form-label">Display Name</div>
+                            <input class="form-input" type="text" value="Alex Rodriguez" />
+
+                            <div class="form-label">Email Address</div>
+                            <input class="form-input" type="email" value="alex@example.com" />
+
+                            <div class="form-label">Role</div>
+                            <input class="form-input" type="text" value="admin" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 05 - TODO -->
+                <div class="module-content" data-module="5">
+                    <div class="todo-list">
+                        <div class="todo-section-header">TODAY</div>
+
+                        <div class="todo-item">
+                            <div class="todo-checkbox checked">✓</div>
+                            <div class="todo-priority high"></div>
+                            <div class="todo-text completed">Finish design review</div>
+                        </div>
+
+                        <div class="todo-item">
+                            <div class="todo-checkbox"></div>
+                            <div class="todo-priority high"></div>
+                            <div class="todo-text">Deploy to staging</div>
+                            <div class="todo-due">6:00 PM</div>
+                        </div>
+
+                        <div class="todo-item">
+                            <div class="todo-checkbox"></div>
+                            <div class="todo-priority medium"></div>
+                            <div class="todo-text">Code review feedback</div>
+                            <div class="todo-due">Tomorrow</div>
+                        </div>
+
+                        <div class="todo-section-header" style="margin-top: 32px">BACKLOG</div>
+
+                        <div class="todo-item">
+                            <div class="todo-checkbox"></div>
+                            <div class="todo-priority low"></div>
+                            <div class="todo-text">Update documentation</div>
+                            <div class="todo-due">Next week</div>
+                        </div>
+
+                        <div class="todo-item">
+                            <div class="todo-checkbox"></div>
+                            <div class="todo-priority low"></div>
+                            <div class="todo-text">Refactor legacy code</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 06 - RECORDING -->
+                <div class="module-content" data-module="6">
+                    <div class="recording-container">
+                        <div class="recording-controls">
+                            <button class="play-btn">▶</button>
+                            <div class="recording-time">02:34</div>
+                        </div>
+
+                        <div class="waveform">
+                            <div class="waveform-bar played"></div>
+                            <div class="waveform-bar played"></div>
+                            <div class="waveform-bar played"></div>
+                            <div class="waveform-bar"></div>
+                            <div class="waveform-bar"></div>
+                            <div class="waveform-bar"></div>
+                            <div class="waveform-bar"></div>
+                            <div class="waveform-bar"></div>
+                        </div>
+
+                        <div class="transcript">
+                            <span class="transcript-timestamp">[00:12]</span> "The launch strategy
+                            focuses on three key markets..." <br /><br />
+                            <span class="transcript-timestamp">[00:34]</span> "We need to coordinate
+                            marketing and product teams..." <br /><br />
+                            <span class="transcript-timestamp">[01:05]</span> "Budget allocation is
+                            critical for success in Q2..."
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 07 - BOT CHAT -->
+                <div class="module-content" data-module="7">
+                    <div class="bot-chat-list">
+                        <div class="bot-message">
+                            <div class="bot-avatar">✨</div>
+                            <div class="bot-bubble">
+                                Hey there! I analyzed your documents and found
+                                <strong>3 action items</strong> that need attention. Would you like
+                                me to summarize them?
+                            </div>
+                        </div>
+
+                        <div class="user-message">
+                            <div class="user-bubble">Yes, please give me the summary</div>
+                        </div>
+
+                        <div class="bot-message">
+                            <div class="bot-avatar">✨</div>
+                            <div class="bot-bubble">
+                                <strong>Action Items:</strong><br />
+                                1. Deploy to staging by 6 PM<br />
+                                2. Review Sarah's design specs<br />
+                                3. Update project documentation<br /><br />
+                                Let me know if you need help with any of these!
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 08 - GMAIL -->
+                <div class="module-content" data-module="8">
+                    <div class="email-header">
+                        <div class="email-subject">Project Launch Approved</div>
+                        <div class="email-from">
+                            <div class="email-avatar">JM</div>
+                            <div class="email-sender">
+                                <div class="email-sender-name">Jane Morrison</div>
+                                <div class="email-sender-addr">jane@company.com</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="email-body">
+                        Hi team,<br /><br />
+                        Congratulations! The executive team has approved the project launch plan.
+                        We're excited about the direction and believe this positions us well for Q2.
+                        Please proceed with the marketing and engineering timelines we discussed.
+                        <br /><br />
+                        Looking forward to great results!<br />
+                        Jane
+                    </div>
+
+                    <div class="email-quoted">
+                        <strong>On Mon, Feb 19, 2024 Sarah Chen wrote:</strong><br />
+                        "The strategy focuses on three key markets with coordinated launches..."
+                    </div>
+
+                    <div class="email-actions">
+                        <button class="action-btn">REPLY</button>
+                        <button class="action-btn secondary">FORWARD</button>
+                        <button class="action-btn secondary">ARCHIVE</button>
+                    </div>
+                </div>
+
+                <!-- 09 - CALENDAR -->
+                <div class="module-content" data-module="9">
+                    <div class="calendar-view">
+                        <div class="calendar-header">
+                            <div class="day-header">Monday</div>
+                            <div class="day-header">Tuesday</div>
+                            <div class="day-header">Wednesday</div>
+                            <div class="day-header">Thursday</div>
+                            <div class="day-header">Friday</div>
+                        </div>
+                        <div class="calendar-grid">
+                            <div class="calendar-day">
+                                <div class="event-tile meeting">9:00 AM Team Standup</div>
+                                <div class="event-tile task">2:00 PM Review Specs</div>
+                            </div>
+                            <div class="calendar-day">
+                                <div class="event-tile personal">10:00 AM 1:1 with Alex</div>
+                                <div class="current-time-line"></div>
+                                <div class="event-tile meeting">3:30 PM All Hands</div>
+                            </div>
+                            <div class="calendar-day">
+                                <div class="event-tile meeting">9:00 AM Team Standup</div>
+                                <div class="event-tile task">1:00 PM Design Review</div>
+                            </div>
+                            <div class="calendar-day">
+                                <div class="event-tile task">11:00 AM Sprint Planning</div>
+                                <div class="event-tile meeting">2:00 PM Stakeholder Sync</div>
+                            </div>
+                            <div class="calendar-day">
+                                <div class="event-tile task">10:00 AM Retro</div>
+                                <div class="event-tile personal">4:00 PM Social Hour</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 10 - COLLECTIBLE -->
+                <div class="module-content" data-module="10">
+                    <div class="collectible-card">
+                        <div class="collectible-image">🎭</div>
+                        <div class="collectible-name">Vintage Poster #1847</div>
+
+                        <div class="collectible-stats">
+                            <div class="stat-tile rarity">
+                                <div class="stat-number">RARE</div>
+                                <div class="stat-label">Rarity</div>
+                            </div>
+                            <div class="stat-tile condition">
+                                <div class="stat-number">9.2</div>
+                                <div class="stat-label">Condition</div>
+                            </div>
+                            <div class="stat-tile year">
+                                <div class="stat-number">1952</div>
+                                <div class="stat-label">Year</div>
+                            </div>
+                            <div class="stat-tile value">
+                                <div class="stat-number">$8,450</div>
+                                <div class="stat-label">Value</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 11 - LEGO -->
+                <div class="module-content" data-module="11">
+                    <div class="lego-tile">
+                        <div class="lego-set-number">75192</div>
+
+                        <div class="lego-stats-row">
+                            <div class="lego-stat pieces">
+                                <div class="lego-stat-value">2,541</div>
+                                <div class="lego-stat-label">Pieces</div>
+                            </div>
+                            <div class="lego-stat theme">
+                                <div class="lego-stat-value">Star Wars</div>
+                                <div class="lego-stat-label">Theme</div>
+                            </div>
+                            <div class="lego-stat year">
+                                <div class="lego-stat-value">2017</div>
+                                <div class="lego-stat-label">Year</div>
+                            </div>
+                            <div class="lego-stat value">
+                                <div class="lego-stat-value">$799</div>
+                                <div class="lego-stat-label">Value</div>
+                            </div>
+                        </div>
+
+                        <div class="lego-progress">
+                            <div class="lego-progress-bar"></div>
+                        </div>
+                        <div class="lego-progress-text">65% assembled (1,652 / 2,541 pieces)</div>
+                    </div>
+                </div>
+
+                <!-- 12 - GRAPH -->
+                <div class="module-content" data-module="12">
+                    <div class="graph-canvas">
+                        <svg style="position: absolute" width="100%" height="100%">
+                            <line
+                                x1="200"
+                                y1="200"
+                                x2="400"
+                                y2="200"
+                                stroke="#666666"
+                                stroke-width="2"
+                            />
+                            <line
+                                x1="400"
+                                y1="200"
+                                x2="300"
+                                y2="400"
+                                stroke="#666666"
+                                stroke-width="2"
+                            />
+                            <line
+                                x1="400"
+                                y1="200"
+                                x2="500"
+                                y2="400"
+                                stroke="#666666"
+                                stroke-width="2"
+                            />
+                            <line
+                                x1="200"
+                                y1="200"
+                                x2="100"
+                                y2="400"
+                                stroke="#666666"
+                                stroke-width="2"
+                            />
+                        </svg>
+
+                        <div class="graph-node root active" style="left: 170px; top: 170px">
+                            Root
+                        </div>
+                        <div class="graph-node child" style="left: 360px; top: 170px">Node A</div>
+                        <div class="graph-node leaf" style="left: 260px; top: 370px">Leaf 1</div>
+                        <div class="graph-node leaf" style="left: 460px; top: 370px">Leaf 2</div>
+                        <div class="graph-node leaf" style="left: 60px; top: 370px">Leaf 3</div>
+                    </div>
+                </div>
+
+                <!-- 13 - SEARCH -->
+                <div class="module-content" data-module="13">
+                    <div class="search-container">
+                        <input
+                            class="search-input"
+                            type="text"
+                            placeholder="Search across all modules..."
+                        />
+
+                        <div class="search-results">
+                            <div class="search-result type-page">
+                                <div class="search-result-title">Launch Strategy</div>
+                                <div class="search-result-snippet">
+                                    Q2 roadmap with key milestones and market readiness focus
+                                </div>
+                                <div class="search-result-source">Memo • Updated 2 hours ago</div>
+                            </div>
+
+                            <div class="search-result type-msg">
+                                <div class="search-result-title">Design Specs Ready</div>
+                                <div class="search-result-snippet">
+                                    Sarah Chen: "just finished the design specs. Ready for
+                                    review..."
+                                </div>
+                                <div class="search-result-source">Messages • Today 2:34 PM</div>
+                            </div>
+
+                            <div class="search-result type-note">
+                                <div class="search-result-title">Project Launch Approved</div>
+                                <div class="search-result-snippet">
+                                    Executive team approval with directions for Q2 marketing and
+                                    engineering
+                                </div>
+                                <div class="search-result-source">Email • Today 10:15 AM</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 14 - INBOX -->
+                <div class="module-content" data-module="14">
+                    <div class="inbox-header">
+                        <div class="inbox-title">Notifications</div>
+                        <div class="mark-all-read">MARK ALL READ</div>
+                    </div>
+                    <div class="notification-list">
+                        <div class="notification-item type-msg">
+                            <div class="notification-desc">
+                                Sarah sent a message in #launch-planning
+                            </div>
+                            <div class="notification-time">Just now</div>
+                        </div>
+
+                        <div class="notification-item type-mention">
+                            <div class="notification-desc">
+                                You were mentioned by Alex in a comment
+                            </div>
+                            <div class="notification-time">5 mins ago</div>
+                        </div>
+
+                        <div class="notification-item type-update">
+                            <div class="notification-desc">
+                                Project deadline updated for Q2 deliverables
+                            </div>
+                            <div class="notification-time">1 hour ago</div>
+                        </div>
+
+                        <div class="notification-item type-msg read">
+                            <div class="notification-desc">Jane approved the launch plan</div>
+                            <div class="notification-time">2 hours ago</div>
+                        </div>
+
+                        <div class="notification-item type-mention read">
+                            <div class="notification-desc">
+                                Team added you to #engineering-updates
+                            </div>
+                            <div class="notification-time">Yesterday</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 15 - TEMPLATE -->
+                <div class="module-content" data-module="15">
+                    <div class="template-grid">
+                        <div class="template-tile blog">
+                            <div class="template-icon">✍</div>
+                            <div>Blog Post</div>
+                        </div>
+                        <div class="template-tile doc">
+                            <div class="template-icon">📄</div>
+                            <div>Document</div>
+                        </div>
+                        <div class="template-tile brief">
+                            <div class="template-icon">📋</div>
+                            <div>Brief</div>
+                        </div>
+                        <div class="template-tile plan">
+                            <div class="template-icon">📊</div>
+                            <div>Plan</div>
+                        </div>
+                        <div class="template-tile list">
+                            <div class="template-icon">☑</div>
+                            <div>Checklist</div>
+                        </div>
+                        <div class="template-tile spec">
+                            <div class="template-icon">⚙</div>
+                            <div>Spec</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 16 - COMPOSE -->
+                <div class="module-content" data-module="16">
+                    <div class="compose-form">
+                        <div class="compose-field">
+                            <div class="compose-label">To</div>
+                            <div style="padding: 12px 16px; background: #2d2d2d; color: #cccccc">
+                                <span class="recipient-chip">sarah@company.com ×</span>
+                                <span class="recipient-chip">alex@company.com ×</span>
+                            </div>
+                        </div>
+
+                        <div class="compose-field">
+                            <div class="compose-label">Subject</div>
+                            <input
+                                class="compose-input"
+                                type="text"
+                                placeholder="Message subject"
+                                value="Project Launch Timeline"
+                            />
+                        </div>
+
+                        <div class="compose-field">
+                            <div class="compose-label">Message</div>
+                            <textarea class="compose-body" placeholder="Write your message here...">
+Hi team,
+
+Following up on our discussion about the Q2 launch timeline. I've outlined the key milestones and would love your feedback on feasibility.
+
+Looking forward to hearing from you!
+
+Best,
+Alex</textarea
+                            >
+                        </div>
+
+                        <div class="compose-actions">
+                            <button class="send-email-btn">SEND</button>
+                            <button class="action-btn secondary">SAVE DRAFT</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 17 - SUMMARY -->
+                <div class="module-content" data-module="17">
+                    <div class="summary-container">
+                        <div class="summary-stats">
+                            <div class="summary-stat-tile tasks">
+                                <div class="stat-big-number">12</div>
+                                <div class="stat-small-label">Tasks Due</div>
+                            </div>
+                            <div class="summary-stat-tile notes">
+                                <div class="stat-big-number">8</div>
+                                <div class="stat-small-label">New Notes</div>
+                            </div>
+                            <div class="summary-stat-tile messages">
+                                <div class="stat-big-number">24</div>
+                                <div class="stat-small-label">Unread Messages</div>
+                            </div>
+                            <div class="summary-stat-tile events">
+                                <div class="stat-big-number">5</div>
+                                <div class="stat-small-label">Events Today</div>
+                            </div>
+                        </div>
+
+                        <div
+                            style="
+                                font-size: 22px;
+                                font-weight: 300;
+                                color: #ffffff;
+                                margin-bottom: 16px;
+                            "
+                        >
+                            RECENT ACTIVITY
+                        </div>
+
+                        <div class="activity-list">
+                            <div class="activity-item task">
+                                <div class="activity-desc">
+                                    <div class="activity-title">Deploy to staging environment</div>
+                                    <div class="activity-time">2 hours ago</div>
+                                </div>
+                            </div>
+
+                            <div class="activity-item note">
+                                <div class="activity-desc">
+                                    <div class="activity-title">
+                                        Updated launch strategy document
+                                    </div>
+                                    <div class="activity-time">5 hours ago</div>
+                                </div>
+                            </div>
+
+                            <div class="activity-item msg">
+                                <div class="activity-desc">
+                                    <div class="activity-title">5 new messages in #engineering</div>
+                                    <div class="activity-time">1 day ago</div>
+                                </div>
+                            </div>
+
+                            <div class="activity-item task">
+                                <div class="activity-desc">
+                                    <div class="activity-title">Code review feedback pending</div>
+                                    <div class="activity-time">1 day ago</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 18 - TODAY -->
+                <div class="module-content" data-module="18">
+                    <div class="today-container">
+                        <div class="time-section">
+                            <div class="time-section-header">Morning</div>
+                            <div class="today-item meeting">
+                                <div class="today-content">
+                                    <div class="today-title">Team Standup</div>
+                                    <div class="today-time">9:00 AM</div>
+                                </div>
+                            </div>
+                            <div class="today-item task">
+                                <div class="today-content">
+                                    <div class="today-title">Review design specs</div>
+                                    <div class="today-time">10:30 AM</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="time-section">
+                            <div class="time-section-header">Afternoon</div>
+                            <div class="today-item note">
+                                <div class="today-content">
+                                    <div class="today-title">Update project documentation</div>
+                                    <div class="today-time">1:00 PM</div>
+                                </div>
+                            </div>
+                            <div class="today-item meeting">
+                                <div class="today-content">
+                                    <div class="today-title">All hands meeting</div>
+                                    <div class="today-time">3:30 PM</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="time-section">
+                            <div class="time-section-header">Evening</div>
+                            <div class="today-item task">
+                                <div class="today-content">
+                                    <div class="today-title">Deploy to staging by 6 PM</div>
+                                    <div class="today-time">5:00 PM</div>
+                                </div>
+                            </div>
+                            <div class="today-item task">
+                                <div class="today-content">
+                                    <div class="today-title">Team social hour</div>
+                                    <div class="today-time">6:00 PM</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 19 - MODULE NAV (GRID) -->
+                <div class="module-content" data-module="19">
+                    <div class="module-grid">
+                        <div class="module-nav-tile memo">
+                            <div class="module-nav-icon">📝</div>
+                            <div class="module-nav-name">Memo</div>
+                        </div>
+                        <div class="module-nav-tile whiteboard">
+                            <div class="module-nav-icon">✏</div>
+                            <div class="module-nav-name">Whiteboard</div>
+                        </div>
+                        <div class="module-nav-tile messages">
+                            <div class="module-nav-icon">💬</div>
+                            <div class="module-nav-name">Messages</div>
+                        </div>
+                        <div class="module-nav-tile kanban">
+                            <div class="module-nav-icon">📊</div>
+                            <div class="module-nav-name">Kanban</div>
+                        </div>
+
+                        <div class="module-nav-tile json">
+                            <div class="module-nav-icon">{ }</div>
+                            <div class="module-nav-name">JSON</div>
+                        </div>
+                        <div class="module-nav-tile todo">
+                            <div class="module-nav-icon">☑</div>
+                            <div class="module-nav-name">Todo</div>
+                        </div>
+                        <div class="module-nav-tile recording">
+                            <div class="module-nav-icon">🎙</div>
+                            <div class="module-nav-name">Recording</div>
+                        </div>
+                        <div class="module-nav-tile bot">
+                            <div class="module-nav-icon">✨</div>
+                            <div class="module-nav-name">Bot Chat</div>
+                        </div>
+
+                        <div class="module-nav-tile gmail">
+                            <div class="module-nav-icon">✉</div>
+                            <div class="module-nav-name">Gmail</div>
+                        </div>
+                        <div class="module-nav-tile calendar">
+                            <div class="module-nav-icon">📅</div>
+                            <div class="module-nav-name">Calendar</div>
+                        </div>
+                        <div class="module-nav-tile collectible">
+                            <div class="module-nav-icon">🎭</div>
+                            <div class="module-nav-name">Collectible</div>
+                        </div>
+                        <div class="module-nav-tile lego">
+                            <div class="module-nav-icon">🧱</div>
+                            <div class="module-nav-name">LEGO</div>
+                        </div>
+
+                        <div class="module-nav-tile graph">
+                            <div class="module-nav-icon">◈</div>
+                            <div class="module-nav-name">Graph</div>
+                        </div>
+                        <div class="module-nav-tile search">
+                            <div class="module-nav-icon">🔍</div>
+                            <div class="module-nav-name">Search</div>
+                        </div>
+                        <div class="module-nav-tile inbox">
+                            <div class="module-nav-icon">🔔</div>
+                            <div class="module-nav-name">Inbox</div>
+                        </div>
+                        <div class="module-nav-tile template">
+                            <div class="module-nav-icon">⚡</div>
+                            <div class="module-nav-name">Template</div>
+                        </div>
+
+                        <div class="module-nav-tile compose">
+                            <div class="module-nav-icon">✎</div>
+                            <div class="module-nav-name">Compose</div>
+                        </div>
+                        <div class="module-nav-tile summary">
+                            <div class="module-nav-icon">📈</div>
+                            <div class="module-nav-name">Summary</div>
+                        </div>
+                        <div class="module-nav-tile today">
+                            <div class="module-nav-icon">🌅</div>
+                            <div class="module-nav-name">Today</div>
+                        </div>
+                        <div class="module-nav-tile nav active">
+                            <div class="module-nav-icon">⊞</div>
+                            <div class="module-nav-name">Modules</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network Panel -->
+            <div class="network-panel">
+                <div class="network-title">Linked</div>
+                <div class="network-item type-memo">
+                    <div class="network-dot"></div>
+                    <div>Launch Strategy</div>
+                </div>
+                <div class="network-item type-memo">
+                    <div class="network-dot"></div>
+                    <div>Q2 Roadmap</div>
+                </div>
+
+                <div class="network-title" style="margin-top: 20px">Recent</div>
+                <div class="network-item type-msg">
+                    <div class="network-dot"></div>
+                    <div>#launch-planning</div>
+                </div>
+                <div class="network-item type-msg">
+                    <div class="network-dot"></div>
+                    <div>#engineering</div>
+                </div>
+                <div class="network-item type-link">
+                    <div class="network-dot"></div>
+                    <div>Project Board</div>
+                </div>
+
+                <div class="network-title" style="margin-top: 20px">People</div>
+                <div class="network-item type-msg">
+                    <div class="network-dot"></div>
+                    <div>Sarah Chen</div>
+                </div>
+                <div class="network-item type-msg">
+                    <div class="network-dot"></div>
+                    <div>Alex Rodriguez</div>
+                </div>
+                <div class="network-item type-msg">
+                    <div class="network-dot"></div>
+                    <div>Jane Morrison</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Navigation -->
+        <div class="bottom-nav">
+            <div class="nav-arrows">
+                <button class="nav-btn" onclick="previousModule()">◀</button>
+                <button class="nav-btn" onclick="nextModule()">▶</button>
+            </div>
+
+            <div class="screen-counter" id="counter">01 / 20</div>
+
+            <div class="nav-dots">
+                <div class="nav-dot active" onclick="goToModule(0)"></div>
+                <div class="nav-dot" onclick="goToModule(1)"></div>
+                <div class="nav-dot" onclick="goToModule(2)"></div>
+                <div class="nav-dot" onclick="goToModule(3)"></div>
+                <div class="nav-dot" onclick="goToModule(4)"></div>
+            </div>
+        </div>
+
+        <script>
+            let currentModule = 0;
+            const totalModules = 20;
+
+            function updateModuleDisplay() {
+                // Hide all module contents
+                document.querySelectorAll('.module-content').forEach((el, idx) => {
+                    el.classList.remove('active');
+                    if (idx === currentModule) {
+                        el.classList.add('active');
+                    }
+                });
+
+                // Update module dock tiles
+                document.querySelectorAll('.module-tile').forEach((el, idx) => {
+                    el.classList.remove('active');
+                    if (idx === currentModule) {
+                        el.classList.add('active');
+                    }
+                });
+
+                // Update counter
+                document.getElementById('counter').textContent =
+                    String(currentModule + 1).padStart(2, '0') + ' / ' + totalModules;
+
+                // Update navigation dots
+                document.querySelectorAll('.nav-dot').forEach((dot, idx) => {
+                    dot.classList.remove('active');
+                    if (idx === Math.floor(currentModule / 4)) {
+                        dot.classList.add('active');
+                    }
+                });
+
+                // Smooth scroll module dock
+                const dock = document.querySelector('.module-dock');
+                const activeTile = document.querySelector('.module-tile.active');
+                if (activeTile) {
+                    const tileTop = activeTile.offsetTop;
+                    const dockHeight = dock.clientHeight;
+                    const targetScroll = tileTop - dockHeight / 2 + activeTile.offsetHeight / 2;
+                    dock.scrollTo({
+                        top: Math.max(0, targetScroll),
+                        behavior: 'smooth',
+                    });
+                }
+            }
+
+            function nextModule() {
+                if (currentModule < totalModules - 1) {
+                    currentModule++;
+                    updateModuleDisplay();
+                }
+            }
+
+            function previousModule() {
+                if (currentModule > 0) {
+                    currentModule--;
+                    updateModuleDisplay();
+                }
+            }
+
+            function goToModule(n) {
+                currentModule = n * 4;
+                if (currentModule >= totalModules) {
+                    currentModule = totalModules - 1;
+                }
+                updateModuleDisplay();
+            }
+
+            // Module tile click
+            document.querySelectorAll('.module-tile').forEach((tile, idx) => {
+                tile.addEventListener('click', () => {
+                    currentModule = idx;
+                    updateModuleDisplay();
+                });
+            });
+
+            // Keyboard navigation
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight') nextModule();
+                if (e.key === 'ArrowLeft') previousModule();
+            });
+
+            // Initialize
+            updateModuleDisplay();
+        </script>
+    </body>
+</html>

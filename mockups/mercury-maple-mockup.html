@@ -1,0 +1,1305 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Mercury Maple</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Merriweather:wght@300;400&family=JetBrains+Mono:wght@400&display=swap"
+            rel="stylesheet"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --bg-deep: #141211;
+                --bg-canvas: #1c1917;
+                --bg-surface: rgba(38, 37, 36, 0.65);
+                --bg-surface-solid: #262524;
+                --bg-elevated: rgba(46, 44, 42, 0.5);
+                --bg-hover: rgba(255, 255, 255, 0.04);
+                --bg-active: rgba(255, 255, 255, 0.08);
+                --text-primary: #f5f5f4;
+                --text-secondary: #a8a29e;
+                --text-tertiary: #78716c;
+                --text-ghost: rgba(168, 162, 158, 0.4);
+                --border-subtle: rgba(255, 255, 255, 0.06);
+                --border-default: rgba(255, 255, 255, 0.08);
+                --border-focus: rgba(255, 255, 255, 0.12);
+                --maple: #d94e3b;
+                --maple-muted: rgba(217, 78, 59, 0.6);
+                --maple-glow: rgba(217, 78, 59, 0.08);
+                --maple-glow-strong: rgba(217, 78, 59, 0.15);
+                --maple-bg: rgba(217, 78, 59, 0.06);
+                --glow-moonlight:
+                    0 0 40px rgba(255, 248, 230, 0.03), 0 0 80px rgba(217, 78, 59, 0.04);
+                --glow-focus:
+                    0 0 0 1px rgba(217, 78, 59, 0.15), 0 0 30px rgba(255, 248, 230, 0.04),
+                    0 8px 40px rgba(0, 0, 0, 0.4);
+                --blur-glass: blur(20px);
+                --font-ui: 'Inter', -apple-system, system-ui, sans-serif;
+                --font-reading: 'Merriweather', Georgia, serif;
+                --font-mono: 'JetBrains Mono', monospace;
+            }
+
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family: var(--font-ui);
+                background: var(--bg-deep);
+                color: var(--text-primary);
+                height: 100vh;
+                overflow: hidden;
+                -webkit-font-smoothing: antialiased;
+                user-select: none;
+            }
+
+            .atmosphere {
+                position: fixed;
+                inset: 0;
+                pointer-events: none;
+                z-index: 0;
+                background:
+                    radial-gradient(
+                        ellipse 80% 60% at 30% 40%,
+                        rgba(217, 78, 59, 0.03) 0%,
+                        transparent 70%
+                    ),
+                    radial-gradient(
+                        ellipse 60% 80% at 80% 60%,
+                        rgba(255, 248, 230, 0.02) 0%,
+                        transparent 60%
+                    );
+            }
+
+            .app {
+                display: flex;
+                height: 100vh;
+                position: relative;
+                z-index: 1;
+            }
+
+            /* ===== SPACE RAIL ===== */
+            .space-rail {
+                width: 60px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 16px 0;
+                gap: 4px;
+                flex-shrink: 0;
+                border-right: 1px solid var(--border-subtle);
+            }
+
+            .space-icon {
+                width: 38px;
+                height: 38px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+                position: relative;
+                color: var(--text-tertiary);
+            }
+            .space-icon:hover {
+                color: var(--text-secondary);
+                background: var(--bg-hover);
+            }
+            .space-icon.active {
+                color: var(--maple);
+            }
+            .space-icon.active::before {
+                content: '';
+                position: absolute;
+                left: -11px;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 2.5px;
+                height: 18px;
+                background: var(--maple);
+                border-radius: 0 3px 3px 0;
+                box-shadow: 0 0 8px var(--maple-muted);
+            }
+            .space-icon .material-symbols-rounded {
+                font-size: 20px;
+                font-variation-settings:
+                    'FILL' 0,
+                    'wght' 300,
+                    'GRAD' -25,
+                    'opsz' 20;
+            }
+            .space-icon.active .material-symbols-rounded {
+                font-variation-settings:
+                    'FILL' 1,
+                    'wght' 400,
+                    'GRAD' 0,
+                    'opsz' 20;
+            }
+            .space-divider {
+                width: 20px;
+                height: 1px;
+                background: var(--border-subtle);
+                margin: 8px 0;
+            }
+            .space-rail-bottom {
+                margin-top: auto;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 4px;
+            }
+            .space-badge {
+                position: absolute;
+                top: 4px;
+                right: 4px;
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: var(--maple);
+                box-shadow: 0 0 6px var(--maple-muted);
+            }
+
+            /* ===== MAIN ===== */
+            .main {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                padding: 16px 24px 16px 16px;
+                gap: 12px;
+            }
+
+            /* ===== TOPBAR ===== */
+            .topbar {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                flex-shrink: 0;
+                padding: 0 4px;
+            }
+            .space-title {
+                font-size: 13px;
+                font-weight: 500;
+                color: var(--text-primary);
+                letter-spacing: -0.01em;
+            }
+            .space-breadcrumb {
+                color: var(--text-tertiary);
+                font-weight: 400;
+            }
+            .topbar-spacer {
+                flex: 1;
+            }
+            .icon-btn {
+                width: 30px;
+                height: 30px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                color: var(--text-tertiary);
+                transition: all 0.2s;
+                border: none;
+                background: none;
+            }
+            .icon-btn:hover {
+                background: var(--bg-hover);
+                color: var(--text-secondary);
+            }
+            .icon-btn .material-symbols-rounded {
+                font-size: 18px;
+                font-variation-settings:
+                    'FILL' 0,
+                    'wght' 300,
+                    'GRAD' -25,
+                    'opsz' 18;
+            }
+
+            /* ===== LOCUS ===== */
+            .locus {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                background: var(--bg-surface);
+                backdrop-filter: var(--blur-glass);
+                border: 1px solid var(--border-subtle);
+                border-radius: 12px;
+                padding: 10px 16px;
+                transition: all 0.3s;
+                cursor: text;
+                flex-shrink: 0;
+            }
+            .locus:hover {
+                border-color: var(--border-default);
+                background: rgba(38, 37, 36, 0.75);
+            }
+            .locus:focus-within {
+                border-color: var(--maple-glow-strong);
+                box-shadow: var(--glow-focus);
+            }
+            .locus-icon {
+                color: var(--text-tertiary);
+                font-size: 16px;
+            }
+            .locus:focus-within .locus-icon {
+                color: var(--maple);
+            }
+            .locus-input {
+                flex: 1;
+                background: none;
+                border: none;
+                outline: none;
+                color: var(--text-primary);
+                font-family: var(--font-ui);
+                font-size: 14px;
+                font-weight: 400;
+            }
+            .locus-input::placeholder {
+                color: var(--text-ghost);
+                font-weight: 300;
+            }
+            .kbd {
+                font-size: 10px;
+                font-family: var(--font-ui);
+                color: var(--text-tertiary);
+                background: rgba(255, 255, 255, 0.04);
+                padding: 3px 6px;
+                border-radius: 5px;
+                font-weight: 500;
+                border: 1px solid var(--border-subtle);
+                line-height: 1;
+            }
+
+            /* ===== CONTENT AREA: Focus + Peripheral ===== */
+            .content-area {
+                flex: 1;
+                display: flex;
+                gap: 12px;
+                min-height: 0;
+                position: relative;
+            }
+
+            /* ===== PERIPHERAL DOCK (left side — collapsed modules) ===== */
+            .peripheral-dock {
+                width: 52px;
+                flex-shrink: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                padding-top: 4px;
+            }
+
+            .dock-item {
+                width: 48px;
+                height: 48px;
+                border-radius: 12px;
+                background: var(--bg-surface);
+                backdrop-filter: var(--blur-glass);
+                border: 1px solid var(--border-subtle);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+                position: relative;
+                color: var(--text-tertiary);
+                box-shadow: var(--glow-moonlight);
+            }
+
+            .dock-item:hover {
+                border-color: var(--border-default);
+                background: rgba(38, 37, 36, 0.85);
+                transform: scale(1.06);
+                box-shadow:
+                    var(--glow-moonlight),
+                    0 4px 16px rgba(0, 0, 0, 0.3);
+            }
+
+            .dock-item.active {
+                border-color: rgba(217, 78, 59, 0.2);
+                box-shadow: var(--glow-focus);
+            }
+
+            .dock-item .material-symbols-rounded {
+                font-size: 18px;
+                font-variation-settings:
+                    'FILL' 0,
+                    'wght' 300,
+                    'GRAD' -25;
+            }
+
+            .dock-item.active .material-symbols-rounded {
+                font-variation-settings:
+                    'FILL' 1,
+                    'wght' 400,
+                    'GRAD' 0;
+            }
+
+            .dock-item .dock-color {
+                position: absolute;
+                bottom: 4px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 12px;
+                height: 2px;
+                border-radius: 1px;
+            }
+
+            .dock-color.memo {
+                background: var(--maple-muted);
+            }
+            .dock-color.chat {
+                background: rgba(96, 165, 250, 0.6);
+            }
+            .dock-color.todo {
+                background: rgba(74, 222, 128, 0.6);
+            }
+            .dock-color.wb {
+                background: rgba(192, 132, 252, 0.6);
+            }
+            .dock-color.mail {
+                background: rgba(251, 191, 36, 0.6);
+            }
+
+            .dock-badge {
+                position: absolute;
+                top: -2px;
+                right: -2px;
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background: var(--maple);
+                color: white;
+                font-size: 9px;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 0 6px var(--maple-glow-strong);
+            }
+
+            .dock-tooltip {
+                position: absolute;
+                left: 58px;
+                top: 50%;
+                transform: translateY(-50%);
+                background: var(--bg-surface-solid);
+                border: 1px solid var(--border-default);
+                border-radius: 8px;
+                padding: 6px 10px;
+                white-space: nowrap;
+                font-size: 11px;
+                font-weight: 500;
+                color: var(--text-primary);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.15s;
+                z-index: 10;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            }
+
+            .dock-item:hover .dock-tooltip {
+                opacity: 1;
+            }
+
+            .dock-divider {
+                height: 1px;
+                background: var(--border-subtle);
+                margin: 4px 8px;
+            }
+
+            .dock-add {
+                width: 48px;
+                height: 36px;
+                border-radius: 10px;
+                border: 1px dashed var(--border-subtle);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.2s;
+                color: var(--text-ghost);
+            }
+            .dock-add:hover {
+                border-color: var(--maple-muted);
+                color: var(--maple-muted);
+                background: var(--maple-bg);
+            }
+            .dock-add .material-symbols-rounded {
+                font-size: 16px;
+                font-variation-settings:
+                    'FILL' 0,
+                    'wght' 200;
+            }
+
+            /* ===== FOCUSED MODULE ===== */
+            .focused-module {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                background: var(--bg-surface);
+                backdrop-filter: var(--blur-glass);
+                border: 1px solid rgba(217, 78, 59, 0.15);
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: var(--glow-focus);
+                transition: all 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+                animation: moduleIn 0.35s ease-out;
+                min-width: 0;
+            }
+
+            @keyframes moduleIn {
+                from {
+                    opacity: 0;
+                    transform: scale(0.98) translateY(6px);
+                }
+                to {
+                    opacity: 1;
+                    transform: scale(1) translateY(0);
+                }
+            }
+
+            .focused-header {
+                display: flex;
+                align-items: center;
+                padding: 14px 20px;
+                gap: 10px;
+                flex-shrink: 0;
+            }
+
+            .focused-type {
+                font-size: 12px;
+                font-weight: 400;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+            }
+            .focused-type .material-symbols-rounded {
+                font-size: 15px;
+                font-variation-settings:
+                    'FILL' 0,
+                    'wght' 300;
+            }
+            .focused-type.memo {
+                color: var(--maple-muted);
+            }
+            .focused-type.chat {
+                color: rgba(96, 165, 250, 0.7);
+            }
+            .focused-type.todo {
+                color: rgba(74, 222, 128, 0.7);
+            }
+
+            .focused-title {
+                font-size: 14px;
+                font-weight: 500;
+                color: var(--text-primary);
+                flex: 1;
+                letter-spacing: -0.01em;
+            }
+
+            .focused-body {
+                flex: 1;
+                overflow-y: auto;
+                padding: 0 28px 28px;
+            }
+            .focused-body::-webkit-scrollbar {
+                width: 4px;
+            }
+            .focused-body::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .focused-body::-webkit-scrollbar-thumb {
+                background: rgba(168, 162, 158, 0.1);
+                border-radius: 2px;
+            }
+
+            /* ===== NETWORK PANEL (right side) ===== */
+            .network-panel {
+                width: 220px;
+                flex-shrink: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                padding-top: 4px;
+            }
+
+            .network-section-title {
+                font-size: 10px;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--text-ghost);
+                padding: 0 4px;
+            }
+
+            /* Mini graph */
+            .network-graph {
+                height: 160px;
+                border-radius: 12px;
+                background: var(--bg-surface);
+                backdrop-filter: var(--blur-glass);
+                border: 1px solid var(--border-subtle);
+                position: relative;
+                overflow: hidden;
+                box-shadow: var(--glow-moonlight);
+            }
+
+            .graph-svg {
+                width: 100%;
+                height: 100%;
+            }
+
+            .graph-node {
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            .graph-node:hover {
+                filter: brightness(1.3);
+            }
+
+            .graph-line {
+                stroke: rgba(255, 255, 255, 0.06);
+                stroke-width: 1;
+                transition: stroke 0.2s;
+            }
+
+            .graph-line.active {
+                stroke: var(--maple-muted);
+                stroke-width: 1.5;
+                filter: drop-shadow(0 0 3px var(--maple-glow));
+            }
+
+            /* Link list */
+            .network-links {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+
+            .network-link {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 7px 10px;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.15s;
+            }
+            .network-link:hover {
+                background: var(--bg-hover);
+            }
+
+            .link-arrow {
+                font-size: 10px;
+                color: var(--text-ghost);
+                display: flex;
+                align-items: center;
+            }
+            .link-arrow .material-symbols-rounded {
+                font-size: 12px;
+                font-variation-settings:
+                    'FILL' 0,
+                    'wght' 300;
+            }
+
+            .link-icon {
+                width: 22px;
+                height: 22px;
+                border-radius: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            }
+            .link-icon .material-symbols-rounded {
+                font-size: 13px;
+                font-variation-settings:
+                    'FILL' 0,
+                    'wght' 300;
+            }
+            .link-icon.memo {
+                background: var(--maple-bg);
+                color: var(--maple-muted);
+            }
+            .link-icon.chat {
+                background: rgba(96, 165, 250, 0.08);
+                color: rgba(96, 165, 250, 0.6);
+            }
+            .link-icon.todo {
+                background: rgba(74, 222, 128, 0.08);
+                color: rgba(74, 222, 128, 0.6);
+            }
+            .link-icon.wb {
+                background: rgba(192, 132, 252, 0.08);
+                color: rgba(192, 132, 252, 0.6);
+            }
+            .link-icon.mail {
+                background: rgba(251, 191, 36, 0.08);
+                color: rgba(251, 191, 36, 0.6);
+            }
+
+            .link-info {
+                flex: 1;
+                min-width: 0;
+            }
+            .link-name {
+                font-size: 11px;
+                font-weight: 500;
+                color: var(--text-primary);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                letter-spacing: -0.01em;
+            }
+            .link-relation {
+                font-size: 9px;
+                color: var(--text-ghost);
+                font-weight: 400;
+                letter-spacing: 0.02em;
+            }
+
+            .link-strength {
+                width: 24px;
+                height: 3px;
+                border-radius: 2px;
+                background: var(--border-subtle);
+                overflow: hidden;
+                flex-shrink: 0;
+            }
+            .link-strength-fill {
+                height: 100%;
+                border-radius: 2px;
+                background: var(--maple-muted);
+                transition: width 0.3s;
+            }
+
+            /* Backlinks section */
+            .backlinks-count {
+                font-size: 10px;
+                color: var(--text-ghost);
+                font-weight: 400;
+                padding: 0 4px;
+            }
+
+            /* ===== MEMO CONTENT ===== */
+            .memo h2 {
+                font-family: var(--font-ui);
+                font-size: 22px;
+                font-weight: 600;
+                letter-spacing: -0.03em;
+                margin-bottom: 20px;
+                color: var(--text-primary);
+                line-height: 1.3;
+            }
+            .memo p {
+                font-family: var(--font-reading);
+                font-size: 14px;
+                line-height: 1.8;
+                color: rgba(231, 229, 228, 0.85);
+                margin-bottom: 14px;
+            }
+            .memo .hl {
+                background: var(--maple-bg);
+                padding: 1px 5px;
+                border-radius: 4px;
+                color: var(--maple);
+                font-family: var(--font-ui);
+                font-size: 13px;
+                font-weight: 500;
+            }
+            .memo blockquote {
+                border-left: 2px solid var(--maple-muted);
+                padding-left: 18px;
+                margin: 24px 0;
+                font-family: var(--font-reading);
+                font-style: italic;
+                font-size: 13.5px;
+                line-height: 1.7;
+                color: var(--text-secondary);
+            }
+            .memo .wiki {
+                color: var(--maple-muted);
+                text-decoration: none;
+                border-bottom: 1px solid rgba(217, 78, 59, 0.2);
+                cursor: pointer;
+                transition: all 0.2s;
+                font-family: var(--font-ui);
+                font-size: 13px;
+                font-weight: 500;
+            }
+            .memo .wiki:hover {
+                color: var(--maple);
+                border-bottom-color: var(--maple);
+            }
+
+            .memo h3 {
+                font-family: var(--font-ui);
+                font-size: 16px;
+                font-weight: 600;
+                letter-spacing: -0.02em;
+                margin: 24px 0 12px;
+                color: var(--text-primary);
+            }
+
+            .memo ul {
+                font-family: var(--font-reading);
+                font-size: 14px;
+                line-height: 1.8;
+                color: rgba(231, 229, 228, 0.85);
+                margin-bottom: 14px;
+                padding-left: 20px;
+            }
+            .memo ul li {
+                margin-bottom: 6px;
+            }
+
+            .memo code {
+                font-family: var(--font-mono);
+                background: rgba(255, 255, 255, 0.04);
+                padding: 1px 5px;
+                border-radius: 4px;
+                font-size: 12px;
+                color: var(--maple-muted);
+            }
+
+            /* ===== NAVIGATION HINT ===== */
+            .nav-indicator {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 20px;
+                flex-shrink: 0;
+                padding: 4px 0;
+            }
+
+            .nav-dots {
+                display: flex;
+                gap: 6px;
+                align-items: center;
+            }
+
+            .nav-dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--border-default);
+                transition: all 0.25s;
+                cursor: pointer;
+            }
+            .nav-dot.active {
+                width: 20px;
+                border-radius: 3px;
+                background: var(--maple);
+                box-shadow: 0 0 8px var(--maple-glow);
+            }
+            .nav-dot:hover:not(.active) {
+                background: var(--text-tertiary);
+            }
+
+            .nav-hint {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .nav-hint-text {
+                font-size: 10px;
+                color: var(--text-ghost);
+            }
+
+            /* ===== HINT BAR ===== */
+            .hint-bar {
+                position: fixed;
+                bottom: 16px;
+                left: 50%;
+                transform: translateX(-50%);
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                background: var(--bg-surface);
+                backdrop-filter: var(--blur-glass);
+                border: 1px solid var(--border-subtle);
+                border-radius: 12px;
+                padding: 8px 16px;
+                z-index: 100;
+                box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+            }
+            .hint-group {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+            }
+            .hint-text {
+                font-size: 11px;
+                color: var(--text-ghost);
+                font-weight: 400;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="atmosphere"></div>
+
+        <div class="app">
+            <!-- SPACE RAIL -->
+            <div class="space-rail">
+                <div class="space-icon active">
+                    <span class="material-symbols-rounded">rocket_launch</span>
+                </div>
+                <div class="space-icon"><span class="material-symbols-rounded">explore</span></div>
+                <div class="space-icon">
+                    <span class="material-symbols-rounded">self_improvement</span>
+                </div>
+                <div class="space-icon">
+                    <span class="material-symbols-rounded">interests</span>
+                </div>
+                <div class="space-divider"></div>
+                <div class="space-icon">
+                    <span class="material-symbols-rounded">inbox</span>
+                    <div class="space-badge"></div>
+                </div>
+                <div class="space-rail-bottom">
+                    <div class="space-divider"></div>
+                    <div class="space-icon"><span class="material-symbols-rounded">hub</span></div>
+                    <div class="space-icon"><span class="material-symbols-rounded">tune</span></div>
+                </div>
+            </div>
+
+            <!-- MAIN -->
+            <div class="main">
+                <div class="topbar">
+                    <span class="space-title"
+                        >Product Launch <span class="space-breadcrumb">/ Sprint 4</span></span
+                    >
+                    <div class="topbar-spacer"></div>
+                    <button class="icon-btn">
+                        <span class="material-symbols-rounded">group</span>
+                    </button>
+                    <button class="icon-btn">
+                        <span class="material-symbols-rounded">more_horiz</span>
+                    </button>
+                </div>
+
+                <!-- LOCUS -->
+                <div class="locus">
+                    <span class="material-symbols-rounded locus-icon">search</span>
+                    <input class="locus-input" placeholder="What do you want to do?" readonly />
+                    <div style="display: flex; gap: 3px">
+                        <span class="kbd">⌘</span><span class="kbd">K</span>
+                    </div>
+                </div>
+
+                <!-- CONTENT: Dock + Focused Module + Network -->
+                <div class="content-area">
+                    <!-- LEFT: Module Dock -->
+                    <div class="peripheral-dock">
+                        <div class="dock-item active">
+                            <span class="material-symbols-rounded">edit_note</span>
+                            <div class="dock-color memo"></div>
+                            <div class="dock-tooltip">Launch Strategy Q2</div>
+                        </div>
+
+                        <div class="dock-item">
+                            <span class="material-symbols-rounded">check_circle</span>
+                            <div class="dock-color todo"></div>
+                            <div class="dock-tooltip">Sprint Tasks</div>
+                        </div>
+
+                        <div class="dock-item">
+                            <span class="material-symbols-rounded">chat_bubble</span>
+                            <div class="dock-color chat"></div>
+                            <div class="dock-badge">2</div>
+                            <div class="dock-tooltip">Team Chat</div>
+                        </div>
+
+                        <div class="dock-item">
+                            <span class="material-symbols-rounded">draw</span>
+                            <div class="dock-color wb"></div>
+                            <div class="dock-tooltip">Architecture Whiteboard</div>
+                        </div>
+
+                        <div class="dock-divider"></div>
+
+                        <div class="dock-item">
+                            <span class="material-symbols-rounded">mail</span>
+                            <div class="dock-color mail"></div>
+                            <div class="dock-tooltip">Gmail — Re: Partnership</div>
+                        </div>
+
+                        <div class="dock-item">
+                            <span class="material-symbols-rounded">data_object</span>
+                            <div class="dock-color memo"></div>
+                            <div class="dock-tooltip">API Schema v3</div>
+                        </div>
+
+                        <div class="dock-add">
+                            <span class="material-symbols-rounded">add</span>
+                        </div>
+                    </div>
+
+                    <!-- CENTER: Focused Module -->
+                    <div class="focused-module">
+                        <div class="focused-header">
+                            <div class="focused-type memo">
+                                <span class="material-symbols-rounded">edit_note</span>
+                            </div>
+                            <div class="focused-title">Launch Strategy Q2</div>
+                            <button class="icon-btn">
+                                <span class="material-symbols-rounded">open_in_full</span>
+                            </button>
+                            <button class="icon-btn">
+                                <span class="material-symbols-rounded">more_horiz</span>
+                            </button>
+                        </div>
+                        <div class="focused-body">
+                            <div class="memo">
+                                <h2>Launch Strategy: Mercury Maple</h2>
+                                <p>
+                                    The core proposition is
+                                    <span class="hl">intent-driven navigation</span> — replacing the
+                                    traditional sidebar-and-page model with a fluid, contextual
+                                    workspace that assembles around what you're trying to do.
+                                </p>
+                                <blockquote>
+                                    Technology should serve people, not the other way around.
+                                    Mercury re-imagines the operating system as a fluid experience
+                                    driven by human intent.
+                                </blockquote>
+                                <p>
+                                    Key differentiators: the
+                                    <a class="wiki">[[Flow Layout]]</a> allows horizontal module
+                                    composition, so users can work across a memo, chat thread, and
+                                    todo list simultaneously without context switching. This maps to
+                                    our <a class="wiki">[[CRDT Architecture]]</a> — every module is
+                                    already a Y.js document.
+                                </p>
+
+                                <h3>Module Navigation</h3>
+                                <p>
+                                    Modules in a Space are accessed one at a time through the dock.
+                                    Use <code>⌘ ↑↓</code> to move between modules or click the dock
+                                    icons. The focused module expands while others collapse —
+                                    maintaining context without visual overload.
+                                </p>
+
+                                <ul>
+                                    <li>
+                                        Each module can link to others via
+                                        <a class="wiki">[[wikilinks]]</a>, creating a network
+                                    </li>
+                                    <li>
+                                        The connection graph on the right shows how the current
+                                        module relates to its neighbors
+                                    </li>
+                                    <li>
+                                        Backlinks surface automatically — know what references you
+                                        without searching
+                                    </li>
+                                    <li>
+                                        Link strength indicates how deeply connected two modules are
+                                    </li>
+                                </ul>
+
+                                <h3>Locus as Intent Router</h3>
+                                <p>
+                                    The <a class="wiki">[[Locus]]</a> command bar becomes the
+                                    primary entry point — surfacing content by intent rather than
+                                    hierarchy. Type what you're looking for: "todos due today",
+                                    "messages from Sarah", "notes about architecture". The system
+                                    assembles the right module.
+                                </p>
+
+                                <p>
+                                    Combined with <a class="wiki">[[Full-text Search]]</a> and
+                                    backlinks, this creates a knowledge graph navigable through
+                                    language. The <a class="wiki">[[Sprint Tasks]]</a> module
+                                    connects here because launch planning drives task
+                                    prioritization.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT: Network Panel -->
+                    <div class="network-panel">
+                        <div class="network-section-title">Connections</div>
+
+                        <!-- Mini force graph -->
+                        <div class="network-graph">
+                            <svg class="graph-svg" viewBox="0 0 220 160">
+                                <!-- Connection lines -->
+                                <line class="graph-line active" x1="110" y1="80" x2="60" y2="40" />
+                                <line class="graph-line active" x1="110" y1="80" x2="170" y2="50" />
+                                <line class="graph-line active" x1="110" y1="80" x2="55" y2="120" />
+                                <line class="graph-line" x1="110" y1="80" x2="165" y2="125" />
+                                <line class="graph-line" x1="60" y1="40" x2="170" y2="50" />
+                                <line class="graph-line" x1="55" y1="120" x2="165" y2="125" />
+                                <line class="graph-line" x1="170" y1="50" x2="165" y2="125" />
+
+                                <!-- Nodes -->
+                                <!-- Current: Launch Strategy (center, glowing) -->
+                                <circle
+                                    class="graph-node"
+                                    cx="110"
+                                    cy="80"
+                                    r="10"
+                                    fill="#D94E3B"
+                                    opacity="0.9"
+                                >
+                                    <animate
+                                        attributeName="r"
+                                        values="10;12;10"
+                                        dur="3s"
+                                        repeatCount="indefinite"
+                                    />
+                                </circle>
+                                <circle
+                                    cx="110"
+                                    cy="80"
+                                    r="16"
+                                    fill="none"
+                                    stroke="rgba(217,78,59,0.15)"
+                                    stroke-width="1"
+                                >
+                                    <animate
+                                        attributeName="r"
+                                        values="16;20;16"
+                                        dur="3s"
+                                        repeatCount="indefinite"
+                                    />
+                                    <animate
+                                        attributeName="opacity"
+                                        values="0.5;0;0.5"
+                                        dur="3s"
+                                        repeatCount="indefinite"
+                                    />
+                                </circle>
+
+                                <!-- CRDT Architecture -->
+                                <circle
+                                    class="graph-node"
+                                    cx="60"
+                                    cy="40"
+                                    r="6"
+                                    fill="rgba(217,78,59,0.5)"
+                                />
+                                <text
+                                    x="60"
+                                    y="28"
+                                    text-anchor="middle"
+                                    fill="rgba(168,162,158,0.5)"
+                                    font-size="7"
+                                    font-family="Inter"
+                                >
+                                    CRDT
+                                </text>
+
+                                <!-- Sprint Tasks -->
+                                <circle
+                                    class="graph-node"
+                                    cx="170"
+                                    cy="50"
+                                    r="6"
+                                    fill="rgba(74,222,128,0.5)"
+                                />
+                                <text
+                                    x="170"
+                                    y="38"
+                                    text-anchor="middle"
+                                    fill="rgba(168,162,158,0.5)"
+                                    font-size="7"
+                                    font-family="Inter"
+                                >
+                                    Tasks
+                                </text>
+
+                                <!-- Flow Layout -->
+                                <circle
+                                    class="graph-node"
+                                    cx="55"
+                                    cy="120"
+                                    r="5"
+                                    fill="rgba(192,132,252,0.5)"
+                                />
+                                <text
+                                    x="55"
+                                    y="135"
+                                    text-anchor="middle"
+                                    fill="rgba(168,162,158,0.5)"
+                                    font-size="7"
+                                    font-family="Inter"
+                                >
+                                    Flow
+                                </text>
+
+                                <!-- Locus -->
+                                <circle
+                                    class="graph-node"
+                                    cx="165"
+                                    cy="125"
+                                    r="5"
+                                    fill="rgba(96,165,250,0.5)"
+                                />
+                                <text
+                                    x="165"
+                                    y="140"
+                                    text-anchor="middle"
+                                    fill="rgba(168,162,158,0.5)"
+                                    font-size="7"
+                                    font-family="Inter"
+                                >
+                                    Locus
+                                </text>
+                            </svg>
+                        </div>
+
+                        <!-- Links from this module -->
+                        <div class="network-section-title">
+                            Links from here <span class="backlinks-count">· 4</span>
+                        </div>
+                        <div class="network-links">
+                            <div class="network-link">
+                                <div class="link-icon wb">
+                                    <span class="material-symbols-rounded">draw</span>
+                                </div>
+                                <div class="link-info">
+                                    <div class="link-name">Flow Layout</div>
+                                    <div class="link-relation">wikilink</div>
+                                </div>
+                                <div class="link-strength">
+                                    <div class="link-strength-fill" style="width: 80%"></div>
+                                </div>
+                            </div>
+
+                            <div class="network-link">
+                                <div class="link-icon memo">
+                                    <span class="material-symbols-rounded">description</span>
+                                </div>
+                                <div class="link-info">
+                                    <div class="link-name">CRDT Architecture</div>
+                                    <div class="link-relation">wikilink</div>
+                                </div>
+                                <div class="link-strength">
+                                    <div class="link-strength-fill" style="width: 90%"></div>
+                                </div>
+                            </div>
+
+                            <div class="network-link">
+                                <div class="link-icon chat">
+                                    <span class="material-symbols-rounded">chat_bubble</span>
+                                </div>
+                                <div class="link-info">
+                                    <div class="link-name">Locus</div>
+                                    <div class="link-relation">wikilink</div>
+                                </div>
+                                <div class="link-strength">
+                                    <div class="link-strength-fill" style="width: 65%"></div>
+                                </div>
+                            </div>
+
+                            <div class="network-link">
+                                <div class="link-icon todo">
+                                    <span class="material-symbols-rounded">check_circle</span>
+                                </div>
+                                <div class="link-info">
+                                    <div class="link-name">Sprint Tasks</div>
+                                    <div class="link-relation">wikilink</div>
+                                </div>
+                                <div class="link-strength">
+                                    <div class="link-strength-fill" style="width: 70%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Backlinks -->
+                        <div class="network-section-title">
+                            Backlinks <span class="backlinks-count">· 3</span>
+                        </div>
+                        <div class="network-links">
+                            <div class="network-link">
+                                <div class="link-arrow">
+                                    <span class="material-symbols-rounded"
+                                        >subdirectory_arrow_left</span
+                                    >
+                                </div>
+                                <div class="link-info">
+                                    <div class="link-name">Sprint Retro Notes</div>
+                                    <div class="link-relation">references this</div>
+                                </div>
+                            </div>
+
+                            <div class="network-link">
+                                <div class="link-arrow">
+                                    <span class="material-symbols-rounded"
+                                        >subdirectory_arrow_left</span
+                                    >
+                                </div>
+                                <div class="link-info">
+                                    <div class="link-name">Team Standup Feb 20</div>
+                                    <div class="link-relation">references this</div>
+                                </div>
+                            </div>
+
+                            <div class="network-link">
+                                <div class="link-arrow">
+                                    <span class="material-symbols-rounded"
+                                        >subdirectory_arrow_left</span
+                                    >
+                                </div>
+                                <div class="link-info">
+                                    <div class="link-name">Q2 Roadmap</div>
+                                    <div class="link-relation">references this</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Navigation indicator -->
+                <div class="nav-indicator">
+                    <div class="nav-hint">
+                        <span class="kbd">⌘</span><span class="kbd">↑</span
+                        ><span class="kbd">↓</span>
+                        <span class="nav-hint-text">navigate</span>
+                    </div>
+                    <div class="nav-dots">
+                        <div class="nav-dot active"></div>
+                        <div class="nav-dot"></div>
+                        <div class="nav-dot"></div>
+                        <div class="nav-dot"></div>
+                        <div class="nav-dot"></div>
+                        <div class="nav-dot"></div>
+                    </div>
+                    <div class="nav-hint">
+                        <span class="kbd">Tab</span>
+                        <span class="nav-hint-text">new module</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- HINT BAR -->
+        <div class="hint-bar">
+            <div class="hint-group">
+                <span class="hint-text">Hold</span><span class="kbd">⌘</span
+                ><span class="hint-text">shortcuts</span>
+            </div>
+            <div class="hint-group">
+                <span class="kbd">⌘</span><span class="kbd">J</span
+                ><span class="hint-text">AI</span>
+            </div>
+            <div class="hint-group">
+                <span class="kbd">⌘</span><span class="kbd">G</span
+                ><span class="hint-text">graph</span>
+            </div>
+        </div>
+    </body>
+</html>
