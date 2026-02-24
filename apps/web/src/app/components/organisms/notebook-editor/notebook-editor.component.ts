@@ -87,6 +87,7 @@ import { AiBotWidgetComponent } from '../../molecules/ai-bot-widget/ai-bot-widge
 import { AIPreviewPanelComponent } from '../../molecules/ai-preview-panel/ai-preview-panel.component';
 import { AICommandMenuComponent } from '../../molecules/ai-command-menu/ai-command-menu.component';
 import { EditorBubbleMenuComponent } from '../../molecules/editor-bubble-menu/editor-bubble-menu.component';
+import { ApiBlockComponent } from '../../molecules/api-block/api-block.component';
 import { AIWritingService } from '../../../services/ai-writing.service';
 import { TagService } from '../../../services/tag.service';
 import { SearchService } from '../../../services/search.service';
@@ -188,6 +189,10 @@ export class NotebookEditorComponent implements OnDestroy {
   private aiBotWidgetComponents = new Map<
     string,
     { componentRef: any; element: HTMLElement; editor: Editor; getPos: () => number | undefined }
+  >();
+  private apiBlockComponents = new Map<
+    HTMLElement,
+    { componentRef: any; element: HTMLElement; getPos: (() => number | undefined) | boolean }
   >();
 
   // Event listener cleanup - store bound handlers for removal
@@ -526,6 +531,9 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up Google Calendar popup listener
         this.setupGcalPopupListener();
+
+        // Set up API block event listeners
+        this.setupApiBlockListeners();
 
         // Set up bubble menu component
         this.setupBubbleMenuComponent();
@@ -952,6 +960,96 @@ export class NotebookEditorComponent implements OnDestroy {
 
     // Insert the AI bot widget at the current position
     (this._editor.commands as any).insertAiBotWidget();
+  }
+
+  /**
+   * Set up listeners for API block mount/unmount/update events
+   */
+  private setupApiBlockListeners(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    editorElement.addEventListener('api-block-mounted', ((event: CustomEvent) => {
+      const { element, getPos, parseResult, parseError, yamlContent } = event.detail;
+      this.mountApiBlockComponent(element, getPos, parseResult, parseError, yamlContent);
+    }) as EventListener);
+
+    editorElement.addEventListener('api-block-updated', ((event: CustomEvent) => {
+      const { element, parseResult, parseError, yamlContent } = event.detail;
+      this.updateApiBlockComponent(element, parseResult, parseError, yamlContent);
+    }) as EventListener);
+
+    editorElement.addEventListener('api-block-unmounted', ((event: CustomEvent) => {
+      const { element } = event.detail;
+      this.unmountApiBlockComponent(element);
+    }) as EventListener);
+  }
+
+  /**
+   * Mount an Angular API block component into a NodeView mount point
+   */
+  private mountApiBlockComponent(
+    element: HTMLElement,
+    getPos: (() => number | undefined) | boolean,
+    parseResult: any,
+    parseError: string | null,
+    yamlContent: string,
+  ): void {
+    if (this.apiBlockComponents.has(element)) return;
+
+    const componentRef = createComponent(ApiBlockComponent, {
+      environmentInjector: this.injector,
+      hostElement: element,
+    });
+
+    componentRef.setInput('parseResult', parseResult);
+    componentRef.setInput('parseError', parseError);
+    componentRef.setInput('yamlContent', yamlContent);
+
+    // Handle YAML save — update ProseMirror content
+    componentRef.instance.yamlSaved.subscribe((newYaml: string) => {
+      const pos = typeof getPos === 'function' ? getPos() : undefined;
+      if (pos === undefined || !this._editor) return;
+      const tr = this._editor.view.state.tr;
+      const node = tr.doc.nodeAt(pos);
+      if (!node) return;
+      const start = pos + 1;
+      const end = start + node.content.size;
+      tr.replaceWith(start, end, this._editor.view.state.schema.text(newYaml));
+      this._editor.view.dispatch(tr);
+    });
+
+    this.appRef.attachView(componentRef.hostView);
+    this.apiBlockComponents.set(element, { componentRef, element, getPos });
+  }
+
+  /**
+   * Update an existing API block component with new parsed data
+   */
+  private updateApiBlockComponent(
+    element: HTMLElement,
+    parseResult: any,
+    parseError: string | null,
+    yamlContent: string,
+  ): void {
+    const component = this.apiBlockComponents.get(element);
+    if (!component) return;
+
+    component.componentRef.setInput('parseResult', parseResult);
+    component.componentRef.setInput('parseError', parseError);
+    component.componentRef.setInput('yamlContent', yamlContent);
+  }
+
+  /**
+   * Unmount an API block component
+   */
+  private unmountApiBlockComponent(element: HTMLElement): void {
+    const component = this.apiBlockComponents.get(element);
+    if (!component) return;
+
+    this.appRef.detachView(component.componentRef.hostView);
+    component.componentRef.destroy();
+    this.apiBlockComponents.delete(element);
   }
 
   /**
@@ -2022,6 +2120,13 @@ export class NotebookEditorComponent implements OnDestroy {
       component.componentRef.destroy();
     });
     this.aiBotWidgetComponents.clear();
+
+    // Clean up API block components
+    this.apiBlockComponents.forEach((component) => {
+      this.appRef.detachView(component.componentRef.hostView);
+      component.componentRef.destroy();
+    });
+    this.apiBlockComponents.clear();
 
     // Clean up AI writing assistant components
     this.closeAIPreviewPanel();

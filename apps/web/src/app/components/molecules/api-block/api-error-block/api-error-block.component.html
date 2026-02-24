@@ -1,0 +1,23 @@
+<div class="border border-border rounded-lg overflow-hidden font-mono text-[13px]">
+  <div class="flex items-center gap-2 px-3 py-2 bg-bg-secondary border-b border-border">
+    <span
+      class="font-bold text-[11px] uppercase px-1.5 py-0.5 rounded text-white shrink-0 bg-method-get"
+      >API</span
+    >
+    <span class="font-semibold break-all">Invalid spec</span>
+    <button
+      class="bg-transparent border border-border rounded px-2 py-1 cursor-pointer text-text-muted flex items-center hover:bg-bg-hover hover:text-text-main ml-auto shrink-0"
+      title="Edit YAML"
+      contentEditable="false"
+      (click)="editYaml.emit(); $event.preventDefault(); $event.stopPropagation()"
+    >
+      <span class="material-symbols-rounded text-base">code</span>
+    </button>
+  </div>
+  <div
+    class="px-3 py-2 bg-status-error-bg text-status-error-text text-xs flex items-center gap-1.5 font-sans"
+  >
+    <span class="material-symbols-rounded text-base">error</span>
+    {{ error() }}
+  </div>
+</div>
