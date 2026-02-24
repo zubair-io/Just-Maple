@@ -5,6 +5,22 @@ import { lowlight, supportedLanguages } from './code-block-with-language';
 import * as yaml from 'js-yaml';
 import { isAbsoluteUrl, resolveApiUrl } from '../../../../utils/api-url';
 
+// CodeMirror 6
+import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
+import { EditorState } from '@codemirror/state';
+import { yaml as yamlLang } from '@codemirror/lang-yaml';
+import {
+  bracketMatching,
+  defaultHighlightStyle,
+  indentOnInput,
+  syntaxHighlighting,
+  HighlightStyle,
+} from '@codemirror/language';
+import { tags } from '@lezer/highlight';
+import { closeBrackets } from '@codemirror/autocomplete';
+import { defaultKeymap, indentWithTab } from '@codemirror/commands';
+import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+
 // ─── Types ───────────────────────────────────────────────────────────
 
 interface ApiSpec {
@@ -50,19 +66,186 @@ interface ApiResponse {
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-function parseApiYaml(content: string): { spec: ApiSpec | null; error: string | null } {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyObj = Record<string, any>;
+
+/**
+ * Resolve a same-document `$ref` (e.g. `#/components/parameters/NoteId`).
+ * Returns the original object when it is not a `$ref` or cannot be resolved.
+ */
+function resolveRef(obj: AnyObj | undefined, root: AnyObj, seen?: Set<string>): AnyObj | undefined {
+  if (!obj || typeof obj !== 'object' || !('$ref' in obj)) return obj;
+  const ref = obj['$ref'] as string;
+  if (typeof ref !== 'string' || !ref.startsWith('#/')) return obj;
+
+  const _seen = seen ?? new Set<string>();
+  if (_seen.has(ref)) return obj; // circular
+  _seen.add(ref);
+
+  const segments = ref
+    .slice(2)
+    .split('/')
+    .map((s) => s.replace(/~1/g, '/').replace(/~0/g, '~'));
+  let current: unknown = root;
+  for (const seg of segments) {
+    if (current == null || typeof current !== 'object') return obj;
+    current = (current as AnyObj)[seg];
+  }
+  if (current == null || typeof current !== 'object') return obj;
+  return resolveRef(current as AnyObj, root, _seen);
+}
+
+/** Recursively resolve `$ref` within a schema, returning a shallow-copied ApiSchema. */
+function resolveSchema(schema: AnyObj | undefined, root: AnyObj): ApiSchema | undefined {
+  if (!schema) return undefined;
+  const resolved = resolveRef(schema, root) ?? schema;
+  const out: ApiSchema = { ...resolved };
+  if (out.properties) {
+    const props: Record<string, ApiSchema> = {};
+    for (const [key, val] of Object.entries(out.properties)) {
+      const rp = resolveRef(val as AnyObj, root);
+      props[key] = rp ? { ...rp } : (val as ApiSchema);
+    }
+    out.properties = props;
+  }
+  return out;
+}
+
+/**
+ * Merge path-level and operation-level parameters.
+ * Operation params override path params with the same `name`+`in` key.
+ */
+function mergeParameters(
+  pathParams: AnyObj[] | undefined,
+  opParams: AnyObj[] | undefined,
+): AnyObj[] {
+  const map = new Map<string, AnyObj>();
+  for (const p of pathParams ?? []) {
+    map.set(`${p['in']}:${p['name']}`, p);
+  }
+  for (const p of opParams ?? []) {
+    map.set(`${p['in']}:${p['name']}`, p);
+  }
+  return [...map.values()];
+}
+
+const OPENAPI_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head'] as const;
+
+/** Extract individual endpoint specs from a full OpenAPI 3.x document. */
+function extractEndpoints(doc: AnyObj): ApiSpec[] {
+  const paths = doc['paths'];
+  if (!paths || typeof paths !== 'object') return [];
+
+  const serverUrl = doc['servers']?.[0]?.['url'] ?? '';
+  const rootSecurity = doc['security'] as Record<string, string[]>[] | undefined;
+  const specs: ApiSpec[] = [];
+
+  for (const [pathKey, pathObj] of Object.entries(paths)) {
+    if (!pathObj || typeof pathObj !== 'object') continue;
+    const pathItem = resolveRef(pathObj as AnyObj, doc) ?? (pathObj as AnyObj);
+    const pathLevelParams = pathItem['parameters'] as AnyObj[] | undefined;
+
+    for (const method of OPENAPI_METHODS) {
+      const operation = pathItem[method];
+      if (!operation || typeof operation !== 'object') continue;
+
+      const merged = mergeParameters(pathLevelParams, operation['parameters'] as AnyObj[]);
+      const resolvedParams: ApiParameter[] = merged.map((p) => {
+        const rp = resolveRef(p, doc) ?? p;
+        return {
+          name: rp['name'] as string,
+          in: rp['in'] as 'path' | 'query' | 'header',
+          required: !!rp['required'],
+          schema: resolveSchema(rp['schema'], doc),
+        };
+      });
+
+      // Request body
+      let requestBody: ApiSpec['requestBody'];
+      const rawBody = resolveRef(operation['requestBody'] as AnyObj, doc);
+      if (rawBody) {
+        const jsonContent = rawBody['content']?.['application/json'];
+        requestBody = {
+          required: !!rawBody['required'],
+          content: jsonContent
+            ? {
+                'application/json': {
+                  schema: resolveSchema(jsonContent['schema'], doc),
+                },
+              }
+            : undefined,
+        };
+      }
+
+      // Responses
+      const rawResponses = operation['responses'] as AnyObj | undefined;
+      let responses: Record<string, { description: string }> | undefined;
+      if (rawResponses) {
+        responses = {};
+        for (const [code, resp] of Object.entries(rawResponses)) {
+          const rr = resolveRef(resp as AnyObj, doc);
+          responses[code] = { description: (rr?.['description'] as string) ?? '' };
+        }
+      }
+
+      const security =
+        (operation['security'] as Record<string, string[]>[]) ?? rootSecurity ?? undefined;
+
+      specs.push({
+        path: pathKey,
+        method,
+        server: serverUrl,
+        summary: (operation['summary'] as string) ?? (operation['operationId'] as string),
+        parameters: resolvedParams.length ? resolvedParams : undefined,
+        requestBody,
+        responses,
+        security: security?.length ? security : undefined,
+      });
+    }
+  }
+
+  return specs;
+}
+
+// ─── Parse result types ──────────────────────────────────────────────
+
+type ParseResult =
+  | { kind: 'single'; spec: ApiSpec }
+  | { kind: 'multi'; specs: ApiSpec[]; title?: string; version?: string };
+
+function parseApiYaml(content: string): { result: ParseResult | null; error: string | null } {
   try {
-    const parsed = yaml.load(content) as ApiSpec | null;
+    const parsed = yaml.load(content) as AnyObj | null;
     if (!parsed || typeof parsed !== 'object') {
-      return { spec: null, error: 'Empty or invalid YAML' };
+      return { result: null, error: 'Empty or invalid YAML' };
     }
-    if (!parsed.path || !parsed.method) {
-      return { spec: null, error: 'Missing required fields: path, method' };
+
+    // OpenAPI 3.x detection
+    if (parsed['openapi'] && parsed['paths']) {
+      const specs = extractEndpoints(parsed);
+      if (!specs.length) {
+        return { result: null, error: 'No endpoints found in OpenAPI spec' };
+      }
+      return {
+        result: {
+          kind: 'multi',
+          specs,
+          title: parsed['info']?.['title'] as string | undefined,
+          version: parsed['info']?.['version'] as string | undefined,
+        },
+        error: null,
+      };
     }
-    return { spec: parsed, error: null };
+
+    // Flat format
+    if (parsed['path'] && parsed['method']) {
+      return { result: { kind: 'single', spec: parsed as unknown as ApiSpec }, error: null };
+    }
+
+    return { result: null, error: 'Missing required fields: path, method' };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    return { spec: null, error: `Invalid YAML: ${message}` };
+    return { result: null, error: `Invalid YAML: ${message}` };
   }
 }
 
@@ -187,12 +370,243 @@ const METHOD_BORDER: Record<string, string> = {
   delete: 'border-l-method-delete',
 };
 
+// ─── YAML Editor Modal ──────────────────────────────────────────────
+
+function createYamlEditorModal(currentYaml: string, onSave: (yaml: string) => void): void {
+  const yamlHighlighting = HighlightStyle.define([
+    { tag: tags.propertyName, color: '#9cdcfe' },
+    { tag: tags.string, color: '#ce9178' },
+    { tag: tags.number, color: '#b5cea8' },
+    { tag: tags.bool, color: '#569cd6' },
+    { tag: tags.null, color: '#569cd6' },
+    { tag: tags.punctuation, color: '#808080' },
+    { tag: tags.comment, color: '#6a9955' },
+    { tag: tags.keyword, color: '#c586c0' },
+  ]);
+
+  const cmTheme = EditorView.theme({
+    '&': {
+      flex: '1',
+      fontSize: '13px',
+      height: '100%',
+    },
+    '.cm-scroller': {
+      fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
+      overflow: 'auto',
+    },
+    '.cm-content': {
+      caretColor: 'var(--color-text-main)',
+      padding: '12px 0',
+    },
+    '.cm-gutters': {
+      backgroundColor: 'var(--color-bg-elevated, var(--color-bg))',
+      color: 'var(--color-text-muted)',
+      borderRight: '1px solid var(--color-border)',
+    },
+    '.cm-activeLineGutter': {
+      backgroundColor: 'var(--color-border)',
+    },
+    '.cm-activeLine': {
+      backgroundColor: 'color-mix(in srgb, var(--color-border) 30%, transparent)',
+    },
+    '.cm-cursor': {
+      borderLeftColor: 'var(--color-text-main)',
+    },
+    '.cm-selectionBackground': {
+      backgroundColor: 'color-mix(in srgb, var(--color-primary) 25%, transparent)',
+    },
+    '&.cm-focused .cm-selectionBackground': {
+      backgroundColor: 'color-mix(in srgb, var(--color-primary) 25%, transparent)',
+    },
+    '.cm-lineNumbers .cm-gutterElement': {
+      opacity: '0.5',
+      minWidth: '32px',
+      padding: '0 8px 0 12px',
+    },
+  });
+
+  // ── Backdrop ──
+  const backdrop = document.createElement('div');
+  backdrop.classList.add('yaml-modal-backdrop');
+  Object.assign(backdrop.style, {
+    position: 'fixed',
+    inset: '0',
+    zIndex: '9999',
+    background: 'rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    animation: 'yaml-modal-enter 0.15s ease-out',
+  });
+
+  // ── Panel ──
+  const panel = document.createElement('div');
+  panel.classList.add('yaml-modal-panel');
+  Object.assign(panel.style, {
+    width: '700px',
+    maxWidth: '90vw',
+    maxHeight: '80vh',
+    display: 'flex',
+    flexDirection: 'column',
+    background: 'var(--color-bg)',
+    border: '1px solid var(--color-border)',
+    borderRadius: '12px',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+    overflow: 'hidden',
+    animation: 'yaml-modal-panel-enter 0.15s ease-out',
+  });
+
+  // ── Header ──
+  const headerEl = document.createElement('div');
+  Object.assign(headerEl.style, {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 16px',
+    borderBottom: '1px solid var(--color-border)',
+    background: 'var(--color-bg-secondary)',
+  });
+  const title = document.createElement('span');
+  title.textContent = 'Edit API Spec';
+  Object.assign(title.style, {
+    fontWeight: '600',
+    fontSize: '14px',
+    color: 'var(--color-text-main)',
+  });
+  const closeBtn = document.createElement('button');
+  closeBtn.innerHTML = `<span class="material-symbols-rounded" style="font-size: 20px;">close</span>`;
+  Object.assign(closeBtn.style, {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    color: 'var(--color-text-muted)',
+    padding: '4px',
+    borderRadius: '4px',
+    display: 'flex',
+    alignItems: 'center',
+  });
+  headerEl.appendChild(title);
+  headerEl.appendChild(closeBtn);
+  panel.appendChild(headerEl);
+
+  // ── Editor host ──
+  const editorHost = document.createElement('div');
+  Object.assign(editorHost.style, {
+    flex: '1',
+    overflow: 'auto',
+    minHeight: '200px',
+    maxHeight: 'calc(80vh - 110px)',
+  });
+  panel.appendChild(editorHost);
+
+  // ── Footer ──
+  const footer = document.createElement('div');
+  Object.assign(footer.style, {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '8px',
+    padding: '12px 16px',
+    borderTop: '1px solid var(--color-border)',
+    background: 'var(--color-bg-secondary)',
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  Object.assign(cancelBtn.style, {
+    padding: '6px 16px',
+    border: '1px solid var(--color-border)',
+    borderRadius: '6px',
+    background: 'var(--color-bg)',
+    color: 'var(--color-text-main)',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '500',
+  });
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Save';
+  Object.assign(saveBtn.style, {
+    padding: '6px 16px',
+    border: 'none',
+    borderRadius: '6px',
+    background: 'var(--color-primary)',
+    color: 'white',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '600',
+  });
+
+  footer.appendChild(cancelBtn);
+  footer.appendChild(saveBtn);
+  panel.appendChild(footer);
+
+  backdrop.appendChild(panel);
+  document.body.appendChild(backdrop);
+
+  // ── CodeMirror instance ──
+  let cmView: EditorView | null = new EditorView({
+    state: EditorState.create({
+      doc: currentYaml,
+      extensions: [
+        lineNumbers(),
+        highlightActiveLine(),
+        bracketMatching(),
+        closeBrackets(),
+        indentOnInput(),
+        highlightSelectionMatches(),
+        yamlLang(),
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        syntaxHighlighting(yamlHighlighting),
+        keymap.of([...defaultKeymap, ...searchKeymap, indentWithTab]),
+        cmTheme,
+      ],
+    }),
+    parent: editorHost,
+  });
+
+  // Focus the editor
+  cmView.focus();
+
+  // ── Close helper ──
+  function close(): void {
+    cmView?.destroy();
+    cmView = null;
+    backdrop.remove();
+  }
+
+  // ── Event handlers ──
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) close();
+  });
+
+  backdrop.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    }
+  });
+
+  saveBtn.addEventListener('click', () => {
+    if (!cmView) return;
+    const newYaml = cmView.state.doc.toString();
+    close();
+    onSave(newYaml);
+  });
+}
+
 // ─── DOM Builder ─────────────────────────────────────────────────────
 
 function createApiBlockDom(
   spec: ApiSpec,
   contentDOM: HTMLElement,
   _getContent: () => string,
+  pmEditor: Editor,
+  getPos: (() => number | undefined) | boolean,
+  opts?: { hideEditButton?: boolean },
 ): HTMLElement {
   const container = document.createElement('div');
   container.classList.add(
@@ -205,12 +619,11 @@ function createApiBlockDom(
     'text-[13px]',
     'border-l-[3px]',
   );
-  const methodLower = spec.method.toLowerCase();
-  container.classList.add(METHOD_BORDER[methodLower] ?? 'border-l-border');
+  let currentMethod = spec.method.toLowerCase();
+  container.classList.add(METHOD_BORDER[currentMethod] ?? 'border-l-border');
 
   // ── State ──
 
-  let showSource = false;
   let sending = false;
   let serverUrl = spec.server ?? '';
   const paramValues: Record<string, string> = {};
@@ -252,8 +665,10 @@ function createApiBlockDom(
     'border-border',
   );
 
-  const methodBadge = document.createElement('span');
-  methodBadge.classList.add(
+  const METHODS = ['get', 'post', 'put', 'patch', 'delete'] as const;
+
+  const methodSelect = document.createElement('select');
+  methodSelect.classList.add(
     'font-bold',
     'text-[11px]',
     'uppercase',
@@ -262,10 +677,32 @@ function createApiBlockDom(
     'rounded',
     'text-white',
     'shrink-0',
+    'cursor-pointer',
+    'border-none',
+    'outline-none',
+    'appearance-none',
   );
-  methodBadge.classList.add(METHOD_BG[methodLower] ?? 'bg-method-get');
-  methodBadge.textContent = spec.method.toUpperCase();
-  header.appendChild(methodBadge);
+  methodSelect.classList.add(METHOD_BG[currentMethod] ?? 'bg-method-get');
+  for (const m of METHODS) {
+    const option = document.createElement('option');
+    option.value = m;
+    option.textContent = m.toUpperCase();
+    option.classList.add('text-text-main', 'bg-bg');
+    if (m === currentMethod) option.selected = true;
+    methodSelect.appendChild(option);
+  }
+  isolateFromEditor(methodSelect);
+  methodSelect.addEventListener('change', () => {
+    const prev = currentMethod;
+    currentMethod = methodSelect.value;
+    // Update border color on container
+    container.classList.remove(METHOD_BORDER[prev] ?? 'border-l-border');
+    container.classList.add(METHOD_BORDER[currentMethod] ?? 'border-l-border');
+    // Update select background color
+    methodSelect.classList.remove(METHOD_BG[prev] ?? 'bg-method-get');
+    methodSelect.classList.add(METHOD_BG[currentMethod] ?? 'bg-method-get');
+  });
+  header.appendChild(methodSelect);
 
   const pathEl = document.createElement('span');
   pathEl.classList.add('font-semibold', 'break-all');
@@ -282,34 +719,30 @@ function createApiBlockDom(
   const headerActions = document.createElement('div');
   headerActions.classList.add('flex', 'items-center', 'ml-auto', 'shrink-0');
 
-  const toggleBtn = document.createElement('button');
-  toggleBtn.classList.add(
-    'bg-transparent',
-    'border',
-    'border-border',
-    'rounded',
-    'px-2',
-    'py-1',
-    'cursor-pointer',
-    'text-text-muted',
-    'flex',
-    'items-center',
-    'hover:bg-bg-hover',
-    'hover:text-text-main',
-  );
-  toggleBtn.title = 'Edit YAML';
-  toggleBtn.contentEditable = 'false';
-  toggleBtn.innerHTML = `<span class="material-symbols-rounded text-base">code</span>`;
-  headerActions.appendChild(toggleBtn);
+  let toggleBtn: HTMLButtonElement | null = null;
+  if (!opts?.hideEditButton) {
+    toggleBtn = document.createElement('button');
+    toggleBtn.classList.add(
+      'bg-transparent',
+      'border',
+      'border-border',
+      'rounded',
+      'px-2',
+      'py-1',
+      'cursor-pointer',
+      'text-text-muted',
+      'flex',
+      'items-center',
+      'hover:bg-bg-hover',
+      'hover:text-text-main',
+    );
+    toggleBtn.title = 'Edit YAML';
+    toggleBtn.contentEditable = 'false';
+    toggleBtn.innerHTML = `<span class="material-symbols-rounded text-base">code</span>`;
+    headerActions.appendChild(toggleBtn);
+  }
   header.appendChild(headerActions);
   container.appendChild(header);
-
-  // ── Source view (hidden by default) ──
-
-  const sourceView = document.createElement('div');
-  sourceView.classList.add('api-block__source', 'p-0');
-  sourceView.style.display = 'none';
-  sourceView.appendChild(contentDOM);
 
   // ── Form view ──
 
@@ -618,7 +1051,6 @@ function createApiBlockDom(
   // ── Assemble ──
 
   container.appendChild(formView);
-  container.appendChild(sourceView);
   container.appendChild(responseArea);
 
   // ── Behaviour ──
@@ -681,7 +1113,8 @@ function createApiBlockDom(
   }
 
   function buildHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = {};
+    if (hasBody) headers['Content-Type'] = 'application/json';
     for (const param of headerParams) {
       const val = paramValues[`header:${param.name}`];
       if (val) headers[param.name] = val;
@@ -692,21 +1125,21 @@ function createApiBlockDom(
 
   // ── Event handlers ──
 
-  toggleBtn.addEventListener('click', (e) => {
+  toggleBtn?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    showSource = !showSource;
-    toggleBtn.innerHTML = `<span class="material-symbols-rounded text-base">${showSource ? 'visibility' : 'code'}</span>`;
-
-    if (showSource) {
-      sourceView.style.display = '';
-      formView.style.display = 'none';
-      responseArea.style.display = 'none';
-    } else {
-      sourceView.style.display = 'none';
-      formView.style.display = '';
-      if (lastResponse) responseArea.style.display = '';
-    }
+    const currentYaml = _getContent();
+    createYamlEditorModal(currentYaml, (newYaml) => {
+      const pos = typeof getPos === 'function' ? getPos() : undefined;
+      if (pos === undefined) return;
+      const tr = pmEditor.view.state.tr;
+      const node = tr.doc.nodeAt(pos);
+      if (!node) return;
+      const start = pos + 1;
+      const end = start + node.content.size;
+      tr.replaceWith(start, end, pmEditor.view.state.schema.text(newYaml));
+      pmEditor.view.dispatch(tr);
+    });
   });
 
   sendBtn.addEventListener('click', async (e) => {
@@ -727,7 +1160,7 @@ function createApiBlockDom(
 
     const resp = await sendRequest({
       url: resolvedUrl,
-      method: spec.method.toUpperCase(),
+      method: currentMethod.toUpperCase(),
       headers: buildHeaders(),
       body: hasBody ? requestBody : undefined,
     });
@@ -746,19 +1179,15 @@ function createApiBlockDom(
   curlBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const base = serverUrl || spec.server || '';
-    let url = base + spec.path;
-    for (const param of pathParams) {
-      url = url.replace(`{${param.name}}`, paramValues[param.name] ?? '');
-    }
-    const headers: Record<string, string> = {};
-    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-    for (const param of headerParams) {
-      const val = paramValues[`header:${param.name}`];
-      if (val) headers[param.name] = val;
-    }
+    const url = buildResolvedUrl();
+    if (!url) return;
     navigator.clipboard.writeText(
-      buildCurl(spec.method.toUpperCase(), url, headers, hasBody ? requestBody : undefined),
+      buildCurl(
+        currentMethod.toUpperCase(),
+        url,
+        buildHeaders(),
+        hasBody ? requestBody : undefined,
+      ),
     );
   });
 
@@ -766,9 +1195,222 @@ function createApiBlockDom(
   return container;
 }
 
+// ─── Multi-endpoint OpenAPI view ─────────────────────────────────────
+
+function createOpenApiBlockDom(
+  specs: ApiSpec[],
+  meta: { title?: string; version?: string },
+  contentDOM: HTMLElement,
+  getContent: () => string,
+  pmEditor: Editor,
+  getPos: (() => number | undefined) | boolean,
+): HTMLElement {
+  const container = document.createElement('div');
+  container.classList.add(
+    'api-block-wrapper-multi',
+    'border',
+    'border-border',
+    'rounded-lg',
+    'overflow-hidden',
+    'text-[13px]',
+  );
+
+  // ── Header bar ──
+  const header = document.createElement('div');
+  header.classList.add(
+    'flex',
+    'items-center',
+    'gap-2',
+    'px-3',
+    'py-2',
+    'bg-bg-secondary',
+    'border-b',
+    'border-border',
+  );
+
+  const badge = document.createElement('span');
+  badge.classList.add(
+    'font-bold',
+    'text-[11px]',
+    'uppercase',
+    'px-1.5',
+    'py-0.5',
+    'rounded',
+    'text-white',
+    'shrink-0',
+    'bg-method-get',
+  );
+  badge.textContent = 'API';
+  header.appendChild(badge);
+
+  if (meta.title) {
+    const titleEl = document.createElement('span');
+    titleEl.classList.add('font-semibold', 'font-sans');
+    titleEl.textContent = meta.title;
+    header.appendChild(titleEl);
+  }
+
+  if (meta.version) {
+    const versionEl = document.createElement('span');
+    versionEl.classList.add(
+      'text-[11px]',
+      'px-1.5',
+      'py-0.5',
+      'rounded',
+      'bg-bg',
+      'border',
+      'border-border',
+      'text-text-muted',
+      'font-mono',
+    );
+    versionEl.textContent = `v${meta.version}`;
+    header.appendChild(versionEl);
+  }
+
+  const countEl = document.createElement('span');
+  countEl.classList.add('text-text-muted', 'text-xs', 'font-sans');
+  countEl.textContent = `${specs.length} endpoint${specs.length !== 1 ? 's' : ''}`;
+  header.appendChild(countEl);
+
+  const spacer = document.createElement('div');
+  spacer.classList.add('flex-1');
+  header.appendChild(spacer);
+
+  const editBtn = document.createElement('button');
+  editBtn.classList.add(
+    'bg-transparent',
+    'border',
+    'border-border',
+    'rounded',
+    'px-2',
+    'py-1',
+    'cursor-pointer',
+    'text-text-muted',
+    'flex',
+    'items-center',
+    'hover:bg-bg-hover',
+    'hover:text-text-main',
+    'shrink-0',
+  );
+  editBtn.title = 'Edit YAML';
+  editBtn.contentEditable = 'false';
+  editBtn.innerHTML = `<span class="material-symbols-rounded text-base">code</span>`;
+  editBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const currentYaml = getContent();
+    createYamlEditorModal(currentYaml, (newYaml) => {
+      const pos = typeof getPos === 'function' ? getPos() : undefined;
+      if (pos === undefined) return;
+      const tr = pmEditor.view.state.tr;
+      const node = tr.doc.nodeAt(pos);
+      if (!node) return;
+      const start = pos + 1;
+      const end = start + node.content.size;
+      tr.replaceWith(start, end, pmEditor.view.state.schema.text(newYaml));
+      pmEditor.view.dispatch(tr);
+    });
+  });
+  header.appendChild(editBtn);
+  container.appendChild(header);
+
+  // ── Endpoint selector ──
+  const selectorRow = document.createElement('div');
+  selectorRow.classList.add(
+    'flex',
+    'items-center',
+    'gap-2',
+    'px-3',
+    'py-2',
+    'border-b',
+    'border-border',
+    'bg-bg',
+  );
+
+  const selectorLabel = document.createElement('span');
+  selectorLabel.classList.add('text-xs', 'text-text-muted', 'font-sans', 'shrink-0');
+  selectorLabel.textContent = 'Endpoint';
+  selectorRow.appendChild(selectorLabel);
+
+  const select = document.createElement('select');
+  select.classList.add(
+    'flex-1',
+    'px-2',
+    'py-1.5',
+    'border',
+    'border-border',
+    'rounded',
+    'text-[13px]',
+    'bg-bg',
+    'text-text-main',
+    'font-mono',
+    'cursor-pointer',
+    'focus:outline-none',
+    'focus:border-primary',
+  );
+  isolateFromEditor(select);
+
+  for (let i = 0; i < specs.length; i++) {
+    const s = specs[i];
+    const option = document.createElement('option');
+    option.value = String(i);
+    const label = `${s.method.toUpperCase()} ${s.path}`;
+    option.textContent = s.summary ? `${label} — ${s.summary}` : label;
+    select.appendChild(option);
+  }
+  selectorRow.appendChild(select);
+  container.appendChild(selectorRow);
+
+  // ── Form mount point ──
+  const formMount = document.createElement('div');
+  formMount.classList.add('api-block-multi-form');
+  container.appendChild(formMount);
+
+  // Hidden contentDOM
+  contentDOM.style.display = 'none';
+  container.appendChild(contentDOM);
+
+  function renderSelected(index: number): void {
+    while (formMount.firstChild) formMount.removeChild(formMount.firstChild);
+    const spec = specs[index];
+    if (!spec) return;
+    const block = createApiBlockDom(
+      spec,
+      document.createElement('code'),
+      getContent,
+      pmEditor,
+      getPos,
+      {
+        hideEditButton: true,
+      },
+    );
+    // Remove outer border/rounding since we're nested
+    block.classList.remove('border', 'border-border', 'rounded-lg', 'border-l-[3px]');
+    for (const cls of Object.values(METHOD_BORDER)) {
+      block.classList.remove(cls);
+    }
+    formMount.appendChild(block);
+  }
+
+  select.addEventListener('change', () => {
+    renderSelected(Number(select.value));
+  });
+
+  // Initial render
+  renderSelected(0);
+
+  return container;
+}
+
 // ─── Error view (invalid YAML) ───────────────────────────────────────
 
-function createErrorBlock(error: string, contentDOM: HTMLElement): HTMLElement {
+function createErrorBlock(
+  error: string,
+  contentDOM: HTMLElement,
+  getContent: () => string,
+  pmEditor: Editor,
+  getPos: (() => number | undefined) | boolean,
+): HTMLElement {
   const errorEl = document.createElement('div');
   errorEl.classList.add(
     'api-block',
@@ -809,6 +1451,44 @@ function createErrorBlock(error: string, contentDOM: HTMLElement): HTMLElement {
   pathEl.classList.add('font-semibold', 'break-all');
   pathEl.textContent = 'Invalid spec';
   errorHeader.appendChild(pathEl);
+
+  const editBtn = document.createElement('button');
+  editBtn.classList.add(
+    'bg-transparent',
+    'border',
+    'border-border',
+    'rounded',
+    'px-2',
+    'py-1',
+    'cursor-pointer',
+    'text-text-muted',
+    'flex',
+    'items-center',
+    'hover:bg-bg-hover',
+    'hover:text-text-main',
+    'ml-auto',
+    'shrink-0',
+  );
+  editBtn.title = 'Edit YAML';
+  editBtn.contentEditable = 'false';
+  editBtn.innerHTML = `<span class="material-symbols-rounded text-base">code</span>`;
+  editBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const currentYaml = getContent();
+    createYamlEditorModal(currentYaml, (newYaml) => {
+      const pos = typeof getPos === 'function' ? getPos() : undefined;
+      if (pos === undefined) return;
+      const tr = pmEditor.view.state.tr;
+      const node = tr.doc.nodeAt(pos);
+      if (!node) return;
+      const start = pos + 1;
+      const end = start + node.content.size;
+      tr.replaceWith(start, end, pmEditor.view.state.schema.text(newYaml));
+      pmEditor.view.dispatch(tr);
+    });
+  });
+  errorHeader.appendChild(editBtn);
   errorEl.appendChild(errorHeader);
 
   const errMsg = document.createElement('div');
@@ -830,15 +1510,8 @@ function createErrorBlock(error: string, contentDOM: HTMLElement): HTMLElement {
   errMsg.appendChild(document.createTextNode(` ${error}`));
   errorEl.appendChild(errMsg);
 
-  const sourceView = document.createElement('div');
-  sourceView.classList.add('p-0');
-  const pre = document.createElement('pre');
-  pre.classList.add('m-0', 'bg-code-bg', 'p-4');
-  pre.appendChild(contentDOM);
-  contentDOM.classList.add('bg-transparent', 'p-0', 'text-code-text', 'font-mono', 'text-sm');
-  contentDOM.style.display = '';
-  sourceView.appendChild(pre);
-  errorEl.appendChild(sourceView);
+  contentDOM.style.display = 'none';
+  errorEl.appendChild(contentDOM);
 
   return errorEl;
 }
@@ -856,59 +1529,64 @@ function createApiNodeView(
   const contentDOM = document.createElement('code');
   contentDOM.style.display = 'none';
 
-  const content = node.textContent;
-  const { spec, error } = parseApiYaml(content);
+  function renderResult(
+    result: ParseResult | null,
+    error: string | null,
+    getContent: () => string,
+  ): void {
+    while (wrapper.firstChild) wrapper.removeChild(wrapper.firstChild);
+    contentDOM.style.display = 'none';
 
-  if (spec && !error) {
-    wrapper.appendChild(createApiBlockDom(spec, contentDOM, () => node.textContent));
-  } else {
-    wrapper.appendChild(createErrorBlock(error || 'Invalid YAML', contentDOM));
+    if (result && !error) {
+      if (result.kind === 'single') {
+        wrapper.appendChild(
+          createApiBlockDom(result.spec, contentDOM, getContent, _editor, _getPos),
+        );
+      } else {
+        wrapper.appendChild(
+          createOpenApiBlockDom(
+            result.specs,
+            { title: result.title, version: result.version },
+            contentDOM,
+            getContent,
+            _editor,
+            _getPos,
+          ),
+        );
+      }
+    } else {
+      wrapper.appendChild(
+        createErrorBlock(error || 'Invalid YAML', contentDOM, getContent, _editor, _getPos),
+      );
+    }
   }
+
+  const content = node.textContent;
+  let lastContent = content;
+  const { result, error } = parseApiYaml(content);
+  renderResult(result, error, () => node.textContent);
 
   return {
     dom: wrapper,
     contentDOM,
+    stopEvent: (event: Event) => {
+      const target = event.target as HTMLElement;
+      // Let ProseMirror handle events inside contentDOM (YAML source editing)
+      if (contentDOM.contains(target)) return false;
+      // Stop ProseMirror from intercepting events on form controls and buttons
+      return true;
+    },
+    ignoreMutation: () => true,
     update: (updatedNode: ProseMirrorNode) => {
       if (updatedNode.type.name !== 'codeBlock') return false;
       if (updatedNode.attrs['language'] !== 'api') return false;
 
       const newContent = updatedNode.textContent;
-      const { spec: newSpec, error: newError } = parseApiYaml(newContent);
+      if (newContent === lastContent) return true;
+      lastContent = newContent;
 
-      while (wrapper.firstChild) wrapper.removeChild(wrapper.firstChild);
-
-      if (newSpec && !newError) {
-        contentDOM.style.display = 'none';
-        wrapper.appendChild(createApiBlockDom(newSpec, contentDOM, () => updatedNode.textContent));
-      } else {
-        const errEl = document.createElement('div');
-        errEl.classList.add(
-          'api-block',
-          'border',
-          'border-border',
-          'rounded-lg',
-          'overflow-hidden',
-          'font-mono',
-          'text-[13px]',
-        );
-        const errMsg = document.createElement('div');
-        errMsg.classList.add(
-          'px-3',
-          'py-2',
-          'bg-status-error-bg',
-          'text-status-error-text',
-          'text-xs',
-          'flex',
-          'items-center',
-          'gap-1.5',
-          'font-sans',
-        );
-        errMsg.textContent = newError || 'Invalid YAML';
-        errEl.appendChild(errMsg);
-        contentDOM.style.display = 'none';
-        errEl.appendChild(contentDOM);
-        wrapper.appendChild(errEl);
-      }
+      const { result: newResult, error: newError } = parseApiYaml(newContent);
+      renderResult(newResult, newError, () => updatedNode.textContent);
       return true;
     },
   };

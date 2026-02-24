@@ -269,6 +269,17 @@
       margin: 0.75rem 0;
     }
 
+    .api-block-wrapper-multi {
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      overflow: hidden;
+
+      .api-block {
+        border: none;
+        border-radius: 0;
+      }
+    }
+
     .api-block {
       border: 1px solid var(--color-border);
       border-radius: 8px;
