@@ -11,17 +11,29 @@
 		<string>applinks:justmaple.app</string>
 		<string>webcredentials:justmaple.app</string>
 	</array>
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.just.maple.JapaneseMaple</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudDocuments</string>
+	</array>
+	<key>com.apple.developer.ubiquity-container-identifiers</key>
+	<array>
+		<string>iCloud.com.just.maple.JapaneseMaple</string>
+	</array>
 	<key>com.apple.developer.usernotifications.communication</key>
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.com.just.maple.JapaneseMaple</string>
 	</array>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)group.com.just.maple.JapaneseMaple</string>
 	</array>
-	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
 </dict>
 </plist>

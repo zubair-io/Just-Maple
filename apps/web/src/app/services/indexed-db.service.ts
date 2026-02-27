@@ -22,7 +22,7 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 15, // Add google-calendar-tokens and google-calendar-events stores
+    dbVersion: 16, // Add local-snapshots store for local page history
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.COLLECTABLE, keyPath: '_id', autoIncrement: false },
@@ -42,6 +42,8 @@ export class IndexedDBService {
       { name: DB_STORES.GOOGLE_CALENDAR_EVENTS, keyPath: 'id', autoIncrement: false },
       // Local notebook bot associations
       { name: DB_STORES.LOCAL_NOTEBOOK_BOTS, keyPath: 'notebookId', autoIncrement: false },
+      // Local page history snapshots
+      { name: DB_STORES.LOCAL_SNAPSHOTS, keyPath: 'key', autoIncrement: false },
     ],
   };
 

@@ -82,6 +82,7 @@
     "d3": "^7.9.0",
     "js-yaml": "^4.1.1",
     "logrocket": "^11.0.0",
+    "markdown-it": "^14.1.1",
     "lowlight": "^3.3.0",
     "marked": "^17.0.1",
     "perfect-freehand": "^1.2.2",
@@ -101,6 +102,7 @@
     "simplify-js": "^1.2.4",
     "tslib": "^2.3.0",
     "y-indexeddb": "^9.0.12",
+    "yaml": "^2.8.2",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.29"
   },

@@ -22,6 +22,8 @@ export const DB_STORES = {
   GOOGLE_CALENDAR_EVENTS: 'google-calendar-events',
   // Local notebook bot associations (local-only, never synced to server)
   LOCAL_NOTEBOOK_BOTS: 'local-notebook-bots',
+  // Local page history snapshots
+  LOCAL_SNAPSHOTS: 'local-snapshots',
 } as const;
 
 export type DBStoreName = (typeof DB_STORES)[keyof typeof DB_STORES];
