@@ -29,6 +29,7 @@ enum WebToNativeMessage: Codable {
     case readFile(ReadFilePayload)
     case writeFile(WriteFilePayload)
     case deleteFile(DeleteFilePayload)
+    case getICloudContainerPath
     case unknown
 
     struct TestPayload: Codable {
@@ -136,6 +137,8 @@ enum WebToNativeMessage: Codable {
         case "deleteFile":
             let payload = try container.decode(DeleteFilePayload.self, forKey: .payload)
             self = .deleteFile(payload)
+        case "getICloudContainerPath":
+            self = .getICloudContainerPath
         default:
             self = .unknown
         }
@@ -196,6 +199,8 @@ enum WebToNativeMessage: Codable {
         case .deleteFile(let payload):
             try container.encode("deleteFile", forKey: .type)
             try container.encode(payload, forKey: .payload)
+        case .getICloudContainerPath:
+            try container.encode("getICloudContainerPath", forKey: .type)
         case .unknown:
             try container.encode("unknown", forKey: .type)
         }
@@ -226,6 +231,7 @@ enum NativeToWebMessage {
     case fileReadResult(FileReadResult)
     case fileWriteResult(FileWriteResult)
     case fileDeleteResult(FileDeleteResult)
+    case icloudContainerPath(ICloudContainerPathResult)
     case error(ErrorMessage)
 
     struct InitialState: Codable {
@@ -366,6 +372,16 @@ enum NativeToWebMessage {
         let error: String?
     }
 
+    struct ICloudContainerPathResult: Codable {
+        let path: String?
+        let folders: [FolderInfo]
+
+        struct FolderInfo: Codable {
+            let name: String
+            let path: String
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case type
         case payload
@@ -444,6 +460,9 @@ extension NativeToWebMessage: Encodable {
             try container.encode(payload, forKey: .payload)
         case .fileDeleteResult(let payload):
             try container.encode("fileDeleteResult", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .icloudContainerPath(let payload):
+            try container.encode("icloudContainerPath", forKey: .type)
             try container.encode(payload, forKey: .payload)
         case .error(let payload):
             try container.encode("error", forKey: .type)
@@ -797,6 +816,9 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .deleteFile(let payload):
             handleDeleteFile(payload)
 
+        case .getICloudContainerPath:
+            handleGetICloudContainerPath()
+
         case .unknown:
             print("[Bridge] Unknown message type")
         }
@@ -1061,6 +1083,9 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
 
         case .deleteFile(let payload):
             handleDeleteFile(payload)
+
+        case .getICloudContainerPath:
+            handleGetICloudContainerPath()
 
         case .unknown:
             print("[Bridge] Unknown message type")
@@ -1354,6 +1379,83 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 error: error.localizedDescription
             )))
         }
+    }
+
+    // MARK: - iCloud Container
+
+    private func handleGetICloudContainerPath() {
+        guard let containerURL = FileManager.default.url(forUbiquityContainerIdentifier: "iCloud.com.just.maple.JapaneseMaple") else {
+            print("[Bridge] iCloud container not available")
+            send(.icloudContainerPath(NativeToWebMessage.ICloudContainerPathResult(path: nil, folders: [])))
+            return
+        }
+
+        // Use the Documents subfolder inside the iCloud container
+        let docsURL = containerURL.appendingPathComponent("Documents")
+
+        let fm = FileManager.default
+        // Create it if it doesn't exist
+        if !fm.fileExists(atPath: docsURL.path) {
+            try? fm.createDirectory(at: docsURL, withIntermediateDirectories: true)
+        }
+
+        // Grant sandbox access so file operations work
+        _ = docsURL.startAccessingSecurityScopedResource()
+        grantedFolderURLs.removeAll { $0.path == docsURL.path }
+        grantedFolderURLs.append(docsURL)
+
+        // Enumerate child folders
+        var folders: [NativeToWebMessage.ICloudContainerPathResult.FolderInfo] = []
+        if let contents = try? fm.contentsOfDirectory(
+            at: docsURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            for url in contents {
+                let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+                if isDir {
+                    folders.append(NativeToWebMessage.ICloudContainerPathResult.FolderInfo(
+                        name: url.lastPathComponent,
+                        path: url.path
+                    ))
+                }
+            }
+        }
+
+        // Auto-create a default notebook if the container is empty
+        if folders.isEmpty {
+            let defaultURL = docsURL.appendingPathComponent("My Notes")
+            try? fm.createDirectory(at: defaultURL, withIntermediateDirectories: true)
+
+            let introURL = defaultURL.appendingPathComponent("Welcome.md")
+            if !fm.fileExists(atPath: introURL.path) {
+                let intro = """
+                # Welcome to Just Maple
+
+                This is your **iCloud notebook**. Notes you create here sync automatically across all your Apple devices.
+
+                ## Getting started
+
+                - Create new notes from the **+** button in the sidebar
+                - Organize by creating more notebooks in iCloud or locally
+                - All notes are saved as `.md` files you can open anywhere
+
+                Happy writing!
+                """
+                try? intro.write(to: introURL, atomically: true, encoding: .utf8)
+            }
+
+            folders.append(NativeToWebMessage.ICloudContainerPathResult.FolderInfo(
+                name: "My Notes",
+                path: defaultURL.path
+            ))
+        }
+
+        print("[Bridge] iCloud container path: \(docsURL.path), folders: \(folders.count)")
+        send(.icloudContainerPath(NativeToWebMessage.ICloudContainerPathResult(
+            path: docsURL.path,
+            folders: folders
+        )))
     }
 
     // MARK: - Send to Web

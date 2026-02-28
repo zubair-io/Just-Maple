@@ -424,14 +424,14 @@ export class NativeBridgeService {
   // MARK: - iCloud
 
   /**
-   * Request the iCloud container path from the native app.
-   * Returns an Observable that emits the container path (or null if unavailable).
+   * Request the iCloud container info from the native app.
+   * Returns an Observable that emits the container path and its child folders.
    */
-  getICloudContainerPath(): Observable<string | null> {
+  getICloudContainerPath(): Observable<ICloudContainerPathResult> {
     this.sendMessage({ type: 'getICloudContainerPath' });
     return this.messages$.pipe(
       filter((msg) => msg.type === 'icloudContainerPath'),
-      map((msg) => (msg.payload as ICloudContainerPathResult).path),
+      map((msg) => msg.payload as ICloudContainerPathResult),
     );
   }
 

@@ -263,6 +263,7 @@ export interface FileDeleteResult {
 
 export interface ICloudContainerPathResult {
   path: string | null;
+  folders: Array<{ name: string; path: string }>;
 }
 
 export type NativeToWebMessageType =

@@ -3,6 +3,9 @@ import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { FileSystemService } from '../../services/file-system.service';
 import { AuthService } from '../../services/auth.service';
+import { NativeBridgeService } from '../../services/native-bridge.service';
+import { NotebookService } from '../../services/notebook.service';
+import { isLocalNotebook } from '../../providers/data-provider.interface';
 
 interface Feature {
   key: string;
@@ -21,10 +24,19 @@ interface Feature {
 export class WelcomeComponent {
   private readonly fsService = inject(FileSystemService);
   private readonly authService = inject(AuthService);
+  private readonly nativeBridge = inject(NativeBridgeService);
+  private readonly notebookService = inject(NotebookService);
   private readonly router = inject(Router);
 
   readonly isFileSystemSupported = this.fsService.isSupported;
   readonly isAuthenticated = this.authService.isAuthenticated;
+  readonly isNativeApp = computed(() => this.nativeBridge.isNativeApp());
+
+  readonly icloudNotebook = computed(() => {
+    return this.notebookService
+      .notebooks()
+      .find((nb) => isLocalNotebook(nb._id) && this.notebookService.isICloud(nb._id));
+  });
   readonly currentYear = new Date().getFullYear();
 
   readonly selectedFeature = signal<string | null>(null);
@@ -120,6 +132,13 @@ export class WelcomeComponent {
 
   toggleFeature(key: string): void {
     this.selectedFeature.update((current) => (current === key ? null : key));
+  }
+
+  openICloudNotebook(): void {
+    const nb = this.icloudNotebook();
+    if (nb) {
+      this.router.navigate(['/', nb._id]);
+    }
   }
 
   async openFolder(): Promise<void> {

@@ -1,5 +1,5 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { Observable, from, of, throwError, firstValueFrom } from 'rxjs';
+import { Observable, from, of, throwError, firstValueFrom, timeout } from 'rxjs';
 import { map, switchMap, catchError } from 'rxjs/operators';
 import { NativeBridgeService } from './native-bridge.service';
 import { IndexedDBService } from './indexed-db.service';
@@ -275,32 +275,40 @@ export class FileSystemService {
   }
 
   /**
-   * Auto-open the iCloud container folder on native Mac/iOS apps.
-   * Creates a LocalFolder with source='icloud' if not already present.
+   * Auto-open iCloud child folders on native Mac/iOS apps.
+   * Each subfolder inside the iCloud container becomes its own LocalFolder.
    */
   private async openICloudFolder(): Promise<void> {
     if (!this.nativeBridge.isNativeApp()) return;
 
     try {
-      const path = await firstValueFrom(this.nativeBridge.getICloudContainerPath());
-      if (!path) return;
+      const result = await firstValueFrom(
+        this.nativeBridge.getICloudContainerPath().pipe(timeout(5000)),
+      );
+      if (!result.path || result.folders.length === 0) return;
 
-      // Check if already open by native path
-      const existing = this._openFolders().find((f) => f.nativePath === path);
-      if (existing) return;
+      const currentFolders = this._openFolders();
+      const newFolders: LocalFolder[] = [];
 
-      const folder: LocalFolder = {
-        id: this.generateFolderId('Just Maple'),
-        name: 'Just Maple',
-        nativePath: path,
-        openedAt: new Date().toISOString(),
-        source: 'icloud',
-      };
+      for (const sub of result.folders) {
+        // Skip if already open by native path
+        if (currentFolders.some((f) => f.nativePath === sub.path)) continue;
 
-      this._openFolders.update((folders) => [...folders, folder]);
-      this.persistFolders();
+        newFolders.push({
+          id: this.generateFolderId(sub.name),
+          name: sub.name,
+          nativePath: sub.path,
+          openedAt: new Date().toISOString(),
+          source: 'icloud',
+        });
+      }
+
+      if (newFolders.length > 0) {
+        this._openFolders.update((folders) => [...folders, ...newFolders]);
+        this.persistFolders();
+      }
     } catch {
-      // Silently ignore — iCloud may not be available
+      // Silently ignore — iCloud may not be available or timed out
     }
   }
 
