@@ -16,6 +16,10 @@
     "./utils/slug": {
       "types": "./dist/utils/slug.d.ts",
       "import": "./dist/utils/slug.js"
+    },
+    "./local": {
+      "types": "./dist/local/index.d.ts",
+      "import": "./dist/local/index.js"
     }
   },
   "scripts": {
@@ -23,9 +27,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@sinclair/typebox": "^0.34.48"
+    "@sinclair/typebox": "^0.34.48",
+    "markdown-it": "^14.1.1",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "typescript": "^5.3.0"
   }
 }

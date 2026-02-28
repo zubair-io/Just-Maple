@@ -42,7 +42,8 @@
           <!-- Main button -->
           <button
             (click)="onNewPage('memo')"
-            class="flex-1 flex items-center justify-center gap-2 py-2 bg-[var(--color-primary)] text-white rounded-l-md hover:bg-[var(--color-primary-hover)] transition-all text-sm font-medium"
+            [disabled]="!selectedNotebookId()"
+            class="flex-1 flex items-center justify-center gap-2 py-2 bg-[var(--color-primary)] text-white rounded-l-md hover:bg-[var(--color-primary-hover)] transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--color-primary)]"
             title="New Note"
           >
             <span class="material-symbols-rounded text-base">add</span>
@@ -53,7 +54,8 @@
             cdkOverlayOrigin
             #newDropdownTrigger="cdkOverlayOrigin"
             (click)="toggleNewDropdown()"
-            class="flex items-center px-2 py-2 bg-[var(--color-primary)] text-white rounded-r-md hover:bg-[var(--color-primary-hover)] transition-all border-l border-white/20"
+            [disabled]="!selectedNotebookId()"
+            class="flex items-center px-2 py-2 bg-[var(--color-primary)] text-white rounded-r-md hover:bg-[var(--color-primary-hover)] transition-all border-l border-white/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--color-primary)]"
             title="More options"
           >
             <span class="material-symbols-rounded text-base">
@@ -64,7 +66,8 @@
         <!-- Search button -->
         <button
           (click)="onSearch()"
-          class="flex items-center justify-center px-3 py-2 bg-[var(--color-surface)] text-[var(--color-text-muted)] rounded-md hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)] transition-all border border-[var(--color-border)]"
+          [disabled]="notebookService.notebooks().length === 0"
+          class="flex items-center justify-center px-3 py-2 bg-[var(--color-surface)] text-[var(--color-text-muted)] rounded-md hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)] transition-all border border-[var(--color-border)] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[var(--color-surface)] disabled:hover:text-[var(--color-text-muted)]"
           title="Search (⌘K)"
         >
           <span class="material-symbols-rounded text-base">search</span>

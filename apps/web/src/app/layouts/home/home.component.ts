@@ -38,7 +38,9 @@ export class HomeComponent implements OnInit, OnDestroy {
   onKeyDown(event: KeyboardEvent): void {
     if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
       event.preventDefault();
-      this.uiStateService.openSearchModal();
+      if (this.notebookService.notebooks().length > 0) {
+        this.uiStateService.openSearchModal();
+      }
     }
   }
 
@@ -52,28 +54,31 @@ export class HomeComponent implements OnInit, OnDestroy {
   private hasHandledInitialRedirect = false;
 
   ngOnInit(): void {
-    // Try to redirect to last visited location before loading notebooks
-    this.redirectToLastVisitedIfNeeded();
+    // Cloud-only init: skip for unauthenticated local-only sessions
+    if (this.authService.isAuthenticated()) {
+      // Try to redirect to last visited location before loading notebooks
+      this.redirectToLastVisitedIfNeeded();
 
-    // Ensure default notebook exists (notebooks auto-load via visibility service)
-    this.notebookService.ensureDefaultNotebook().subscribe({
-      next: () => {
-        // Auto-select first notebook if on root path (only if we didn't redirect)
-        if (!this.hasHandledInitialRedirect) {
-          this.autoSelectFirstNotebook();
-        }
-      },
-    });
+      // Ensure default notebook exists (notebooks auto-load via visibility service)
+      this.notebookService.ensureDefaultNotebook().subscribe({
+        next: () => {
+          // Auto-select first notebook if on root path (only if we didn't redirect)
+          if (!this.hasHandledInitialRedirect) {
+            this.autoSelectFirstNotebook();
+          }
+        },
+      });
 
-    // Wait for auth to be ready before connecting to realtime services
-    // This ensures the access token is available
-    this.authService.initReady$.subscribe(() => {
-      // Connect to realtime service
-      this.realtimeService.connect();
+      // Wait for auth to be ready before connecting to realtime services
+      // This ensures the access token is available
+      this.authService.initReady$.subscribe(() => {
+        // Connect to realtime service
+        this.realtimeService.connect();
 
-      // Connect to unified WebSocket for real-time updates
-      this.realtimeWS.connect();
-    });
+        // Connect to unified WebSocket for real-time updates
+        this.realtimeWS.connect();
+      });
+    }
 
     // Sync selected IDs from route
     this.syncFromRoute();

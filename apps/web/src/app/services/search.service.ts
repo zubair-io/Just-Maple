@@ -1,8 +1,12 @@
 import { Injectable, inject, signal, computed, DestroyRef } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, catchError, map, of, tap, Subject, debounceTime, switchMap } from 'rxjs';
+import { Observable, catchError, from, map, of, tap, Subject, debounceTime, switchMap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { SearchResult, SearchResponse } from '@maple/shared';
+import { LocalStorageProvider } from './local-storage-provider';
+import { AuthService } from './auth.service';
+import { NotebookService } from './notebook.service';
+import { isLocalNotebook } from '../providers/data-provider.interface';
 
 export interface SearchFilters {
   notebookIds?: string[];
@@ -21,6 +25,9 @@ const MAX_RECENT_SEARCHES = 10;
 export class SearchService {
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly localProvider = inject(LocalStorageProvider);
+  private readonly authService = inject(AuthService);
+  private readonly notebookService = inject(NotebookService);
 
   // State signals
   private readonly _isSearching = signal(false);
@@ -135,10 +142,74 @@ export class SearchService {
     this._isSearching.set(true);
     this._error.set(null);
 
+    const hasLocalNotebooks = this.notebookService.notebooks().some((n) => isLocalNotebook(n._id));
+    const isAuthenticated = this.authService.isAuthenticated();
+
+    // Determine which search sources to query
+    const localSearch$ = hasLocalNotebooks
+      ? from(this.searchLocal(query, filters))
+      : of([] as SearchResult[]);
+
+    const cloudSearch$ = isAuthenticated
+      ? this.searchCloud(query, filters)
+      : of([] as SearchResult[]);
+
+    // Run both in parallel and merge results
+    return localSearch$.pipe(
+      switchMap((localResults) =>
+        cloudSearch$.pipe(map((cloudResults) => [...localResults, ...cloudResults])),
+      ),
+      tap((merged) => {
+        this._results.set(merged);
+        this._isSearching.set(false);
+      }),
+      catchError((err) => {
+        const message = err?.error?.message || err?.error?.error || 'Search failed';
+        this._error.set(message);
+        this._results.set([]);
+        this._isSearching.set(false);
+        return of([]);
+      }),
+    );
+  }
+
+  private async searchLocal(query: string, filters?: SearchFilters): Promise<SearchResult[]> {
+    const localNotebooks = this.notebookService.notebooks().filter((n) => isLocalNotebook(n._id));
+
+    // If filtering by specific notebooks, only search matching local ones
+    const targetNotebooks = filters?.notebookIds?.length
+      ? localNotebooks.filter((n) => filters.notebookIds!.includes(n._id))
+      : localNotebooks;
+
+    const allResults: SearchResult[] = [];
+
+    for (const notebook of targetNotebooks) {
+      const localResults = await this.localProvider.search(query, notebook._id);
+      for (const r of localResults) {
+        allResults.push({
+          pageId: r.pageId,
+          title: r.title,
+          type: 'memo',
+          notebookId: notebook._id,
+          notebookLabel: notebook.label,
+          preview: r.snippet,
+          snippet: r.snippet,
+          score: r.score,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    return allResults;
+  }
+
+  private searchCloud(query: string, filters?: SearchFilters): Observable<SearchResult[]> {
     let params = new HttpParams().set('q', query);
 
-    if (filters?.notebookIds?.length) {
-      params = params.set('notebookIds', filters.notebookIds.join(','));
+    // Only pass non-local notebook IDs to cloud search
+    const cloudNotebookIds = filters?.notebookIds?.filter((id) => !isLocalNotebook(id));
+    if (cloudNotebookIds?.length) {
+      params = params.set('notebookIds', cloudNotebookIds.join(','));
     }
     if (filters?.types?.length) {
       params = params.set('types', filters.types.join(','));
@@ -160,18 +231,8 @@ export class SearchService {
     }
 
     return this.http.get<SearchResponse>('/api/search', { params }).pipe(
-      tap((response) => {
-        this._results.set(response.results);
-        this._isSearching.set(false);
-      }),
       map((response) => response.results),
-      catchError((err) => {
-        const message = err?.error?.message || err?.error?.error || 'Search failed';
-        this._error.set(message);
-        this._results.set([]);
-        this._isSearching.set(false);
-        return of([]);
-      }),
+      catchError(() => of([])),
     );
   }
 

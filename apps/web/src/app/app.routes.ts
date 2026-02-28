@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { AuthGuard, PublicGuard } from './guards/auth.guard';
+import { AuthGuard, PublicGuard, AppLayoutGuard } from './guards/auth.guard';
 import { NotebookGuard } from './guards/notebook.guard';
 import {
   CollectablePageGuard,
@@ -81,13 +81,21 @@ export const routes: Routes = [
     ],
   },
 
-  // Authenticated app routes - matched first if user is authenticated
+  // Main app layout - always matches after auth init.
+  // HomeComponent gates cloud-only logic behind isAuthenticated().
   {
     path: '',
     loadComponent: () => import('./layouts/home/home.component').then((m) => m.HomeComponent),
-    canMatch: [AuthGuard],
+    canMatch: [AppLayoutGuard],
     canActivateChild: [swUpdateGuard],
     children: [
+      // Default child - welcome/landing when no notebook is selected
+      {
+        path: '',
+        pathMatch: 'full',
+        loadComponent: () =>
+          import('./pages/welcome/welcome.component').then((m) => m.WelcomeComponent),
+      },
       // Settings route - must come before the home route
       {
         path: 'settings',
@@ -220,13 +228,6 @@ export const routes: Routes = [
         ],
       },
     ],
-  },
-  // Marketing page - fallback for unauthenticated users at '/'
-  {
-    path: '',
-    loadComponent: () =>
-      import('./pages/marketing/marketing.component').then((m) => m.MarketingComponent),
-    canActivate: [swUpdateGuard],
   },
   {
     path: '**',

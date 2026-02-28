@@ -4,6 +4,7 @@ import { HttpClient } from '@angular/common/http';
 import { of, switchMap, map, catchError } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { NotebookService } from '../services/notebook.service';
+import { isLocalNotebook } from '../providers/data-provider.interface';
 
 interface PublicInfo {
   isPublic: boolean;
@@ -26,6 +27,12 @@ export const NotebookGuard: CanMatchFn = (route, segments: UrlSegment[]) => {
 
   const notebookId = segments[0]?.path;
   if (!notebookId) {
+    return false;
+  }
+
+  // Local notebook IDs don't need public redirect / auth checks — let them
+  // fall through to the HomeComponent children.
+  if (isLocalNotebook(notebookId)) {
     return false;
   }
 
