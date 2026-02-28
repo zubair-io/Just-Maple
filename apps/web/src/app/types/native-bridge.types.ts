@@ -111,7 +111,8 @@ export type WebToNativeMessageType =
   | { type: 'openAuthSession'; payload: OpenAuthSessionPayload }
   | { type: 'gmailOAuthResult'; payload: GmailOAuthResultPayload }
   | { type: 'shareFile'; payload: ShareFilePayload }
-  | { type: 'apiRequest'; payload: ApiRequestPayload };
+  | { type: 'apiRequest'; payload: ApiRequestPayload }
+  | { type: 'getICloudContainerPath' };
 
 // MARK: - Native to Web Messages
 
@@ -260,6 +261,10 @@ export interface FileDeleteResult {
   error?: string;
 }
 
+export interface ICloudContainerPathResult {
+  path: string | null;
+}
+
 export type NativeToWebMessageType =
   | { type: 'initialize'; payload: InitialState }
   | { type: 'testResponse'; payload: TestResponse }
@@ -285,6 +290,7 @@ export type NativeToWebMessageType =
   | { type: 'fileDeleteResult'; payload: FileDeleteResult }
   | { type: 'authSessionResult'; payload: AuthSessionResult }
   | { type: 'apiResponse'; payload: ApiResponsePayload }
+  | { type: 'icloudContainerPath'; payload: ICloudContainerPathResult }
   | { type: 'error'; payload: ErrorMessage };
 
 // MARK: - Bridge Interface

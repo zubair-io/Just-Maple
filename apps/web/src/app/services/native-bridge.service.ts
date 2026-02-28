@@ -27,6 +27,7 @@ import type {
   FileReadResult,
   FileWriteResult,
   FileDeleteResult,
+  ICloudContainerPathResult,
   ApiRequestPayload,
   ApiResponsePayload,
 } from '../types/native-bridge.types';
@@ -417,6 +418,20 @@ export class NativeBridgeService {
     return this.messages$.pipe(
       filter((msg) => msg.type === 'fileDeleteResult'),
       map((msg) => msg.payload as FileDeleteResult),
+    );
+  }
+
+  // MARK: - iCloud
+
+  /**
+   * Request the iCloud container path from the native app.
+   * Returns an Observable that emits the container path (or null if unavailable).
+   */
+  getICloudContainerPath(): Observable<string | null> {
+    this.sendMessage({ type: 'getICloudContainerPath' });
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'icloudContainerPath'),
+      map((msg) => (msg.payload as ICloudContainerPathResult).path),
     );
   }
 

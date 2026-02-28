@@ -1,5 +1,5 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { Observable, from, of, throwError } from 'rxjs';
+import { Observable, from, of, throwError, firstValueFrom } from 'rxjs';
 import { map, switchMap, catchError } from 'rxjs/operators';
 import { NativeBridgeService } from './native-bridge.service';
 import { IndexedDBService } from './indexed-db.service';
@@ -22,6 +22,8 @@ export interface LocalFolder {
   nativePath?: string;
   /** Timestamp when folder was opened */
   openedAt: string;
+  /** Source of this folder: 'local' (user-picked) or 'icloud' (auto-opened container) */
+  source?: 'local' | 'icloud';
 }
 
 /**
@@ -75,7 +77,7 @@ export class FileSystemService {
   readonly whenReady: Promise<void>;
 
   constructor() {
-    this.whenReady = this.restorePersistedFolders();
+    this.whenReady = this.restorePersistedFolders().then(() => this.openICloudFolder());
   }
 
   /**
@@ -270,6 +272,36 @@ export class FileSystemService {
   closeFolder(folderId: string): void {
     this._openFolders.update((folders) => folders.filter((f) => f.id !== folderId));
     this.persistFolders();
+  }
+
+  /**
+   * Auto-open the iCloud container folder on native Mac/iOS apps.
+   * Creates a LocalFolder with source='icloud' if not already present.
+   */
+  private async openICloudFolder(): Promise<void> {
+    if (!this.nativeBridge.isNativeApp()) return;
+
+    try {
+      const path = await firstValueFrom(this.nativeBridge.getICloudContainerPath());
+      if (!path) return;
+
+      // Check if already open by native path
+      const existing = this._openFolders().find((f) => f.nativePath === path);
+      if (existing) return;
+
+      const folder: LocalFolder = {
+        id: this.generateFolderId('Just Maple'),
+        name: 'Just Maple',
+        nativePath: path,
+        openedAt: new Date().toISOString(),
+        source: 'icloud',
+      };
+
+      this._openFolders.update((folders) => [...folders, folder]);
+      this.persistFolders();
+    } catch {
+      // Silently ignore — iCloud may not be available
+    }
   }
 
   /**
@@ -672,6 +704,7 @@ export class FileSystemService {
       labelOverride: f.labelOverride,
       nativePath: f.nativePath,
       openedAt: f.openedAt,
+      source: f.source,
       // Store handle reference for web (IndexedDB can store handles)
       handle: f.handle || undefined,
     }));
@@ -694,6 +727,7 @@ export class FileSystemService {
           nativePath?: string;
           openedAt: string;
           handle?: FileSystemDirectoryHandle;
+          source?: 'local' | 'icloud';
         }>;
       }>('open-folders', FS_HANDLES_STORE);
 
@@ -708,6 +742,7 @@ export class FileSystemService {
           nativePath: item.nativePath,
           openedAt: item.openedAt,
           handle: item.handle,
+          source: item.source,
         };
         folders.push(folder);
       }

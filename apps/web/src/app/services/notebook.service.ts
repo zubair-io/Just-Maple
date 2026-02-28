@@ -188,6 +188,14 @@ export class NotebookService {
   }
 
   /**
+   * Check if a local notebook is from the iCloud container
+   */
+  isICloud(notebookId: string): boolean {
+    const folder = this.fsService.openFolders().find((f) => f.id === notebookId);
+    return folder?.source === 'icloud';
+  }
+
+  /**
    * Open a local folder as a notebook via file picker.
    * The folder will appear in the sidebar alongside API notebooks.
    */

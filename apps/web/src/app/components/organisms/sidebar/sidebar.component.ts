@@ -30,7 +30,7 @@ import { NotificationService } from '../../../services/notification.service';
 import { NetworkService } from '../../../services/network.service';
 import { ProfileAvatarComponent } from '../../atoms';
 import { isLocalNotebook } from '../../../providers/data-provider.interface';
-import type { Page } from '@maple/shared';
+import type { Page, Notebook } from '@maple/shared';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs';
 
@@ -150,6 +150,16 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
 
   readonly statusColor = computed(() => {
     return this.networkService.isOnline() ? 'bg-green-500' : 'bg-gray-400';
+  });
+
+  readonly groupedNotebooks = computed(() => {
+    const all = this.notebookService.notebooks();
+    return {
+      public: all.filter((nb) => !isLocalNotebook(nb._id) && nb.sharing?.['isPublic']),
+      cloud: all.filter((nb) => !isLocalNotebook(nb._id) && !nb.sharing?.['isPublic']),
+      icloud: all.filter((nb) => isLocalNotebook(nb._id) && this.notebookService.isICloud(nb._id)),
+      local: all.filter((nb) => isLocalNotebook(nb._id) && !this.notebookService.isICloud(nb._id)),
+    };
   });
 
   ngOnInit(): void {

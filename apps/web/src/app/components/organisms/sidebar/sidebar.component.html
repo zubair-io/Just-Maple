@@ -173,183 +173,237 @@
     </div>
   </div>
 
+  <!-- Notebook item template -->
+  <ng-template #notebookItem let-notebook>
+    <li
+      cdkDropList
+      [cdkDropListData]="notebook._id"
+      (cdkDropListDropped)="onPageDrop($event)"
+      (cdkDropListEntered)="onDropListEntered(notebook._id)"
+      (cdkDropListExited)="onDropListExited()"
+      [cdkDropListSortingDisabled]="true"
+      class="rounded-md transition-colors"
+      [class.drag-hover]="dragHoverNotebookId() === notebook._id"
+    >
+      <!-- Notebook Header -->
+      <div
+        (click)="toggleNotebook(notebook._id)"
+        class="group flex items-center justify-between px-2 py-1.5 text-sm cursor-pointer transition-colors"
+        [class.bg-[var(--color-surface)]]="selectedNotebookId() === notebook._id"
+        [class.shadow-sm]="selectedNotebookId() === notebook._id"
+        [class.ring-1]="selectedNotebookId() === notebook._id"
+        [class.ring-[var(--color-border)]]="selectedNotebookId() === notebook._id"
+        [class.hover:bg-[var(--color-surface-hover)]]="selectedNotebookId() !== notebook._id"
+      >
+        <div class="flex items-center gap-2 min-w-0 flex-1">
+          <span
+            class="material-symbols-rounded text-sm transition-colors flex-shrink-0"
+            [class.text-[var(--color-primary)]]="selectedNotebookId() === notebook._id"
+            [class.text-[var(--color-text-muted)]]="selectedNotebookId() !== notebook._id"
+          >
+            @if (notebookService.isLocal(notebook._id)) {
+              folder_open
+            } @else if (notebook.sharing['isPublic']) {
+              public
+            } @else if (selectedNotebookId() === notebook._id) {
+              book_5
+            } @else {
+              book_2
+            }
+          </span>
+          @if (editingNotebookId() === notebook._id) {
+            <input
+              type="text"
+              [value]="editValue()"
+              (input)="editValue.set($any($event.target).value)"
+              (keydown)="onEditKeydown($event)"
+              (blur)="onEditBlur()"
+              (focus)="onEditInputFocus($event)"
+              class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-primary)] rounded outline-none"
+              maxlength="255"
+              #editInput
+            />
+          } @else {
+            <span
+              class="truncate"
+              [class.font-medium]="selectedNotebookId() === notebook._id"
+              [class.text-[var(--color-text-main)]]="selectedNotebookId() === notebook._id"
+              [class.text-[var(--color-text-muted)]]="selectedNotebookId() !== notebook._id"
+              (dblclick)="
+                selectedNotebookId() === notebook._id &&
+                  startEditingNotebook(notebook._id, notebook.label, $event)
+              "
+              >{{ notebook.label }}</span
+            >
+          }
+        </div>
+        @if ((getPagesForNotebook()[notebook._id || 'no_notebook'] || []).length > 0) {
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">
+            {{ expandedNotebooks().has(notebook._id) ? 'expand_less' : 'expand_more' }}
+          </span>
+        }
+      </div>
+
+      <!-- Page list -->
+      <ul
+        class="ml-4 pl-3 border-l border-[var(--color-border)] list-none"
+        [ngClass]="{
+          'mt-1 space-y-0.5': expandedNotebooks().has(notebook._id),
+          'overflow-hidden max-h-0': !expandedNotebooks().has(notebook._id),
+        }"
+      >
+        @if (expandedNotebooks().has(notebook._id)) {
+          @for (page of getPagesForNotebook()[notebook._id || 'no_notebook'] || []; track page.id) {
+            <li
+              cdkDrag
+              [cdkDragData]="page"
+              [cdkDragDisabled]="page.type === 'message' || isMobile()"
+            >
+              <a
+                [routerLink]="
+                  editingPageId() !== page.id ? getPageRouterLink(page, notebook._id) : null
+                "
+                (click)="onSelectPage(page)"
+                class="flex items-center gap-1.5 px-2 py-1.5 text-sm cursor-pointer transition-colors"
+                [class.bg-[var(--color-surface-alt)]]="selectedPageId() === page.id"
+                [class.text-[var(--color-text-main)]]="selectedPageId() === page.id"
+                [class.font-medium]="selectedPageId() === page.id"
+                [class.border-l-2]="selectedPageId() === page.id"
+                [class.border-[var(--color-primary)]]="selectedPageId() === page.id"
+                [class.-ml-[13px]]="selectedPageId() === page.id"
+                [class.pl-3]="selectedPageId() === page.id"
+                [class.text-[var(--color-text-muted)]]="selectedPageId() !== page.id"
+                [class.hover:text-[var(--color-text-main)]]="selectedPageId() !== page.id"
+              >
+                <span class="material-symbols-rounded text-xs opacity-60 flex-shrink-0">
+                  @if (page.type === 'collectable') {
+                    brick
+                  } @else if (page.type === 'memo') {
+                    description
+                  } @else if (page.type === 'whiteboard') {
+                    draw
+                  } @else if (page.type === 'kanban') {
+                    view_kanban
+                  } @else if (page.type === 'message') {
+                    chat
+                  } @else {
+                    article
+                  }
+                </span>
+                @if (editingPageId() === page.id) {
+                  <input
+                    type="text"
+                    [value]="editValue()"
+                    (input)="editValue.set($any($event.target).value)"
+                    (keydown)="onEditKeydown($event)"
+                    (blur)="onEditBlur()"
+                    (focus)="onEditInputFocus($event)"
+                    (click)="$event.stopPropagation(); $event.preventDefault()"
+                    class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-primary)] rounded outline-none"
+                    maxlength="255"
+                    #editInput
+                  />
+                } @else {
+                  <span
+                    class="truncate"
+                    (dblclick)="
+                      selectedPageId() === page.id && startEditingPage(page.id, page.title, $event)
+                    "
+                    >{{ page.title }}</span
+                  >
+                }
+                <!-- Unread badge for message pages -->
+                @if (page.type === 'message' && getUnreadCountByPageId(page.id) > 0) {
+                  <span
+                    class="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-primary)] text-white rounded-full min-w-[18px] text-center flex-shrink-0"
+                  >
+                    {{
+                      getUnreadCountByPageId(page.id) > 99 ? '99+' : getUnreadCountByPageId(page.id)
+                    }}
+                  </span>
+                }
+              </a>
+            </li>
+          }
+        }
+      </ul>
+    </li>
+  </ng-template>
+
   <!-- Navigation -->
   <div class="flex-1 overflow-y-auto px-3 py-4 pb-24">
-    <!-- Notebooks Section -->
-    <div class="mb-2 px-2 flex items-center justify-between group">
-      <span class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
-        >Notebooks</span
-      >
-      <button
-        (click)="onCreateNotebook()"
-        class="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
-      >
-        <span class="material-symbols-rounded text-base">add</span>
-      </button>
-    </div>
-
     <ul cdkDropListGroup class="space-y-0.5">
-      @for (notebook of notebookService.notebooks(); track notebook._id) {
-        <li
-          cdkDropList
-          [cdkDropListData]="notebook._id"
-          (cdkDropListDropped)="onPageDrop($event)"
-          (cdkDropListEntered)="onDropListEntered(notebook._id)"
-          (cdkDropListExited)="onDropListExited()"
-          [cdkDropListSortingDisabled]="true"
-          class="rounded-md transition-colors"
-          [class.drag-hover]="dragHoverNotebookId() === notebook._id"
-        >
-          <!-- Notebook Header -->
-          <div
-            (click)="toggleNotebook(notebook._id)"
-            class="group flex items-center justify-between px-2 py-1.5 text-sm cursor-pointer transition-colors"
-            [class.bg-[var(--color-surface)]]="selectedNotebookId() === notebook._id"
-            [class.shadow-sm]="selectedNotebookId() === notebook._id"
-            [class.ring-1]="selectedNotebookId() === notebook._id"
-            [class.ring-[var(--color-border)]]="selectedNotebookId() === notebook._id"
-            [class.hover:bg-[var(--color-surface-hover)]]="selectedNotebookId() !== notebook._id"
+      <!-- Public group -->
+      @if (groupedNotebooks().public.length > 0) {
+        <div class="mb-2 px-2">
+          <span
+            class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
+            >Public</span
           >
-            <div class="flex items-center gap-2 min-w-0 flex-1">
-              <span
-                class="material-symbols-rounded text-sm transition-colors flex-shrink-0"
-                [class.text-[var(--color-primary)]]="selectedNotebookId() === notebook._id"
-                [class.text-[var(--color-text-muted)]]="selectedNotebookId() !== notebook._id"
-              >
-                @if (notebookService.isLocal(notebook._id)) {
-                  folder_open
-                } @else if (notebook.sharing['isPublic']) {
-                  public
-                } @else if (selectedNotebookId() === notebook._id) {
-                  book_5
-                } @else {
-                  book_2
-                }
-              </span>
-              @if (editingNotebookId() === notebook._id) {
-                <input
-                  type="text"
-                  [value]="editValue()"
-                  (input)="editValue.set($any($event.target).value)"
-                  (keydown)="onEditKeydown($event)"
-                  (blur)="onEditBlur()"
-                  (focus)="onEditInputFocus($event)"
-                  class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-primary)] rounded outline-none"
-                  maxlength="255"
-                  #editInput
-                />
-              } @else {
-                <span
-                  class="truncate"
-                  [class.font-medium]="selectedNotebookId() === notebook._id"
-                  [class.text-[var(--color-text-main)]]="selectedNotebookId() === notebook._id"
-                  [class.text-[var(--color-text-muted)]]="selectedNotebookId() !== notebook._id"
-                  (dblclick)="
-                    selectedNotebookId() === notebook._id &&
-                      startEditingNotebook(notebook._id, notebook.label, $event)
-                  "
-                  >{{ notebook.label }}</span
-                >
-              }
-              <!-- Unread badge removed from notebook - now on message pages -->
-            </div>
-            @if ((getPagesForNotebook()[notebook._id || 'no_notebook'] || []).length > 0) {
-              <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">
-                {{ expandedNotebooks().has(notebook._id) ? 'expand_less' : 'expand_more' }}
-              </span>
-            }
-          </div>
+        </div>
+        @for (notebook of groupedNotebooks().public; track notebook._id) {
+          <ng-container
+            [ngTemplateOutlet]="notebookItem"
+            [ngTemplateOutletContext]="{ $implicit: notebook }"
+          ></ng-container>
+        }
+      }
 
-          <!-- Page list -->
-          <ul
-            class="ml-4 pl-3 border-l border-[var(--color-border)] list-none"
-            [ngClass]="{
-              'mt-1 space-y-0.5': expandedNotebooks().has(notebook._id),
-              'overflow-hidden max-h-0': !expandedNotebooks().has(notebook._id),
-            }"
+      <!-- Maple Cloud group -->
+      @if (groupedNotebooks().cloud.length > 0) {
+        <div
+          class="mb-2 px-2 flex items-center justify-between group"
+          [class.mt-4]="groupedNotebooks().public.length > 0"
+        >
+          <span
+            class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
+            >Maple Cloud</span
           >
-            @if (expandedNotebooks().has(notebook._id)) {
-              @for (
-                page of getPagesForNotebook()[notebook._id || 'no_notebook'] || [];
-                track page.id
-              ) {
-                <li
-                  cdkDrag
-                  [cdkDragData]="page"
-                  [cdkDragDisabled]="page.type === 'message' || isMobile()"
-                >
-                  <a
-                    [routerLink]="
-                      editingPageId() !== page.id ? getPageRouterLink(page, notebook._id) : null
-                    "
-                    (click)="onSelectPage(page)"
-                    class="flex items-center gap-1.5 px-2 py-1.5 text-sm cursor-pointer transition-colors"
-                    [class.bg-[var(--color-surface-alt)]]="selectedPageId() === page.id"
-                    [class.text-[var(--color-text-main)]]="selectedPageId() === page.id"
-                    [class.font-medium]="selectedPageId() === page.id"
-                    [class.border-l-2]="selectedPageId() === page.id"
-                    [class.border-[var(--color-primary)]]="selectedPageId() === page.id"
-                    [class.-ml-[13px]]="selectedPageId() === page.id"
-                    [class.pl-3]="selectedPageId() === page.id"
-                    [class.text-[var(--color-text-muted)]]="selectedPageId() !== page.id"
-                    [class.hover:text-[var(--color-text-main)]]="selectedPageId() !== page.id"
-                  >
-                    <span class="material-symbols-rounded text-xs opacity-60 flex-shrink-0">
-                      @if (page.type === 'collectable') {
-                        brick
-                      } @else if (page.type === 'memo') {
-                        description
-                      } @else if (page.type === 'whiteboard') {
-                        draw
-                      } @else if (page.type === 'kanban') {
-                        view_kanban
-                      } @else if (page.type === 'message') {
-                        chat
-                      } @else {
-                        article
-                      }
-                    </span>
-                    @if (editingPageId() === page.id) {
-                      <input
-                        type="text"
-                        [value]="editValue()"
-                        (input)="editValue.set($any($event.target).value)"
-                        (keydown)="onEditKeydown($event)"
-                        (blur)="onEditBlur()"
-                        (focus)="onEditInputFocus($event)"
-                        (click)="$event.stopPropagation(); $event.preventDefault()"
-                        class="flex-1 min-w-0 px-1 py-0.5 text-sm bg-[var(--color-input-bg)] border border-[var(--color-primary)] rounded outline-none"
-                        maxlength="255"
-                        #editInput
-                      />
-                    } @else {
-                      <span
-                        class="truncate"
-                        (dblclick)="
-                          selectedPageId() === page.id &&
-                            startEditingPage(page.id, page.title, $event)
-                        "
-                        >{{ page.title }}</span
-                      >
-                    }
-                    <!-- Unread badge for message pages -->
-                    @if (page.type === 'message' && getUnreadCountByPageId(page.id) > 0) {
-                      <span
-                        class="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-primary)] text-white rounded-full min-w-[18px] text-center flex-shrink-0"
-                      >
-                        {{
-                          getUnreadCountByPageId(page.id) > 99
-                            ? '99+'
-                            : getUnreadCountByPageId(page.id)
-                        }}
-                      </span>
-                    }
-                  </a>
-                </li>
-              }
-            }
-          </ul>
-        </li>
+          <button
+            (click)="onCreateNotebook()"
+            class="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+          >
+            <span class="material-symbols-rounded text-base">add</span>
+          </button>
+        </div>
+        @for (notebook of groupedNotebooks().cloud; track notebook._id) {
+          <ng-container
+            [ngTemplateOutlet]="notebookItem"
+            [ngTemplateOutletContext]="{ $implicit: notebook }"
+          ></ng-container>
+        }
+      }
+
+      <!-- iCloud group -->
+      @if (groupedNotebooks().icloud.length > 0) {
+        <div class="mb-2 px-2 mt-4">
+          <span
+            class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
+            >iCloud</span
+          >
+        </div>
+        @for (notebook of groupedNotebooks().icloud; track notebook._id) {
+          <ng-container
+            [ngTemplateOutlet]="notebookItem"
+            [ngTemplateOutletContext]="{ $implicit: notebook }"
+          ></ng-container>
+        }
+      }
+
+      <!-- Local group -->
+      @if (groupedNotebooks().local.length > 0) {
+        <div class="mb-2 px-2 mt-4">
+          <span
+            class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
+            >Local</span
+          >
+        </div>
+        @for (notebook of groupedNotebooks().local; track notebook._id) {
+          <ng-container
+            [ngTemplateOutlet]="notebookItem"
+            [ngTemplateOutletContext]="{ $implicit: notebook }"
+          ></ng-container>
+        }
       }
     </ul>
   </div>
