@@ -25,3 +25,6 @@ export * from './gmail';
 export * from './json-document';
 export * from './custom-domain';
 export * from './google-calendar';
+export * from './atoms';
+export * from './connector-manifest';
+export * from './canvas';

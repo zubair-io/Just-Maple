@@ -4,14 +4,11 @@ import { CommonModule } from '@angular/common';
 export type IconSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 @Component({
-  selector: 'ui-icon',
+  selector: 'app-icon, ui-icon',
   standalone: true,
   imports: [CommonModule],
-  template: `
-    <span class="material-symbols-rounded" [class]="iconClasses">
-      {{ name() }}
-    </span>
-  `,
+  templateUrl: './icon.component.html',
+  styleUrl: './icon.component.scss',
 })
 export class IconComponent {
   readonly name = input.required<string>();
@@ -19,14 +16,14 @@ export class IconComponent {
   readonly color = input<string>('');
 
   get iconClasses(): string {
-    const sizes: Record<IconSize, string> = {
+    const sizeMap: Record<IconSize, string> = {
       xs: 'text-sm',
       sm: 'text-base',
-      md: 'text-lg',
-      lg: 'text-xl',
-      xl: 'text-2xl',
+      md: 'text-2xl',
+      lg: 'text-3xl',
+      xl: 'text-4xl',
     };
-
-    return `${sizes[this.size()]} ${this.color()}`;
+    const colorClasses = this.color() ? `text-${this.color()}` : 'text-[var(--color-text-main)]';
+    return `${sizeMap[this.size()]} ${colorClasses}`;
   }
 }
