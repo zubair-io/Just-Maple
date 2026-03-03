@@ -1,0 +1,13 @@
+@if (ordered()) {
+  <ol [class]="listClasses" class="list-decimal">
+    @for (item of items(); track $index) {
+      <li class="py-0.5">{{ item }}</li>
+    }
+  </ol>
+} @else {
+  <ul [class]="listClasses" class="list-disc">
+    @for (item of items(); track $index) {
+      <li class="py-0.5">{{ item }}</li>
+    }
+  </ul>
+}

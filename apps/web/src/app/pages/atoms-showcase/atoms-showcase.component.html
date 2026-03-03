@@ -1,0 +1,146 @@
+<div class="max-w-4xl mx-auto p-8 pb-20 space-y-10">
+  <h1 class="text-3xl font-bold text-[var(--color-text-main)]">Atoms Showcase</h1>
+
+  <!-- Text -->
+  <section>
+    <h2 class="text-xl font-bold mb-4 text-[var(--color-text-main)]">Text</h2>
+    <div class="flex flex-wrap gap-4 items-baseline">
+      <app-text value="Extra Small" size="xs" />
+      <app-text value="Small" size="sm" />
+      <app-text value="Medium (default)" size="md" />
+      <app-text value="Large" size="lg" />
+      <app-text value="Extra Large" size="xl" />
+    </div>
+    <div class="flex flex-wrap gap-4 items-baseline mt-3">
+      <app-text value="Main color" color="main" />
+      <app-text value="Muted color" color="muted" />
+      <app-text value="Primary color" color="primary" />
+      <app-text value="Error color" color="error" />
+      <app-text value="Success color" color="success" />
+    </div>
+    <div class="flex flex-wrap gap-4 items-baseline mt-3">
+      <app-text value="Normal weight" weight="normal" />
+      <app-text value="Medium weight" weight="medium" />
+      <app-text value="Bold weight" weight="bold" />
+    </div>
+  </section>
+
+  <!-- Stat -->
+  <section>
+    <h2 class="text-xl font-bold mb-4 text-[var(--color-text-main)]">Stat</h2>
+    <div class="flex flex-wrap gap-8">
+      <app-stat value="72°" label="Temperature" size="sm" />
+      <app-stat value="1,234" label="Total Tasks" size="md" />
+      <app-stat value="99.9%" label="Uptime" size="lg" />
+    </div>
+  </section>
+
+  <!-- Icon -->
+  <section>
+    <h2 class="text-xl font-bold mb-4 text-[var(--color-text-main)]">Icon</h2>
+    <div class="flex flex-wrap gap-4 items-center">
+      <app-icon name="wb_sunny" size="xs" />
+      <app-icon name="cloud" size="sm" />
+      <app-icon name="thermostat" size="md" />
+      <app-icon name="rainy" size="lg" />
+      <app-icon name="thunderstorm" size="xl" />
+    </div>
+  </section>
+
+  <!-- Badge -->
+  <section>
+    <h2 class="text-xl font-bold mb-4 text-[var(--color-text-main)]">Badge</h2>
+    <div class="flex flex-wrap gap-3">
+      <app-badge value="High" color="red" />
+      <app-badge value="Medium" color="amber" />
+      <app-badge value="Low" color="blue" />
+      <app-badge value="Done" color="green" />
+      <app-badge value="Draft" color="gray" />
+    </div>
+  </section>
+
+  <!-- Progress -->
+  <section>
+    <h2 class="text-xl font-bold mb-4 text-[var(--color-text-main)]">Progress</h2>
+    <div class="space-y-3 max-w-md">
+      <app-progress [value]="25" [max]="100" variant="bar" />
+      <app-progress [value]="50" [max]="100" variant="bar" />
+      <app-progress [value]="75" [max]="100" variant="bar" />
+    </div>
+    <div class="flex gap-6 mt-4">
+      <app-progress [value]="33" [max]="100" variant="ring" />
+      <app-progress [value]="66" [max]="100" variant="ring" />
+      <app-progress [value]="100" [max]="100" variant="ring" />
+    </div>
+  </section>
+
+  <!-- Timestamp -->
+  <section>
+    <h2 class="text-xl font-bold mb-4 text-[var(--color-text-main)]">Timestamp</h2>
+    <div class="flex flex-wrap gap-6">
+      <div class="flex flex-col gap-1">
+        <span class="text-xs text-[var(--color-text-muted)]">relative</span>
+        <app-timestamp [value]="yesterday" format="relative" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="text-xs text-[var(--color-text-muted)]">date</span>
+        <app-timestamp [value]="now" format="date" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="text-xs text-[var(--color-text-muted)]">time</span>
+        <app-timestamp [value]="now" format="time" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <span class="text-xs text-[var(--color-text-muted)]">datetime</span>
+        <app-timestamp [value]="now" format="datetime" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Divider -->
+  <section>
+    <h2 class="text-xl font-bold mb-4 text-[var(--color-text-main)]">Divider</h2>
+    <app-text value="Content above (sm spacing)" />
+    <app-divider spacing="sm" />
+    <app-text value="Content between (md spacing)" />
+    <app-divider spacing="md" />
+    <app-text value="Content between (lg spacing)" />
+    <app-divider spacing="lg" />
+    <app-text value="Content below" />
+  </section>
+
+  <!-- Link -->
+  <section>
+    <h2 class="text-xl font-bold mb-4 text-[var(--color-text-main)]">Link</h2>
+    <div class="flex flex-wrap gap-4">
+      <app-link href="https://example.com" label="External Link" [external]="true" />
+      <app-link href="/settings" label="Internal Link" />
+      <app-link href="https://example.com" />
+    </div>
+  </section>
+
+  <!-- List -->
+  <section>
+    <h2 class="text-xl font-bold mb-4 text-[var(--color-text-main)]">List</h2>
+    <div class="grid grid-cols-2 gap-8 max-w-lg">
+      <div>
+        <span class="text-sm text-[var(--color-text-muted)] mb-2 block">Unordered</span>
+        <app-list [items]="listItems" [ordered]="false" />
+      </div>
+      <div>
+        <span class="text-sm text-[var(--color-text-muted)] mb-2 block">Ordered</span>
+        <app-list [items]="listItems" [ordered]="true" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Checkbox -->
+  <section>
+    <h2 class="text-xl font-bold mb-4 text-[var(--color-text-main)]">Checkbox</h2>
+    <div class="flex flex-col gap-2">
+      <app-checkbox [checked]="false" label="Unchecked task" />
+      <app-checkbox [checked]="true" label="Completed task" />
+      <app-checkbox [checked]="false" label="Disabled task" [disabled]="true" />
+    </div>
+  </section>
+</div>

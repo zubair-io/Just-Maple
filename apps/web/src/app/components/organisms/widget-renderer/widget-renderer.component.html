@@ -1,0 +1,75 @@
+@if (isLayout()) {
+  <div [class]="layoutClasses()">
+    @if (getHeader()) {
+      <h3 class="text-sm font-bold text-[var(--color-text-main)] mb-2">{{ getHeader() }}</h3>
+    }
+    @for (child of getChildren(); track $index) {
+      <app-widget-renderer [node]="child" [data]="data()" />
+    }
+  </div>
+}
+
+@if (isAtom()) {
+  @switch (getAtomType()) {
+    @case ('text') {
+      <app-text
+        [value]="resolveString()"
+        [size]="getTextSize()"
+        [color]="getTextColor()"
+        [weight]="getTextWeight()"
+      />
+    }
+    @case ('stat') {
+      <app-stat [value]="resolveString()" [label]="getNodeProp('label')" [size]="getStatSize()" />
+    }
+    @case ('icon') {
+      <app-icon [name]="resolveString()" [size]="getIconSize()" [color]="getNodeProp('color')" />
+    }
+    @case ('badge') {
+      <app-badge [value]="resolveString()" [color]="getBadgeColor()" />
+    }
+    @case ('image') {
+      <app-image
+        [src]="resolveString()"
+        [alt]="getNodeProp('alt')"
+        [fit]="getImageFit()"
+        [rounded]="getNodeBoolProp('rounded')"
+      />
+    }
+    @case ('progress') {
+      <app-progress
+        [value]="resolveNumber()"
+        [max]="getNodeNumberProp('max') || 100"
+        [variant]="getProgressVariant()"
+        [color]="getNodeProp('color')"
+      />
+    }
+    @case ('timestamp') {
+      <app-timestamp [value]="resolveString()" [format]="getTimestampFormat()" />
+    }
+    @case ('divider') {
+      <app-divider [spacing]="getDividerSpacing()" />
+    }
+    @case ('link') {
+      <app-link
+        [href]="resolveString()"
+        [label]="getNodeProp('label')"
+        [external]="getNodeBoolProp('external')"
+      />
+    }
+    @case ('list') {
+      <app-list
+        [items]="resolveStringArray()"
+        [ordered]="getNodeBoolProp('ordered')"
+        [size]="getListSize()"
+      />
+    }
+    @case ('checkbox') {
+      <app-checkbox
+        [checked]="resolveBoolean()"
+        [label]="getNodeProp('label')"
+        [disabled]="getNodeBoolProp('disabled')"
+      />
+    }
+  }
+}
