@@ -343,10 +343,11 @@ export class BotExecutorService {
     }
 
     /**
-     * LLM action - calls Claude API
+     * LLM action - calls Claude API or Inception API based on provider
      */
     private async executeLLM(action: Action, ctx: ExecutionContext): Promise<void> {
         const config = action.config as {
+            provider?: string;
             systemPrompt?: string;
             userPrompt: string;
             model?: string;
@@ -356,25 +357,13 @@ export class BotExecutorService {
         // Get API key from user's bot config
         const apiKey = ctx.config?.apiKey;
         if (!apiKey) {
-            throw new Error('Claude API key not configured');
-        }
-
-        const isOAuthToken = ctx.config?.isOAuthToken || false;
-
-        // Build system prompt
-        let systemPrompt = config.systemPrompt
-            ? this.interpolate(config.systemPrompt, ctx.variables)
-            : undefined;
-
-        // OAuth tokens require the Claude Code system prompt
-        if (isOAuthToken) {
-            const claudeCodePrompt = "You are Claude Code, Anthropic's official CLI for Claude.";
-            systemPrompt = systemPrompt
-                ? `${claudeCodePrompt}\n\n${systemPrompt}`
-                : claudeCodePrompt;
+            throw new Error('API key not configured');
         }
 
         const userPrompt = this.interpolate(config.userPrompt, ctx.variables);
+        const systemPrompt = config.systemPrompt
+            ? this.interpolate(config.systemPrompt, ctx.variables)
+            : undefined;
 
         // Build conversation history from previous messages
         const previousMessages = (ctx.variables.$previousMessages || []) as Array<{
@@ -383,16 +372,40 @@ export class BotExecutorService {
             senderType?: string;
         }>;
 
-        // Call Claude API
-        const response = await this.callClaudeAPI({
-            apiKey,
-            isOAuthToken,
-            model: config.model || DEFAULT_LLM_MODEL,
-            systemPrompt,
-            userPrompt,
-            previousMessages,
-            maxTokens: config.maxTokens || 1024,
-        });
+        let response: string;
+
+        if (config.provider === 'inception') {
+            response = await this.callInceptionAPI({
+                apiKey,
+                model: config.model || 'mercury-2',
+                systemPrompt,
+                userPrompt,
+                previousMessages,
+                maxTokens: config.maxTokens || 1024,
+            });
+        } else {
+            const isOAuthToken = ctx.config?.isOAuthToken || false;
+
+            // OAuth tokens require the Claude Code system prompt
+            let finalSystemPrompt = systemPrompt;
+            if (isOAuthToken) {
+                const claudeCodePrompt =
+                    "You are Claude Code, Anthropic's official CLI for Claude.";
+                finalSystemPrompt = finalSystemPrompt
+                    ? `${claudeCodePrompt}\n\n${finalSystemPrompt}`
+                    : claudeCodePrompt;
+            }
+
+            response = await this.callClaudeAPI({
+                apiKey,
+                isOAuthToken,
+                model: config.model || DEFAULT_LLM_MODEL,
+                systemPrompt: finalSystemPrompt,
+                userPrompt,
+                previousMessages,
+                maxTokens: config.maxTokens || 1024,
+            });
+        }
 
         // Store result in output variable
         if (action.outputVariable) {
@@ -706,6 +719,69 @@ export class BotExecutorService {
         };
         const textContent = data.content.find((c) => c.type === 'text');
         return textContent?.text || '';
+    }
+
+    /**
+     * Call Inception Labs API (Mercury-2) using OpenAI-compatible chat completions
+     */
+    private async callInceptionAPI(params: {
+        apiKey: string;
+        model: string;
+        systemPrompt?: string;
+        userPrompt: string;
+        previousMessages?: Array<{
+            role?: string;
+            content?: string | { type: string; content: unknown[] };
+            senderType?: string;
+        }>;
+        maxTokens: number;
+    }): Promise<string> {
+        const messages: Array<{ role: string; content: string }> = [];
+
+        if (params.systemPrompt) {
+            messages.push({ role: 'system', content: params.systemPrompt });
+        }
+
+        if (params.previousMessages && params.previousMessages.length > 0) {
+            for (const msg of params.previousMessages) {
+                let textContent = '';
+                if (typeof msg.content === 'object' && msg.content && 'content' in msg.content) {
+                    textContent = extractTextFromContent(msg.content as any);
+                } else if (typeof msg.content === 'string') {
+                    textContent = msg.content;
+                }
+
+                if (textContent) {
+                    const role = msg.senderType === 'bot' ? 'assistant' : 'user';
+                    messages.push({ role, content: textContent });
+                }
+            }
+        }
+
+        messages.push({ role: 'user', content: params.userPrompt });
+
+        const response = await fetch('https://api.inceptionlabs.ai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${params.apiKey}`,
+            },
+            body: JSON.stringify({
+                model: params.model,
+                messages,
+                max_tokens: params.maxTokens,
+            }),
+        });
+
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Inception API error: ${response.status} - ${error}`);
+        }
+
+        const data = (await response.json()) as {
+            choices: Array<{ message: { content: string } }>;
+        };
+        return data.choices[0]?.message?.content || '';
     }
 
     /**
