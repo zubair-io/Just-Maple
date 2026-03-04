@@ -39,6 +39,55 @@ const helloWorldDefinition: BotDefinition = {
 };
 
 /**
+ * Mercury Bot Definition
+ * Uses Mercury-2 (Inception Labs) API to respond to messages
+ */
+const mercuryDefinition: BotDefinition = {
+    trigger: {
+        mentionPatterns: ['mercury', 'merc'],
+    },
+    input: {
+        includeContext: {
+            mentionText: true,
+            fullMessage: true,
+            previousMessages: 5,
+        },
+    },
+    actions: [
+        {
+            type: 'llm',
+            id: 'mercury-response',
+            config: {
+                provider: 'inception',
+                model: 'mercury-2',
+                systemPrompt:
+                    'You are a helpful AI assistant in a chat application. Be concise and friendly. Respond directly to what the user is asking.',
+                userPrompt: '{{$mentionText}}',
+                maxTokens: 1024,
+            },
+            outputVariable: 'response',
+        },
+    ],
+    output: {
+        chatView: {
+            components: [
+                {
+                    id: 'response',
+                    type: 'markdown',
+                    props: {
+                        content: '{{$response}}',
+                    },
+                },
+            ],
+        },
+    },
+    onError: {
+        retryCount: 1,
+        fallbackMessage: 'Sorry, I encountered an error processing your request.',
+    },
+};
+
+/**
  * Claude Bot Definition
  * Uses Claude API to respond to messages
  */
@@ -99,6 +148,29 @@ export async function seedBotTemplates(): Promise<void> {
         avatar: '👋',
         definition: helloWorldDefinition,
         requiresConfig: false,
+        isSystemBot: true,
+    });
+
+    // Mercury Bot
+    await upsertBotTemplate('mercury', {
+        name: 'Mercury',
+        handle: 'mercury',
+        description:
+            'A fast AI assistant powered by Mercury-2 (Inception Labs). Requires your Inception API key.',
+        avatar: '⚡',
+        definition: mercuryDefinition,
+        requiresConfig: true,
+        configSchema: {
+            type: 'object',
+            properties: {
+                apiKey: {
+                    type: 'string',
+                    title: 'Inception API Key',
+                    description: 'Your Inception Labs API key from inceptionlabs.ai',
+                },
+            },
+            required: ['apiKey'],
+        },
         isSystemBot: true,
     });
 
