@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock dependencies for getTapBotConfig tests
 vi.mock('../../repositories/user-bot.repo', () => ({
