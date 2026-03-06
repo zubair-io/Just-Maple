@@ -55,6 +55,14 @@ export class WidgetRendererComponent {
     return 'atom' in this.node();
   }
 
+  isEach(): boolean {
+    return 'each' in this.node();
+  }
+
+  isWhen(): boolean {
+    return 'when' in this.node();
+  }
+
   getAtomType(): string {
     return (this.node() as Record<string, unknown>)['atom'] as string;
   }
@@ -71,6 +79,44 @@ export class WidgetRendererComponent {
 
   getHeader(): string {
     return ((this.node() as Record<string, unknown>)['header'] as string) || '';
+  }
+
+  // --- Each node helpers ---
+
+  getEachArray(): unknown[] {
+    const n = this.node() as Record<string, unknown>;
+    const path = n['each'] as string;
+    const resolved = resolvePath(path, this.data());
+    return Array.isArray(resolved) ? resolved : [];
+  }
+
+  getEachAs(): string {
+    return (this.node() as Record<string, unknown>)['as'] as string;
+  }
+
+  getEachTemplate(): Record<string, unknown> {
+    return (this.node() as Record<string, unknown>)['template'] as Record<string, unknown>;
+  }
+
+  childContext(key: string, value: unknown): Record<string, unknown> {
+    return { ...this.data(), [key]: value };
+  }
+
+  // --- When node helpers ---
+
+  getWhenCondition(): boolean {
+    const n = this.node() as Record<string, unknown>;
+    const expr = n['when'] as string;
+    const val = resolvePath(expr, this.data());
+    return isTruthy(val);
+  }
+
+  getWhenThen(): Record<string, unknown> {
+    return (this.node() as Record<string, unknown>)['then'] as Record<string, unknown>;
+  }
+
+  getWhenElse(): Record<string, unknown> | null {
+    return ((this.node() as Record<string, unknown>)['else'] as Record<string, unknown>) ?? null;
   }
 
   layoutClasses(): string {
@@ -136,8 +182,19 @@ export class WidgetRendererComponent {
     const n = this.node() as Record<string, unknown>;
     const d = this.data();
 
-    // 1. GET raw value
-    const raw = n['bind'] ? this.getNestedValue(d, n['bind'] as string) : n['value'];
+    // 1. GET raw value — bind path or static value (with {{interpolation}})
+    // Check value, src, and href as potential value sources (AI may use atom-specific keys)
+    let raw: unknown;
+    if (n['bind']) {
+      raw = resolvePath(n['bind'] as string, d);
+    } else {
+      const val = n['value'] ?? n['src'] ?? n['href'];
+      if (typeof val === 'string' && (val as string).includes('{{')) {
+        raw = interpolate(val as string, d);
+      } else {
+        raw = val;
+      }
+    }
 
     // 2. MAP (lookup transform)
     const map = n['map'] as Record<string, unknown> | undefined;
@@ -173,7 +230,12 @@ export class WidgetRendererComponent {
   }
 
   getNodeProp(prop: string): string {
-    return ((this.node() as Record<string, unknown>)[prop] as string) || '';
+    const n = this.node() as Record<string, unknown>;
+    const val = n[prop];
+    if (typeof val === 'string' && val.includes('{{')) {
+      return interpolate(val, this.data());
+    }
+    return (val as string) || '';
   }
 
   getNodeBoolProp(prop: string): boolean {
@@ -218,18 +280,44 @@ export class WidgetRendererComponent {
   getListSize(): ListSize {
     return (this.getNodeProp('size') as ListSize) || 'md';
   }
+}
 
-  private getNestedValue(obj: Record<string, unknown>, path: string): unknown {
-    const parts = path.split('.');
-    let current: unknown = obj;
-    for (const part of parts) {
-      if (current == null) return undefined;
-      if (typeof current === 'object') {
-        current = (current as Record<string, unknown>)[part];
-      } else {
-        return undefined;
-      }
+/**
+ * Resolve a dot-path expression against a data context.
+ * Supports: "$.books", "book.title", "{{book.title}}", "title"
+ */
+export function resolvePath(path: string, context: Record<string, unknown>): unknown {
+  if (!path) return undefined;
+
+  // Unwrap {{expression}} if present
+  const match = path.match(/^\{\{(.+?)\}\}$/);
+  const clean = (match ? match[1].trim() : path).replace(/^\$\./, '');
+
+  const segments = clean.split('.').filter(Boolean);
+  let current: unknown = context;
+  for (const segment of segments) {
+    if (current == null) return undefined;
+    if (typeof current === 'object') {
+      current = (current as Record<string, unknown>)[segment];
+    } else {
+      return undefined;
     }
-    return current;
   }
+  return current;
+}
+
+/**
+ * Replace all {{expression}} tokens in a string with resolved values.
+ */
+export function interpolate(template: string, context: Record<string, unknown>): string {
+  return template.replace(/\{\{(.+?)\}\}/g, (_, expr) => {
+    return String(resolvePath(expr.trim(), context) ?? '');
+  });
+}
+
+/**
+ * Check if a value is truthy (not null, undefined, false, 0, or '').
+ */
+export function isTruthy(val: unknown): boolean {
+  return val !== null && val !== undefined && val !== false && val !== 0 && val !== '';
 }

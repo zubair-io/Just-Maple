@@ -70,3 +70,6 @@ export const GmailPageGuard = createPageTypeGuard('gmail');
 
 /** Guard that matches json-type pages (JSON data documents) */
 export const JsonPageGuard = createPageTypeGuard('json');
+
+/** Guard that matches canvas-type pages (AI-generated widget canvas) */
+export const CanvasPageGuard = createPageTypeGuard('canvas');

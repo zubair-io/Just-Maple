@@ -7,6 +7,19 @@
       (titleChanged)="onTitleChanged($event)"
     />
 
+    <!-- Description — helps AI understand the data for canvas widgets -->
+    <div class="px-4 pb-2">
+      <input
+        type="text"
+        class="w-full text-sm text-[var(--color-text-muted)] bg-transparent border-none outline-none placeholder:text-[var(--color-text-muted)]/50"
+        placeholder="Add a description to help AI understand this data..."
+        [value]="description()"
+        (blur)="onDescriptionChange($event)"
+        (keydown.enter)="$event.target.blur()"
+        maxlength="500"
+      />
+    </div>
+
     <!-- View mode toolbar -->
     <div class="json-toolbar">
       <div class="view-mode-toggle">

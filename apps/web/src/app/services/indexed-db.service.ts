@@ -22,7 +22,7 @@ export class IndexedDBService {
 
   private readonly config: DBConfig = {
     dbName: 'justmaple',
-    dbVersion: 16, // Add local-snapshots store for local page history
+    dbVersion: 17, // Add canvas stores
     stores: [
       { name: DB_STORES.COLLECTIBLE_REGISTRY, keyPath: '_id', autoIncrement: false },
       { name: DB_STORES.COLLECTABLE, keyPath: '_id', autoIncrement: false },
@@ -44,6 +44,9 @@ export class IndexedDBService {
       { name: DB_STORES.LOCAL_NOTEBOOK_BOTS, keyPath: 'notebookId', autoIncrement: false },
       // Local page history snapshots
       { name: DB_STORES.LOCAL_SNAPSHOTS, keyPath: 'key', autoIncrement: false },
+      // Canvas stores
+      { name: DB_STORES.CANVAS, keyPath: 'id', autoIncrement: false },
+      { name: DB_STORES.CANVAS_DATA, keyPath: 'id', autoIncrement: false },
     ],
   };
 

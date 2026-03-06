@@ -372,7 +372,16 @@ export interface PageDoc {
     _id: ObjectId;
     id: string; // UUID v4 for routing (was documentId)
     userId: ObjectId;
-    type: 'memo' | 'collectable' | 'whiteboard' | 'kanban' | 'message' | 'recording';
+    type:
+        | 'memo'
+        | 'collectable'
+        | 'whiteboard'
+        | 'kanban'
+        | 'message'
+        | 'recording'
+        | 'json'
+        | 'canvas'
+        | 'gmail';
     title: string;
     content: any;
     version: number;
@@ -388,7 +397,16 @@ export interface PageDoc {
 
 export interface CreatePageOptions {
     userId?: string;
-    type?: 'memo' | 'collectable' | 'whiteboard' | 'kanban' | 'message' | 'recording';
+    type?:
+        | 'memo'
+        | 'collectable'
+        | 'whiteboard'
+        | 'kanban'
+        | 'message'
+        | 'recording'
+        | 'json'
+        | 'canvas'
+        | 'gmail';
     title?: string;
     content?: any;
     id?: string;
@@ -699,4 +717,87 @@ export async function createMemoVersionFixture(
     };
     await testDb!.collection('memo_versions').insertOne(doc);
     return doc;
+}
+
+// ============================================
+// Canvas Fixtures
+// ============================================
+
+export interface CanvasDoc {
+    _id: ObjectId;
+    id: string;
+    notebookId: string;
+    userId: string;
+    connectors: Array<{
+        connectorId: string;
+        connectorType: string;
+        enabled: boolean;
+        name: string;
+        description?: string;
+        config?: Record<string, unknown>;
+        fields: Record<string, unknown>;
+    }>;
+    widgets: Array<{
+        id: string;
+        title?: string;
+        connectorId?: string;
+        template: unknown;
+        dataPath?: string;
+        prompt?: string;
+        position?: { x: number; y: number; w: number; h: number };
+        createdAt: string;
+        updatedAt?: string;
+    }>;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateCanvasOptions {
+    pageId?: string;
+    notebookId?: string;
+    userId?: string;
+    connectors?: CanvasDoc['connectors'];
+    widgets?: CanvasDoc['widgets'];
+}
+
+export async function createCanvasFixture(options: CreateCanvasOptions = {}): Promise<CanvasDoc> {
+    const now = new Date();
+
+    const doc: CanvasDoc = {
+        _id: new ObjectId(),
+        id: options.pageId || randomUUID(),
+        notebookId: options.notebookId || new ObjectId().toString(),
+        userId: options.userId || new ObjectId().toString(),
+        connectors: options.connectors || [],
+        widgets: options.widgets || [],
+        createdAt: now,
+        updatedAt: now,
+    };
+    await testDb!.collection('canvases').insertOne(doc);
+    return doc;
+}
+
+export function createCanvasWidgetFixture(overrides: Partial<CanvasDoc['widgets'][0]> = {}) {
+    return {
+        id: randomUUID(),
+        title: 'Test Widget',
+        connectorId: 'conn-1',
+        template: { atom: 'text', value: 'Hello' },
+        dataPath: '$.books',
+        prompt: 'Show my books',
+        createdAt: new Date().toISOString(),
+        ...overrides,
+    };
+}
+
+export function createCanvasConnectorFixture(overrides: Partial<CanvasDoc['connectors'][0]> = {}) {
+    return {
+        connectorId: randomUUID(),
+        connectorType: 'json-page',
+        enabled: true,
+        name: 'Test Connector',
+        config: { pageId: randomUUID() },
+        fields: {},
+        ...overrides,
+    };
 }

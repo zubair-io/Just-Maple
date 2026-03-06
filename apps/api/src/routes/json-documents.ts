@@ -11,6 +11,7 @@ import {
     patchJsonDocumentData,
     updateJsonDocumentSchema,
     removeJsonDocumentSchema,
+    updateJsonDocumentDescription,
 } from '../repositories/json-document.repo';
 import { realtimeWSService } from '../services/realtime-ws.service';
 import { getUsersWithNotebookAccess } from '../repositories/notebook.repo';
@@ -321,4 +322,49 @@ export const jsonDocumentRoutes = new Elysia({ prefix: '/api/json-documents' })
             set.status = 500;
             return { error: 'Failed to remove JSON Schema' };
         }
-    });
+    })
+    /**
+     * Update JSON document description
+     */
+    .put(
+        '/:id/description',
+        async ({ auth, params, body, set }) => {
+            if (!auth) {
+                set.status = 401;
+                return { error: 'Unauthorized' };
+            }
+
+            const { id } = params;
+
+            const page = await findPageById(id, auth.user._id);
+            if (!page) {
+                set.status = 404;
+                return { error: 'Page not found' };
+            }
+
+            if (page.type !== 'json') {
+                set.status = 400;
+                return { error: 'Page is not a JSON type' };
+            }
+
+            try {
+                const doc = await updateJsonDocumentDescription(id, body.description);
+
+                if (!doc) {
+                    set.status = 404;
+                    return { error: 'JSON document not found' };
+                }
+
+                return { document: doc };
+            } catch (error) {
+                console.error(`[JSON] Failed to update description for ${id}:`, error);
+                set.status = 500;
+                return { error: 'Failed to update description' };
+            }
+        },
+        {
+            body: t.Object({
+                description: t.String({ maxLength: 500 }),
+            }),
+        },
+    );

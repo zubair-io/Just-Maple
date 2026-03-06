@@ -18,7 +18,18 @@ export const AtomTypeSchema = Type.Union([
 
 export type AtomType = Static<typeof AtomTypeSchema>;
 
-// --- Atom Node ---
+// --- Layout Types ---
+
+export const LayoutTypeSchema = Type.Union([
+    Type.Literal('card'),
+    Type.Literal('stack'),
+    Type.Literal('row'),
+    Type.Literal('grid'),
+]);
+
+export type LayoutType = Static<typeof LayoutTypeSchema>;
+
+// --- Atom Node (leaf) ---
 
 export const AtomNodeSchema = Type.Object({
     atom: Type.String(),
@@ -52,18 +63,49 @@ export const AtomNodeSchema = Type.Object({
 
 export type AtomNode = Static<typeof AtomNodeSchema>;
 
-// --- Layout Types ---
+// --- Widget Node (recursive union of all node types) ---
+// Discriminated by field: atom | layout | each | when
 
-export const LayoutTypeSchema = Type.Union([
-    Type.Literal('card'),
-    Type.Literal('stack'),
-    Type.Literal('row'),
-    Type.Literal('grid'),
-]);
+export const WidgetNodeSchema = Type.Recursive((Self) =>
+    Type.Union([
+        // Atom leaf — renders a single UI component
+        AtomNodeSchema,
 
-export type LayoutType = Static<typeof LayoutTypeSchema>;
+        // Layout container — arranges children in rows, columns, grids, or cards
+        Type.Object({
+            layout: LayoutTypeSchema,
+            children: Type.Array(Self),
+            gap: Type.Optional(Type.String()),
+            align: Type.Optional(Type.String()),
+            columns: Type.Optional(Type.Number()),
+            header: Type.Optional(Type.String()),
+            padding: Type.Optional(Type.String()),
+            wrap: Type.Optional(Type.Boolean()),
+        }),
 
-// --- Layout Node (recursive) ---
+        // Each loop — iterates over an array in the data context
+        // `each`: JSONPath-like source (e.g. "$.books", "{{items}}")
+        // `as`: loop variable name scoped to the template
+        // `template`: node to render per item
+        Type.Object({
+            each: Type.String(),
+            as: Type.String(),
+            template: Self,
+        }),
+
+        // Conditional — renders `then` or `else` based on a truthy expression
+        // `when`: expression to evaluate (e.g. "{{item.is_public}}")
+        Type.Object({
+            when: Type.String(),
+            then: Self,
+            else: Type.Optional(Self),
+        }),
+    ]),
+);
+
+export type WidgetNode = Static<typeof WidgetNodeSchema>;
+
+// --- Layout Node (standalone type for backward compat) ---
 
 export const LayoutNodeSchema = Type.Recursive((Self) =>
     Type.Object({
@@ -82,6 +124,7 @@ export const LayoutNodeSchema = Type.Recursive((Self) =>
 export type LayoutNode = Static<typeof LayoutNodeSchema>;
 
 // --- Widget Template (root of any widget) ---
+// Now uses the full WidgetNode which supports each/when control flow
 
-export const WidgetTemplateSchema = LayoutNodeSchema;
-export type WidgetTemplate = LayoutNode;
+export const WidgetTemplateSchema = WidgetNodeSchema;
+export type WidgetTemplate = WidgetNode;

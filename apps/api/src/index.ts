@@ -28,6 +28,7 @@ import { gmailRoutes } from './routes/gmail';
 import { googleCalendarRoutes } from './routes/google-calendar';
 import { oauthRoutes } from './routes/oauth';
 import { jsonDocumentRoutes } from './routes/json-documents';
+import { canvasRoutes } from './routes/canvases';
 import { realtimeWebSocket } from './ws/realtime.ws';
 import { botAuthRoutes } from './routes/bot-auth';
 import { customBotRoutes } from './routes/custom-bots';
@@ -102,6 +103,7 @@ async function main() {
         .use(googleCalendarRoutes)
         .use(oauthRoutes)
         .use(jsonDocumentRoutes)
+        .use(canvasRoutes)
         .use(botAuthRoutes)
         .use(customBotRoutes)
         .use(botMessagesRoutes)

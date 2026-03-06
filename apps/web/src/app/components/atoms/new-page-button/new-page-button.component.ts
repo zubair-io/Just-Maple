@@ -8,6 +8,12 @@ import {
 } from '@angular/cdk/overlay';
 import type { PageType } from '@maple/shared';
 
+interface DropdownItem {
+  type: PageType;
+  icon: string;
+  label: string;
+}
+
 @Component({
   selector: 'app-new-page-button',
   standalone: true,
@@ -35,6 +41,13 @@ export class NewPageButtonComponent {
 
   /** Dropdown state */
   readonly isDropdownOpen = signal(false);
+
+  readonly dropdownItems: DropdownItem[] = [
+    { type: 'memo', icon: 'article', label: 'New Note' },
+    { type: 'whiteboard', icon: 'draw', label: 'New Whiteboard' },
+    { type: 'json', icon: 'data_object', label: 'New JSON Page' },
+    { type: 'canvas', icon: 'dashboard', label: 'New Canvas' },
+  ];
 
   /** CDK overlay positions: below-right, then above-right */
   readonly dropdownPositions: ConnectedPosition[] = [

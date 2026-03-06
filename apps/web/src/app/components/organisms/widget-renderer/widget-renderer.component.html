@@ -7,9 +7,17 @@
       <app-widget-renderer [node]="child" [data]="data()" />
     }
   </div>
-}
-
-@if (isAtom()) {
+} @else if (isEach()) {
+  @for (item of getEachArray(); track $index) {
+    <app-widget-renderer [node]="getEachTemplate()" [data]="childContext(getEachAs(), item)" />
+  }
+} @else if (isWhen()) {
+  @if (getWhenCondition()) {
+    <app-widget-renderer [node]="getWhenThen()" [data]="data()" />
+  } @else if (getWhenElse()) {
+    <app-widget-renderer [node]="getWhenElse()!" [data]="data()" />
+  }
+} @else if (isAtom()) {
   @switch (getAtomType()) {
     @case ('text') {
       <app-text

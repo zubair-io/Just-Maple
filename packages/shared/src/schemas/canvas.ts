@@ -31,11 +31,18 @@ export type CanvasConnector = Static<typeof CanvasConnectorSchema>;
 
 export const CanvasWidgetSchema = Type.Object({
     id: Type.String(),
+    title: Type.Optional(Type.String()),
     connectorId: Type.Optional(Type.String()),
     createdAt: Type.String({ format: 'date-time' }),
+    updatedAt: Type.Optional(Type.String({ format: 'date-time' })),
     pollInterval: Type.Optional(Type.Number()),
     template: WidgetTemplateSchema,
+    // JSONPath-like path to extract root data from the connector response
+    // e.g. "$.books" or "$.data" — lets the template bind to the right array
+    dataPath: Type.Optional(Type.String()),
     initialData: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    // Prompt that generated this widget (for regeneration / editing)
+    prompt: Type.Optional(Type.String()),
     position: Type.Optional(
         Type.Object({
             x: Type.Number(),

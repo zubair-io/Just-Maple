@@ -24,6 +24,9 @@ export const DB_STORES = {
   LOCAL_NOTEBOOK_BOTS: 'local-notebook-bots',
   // Local page history snapshots
   LOCAL_SNAPSHOTS: 'local-snapshots',
+  // Canvas stores
+  CANVAS: 'canvas',
+  CANVAS_DATA: 'canvas_data',
 } as const;
 
 export type DBStoreName = (typeof DB_STORES)[keyof typeof DB_STORES];

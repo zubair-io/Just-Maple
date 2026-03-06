@@ -2,34 +2,24 @@
  * Widget Renderer Component - Logic Tests
  *
  * Tests the value resolution pipeline (bind → map → format),
- * layout class generation, and helper methods.
+ * layout class generation, helper methods, and the exported pure functions
+ * (resolvePath, interpolate, isTruthy).
  *
- * Note: Uses direct signal manipulation instead of TestBed, since the
+ * Note: Uses direct function testing instead of TestBed, since the
  * Angular TestBed environment has pre-existing issues in this project.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
-import { signal } from '@angular/core';
-
-// Extract and test the pure logic functions from the component.
-// We replicate the component logic here because the component uses
-// `input.required()` which can't be called outside Angular's DI context.
-
-function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
-  const parts = path.split('.');
-  let current: unknown = obj;
-  for (const part of parts) {
-    if (current == null) return undefined;
-    if (typeof current === 'object') {
-      current = (current as Record<string, unknown>)[part];
-    } else {
-      return undefined;
-    }
-  }
-  return current;
-}
+import { describe, it, expect } from 'vitest';
+import { resolvePath, interpolate, isTruthy } from '../widget-renderer.component';
 
 function resolve(node: Record<string, unknown>, data: Record<string, unknown>): unknown {
-  const raw = node['bind'] ? getNestedValue(data, node['bind'] as string) : node['value'];
+  let raw: unknown;
+  if (node['bind']) {
+    raw = resolvePath(node['bind'] as string, data);
+  } else if (typeof node['value'] === 'string' && (node['value'] as string).includes('{{')) {
+    raw = interpolate(node['value'] as string, data);
+  } else {
+    raw = node['value'];
+  }
   const map = node['map'] as Record<string, unknown> | undefined;
   const mapped = map ? (map[String(raw)] ?? map['_default'] ?? raw) : raw;
   const format = node['format'] as string | undefined;
@@ -307,25 +297,162 @@ describe('WidgetRendererComponent Logic', () => {
     });
   });
 
-  describe('getNestedValue', () => {
+  describe('resolvePath', () => {
     it('should access top-level keys', () => {
-      expect(getNestedValue({ foo: 'bar' }, 'foo')).toBe('bar');
+      expect(resolvePath('foo', { foo: 'bar' })).toBe('bar');
     });
 
     it('should access deeply nested keys', () => {
-      expect(getNestedValue({ a: { b: { c: 42 } } }, 'a.b.c')).toBe(42);
+      expect(resolvePath('a.b.c', { a: { b: { c: 42 } } })).toBe(42);
+    });
+
+    it('should strip $. prefix', () => {
+      expect(resolvePath('$.books', { books: [1, 2] })).toEqual([1, 2]);
+    });
+
+    it('should unwrap {{expression}}', () => {
+      expect(resolvePath('{{book.title}}', { book: { title: 'Dune' } })).toBe('Dune');
+    });
+
+    it('should handle {{$.path}}', () => {
+      expect(resolvePath('{{$.name}}', { name: 'Alice' })).toBe('Alice');
     });
 
     it('should return undefined for missing paths', () => {
-      expect(getNestedValue({ a: 1 }, 'b')).toBeUndefined();
+      expect(resolvePath('b', { a: 1 })).toBeUndefined();
     });
 
     it('should return undefined for paths through non-objects', () => {
-      expect(getNestedValue({ a: 'string' }, 'a.b')).toBeUndefined();
+      expect(resolvePath('a.b', { a: 'string' })).toBeUndefined();
     });
 
     it('should return undefined for paths through null', () => {
-      expect(getNestedValue({ a: null } as any, 'a.b')).toBeUndefined();
+      expect(resolvePath('a.b', { a: null } as any)).toBeUndefined();
+    });
+
+    it('should return undefined for empty path', () => {
+      expect(resolvePath('', { a: 1 })).toBeUndefined();
+    });
+  });
+
+  describe('interpolate', () => {
+    it('should replace single expression', () => {
+      expect(interpolate('Hello {{name}}', { name: 'World' })).toBe('Hello World');
+    });
+
+    it('should replace multiple expressions', () => {
+      expect(interpolate('by {{author}} ({{year}})', { author: 'Frank Herbert', year: 1965 })).toBe(
+        'by Frank Herbert (1965)',
+      );
+    });
+
+    it('should resolve nested paths in expressions', () => {
+      expect(interpolate('{{book.title}}', { book: { title: 'Dune' } })).toBe('Dune');
+    });
+
+    it('should replace missing values with empty string', () => {
+      expect(interpolate('Hi {{name}}!', {})).toBe('Hi !');
+    });
+
+    it('should leave text without expressions unchanged', () => {
+      expect(interpolate('plain text', {})).toBe('plain text');
+    });
+  });
+
+  describe('isTruthy', () => {
+    it('should return true for truthy values', () => {
+      expect(isTruthy('hello')).toBe(true);
+      expect(isTruthy(1)).toBe(true);
+      expect(isTruthy(true)).toBe(true);
+      expect(isTruthy([])).toBe(true);
+      expect(isTruthy({})).toBe(true);
+    });
+
+    it('should return false for falsy values', () => {
+      expect(isTruthy(null)).toBe(false);
+      expect(isTruthy(undefined)).toBe(false);
+      expect(isTruthy(false)).toBe(false);
+      expect(isTruthy(0)).toBe(false);
+      expect(isTruthy('')).toBe(false);
+    });
+  });
+
+  describe('resolve with {{interpolation}}', () => {
+    it('should interpolate value strings', () => {
+      expect(resolve({ atom: 'text', value: 'by {{author}}' }, { author: 'Herbert' })).toBe(
+        'by Herbert',
+      );
+    });
+
+    it('should interpolate multiple expressions in value', () => {
+      expect(
+        resolve(
+          { atom: 'text', value: '{{title}} by {{author}}' },
+          { title: 'Dune', author: 'Herbert' },
+        ),
+      ).toBe('Dune by Herbert');
+    });
+
+    it('should prefer bind over value interpolation', () => {
+      expect(
+        resolve({ atom: 'text', bind: 'name', value: '{{other}}' }, { name: 'A', other: 'B' }),
+      ).toBe('A');
+    });
+  });
+
+  describe('resolve with $. prefix', () => {
+    it('should resolve $.path bind', () => {
+      expect(resolve({ atom: 'text', bind: '$.title' }, { title: 'Dune' })).toBe('Dune');
+    });
+
+    it('should resolve $.nested.path bind', () => {
+      expect(resolve({ atom: 'stat', bind: '$.metadata.count' }, { metadata: { count: 42 } })).toBe(
+        42,
+      );
+    });
+  });
+
+  describe('each node helpers', () => {
+    it('should resolve array from $.path', () => {
+      const data = { books: [{ title: 'A' }, { title: 'B' }] };
+      const resolved = resolvePath('$.books', data);
+      expect(Array.isArray(resolved)).toBe(true);
+      expect(resolved).toHaveLength(2);
+    });
+
+    it('should return empty array for non-array path', () => {
+      const resolved = resolvePath('$.count', { count: 42 });
+      expect(Array.isArray(resolved)).toBe(false);
+    });
+
+    it('should extend context with loop variable', () => {
+      const parentCtx = { books: [{ title: 'Dune' }] };
+      const item = { title: 'Dune' };
+      const childCtx = { ...parentCtx, book: item };
+      expect(childCtx['book']).toEqual(item);
+      expect(childCtx['books']).toEqual(parentCtx.books);
+    });
+  });
+
+  describe('when node helpers', () => {
+    it('should evaluate truthy condition', () => {
+      const val = resolvePath('{{item.is_public}}', { item: { is_public: true } });
+      expect(isTruthy(val)).toBe(true);
+    });
+
+    it('should evaluate falsy condition', () => {
+      const val = resolvePath('{{item.is_public}}', { item: { is_public: false } });
+      expect(isTruthy(val)).toBe(false);
+    });
+
+    it('should evaluate null as falsy', () => {
+      const val = resolvePath('{{item.missing}}', { item: {} });
+      expect(isTruthy(val)).toBe(false);
+    });
+
+    it('should evaluate non-empty string as truthy', () => {
+      const val = resolvePath('{{status}}', { status: 'active' });
+      expect(isTruthy(val)).toBe(true);
     });
   });
 

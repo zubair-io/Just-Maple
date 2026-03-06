@@ -1,0 +1,24 @@
+<div
+  class="flex items-center gap-2 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+>
+  <input
+    type="text"
+    class="flex-1 bg-transparent border-none outline-none text-sm text-[var(--color-text-main)] placeholder:text-[var(--color-text-muted)]/50"
+    placeholder="Describe a widget to add..."
+    [value]="promptText()"
+    [disabled]="isGenerating()"
+    (input)="onInput($event)"
+    (keydown)="onKeydown($event)"
+  />
+  <button
+    class="px-3 py-1.5 text-sm font-medium rounded-md bg-[var(--color-primary)] text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[var(--color-primary-hover)] transition-colors"
+    [disabled]="!promptText().trim() || isGenerating()"
+    (click)="onSubmit()"
+  >
+    @if (isGenerating()) {
+      Generating...
+    } @else {
+      Add Widget
+    }
+  </button>
+</div>

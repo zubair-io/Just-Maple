@@ -1,0 +1,41 @@
+<div class="canvas-view flex flex-col h-full">
+  <app-canvas-prompt-bar [isGenerating]="isGenerating()" (promptSubmit)="onPromptSubmit($event)" />
+
+  @if (isLoading()) {
+    <div class="flex-1 flex items-center justify-center text-[var(--color-text-muted)]">
+      Loading canvas...
+    </div>
+  } @else if (widgets().length === 0) {
+    <div class="flex-1 flex items-center justify-center text-[var(--color-text-muted)] text-sm">
+      No widgets yet. Type a prompt above to generate one.
+    </div>
+  } @else {
+    <div class="canvas-widgets flex flex-col gap-4 p-4 overflow-y-auto flex-1">
+      @for (widget of widgets(); track widget.id) {
+        <div
+          class="widget-card rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+        >
+          @if (widget.title) {
+            <div
+              class="flex items-center justify-between mb-3 pb-2 border-b border-[var(--color-border)]"
+            >
+              <h3 class="text-sm font-medium text-[var(--color-text-main)]">
+                {{ widget.title }}
+              </h3>
+              <button
+                class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-error)] transition-colors"
+                (click)="onWidgetDelete(widget.id)"
+              >
+                Remove
+              </button>
+            </div>
+          }
+          <app-widget-renderer
+            [node]="widget.template"
+            [data]="$any(getWidgetData(widget.id)() ?? {})"
+          />
+        </div>
+      }
+    </div>
+  }
+</div>

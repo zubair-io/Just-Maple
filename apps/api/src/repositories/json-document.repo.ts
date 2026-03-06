@@ -8,6 +8,7 @@ interface JsonDocumentDocument {
     notebookId: string; // Denormalized for queries
 
     data: unknown; // Arbitrary JSON payload
+    description?: string; // Human-readable description (helps AI understand the data)
     schema: unknown | null; // Optional JSON Schema for validation
     version: number; // Optimistic concurrency control
 
@@ -21,6 +22,7 @@ export interface JsonDocumentResponse {
     pageId: string;
     notebookId: string;
     data: unknown;
+    description?: string;
     schema: unknown | null;
     version: number;
     createdAt: string;
@@ -38,6 +40,7 @@ function toJsonDocumentResponse(doc: JsonDocumentDocument): JsonDocumentResponse
         pageId: doc.pageId,
         notebookId: doc.notebookId,
         data: doc.data,
+        description: doc.description,
         schema: doc.schema ?? null,
         version: doc.version,
         createdAt: doc.createdAt.toISOString(),
@@ -204,6 +207,29 @@ export async function removeJsonDocumentSchema(id: string): Promise<JsonDocument
         {
             $set: {
                 schema: null,
+                updatedAt: now,
+            },
+        },
+        { returnDocument: 'after' },
+    );
+
+    return result ? toJsonDocumentResponse(result) : null;
+}
+
+/**
+ * Update JSON document description
+ */
+export async function updateJsonDocumentDescription(
+    id: string,
+    description: string,
+): Promise<JsonDocumentResponse | null> {
+    const now = new Date();
+
+    const result = await getCollection().findOneAndUpdate(
+        { id },
+        {
+            $set: {
+                description,
                 updatedAt: now,
             },
         },

@@ -238,6 +238,17 @@ export class JsonDocumentService {
   }
 
   /**
+   * Update the description of a JSON document
+   */
+  updateDescription(pageId: string, description: string): Observable<JsonDocument> {
+    return this.http
+      .put<{ document: JsonDocument }>(`/api/json-documents/${pageId}/description`, {
+        description,
+      })
+      .pipe(map((res) => res.document));
+  }
+
+  /**
    * Create a new JSON page + initialize the JSON document
    */
   async createJsonPage(notebookId?: string): Promise<{ page: Page }> {

@@ -8,6 +8,8 @@ import { botRoutes } from '../../routes/bots';
 import { aiRoutes } from '../../routes/ai';
 import { templateRoutes } from '../../routes/templates';
 import { linkRoutes } from '../../routes/links';
+import { jsonDocumentRoutes } from '../../routes/json-documents';
+import { canvasRoutes } from '../../routes/canvases';
 
 export function createTestApp() {
     return new Elysia()
@@ -25,6 +27,8 @@ export function createTestApp() {
         .use(aiRoutes)
         .use(templateRoutes)
         .use(linkRoutes)
+        .use(jsonDocumentRoutes)
+        .use(canvasRoutes)
         .get('/api/health', () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 }
 

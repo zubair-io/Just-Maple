@@ -37,29 +37,17 @@
   <div
     class="w-44 bg-[var(--color-surface)] rounded-lg shadow-lg border border-[var(--color-border)] py-1"
   >
-    <button
-      (click)="createPage('memo')"
-      class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-    >
-      <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">article</span>
-      <span>New Note</span>
-    </button>
-    <button
-      (click)="createPage('whiteboard')"
-      class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-    >
-      <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">draw</span>
-      <span>New Whiteboard</span>
-    </button>
-    <button
-      (click)="createPage('json')"
-      class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-    >
-      <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
-        >data_object</span
+    @for (item of dropdownItems; track item.type) {
+      <button
+        (click)="createPage(item.type)"
+        class="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
       >
-      <span>New JSON Page</span>
-    </button>
+        <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]">{{
+          item.icon
+        }}</span>
+        <span>{{ item.label }}</span>
+      </button>
+    }
     @if (showConversation()) {
       <button
         (click)="createPage('message')"

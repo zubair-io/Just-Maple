@@ -9,10 +9,18 @@ import {
   MessagePageGuard,
   GmailPageGuard,
   JsonPageGuard,
+  CanvasPageGuard,
 } from './guards/page-type.guard';
 import { swUpdateGuard } from './guards/sw-update.guard';
 
 export const routes: Routes = [
+  {
+    path: 'atoms',
+    loadComponent: () =>
+      import('./pages/atoms-showcase/atoms-showcase.component').then(
+        (m) => m.AtomsShowcaseComponent,
+      ),
+  },
   // Auth routes - must come before the catch-all :notebookId route
   {
     path: 'login',
@@ -217,6 +225,15 @@ export const routes: Routes = [
             canMatch: [JsonPageGuard],
             loadComponent: () =>
               import('./pages/json-view/json-view.component').then((m) => m.JsonViewComponent),
+          },
+          // Canvas-type page - AI-generated reactive widget canvas
+          {
+            path: ':id',
+            canMatch: [CanvasPageGuard],
+            loadComponent: () =>
+              import('./pages/canvas-view/canvas-view.component').then(
+                (m) => m.CanvasViewComponent,
+              ),
           },
           // Memo-type page - shows collaborative notebook editor (default for pages)
           {

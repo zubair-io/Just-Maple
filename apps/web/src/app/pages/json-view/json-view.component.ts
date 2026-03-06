@@ -36,6 +36,7 @@ export class JsonViewComponent implements OnDestroy {
 
   // JSON document state
   readonly data = signal<unknown>({});
+  readonly description = signal<string>('');
   readonly schema = signal<unknown | null>(null);
   readonly version = signal(0);
 
@@ -64,6 +65,7 @@ export class JsonViewComponent implements OnDestroy {
     try {
       const doc = await firstValueFrom(this.jsonDocService.fetchDocument(pageId));
       this.data.set(doc.data);
+      this.description.set((doc as any).description ?? '');
       this.schema.set(doc.schema);
       this.version.set(doc.version);
     } catch (err) {
@@ -122,6 +124,21 @@ export class JsonViewComponent implements OnDestroy {
       this.schema.set(null);
     } catch {
       this.error.set('Failed to remove schema');
+    }
+  }
+
+  async onDescriptionChange(event: Event): Promise<void> {
+    const pageId = this.pageId();
+    if (!pageId) return;
+
+    const value = (event.target as HTMLInputElement).value.trim();
+    if (value === this.description()) return;
+
+    this.description.set(value);
+    try {
+      await firstValueFrom(this.jsonDocService.updateDescription(pageId, value));
+    } catch {
+      this.error.set('Failed to save description');
     }
   }
 

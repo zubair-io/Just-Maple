@@ -32,6 +32,7 @@ export const PageTypeSchema = Type.Union([
     Type.Literal('recording'),
     Type.Literal('gmail'), // Gmail integration - owner-only, local email storage
     Type.Literal('json'), // JSON data document - API-editable structured data
+    Type.Literal('canvas'), // Widget canvas - AI-generated reactive widgets
 ]);
 
 export type PageType = Static<typeof PageTypeSchema>;

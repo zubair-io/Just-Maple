@@ -181,6 +181,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('recording'),
                         t.Literal('gmail'),
                         t.Literal('json'),
+                        t.Literal('canvas'),
                     ]),
                 ),
                 title: t.Optional(t.String({ maxLength: 255 })),
