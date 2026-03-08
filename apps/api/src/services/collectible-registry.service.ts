@@ -2,6 +2,7 @@ import { getLegos, fetchBricksetData, LegoThemes } from './lego.service';
 import {
     createRegistry,
     findRegistryByProviderId,
+    findRegistriesByProviderIds,
     updateRegistry,
 } from '../repositories/collectible-registry.repo';
 import type { CollectibleRegistry } from '@maple/shared';
@@ -220,14 +221,10 @@ export async function syncLegoSets(options: SyncLegoSetsOptions = {}) {
         );
 
         const setIds = setsToProcess.map((set) => set.set);
-        const existingRegistries = await Promise.all(
-            setIds.map((id) => findRegistryByProviderId('lego', id)),
-        );
+        const existingRegistriesMap = await findRegistriesByProviderIds('lego', setIds);
 
-        const incompleteSets = existingRegistries
+        const incompleteSets = [...existingRegistriesMap.values()]
             .filter((reg) => {
-                if (!reg) return false;
-
                 // Check if UPC or EAN is missing, or description is empty
                 const missingBarcode = !reg.upc && !reg.ean;
                 const emptyDescription =
@@ -237,7 +234,7 @@ export async function syncLegoSets(options: SyncLegoSetsOptions = {}) {
 
                 return missingBarcode || emptyDescription;
             })
-            .map((reg) => reg!.providerId);
+            .map((reg) => reg.providerId);
 
         setsToSync = setsToProcess.filter((set) => incompleteSets.includes(set.set));
 
@@ -245,8 +242,8 @@ export async function syncLegoSets(options: SyncLegoSetsOptions = {}) {
             `[Collectible Registry Service] Found ${setsToSync.length} sets with missing data to re-sync`,
         );
 
-        const completeCount = existingRegistries.filter(
-            (reg) => reg && !incompleteSets.includes(reg.providerId),
+        const completeCount = [...existingRegistriesMap.values()].filter(
+            (reg) => !incompleteSets.includes(reg.providerId),
         ).length;
         skipped = completeCount;
     } else {
@@ -254,26 +251,22 @@ export async function syncLegoSets(options: SyncLegoSetsOptions = {}) {
         const setIds = setsToProcess.map((set) => set.set);
         console.log(`[Collectible Registry Service] Checking ${setIds.length} sets in database...`);
 
-        const existingRegistries = await Promise.all(
-            setIds.map((id) => findRegistryByProviderId('lego', id)),
-        );
-
-        const existingProviderIds = new Set(
-            existingRegistries.filter((reg) => reg !== null).map((reg) => reg!.providerId),
-        );
+        const existingRegistriesMap = await findRegistriesByProviderIds('lego', setIds);
 
         console.log(
-            `[Collectible Registry Service] Found ${existingProviderIds.size} sets already in database`,
+            `[Collectible Registry Service] Found ${existingRegistriesMap.size} sets already in database`,
         );
 
         // Filter out sets that already exist
-        setsToSync = setsToProcess.filter((set) => !existingProviderIds.has(set.set));
-        skipped = existingProviderIds.size;
+        setsToSync = setsToProcess.filter((set) => !existingRegistriesMap.has(set.set));
+        skipped = existingRegistriesMap.size;
     }
 
     console.log(`[Collectible Registry Service] ${setsToSync.length} sets need to be synced`);
 
     // Sync each set
+    let delayMs = 1500; // Start with 1.5s, increase on rate limit recovery
+
     for (const set of setsToSync) {
         try {
             console.log(
@@ -290,13 +283,27 @@ export async function syncLegoSets(options: SyncLegoSetsOptions = {}) {
 
             syncedProviderIds.push(set.set);
 
-            // Add 1.5s delay between requests to avoid rate limiting
-            await new Promise((resolve) => setTimeout(resolve, 1500));
+            // Delay between requests to avoid rate limiting
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
         } catch (error: any) {
-            // Check if this is a rate limit error
-            if (error.statusCode === 429 || error.message?.includes('Rate limited')) {
-                const rateLimitMsg = `Rate limited by BrightData at ${set.set}. Stopping sync.`;
-                console.error(`[Collectible Registry Service] ${rateLimitMsg}`);
+            // Check if this is a rate limit error (BrightData or Cosmos DB)
+            const isRateLimit =
+                error.statusCode === 429 ||
+                error.code === 16500 ||
+                error.message?.includes('Rate limited') ||
+                error.message?.includes('TooManyRequests') ||
+                error.message?.includes('Request rate is large');
+
+            if (isRateLimit) {
+                // Extract RetryAfterMs from Cosmos DB error if available
+                const retryMatch = error.message?.match(/RetryAfterMs=(\d+)/);
+                const retryAfterMs = retryMatch ? parseInt(retryMatch[1], 10) : 3000;
+
+                const source = error.code === 16500 ? 'Cosmos DB' : 'BrightData';
+                const rateLimitMsg = `Rate limited by ${source} at ${set.set}. Stopping sync.`;
+                console.error(
+                    `[Collectible Registry Service] ${rateLimitMsg} (RetryAfter: ${retryAfterMs}ms)`,
+                );
                 errors.push(rateLimitMsg);
                 rateLimited = true;
                 break; // Stop the batch processing

@@ -1,5 +1,6 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
+import { withCosmosRetry } from '../db/cosmos-retry';
 import type { CollectibleRegistry, RegistryTag } from '@maple/shared';
 
 interface CollectibleRegistryDocument {
@@ -84,8 +85,33 @@ export async function findRegistryByProviderId(
     provider: string,
     providerId: string,
 ): Promise<CollectibleRegistry | null> {
-    const doc = await getCollection().findOne({ provider, providerId });
+    const doc = await withCosmosRetry(
+        () => getCollection().findOne({ provider, providerId }),
+        `findByProviderId(${provider}/${providerId})`,
+    );
     return doc ? toRegistryResponse(doc) : null;
+}
+
+/**
+ * Batch lookup registries by provider IDs.
+ * Uses a single $in query instead of many individual findOne calls to reduce RU consumption.
+ */
+export async function findRegistriesByProviderIds(
+    provider: string,
+    providerIds: string[],
+): Promise<Map<string, CollectibleRegistry>> {
+    const docs = await withCosmosRetry(
+        () =>
+            getCollection()
+                .find({ provider, providerId: { $in: providerIds } })
+                .toArray(),
+        `findByProviderIds(${provider}, ${providerIds.length} ids)`,
+    );
+    const map = new Map<string, CollectibleRegistry>();
+    for (const doc of docs) {
+        map.set(doc.providerId, toRegistryResponse(doc));
+    }
+    return map;
 }
 
 export async function searchRegistries(
@@ -134,7 +160,7 @@ export async function createRegistry(
         updatedAt: new Date(data.updatedAt),
     };
 
-    await getCollection().insertOne(doc);
+    await withCosmosRetry(() => getCollection().insertOne(doc), `insertOne(${data.providerId})`);
     return toRegistryResponse(doc);
 }
 
@@ -147,10 +173,14 @@ export async function updateRegistry(
         updatedAt: new Date(),
     };
 
-    const result = await getCollection().findOneAndUpdate(
-        { _id: new ObjectId(id) },
-        { $set: updateDoc },
-        { returnDocument: 'after' },
+    const result = await withCosmosRetry(
+        () =>
+            getCollection().findOneAndUpdate(
+                { _id: new ObjectId(id) },
+                { $set: updateDoc },
+                { returnDocument: 'after' },
+            ),
+        `updateRegistry(${id})`,
     );
 
     return result ? toRegistryResponse(result) : null;
