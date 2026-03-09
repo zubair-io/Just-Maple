@@ -4,10 +4,11 @@
   >
     <!-- Left side: Menu + Page name -->
     <div class="flex items-center gap-2 text-sm text-[var(--color-text-main)] min-w-0">
-      <!-- Menu button (mobile only) -->
+      <!-- Menu button (mobile only, or always when native sidebar is active) -->
       <button
         (click)="openSidebarOnMobile()"
-        class="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors flex-shrink-0"
+        class="flex items-center justify-center w-8 h-8 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors flex-shrink-0"
+        [class.md:hidden]="!hasNativeSidebar"
         title="Open menu"
       >
         <span class="material-symbols-rounded text-xl">menu</span>

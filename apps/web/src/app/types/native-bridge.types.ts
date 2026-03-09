@@ -112,7 +112,11 @@ export type WebToNativeMessageType =
   | { type: 'gmailOAuthResult'; payload: GmailOAuthResultPayload }
   | { type: 'shareFile'; payload: ShareFilePayload }
   | { type: 'apiRequest'; payload: ApiRequestPayload }
-  | { type: 'getICloudContainerPath' };
+  | { type: 'getICloudContainerPath' }
+  | { type: 'sidebarActiveChanged'; payload: SidebarActiveChangedPayload }
+  | { type: 'sidebarDataChanged'; payload: SidebarDataChangedPayload }
+  | { type: 'sidebarUnreadCounts'; payload: SidebarUnreadCountsPayload }
+  | { type: 'toggleNativeSidebar' };
 
 // MARK: - Native to Web Messages
 
@@ -127,6 +131,8 @@ export interface InitialState {
   timestamp: string;
   serverUrl: string;
   serverName: string;
+  /** When true, the native app renders its own sidebar and the web sidebar should be hidden */
+  hasNativeSidebar?: boolean;
   /** Deep link URL if the app was opened via a universal link (e.g., email sign-in) */
   initialDeepLink?: string;
 }
@@ -266,6 +272,76 @@ export interface ICloudContainerPathResult {
   folders: Array<{ name: string; path: string }>;
 }
 
+// MARK: - Native Sidebar Payloads (Native → Web)
+
+export interface SidebarNavigatePayload {
+  notebookId: string;
+  pageId?: string;
+}
+
+export interface SidebarPageCreatedPayload {
+  page: {
+    id: string;
+    title: string;
+    type: string;
+    notebookId: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface SidebarPageTrashedPayload {
+  pageId: string;
+}
+
+export interface SidebarPageRenamedPayload {
+  pageId: string;
+  title: string;
+}
+
+export interface SidebarPageMovedPayload {
+  pageId: string;
+  notebookId: string;
+}
+
+export interface SidebarNotebookCreatedPayload {
+  notebook: {
+    _id: string;
+    label: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface SidebarNotebookRenamedPayload {
+  notebookId: string;
+  label: string;
+}
+
+export interface SidebarNotebookDeletedPayload {
+  notebookId: string;
+}
+
+export interface SidebarNewPagePayload {
+  notebookId: string;
+  type: string;
+}
+
+// MARK: - Native Sidebar Payloads (Web → Native)
+
+export interface SidebarActiveChangedPayload {
+  notebookId?: string;
+  pageId?: string;
+}
+
+export interface SidebarDataChangedPayload {
+  entity: 'page' | 'notebook';
+  action: 'created' | 'updated' | 'deleted';
+  id: string;
+}
+
+export interface SidebarUnreadCountsPayload {
+  counts: Array<{ pageId: string; count: number }>;
+}
+
 export type NativeToWebMessageType =
   | { type: 'initialize'; payload: InitialState }
   | { type: 'testResponse'; payload: TestResponse }
@@ -292,6 +368,15 @@ export type NativeToWebMessageType =
   | { type: 'authSessionResult'; payload: AuthSessionResult }
   | { type: 'apiResponse'; payload: ApiResponsePayload }
   | { type: 'icloudContainerPath'; payload: ICloudContainerPathResult }
+  | { type: 'sidebarNavigate'; payload: SidebarNavigatePayload }
+  | { type: 'sidebarPageCreated'; payload: SidebarPageCreatedPayload }
+  | { type: 'sidebarPageTrashed'; payload: SidebarPageTrashedPayload }
+  | { type: 'sidebarPageRenamed'; payload: SidebarPageRenamedPayload }
+  | { type: 'sidebarPageMoved'; payload: SidebarPageMovedPayload }
+  | { type: 'sidebarNotebookCreated'; payload: SidebarNotebookCreatedPayload }
+  | { type: 'sidebarNotebookRenamed'; payload: SidebarNotebookRenamedPayload }
+  | { type: 'sidebarNotebookDeleted'; payload: SidebarNotebookDeletedPayload }
+  | { type: 'sidebarNewPage'; payload: SidebarNewPagePayload }
   | { type: 'error'; payload: ErrorMessage };
 
 // MARK: - Bridge Interface

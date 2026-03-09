@@ -6,6 +6,7 @@ import { toDisplaySlug } from '@maple/shared/utils/slug';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { VersionHistoryComponent } from '../version-history/version-history.component';
 import { UiStateService } from '../../../services/ui-state.service';
+import { NativeBridgeService } from '../../../services/native-bridge.service';
 
 export type ExportFormat = 'markdown' | 'html';
 
@@ -19,6 +20,8 @@ export type ExportFormat = 'markdown' | 'html';
 export class NoteHeaderComponent {
   private readonly clipboard = inject(Clipboard);
   private readonly uiStateService = inject(UiStateService);
+  private readonly nativeBridge = inject(NativeBridgeService);
+  readonly hasNativeSidebar = this.nativeBridge.hasNativeSidebar();
 
   readonly page = input<Page | null>(null);
   readonly notebook = input<Notebook | null>(null);

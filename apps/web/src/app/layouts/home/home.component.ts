@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, OnDestroy, HostListener } from '@angular/core';
+import { Component, inject, signal, effect, OnInit, OnDestroy, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd, ActivatedRoute } from '@angular/router';
 import { Subscription, filter } from 'rxjs';
@@ -9,6 +9,8 @@ import { RealtimeService } from '../../services/realtime.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { RealtimeWSService } from '../../services/realtime-ws.service';
 import { LastVisitedService } from '../../services/last-visited.service';
+import { NativeBridgeService } from '../../services/native-bridge.service';
+import { NativeSidebarService } from '../../services/native-sidebar.service';
 import { SidebarComponent, DialogService } from '../../components';
 
 @Component({
@@ -29,6 +31,10 @@ export class HomeComponent implements OnInit, OnDestroy {
   private readonly realtimeWS = inject(RealtimeWSService);
   private readonly lastVisitedService = inject(LastVisitedService);
   private readonly dialogService = inject(DialogService);
+  private readonly nativeBridge = inject(NativeBridgeService);
+  private readonly nativeSidebar = inject(NativeSidebarService);
+
+  readonly hasNativeSidebar = this.nativeBridge.isNativeApp$;
 
   readonly selectedPageId = signal<string | null>(null);
   readonly selectedNotebookId = signal<string | null>(null);
@@ -53,7 +59,19 @@ export class HomeComponent implements OnInit, OnDestroy {
   private queryParamsSubscription?: Subscription;
   private hasHandledInitialRedirect = false;
 
+  constructor() {
+    // Re-initialize native sidebar when late native app detection occurs (iOS)
+    effect(() => {
+      if (this.nativeBridge.isNativeApp$()) {
+        this.nativeSidebar.init();
+      }
+    });
+  }
+
   ngOnInit(): void {
+    // Initialize native sidebar bridge if running in native app
+    this.nativeSidebar.init();
+
     // Cloud-only init: skip for unauthenticated local-only sessions
     if (this.authService.isAuthenticated()) {
       // Try to redirect to last visited location before loading notebooks
@@ -334,6 +352,8 @@ export class HomeComponent implements OnInit, OnDestroy {
   }
 
   onTouchStart(event: TouchEvent): void {
+    // Disable swipe gestures when native sidebar is active
+    if (this.hasNativeSidebar()) return;
     // Only track touch events on mobile
     if (typeof window === 'undefined' || window.innerWidth >= 768) return;
 

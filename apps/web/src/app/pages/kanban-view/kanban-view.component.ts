@@ -6,6 +6,7 @@ import { Subscription } from 'rxjs';
 import { PageService } from '../../services/page.service';
 import { NotebookService } from '../../services/notebook.service';
 import { UiStateService } from '../../services/ui-state.service';
+import { NativeBridgeService } from '../../services/native-bridge.service';
 import { KanbanDocumentService } from '../../services/kanban-document.service';
 import { KanbanBoardComponent } from '../../components/organisms/kanban-board/kanban-board.component';
 import { KanbanCardModalComponent } from '../../components/organisms/kanban-card-modal/kanban-card-modal.component';
@@ -24,6 +25,7 @@ export class KanbanViewComponent implements OnDestroy {
   private readonly pageService = inject(PageService);
   private readonly notebookService = inject(NotebookService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly nativeBridge = inject(NativeBridgeService);
   private readonly kanbanDocService = inject(KanbanDocumentService);
 
   private routeSubscription?: Subscription;
@@ -177,7 +179,10 @@ export class KanbanViewComponent implements OnDestroy {
   }
 
   openSidebarOnMobile(): void {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+    if (
+      this.nativeBridge.hasNativeSidebar() ||
+      (typeof window !== 'undefined' && window.innerWidth < 768)
+    ) {
       this.uiStateService.openSidebar();
     }
   }

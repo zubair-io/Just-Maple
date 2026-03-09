@@ -1,6 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { Dialog, type DialogRef } from '@angular/cdk/dialog';
 import type { TemplateGalleryDialogResult } from '../components/organisms/template-gallery-modal/template-gallery-modal.component';
+import { NativeBridgeService } from './native-bridge.service';
 
 /**
  * Options for opening the search modal with pre-configured state
@@ -20,6 +21,7 @@ export interface SearchModalOptions {
 @Injectable({ providedIn: 'root' })
 export class UiStateService {
   private readonly cdkDialog = inject(Dialog);
+  private readonly nativeBridge = inject(NativeBridgeService);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private searchDialogRef: DialogRef<unknown, any> | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,10 +58,22 @@ export class UiStateService {
   }
 
   toggleSidebar(): void {
+    if (this.nativeBridge.hasNativeSidebar()) {
+      console.log('[UiState] toggleSidebar → native bridge');
+      this.nativeBridge.toggleNativeSidebar();
+      return;
+    }
+    console.log('[UiState] toggleSidebar → web sidebar');
     this.sidebarOpen.update((open) => !open);
   }
 
   openSidebar(): void {
+    if (this.nativeBridge.hasNativeSidebar()) {
+      console.log('[UiState] openSidebar → native bridge');
+      this.nativeBridge.toggleNativeSidebar();
+      return;
+    }
+    console.log('[UiState] openSidebar → web sidebar');
     this.sidebarOpen.set(true);
   }
 

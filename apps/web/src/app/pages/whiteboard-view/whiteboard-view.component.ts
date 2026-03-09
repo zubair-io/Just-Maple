@@ -6,6 +6,7 @@ import { Subscription } from 'rxjs';
 import { PageService } from '../../services/page.service';
 import { NotebookService } from '../../services/notebook.service';
 import { UiStateService } from '../../services/ui-state.service';
+import { NativeBridgeService } from '../../services/native-bridge.service';
 import { WhiteboardComponent } from '@maple/whiteboard';
 import { NoteHeaderComponent, DialogService } from '../../components';
 
@@ -22,6 +23,7 @@ export class WhiteboardViewComponent implements OnDestroy {
   private readonly pageService = inject(PageService);
   private readonly notebookService = inject(NotebookService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly nativeBridge = inject(NativeBridgeService);
   private readonly dialogService = inject(DialogService);
 
   private routeSubscription?: Subscription;
@@ -70,7 +72,10 @@ export class WhiteboardViewComponent implements OnDestroy {
   }
 
   openSidebarOnMobile(): void {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+    if (
+      this.nativeBridge.hasNativeSidebar() ||
+      (typeof window !== 'undefined' && window.innerWidth < 768)
+    ) {
       this.uiStateService.openSidebar();
     }
   }

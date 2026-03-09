@@ -37,7 +37,7 @@ struct WebViewContainer: UIViewRepresentable {
 
 class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
     let webView: WKWebView
-    private var bridge: NativeBridge?
+    private(set) var bridge: NativeBridge?
     private var hasInitialized = false
 
     override init() {
@@ -61,8 +61,8 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
         let contentController = WKUserContentController()
         config.userContentController = contentController
 
-        // Enable App-Bound Domains for service worker support in WKWebView (iOS 14+)
-        // Requires WKAppBoundDomains in Info.plist
+        // Enable App-Bound Domains for service worker support and bridge messaging in WKWebView (iOS 14+)
+        // Requires WKAppBoundDomains in Info.plist (includes dev server IP in DEBUG via wildcard)
         #if os(iOS)
         config.limitsNavigationsToAppBoundDomains = true
         #endif

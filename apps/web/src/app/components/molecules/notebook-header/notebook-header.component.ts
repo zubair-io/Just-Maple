@@ -4,6 +4,7 @@ import type { Notebook, NotebookMember } from '@maple/shared';
 import { MemberAvatarGroupComponent } from '../member-avatar-group/member-avatar-group.component';
 import { NewPageButtonComponent } from '../../atoms/new-page-button/new-page-button.component';
 import { UiStateService } from '../../../services/ui-state.service';
+import { NativeBridgeService } from '../../../services/native-bridge.service';
 
 @Component({
   selector: 'app-notebook-header',
@@ -14,6 +15,8 @@ import { UiStateService } from '../../../services/ui-state.service';
 })
 export class NotebookHeaderComponent {
   private readonly uiStateService = inject(UiStateService);
+  private readonly nativeBridge = inject(NativeBridgeService);
+  readonly hasNativeSidebar = this.nativeBridge.hasNativeSidebar();
 
   // Required inputs
   readonly notebook = input.required<Notebook>();

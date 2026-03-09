@@ -747,7 +747,12 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = JapaneseMaple/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Just Maple";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Japanese Maple needs access to your camera to scan barcodes.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = testing;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Japanese Maple needs access to your microphone to record audio for transcription.";
+				INFOPLIST_KEY_NSSystemAdministrationUsageDescription = "Japanese Maple needs screen recording permission to capture system audio for multi-track transcription.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -814,7 +819,12 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = JapaneseMaple/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Just Maple";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Japanese Maple needs access to your camera to scan barcodes.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = testing;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Japanese Maple needs access to your microphone to record audio for transcription.";
+				INFOPLIST_KEY_NSSystemAdministrationUsageDescription = "Japanese Maple needs screen recording permission to capture system audio for multi-track transcription.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

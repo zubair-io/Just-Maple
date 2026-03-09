@@ -30,7 +30,31 @@ enum WebToNativeMessage: Codable {
     case writeFile(WriteFilePayload)
     case deleteFile(DeleteFilePayload)
     case getICloudContainerPath
+    case sidebarActiveChanged(SidebarActiveChangedPayload)
+    case sidebarDataChanged(SidebarDataChangedPayload)
+    case sidebarUnreadCounts(SidebarUnreadCountsPayload)
+    case toggleNativeSidebar
     case unknown
+
+    struct SidebarActiveChangedPayload: Codable {
+        let notebookId: String?
+        let pageId: String?
+    }
+
+    struct SidebarDataChangedPayload: Codable {
+        let entity: String // "page" | "notebook"
+        let action: String // "created" | "updated" | "deleted"
+        let id: String
+    }
+
+    struct SidebarUnreadCountsPayload: Codable {
+        let counts: [UnreadCount]
+
+        struct UnreadCount: Codable {
+            let pageId: String
+            let count: Int
+        }
+    }
 
     struct TestPayload: Codable {
         let message: String
@@ -139,6 +163,17 @@ enum WebToNativeMessage: Codable {
             self = .deleteFile(payload)
         case "getICloudContainerPath":
             self = .getICloudContainerPath
+        case "sidebarActiveChanged":
+            let payload = try container.decode(SidebarActiveChangedPayload.self, forKey: .payload)
+            self = .sidebarActiveChanged(payload)
+        case "sidebarDataChanged":
+            let payload = try container.decode(SidebarDataChangedPayload.self, forKey: .payload)
+            self = .sidebarDataChanged(payload)
+        case "sidebarUnreadCounts":
+            let payload = try container.decode(SidebarUnreadCountsPayload.self, forKey: .payload)
+            self = .sidebarUnreadCounts(payload)
+        case "toggleNativeSidebar":
+            self = .toggleNativeSidebar
         default:
             self = .unknown
         }
@@ -201,6 +236,17 @@ enum WebToNativeMessage: Codable {
             try container.encode(payload, forKey: .payload)
         case .getICloudContainerPath:
             try container.encode("getICloudContainerPath", forKey: .type)
+        case .sidebarActiveChanged(let payload):
+            try container.encode("sidebarActiveChanged", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .sidebarDataChanged(let payload):
+            try container.encode("sidebarDataChanged", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .sidebarUnreadCounts(let payload):
+            try container.encode("sidebarUnreadCounts", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .toggleNativeSidebar:
+            try container.encode("toggleNativeSidebar", forKey: .type)
         case .unknown:
             try container.encode("unknown", forKey: .type)
         }
@@ -232,6 +278,15 @@ enum NativeToWebMessage {
     case fileWriteResult(FileWriteResult)
     case fileDeleteResult(FileDeleteResult)
     case icloudContainerPath(ICloudContainerPathResult)
+    case sidebarNavigate(SidebarNavigatePayload)
+    case sidebarPageCreated(SidebarPageCreatedPayload)
+    case sidebarPageTrashed(SidebarPageTrashedPayload)
+    case sidebarPageRenamed(SidebarPageRenamedPayload)
+    case sidebarPageMoved(SidebarPageMovedPayload)
+    case sidebarNotebookCreated(SidebarNotebookCreatedPayload)
+    case sidebarNotebookRenamed(SidebarNotebookRenamedPayload)
+    case sidebarNotebookDeleted(SidebarNotebookDeletedPayload)
+    case sidebarNewPage(SidebarNewPagePayload)
     case error(ErrorMessage)
 
     struct InitialState: Codable {
@@ -240,6 +295,7 @@ enum NativeToWebMessage {
         let timestamp: String
         let serverUrl: String
         let serverName: String
+        let hasNativeSidebar: Bool?
     }
 
     struct TestResponse: Codable {
@@ -382,6 +438,59 @@ enum NativeToWebMessage {
         }
     }
 
+    struct SidebarNavigatePayload: Codable {
+        let notebookId: String
+        let pageId: String?
+    }
+
+    struct SidebarPageCreatedPayload: Codable {
+        let page: SidebarPage
+
+        struct SidebarPage: Codable {
+            let id: String
+            let title: String
+            let type: String
+            let notebookId: String
+        }
+    }
+
+    struct SidebarPageTrashedPayload: Codable {
+        let pageId: String
+    }
+
+    struct SidebarPageRenamedPayload: Codable {
+        let pageId: String
+        let title: String
+    }
+
+    struct SidebarPageMovedPayload: Codable {
+        let pageId: String
+        let notebookId: String
+    }
+
+    struct SidebarNotebookCreatedPayload: Codable {
+        let notebook: SidebarNotebook
+
+        struct SidebarNotebook: Codable {
+            let _id: String
+            let label: String
+        }
+    }
+
+    struct SidebarNotebookRenamedPayload: Codable {
+        let notebookId: String
+        let label: String
+    }
+
+    struct SidebarNotebookDeletedPayload: Codable {
+        let notebookId: String
+    }
+
+    struct SidebarNewPagePayload: Codable {
+        let notebookId: String
+        let type: String
+    }
+
     enum CodingKeys: String, CodingKey {
         case type
         case payload
@@ -464,6 +573,33 @@ extension NativeToWebMessage: Encodable {
         case .icloudContainerPath(let payload):
             try container.encode("icloudContainerPath", forKey: .type)
             try container.encode(payload, forKey: .payload)
+        case .sidebarNavigate(let payload):
+            try container.encode("sidebarNavigate", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .sidebarPageCreated(let payload):
+            try container.encode("sidebarPageCreated", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .sidebarPageTrashed(let payload):
+            try container.encode("sidebarPageTrashed", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .sidebarPageRenamed(let payload):
+            try container.encode("sidebarPageRenamed", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .sidebarPageMoved(let payload):
+            try container.encode("sidebarPageMoved", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .sidebarNotebookCreated(let payload):
+            try container.encode("sidebarNotebookCreated", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .sidebarNotebookRenamed(let payload):
+            try container.encode("sidebarNotebookRenamed", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .sidebarNotebookDeleted(let payload):
+            try container.encode("sidebarNotebookDeleted", forKey: .type)
+            try container.encode(payload, forKey: .payload)
+        case .sidebarNewPage(let payload):
+            try container.encode("sidebarNewPage", forKey: .type)
+            try container.encode(payload, forKey: .payload)
         case .error(let payload):
             try container.encode("error", forKey: .type)
             try container.encode(payload, forKey: .payload)
@@ -484,6 +620,12 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
     /// Security-scoped folder URLs granted by the user via folder picker.
     /// Must be kept alive so file operations within these folders are allowed by the sandbox.
     private var grantedFolderURLs: [URL] = []
+
+    /// Callback for sidebar messages from web
+    var onSidebarMessage: ((WebToNativeMessage) -> Void)?
+
+    /// Callback when auth token is saved (so sidebar can load data)
+    var onTokenSaved: (() -> Void)?
 
     init(webView: WKWebView?) {
         self.webView = webView
@@ -696,6 +838,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 #if os(iOS)
                 WatchConnectivityService.shared.syncAuthToken()
                 #endif
+                onTokenSaved?()
             }
             send(.tokenSaved(NativeToWebMessage.TokenSavedResponse(success: success)))
 
@@ -819,6 +962,9 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         case .getICloudContainerPath:
             handleGetICloudContainerPath()
 
+        case .sidebarActiveChanged, .sidebarDataChanged, .sidebarUnreadCounts, .toggleNativeSidebar:
+            onSidebarMessage?(message)
+
         case .unknown:
             print("[Bridge] Unknown message type")
         }
@@ -939,6 +1085,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
                 #if os(iOS)
                 WatchConnectivityService.shared.syncAuthToken()
                 #endif
+                onTokenSaved?()
             }
             send(.tokenSaved(NativeToWebMessage.TokenSavedResponse(success: success)))
 
@@ -1086,6 +1233,9 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
 
         case .getICloudContainerPath:
             handleGetICloudContainerPath()
+
+        case .sidebarActiveChanged, .sidebarDataChanged, .sidebarUnreadCounts, .toggleNativeSidebar:
+            onSidebarMessage?(message)
 
         case .unknown:
             print("[Bridge] Unknown message type")
@@ -1505,7 +1655,8 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             platform: platform,
             timestamp: ISO8601DateFormatter().string(from: Date()),
             serverUrl: activeServer.url,
-            serverName: activeServer.name
+            serverName: activeServer.name,
+            hasNativeSidebar: true
         )
         send(.initialize(initialState))
     }

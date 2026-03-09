@@ -15,6 +15,7 @@ import { PageService } from '../../services/page.service';
 import { NotebookService } from '../../services/notebook.service';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
 import { UiStateService } from '../../services/ui-state.service';
+import { NativeBridgeService } from '../../services/native-bridge.service';
 import { MemoVersionService } from '../../services/memo-version.service';
 import { NotificationService } from '../../services/notification.service';
 import { NotebookEditorComponent } from '../../components/organisms/notebook-editor/notebook-editor.component';
@@ -35,6 +36,7 @@ export class NotebookComponent implements OnDestroy {
   private readonly pageService = inject(PageService);
   private readonly notebookService = inject(NotebookService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly nativeBridge = inject(NativeBridgeService);
   private readonly memoVersionService = inject(MemoVersionService);
   private readonly notificationService = inject(NotificationService);
   private readonly ngZone = inject(NgZone);
@@ -137,7 +139,10 @@ export class NotebookComponent implements OnDestroy {
   }
 
   openSidebarOnMobile(): void {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+    if (
+      this.nativeBridge.hasNativeSidebar() ||
+      (typeof window !== 'undefined' && window.innerWidth < 768)
+    ) {
       this.uiStateService.openSidebar();
     }
   }

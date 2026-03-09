@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import type {
@@ -30,6 +30,18 @@ import type {
   ICloudContainerPathResult,
   ApiRequestPayload,
   ApiResponsePayload,
+  SidebarNavigatePayload,
+  SidebarPageCreatedPayload,
+  SidebarPageTrashedPayload,
+  SidebarPageRenamedPayload,
+  SidebarPageMovedPayload,
+  SidebarNotebookCreatedPayload,
+  SidebarNotebookRenamedPayload,
+  SidebarNotebookDeletedPayload,
+  SidebarNewPagePayload,
+  SidebarActiveChangedPayload,
+  SidebarDataChangedPayload,
+  SidebarUnreadCountsPayload,
 } from '../types/native-bridge.types';
 
 @Injectable({
@@ -40,20 +52,28 @@ export class NativeBridgeService {
   private _isNativeApp = false;
   private _initialState: InitialState | null = null;
 
+  /** Reactive signal for native app detection (updates on late detection via iOS initialize message) */
+  readonly isNativeApp$ = signal(false);
+
   // Public observables for different message types
   readonly messages$ = this._messages$.asObservable();
 
   constructor() {
     this.detectNativeApp();
-    if (this._isNativeApp) {
-      this.setupMessageReceiver();
-    }
+    // Always set up receiver — on iOS the message handler may not be detectable
+    // at bootstrap time, but initialize message will arrive later via didFinish
+    this.setupMessageReceiver();
   }
 
   // MARK: - Detection
 
   private detectNativeApp(): void {
-    this._isNativeApp = !!window.webkit?.messageHandlers?.nativeBridge;
+    const handler = !!window.webkit?.messageHandlers?.nativeBridge;
+    this._isNativeApp = handler;
+    this.isNativeApp$.set(this._isNativeApp);
+    console.log(
+      `[NativeBridge] detectNativeApp: handler=${handler}, isNative=${this._isNativeApp}`,
+    );
   }
 
   isNativeApp(): boolean {
@@ -80,6 +100,7 @@ export class NativeBridgeService {
     // Drain any messages that arrived before Angular bootstrapped
     // (buffered by the inline script in index.html)
     const buffered = (window.__nativeBridge__ as any)?._buffer as NativeToWebMessage[] | undefined;
+    console.log(`[NativeBridge] setupMessageReceiver: buffered=${buffered?.length ?? 0} messages`);
 
     window.__nativeBridge__ = {
       receive: (message: NativeToWebMessage) => {
@@ -95,9 +116,21 @@ export class NativeBridgeService {
   }
 
   private handleIncoming(message: NativeToWebMessage): void {
-    // Store initial state
+    console.log(`[NativeBridge] handleIncoming: type=${message.type}`);
+    // Store initial state and mark as native app (handles late detection on iOS)
     if (message.type === 'initialize') {
       this._initialState = message.payload as InitialState;
+      console.log(
+        '[NativeBridge] initialize received, hasNativeSidebar=',
+        (message.payload as InitialState)?.hasNativeSidebar,
+        'wasNative=',
+        this._isNativeApp,
+      );
+      if (!this._isNativeApp) {
+        this._isNativeApp = true;
+        this.isNativeApp$.set(true);
+        console.log('[NativeBridge] Late native app detection → isNative=true');
+      }
     }
 
     // Dispatch CustomEvent for apiResponse so non-Angular listeners
@@ -476,6 +509,96 @@ export class NativeBridgeService {
       filter((msg) => msg.type === 'apiResponse'),
       map((msg) => msg.payload as ApiResponsePayload),
     );
+  }
+
+  // MARK: - Native Sidebar
+
+  hasNativeSidebar(): boolean {
+    console.log(`[NativeBridge] hasNativeSidebar called → ${this._isNativeApp}`);
+    return this._isNativeApp;
+  }
+
+  // Native → Web observables
+
+  onSidebarNavigate(): Observable<SidebarNavigatePayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'sidebarNavigate'),
+      map((msg) => msg.payload as SidebarNavigatePayload),
+    );
+  }
+
+  onSidebarPageCreated(): Observable<SidebarPageCreatedPayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'sidebarPageCreated'),
+      map((msg) => msg.payload as SidebarPageCreatedPayload),
+    );
+  }
+
+  onSidebarPageTrashed(): Observable<SidebarPageTrashedPayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'sidebarPageTrashed'),
+      map((msg) => msg.payload as SidebarPageTrashedPayload),
+    );
+  }
+
+  onSidebarPageRenamed(): Observable<SidebarPageRenamedPayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'sidebarPageRenamed'),
+      map((msg) => msg.payload as SidebarPageRenamedPayload),
+    );
+  }
+
+  onSidebarPageMoved(): Observable<SidebarPageMovedPayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'sidebarPageMoved'),
+      map((msg) => msg.payload as SidebarPageMovedPayload),
+    );
+  }
+
+  onSidebarNotebookCreated(): Observable<SidebarNotebookCreatedPayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'sidebarNotebookCreated'),
+      map((msg) => msg.payload as SidebarNotebookCreatedPayload),
+    );
+  }
+
+  onSidebarNotebookRenamed(): Observable<SidebarNotebookRenamedPayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'sidebarNotebookRenamed'),
+      map((msg) => msg.payload as SidebarNotebookRenamedPayload),
+    );
+  }
+
+  onSidebarNotebookDeleted(): Observable<SidebarNotebookDeletedPayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'sidebarNotebookDeleted'),
+      map((msg) => msg.payload as SidebarNotebookDeletedPayload),
+    );
+  }
+
+  onSidebarNewPage(): Observable<SidebarNewPagePayload> {
+    return this.messages$.pipe(
+      filter((msg) => msg.type === 'sidebarNewPage'),
+      map((msg) => msg.payload as SidebarNewPagePayload),
+    );
+  }
+
+  // Web → Native send methods
+
+  sendSidebarActiveChanged(payload: SidebarActiveChangedPayload): void {
+    this.sendMessage({ type: 'sidebarActiveChanged', payload });
+  }
+
+  sendSidebarDataChanged(payload: SidebarDataChangedPayload): void {
+    this.sendMessage({ type: 'sidebarDataChanged', payload });
+  }
+
+  sendSidebarUnreadCounts(payload: SidebarUnreadCountsPayload): void {
+    this.sendMessage({ type: 'sidebarUnreadCounts', payload });
+  }
+
+  toggleNativeSidebar(): void {
+    this.sendMessage({ type: 'toggleNativeSidebar' });
   }
 
   // MARK: - OAuth

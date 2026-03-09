@@ -8,6 +8,7 @@ import { NotebookService } from '../../services/notebook.service';
 import { CollectableService } from '../../services/collectable.service';
 import { CollectibleRegistryService } from '../../services/collectible-registry.service';
 import { UiStateService } from '../../services/ui-state.service';
+import { NativeBridgeService } from '../../services/native-bridge.service';
 import { PaperListComponent } from '../../components';
 import type { Collectable, CollectibleRegistry, RegistryTag } from '@maple/shared';
 
@@ -25,6 +26,7 @@ export class LegoViewComponent implements OnInit, OnDestroy {
   readonly collectableService = inject(CollectableService);
   readonly registryService = inject(CollectibleRegistryService);
   private readonly uiStateService = inject(UiStateService);
+  private readonly nativeBridge = inject(NativeBridgeService);
 
   private routeSubscription?: Subscription;
 
@@ -204,8 +206,10 @@ export class LegoViewComponent implements OnInit, OnDestroy {
   }
 
   openSidebarOnMobile(): void {
-    // Only open sidebar on mobile (< 768px)
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+    if (
+      this.nativeBridge.hasNativeSidebar() ||
+      (typeof window !== 'undefined' && window.innerWidth < 768)
+    ) {
       this.uiStateService.openSidebar();
     }
   }
