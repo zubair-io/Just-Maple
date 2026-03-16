@@ -5,6 +5,7 @@
       class="border border-gray-300 rounded-md p-2 flex-1 focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]/20"
       placeholder="Enter or scan barcode"
       (keyup.enter)="handleInput($event)"
+      (input)="handleAutoDetect($event)"
       (blur)="blur()"
       #barcodeInput
       autofocus

@@ -228,11 +228,14 @@ export class LegoScanComponent implements OnInit, OnDestroy {
   }
 
   private onBarcodeDetected(barcode: string): void {
-    // Set the search query to the barcode
-    this.searchQuery.set(barcode);
+    // Normalize EAN-13 → UPC-A: strip leading 0 from 13-digit codes
+    let normalized = barcode;
+    if (normalized.startsWith('0') && normalized.length === 13) {
+      normalized = normalized.substring(1);
+    }
 
-    // Optionally close camera after successful scan
-    // this.stopCamera();
+    // Set the search query to the barcode
+    this.searchQuery.set(normalized);
   }
 
   onSelectRegistry(registry: CollectibleRegistry): void {

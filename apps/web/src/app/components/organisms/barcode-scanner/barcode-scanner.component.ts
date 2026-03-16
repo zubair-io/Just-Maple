@@ -53,6 +53,7 @@ export class BarcodeScannerComponent implements AfterViewInit, OnDestroy {
   readonly close = output<void>();
 
   private controls: { stop: () => void } | null = null;
+  private inputDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   ngAfterViewInit(): void {
     setTimeout(() => {
@@ -62,6 +63,9 @@ export class BarcodeScannerComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.stop();
+    if (this.inputDebounceTimer) {
+      clearTimeout(this.inputDebounceTimer);
+    }
   }
 
   closeScanner(): void {
@@ -88,10 +92,36 @@ export class BarcodeScannerComponent implements AfterViewInit, OnDestroy {
 
     if (!text) return;
 
+    this.submitBarcode(text);
+  }
+
+  /** Auto-submit when a full barcode (12-13 digits) is detected in the input */
+  handleAutoDetect(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const text = input.value.trim();
+
+    if (!text) return;
+
+    // Clear any existing debounce
+    if (this.inputDebounceTimer) {
+      clearTimeout(this.inputDebounceTimer);
+    }
+
+    // If it looks like a complete barcode (12-13 digits), auto-submit after brief delay
+    // This handles iOS "Use Code" autofill and paste
+    if (/^\d{12,13}$/.test(text)) {
+      this.inputDebounceTimer = setTimeout(() => {
+        input.value = '';
+        this.submitBarcode(text);
+      }, 300);
+    }
+  }
+
+  private submitBarcode(barcode: string): void {
     this.stop();
     this.loading.set(true);
     this.error.set(null);
-    this.loadUpcData(text);
+    this.loadUpcData(barcode);
   }
 
   loadUpcData(barcode: string): void {

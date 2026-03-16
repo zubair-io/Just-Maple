@@ -140,18 +140,27 @@ export class CollectibleRegistryService {
     const all = this.store.query(getAllEntities());
     const normalizedBarcode = barcode.trim();
 
+    // Build variants: original, without leading zero (EAN-13 → UPC-A), with leading zero (UPC-A → EAN-13)
+    const variants = [normalizedBarcode];
+    if (normalizedBarcode.startsWith('0') && normalizedBarcode.length === 13) {
+      variants.push(normalizedBarcode.substring(1)); // EAN-13 → UPC-A
+    }
+    if (!normalizedBarcode.startsWith('0') && normalizedBarcode.length === 12) {
+      variants.push('0' + normalizedBarcode); // UPC-A → EAN-13
+    }
+
     const found = all.find((r) => {
       // Check upc field
-      if (r.upc && r.upc === normalizedBarcode) {
+      if (r.upc && variants.includes(r.upc)) {
         return true;
       }
       // Check ean in providerData
-      if (r.providerData?.ean && r.providerData.ean === normalizedBarcode) {
+      if (r.providerData?.ean && variants.includes(r.providerData.ean)) {
         return true;
       }
       // Check barcode array in providerData (some providers store multiple barcodes)
       if (r.providerData?.barcodes && Array.isArray(r.providerData.barcodes)) {
-        return r.providerData.barcodes.includes(normalizedBarcode);
+        return r.providerData.barcodes.some((b: string) => variants.includes(b));
       }
       return false;
     });
