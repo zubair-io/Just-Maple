@@ -65,7 +65,20 @@ export async function markAsReadByPageId(userId: string, pageId: string): Promis
             },
         );
 
-        return toUnreadTrackingResponse(result!);
+        if (result) {
+            return toUnreadTrackingResponse(result);
+        }
+
+        // Cosmos DB may return null even with upsert + returnDocument: 'after'
+        const doc = await getCollection().findOne({
+            userId: new ObjectId(userId),
+            pageId: pageId,
+        });
+        if (doc) {
+            return toUnreadTrackingResponse(doc);
+        }
+
+        return { _id: '', userId, pageId, lastReadAt: now.toISOString() };
     } catch (e: any) {
         // E11000 duplicate key error - race condition where concurrent requests
         // both try to upsert. Retry as a simple update since the doc now exists.
@@ -78,7 +91,10 @@ export async function markAsReadByPageId(userId: string, pageId: string): Promis
                 { $set: { lastReadAt: now } },
                 { returnDocument: 'after' },
             );
-            return toUnreadTrackingResponse(result!);
+            if (result) {
+                return toUnreadTrackingResponse(result);
+            }
+            return { _id: '', userId, pageId, lastReadAt: now.toISOString() };
         }
         throw e;
     }
@@ -152,7 +168,19 @@ export async function markAsRead(userId: string, notebookId: string): Promise<Un
         },
     );
 
-    return toUnreadTrackingResponse(result!);
+    if (result) {
+        return toUnreadTrackingResponse(result);
+    }
+
+    const doc = await getCollection().findOne({
+        userId: new ObjectId(userId),
+        notebookId: new ObjectId(notebookId),
+    });
+    if (doc) {
+        return toUnreadTrackingResponse(doc);
+    }
+
+    return { _id: '', userId, pageId: '', notebookId, lastReadAt: now.toISOString() };
 }
 
 /**
