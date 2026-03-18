@@ -363,19 +363,17 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
             getNotebookMembers(notebookId, botAuth.userId)
                 .then((members) => {
                     if (members) {
-                        const promises = members
-                            .filter((member) => member.userId !== botAuth.userId)
-                            .map((member) =>
-                                sendMessageReceivedNotification(
-                                    member.userId,
-                                    notebookId,
-                                    message._id,
-                                    botDisplayName,
-                                    botDisplayName,
-                                    userBot.avatar,
-                                    message.content,
-                                ),
-                            );
+                        const promises = members.map((member) =>
+                            sendMessageReceivedNotification(
+                                member.userId,
+                                notebookId,
+                                message._id,
+                                botDisplayName,
+                                botDisplayName,
+                                userBot.avatar,
+                                message.content,
+                            ),
+                        );
                         Promise.allSettled(promises).catch(console.error);
                     }
                 })
@@ -499,19 +497,17 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
             getNotebookMembers(notebookId, botAuth.userId)
                 .then((members) => {
                     if (members) {
-                        const promises = members
-                            .filter((member) => member.userId !== botAuth.userId)
-                            .map((member) =>
-                                sendMessageReceivedNotification(
-                                    member.userId,
-                                    notebookId,
-                                    message._id,
-                                    botDisplayName,
-                                    botDisplayName,
-                                    userBot.avatar,
-                                    message.content,
-                                ),
-                            );
+                        const promises = members.map((member) =>
+                            sendMessageReceivedNotification(
+                                member.userId,
+                                notebookId,
+                                message._id,
+                                botDisplayName,
+                                botDisplayName,
+                                userBot.avatar,
+                                message.content,
+                            ),
+                        );
                         Promise.allSettled(promises).catch(console.error);
                     }
                 })
