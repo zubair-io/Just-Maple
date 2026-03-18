@@ -1,5 +1,6 @@
 import { createHmac } from 'crypto';
 import type { Message, PageContent, UserBot, BotInvocation } from '@maple/shared';
+import { findUserById } from '../repositories/user.repo';
 
 /**
  * Webhook Service
@@ -101,12 +102,25 @@ function extractText(content: PageContent): string {
 
 /**
  * Build webhook payload from messages and context
+ * Resolves user display names from the database since they aren't stored on messages
  */
-export function buildWebhookPayload(
+export async function buildWebhookPayload(
     invocation: BotInvocation,
     messages: Message[],
     threadId: string | null,
-): WebhookPayload {
+): Promise<WebhookPayload> {
+    // Resolve display names for users (bot messages already have senderDisplayName)
+    const userIds = [...new Set(messages.filter((m) => !m.senderDisplayName).map((m) => m.userId))];
+    const userMap = new Map<string, string>();
+    await Promise.all(
+        userIds.map(async (userId) => {
+            const user = await findUserById(userId);
+            if (user) {
+                userMap.set(userId, user.displayName || user.email);
+            }
+        }),
+    );
+
     return {
         event_type: 'thread_mention',
         thread_id: threadId,
@@ -116,7 +130,11 @@ export function buildWebhookPayload(
             id: msg.id || msg._id,
             author: {
                 id: msg.userId,
-                name: msg.senderDisplayName || msg.senderEmail || 'Unknown',
+                name:
+                    msg.senderDisplayName ||
+                    userMap.get(msg.userId) ||
+                    msg.senderEmail ||
+                    'Unknown',
                 type: (msg.senderType || 'user') as 'user' | 'bot',
             },
             content: extractText(msg.content as PageContent),

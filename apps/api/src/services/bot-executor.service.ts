@@ -163,7 +163,7 @@ export class BotExecutorService {
             }
 
             // Build webhook payload
-            const payload = buildWebhookPayload(invocation, messages, threadId);
+            const payload = await buildWebhookPayload(invocation, messages, threadId);
 
             // Invoke webhook with retry
             const result = await invokeWebhookWithRetry(userBot, payload);
