@@ -105,6 +105,48 @@ class AuthenticationManager: NSObject, ObservableObject {
         })
     }
 
+    /// Request a fresh token from iPhone and save it to keychain
+    /// Returns the new token if successful, nil otherwise
+    func requestFreshToken() async -> String? {
+        guard WCSession.default.isReachable else {
+            print("[AuthManager] iPhone not reachable for token refresh")
+            return nil
+        }
+
+        return await withCheckedContinuation { continuation in
+            let message = ["request": "syncAuth"]
+
+            WCSession.default.sendMessage(message, replyHandler: { [weak self] reply in
+                guard let self = self else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                if let success = reply["success"] as? Bool, success,
+                   let token = reply["token"] as? String,
+                   let apiUrl = reply["apiUrl"] as? String
+                {
+                    if KeychainHelper.shared.saveToken(token) {
+                        Task { @MainActor in
+                            self.apiUrl = apiUrl
+                            self.lastSyncDate = Date()
+                            self.isAuthenticated = true
+                        }
+                        print("[AuthManager] ✅ Fresh token received from iPhone")
+                        continuation.resume(returning: token)
+                    } else {
+                        continuation.resume(returning: nil)
+                    }
+                } else {
+                    continuation.resume(returning: nil)
+                }
+            }, errorHandler: { error in
+                print("[AuthManager] ❌ Token refresh failed: \(error)")
+                continuation.resume(returning: nil)
+            })
+        }
+    }
+
     /// Sign out (clear local token)
     func signOut() {
         _ = KeychainHelper.shared.clearToken()

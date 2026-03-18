@@ -25,6 +25,8 @@ import {
     updateInvocationStatus,
 } from '../../repositories/bot-invocation.repo';
 import { broadcastChatEvent } from '../../services/realtime.service';
+import { getNotebookMembers } from '../../repositories/notebook.repo';
+import { sendMessageReceivedNotification } from '../../services/notification.service';
 import { markdownToProseMirror } from '../../utils/markdown-to-prosemirror';
 import { verifyBotJWT } from '../../services/bot-jwt.service';
 import { verifyToken } from '../../repositories/bot-token.repo';
@@ -356,6 +358,29 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                 timestamp: new Date().toISOString(),
             });
 
+            // Send push notifications to all notebook members
+            const botDisplayName = userBot.displayName || userBot.handle;
+            getNotebookMembers(notebookId, botAuth.userId)
+                .then((members) => {
+                    if (members) {
+                        const promises = members
+                            .filter((member) => member.userId !== botAuth.userId)
+                            .map((member) =>
+                                sendMessageReceivedNotification(
+                                    member.userId,
+                                    notebookId,
+                                    message._id,
+                                    botDisplayName,
+                                    botDisplayName,
+                                    userBot.avatar,
+                                    message.content,
+                                ),
+                            );
+                        Promise.allSettled(promises).catch(console.error);
+                    }
+                })
+                .catch(console.error);
+
             return {
                 message_id: message.id || message._id,
                 thread_id: thread._id,
@@ -468,6 +493,29 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                 userId: botAuth.userId,
                 timestamp: new Date().toISOString(),
             });
+
+            // Send push notifications to all notebook members
+            const botDisplayName = userBot.displayName || userBot.handle;
+            getNotebookMembers(notebookId, botAuth.userId)
+                .then((members) => {
+                    if (members) {
+                        const promises = members
+                            .filter((member) => member.userId !== botAuth.userId)
+                            .map((member) =>
+                                sendMessageReceivedNotification(
+                                    member.userId,
+                                    notebookId,
+                                    message._id,
+                                    botDisplayName,
+                                    botDisplayName,
+                                    userBot.avatar,
+                                    message.content,
+                                ),
+                            );
+                        Promise.allSettled(promises).catch(console.error);
+                    }
+                })
+                .catch(console.error);
 
             return {
                 message_id: message.id || message._id,
