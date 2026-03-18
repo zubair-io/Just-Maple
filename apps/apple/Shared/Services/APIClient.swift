@@ -41,6 +41,9 @@ class APIClient {
     private let baseURL: String
     private let session: URLSession
 
+    /// Callback to request a fresh token (set by watch app's AuthenticationManager)
+    var tokenRefreshHandler: (() async -> String?)?
+
     init(baseURL: String = "https://paperbark.justmaple.app") {
         self.baseURL = baseURL
         self.session = URLSession(configuration: .default)
@@ -144,7 +147,8 @@ class APIClient {
         method: String,
         path: String,
         queryItems: [URLQueryItem]?,
-        body: B?
+        body: B?,
+        isRetry: Bool = false
     ) async throws -> T {
         // Build URL
         guard var urlComponents = URLComponents(string: baseURL + path) else {
@@ -186,6 +190,23 @@ class APIClient {
         // Check response
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIClientError.invalidResponse
+        }
+
+        // On 401, try refreshing the token from iPhone and retry once
+        if httpResponse.statusCode == 401 && !isRetry {
+            if let refreshHandler = tokenRefreshHandler {
+                print("[APIClient] 🔄 Got 401, requesting fresh token from iPhone...")
+                if let _ = await refreshHandler() {
+                    print("[APIClient] ✅ Got fresh token, retrying request...")
+                    return try await self.request(
+                        method: method,
+                        path: path,
+                        queryItems: queryItems,
+                        body: body,
+                        isRetry: true
+                    )
+                }
+            }
         }
 
         // Handle errors

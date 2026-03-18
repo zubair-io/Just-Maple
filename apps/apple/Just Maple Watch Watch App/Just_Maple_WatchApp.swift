@@ -18,6 +18,12 @@ struct Just_Maple_Watch_Watch_AppApp: App {
     init() {
         // Set notification delegate
         UNUserNotificationCenter.current().delegate = NotificationManager.shared
+
+        // Wire up token refresh so APIClient can request fresh tokens from iPhone on 401
+        APIClient.shared.tokenRefreshHandler = {
+            await AuthenticationManager.shared.requestFreshToken()
+        }
+
         print("[WatchApp] 🚀 Watch app initialized")
     }
 

@@ -145,8 +145,10 @@ class WebSocketManager: NSObject, ObservableObject {
                 throw WebSocketError.noToken
             }
 
-            // Build WebSocket URL (without token in URL for security)
-            let wsURLString = "\(wsBaseURL)/ws/realtime"
+            // Build WebSocket URL with token as query parameter
+            // Note: Sec-WebSocket-Protocol header causes connection drops because
+            // URLSessionWebSocketTask expects the server to echo the subprotocol back
+            let wsURLString = "\(wsBaseURL)/ws/realtime?token=\(token)"
             guard let url = URL(string: wsURLString) else {
                 log("[WebSocket] ❌ Invalid WebSocket URL")
                 throw WebSocketError.invalidURL
@@ -154,16 +156,11 @@ class WebSocketManager: NSObject, ObservableObject {
 
             log("[WebSocket] 📡 Connecting to: \(wsBaseURL)/ws/realtime")
 
-            // Create WebSocket task with token in Sec-WebSocket-Protocol header
             guard let session = urlSession else {
                 throw WebSocketError.sessionUnavailable
             }
 
-            var request = URLRequest(url: url)
-            // Pass JWT token via Sec-WebSocket-Protocol header (secure method)
-            request.setValue(token, forHTTPHeaderField: "Sec-WebSocket-Protocol")
-
-            webSocketTask = session.webSocketTask(with: request)
+            webSocketTask = session.webSocketTask(with: url)
             webSocketTask?.resume()
 
             // Start receiving messages
@@ -375,6 +372,12 @@ class WebSocketManager: NSObject, ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 
             guard let self = self, !Task.isCancelled else { return }
+
+            // Try to get a fresh token from iPhone before reconnecting
+            let freshToken = await AuthenticationManager.shared.requestFreshToken()
+            if freshToken != nil {
+                self.log("[WebSocket] ✅ Got fresh token before reconnect")
+            }
 
             await self.connect()
         }
