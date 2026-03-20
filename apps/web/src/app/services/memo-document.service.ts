@@ -156,6 +156,38 @@ export class MemoDocumentService {
       return this.openDocPage(pageId);
     }
 
+    // Local pages: no IndexedDB persistence — always load fresh from file system
+    // so external edits (other apps, iCloud sync) are always picked up.
+    if (isLocalPage(pageId)) {
+      // If already open, return existing doc
+      if (this.openDocs.has(pageId)) {
+        const doc = this.openDocs.get(pageId)!;
+        return { ydoc: doc.ydoc, awareness: doc.awareness };
+      }
+
+      const ydoc = new Y.Doc();
+      const awareness = new Awareness(ydoc);
+      this.setupAwareness(awareness);
+
+      const persistence = {
+        destroy: () => {},
+        whenSynced: Promise.resolve(),
+      } as unknown as IndexeddbPersistence;
+
+      const doc: OpenDocument = { ydoc, awareness, persistence, wsProvider: null };
+      this.openDocs.set(pageId, doc);
+
+      try {
+        const markdown = await firstValueFrom(this.pageService.getLocalPageMarkdown(pageId));
+        if (markdown) {
+          return { ydoc, awareness, markdownContent: markdown };
+        }
+      } catch (error) {
+        console.error(`[MemoDocumentService] Failed to load local page ${pageId}:`, error);
+      }
+      return { ydoc, awareness };
+    }
+
     // Check if already open
     if (this.openDocs.has(pageId)) {
       const doc = this.openDocs.get(pageId)!;
@@ -177,21 +209,6 @@ export class MemoDocumentService {
     // Check if document is empty (no content from IndexedDB)
     const prosemirror = ydoc.getXmlFragment('prosemirror');
     const isDocEmpty = prosemirror.length === 0;
-
-    // Local pages: skip server sync, load from file system instead
-    if (isLocalPage(pageId)) {
-      if (isDocEmpty) {
-        try {
-          const markdown = await firstValueFrom(this.pageService.getLocalPageMarkdown(pageId));
-          if (markdown) {
-            return { ydoc, awareness, markdownContent: markdown };
-          }
-        } catch (error) {
-          console.error(`[MemoDocumentService] Failed to load local page ${pageId}:`, error);
-        }
-      }
-      return { ydoc, awareness };
-    }
 
     // If document is empty and we're online, fetch initial content from server
     // This handles templates and other server-side page creation
