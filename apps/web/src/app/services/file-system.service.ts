@@ -416,20 +416,34 @@ export class FileSystemService {
 
     const files: LocalFile[] = [];
 
-    for await (const [name, handle] of folder.handle.entries()) {
-      if (handle.kind !== 'file') continue;
-      if (!name.endsWith('.md')) continue;
+    // Recursively scan directories for .md files
+    const scanDir = async (dirHandle: FileSystemDirectoryHandle, prefix: string) => {
+      for await (const [name, handle] of dirHandle.entries()) {
+        // Skip hidden files/folders (starting with .)
+        if (name.startsWith('.')) continue;
 
-      const file = await (handle as FileSystemFileHandle).getFile();
-      files.push({
-        id: this.generateFileId(folder.id, name),
-        name: name.replace(/\.md$/, ''),
-        extension: '.md',
-        folderId: folder.id,
-        handle: handle as FileSystemFileHandle,
-        lastModified: new Date(file.lastModified).toISOString(),
-      });
-    }
+        if (handle.kind === 'directory') {
+          // Recurse into subdirectories
+          await scanDir(handle as FileSystemDirectoryHandle, prefix ? `${prefix}/${name}` : name);
+          continue;
+        }
+
+        if (!name.endsWith('.md')) continue;
+
+        const relativeName = prefix ? `${prefix}/${name}` : name;
+        const file = await (handle as FileSystemFileHandle).getFile();
+        files.push({
+          id: this.generateFileId(folder.id, relativeName),
+          name: relativeName.replace(/\.md$/, ''),
+          extension: '.md',
+          folderId: folder.id,
+          handle: handle as FileSystemFileHandle,
+          lastModified: new Date(file.lastModified).toISOString(),
+        });
+      }
+    };
+
+    await scanDir(folder.handle, '');
 
     // Sort by last modified (newest first)
     files.sort((a, b) => {
@@ -439,6 +453,25 @@ export class FileSystemService {
     });
 
     return files;
+  }
+
+  /**
+   * Resolve a FileSystemDirectoryHandle for a nested path.
+   * Given "subfolder/note.md", traverses to "subfolder" directory handle.
+   * Returns the directory handle and the leaf filename.
+   */
+  private async resolveNestedPath(
+    rootHandle: FileSystemDirectoryHandle,
+    relativePath: string,
+    create = false,
+  ): Promise<{ dirHandle: FileSystemDirectoryHandle; leafName: string }> {
+    const parts = relativePath.split('/');
+    const leafName = parts.pop()!;
+    let dirHandle = rootHandle;
+    for (const part of parts) {
+      dirHandle = await dirHandle.getDirectoryHandle(part, { create });
+    }
+    return { dirHandle, leafName };
   }
 
   private readWebFile(folder: LocalFolder, fileId: string): Observable<string> {
@@ -454,7 +487,8 @@ export class FileSystemService {
     const filename = this.getFilenameFromId(fileId, folder.id);
 
     try {
-      const fileHandle = await folder.handle.getFileHandle(filename);
+      const { dirHandle, leafName } = await this.resolveNestedPath(folder.handle, filename);
+      const fileHandle = await dirHandle.getFileHandle(leafName);
       const file = await fileHandle.getFile();
       return await file.text();
     } catch {
@@ -477,7 +511,8 @@ export class FileSystemService {
     if (!hasPermission) throw new Error('Permission denied to write folder');
 
     const filename = this.getFilenameFromId(fileId, folder.id);
-    const fileHandle = await folder.handle.getFileHandle(filename, { create: true });
+    const { dirHandle, leafName } = await this.resolveNestedPath(folder.handle, filename, true);
+    const fileHandle = await dirHandle.getFileHandle(leafName, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(content);
     await writable.close();
@@ -522,7 +557,8 @@ export class FileSystemService {
     if (!folder.handle) throw new Error('No folder handle');
 
     const filename = this.getFilenameFromId(fileId, folder.id);
-    await folder.handle.removeEntry(filename);
+    const { dirHandle, leafName } = await this.resolveNestedPath(folder.handle, filename);
+    await dirHandle.removeEntry(leafName);
   }
 
   // ============ Native File System (Mac/iOS) ============

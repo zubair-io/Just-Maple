@@ -1280,50 +1280,53 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
     private func handleListFiles(_ payload: WebToNativeMessage.ListFilesPayload) {
         let fileManager = FileManager.default
         let dirURL = securityScopedURL(for: payload.path)
-        do {
-            let contents = try fileManager.contentsOfDirectory(
-                at: dirURL,
+        let filterExt = payload.extension
+
+        var fileInfos: [NativeToWebMessage.FileListResult.FileInfo] = []
+
+        func scanDirectory(_ url: URL, prefix: String) {
+            guard let contents = try? fileManager.contentsOfDirectory(
+                at: url,
                 includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
                 options: [.skipsHiddenFiles]
-            )
-            let filterExt = payload.extension
+            ) else { return }
 
-            let fileInfos: [NativeToWebMessage.FileListResult.FileInfo] = contents.compactMap { fileURL in
+            for fileURL in contents {
                 let name = fileURL.lastPathComponent
+                let resourceValues = try? fileURL.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
 
-                // Filter by extension if specified
-                if let ext = filterExt {
-                    let normalizedExt = ext.hasPrefix(".") ? ext : ".\(ext)"
-                    guard name.hasSuffix(normalizedExt) else { return nil }
+                if resourceValues?.isDirectory == true {
+                    let subPrefix = prefix.isEmpty ? name : "\(prefix)/\(name)"
+                    scanDirectory(fileURL, prefix: subPrefix)
+                    continue
                 }
 
-                // Skip directories
-                let resourceValues = try? fileURL.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
-                if resourceValues?.isDirectory == true { return nil }
+                if let ext = filterExt {
+                    let normalizedExt = ext.hasPrefix(".") ? ext : ".\(ext)"
+                    guard name.hasSuffix(normalizedExt) else { continue }
+                }
 
-                // Get last modified date
                 var lastModified: String? = nil
                 if let modDate = resourceValues?.contentModificationDate {
                     lastModified = ISO8601DateFormatter().string(from: modDate)
                 }
 
-                return NativeToWebMessage.FileListResult.FileInfo(
-                    name: name,
+                let relativeName = prefix.isEmpty ? name : "\(prefix)/\(name)"
+
+                fileInfos.append(NativeToWebMessage.FileListResult.FileInfo(
+                    name: relativeName,
                     path: fileURL.path,
                     lastModified: lastModified
-                )
+                ))
             }
-
-            send(.fileListResult(NativeToWebMessage.FileListResult(
-                files: fileInfos,
-                error: nil
-            )))
-        } catch {
-            send(.fileListResult(NativeToWebMessage.FileListResult(
-                files: [],
-                error: error.localizedDescription
-            )))
         }
+
+        scanDirectory(dirURL, prefix: "")
+
+        send(.fileListResult(NativeToWebMessage.FileListResult(
+            files: fileInfos,
+            error: nil
+        )))
     }
 
     private func handleReadFile(_ payload: WebToNativeMessage.ReadFilePayload) {

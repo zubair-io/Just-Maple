@@ -21,7 +21,8 @@
         [isOwn]="isOwnMessage(message)"
         [isGrouped]="message.isGrouped"
         [botError]="hasFailedBot(message.id)"
-        (messageClicked)="selectMessageForReply($event)"
+        (threadClicked)="openThread.emit($event)"
+        (replyClicked)="openThread.emit($event)"
       />
     } @empty {
       @if (!isLoading()) {
@@ -73,35 +74,6 @@
 
   <!-- Message Input -->
   <div class="message-input">
-    <!-- Reply Pill -->
-    @if (replyingToMessage()) {
-      <div class="reply-pill">
-        <button
-          type="button"
-          class="reply-pill-content"
-          (click)="scrollToMessage(replyingToMessage()!._id)"
-        >
-          <span class="material-symbols-rounded">reply</span>
-          <span class="reply-text">
-            Replying to
-            <strong>{{
-              replyingToMessage()!.senderDisplayName ||
-                replyingToMessage()!.senderEmail ||
-                'Unknown'
-            }}</strong>
-          </span>
-        </button>
-        <button
-          type="button"
-          class="reply-pill-close"
-          (click)="clearReply()"
-          aria-label="Cancel reply"
-        >
-          <span class="material-symbols-rounded">close</span>
-        </button>
-      </div>
-    }
-
     <div class="input-wrapper">
       <div #editorElement class="editor"></div>
     </div>

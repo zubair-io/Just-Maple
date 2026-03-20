@@ -18,9 +18,29 @@
 .chat-container {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  position: relative;
+  overflow: hidden;
+
+  app-chat {
+    flex: 1;
+    min-width: 0;
+  }
+
+  app-thread-panel {
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .chat-container {
+    app-thread-panel {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+    }
+  }
 }
 
 .loading-state {

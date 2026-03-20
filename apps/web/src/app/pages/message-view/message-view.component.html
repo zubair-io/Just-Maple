@@ -10,7 +10,15 @@
     />
 
     <div class="chat-container">
-      <app-chat [notebookId]="selectedNotebookId()!" />
+      <app-chat [notebookId]="selectedNotebookId()!" (openThread)="openThread($event)" />
+
+      @if (activeThreadMessage()) {
+        <app-thread-panel
+          [parentMessage]="activeThreadMessage()!"
+          [notebookId]="selectedNotebookId()!"
+          (closed)="closeThread()"
+        />
+      }
     </div>
   </div>
 } @else {

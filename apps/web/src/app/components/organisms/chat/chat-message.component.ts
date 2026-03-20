@@ -3,25 +3,13 @@ import { CommonModule, DatePipe } from '@angular/common';
 import type { Message } from '@maple/shared';
 import { ContentRendererComponent } from '../../atoms/content-renderer/content-renderer.component';
 import { ProfileAvatarComponent } from '../../atoms';
-import { ChatThreadComponent } from './chat-thread.component';
 
 @Component({
   selector: 'app-chat-message',
   standalone: true,
-  imports: [
-    CommonModule,
-    DatePipe,
-    ContentRendererComponent,
-    ProfileAvatarComponent,
-    ChatThreadComponent,
-  ],
+  imports: [CommonModule, DatePipe, ContentRendererComponent, ProfileAvatarComponent],
   template: `
-    <div
-      [id]="'message-' + message().id"
-      class="message-wrapper"
-      [class.grouped]="isGrouped()"
-      (click)="onMessageClick()"
-    >
+    <div [id]="'message-' + message().id" class="message-wrapper" [class.grouped]="isGrouped()">
       <div class="message-content">
         <!-- Avatar (hidden when grouped) -->
         @if (!isGrouped()) {
@@ -54,9 +42,12 @@ import { ChatThreadComponent } from './chat-thread.component';
             }
           </div>
 
-          <!-- Thread replies -->
+          <!-- Thread replies link -->
           @if (message().hasThread) {
-            <app-chat-thread [messageId]="message().id" [hasThread]="true" />
+            <button type="button" class="thread-link" (click)="onThreadClick($event)">
+              <span class="material-symbols-rounded thread-icon">forum</span>
+              <span>View thread</span>
+            </button>
           }
 
           <!-- Bot error -->
@@ -66,6 +57,19 @@ import { ChatThreadComponent } from './chat-thread.component';
               <span>{{ botError() }}</span>
             </div>
           }
+        </div>
+
+        <!-- Reply hover action -->
+        <div class="message-actions">
+          <button
+            type="button"
+            class="action-btn"
+            (click)="onReplyClick($event)"
+            aria-label="Reply in thread"
+            title="Reply in thread"
+          >
+            <span class="material-symbols-rounded">reply</span>
+          </button>
         </div>
       </div>
     </div>
@@ -77,12 +81,15 @@ import { ChatThreadComponent } from './chat-thread.component';
         display: flex;
         justify-content: center;
         margin-bottom: 12px;
-        cursor: pointer;
         transition: background-color 0.2s;
         border-radius: 8px;
 
         &:hover {
           background-color: rgba(0, 0, 0, 0.02);
+
+          .message-actions {
+            opacity: 1;
+          }
         }
 
         &.grouped {
@@ -96,6 +103,7 @@ import { ChatThreadComponent } from './chat-thread.component';
         display: flex;
         gap: 12px;
         align-items: flex-start;
+        position: relative;
       }
 
       .avatar {
@@ -104,13 +112,13 @@ import { ChatThreadComponent } from './chat-thread.component';
       }
 
       .avatar-spacer {
-        width: 28px; // Same as sm avatar size (w-7)
+        width: 28px;
         flex-shrink: 0;
       }
 
       .bubble-container {
         flex: 1;
-        min-width: 0; // Allow text to wrap
+        min-width: 0;
         display: flex;
         flex-direction: column;
         gap: 4px;
@@ -123,7 +131,6 @@ import { ChatThreadComponent } from './chat-thread.component';
       }
 
       .sender-name {
-        // font-size: 14px;
         font-weight: 600;
         color: var(--color-text-main);
       }
@@ -134,7 +141,6 @@ import { ChatThreadComponent } from './chat-thread.component';
       }
 
       .message-body {
-        // font-size: 14px;
         color: var(--color-text-main);
         line-height: 1.5;
         word-wrap: break-word;
@@ -145,6 +151,63 @@ import { ChatThreadComponent } from './chat-thread.component';
         font-style: italic;
         color: var(--color-text-muted);
         margin-left: 4px;
+      }
+
+      .thread-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: none;
+        border: none;
+        padding: 4px 8px;
+        margin-top: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--color-primary);
+        border-radius: 6px;
+        transition: background-color 0.2s;
+        width: fit-content;
+
+        &:hover {
+          background: var(--color-primary-light, rgba(217, 78, 59, 0.08));
+        }
+
+        .thread-icon {
+          font-size: 16px;
+        }
+      }
+
+      .message-actions {
+        position: absolute;
+        top: -4px;
+        right: 0;
+        opacity: 0;
+        transition: opacity 0.15s;
+        display: flex;
+        gap: 2px;
+      }
+
+      .action-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        border: 1px solid var(--color-border);
+        background: var(--color-bg);
+        cursor: pointer;
+        color: var(--color-text-muted);
+        transition: all 0.15s;
+
+        &:hover {
+          background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+          color: var(--color-text-main);
+        }
+
+        .material-symbols-rounded {
+          font-size: 16px;
+        }
       }
 
       .bot-error {
@@ -173,7 +236,8 @@ export class ChatMessageComponent {
   readonly isGrouped = input<boolean>(false);
   readonly botError = input<string | undefined>(undefined);
 
-  readonly messageClicked = output<Message>();
+  readonly threadClicked = output<Message>();
+  readonly replyClicked = output<Message>();
 
   readonly senderDisplay = computed(() => {
     const msg = this.message();
@@ -181,7 +245,13 @@ export class ChatMessageComponent {
     return msg.senderEmail?.split('@')[0] || 'Unknown';
   });
 
-  onMessageClick(): void {
-    this.messageClicked.emit(this.message());
+  onThreadClick(event: Event): void {
+    event.stopPropagation();
+    this.threadClicked.emit(this.message());
+  }
+
+  onReplyClick(event: Event): void {
+    event.stopPropagation();
+    this.replyClicked.emit(this.message());
   }
 }

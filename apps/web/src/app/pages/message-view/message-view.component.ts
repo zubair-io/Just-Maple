@@ -10,13 +10,20 @@ import { PageService } from '../../services/page.service';
 import { ShareModalComponent } from '../../components/organisms/share-modal/share-modal.component';
 import { NotebookHeaderComponent } from '../../components/molecules/notebook-header/notebook-header.component';
 import { ChatComponent } from '../../components/organisms/chat/chat.component';
+import { ThreadPanelComponent } from '../../components/organisms/chat/thread-panel/thread-panel.component';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
-import type { NotebookMember } from '@maple/shared';
+import type { NotebookMember, Message } from '@maple/shared';
 
 @Component({
   selector: 'app-message-view',
   standalone: true,
-  imports: [CommonModule, ShareModalComponent, NotebookHeaderComponent, ChatComponent],
+  imports: [
+    CommonModule,
+    ShareModalComponent,
+    NotebookHeaderComponent,
+    ChatComponent,
+    ThreadPanelComponent,
+  ],
   templateUrl: './message-view.component.html',
   styleUrl: './message-view.component.scss',
 })
@@ -32,6 +39,7 @@ export class MessageViewComponent implements OnInit, OnDestroy {
   readonly selectedNotebookId = signal<string | null>(null);
   readonly selectedPageId = signal<string | null>(null);
   readonly showShareModal = signal<boolean>(false);
+  readonly activeThreadMessage = signal<Message | null>(null);
   private readonly membersRefreshTrigger = signal<number>(0);
 
   // Reactively load members when notebook changes or refresh is triggered
@@ -103,5 +111,13 @@ export class MessageViewComponent implements OnInit, OnDestroy {
   onMembersChanged(): void {
     // Trigger members refetch after sharing/unsharing
     this.membersRefreshTrigger.update((n) => n + 1);
+  }
+
+  openThread(message: Message): void {
+    this.activeThreadMessage.set(message);
+  }
+
+  closeThread(): void {
+    this.activeThreadMessage.set(null);
   }
 }

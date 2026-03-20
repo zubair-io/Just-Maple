@@ -1,6 +1,7 @@
 import {
   Component,
   input,
+  output,
   signal,
   computed,
   effect,
@@ -98,8 +99,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   // Bot invocation tracking
   readonly pendingBotInvocations = signal<PendingBotInvocation[]>([]);
 
-  // Reply functionality
-  readonly replyingToMessage = signal<Message | null>(null);
+  // Thread panel
+  readonly openThread = output<Message>();
 
   // Compute messages with grouping information
   readonly messagesWithGrouping = computed(() => {
@@ -568,27 +569,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     this.isAtBottom = true;
     this.scrollToBottom();
 
-    const replyingTo = this.replyingToMessage();
-
-    if (replyingTo) {
-      // Clear reply state immediately
-      this.clearReply();
-
-      // Replying to a message - backend will create thread if needed
-      this.messageService
-        .sendMessage(this.notebookId(), content, { parentMessageId: replyingTo.id })
-        .subscribe({
-          next: (message) => {
-            // Invoke bots for each mention (using parent message as source)
-            if (message && mentions.length > 0) {
-              this.invokeMentionedBots(message, mentions, content);
-            }
-          },
-        });
-    } else {
-      // Regular top-level message
-      this.sendRegularMessage(content, mentions);
-    }
+    // Regular top-level message
+    this.sendRegularMessage(content, mentions);
 
     // Clear typing indicator
     if (this.typingTimeout) {
@@ -729,87 +711,6 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
   scrollToBottomClicked(): void {
     this.scrollToBottom();
-  }
-
-  // Reply functionality
-  selectMessageForReply(message: Message): void {
-    this.replyingToMessage.set(message);
-
-    // If message has a thread, load it and add bot mentions
-    if (message.hasThread) {
-      // Use cached bots
-      const botSuggestionMap = new Map(this.allNotebookBots().map((s) => [s.id, s]));
-
-      // Fetch thread messages
-      this.botService.getThreadForMessage(message.id).subscribe((result) => {
-        if (result && this.editor) {
-          // Extract unique bots from thread messages
-          const botHandles = new Map<string, { id: string; handle: string }>();
-
-          for (const msg of result.messages) {
-            if (msg.senderType === 'bot' && msg.userBotId) {
-              // Look up the bot from suggestions
-              const botSuggestion = botSuggestionMap.get(msg.userBotId);
-
-              if (botSuggestion) {
-                botHandles.set(msg.userBotId, {
-                  id: msg.userBotId,
-                  handle: botSuggestion.handle,
-                });
-              }
-            }
-          }
-
-          // Insert mentions for all bots in the thread
-          if (botHandles.size > 0) {
-            const mentions = Array.from(botHandles.values()).map((bot) => ({
-              type: 'mention',
-              attrs: {
-                id: bot.id,
-                handle: bot.handle,
-                type: 'bot',
-              },
-            }));
-
-            // Add space between each mention
-            const content: any[] = [];
-            mentions.forEach((mention, index) => {
-              content.push(mention);
-              if (index < mentions.length - 1) {
-                content.push({ type: 'text', text: ' ' });
-              }
-            });
-            content.push({ type: 'text', text: ' ' });
-
-            // Clear existing content and insert mentions
-            this.editor.chain().focus().clearContent().insertContentAt(0, content).run();
-          }
-        }
-      });
-    }
-
-    // Focus the editor when selecting a message for reply
-    setTimeout(() => {
-      (
-        this.editorRef?.nativeElement.querySelector('[contenteditable]') as HTMLInputElement
-      )?.focus();
-    }, 100);
-  }
-
-  clearReply(): void {
-    this.replyingToMessage.set(null);
-  }
-
-  scrollToMessage(messageId: string): void {
-    const messageElement = document.getElementById(`message-${messageId}`);
-    if (messageElement) {
-      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Highlight the message briefly
-      messageElement.classList.add('highlight-message');
-      setTimeout(() => {
-        messageElement.classList.remove('highlight-message');
-      }, 2000);
-    }
   }
 
   onScroll(): void {

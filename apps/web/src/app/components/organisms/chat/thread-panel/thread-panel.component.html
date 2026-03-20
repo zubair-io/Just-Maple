@@ -1,0 +1,134 @@
+<div class="thread-panel" [class.closing]="isClosing()" (animationend)="onAnimationEnd($event)">
+  <!-- Header -->
+  <div class="thread-header">
+    <div class="thread-header-info">
+      <span class="thread-title">Thread</span>
+      <span class="thread-parent-sender">{{ parentSenderDisplay }}</span>
+    </div>
+    <button type="button" class="thread-close-btn" (click)="close()" aria-label="Close thread">
+      <span class="material-symbols-rounded">close</span>
+    </button>
+  </div>
+
+  <!-- Parent message preview -->
+  <div class="thread-parent-preview">
+    <div class="parent-sender-row">
+      <app-profile-avatar
+        [email]="parentMessage().senderEmail ?? 'unknown@justmaple.app'"
+        [displayName]="parentMessage().senderDisplayName"
+        [profilePictureUrl]="parentMessage().senderProfilePictureUrl"
+        size="sm"
+      />
+      <span class="parent-sender-name">{{ parentSenderDisplay }}</span>
+      <span class="parent-timestamp">{{ parentMessage().createdAt | date: 'short' }}</span>
+    </div>
+    <div class="parent-content-snippet">
+      <app-content-renderer [content]="parentMessage().content" />
+    </div>
+  </div>
+
+  <div class="thread-divider">
+    <span class="thread-reply-count">
+      @if (threadMessages().length > 0) {
+        {{ threadMessages().length }}
+        {{ threadMessages().length === 1 ? 'reply' : 'replies' }}
+      }
+    </span>
+  </div>
+
+  <!-- Thread messages -->
+  <div #threadMessageList class="thread-message-list">
+    @if (isLoading()) {
+      <div class="thread-loading">
+        <div class="animate-pulse flex gap-1">
+          <div class="w-2 h-2 bg-current rounded-full"></div>
+          <div class="w-2 h-2 bg-current rounded-full"></div>
+          <div class="w-2 h-2 bg-current rounded-full"></div>
+        </div>
+        <span>Loading thread...</span>
+      </div>
+    }
+
+    @for (message of threadMessages(); track message.id) {
+      <div class="thread-message">
+        <div class="thread-message-avatar">
+          @if (message.senderType === 'bot') {
+            @if (message.senderProfilePictureUrl && message.senderProfilePictureUrl.length > 5) {
+              <img
+                [src]="message.senderProfilePictureUrl"
+                [alt]="message.senderDisplayName || 'Bot'"
+                class="w-7 h-7 rounded-full object-cover"
+              />
+            } @else {
+              <div
+                class="w-7 h-7 rounded-full bg-[var(--color-primary)] flex items-center justify-center text-white text-xs font-bold"
+              >
+                {{
+                  message.senderProfilePictureUrl ||
+                    (message.senderDisplayName || 'Bot').charAt(0).toUpperCase()
+                }}
+              </div>
+            }
+          } @else {
+            <app-profile-avatar
+              [email]="message.senderEmail || ''"
+              [displayName]="message.senderDisplayName"
+              [profilePictureUrl]="message.senderProfilePictureUrl"
+              size="sm"
+            />
+          }
+        </div>
+
+        <div class="thread-message-body">
+          <div class="thread-message-header">
+            <span class="thread-message-sender">
+              @if (message.senderType === 'bot') {
+                {{ message.senderDisplayName || 'Bot' }}
+              } @else {
+                {{ message.senderDisplayName || message.senderEmail || 'Unknown' }}
+              }
+            </span>
+            <span class="thread-message-time">
+              {{ formatTime(message.createdAt) }}
+            </span>
+            @if (message.senderType === 'bot') {
+              <span
+                class="text-xs px-1.5 py-0.5 rounded bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
+              >
+                bot
+              </span>
+            }
+          </div>
+          <div class="thread-message-content">
+            <app-content-renderer [content]="message.content" />
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Mention Suggestions Dropdown -->
+  @if (showMentionSuggestions()) {
+    <div
+      class="mention-suggestions-container fixed z-50"
+      [class.position-above]="mentionPositionAbove()"
+      [style.top.px]="mentionPosition().top"
+      [style.left.px]="mentionPosition().left"
+    >
+      <app-mention-suggestion
+        [items]="mentionSuggestions()"
+        [isLoading]="mentionSuggestionsLoading()"
+        [command]="mentionCommand"
+        (selected)="onMentionSelected($event)"
+        (dismissed)="onMentionDismissed()"
+      />
+    </div>
+  }
+
+  <!-- Thread input -->
+  <div class="thread-input">
+    <div class="thread-input-wrapper">
+      <div #threadEditorElement class="editor"></div>
+    </div>
+  </div>
+</div>

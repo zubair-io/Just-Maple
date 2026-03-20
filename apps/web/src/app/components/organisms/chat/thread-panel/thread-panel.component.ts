@@ -1,0 +1,467 @@
+import {
+  Component,
+  input,
+  output,
+  signal,
+  effect,
+  inject,
+  ViewChild,
+  ElementRef,
+  AfterViewInit,
+  OnDestroy,
+  DestroyRef,
+  HostListener,
+} from '@angular/core';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { CommonModule, DatePipe } from '@angular/common';
+import { Editor, Extension } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+import { BotService, type BotSuggestion } from '../../../../services/bot.service';
+import { MessageService } from '../../../../services/message.service';
+import { RealtimeService } from '../../../../services/realtime.service';
+import { ContentRendererComponent } from '../../../atoms/content-renderer/content-renderer.component';
+import { ProfileAvatarComponent } from '../../../atoms/profile-avatar/profile-avatar.component';
+import { MentionSuggestionComponent } from '../mention-suggestion.component';
+import { Mention, type MentionNodeAttrs } from '../extensions/mention';
+import type { Message, Thread, PageContent } from '@maple/shared';
+import { extractMentions, extractText } from '@maple/shared';
+import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of } from 'rxjs';
+
+@Component({
+  selector: 'app-thread-panel',
+  standalone: true,
+  imports: [
+    CommonModule,
+    DatePipe,
+    ContentRendererComponent,
+    ProfileAvatarComponent,
+    MentionSuggestionComponent,
+  ],
+  templateUrl: './thread-panel.component.html',
+  styleUrl: './thread-panel.component.scss',
+})
+export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
+  @ViewChild('threadMessageList') private messageListRef?: ElementRef<HTMLElement>;
+  @ViewChild('threadEditorElement', { static: false })
+  private editorRef?: ElementRef<HTMLElement>;
+
+  private readonly botService = inject(BotService);
+  private readonly messageService = inject(MessageService);
+  private readonly realtimeService = inject(RealtimeService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  readonly parentMessage = input.required<Message>();
+  readonly notebookId = input.required<string>();
+
+  readonly closed = output<void>();
+
+  readonly threadMessages = signal<Message[]>([]);
+  readonly thread = signal<Thread | null>(null);
+  readonly isLoading = signal(false);
+  readonly isClosing = signal(false);
+
+  // Mention autocomplete state
+  readonly showMentionSuggestions = signal(false);
+  readonly mentionSuggestions = signal<BotSuggestion[]>([]);
+  readonly mentionSuggestionsLoading = signal(false);
+  readonly mentionPosition = signal<{ top: number; left: number }>({ top: 0, left: 0 });
+  readonly mentionPositionAbove = signal(false);
+
+  readonly allNotebookBots = toSignal(
+    combineLatest([
+      toObservable(this.notebookId),
+      toObservable(this.botService.notebookBotsCacheVersion),
+    ]).pipe(
+      switchMap(([notebookId, _cacheVersion]) =>
+        notebookId ? this.botService.getNotebookBots(notebookId) : of([]),
+      ),
+    ),
+    { initialValue: [] as BotSuggestion[] },
+  );
+
+  mentionCommand: ((props: Record<string, unknown>) => void) | null = null;
+  private readonly mentionSearch$ = new Subject<string>();
+  private readonly destroy$ = new Subject<void>();
+
+  private editor: Editor | null = null;
+  private realtimeSubscription: Subscription | null = null;
+
+  constructor() {
+    // Load thread when parentMessage changes
+    effect(() => {
+      const message = this.parentMessage();
+      if (message) {
+        this.loadThread(message.id);
+        this.subscribeToThreadMessages(message.id);
+      }
+    });
+
+    this.destroyRef.onDestroy(() => {
+      this.destroy$.next();
+      this.destroy$.complete();
+    });
+
+    // Setup mention search
+    this.mentionSearch$.pipe(takeUntil(this.destroy$)).subscribe({
+      next: (query) => {
+        const filtered = BotService.filterBots(this.allNotebookBots(), query);
+        this.mentionSuggestions.set(filtered);
+        this.mentionSuggestionsLoading.set(false);
+      },
+    });
+  }
+
+  ngAfterViewInit(): void {
+    this.initEditor();
+    this.prefillBotMentions();
+  }
+
+  ngOnDestroy(): void {
+    this.editor?.destroy();
+    this.realtimeSubscription?.unsubscribe();
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    if (!this.showMentionSuggestions()) {
+      this.close();
+    }
+  }
+
+  close(): void {
+    this.isClosing.set(true);
+  }
+
+  onAnimationEnd(event: AnimationEvent): void {
+    if (event.animationName === 'slideOut') {
+      this.closed.emit();
+    }
+  }
+
+  get parentSenderDisplay(): string {
+    const msg = this.parentMessage();
+    if (msg.senderDisplayName) return msg.senderDisplayName;
+    return msg.senderEmail?.split('@')[0] || 'Unknown';
+  }
+
+  formatTime(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // ---- Editor & Mentions ----
+
+  private initEditor(): void {
+    if (!this.editorRef?.nativeElement) return;
+
+    const SendOnEnter = Extension.create({
+      name: 'sendOnEnter',
+      addKeyboardShortcuts: () => ({
+        Enter: () => {
+          if (this.showMentionSuggestions()) {
+            return true;
+          }
+          this.sendMessage();
+          return true;
+        },
+        'Shift-Enter': () => false,
+      }),
+    });
+
+    this.editor = new Editor({
+      element: this.editorRef.nativeElement,
+      extensions: [
+        StarterKit.configure({
+          heading: false,
+          codeBlock: false,
+        }) as any,
+        Placeholder.configure({
+          placeholder: 'Reply in thread...',
+        }) as any,
+        Mention.configure({
+          HTMLAttributes: {
+            class: 'mention',
+          },
+          suggestion: {
+            items: ({ query }) => {
+              this.mentionSearch$.next(query);
+              return [];
+            },
+            render: () => ({
+              onStart: (props) => {
+                this.mentionCommand = props.command;
+                this.showMentionSuggestions.set(true);
+                this.updateMentionPosition(props.clientRect);
+              },
+              onUpdate: (props) => {
+                this.mentionCommand = props.command;
+                this.updateMentionPosition(props.clientRect);
+              },
+              onKeyDown: (props) => {
+                const key = props.event.key;
+                if (key === 'Escape') {
+                  this.showMentionSuggestions.set(false);
+                  return true;
+                }
+                if (key === 'Enter' || key === 'ArrowUp' || key === 'ArrowDown') {
+                  return true;
+                }
+                return false;
+              },
+              onExit: () => {
+                this.showMentionSuggestions.set(false);
+                this.mentionSuggestions.set([]);
+                this.mentionCommand = null;
+              },
+            }),
+          },
+        }) as any,
+        SendOnEnter as any,
+      ],
+      content: '',
+    });
+  }
+
+  private prefillBotMentions(): void {
+    const message = this.parentMessage();
+    if (!message.hasThread) return;
+
+    const botSuggestionMap = new Map(this.allNotebookBots().map((s) => [s.id, s]));
+
+    this.botService.getThreadForMessage(message.id).subscribe((result) => {
+      if (result && this.editor) {
+        const botHandles = new Map<string, { id: string; handle: string }>();
+
+        for (const msg of result.messages) {
+          if (msg.senderType === 'bot' && msg.userBotId) {
+            const botSuggestion = botSuggestionMap.get(msg.userBotId);
+            if (botSuggestion) {
+              botHandles.set(msg.userBotId, {
+                id: msg.userBotId,
+                handle: botSuggestion.handle,
+              });
+            }
+          }
+        }
+
+        if (botHandles.size > 0) {
+          const mentions = Array.from(botHandles.values()).map((bot) => ({
+            type: 'mention',
+            attrs: {
+              id: bot.id,
+              handle: bot.handle,
+              type: 'bot',
+            },
+          }));
+
+          const content: any[] = [];
+          mentions.forEach((mention, index) => {
+            content.push(mention);
+            if (index < mentions.length - 1) {
+              content.push({ type: 'text', text: ' ' });
+            }
+          });
+          content.push({ type: 'text', text: ' ' });
+
+          this.editor.chain().focus().clearContent().insertContentAt(0, content).run();
+        }
+      }
+    });
+  }
+
+  private updateMentionPosition(clientRect: (() => DOMRect | null) | null | undefined): void {
+    if (!clientRect) return;
+    const rect = clientRect();
+    if (!rect) return;
+
+    const dropdownHeight = 280;
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const shouldPositionAbove = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+    this.mentionPositionAbove.set(shouldPositionAbove);
+
+    let top = shouldPositionAbove ? rect.top : rect.bottom + 4;
+    if (top < 0) top = 4;
+
+    let left = rect.left;
+    const dropdownWidth = 320;
+    if (left + dropdownWidth > viewportWidth) {
+      left = viewportWidth - dropdownWidth - 4;
+    }
+
+    this.mentionPosition.set({ top, left });
+  }
+
+  onMentionSelected(bot: BotSuggestion): void {
+    if (this.mentionCommand) {
+      this.mentionCommand({
+        id: bot.id,
+        handle: bot.handle,
+        type: bot.type,
+      });
+    }
+    this.showMentionSuggestions.set(false);
+  }
+
+  onMentionDismissed(): void {
+    this.showMentionSuggestions.set(false);
+  }
+
+  // ---- Thread Loading ----
+
+  private loadThread(messageId: string): void {
+    this.isLoading.set(true);
+    this.threadMessages.set([]);
+    this.thread.set(null);
+
+    this.botService.getThreadForMessage(messageId).subscribe({
+      next: (result) => {
+        if (result) {
+          this.thread.set(result.thread);
+          this.threadMessages.set(result.messages);
+        }
+        this.isLoading.set(false);
+        this.scrollToBottom();
+      },
+      error: () => {
+        this.isLoading.set(false);
+      },
+    });
+  }
+
+  private subscribeToThreadMessages(messageId: string): void {
+    this.realtimeSubscription?.unsubscribe();
+    this.realtimeSubscription = this.realtimeService.events$
+      .pipe(
+        filter(
+          (event) =>
+            event.action === 'thread_message' &&
+            (event.data as Record<string, unknown>)['parentMessageId'] === messageId,
+        ),
+      )
+      .subscribe((event) => {
+        const data = event.data as Record<string, unknown>;
+        const newMessage = data['message'] as Message;
+
+        if (newMessage) {
+          this.threadMessages.update((messages) => {
+            if (messages.some((m) => m.id === newMessage.id)) {
+              return messages;
+            }
+            return [...messages, newMessage];
+          });
+          this.scrollToBottom();
+        }
+      });
+  }
+
+  // ---- Send Message ----
+
+  sendMessage(): void {
+    if (!this.editor) return;
+
+    const content = this.trimContent(this.editor.getJSON() as PageContent);
+    if (this.isContentEmpty(content)) return;
+
+    const mentions = extractMentions(content) as MentionNodeAttrs[];
+
+    this.editor.commands.clearContent();
+
+    const parentMsg = this.parentMessage();
+
+    this.messageService
+      .sendMessage(this.notebookId(), content, { parentMessageId: parentMsg.id })
+      .subscribe({
+        next: (message) => {
+          if (message && mentions.length > 0) {
+            this.invokeMentionedBots(message, mentions, content);
+          }
+        },
+      });
+  }
+
+  private invokeMentionedBots(
+    message: Message,
+    mentions: MentionNodeAttrs[],
+    content: PageContent,
+  ): void {
+    const fullText = extractText(content, { includeNewlines: false });
+    const parentMsg = this.parentMessage();
+
+    if (message.threadId) {
+      this.botService.getThreadById(message.threadId).subscribe({
+        next: (thread) => {
+          if (thread) {
+            this.invokeBots(mentions, fullText, thread.parentMessageId);
+          } else {
+            this.invokeBots(mentions, fullText, parentMsg.id);
+          }
+        },
+        error: () => {
+          this.invokeBots(mentions, fullText, parentMsg.id);
+        },
+      });
+    } else {
+      this.invokeBots(mentions, fullText, parentMsg.id);
+    }
+  }
+
+  private invokeBots(mentions: MentionNodeAttrs[], fullText: string, sourceId: string): void {
+    mentions
+      .filter((m) => m.type === 'bot')
+      .forEach((mention) => {
+        this.botService
+          .invokeBot(this.notebookId(), mention.handle, 'message', sourceId, {
+            mentionText: fullText,
+            fullContent: fullText,
+          })
+          .subscribe({
+            error: (err) => {
+              console.error(`Failed to invoke bot @${mention.handle}:`, err);
+            },
+          });
+      });
+  }
+
+  private trimContent(content: PageContent): PageContent {
+    if (!content?.content) return content;
+    const nodes = [...content.content];
+    while (nodes.length > 0) {
+      const last = nodes[nodes.length - 1];
+      if (last.type === 'paragraph' && (!last.content || last.content.length === 0)) {
+        nodes.pop();
+      } else {
+        break;
+      }
+    }
+    return { ...content, content: nodes };
+  }
+
+  private isContentEmpty(content: PageContent): boolean {
+    if (!content || !content.content) return true;
+    if (content.content.length === 0) return true;
+    if (
+      content.content.length === 1 &&
+      content.content[0].type === 'paragraph' &&
+      (!content.content[0].content || content.content[0].content.length === 0)
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  private scrollToBottom(): void {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (this.messageListRef?.nativeElement) {
+          const el = this.messageListRef.nativeElement;
+          el.scrollTop = el.scrollHeight;
+        }
+      });
+    });
+  }
+}

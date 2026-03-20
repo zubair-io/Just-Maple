@@ -49,7 +49,10 @@ export class NewNoteComponent implements OnInit {
             type: 'memo',
           })
           .subscribe({
-            next: (page) => {
+            next: async (page) => {
+              // Clear any stale Y.js cache for this page ID
+              // (local page IDs are based on filename, so "Untitled" may reuse an old ID)
+              await this.memoService.clearDocumentCache(page.id);
               this.router.navigate(['/', notebookId, page.id], { replaceUrl: true });
             },
             error: (err) => {

@@ -509,6 +509,24 @@ export class MemoDocumentService {
   }
 
   /**
+   * Clear any cached Y.js state for a page ID.
+   * Used when creating a new local page whose file ID may collide with a previous one.
+   */
+  async clearDocumentCache(pageId: string): Promise<void> {
+    // Close if open
+    this.closeDocument(pageId);
+
+    // Delete the IndexedDB database for this page's Y.js doc
+    const dbName = `ydoc-${pageId}`;
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(dbName);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+      req.onblocked = () => resolve();
+    });
+  }
+
+  /**
    * Close a memo document
    */
   closeDocument(pageId: string): void {
