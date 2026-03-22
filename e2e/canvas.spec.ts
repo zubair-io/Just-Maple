@@ -7,7 +7,7 @@ test.describe('Canvas', () => {
         // Create a notebook via API
         const notebookRes = await authenticatedPage.request.post(`${baseURL}/api/notebooks`, {
             headers: { Authorization: `Bearer ${testUser.token}` },
-            data: { title: `Canvas Test ${Date.now()}` },
+            data: { label: `Canvas Test ${Date.now()}` },
         });
         expect(notebookRes.ok()).toBeTruthy();
         const { notebook } = await notebookRes.json();
@@ -44,7 +44,7 @@ test.describe('Canvas', () => {
         // Create a notebook and canvas page
         const notebookRes = await authenticatedPage.request.post(`${baseURL}/api/notebooks`, {
             headers: { Authorization: `Bearer ${testUser.token}` },
-            data: { title: `Canvas Empty ${Date.now()}` },
+            data: { label: `Canvas Empty ${Date.now()}` },
         });
         const { notebook } = await notebookRes.json();
 
@@ -76,7 +76,7 @@ test.describe('Canvas', () => {
         // Create a notebook and canvas page
         const notebookRes = await authenticatedPage.request.post(`${baseURL}/api/notebooks`, {
             headers: { Authorization: `Bearer ${testUser.token}` },
-            data: { title: `Canvas Auto ${Date.now()}` },
+            data: { label: `Canvas Auto ${Date.now()}` },
         });
         const { notebook } = await notebookRes.json();
 
@@ -108,7 +108,7 @@ test.describe('Canvas', () => {
         // Create notebook + canvas page
         const notebookRes = await authenticatedPage.request.post(`${baseURL}/api/notebooks`, {
             headers: { Authorization: `Bearer ${testUser.token}` },
-            data: { title: `Canvas Widget ${Date.now()}` },
+            data: { label: `Canvas Widget ${Date.now()}` },
         });
         const { notebook } = await notebookRes.json();
 
@@ -174,7 +174,7 @@ test.describe('Canvas', () => {
         // Create notebook + canvas page
         const notebookRes = await authenticatedPage.request.post(`${baseURL}/api/notebooks`, {
             headers: { Authorization: `Bearer ${testUser.token}` },
-            data: { title: `Canvas Render ${Date.now()}` },
+            data: { label: `Canvas Render ${Date.now()}` },
         });
         const { notebook } = await notebookRes.json();
 
@@ -242,7 +242,7 @@ test.describe('Canvas', () => {
         // Create notebook + canvas page
         const notebookRes = await authenticatedPage.request.post(`${baseURL}/api/notebooks`, {
             headers: { Authorization: `Bearer ${testUser.token}` },
-            data: { title: `Canvas Disable ${Date.now()}` },
+            data: { label: `Canvas Disable ${Date.now()}` },
         });
         const { notebook } = await notebookRes.json();
 
