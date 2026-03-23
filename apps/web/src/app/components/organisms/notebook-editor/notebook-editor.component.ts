@@ -40,7 +40,13 @@ import {
   type SuggestionItem,
 } from '../../molecules/suggestion-menu/suggestion-menu.component';
 import DragHandle from '@tiptap/extension-drag-handle';
-import { proseMirrorToMarkdown, proseMirrorToHtmlDocument, type PageContent } from '@maple/shared';
+import {
+  proseMirrorToMarkdown,
+  proseMirrorToHtmlDocument,
+  markdownBodyToDoc,
+  parseFrontmatter,
+  type PageContent,
+} from '@maple/shared';
 
 // Doc page prefix for virtual documentation pages
 const DOC_PAGE_PREFIX = 'doc-';
@@ -465,13 +471,23 @@ export class NotebookEditorComponent implements OnDestroy {
         onUpdate: ({ editor }) => this.handleContentUpdate(editor),
       });
 
-      // For doc pages or local pages with markdown content, set via HTML
+      // For doc pages or local pages with markdown content
       if (markdownContent) {
-        const htmlContent = await marked.parse(markdownContent);
-        // Use setTimeout to ensure the editor is fully initialized
-        setTimeout(() => {
-          this._editor?.commands.setContent(htmlContent);
-        }, 0);
+        if (isDocPageView) {
+          // Doc pages: server markdown → HTML
+          const htmlContent = await marked.parse(markdownContent);
+          setTimeout(() => {
+            this._editor?.commands.setContent(htmlContent);
+          }, 0);
+        } else {
+          // Local/iCloud pages: .maple.md → ProseMirror JSON (preserves task attributes)
+          const fmResult = parseFrontmatter(markdownContent);
+          const body = 'error' in fmResult ? markdownContent : fmResult.body;
+          const doc = markdownBodyToDoc(body);
+          setTimeout(() => {
+            this._editor?.commands.setContent(doc);
+          }, 0);
+        }
       }
 
       // For new memos with initial content (e.g., from templates), set the content

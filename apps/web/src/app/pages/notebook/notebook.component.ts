@@ -125,6 +125,14 @@ export class NotebookComponent implements OnDestroy {
     }
   }
 
+  onTitleChanged(newTitle: string): void {
+    const page = this.selectedPage();
+    if (!page?.id) return;
+    this.pageService.updatePage(page.id, { title: newTitle }).subscribe({
+      error: (err) => console.error('[Notebook] Failed to update title:', err),
+    });
+  }
+
   toggleFavorite(): void {
     const page = this.selectedPage();
     if (!page?.id) return;

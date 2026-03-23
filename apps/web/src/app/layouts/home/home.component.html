@@ -29,16 +29,20 @@
     (touchmove)="onTouchMove($event)"
     (touchend)="onTouchEnd($event)"
   >
-    <!-- Mobile Header -->
-    <div class="flex items-center gap-3 px-4 py-3 border-b border-[var(--color-border)] md:hidden">
-      <button
-        (click)="toggleSidebar()"
-        class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[var(--color-surface-hover)] text-[var(--color-text-muted)]"
+    <!-- Mobile Header (hidden when a page is selected, since page headers have their own menu button) -->
+    @if (!selectedPageId()) {
+      <div
+        class="flex items-center gap-3 px-4 py-3 border-b border-[var(--color-border)] md:hidden"
       >
-        <span class="material-symbols-rounded text-xl">menu</span>
-      </button>
-      <span class="font-serif font-bold text-sm text-[var(--color-text-main)]">Just Maple</span>
-    </div>
+        <button
+          (click)="toggleSidebar()"
+          class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[var(--color-surface-hover)] text-[var(--color-text-muted)]"
+        >
+          <span class="material-symbols-rounded text-xl">menu</span>
+        </button>
+        <span class="font-serif font-bold text-sm text-[var(--color-text-main)]">Just Maple</span>
+      </div>
+    }
 
     <router-outlet />
   </main>

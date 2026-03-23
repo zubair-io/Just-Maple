@@ -775,7 +775,8 @@ img.ProseMirror-separator {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   min-width: 200px;
   max-width: 280px;
-  overflow: hidden;
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .inline-mention-item {
