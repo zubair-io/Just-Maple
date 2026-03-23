@@ -13,13 +13,10 @@ test.describe('Canvas', () => {
         const { notebook } = await notebookRes.json();
 
         // Create a canvas page via API
-        const pageRes = await authenticatedPage.request.post(
-            `${baseURL}/api/notebooks/${notebook._id}/pages`,
-            {
-                headers: { Authorization: `Bearer ${testUser.token}` },
-                data: { title: 'My Canvas', type: 'canvas' },
-            },
-        );
+        const pageRes = await authenticatedPage.request.post(`${baseURL}/api/pages`, {
+            headers: { Authorization: `Bearer ${testUser.token}` },
+            data: { title: 'My Canvas', type: 'canvas', notebookId: notebook._id },
+        });
         expect(pageRes.ok()).toBeTruthy();
         const { page: canvasPage } = await pageRes.json();
 
@@ -48,13 +45,10 @@ test.describe('Canvas', () => {
         });
         const { notebook } = await notebookRes.json();
 
-        const pageRes = await authenticatedPage.request.post(
-            `${baseURL}/api/notebooks/${notebook._id}/pages`,
-            {
-                headers: { Authorization: `Bearer ${testUser.token}` },
-                data: { title: 'Empty Canvas', type: 'canvas' },
-            },
-        );
+        const pageRes = await authenticatedPage.request.post(`${baseURL}/api/pages`, {
+            headers: { Authorization: `Bearer ${testUser.token}` },
+            data: { title: 'Empty Canvas', type: 'canvas', notebookId: notebook._id },
+        });
         const { page: canvasPage } = await pageRes.json();
 
         await authenticatedPage.goto(`/${notebook._id}/${canvasPage.id}`);
@@ -80,13 +74,10 @@ test.describe('Canvas', () => {
         });
         const { notebook } = await notebookRes.json();
 
-        const pageRes = await authenticatedPage.request.post(
-            `${baseURL}/api/notebooks/${notebook._id}/pages`,
-            {
-                headers: { Authorization: `Bearer ${testUser.token}` },
-                data: { title: 'Auto Canvas', type: 'canvas' },
-            },
-        );
+        const pageRes = await authenticatedPage.request.post(`${baseURL}/api/pages`, {
+            headers: { Authorization: `Bearer ${testUser.token}` },
+            data: { title: 'Auto Canvas', type: 'canvas', notebookId: notebook._id },
+        });
         const { page: canvasPage } = await pageRes.json();
 
         // GET the canvas document — should auto-create
@@ -112,13 +103,10 @@ test.describe('Canvas', () => {
         });
         const { notebook } = await notebookRes.json();
 
-        const pageRes = await authenticatedPage.request.post(
-            `${baseURL}/api/notebooks/${notebook._id}/pages`,
-            {
-                headers: { Authorization: `Bearer ${testUser.token}` },
-                data: { title: 'Widget Canvas', type: 'canvas' },
-            },
-        );
+        const pageRes = await authenticatedPage.request.post(`${baseURL}/api/pages`, {
+            headers: { Authorization: `Bearer ${testUser.token}` },
+            data: { title: 'Widget Canvas', type: 'canvas', notebookId: notebook._id },
+        });
         const { page: canvasPage } = await pageRes.json();
 
         // Auto-create the canvas document
@@ -178,13 +166,10 @@ test.describe('Canvas', () => {
         });
         const { notebook } = await notebookRes.json();
 
-        const pageRes = await authenticatedPage.request.post(
-            `${baseURL}/api/notebooks/${notebook._id}/pages`,
-            {
-                headers: { Authorization: `Bearer ${testUser.token}` },
-                data: { title: 'Render Canvas', type: 'canvas' },
-            },
-        );
+        const pageRes = await authenticatedPage.request.post(`${baseURL}/api/pages`, {
+            headers: { Authorization: `Bearer ${testUser.token}` },
+            data: { title: 'Render Canvas', type: 'canvas', notebookId: notebook._id },
+        });
         const { page: canvasPage } = await pageRes.json();
 
         // Auto-create canvas, then add a widget with a static text template
@@ -246,13 +231,10 @@ test.describe('Canvas', () => {
         });
         const { notebook } = await notebookRes.json();
 
-        const pageRes = await authenticatedPage.request.post(
-            `${baseURL}/api/notebooks/${notebook._id}/pages`,
-            {
-                headers: { Authorization: `Bearer ${testUser.token}` },
-                data: { title: 'Disable Canvas', type: 'canvas' },
-            },
-        );
+        const pageRes = await authenticatedPage.request.post(`${baseURL}/api/pages`, {
+            headers: { Authorization: `Bearer ${testUser.token}` },
+            data: { title: 'Disable Canvas', type: 'canvas', notebookId: notebook._id },
+        });
         const { page: canvasPage } = await pageRes.json();
 
         await authenticatedPage.goto(`/${notebook._id}/${canvasPage.id}`);

@@ -59,9 +59,12 @@ export class HomeComponent implements OnInit, OnDestroy {
       // Try to redirect to last visited location before loading notebooks
       this.redirectToLastVisitedIfNeeded();
 
-      // Ensure default notebook exists (notebooks auto-load via visibility service)
+      // Ensure default notebook exists, then load pages
       this.notebookService.ensureDefaultNotebook().subscribe({
         next: () => {
+          // Load pages so route guards and sidebar have data
+          this.pageService.loadPages().subscribe();
+
           // Auto-select first notebook if on root path (only if we didn't redirect)
           if (!this.hasHandledInitialRedirect) {
             this.autoSelectFirstNotebook();
