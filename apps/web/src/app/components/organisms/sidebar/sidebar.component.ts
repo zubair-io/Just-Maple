@@ -5,8 +5,6 @@ import {
   computed,
   output,
   input,
-  effect,
-  untracked,
   OnInit,
   AfterViewChecked,
   Signal,
@@ -32,8 +30,8 @@ import { NetworkService } from '../../../services/network.service';
 import { ProfileAvatarComponent } from '../../atoms';
 import { isLocalNotebook } from '../../../providers/data-provider.interface';
 import type { Page, Notebook } from '@maple/shared';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { map } from 'rxjs';
+import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { EMPTY, filter, map, switchMap } from 'rxjs';
 
 @Component({
   selector: 'app-sidebar',
@@ -111,28 +109,24 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
     { initialValue: {} as Record<string, Page[]> },
   );
 
-  constructor() {
-    // Auto-expand notebook when selectedNotebookId changes
-    effect(() => {
-      const notebookId = this.selectedNotebookId();
-      if (notebookId) {
-        // Use untracked to avoid re-triggering this effect when expandedNotebooks changes
-        untracked(() => {
-          const wasExpanded = this.expandedNotebooks().has(notebookId);
-          this.expandedNotebooks.update((notebooks) => {
-            const newNotebooks = new Set(notebooks);
-            newNotebooks.add(notebookId);
-            return newNotebooks;
-          });
-
-          // Load pages for local/iCloud notebooks when auto-expanding for the first time
-          if (!wasExpanded && isLocalNotebook(notebookId)) {
-            this.pageService.loadLocalPages(notebookId).subscribe();
-          }
+  // Auto-expand notebook and load local pages when selectedNotebookId changes
+  private readonly _autoExpandNotebook = toSignal(
+    toObservable(this.selectedNotebookId).pipe(
+      filter((id): id is string => !!id),
+      switchMap((notebookId) => {
+        const wasExpanded = this.expandedNotebooks().has(notebookId);
+        this.expandedNotebooks.update((notebooks) => {
+          const newNotebooks = new Set(notebooks);
+          newNotebooks.add(notebookId);
+          return newNotebooks;
         });
-      }
-    });
-  }
+        if (!wasExpanded && isLocalNotebook(notebookId)) {
+          return this.pageService.loadLocalPages(notebookId);
+        }
+        return EMPTY;
+      }),
+    ),
+  );
 
   // Reactive computed signals for user data
   readonly userInitials = computed(() => {
