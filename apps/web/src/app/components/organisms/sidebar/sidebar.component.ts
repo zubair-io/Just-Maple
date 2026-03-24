@@ -6,6 +6,7 @@ import {
   output,
   input,
   effect,
+  untracked,
   OnInit,
   AfterViewChecked,
   Signal,
@@ -115,17 +116,20 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
     effect(() => {
       const notebookId = this.selectedNotebookId();
       if (notebookId) {
-        const wasExpanded = this.expandedNotebooks().has(notebookId);
-        this.expandedNotebooks.update((notebooks) => {
-          const newNotebooks = new Set(notebooks);
-          newNotebooks.add(notebookId);
-          return newNotebooks;
-        });
+        // Use untracked to avoid re-triggering this effect when expandedNotebooks changes
+        untracked(() => {
+          const wasExpanded = this.expandedNotebooks().has(notebookId);
+          this.expandedNotebooks.update((notebooks) => {
+            const newNotebooks = new Set(notebooks);
+            newNotebooks.add(notebookId);
+            return newNotebooks;
+          });
 
-        // Load pages for local/iCloud notebooks when auto-expanding for the first time
-        if (!wasExpanded && isLocalNotebook(notebookId)) {
-          this.pageService.loadLocalPages(notebookId).subscribe();
-        }
+          // Load pages for local/iCloud notebooks when auto-expanding for the first time
+          if (!wasExpanded && isLocalNotebook(notebookId)) {
+            this.pageService.loadLocalPages(notebookId).subscribe();
+          }
+        });
       }
     });
   }
