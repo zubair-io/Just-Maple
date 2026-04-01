@@ -83,6 +83,13 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
     isLocalNotebook(this.selectedNotebookId() ?? ''),
   );
 
+  // Section-level "+" dropdown state
+  readonly sectionDropdownOpen = signal<'public' | 'cloud' | 'icloud' | 'local' | null>(null);
+  readonly sectionDropdownPositions: ConnectedPosition[] = [
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+  ];
+
   readonly isMobile = toSignal(
     this.breakpointObserver.observe('(max-width: 767px)').pipe(map((result) => result.matches)),
     { initialValue: typeof window !== 'undefined' && window.innerWidth < 768 },
@@ -266,6 +273,52 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   onCreateNotebook(): void {
     this.isNewDropdownOpen.set(false);
     this.createNotebook.emit();
+  }
+
+  // Section-level "+" dropdown methods
+  toggleSectionDropdown(section: 'public' | 'cloud' | 'icloud' | 'local'): void {
+    this.sectionDropdownOpen.update((current) => (current === section ? null : section));
+  }
+
+  closeSectionDropdown(): void {
+    this.sectionDropdownOpen.set(null);
+  }
+
+  onSectionNewPage(type: 'memo' | 'whiteboard' | 'message' | 'kanban' | 'json'): void {
+    const section = this.sectionDropdownOpen();
+    if (!section) return;
+    const notebookId = this.getFirstNotebookInSection(section);
+    if (notebookId) {
+      this.selectNotebook.emit(notebookId);
+    }
+    this.closeSectionDropdown();
+    this.newPage.emit(type);
+  }
+
+  onSectionCreateNotebook(): void {
+    const section = this.sectionDropdownOpen();
+    this.closeSectionDropdown();
+    if (section === 'local') {
+      this.onOpenLocalFolder();
+    } else {
+      this.createNotebook.emit();
+    }
+  }
+
+  onSectionNewFromTemplate(): void {
+    this.closeSectionDropdown();
+    this.newFromTemplate.emit();
+  }
+
+  private getFirstNotebookInSection(
+    section: 'public' | 'cloud' | 'icloud' | 'local',
+  ): string | null {
+    const notebooks = this.groupedNotebooks()[section];
+    const selectedId = this.selectedNotebookId();
+    if (selectedId && notebooks.some((nb) => nb._id === selectedId)) {
+      return selectedId;
+    }
+    return notebooks[0]?._id ?? null;
   }
 
   onSettings(): void {
