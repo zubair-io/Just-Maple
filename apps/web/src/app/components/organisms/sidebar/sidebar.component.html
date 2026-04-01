@@ -383,7 +383,7 @@
         </button>
       }
       <div class="my-1 border-t border-[var(--color-border)]"></div>
-      @if (section === 'local') {
+      @if (section === 'local' || section === 'icloud') {
         <button
           (click)="onSectionCreateNotebook()"
           class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
@@ -432,7 +432,8 @@
             cdkOverlayOrigin
             #publicTrigger="cdkOverlayOrigin"
             (click)="toggleSectionDropdown('public'); $event.stopPropagation()"
-            class="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            title="Create in Public"
           >
             <span class="material-symbols-rounded text-base">add</span>
           </button>
@@ -474,7 +475,8 @@
             cdkOverlayOrigin
             #cloudTrigger="cdkOverlayOrigin"
             (click)="toggleSectionDropdown('cloud'); $event.stopPropagation()"
-            class="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            title="Create in Maple Cloud"
           >
             <span class="material-symbols-rounded text-base">add</span>
           </button>
@@ -513,7 +515,8 @@
             cdkOverlayOrigin
             #icloudTrigger="cdkOverlayOrigin"
             (click)="toggleSectionDropdown('icloud'); $event.stopPropagation()"
-            class="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            title="Create in iCloud"
           >
             <span class="material-symbols-rounded text-base">add</span>
           </button>
@@ -552,7 +555,8 @@
             cdkOverlayOrigin
             #localTrigger="cdkOverlayOrigin"
             (click)="toggleSectionDropdown('local'); $event.stopPropagation()"
-            class="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            title="Create in Local"
           >
             <span class="material-symbols-rounded text-base">add</span>
           </button>

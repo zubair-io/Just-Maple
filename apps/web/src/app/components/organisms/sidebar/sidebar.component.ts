@@ -297,7 +297,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   onSectionCreateNotebook(): void {
     const section = this.sectionDropdownOpen();
     this.closeSectionDropdown();
-    if (section === 'local') {
+    if (section === 'local' || section === 'icloud') {
       this.onOpenLocalFolder();
     } else {
       this.createNotebook.emit();
