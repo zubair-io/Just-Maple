@@ -216,8 +216,8 @@ test.describe('Canvas', () => {
         const textAtom = authenticatedPage.locator(':text("Hello Canvas!")');
         await expect(textAtom).toBeVisible({ timeout: 3000 });
 
-        // Verify the badge atom
-        const badgeAtom = authenticatedPage.locator(':text("New")');
+        // Verify the badge atom (scoped to main content to avoid matching sidebar "New" button)
+        const badgeAtom = authenticatedPage.getByRole('main').getByText('New');
         await expect(badgeAtom).toBeVisible({ timeout: 3000 });
     });
 
