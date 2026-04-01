@@ -288,10 +288,9 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
     const section = this.sectionDropdownOpen();
     if (!section) return;
     const notebookId = this.getFirstNotebookInSection(section);
-    if (notebookId) {
-      this.selectNotebook.emit(notebookId);
-    }
     this.closeSectionDropdown();
+    if (!notebookId) return;
+    this.selectNotebook.emit(notebookId);
     this.newPage.emit(type);
   }
 
