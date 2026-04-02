@@ -330,17 +330,129 @@
     </li>
   </ng-template>
 
+  <!-- Section dropdown menu template -->
+  <ng-template #sectionDropdownMenu let-section>
+    <div
+      class="bg-[var(--color-surface)] rounded-lg shadow-lg border border-[var(--color-border)] py-1"
+    >
+      <button
+        (click)="onSectionNewPage('memo')"
+        class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+      >
+        <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+          >article</span
+        >
+        <span>New Note</span>
+      </button>
+      @if (section !== 'local' && section !== 'icloud') {
+        <button
+          (click)="onSectionNewPage('whiteboard')"
+          class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        >
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+            >draw</span
+          >
+          <span>New Whiteboard</span>
+        </button>
+        <button
+          (click)="onSectionNewPage('kanban')"
+          class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        >
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+            >view_kanban</span
+          >
+          <span>New Kanban Board</span>
+        </button>
+        <button
+          (click)="onSectionNewPage('json')"
+          class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        >
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+            >data_object</span
+          >
+          <span>New JSON Page</span>
+        </button>
+        <button
+          (click)="onSectionNewPage('message')"
+          class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        >
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+            >chat</span
+          >
+          <span>New Conversation</span>
+        </button>
+      }
+      <div class="my-1 border-t border-[var(--color-border)]"></div>
+      @if (section === 'local' || section === 'icloud') {
+        <button
+          (click)="onSectionCreateNotebook()"
+          class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        >
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+            >folder_open</span
+          >
+          <span>Open Local Folder</span>
+        </button>
+      } @else {
+        <button
+          (click)="onSectionCreateNotebook()"
+          class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        >
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+            >folder</span
+          >
+          <span>New Notebook</span>
+        </button>
+      }
+      @if (section !== 'local' && section !== 'icloud') {
+        <button
+          (click)="onSectionNewFromTemplate()"
+          class="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+        >
+          <span class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+            >auto_awesome</span
+          >
+          <span>New from Template</span>
+        </button>
+      }
+    </div>
+  </ng-template>
+
   <!-- Navigation -->
   <div class="flex-1 overflow-y-auto px-3 py-4 pb-24">
     <ul cdkDropListGroup class="space-y-0.5">
       <!-- Public group -->
       @if (groupedNotebooks().public.length > 0) {
-        <div class="mb-2 px-2">
+        <div class="mb-2 px-2 flex items-center justify-between group">
           <span
             class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
             >Public</span
           >
+          <button
+            cdkOverlayOrigin
+            #publicTrigger="cdkOverlayOrigin"
+            (click)="toggleSectionDropdown('public'); $event.stopPropagation()"
+            class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            title="Create in Public"
+          >
+            <span class="material-symbols-rounded text-base">add</span>
+          </button>
         </div>
+        <ng-template
+          cdkConnectedOverlay
+          [cdkConnectedOverlayOrigin]="publicTrigger"
+          [cdkConnectedOverlayOpen]="sectionDropdownOpen() === 'public'"
+          [cdkConnectedOverlayHasBackdrop]="true"
+          cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+          [cdkConnectedOverlayPositions]="sectionDropdownPositions"
+          [cdkConnectedOverlayWidth]="200"
+          (backdropClick)="closeSectionDropdown()"
+        >
+          <ng-container
+            [ngTemplateOutlet]="sectionDropdownMenu"
+            [ngTemplateOutletContext]="{ $implicit: 'public' }"
+          ></ng-container>
+        </ng-template>
         @for (notebook of groupedNotebooks().public; track notebook._id) {
           <ng-container
             [ngTemplateOutlet]="notebookItem"
@@ -360,12 +472,30 @@
             >Maple Cloud</span
           >
           <button
-            (click)="onCreateNotebook()"
-            class="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            cdkOverlayOrigin
+            #cloudTrigger="cdkOverlayOrigin"
+            (click)="toggleSectionDropdown('cloud'); $event.stopPropagation()"
+            class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            title="Create in Maple Cloud"
           >
             <span class="material-symbols-rounded text-base">add</span>
           </button>
         </div>
+        <ng-template
+          cdkConnectedOverlay
+          [cdkConnectedOverlayOrigin]="cloudTrigger"
+          [cdkConnectedOverlayOpen]="sectionDropdownOpen() === 'cloud'"
+          [cdkConnectedOverlayHasBackdrop]="true"
+          cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+          [cdkConnectedOverlayPositions]="sectionDropdownPositions"
+          [cdkConnectedOverlayWidth]="200"
+          (backdropClick)="closeSectionDropdown()"
+        >
+          <ng-container
+            [ngTemplateOutlet]="sectionDropdownMenu"
+            [ngTemplateOutletContext]="{ $implicit: 'cloud' }"
+          ></ng-container>
+        </ng-template>
         @for (notebook of groupedNotebooks().cloud; track notebook._id) {
           <ng-container
             [ngTemplateOutlet]="notebookItem"
@@ -376,12 +506,36 @@
 
       <!-- iCloud group -->
       @if (groupedNotebooks().icloud.length > 0) {
-        <div class="mb-2 px-2 mt-4">
+        <div class="mb-2 px-2 mt-4 flex items-center justify-between group">
           <span
             class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
             >iCloud</span
           >
+          <button
+            cdkOverlayOrigin
+            #icloudTrigger="cdkOverlayOrigin"
+            (click)="toggleSectionDropdown('icloud'); $event.stopPropagation()"
+            class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            title="Create in iCloud"
+          >
+            <span class="material-symbols-rounded text-base">add</span>
+          </button>
         </div>
+        <ng-template
+          cdkConnectedOverlay
+          [cdkConnectedOverlayOrigin]="icloudTrigger"
+          [cdkConnectedOverlayOpen]="sectionDropdownOpen() === 'icloud'"
+          [cdkConnectedOverlayHasBackdrop]="true"
+          cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+          [cdkConnectedOverlayPositions]="sectionDropdownPositions"
+          [cdkConnectedOverlayWidth]="200"
+          (backdropClick)="closeSectionDropdown()"
+        >
+          <ng-container
+            [ngTemplateOutlet]="sectionDropdownMenu"
+            [ngTemplateOutletContext]="{ $implicit: 'icloud' }"
+          ></ng-container>
+        </ng-template>
         @for (notebook of groupedNotebooks().icloud; track notebook._id) {
           <ng-container
             [ngTemplateOutlet]="notebookItem"
@@ -392,12 +546,36 @@
 
       <!-- Local group -->
       @if (groupedNotebooks().local.length > 0) {
-        <div class="mb-2 px-2 mt-4">
+        <div class="mb-2 px-2 mt-4 flex items-center justify-between group">
           <span
             class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider"
             >Local</span
           >
+          <button
+            cdkOverlayOrigin
+            #localTrigger="cdkOverlayOrigin"
+            (click)="toggleSectionDropdown('local'); $event.stopPropagation()"
+            class="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-opacity"
+            title="Create in Local"
+          >
+            <span class="material-symbols-rounded text-base">add</span>
+          </button>
         </div>
+        <ng-template
+          cdkConnectedOverlay
+          [cdkConnectedOverlayOrigin]="localTrigger"
+          [cdkConnectedOverlayOpen]="sectionDropdownOpen() === 'local'"
+          [cdkConnectedOverlayHasBackdrop]="true"
+          cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+          [cdkConnectedOverlayPositions]="sectionDropdownPositions"
+          [cdkConnectedOverlayWidth]="200"
+          (backdropClick)="closeSectionDropdown()"
+        >
+          <ng-container
+            [ngTemplateOutlet]="sectionDropdownMenu"
+            [ngTemplateOutletContext]="{ $implicit: 'local' }"
+          ></ng-container>
+        </ng-template>
         @for (notebook of groupedNotebooks().local; track notebook._id) {
           <ng-container
             [ngTemplateOutlet]="notebookItem"
