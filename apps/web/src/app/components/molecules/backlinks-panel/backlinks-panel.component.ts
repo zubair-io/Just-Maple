@@ -1,4 +1,4 @@
-import { Component, effect, inject, input, signal } from '@angular/core';
+import { Component, effect, inject, input, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { forkJoin } from 'rxjs';
@@ -11,6 +11,7 @@ import type { PageLink, UnlinkedMention } from '@maple/shared';
   imports: [CommonModule],
   templateUrl: './backlinks-panel.component.html',
   styleUrl: './backlinks-panel.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BacklinksPanelComponent {
   private readonly linkService = inject(LinkService);
