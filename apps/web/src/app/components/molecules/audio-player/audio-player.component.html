@@ -25,6 +25,7 @@
         (click)="skipBackward()"
         type="button"
         title="Rewind 10 seconds"
+        aria-label="Rewind 10 seconds"
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
           <path
@@ -40,6 +41,8 @@
         (click)="togglePlay()"
         type="button"
         [disabled]="isLoading()"
+        [attr.aria-label]="isPlaying() ? 'Pause' : 'Play'"
+        [title]="isPlaying() ? 'Pause' : 'Play'"
       >
         @if (isLoading()) {
           <div class="loading-spinner"></div>
@@ -61,6 +64,7 @@
         (click)="skipForward()"
         type="button"
         title="Forward 10 seconds"
+        aria-label="Forward 10 seconds"
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
           <path
@@ -81,7 +85,7 @@
     <!-- Time and speed -->
     <div class="time-controls">
       <span class="time">{{ formatTime(currentTime()) }} / {{ formatTime(duration()) }}</span>
-      <button class="speed-button" (click)="cycleSpeed()" type="button">
+      <button class="speed-button" (click)="cycleSpeed()" type="button" aria-label="Change playback speed" title="Playback speed">
         {{ playbackSpeed() }}x
       </button>
     </div>
