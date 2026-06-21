@@ -85,7 +85,13 @@
     <!-- Time and speed -->
     <div class="time-controls">
       <span class="time">{{ formatTime(currentTime()) }} / {{ formatTime(duration()) }}</span>
-      <button class="speed-button" (click)="cycleSpeed()" type="button" aria-label="Change playback speed" title="Playback speed">
+      <button
+        class="speed-button"
+        (click)="cycleSpeed()"
+        type="button"
+        aria-label="Change playback speed"
+        title="Playback speed"
+      >
         {{ playbackSpeed() }}x
       </button>
     </div>
