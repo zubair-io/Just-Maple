@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type IconSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -7,6 +7,7 @@ export type IconSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   selector: 'app-icon, ui-icon',
   standalone: true,
   imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './icon.component.html',
   styleUrl: './icon.component.scss',
 })
@@ -15,7 +16,7 @@ export class IconComponent {
   readonly size = input<IconSize>('md');
   readonly color = input<string>('');
 
-  get iconClasses(): string {
+  readonly iconClasses = computed(() => {
     const sizeMap: Record<IconSize, string> = {
       xs: 'text-sm',
       sm: 'text-base',
@@ -25,5 +26,5 @@ export class IconComponent {
     };
     const colorClasses = this.color() ? `text-${this.color()}` : 'text-[var(--color-text-main)]';
     return `${sizeMap[this.size()]} ${colorClasses}`;
-  }
+  });
 }
