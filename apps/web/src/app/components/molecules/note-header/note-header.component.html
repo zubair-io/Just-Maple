@@ -9,13 +9,15 @@
         (click)="openSidebarOnMobile()"
         class="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors flex-shrink-0"
         title="Open menu"
+        aria-label="Open menu"
       >
-        <span class="material-symbols-rounded text-xl">menu</span>
+        <span aria-hidden="true" class="material-symbols-rounded text-xl">menu</span>
       </button>
 
       <!-- Page name -->
       <div class="flex items-center gap-1.5 font-medium truncate">
         <span
+          aria-hidden="true"
           class="material-symbols-rounded text-base text-[var(--color-primary)] flex-shrink-0 !hidden md:!block"
           >article</span
         >
@@ -46,16 +48,18 @@
           [disabled]="!canUndo()"
           class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           title="Undo"
+          aria-label="Undo"
         >
-          <span class="material-symbols-rounded text-lg">undo</span>
+          <span aria-hidden="true" class="material-symbols-rounded text-lg">undo</span>
         </button>
         <button
           (click)="redoRequested.emit()"
           [disabled]="!canRedo()"
           class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           title="Redo"
+          aria-label="Redo"
         >
-          <span class="material-symbols-rounded text-lg">redo</span>
+          <span aria-hidden="true" class="material-symbols-rounded text-lg">redo</span>
         </button>
       </div>
 
@@ -64,11 +68,12 @@
         (click)="toggleWidthRequested.emit()"
         class="hidden md:flex w-8 h-8 items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
         [title]="isFullWidth() ? 'Narrow width' : 'Full width'"
+        [attr.aria-label]="isFullWidth() ? 'Narrow width' : 'Full width'"
       >
         @if (isFullWidth()) {
-          <span class="material-symbols-rounded text-lg">width_normal</span>
+          <span aria-hidden="true" class="material-symbols-rounded text-lg">width_normal</span>
         } @else {
-          <span class="material-symbols-rounded text-lg">width_wide</span>
+          <span aria-hidden="true" class="material-symbols-rounded text-lg">width_wide</span>
         }
       </button>
 
@@ -80,8 +85,9 @@
         (click)="toggleVersionHistory()"
         class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
         title="Version history"
+        aria-label="Version history"
       >
-        <span class="material-symbols-rounded text-lg">history</span>
+        <span aria-hidden="true" class="material-symbols-rounded text-lg">history</span>
       </button>
 
       <!-- Publish button (only for public notebooks) -->
@@ -103,8 +109,15 @@
                 ? 'Published — click to manage'
                 : 'Not published — click to publish'
           "
+          [attr.aria-label]="
+            isPublishStale()
+              ? 'Changes pending — click to manage'
+              : isPagePublished()
+                ? 'Published — click to manage'
+                : 'Not published — click to publish'
+          "
         >
-          <span class="material-symbols-rounded text-lg">{{
+          <span aria-hidden="true" class="material-symbols-rounded text-lg">{{
             isPagePublished() ? 'public' : 'public_off'
           }}</span>
         </button>
@@ -116,8 +129,9 @@
           (click)="toggleExportMenu()"
           class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
           title="Export"
+          aria-label="Export"
         >
-          <span class="material-symbols-rounded text-lg">download</span>
+          <span aria-hidden="true" class="material-symbols-rounded text-lg">download</span>
         </button>
         @if (showExportMenu()) {
           <!-- Backdrop to close menu on outside click -->
@@ -129,14 +143,14 @@
               (click)="exportAs('markdown')"
               class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
             >
-              <span class="material-symbols-rounded text-base">description</span>
+              <span aria-hidden="true" class="material-symbols-rounded text-base">description</span>
               Markdown
             </button>
             <button
               (click)="exportAs('html')"
               class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
             >
-              <span class="material-symbols-rounded text-base">code</span>
+              <span aria-hidden="true" class="material-symbols-rounded text-base">code</span>
               HTML
             </button>
           </div>
@@ -151,8 +165,9 @@
         (click)="deleteRequested.emit()"
         class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
         title="Delete page"
+        aria-label="Delete page"
       >
-        <span class="material-symbols-rounded text-lg">delete</span>
+        <span aria-hidden="true" class="material-symbols-rounded text-lg">delete</span>
       </button>
     </div>
   </header>
@@ -181,8 +196,10 @@
           <button
             (click)="closePublishModal()"
             class="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+            title="Close modal"
+            aria-label="Close modal"
           >
-            <span class="material-symbols-rounded text-lg">close</span>
+            <span aria-hidden="true" class="material-symbols-rounded text-lg">close</span>
           </button>
         </div>
 
@@ -190,6 +207,7 @@
         <div class="flex items-center justify-between py-3">
           <div class="flex items-center gap-2">
             <span
+              aria-hidden="true"
               class="material-symbols-rounded text-lg"
               [class]="isPagePublished() ? 'text-green-600' : 'text-[var(--color-text-muted)]'"
               >{{ isPagePublished() ? 'public' : 'public_off' }}</span
@@ -203,6 +221,7 @@
             [disabled]="isTogglingPublish()"
             class="relative w-10 h-6 rounded-full transition-colors"
             [class]="isPagePublished() ? 'bg-green-600' : 'bg-[var(--color-border)]'"
+            [attr.aria-label]="isPagePublished() ? 'Unpublish page' : 'Publish page'"
           >
             <span
               class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
@@ -218,7 +237,7 @@
             [disabled]="isTogglingPublish()"
             class="w-full mt-2 px-3 py-2 text-sm font-medium rounded-lg flex items-center justify-center gap-2 text-amber-700 bg-amber-50 hover:bg-amber-100 dark:text-amber-400 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 transition-colors disabled:opacity-50"
           >
-            <span class="material-symbols-rounded text-base">cloud_upload</span>
+            <span aria-hidden="true" class="material-symbols-rounded text-base">cloud_upload</span>
             Publish latest changes
           </button>
         }
@@ -239,8 +258,9 @@
                 (click)="copyPublicLink()"
                 class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-bg)] transition-colors"
                 [title]="linkCopied() ? 'Copied!' : 'Copy link'"
+                [attr.aria-label]="linkCopied() ? 'Copied!' : 'Copy link'"
               >
-                <span class="material-symbols-rounded text-base">{{
+                <span aria-hidden="true" class="material-symbols-rounded text-base">{{
                   linkCopied() ? 'check' : 'content_copy'
                 }}</span>
               </button>
