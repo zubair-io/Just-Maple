@@ -6,8 +6,9 @@
     <button
       (click)="goBack()"
       class="w-8 h-8 flex items-center justify-center rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
+      aria-label="Go back"
     >
-      <span class="material-symbols-rounded">arrow_back</span>
+      <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>
     </button>
 
     <h1 class="text-lg font-medium text-[var(--color-text-main)] whitespace-nowrap">
@@ -18,7 +19,9 @@
       <div
         class="ml-auto flex items-center gap-1.5 text-sm p-1 px-2 rounded bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] min-w-0"
       >
-        <span class="material-symbols-rounded text-sm text-[var(--color-primary)] flex-shrink-0"
+        <span
+          class="material-symbols-rounded text-sm text-[var(--color-primary)] flex-shrink-0"
+          aria-hidden="true"
           >folder</span
         >
         <span class="truncate">{{ selectedNotebook()!.label }}</span>
@@ -32,6 +35,7 @@
       <div class="relative flex-1">
         <span
           class="material-symbols-rounded absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] text-lg"
+          aria-hidden="true"
           >search</span
         >
         <input
@@ -45,8 +49,9 @@
           <button
             (click)="clearSearch()"
             class="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
+            aria-label="Clear search"
           >
-            <span class="material-symbols-rounded text-lg">close</span>
+            <span class="material-symbols-rounded text-lg" aria-hidden="true">close</span>
           </button>
         }
       </div>
@@ -61,8 +66,9 @@
         [class.border-[var(--color-border)]]="!cameraEnabled()"
         [class.hover:border-[var(--color-primary)]]="!cameraEnabled()"
         [class.hover:text-[var(--color-primary)]]="!cameraEnabled()"
+        [attr.aria-label]="cameraEnabled() ? 'Disable camera' : 'Enable camera'"
       >
-        <span class="material-symbols-rounded">{{
+        <span class="material-symbols-rounded" aria-hidden="true">{{
           cameraEnabled() ? 'videocam_off' : 'photo_camera'
         }}</span>
       </button>
@@ -91,7 +97,7 @@
   <!-- Registry List -->
   @if (filteredRegistries().length === 0) {
     <div class="flex-1 flex flex-col items-center justify-center text-[var(--color-text-muted)]">
-      <span class="material-symbols-rounded text-4xl mb-2">inventory_2</span>
+      <span class="material-symbols-rounded text-4xl mb-2" aria-hidden="true">inventory_2</span>
       @if (searchQuery()) {
         <p>No items match "{{ searchQuery() }}"</p>
       } @else {
@@ -131,7 +137,7 @@
             <div
               class="w-14 h-14 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center text-[var(--color-text-muted)]"
             >
-              <span class="material-symbols-rounded">image</span>
+              <span class="material-symbols-rounded" aria-hidden="true">image</span>
             </div>
           }
         </div>
@@ -170,13 +176,14 @@
               [class.bg-yellow-500]="getCollectionStatus(registry._id) === 'want'"
               [class.bg-gray-400]="getCollectionStatus(registry._id) === 'sold'"
               [class.text-white]="true"
+              aria-label="Change status"
             >
               @if (isSaving() === registry._id) {
                 <div
                   class="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
                 ></div>
               } @else {
-                <span class="material-symbols-rounded text-lg">
+                <span class="material-symbols-rounded text-lg" aria-hidden="true">
                   @switch (getCollectionStatus(registry._id)) {
                     @case ('have') {
                       check_circle
@@ -207,7 +214,9 @@
                   class="w-full px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-[var(--color-surface-hover)] transition-colors"
                   [class.bg-green-50]="getCollectionStatus(registry._id) === 'have'"
                 >
-                  <span class="material-symbols-rounded text-green-500 text-lg">check_circle</span>
+                  <span class="material-symbols-rounded text-green-500 text-lg" aria-hidden="true"
+                    >check_circle</span
+                  >
                   <span>Have</span>
                 </button>
                 <button
@@ -215,7 +224,9 @@
                   class="w-full px-3 py-2.5 flex items-center gap-2 text-sm hover:bg-[var(--color-surface-hover)] transition-colors"
                   [class.bg-yellow-50]="getCollectionStatus(registry._id) === 'want'"
                 >
-                  <span class="material-symbols-rounded text-yellow-500 text-lg">favorite</span>
+                  <span class="material-symbols-rounded text-yellow-500 text-lg" aria-hidden="true"
+                    >favorite</span
+                  >
                   <span>Want</span>
                 </button>
                 <button
@@ -225,7 +236,9 @@
                     getCollectionStatus(registry._id) === 'sold'
                   "
                 >
-                  <span class="material-symbols-rounded text-gray-500 text-lg">sell</span>
+                  <span class="material-symbols-rounded text-gray-500 text-lg" aria-hidden="true"
+                    >sell</span
+                  >
                   <span>Sold</span>
                 </button>
                 <div class="border-t border-[var(--color-border)]"></div>
@@ -233,7 +246,9 @@
                   (click)="setStatus($event, registry, 'none')"
                   class="w-full px-3 py-2.5 flex items-center gap-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                 >
-                  <span class="material-symbols-rounded text-lg">remove_circle</span>
+                  <span class="material-symbols-rounded text-lg" aria-hidden="true"
+                    >remove_circle</span
+                  >
                   <span>Remove</span>
                 </button>
               </div>
@@ -244,13 +259,14 @@
               (click)="toggleCollection($event, registry)"
               [disabled]="isSaving() === registry._id"
               class="w-10 h-10 flex items-center justify-center rounded-full bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)] transition-colors"
+              aria-label="Add to collection"
             >
               @if (isSaving() === registry._id) {
                 <div
                   class="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"
                 ></div>
               } @else {
-                <span class="material-symbols-rounded">add</span>
+                <span class="material-symbols-rounded" aria-hidden="true">add</span>
               }
             </button>
           }
