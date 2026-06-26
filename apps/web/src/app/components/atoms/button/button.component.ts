@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'outline';
@@ -8,11 +8,12 @@ export type ButtonSize = 'sm' | 'md' | 'lg';
   selector: 'ui-button',
   standalone: true,
   imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <button
       [type]="type()"
       [disabled]="disabled() || loading()"
-      [class]="buttonClasses"
+      [class]="buttonClasses()"
       (click)="handleClick($event)"
     >
       @if (loading()) {
@@ -51,7 +52,9 @@ export class ButtonComponent {
 
   readonly clicked = output<MouseEvent>();
 
-  get buttonClasses(): string {
+  // ⚡ Bolt: Memoized class calculation to prevent unnecessary re-evaluations
+  // Impact: O(1) retrieval during change detection cycles instead of O(n) string building
+  readonly buttonClasses = computed(() => {
     const base =
       'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
 
@@ -73,7 +76,7 @@ export class ButtonComponent {
     const width = this.fullWidth() ? 'w-full' : '';
 
     return `${base} ${variants[this.variant()]} ${sizes[this.size()]} ${width}`;
-  }
+  });
 
   handleClick(event: MouseEvent): void {
     if (!this.disabled() && !this.loading()) {
