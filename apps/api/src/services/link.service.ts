@@ -337,6 +337,13 @@ function extractTextFromContent(content: PageContent): string {
 }
 
 /**
+ * Escape special regex characters for safe use in RegExp
+ */
+function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * Search pages for linking autocomplete
  */
 export async function searchPagesForLinking(
@@ -358,7 +365,7 @@ export async function searchPagesForLinking(
     const searchQuery: any = {
         userId: new ObjectId(userId),
         isTrashed: { $ne: true },
-        title: { $regex: query, $options: 'i' },
+        title: { $regex: escapeRegex(query), $options: 'i' },
     };
 
     if (options?.notebookId) {

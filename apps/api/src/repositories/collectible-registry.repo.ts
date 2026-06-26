@@ -114,6 +114,13 @@ export async function findRegistriesByProviderIds(
     return map;
 }
 
+/**
+ * Escape special regex characters for safe use in RegExp
+ */
+function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export async function searchRegistries(
     query: string,
     options?: {
@@ -121,10 +128,11 @@ export async function searchRegistries(
         limit?: number;
     },
 ): Promise<CollectibleRegistry[]> {
+    const safeQuery = escapeRegex(query);
     const filter: Record<string, unknown> = {
         $or: [
-            { title: { $regex: query, $options: 'i' } },
-            { providerId: { $regex: query, $options: 'i' } },
+            { title: { $regex: safeQuery, $options: 'i' } },
+            { providerId: { $regex: safeQuery, $options: 'i' } },
             { upc: query },
         ],
     };

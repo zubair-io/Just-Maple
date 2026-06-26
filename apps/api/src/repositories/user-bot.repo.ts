@@ -329,13 +329,21 @@ export async function findUserBotsForNotebook(notebookId: string): Promise<UserB
     }
 }
 
+/**
+ * Escape special regex characters for safe use in RegExp
+ */
+function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export async function searchUserBots(
     userId: string,
     notebookId: string,
     query: string,
 ): Promise<UserBot[]> {
     try {
-        const regex = new RegExp(query, 'i'); // case-insensitive
+        const safeQuery = escapeRegex(query);
+        const regex = new RegExp(safeQuery, 'i'); // case-insensitive
 
         // Get user's bots and tag's bots
         const userBots = await getCollection()
