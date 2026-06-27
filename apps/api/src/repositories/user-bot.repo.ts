@@ -1,6 +1,7 @@
 import { ObjectId, Collection } from 'mongodb';
 import { randomBytes } from 'crypto';
 import { getDb } from '../db/client';
+import { escapeRegex } from '../utils/regex';
 import type {
     UserBot,
     CreateUserBotInput,
@@ -335,7 +336,7 @@ export async function searchUserBots(
     query: string,
 ): Promise<UserBot[]> {
     try {
-        const regex = new RegExp(query, 'i'); // case-insensitive
+        const regex = new RegExp(escapeRegex(query), 'i'); // case-insensitive
 
         // Get user's bots and tag's bots
         const userBots = await getCollection()
