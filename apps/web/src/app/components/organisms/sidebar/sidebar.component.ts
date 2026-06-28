@@ -11,6 +11,7 @@ import {
   ElementRef,
   ViewChildren,
   QueryList,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -33,6 +34,14 @@ import type { Page, Notebook } from '@maple/shared';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { EMPTY, filter, map, switchMap } from 'rxjs';
 
+/**
+ * ⚡ Bolt Performance Optimization:
+ * Added ChangeDetectionStrategy.OnPush to prevent unnecessary re-renders.
+ * The SidebarComponent heavily relies on Signals (e.g., `signal()`, `computed()`),
+ * making it an ideal candidate for OnPush. This prevents Angular from checking
+ * the component tree on every event cycle, significantly improving performance.
+ * Expected impact: Drastically reduces change detection cycles for the main layout shell.
+ */
 @Component({
   selector: 'app-sidebar',
   standalone: true,
@@ -46,6 +55,7 @@ import { EMPTY, filter, map, switchMap } from 'rxjs';
   ],
   templateUrl: './sidebar.component.html',
   styleUrl: './sidebar.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SidebarComponent implements OnInit, AfterViewChecked {
   private readonly router = inject(Router);
