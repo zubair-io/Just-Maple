@@ -8,10 +8,11 @@
     <button
       class="bg-transparent border border-border rounded px-2 py-1 cursor-pointer text-text-muted flex items-center hover:bg-bg-hover hover:text-text-main ml-auto shrink-0"
       title="Edit YAML"
+      aria-label="Edit YAML"
       contentEditable="false"
       (click)="editYaml.emit(); $event.preventDefault(); $event.stopPropagation()"
     >
-      <span class="material-symbols-rounded text-base">code</span>
+      <span class="material-symbols-rounded text-base" aria-hidden="true">code</span>
     </button>
   </div>
   <div
