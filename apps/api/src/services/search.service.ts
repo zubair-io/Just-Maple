@@ -22,7 +22,6 @@ async function getAccessibleNotebookIds(userId: string): Promise<string[]> {
     return notebooks.map((n) => n._id);
 }
 
-
 /**
  * Highlight search terms in text and extract snippet
  */
