@@ -1,3 +1,4 @@
+import { escapeRegex } from '../utils/regex';
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import { withCosmosRetry } from '../db/cosmos-retry';
@@ -123,8 +124,8 @@ export async function searchRegistries(
 ): Promise<CollectibleRegistry[]> {
     const filter: Record<string, unknown> = {
         $or: [
-            { title: { $regex: query, $options: 'i' } },
-            { providerId: { $regex: query, $options: 'i' } },
+            { title: { $regex: escapeRegex(query), $options: 'i' } },
+            { providerId: { $regex: escapeRegex(query), $options: 'i' } },
             { upc: query },
         ],
     };

@@ -1,3 +1,4 @@
+import { escapeRegex } from '../utils/regex';
 import { ObjectId } from 'mongodb';
 import * as Y from 'yjs';
 import { getDb } from '../db/client';
@@ -358,7 +359,7 @@ export async function searchPagesForLinking(
     const searchQuery: any = {
         userId: new ObjectId(userId),
         isTrashed: { $ne: true },
-        title: { $regex: query, $options: 'i' },
+        title: { $regex: escapeRegex(query), $options: 'i' },
     };
 
     if (options?.notebookId) {

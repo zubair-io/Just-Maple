@@ -23,8 +23,8 @@
     }
   },
   "scripts": {
-    "build": "bunx tsc",
-    "typecheck": "bunx tsc --noEmit"
+    "build": "bun x tsc",
+    "typecheck": "bun x tsc --noEmit"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.48",
