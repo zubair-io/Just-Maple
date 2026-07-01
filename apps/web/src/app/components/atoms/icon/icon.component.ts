@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type IconSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -15,7 +15,7 @@ export class IconComponent {
   readonly size = input<IconSize>('md');
   readonly color = input<string>('');
 
-  get iconClasses(): string {
+  readonly iconClasses = computed(() => {
     const sizeMap: Record<IconSize, string> = {
       xs: 'text-sm',
       sm: 'text-base',
@@ -25,5 +25,5 @@ export class IconComponent {
     };
     const colorClasses = this.color() ? `text-${this.color()}` : 'text-[var(--color-text-main)]';
     return `${sizeMap[this.size()]} ${colorClasses}`;
-  }
+  });
 }
