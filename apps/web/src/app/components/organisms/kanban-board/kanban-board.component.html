@@ -37,15 +37,15 @@
                     (click)="confirmDeleteLane(lane.id)"
                     title="Confirm delete"
                   >
-                    <span class="material-symbols-rounded">check</span>
+                    <span class="material-symbols-rounded" aria-hidden="true">check</span>
                   </button>
                   <button class="cancel-btn" (click)="cancelDeleteLane()" title="Cancel">
-                    <span class="material-symbols-rounded">close</span>
+                    <span class="material-symbols-rounded" aria-hidden="true">close</span>
                   </button>
                 </div>
               } @else {
                 <button class="lane-menu-btn" (click)="deleteLane(lane.id)" title="Delete lane">
-                  <span class="material-symbols-rounded">delete_outline</span>
+                  <span class="material-symbols-rounded" aria-hidden="true">delete_outline</span>
                 </button>
               }
             }
@@ -90,7 +90,7 @@
                     }
                     @if (card.dueDate && settings()?.cardDisplay?.showDueDate) {
                       <span class="due-date" [class.overdue]="isDueDateOverdue(card.dueDate)">
-                        <span class="material-symbols-rounded">schedule</span>
+                        <span class="material-symbols-rounded" aria-hidden="true">schedule</span>
                         {{ formatDueDate(card.dueDate) }}
                       </span>
                     }
@@ -102,7 +102,7 @@
                     @if (card.mentions?.length) {
                       @for (mention of card.mentions; track mention.userId) {
                         <span class="mention-chip" title="{{ mention.displayName }}">
-                          <span class="material-symbols-rounded">person</span>
+                          <span class="material-symbols-rounded" aria-hidden="true">person</span>
                           @{{ mention.displayName }}
                         </span>
                       }
@@ -115,7 +115,7 @@
                     (click)="archiveCard(card, lane.id)"
                     title="Archive"
                   >
-                    <span class="material-symbols-rounded">archive</span>
+                    <span class="material-symbols-rounded" aria-hidden="true">archive</span>
                   </button>
                 </div>
               </div>
@@ -137,7 +137,7 @@
               </div>
             } @else {
               <button class="add-card-btn" (click)="startAddingCard(lane.id)">
-                <span class="material-symbols-rounded">add</span>
+                <span class="material-symbols-rounded" aria-hidden="true">add</span>
                 <span>Add card</span>
               </button>
             }
@@ -150,7 +150,7 @@
     <div class="fab-container">
       @if (archivedCount() > 0) {
         <button class="archived-btn">
-          <span class="material-symbols-rounded">inventory_2</span>
+          <span class="material-symbols-rounded" aria-hidden="true">inventory_2</span>
           <span class="archived-count">{{ archivedCount() }}</span>
         </button>
       }
@@ -172,7 +172,7 @@
           </div>
         }
         <button class="add-lane-fab" (click)="startAddingLane()" title="Add lane">
-          <span class="material-symbols-rounded">add</span>
+          <span class="material-symbols-rounded" aria-hidden="true">add</span>
         </button>
       </div>
     </div>
