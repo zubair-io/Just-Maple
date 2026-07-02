@@ -3,6 +3,7 @@ import {
   input,
   output,
   signal,
+  computed,
   ChangeDetectionStrategy,
   HostListener,
   ElementRef,
@@ -129,10 +130,10 @@ export class AICommandMenuComponent implements AfterViewInit {
     'Arabic',
   ];
 
-  get filteredCommands(): AICommandItem[] {
+  readonly filteredCommands = computed(() => {
     const hasSelection = this.hasSelection();
     return AI_COMMANDS.filter((cmd) => !cmd.requiresSelection || hasSelection);
-  }
+  });
 
   ngAfterViewInit(): void {
     // Focus the menu for keyboard navigation
@@ -158,7 +159,7 @@ export class AICommandMenuComponent implements AfterViewInit {
     switch (event.key) {
       case 'ArrowDown':
         event.preventDefault();
-        this.selectedIndex.update((i) => Math.min(i + 1, this.filteredCommands.length - 1));
+        this.selectedIndex.update((i) => Math.min(i + 1, this.filteredCommands().length - 1));
         this.scrollSelectedIntoView();
         break;
       case 'ArrowUp':
@@ -168,7 +169,7 @@ export class AICommandMenuComponent implements AfterViewInit {
         break;
       case 'Enter':
         event.preventDefault();
-        this.selectCommand(this.filteredCommands[this.selectedIndex()]);
+        this.selectCommand(this.filteredCommands()[this.selectedIndex()]);
         break;
       case 'Escape':
         event.preventDefault();
