@@ -1,4 +1,5 @@
 import { getDb } from '../db/client';
+import { escapeRegex } from '../utils/regex';
 import { findNotebooksByUserId } from '../repositories/notebook.repo';
 import type { SearchResult, PageType } from '@maple/shared';
 
@@ -19,13 +20,6 @@ export interface SearchOptions {
 async function getAccessibleNotebookIds(userId: string): Promise<string[]> {
     const notebooks = await findNotebooksByUserId(userId);
     return notebooks.map((n) => n._id);
-}
-
-/**
- * Escape special regex characters for safe use in RegExp
- */
-function escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
