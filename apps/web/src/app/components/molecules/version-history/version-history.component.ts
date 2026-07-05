@@ -1,6 +1,5 @@
 import { Component, input, output, signal, inject, effect, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import * as Y from 'yjs';
 import { MemoVersionService, type MemoVersionFull } from '../../../services/memo-version.service';
 import type { MemoVersionListItem, VersionTrigger } from '@maple/shared';
@@ -14,7 +13,6 @@ import type { MemoVersionListItem, VersionTrigger } from '@maple/shared';
 })
 export class VersionHistoryComponent {
   private readonly versionService = inject(MemoVersionService);
-  private readonly sanitizer = inject(DomSanitizer);
 
   readonly noteId = input.required<string>();
   readonly isOpen = input<boolean>(false);
@@ -32,7 +30,7 @@ export class VersionHistoryComponent {
   // Preview state
   readonly showPreview = signal(false);
   readonly isLoadingPreview = signal(false);
-  readonly previewContent = signal<SafeHtml | null>(null);
+  readonly previewContent = signal<string | null>(null);
   readonly previewVersion = signal<MemoVersionFull | null>(null);
 
   readonly selectedVersion = computed(() => {
@@ -112,7 +110,9 @@ export class VersionHistoryComponent {
       next: (version) => {
         this.previewVersion.set(version);
         const html = this.renderVersionAsHtml(version.state);
-        this.previewContent.set(this.sanitizer.bypassSecurityTrustHtml(html));
+        // Rely on Angular's default DomSanitizer (applied automatically by [innerHTML])
+        // instead of bypassSecurityTrustHtml, which would defeat that protection.
+        this.previewContent.set(html);
         this.isLoadingPreview.set(false);
       },
       error: (err) => {
