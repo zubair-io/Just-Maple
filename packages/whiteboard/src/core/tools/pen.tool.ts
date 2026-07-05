@@ -147,7 +147,7 @@ export class PenTool implements Tool {
     private commitStroke(): void {
         if (!this.context || this.points.length < 2) return;
 
-        const { whiteboard, strokeColor, strokeSize, pageId } = this.context;
+        const { whiteboard, strokeColor, strokeSize, pageId, currentUserId } = this.context;
 
         // Simplify points to reduce storage
         const simplifiedPoints = simplify(
@@ -194,7 +194,7 @@ export class PenTool implements Tool {
             const yElement = new Y.Map<unknown>();
             yElement.set('id', elementId);
             yElement.set('type', 'stroke');
-            yElement.set('createdBy', ''); // TODO: Get from auth
+            yElement.set('createdBy', currentUserId() ?? '');
             yElement.set('createdAt', now);
             yElement.set('updatedAt', now);
 
