@@ -170,11 +170,11 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
       ...this.parent?.(),
       updateTodoAttrs:
         (todoId: string, attrs: Partial<Omit<EnhancedTaskItemAttrs, 'id'>>) =>
-        ({ state, dispatch }) => {
+        ({ state, dispatch }: any) => {
           const { doc, tr } = state;
           let found = false;
 
-          doc.descendants((node, pos) => {
+          doc.descendants((node: any, pos: any) => {
             if (node.type.name === this.name && node.attrs['id'] === todoId) {
               if (dispatch) {
                 tr.setNodeMarkup(pos, undefined, {
@@ -196,11 +196,11 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         },
       toggleTodo:
         (todoId: string) =>
-        ({ state, dispatch }) => {
+        ({ state, dispatch }: any) => {
           const { doc, tr } = state;
           let found = false;
 
-          doc.descendants((node, pos) => {
+          doc.descendants((node: any, pos: any) => {
             if (node.type.name === this.name && node.attrs['id'] === todoId) {
               if (dispatch) {
                 tr.setNodeMarkup(pos, undefined, {
@@ -222,26 +222,26 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
         },
       setTodoDueDate:
         (todoId: string, dueDate: string | null) =>
-        ({ commands }) => {
+        ({ commands }: any) => {
           return commands.updateTodoAttrs(todoId, { dueDate: dueDate || undefined });
         },
       setTodoPriority:
         (todoId: string, priority: TodoPriority | null) =>
-        ({ commands }) => {
+        ({ commands }: any) => {
           return commands.updateTodoAttrs(todoId, { priority: priority || undefined });
         },
       setTodoColor:
         (todoId: string, color: TodoColor | null) =>
-        ({ commands }) => {
+        ({ commands }: any) => {
           return commands.updateTodoAttrs(todoId, { color: color || undefined });
         },
       scrollToTodo:
         (todoId: string) =>
-        ({ state, view }) => {
+        ({ state, view }: any) => {
           const { doc } = state;
           let targetPos: number | null = null;
 
-          doc.descendants((node, pos) => {
+          doc.descendants((node: any, pos: any) => {
             if (node.type.name === this.name && node.attrs['id'] === todoId) {
               targetPos = pos;
               return false;

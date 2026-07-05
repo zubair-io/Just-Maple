@@ -114,11 +114,11 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
       ...this.parent?.(),
       setTaskListName:
         (listId: string, name: string) =>
-        ({ state, dispatch }) => {
+        ({ state, dispatch }: any) => {
           const { doc, tr } = state;
           let found = false;
 
-          doc.descendants((node, pos) => {
+          doc.descendants((node: any, pos: any) => {
             if (node.type.name === this.name && node.attrs['id'] === listId) {
               tr.setNodeMarkup(pos, undefined, {
                 ...node.attrs,
@@ -138,11 +138,11 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
         },
       toggleTaskListCompleted:
         (listId: string) =>
-        ({ state, dispatch }) => {
+        ({ state, dispatch }: any) => {
           const { doc, tr } = state;
           let found = false;
 
-          doc.descendants((node, pos) => {
+          doc.descendants((node: any, pos: any) => {
             if (node.type.name === this.name && node.attrs['id'] === listId) {
               tr.setNodeMarkup(pos, undefined, {
                 ...node.attrs,
@@ -407,7 +407,7 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
 
       // Subscribe to editor selection changes
       const handleSelectionUpdate = () => {
-        activeTask = findActiveTask(editor);
+        activeTask = findActiveTask(editor as any);
         updateToolbar();
       };
 
@@ -487,7 +487,7 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
           statusChevron.textContent = showCompleted ? 'expand_more' : 'chevron_right';
 
           // Update toolbar in case task attributes changed
-          activeTask = findActiveTask(editor);
+          activeTask = findActiveTask(editor as any);
           updateToolbar();
 
           return true;
