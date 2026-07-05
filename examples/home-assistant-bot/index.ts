@@ -38,6 +38,19 @@ const config = {
     anomalyIntervalMin: parseInt(process.env.ANOMALY_INTERVAL_MIN || '10'),
 };
 
+// Validate required environment variables up front so misconfiguration fails
+// fast with a clear message instead of surfacing as confusing runtime errors.
+function requireEnv(name: string, value: string): void {
+    if (!value) {
+        throw new Error(
+            `Missing required environment variable ${name}. Set it in your .env file or shell environment.`,
+        );
+    }
+}
+
+requireEnv('HA_ACCESS_TOKEN', config.haAccessToken);
+requireEnv('ANTHROPIC_API_KEY', config.anthropicApiKey);
+
 // ---- State ----
 
 let jwtToken: string | null = null;

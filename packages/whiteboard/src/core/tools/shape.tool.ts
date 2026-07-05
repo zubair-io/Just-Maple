@@ -131,7 +131,7 @@ export class ShapeTool implements Tool {
     private commitShape(startPoint: CanvasPoint, endPoint: CanvasPoint): void {
         if (!this.context) return;
 
-        const { whiteboard, strokeColor, strokeSize } = this.context;
+        const { whiteboard, strokeColor, strokeSize, currentUserId } = this.context;
 
         const x = Math.min(startPoint.x, endPoint.x);
         const y = Math.min(startPoint.y, endPoint.y);
@@ -147,7 +147,7 @@ export class ShapeTool implements Tool {
             yElement.set('id', elementId);
             yElement.set('type', 'shape');
             yElement.set('shapeType', this._shapeType);
-            yElement.set('createdBy', '');
+            yElement.set('createdBy', currentUserId() ?? '');
             yElement.set('createdAt', now);
             yElement.set('updatedAt', now);
             yElement.set('width', width);

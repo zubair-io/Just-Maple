@@ -111,9 +111,6 @@ describe.runIf(mongoAvailable)('UserBotRepo', () => {
                 handle: 'global-bot',
                 isEnabled: true,
             });
-
-            // const bots = await findEnabledBotsForTag(user._id.toString(), tag._id.toString());
-            // expect(bots.some((b) => b.handle === 'global-bot')).toBe(true);
         });
 
         it('should return tag-specific bots', async () => {
@@ -128,9 +125,6 @@ describe.runIf(mongoAvailable)('UserBotRepo', () => {
                 notebookId: tag._id.toString(),
                 isEnabled: true,
             });
-
-            // const bots = await findEnabledBotsForTag(user._id.toString(), tag._id.toString());
-            // expect(bots.some((b) => b.handle === 'tag-bot')).toBe(true);
         });
 
         it('should not return disabled bots', async () => {
@@ -144,9 +138,6 @@ describe.runIf(mongoAvailable)('UserBotRepo', () => {
                 handle: 'disabled-bot',
                 isEnabled: false,
             });
-
-            // const bots = await findEnabledBotsForTag(user._id.toString(), tag._id.toString());
-            // expect(bots.some((b) => b.handle === 'disabled-bot')).toBe(false);
         });
     });
 

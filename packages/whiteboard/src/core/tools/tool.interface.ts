@@ -14,6 +14,8 @@ export interface ToolContext {
     toolState: WritableSignal<ToolState>;
     strokeColor: Signal<string>;
     strokeSize: Signal<number>;
+    /** The authenticated user's ID, used to attribute newly created elements. */
+    currentUserId: Signal<string | null>;
     requestRender: () => void;
 }
 
