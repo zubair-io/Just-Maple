@@ -25,8 +25,9 @@
         (click)="skipBackward()"
         type="button"
         title="Rewind 10 seconds"
+        aria-label="Rewind 10 seconds"
       >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path
             d="M11.5 1a.5.5 0 0 1 .5.5v13a.5.5 0 0 1-1 0V8.566l-8.24 5.5a.5.5 0 0 1-.76-.427V2.361a.5.5 0 0 1 .76-.427L11 7.434V1.5a.5.5 0 0 1 .5-.5z"
             transform="scale(-1, 1) translate(-16, 0)"
@@ -40,16 +41,18 @@
         (click)="togglePlay()"
         type="button"
         [disabled]="isLoading()"
+        [title]="isPlaying() ? 'Pause' : 'Play'"
+        [attr.aria-label]="isPlaying() ? 'Pause' : 'Play'"
       >
         @if (isLoading()) {
-          <div class="loading-spinner"></div>
+          <div class="loading-spinner" aria-hidden="true"></div>
         } @else if (isPlaying()) {
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <rect x="4" y="3" width="4" height="14" rx="1" />
             <rect x="12" y="3" width="4" height="14" rx="1" />
           </svg>
         } @else {
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path d="M5 3.5l12 6.5-12 6.5v-13z" />
           </svg>
         }
@@ -61,8 +64,9 @@
         (click)="skipForward()"
         type="button"
         title="Forward 10 seconds"
+        aria-label="Forward 10 seconds"
       >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
           <path
             d="M4.5 1a.5.5 0 0 0-.5.5v13a.5.5 0 0 0 1 0V8.566l8.24 5.5a.5.5 0 0 0 .76-.427V2.361a.5.5 0 0 0-.76-.427L5 7.434V1.5a.5.5 0 0 0-.5-.5z"
           />
@@ -81,7 +85,13 @@
     <!-- Time and speed -->
     <div class="time-controls">
       <span class="time">{{ formatTime(currentTime()) }} / {{ formatTime(duration()) }}</span>
-      <button class="speed-button" (click)="cycleSpeed()" type="button">
+      <button
+        class="speed-button"
+        (click)="cycleSpeed()"
+        type="button"
+        [title]="'Playback speed ' + playbackSpeed() + 'x'"
+        [attr.aria-label]="'Playback speed ' + playbackSpeed() + 'x'"
+      >
         {{ playbackSpeed() }}x
       </button>
     </div>
