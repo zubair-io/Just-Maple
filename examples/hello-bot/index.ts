@@ -29,6 +29,19 @@ const config = {
     port: parseInt(process.env.PORT || '3001'),
 };
 
+// Validate required environment variables up front so misconfiguration fails
+// fast with a clear message instead of surfacing as confusing runtime errors.
+function requireEnv(name: string, value: string): void {
+    if (!value) {
+        throw new Error(
+            `Missing required environment variable ${name}. Set it in your .env file or shell environment.`,
+        );
+    }
+}
+
+requireEnv('BOT_TOKEN', config.botToken);
+requireEnv('WEBHOOK_SECRET', config.webhookSecret);
+
 // State
 let jwtToken: string | null = null;
 let jwtExpiresAt: Date | null = null;
