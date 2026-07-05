@@ -5,7 +5,6 @@ import { SidebarComponent } from '../../organisms';
 import { DialogService } from '../../molecules';
 import { UiStateService } from '../../../services/ui-state.service';
 import { NotebookService } from '../../../services/notebook.service';
-import { PageService } from '../../../services/page.service';
 import type { PageType } from '@maple/shared';
 
 @Component({
@@ -32,7 +31,6 @@ export class MainLayoutComponent {
   private readonly uiStateService = inject(UiStateService);
   private readonly router = inject(Router);
   private readonly notebookService = inject(NotebookService);
-  private readonly pageService = inject(PageService);
   private readonly dialogService = inject(DialogService);
 
   readonly selectedNotebookId = signal<string | null>(null);
@@ -51,37 +49,20 @@ export class MainLayoutComponent {
   }
 
   onNewPage(type: PageType = 'memo'): void {
+    // Delegate creation to the ':notebookId/new' route (NewNoteComponent), the same
+    // path HomeComponent uses — every page route requires a notebookId segment, so
+    // there's no route to navigate to when the user has no notebook yet.
     const notebookId = this.selectedNotebookId() ?? this.notebookService.notebooks()[0]?._id;
-    const id = crypto.randomUUID();
-    this.pageService
-      .createPage({
-        id,
-        title: 'Untitled',
-        content: { type: 'doc', content: [] },
-        notebookId: notebookId || undefined,
-        type,
-      })
-      .subscribe({
-        next: (page) => {
-          if (notebookId) {
-            this.router.navigate(['/', notebookId, page.id]);
-          } else {
-            this.router.navigate(['/', page.id]);
-          }
-        },
-        error: (error) => {
-          console.error('Failed to create page:', error);
-        },
-      });
+    if (notebookId) {
+      this.router.navigate(['/', notebookId, 'new'], { queryParams: { type } });
+    }
   }
 
-  onSelectPage(pageId: string): void {
-    const notebookId = this.selectedNotebookId();
-    if (notebookId) {
-      this.router.navigate(['/', notebookId, pageId]);
-    } else {
-      this.router.navigate(['/', pageId]);
-    }
+  onSelectPage(_pageId: string): void {
+    // No-op: the sidebar already navigates via [routerLink] using each page's own
+    // notebookId, and highlights the active page from PageService.activeId$ directly.
+    // Re-navigating here with this component's separately-tracked selectedNotebookId
+    // would risk sending the user to the wrong notebook/page pair.
   }
 
   onSelectNotebook(notebookId: string): void {
