@@ -1,6 +1,7 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import { withCosmosRetry } from '../db/cosmos-retry';
+import { escapeRegex } from '../utils/regex';
 import type { CollectibleRegistry, RegistryTag } from '@maple/shared';
 
 interface CollectibleRegistryDocument {
@@ -121,10 +122,11 @@ export async function searchRegistries(
         limit?: number;
     },
 ): Promise<CollectibleRegistry[]> {
+    const escapedQuery = escapeRegex(query);
     const filter: Record<string, unknown> = {
         $or: [
-            { title: { $regex: query, $options: 'i' } },
-            { providerId: { $regex: query, $options: 'i' } },
+            { title: { $regex: escapedQuery, $options: 'i' } },
+            { providerId: { $regex: escapedQuery, $options: 'i' } },
             { upc: query },
         ],
     };
