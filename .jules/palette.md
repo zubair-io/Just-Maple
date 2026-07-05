@@ -1,3 +1,8 @@
+## 2025-02-18 - Missing ARIA hidden attributes on icon ligatures
+
+**Learning:** Decorative icons using material-symbols-rounded class and text ligatures lack aria-hidden="true" attributes on several components (e.g. Kanban board). This can cause screen readers to announce confusing raw ligature text.
+**Action:** Always add aria-hidden="true" to decorative text-ligature icons within interactive elements.
+
 ## 2026-07-02 - Decorative Font Icons Exposed to Screen Readers
 
 **Learning:** The codebase makes heavy use of Google's `material-symbols-rounded` font icons where the ligature name (e.g., `arrow_back`, `close`, `inventory_2`) is rendered as text inside a span. If `aria-hidden="true"` is omitted on these spans, screen readers will mistakenly read the raw ligature name (e.g., "button, arrow back") even if the button has an `aria-label`, leading to confusing, redundant, or confusingly technical announcements.
@@ -12,5 +17,3 @@
 
 **Learning:** Icon-only buttons using Material Symbols across the app frequently miss `aria-label` attributes for screen reader support and need `aria-hidden="true"` on the icon itself to prevent double reading by screen readers.
 **Action:** Always verify icon-only buttons have descriptive `aria-label`s and `title`s, and ensure their child decorative icon elements have `aria-hidden="true"`.
-
-> > > > > > > origin/main
