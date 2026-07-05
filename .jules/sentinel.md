@@ -1,0 +1,5 @@
+## 2024-07-04 - [NoSQL Injection & ReDoS via Unsanitized Regex]
+
+**Vulnerability:** User-provided search queries were being passed directly to `new RegExp()` and MongoDB `$regex` operators without escaping special regex characters (`.*+?^${}()|[]\`). This could lead to NoSQL Injection (allowing attackers to construct arbitrary regex queries) and Regular Expression Denial of Service (ReDoS) by providing excessively complex regex strings.
+**Learning:** In MongoDB/Mongoose or any regex-based searching context, user inputs must always be treated as plain strings, not executable patterns, unless explicitly required. The issue existed because the `escapeRegex` function was siloed in `search.service.ts` rather than being a global utility.
+**Prevention:** Created a centralized `escapeRegex` utility in `apps/api/src/utils/regex.ts`. Any dynamically constructed regular expression or `$regex` database query containing user input MUST be wrapped in `escapeRegex()`.

@@ -1,7 +1,7 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import { config } from '../config';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomInt } from 'crypto';
 
 interface MagicLinkDocument {
     _id: ObjectId;
@@ -22,8 +22,9 @@ export function generateToken(): string {
 }
 
 export function generateCode(): string {
-    // Generate a 6-digit numeric code
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    // Security: Use cryptographically secure random number generator instead of Math.random()
+    // Generate a 6-digit numeric code between 100000 and 999999
+    return randomInt(100000, 1000000).toString();
 }
 
 export interface MagicLinkResult {

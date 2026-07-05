@@ -191,9 +191,15 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
     return this.messageService.getUnreadCount(notebookId);
   }
 
-  getUnreadCountByPageId(pageId: string): number {
-    return this.messageService.getUnreadCountByPageId(pageId);
-  }
+  readonly unreadCountsByPage = computed(() => {
+    return this.messageService.unreadCounts().reduce(
+      (acc, count) => {
+        if (count.pageId) acc[count.pageId] = count.count;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
+  });
 
   toggleNotebook(notebookId: string): void {
     const isExpanding = !this.expandedNotebooks().has(notebookId);
