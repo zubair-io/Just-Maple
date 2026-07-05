@@ -59,7 +59,7 @@
         <button
           type="button"
           class="flex-1 px-2.5 py-1.5 text-xs font-medium border rounded-md cursor-pointer transition-all"
-          [class]="getPriorityClasses(p.value)"
+          [class]="priorityClasses()[p.value || 'null']"
           (click)="setPriority(currentPriority() === p.value ? null : p.value)"
         >
           {{ p.label }}
