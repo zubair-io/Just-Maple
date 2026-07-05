@@ -1,3 +1,8 @@
+## $(date +%Y-%m-%d) - Prevent Unnecessary Array References with Signals
+
+**Learning:** In Angular components using OnPush change detection, using getters that return new array references (like `.filter()`) within templates causes unnecessary change detection cycles.
+**Action:** Always convert synchronous getters bound to templates into `computed()` signals when they compute a new array or object.
+
 ## 2024-06-25 - Replace Template Getters with Computed Signals in Angular
 
 **Learning:** Angular templates using synchronous getters (like `getPriorityClasses`) cause expensive recalculations during every change detection cycle. This is a common performance bottleneck in Angular components that evaluate complex logic repeatedly.
