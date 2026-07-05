@@ -161,6 +161,7 @@ export class CanvasComponent implements OnDestroy {
             toolState: this.toolState,
             strokeColor: computed(() => this.strokeColor()),
             strokeSize: computed(() => this.strokeSize()),
+            currentUserId: computed(() => this.userProvider.user()?._id ?? null),
             requestRender: () => this.requestRender(),
         };
 
