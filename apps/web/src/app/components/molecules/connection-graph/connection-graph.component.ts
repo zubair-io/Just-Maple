@@ -9,6 +9,7 @@ import {
   output,
   signal,
   HostListener,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as d3 from 'd3';
@@ -55,6 +56,7 @@ export interface GraphStats {
   imports: [CommonModule],
   templateUrl: './connection-graph.component.html',
   styleUrl: './connection-graph.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ConnectionGraphComponent implements AfterViewInit, OnDestroy {
   @ViewChild('graphContainer') graphContainer!: ElementRef<HTMLDivElement>;

@@ -1,4 +1,4 @@
-import { Component, inject, computed } from '@angular/core';
+import { Component, inject, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NetworkService } from '../../../services/network.service';
 
@@ -6,6 +6,7 @@ import { NetworkService } from '../../../services/network.service';
   selector: 'app-offline-indicator',
   standalone: true,
   imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (isOffline()) {
       <div
