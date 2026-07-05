@@ -173,24 +173,27 @@ export class TodoPopoverComponent {
   /**
    * Get Tailwind classes for priority buttons
    */
-  getPriorityClasses(priority: TodoPriority | null): string {
-    const isActive = this.currentPriority() === priority;
+  readonly priorityClasses = computed(() => {
+    const priority = this.currentPriority();
+    const inactiveClass =
+      'border-[var(--color-border)] bg-transparent text-[var(--color-text-main)] hover:bg-[var(--color-hover)]';
+    const activeClasses: Record<string, string> = {
+      high: 'border-transparent bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
+      medium:
+        'border-transparent bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
+      low: 'border-transparent bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
+    };
 
-    if (!isActive) {
-      return 'border-[var(--color-border)] bg-transparent text-[var(--color-text-main)] hover:bg-[var(--color-hover)]';
-    }
-
-    switch (priority) {
-      case 'high':
-        return 'border-transparent bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400';
-      case 'medium':
-        return 'border-transparent bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400';
-      case 'low':
-        return 'border-transparent bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400';
-      default:
-        return 'border-[var(--color-border)] bg-transparent text-[var(--color-text-main)]';
-    }
-  }
+    return {
+      high: priority === 'high' ? activeClasses['high'] : inactiveClass,
+      medium: priority === 'medium' ? activeClasses['medium'] : inactiveClass,
+      low: priority === 'low' ? activeClasses['low'] : inactiveClass,
+      null:
+        priority === null || priority === undefined
+          ? 'border-[var(--color-border)] bg-transparent text-[var(--color-text-main)]'
+          : inactiveClass,
+    } as Record<string, string>;
+  });
 
   /**
    * Parse natural language date input
