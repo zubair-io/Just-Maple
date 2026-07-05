@@ -36,9 +36,11 @@
       >
         <button
           (click)="toggleSidebar()"
+          aria-label="Toggle menu"
+          title="Toggle menu"
           class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[var(--color-surface-hover)] text-[var(--color-text-muted)]"
         >
-          <span class="material-symbols-rounded text-xl">menu</span>
+          <span class="material-symbols-rounded text-xl" aria-hidden="true">menu</span>
         </button>
         <span class="font-serif font-bold text-sm text-[var(--color-text-main)]">Just Maple</span>
       </div>
