@@ -4,7 +4,7 @@
       <h3 class="text-sm font-semibold text-[var(--color-text-main)]">
         {{ mode() === 'loop' ? 'Configure JSON Table/List' : 'Insert JSON Reference' }}
       </h3>
-      <button class="close-btn" (click)="cancel()">
+      <button class="close-btn" aria-label="Close configuration" (click)="cancel()">
         <span class="material-symbols-outlined text-lg">close</span>
       </button>
     </div>
