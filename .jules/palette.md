@@ -1,3 +1,4 @@
 ## 2024-07-24 - Screen Reader Compatibility for Material Symbols
+
 **Learning:** Material Symbol ligatures (like "arrow_back") are announced literally by screen readers, causing confusion. The `material-symbols-rounded` class relies on text ligatures, requiring explicit `aria-hidden="true"` to prevent this behavior. Interactive elements needing labels must provide an `aria-label` attribute on the wrapping button instead.
 **Action:** Always add `aria-hidden="true"` to decorative icons, especially those using text ligatures, and add descriptive `aria-label` attributes to parent interactive elements like buttons.
