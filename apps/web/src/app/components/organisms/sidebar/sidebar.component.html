@@ -313,13 +313,11 @@
                   >
                 }
                 <!-- Unread badge for message pages -->
-                @if (page.type === 'message' && getUnreadCountByPageId(page.id) > 0) {
+                @if (page.type === 'message' && unreadCountsByPage()[page.id]) {
                   <span
                     class="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-primary)] text-white rounded-full min-w-[18px] text-center flex-shrink-0"
                   >
-                    {{
-                      getUnreadCountByPageId(page.id) > 99 ? '99+' : getUnreadCountByPageId(page.id)
-                    }}
+                    {{ unreadCountsByPage()[page.id] > 99 ? '99+' : unreadCountsByPage()[page.id] }}
                   </span>
                 }
               </a>

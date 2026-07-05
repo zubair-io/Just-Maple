@@ -8,8 +8,10 @@
         <button
           class="md:hidden flex items-center justify-center p-1 rounded text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)] transition-colors"
           (click)="toggleSidebar()"
+          aria-label="Toggle menu"
+          title="Toggle menu"
         >
-          <span class="material-symbols-rounded text-xl">menu</span>
+          <span class="material-symbols-rounded text-xl" aria-hidden="true">menu</span>
         </button>
       }
       @if (publicNotebookService.notebook()?.logoUrl) {

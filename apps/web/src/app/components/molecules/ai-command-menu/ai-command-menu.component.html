@@ -41,7 +41,7 @@
       <span class="ai-command-shortcut">Ctrl+J</span>
     </div>
     <div class="ai-command-list">
-      @for (command of filteredCommands; track command.type; let i = $index) {
+      @for (command of filteredCommands(); track command.type; let i = $index) {
         <button
           class="ai-command-item"
           [class.selected]="i === selectedIndex()"
