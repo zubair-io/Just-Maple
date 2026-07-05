@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type TextSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -9,6 +9,7 @@ export type TextWeight = 'normal' | 'medium' | 'bold';
   selector: 'app-text',
   standalone: true,
   imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './text.component.html',
   styleUrl: './text.component.scss',
 })
@@ -18,7 +19,7 @@ export class TextComponent {
   readonly color = input<TextColor>('main');
   readonly weight = input<TextWeight>('normal');
 
-  get classes(): string {
+  readonly classes = computed(() => {
     const sizeMap: Record<TextSize, string> = {
       xs: 'text-xs',
       sm: 'text-sm',
@@ -39,5 +40,5 @@ export class TextComponent {
       bold: 'font-bold',
     };
     return `${sizeMap[this.size()]} ${colorMap[this.color()]} ${weightMap[this.weight()]}`;
-  }
+  });
 }
