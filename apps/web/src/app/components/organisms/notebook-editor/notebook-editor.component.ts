@@ -512,6 +512,25 @@ export class NotebookEditorComponent implements OnDestroy {
         onFocus: () => this.isFocused.set(true),
         onBlur: () => this.isFocused.set(false),
         onUpdate: ({ editor }) => this.handleContentUpdate(editor),
+        editorProps: {
+          // Upload images pasted or dropped into the editor (screenshots, files
+          // from the OS). Returns true only when image files are present so
+          // normal text paste/drop still flows through the default handlers.
+          handlePaste: (_view, event) => {
+            const files = this.getImageFiles(event.clipboardData);
+            if (files.length === 0) return false;
+            event.preventDefault();
+            files.forEach((file) => this.uploadAndInsertImageFile(file));
+            return true;
+          },
+          handleDrop: (_view, event) => {
+            const files = this.getImageFiles((event as DragEvent).dataTransfer);
+            if (files.length === 0) return false;
+            event.preventDefault();
+            files.forEach((file) => this.uploadAndInsertImageFile(file));
+            return true;
+          },
+        },
       });
 
       // For doc pages or local pages with markdown content
@@ -897,6 +916,18 @@ export class NotebookEditorComponent implements OnDestroy {
       return; // User cancelled
     }
 
+    this.uploadAndInsertImageFile(file);
+  }
+
+  /**
+   * Insert an image file with an optimistic loading placeholder, then upload it
+   * and swap in the real URLs. Shared by the slash-command picker and the
+   * paste/drag-drop handlers.
+   */
+  private uploadAndInsertImageFile(file: File): void {
+    const pageId = this.pageId();
+    if (!pageId || !this._editor) return;
+
     // Create a local blob URL for preview
     const previewUrl = URL.createObjectURL(file);
 
@@ -914,7 +945,7 @@ export class NotebookEditorComponent implements OnDestroy {
     };
 
     // Insert image immediately with loading state and preview
-    (this._editor?.chain().focus() as any)
+    (this._editor.chain().focus() as any)
       .insertMemoImage({
         urls: placeholderUrls,
         size: 'medium',
@@ -928,7 +959,7 @@ export class NotebookEditorComponent implements OnDestroy {
       next: (result) => {
         // Update the image with real URLs and remove loading state
         (this._editor?.chain() as any)
-          .updateMemoImage(placeholderUrl, {
+          ?.updateMemoImage(placeholderUrl, {
             urls: result.urls,
             loading: false,
           })
@@ -940,11 +971,17 @@ export class NotebookEditorComponent implements OnDestroy {
       error: (err) => {
         console.error('[NotebookEditor] Failed to upload image:', err);
         // Remove the failed image from editor
-        (this._editor?.chain() as any).deleteMemoImage(placeholderUrl).run();
+        (this._editor?.chain() as any)?.deleteMemoImage(placeholderUrl).run();
         // Clean up blob URL
         URL.revokeObjectURL(previewUrl);
       },
     });
+  }
+
+  /** Extract image files from a paste/drop event's data transfer. */
+  private getImageFiles(data: DataTransfer | null): File[] {
+    if (!data) return [];
+    return Array.from(data.files).filter((f) => f.type.startsWith('image/'));
   }
 
   /**
