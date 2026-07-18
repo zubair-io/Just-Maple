@@ -102,9 +102,9 @@ Status legend: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 ## Feature gaps (rich editor completeness)
 
 - **RE-F1** Link insert/edit UI. **RESOLVED (basic)** — toolbar link button prompts for a URL, edits/removes the link on the selection; TipTap validates the protocol. (A richer inline popover is a future enhancement.)
-- **RE-F2** Task priority/color/due-date popover never instantiated. **OPEN** — larger build (wire `TodoPopoverComponent` into the task NodeView + component listeners).
+- **RE-F2** Task priority/color/due-date popover never instantiated. **RESOLVED** — task NodeView now has a settings button that opens `TodoPopoverComponent`; changes apply via `updateTodoAttrs`, dismiss on outside-click, destroyed on cleanup.
 - **RE-F3** Toolbar block/insert/history sections commented out. **RESOLVED** — sections enabled; duplicate H1–H3 removed from `blockButtons`; state-version deps added so active/disabled states refresh.
-- **RE-F4** Bubble menu is AI-only. **OPEN** — needs the editor passed to `EditorBubbleMenuComponent` + formatting buttons.
+- **RE-F4** Bubble menu is AI-only. **RESOLVED** — editor passed to `EditorBubbleMenuComponent`; bold/italic/underline/strike/code/highlight/link buttons render on selection (AI button kept).
 - **RE-F5** Placeholder `.configure` commented out. **RESOLVED** — re-enabled (heading → "Note title", else "Type '/' for commands…").
-- **RE-F6** Highlight registered in renderer but not editor. **RESOLVED** — `Highlight` added to the editor schema + a toolbar highlight button.
-- **RE-F7** Missing: table row/col ops, find & replace, word count, text color, alignment, image paste/drag-drop, alt/caption UI, toggle blocks, superscript/subscript, footnotes, shortcut help. **OPEN** (table insert + highlight now present; the rest remain).
+- **RE-F6** Highlight registered in renderer but not editor. **RESOLVED** — `Highlight` added to the editor schema + a toolbar/bubble highlight button.
+- **RE-F7** Long tail of missing features. **PARTIAL** — done: table insert, highlight, **image paste/drag-drop upload**. Remaining need a **dependency or UX decision** and were intentionally not added autonomously: text color, text alignment, superscript/subscript, toggle/collapsible blocks, find & replace (each needs a new `@tiptap/*` package — the repo already has version-drift concerns), plus word count, image alt/caption UI, footnotes, and a shortcut-help modal (need a UX/placement decision).
