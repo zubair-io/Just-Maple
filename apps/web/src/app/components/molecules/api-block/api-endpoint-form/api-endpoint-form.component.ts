@@ -143,6 +143,23 @@ export class ApiEndpointFormComponent {
     const url = this.buildResolvedUrl();
     if (!url) return;
 
+    // The destination can be dictated by note content (spec.server). Before
+    // sending an auth token there, make the user confirm the exact origin so a
+    // shared/pasted note can't silently exfiltrate their credentials.
+    if (this.authToken()) {
+      let targetOrigin: string;
+      try {
+        targetOrigin = new URL(url).origin;
+      } catch {
+        return;
+      }
+      const proceed = confirm(
+        `Send your authorization token to ${targetOrigin}?\n\n` +
+          `This destination comes from the note's API block. Only continue if you trust it.`,
+      );
+      if (!proceed) return;
+    }
+
     this.sending.set(true);
 
     const resp = await this.apiRequest.sendRequest({

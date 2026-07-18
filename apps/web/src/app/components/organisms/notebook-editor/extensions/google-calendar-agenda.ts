@@ -46,14 +46,48 @@ function generateId(): string {
   return crypto.randomUUID();
 }
 
+/**
+ * Parse the collapsed-days attribute defensively. It's a JSON string stored in a
+ * node attribute, which pasted or partially-synced content can corrupt — an
+ * unguarded JSON.parse would throw during NodeView construction/update and break
+ * rendering of the whole node.
+ */
+function parseCollapsedDays(raw: unknown): Set<string> {
+  if (typeof raw !== 'string' || !raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.filter((d) => typeof d === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Format a Date as a local-calendar YYYY-MM-DD string. Using local components
+ * (not toISOString, which is UTC) keeps day-grid keys aligned with the viewer's
+ * calendar day; mixing the two shifts every key by a day for non-UTC timezones,
+ * which previously caused all events to be dropped east of UTC.
+ */
+function formatLocalDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Hard cap on how many day rows a single agenda can span, to avoid a pasted or
+// corrupt date range (e.g. 0001 → 9999) freezing the tab building millions of
+// rows.
+const MAX_AGENDA_DAYS = 366;
+
 function getTodayDate(): string {
-  return new Date().toISOString().split('T')[0];
+  return formatLocalDate(new Date());
 }
 
 function getDefaultEndDate(): string {
   const d = new Date();
   d.setDate(d.getDate() + 6);
-  return d.toISOString().split('T')[0];
+  return formatLocalDate(d);
 }
 
 /**
@@ -64,8 +98,14 @@ function getDateRange(startDate: string, endDate: string): string[] {
   const current = new Date(startDate + 'T00:00:00');
   const end = new Date(endDate + 'T00:00:00');
 
-  while (current <= end) {
-    dates.push(current.toISOString().split('T')[0]);
+  // Guard against invalid attributes (Invalid Date) which would otherwise make
+  // the loop condition NaN-false or run unbounded.
+  if (Number.isNaN(current.getTime()) || Number.isNaN(end.getTime())) {
+    return dates;
+  }
+
+  while (current <= end && dates.length < MAX_AGENDA_DAYS) {
+    dates.push(formatLocalDate(current));
     current.setDate(current.getDate() + 1);
   }
 
@@ -540,7 +580,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
 
       // ── State ──────────────────────────────────────────────────
 
-      let collapsedDays: Set<string> = new Set(JSON.parse(node.attrs['collapsedDays'] || '[]'));
+      let collapsedDays: Set<string> = parseCollapsedDays(node.attrs['collapsedDays']);
       let settingsVisible = false;
       let currentEvents: GoogleCalendarEvent[] = [];
 
@@ -1108,7 +1148,7 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
           );
 
           // Update collapsed days
-          collapsedDays = new Set(JSON.parse(updatedNode.attrs['collapsedDays'] || '[]'));
+          collapsedDays = parseCollapsedDays(updatedNode.attrs['collapsedDays']);
 
           // Re-fetch events if calendar or date range changed
           if (
@@ -1132,7 +1172,9 @@ export const GoogleCalendarAgenda = Node.create<GoogleCalendarAgendaOptions>({
           editorRoot.removeEventListener('gcal-events-changed', handleEventsChanged);
           document.removeEventListener('visibilitychange', handleVisibilityChange);
         },
-        stopEvent: () => true,
+        // Shield the interactive agenda UI from ProseMirror, but let drag events
+        // through so this draggable block can still be reordered.
+        stopEvent: (event) => !event.type.startsWith('drag'),
         ignoreMutation: () => true,
       };
     };

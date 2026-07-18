@@ -36,6 +36,20 @@ interface ActiveTask {
   dueDate?: string;
 }
 
+/**
+ * Format a Date as a local-calendar YYYY-MM-DD string. The stored dueDate is an
+ * instant created from local midnight, and all readers (isOverdue, relative
+ * labels) compare its local calendar day — so the date picker must read it back
+ * with local components too. toISOString() is UTC and shows the previous day for
+ * non-UTC zones, drifting the value a day on every round-trip.
+ */
+function formatLocalDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     enhancedTaskList: {
@@ -367,7 +381,7 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
         // Update date input
         if (activeTask.dueDate) {
           const date = new Date(activeTask.dueDate);
-          dateInput.value = date.toISOString().split('T')[0];
+          dateInput.value = formatLocalDate(date);
           clearDateBtn.style.display = 'flex';
         } else {
           dateInput.value = '';
@@ -493,6 +507,8 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
           return true;
         },
         stopEvent: (event) => {
+          // Let ProseMirror handle drag events so items/blocks can be reordered.
+          if (event.type.startsWith('drag')) return false;
           const target = event.target as HTMLElement;
           // Don't stop events on the content area (ul)
           return !ul.contains(target);

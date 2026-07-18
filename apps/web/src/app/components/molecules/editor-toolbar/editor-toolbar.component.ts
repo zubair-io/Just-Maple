@@ -199,32 +199,24 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
         action: () => (ed.chain().focus() as any).toggleCode().run(),
         isActive: () => ed.isActive('code'),
       },
+      {
+        icon: '🖍',
+        label: 'Highlight',
+        action: () => (ed.chain().focus() as any).toggleHighlight().run(),
+        isActive: () => ed.isActive('highlight'),
+      },
     ];
   });
 
   readonly blockButtons = computed<ToolbarButton[]>(() => {
+    // Depend on state version so active states recompute per transaction.
+    this.editorStateVersion();
     const ed = this.editor();
     if (!ed) return [];
 
+    // Headings are already exposed via textTypeButtons; this group covers the
+    // block types that have no other toolbar control.
     return [
-      {
-        icon: 'H1',
-        label: 'Heading 1',
-        action: () => (ed.chain().focus() as any).toggleHeading({ level: 1 }).run(),
-        isActive: () => ed.isActive('heading', { level: 1 }),
-      },
-      {
-        icon: 'H2',
-        label: 'Heading 2',
-        action: () => (ed.chain().focus() as any).toggleHeading({ level: 2 }).run(),
-        isActive: () => ed.isActive('heading', { level: 2 }),
-      },
-      {
-        icon: 'H3',
-        label: 'Heading 3',
-        action: () => (ed.chain().focus() as any).toggleHeading({ level: 3 }).run(),
-        isActive: () => ed.isActive('heading', { level: 3 }),
-      },
       {
         icon: '•',
         label: 'Bullet List',
@@ -258,10 +250,17 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
   });
 
   readonly insertButtons = computed<ToolbarButton[]>(() => {
+    this.editorStateVersion();
     const ed = this.editor();
     if (!ed) return [];
 
     return [
+      {
+        icon: '🔗',
+        label: 'Link',
+        action: () => this.editLink(ed),
+        isActive: () => ed.isActive('link'),
+      },
       {
         icon: '▦',
         label: 'Table',
@@ -277,7 +276,26 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
     ];
   });
 
+  /**
+   * Minimal link insert/edit flow: prompt for a URL, applying it to the current
+   * selection (or the whole link under the cursor). An empty value removes the
+   * link. The Link mark validates the protocol, so javascript: URLs are dropped.
+   */
+  private editLink(ed: Editor): void {
+    const previousUrl = (ed.getAttributes('link')?.['href'] as string) || '';
+    const url = window.prompt('Link URL', previousUrl);
+    if (url === null) {
+      return; // cancelled
+    }
+    if (url.trim() === '') {
+      (ed.chain().focus() as any).extendMarkRange('link').unsetLink().run();
+      return;
+    }
+    (ed.chain().focus() as any).extendMarkRange('link').setLink({ href: url.trim() }).run();
+  }
+
   readonly historyButtons = computed<ToolbarButton[]>(() => {
+    this.editorStateVersion();
     const ed = this.editor();
     if (!ed) return [];
 

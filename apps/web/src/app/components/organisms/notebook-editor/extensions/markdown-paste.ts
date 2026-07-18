@@ -18,7 +18,10 @@ const MARKDOWN_PATTERNS = [
   /^`[^`]+`/, // Inline code: `code`
   /^```[\s\S]*?```/m, // Code block: ```code```
   /^\s*[-*+]\s+.+$/m, // Unordered list: - item
-  /^\s*\d+\.\s+.+$/m, // Ordered list: 1. item
+  // Ordered list: 1. item — cap the marker at 3 digits so ordinary prose that
+  // starts with a 4-digit year ("2024. It was a good year") isn't treated as a
+  // list and mangled into <ol> on paste, while real short list numbers still match.
+  /^\s*\d{1,3}\.\s+.+$/m,
   /^\s*>\s+.+$/m, // Blockquote: > quote
   /^\s*\[.+\]\(.+\)/, // Link: [text](url)
   /^\s*!\[.*\]\(.+\)/, // Image: ![alt](url)
@@ -44,6 +47,34 @@ export function isMarkdownContent(text: string): boolean {
 }
 
 /**
+ * Strip dangerous elements and attributes from HTML using an inert document.
+ * `marked` does not sanitize, and the pasted text can contain raw HTML. This is
+ * defense-in-depth: TipTap's schema parsing is the primary guard, but we also
+ * remove script-bearing elements, event handlers, and javascript: URLs here so
+ * nothing dangerous is ever handed to insertContent.
+ */
+function sanitizeHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+
+  doc.querySelectorAll('script, style, iframe, object, embed, link, meta, base').forEach((el) => {
+    el.remove();
+  });
+
+  doc.querySelectorAll('*').forEach((el) => {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim().toLowerCase();
+      const isUrlAttr = name === 'href' || name === 'src' || name === 'xlink:href';
+      if (name.startsWith('on') || (isUrlAttr && value.startsWith('javascript:'))) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  });
+
+  return doc.body.innerHTML;
+}
+
+/**
  * Convert markdown to HTML using marked
  * @exported for testing
  */
@@ -54,7 +85,7 @@ export async function markdownToHtml(markdown: string): Promise<string> {
     breaks: true, // Convert line breaks to <br>
   });
 
-  return html;
+  return sanitizeHtml(html);
 }
 
 export const MarkdownPaste = Extension.create({
@@ -70,6 +101,12 @@ export const MarkdownPaste = Extension.create({
           handlePaste(view, event, slice) {
             const clipboardData = event.clipboardData;
             if (!clipboardData) {
+              return false;
+            }
+
+            // Inside a code block, markdown source must be inserted literally —
+            // let the default handler paste it verbatim rather than converting.
+            if (view.state.selection.$from.parent.type.spec.code) {
               return false;
             }
 
@@ -99,6 +136,10 @@ export const MarkdownPaste = Extension.create({
             // Convert markdown to HTML and insert
             markdownToHtml(textContent)
               .then((html) => {
+                // The editor may have been torn down while marked was parsing.
+                if (editor.isDestroyed) {
+                  return;
+                }
                 // Use editor.commands.insertContent to handle the HTML
                 // This will properly convert HTML to ProseMirror nodes
                 editor.commands.insertContent(html, {
@@ -111,7 +152,9 @@ export const MarkdownPaste = Extension.create({
                 // If markdown parsing fails, log the error and fall back to plain text
                 // eslint-disable-next-line no-console
                 console.error('Failed to parse markdown on paste:', error);
-                editor.commands.insertContent(textContent);
+                if (!editor.isDestroyed) {
+                  editor.commands.insertContent(textContent);
+                }
               });
 
             // Return true to indicate we handled the paste

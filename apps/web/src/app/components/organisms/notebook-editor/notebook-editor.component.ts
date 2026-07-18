@@ -12,6 +12,7 @@ import {
   DestroyRef,
   ApplicationRef,
   createComponent,
+  type ComponentRef,
   EnvironmentInjector,
   ViewEncapsulation,
 } from '@angular/core';
@@ -26,6 +27,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
+import Highlight from '@tiptap/extension-highlight';
 import BubbleMenu from '@tiptap/extension-bubble-menu';
 import { marked } from 'marked';
 import { NativeBridgeService } from '../../../services/native-bridge.service';
@@ -74,6 +76,7 @@ import {
   MarkdownPaste,
   JsonDataRef,
   JsonLoopBlock,
+  TodoBox,
   formatTime,
   formatDate,
   type SlashCommandItem,
@@ -180,6 +183,11 @@ export class NotebookEditorComponent implements OnDestroy {
   private awareness: Awareness | null = null;
   private readonly viewReady = signal(false);
   private lastPageId: string | null = null;
+  // The page whose document is actually open (editor built + Y.js doc opened).
+  // Distinct from lastPageId, which the effect updates synchronously on every
+  // page change: cleanup() must close the doc that is really open, not the one
+  // we are navigating to.
+  private openDocPageId: string | null = null;
   private titleUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   private localSaveTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastSyncedTitle: string = '';
@@ -203,6 +211,12 @@ export class NotebookEditorComponent implements OnDestroy {
 
   // Event listener cleanup - store bound handlers for removal
   private pageLinkListeners: { event: string; handler: EventListener }[] = [];
+
+  // Aborts every listener attached to the persistent #editorElement container
+  // during a single initializeEditor() pass. Recreated per init and aborted in
+  // cleanup() so listeners don't accumulate across page switches (which would
+  // otherwise fire duplicate node insertions).
+  private editorElementListeners: AbortController | null = null;
 
   // AI Writing Assistant state
   private aiPreviewComponent: { componentRef: any; element: HTMLElement } | null = null;
@@ -244,11 +258,20 @@ export class NotebookEditorComponent implements OnDestroy {
       }
     });
 
-    // Disable editing when server indicates read-only access
+    // Reflect read-only access on the editor in BOTH directions: disable when
+    // the server marks the page read-only, and re-enable when access is
+    // restored. (The old code only ever disabled, leaving the editor stuck
+    // read-only until reload.)
     effect(() => {
       const pageId = this.pageId();
-      if (pageId && this.memoService.isReadOnly(pageId) && this._editor) {
-        this._editor.setEditable(false);
+      const editableInput = this.editable();
+      if (!pageId || !this._editor) {
+        return;
+      }
+      const isDocPage = pageId.startsWith(DOC_PAGE_PREFIX);
+      const shouldBeEditable = editableInput && !isDocPage && !this.memoService.isReadOnly(pageId);
+      if (this._editor.isEditable !== shouldBeEditable) {
+        this._editor.setEditable(shouldBeEditable);
       }
     });
 
@@ -273,11 +296,25 @@ export class NotebookEditorComponent implements OnDestroy {
       // Open document via service (handles offline-first loading)
       const { ydoc, awareness, markdownContent, initialContent } =
         await this.memoService.openDocument(pageId);
+
+      // Reentrancy guard: the user may have navigated to another page while we
+      // were awaiting. If so, this call has been superseded — close the doc we
+      // just opened (openDocument refcounts it) and abort before building an
+      // editor, so we never stack two editors or write this page's content into
+      // the newer one.
+      if (pageId !== this.lastPageId) {
+        this.memoService.closeDocument(pageId);
+        return;
+      }
+
       this.ydoc = ydoc;
       this.awareness = awareness;
+      this.openDocPageId = pageId;
 
       // Wait for editor element
       if (!this.editorRef?.nativeElement) {
+        this.memoService.closeDocument(pageId);
+        this.openDocPageId = null;
         return;
       }
 
@@ -308,15 +345,18 @@ export class NotebookEditorComponent implements OnDestroy {
           } as any),
           // Code block with syntax highlighting, language selector, and interactive API blocks
           ApiCodeBlock,
+          // Highlight mark (<mark>) — needed so highlighted content round-trips
+          // and matches the read-only content renderer's schema.
+          Highlight,
           // Placeholder with different text for headings
-          // Placeholder.configure({
-          //   placeholder: ({ node }) => {
-          //     if (node.type.name === 'heading') {
-          //       return 'Note title';
-          //     }
-          //     return "Type '/' for commands...";
-          //   },
-          // }) as any,
+          Placeholder.configure({
+            placeholder: ({ node }) => {
+              if (node.type.name === 'heading') {
+                return 'Note title';
+              }
+              return "Type '/' for commands...";
+            },
+          }) as any,
           // YJS Collaboration
           Collaboration.configure({
             document: ydoc,
@@ -350,6 +390,8 @@ export class NotebookEditorComponent implements OnDestroy {
           EnhancedTaskItem.configure({
             nested: true,
           }),
+          // To-do Box: a titled container wrapping a task list (/To-do Box)
+          TodoBox,
           // Table support
           ...getTableExtensions(),
           // Table of Contents
@@ -465,7 +507,7 @@ export class NotebookEditorComponent implements OnDestroy {
           } as any),
         ],
         // Doc pages are always read-only
-        editable: isDocPageView ? false : this.editable(),
+        editable: isDocPageView ? false : this.editable() && !this.memoService.isReadOnly(pageId),
         onFocus: () => this.isFocused.set(true),
         onBlur: () => this.isFocused.set(false),
         onUpdate: ({ editor }) => this.handleContentUpdate(editor),
@@ -477,6 +519,7 @@ export class NotebookEditorComponent implements OnDestroy {
           // Doc pages: server markdown → HTML
           const htmlContent = await marked.parse(markdownContent);
           setTimeout(() => {
+            if (this.openDocPageId !== pageId) return;
             this._editor?.commands.setContent(htmlContent);
           }, 0);
         } else {
@@ -485,6 +528,7 @@ export class NotebookEditorComponent implements OnDestroy {
           const body = 'error' in fmResult ? markdownContent : fmResult.body;
           const doc = markdownBodyToDoc(body);
           setTimeout(() => {
+            if (this.openDocPageId !== pageId) return;
             this._editor?.commands.setContent(doc);
           }, 0);
         }
@@ -505,6 +549,7 @@ export class NotebookEditorComponent implements OnDestroy {
             );
             if (hasContent) {
               setTimeout(() => {
+                if (this.openDocPageId !== pageId) return;
                 this._editor?.commands.setContent(contentToUse);
               }, 0);
             }
@@ -522,6 +567,10 @@ export class NotebookEditorComponent implements OnDestroy {
 
       // Set up recording block event listeners (legacy) - skip for doc pages
       if (!isDocPageView) {
+        // Fresh controller for this init; container listeners below register
+        // with its signal so cleanup() can remove them all at once.
+        this.editorElementListeners = new AbortController();
+
         this.setupRecordingBlockListeners();
 
         // Set up embed event listeners (new system)
@@ -595,18 +644,35 @@ export class NotebookEditorComponent implements OnDestroy {
   /**
    * Set up listeners for recording block mount/unmount events
    */
+  /**
+   * Register a listener on the persistent #editorElement container tied to the
+   * current init's AbortController, so cleanup()/the next init removes it and
+   * handlers don't stack across page switches.
+   */
+  private addEditorElementListener(
+    element: HTMLElement,
+    type: string,
+    handler: EventListener,
+  ): void {
+    element.addEventListener(type, handler, { signal: this.editorElementListeners?.signal });
+  }
+
   private setupRecordingBlockListeners(): void {
     const editorElement = this.editorRef?.nativeElement;
     if (!editorElement) return;
 
     // Listen for recording node mount events
-    editorElement.addEventListener('recording-node-mounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'recording-node-mounted', ((
+      event: CustomEvent,
+    ) => {
       const { recordingId, element, editor } = event.detail;
       this.mountRecordingComponent(recordingId, element);
     }) as EventListener);
 
     // Listen for recording node unmount events
-    editorElement.addEventListener('recording-node-unmounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'recording-node-unmounted', ((
+      event: CustomEvent,
+    ) => {
       const { recordingId } = event.detail;
       this.unmountRecordingComponent(recordingId);
     }) as EventListener);
@@ -662,32 +728,36 @@ export class NotebookEditorComponent implements OnDestroy {
     if (!editorElement) return;
 
     // Listen for embed node mount events
-    editorElement.addEventListener('embed-node-mounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'embed-node-mounted', ((event: CustomEvent) => {
       const { id, type, createdBy, element } = event.detail;
       console.log('[NotebookEditor] embed-node-mounted event:', { id, type, createdBy });
       this.mountEmbedComponent(id, type, createdBy, element);
     }) as EventListener);
 
     // Listen for embed node unmount events
-    editorElement.addEventListener('embed-node-unmounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'embed-node-unmounted', ((event: CustomEvent) => {
       const { id } = event.detail;
       this.unmountEmbedComponent(id);
     }) as EventListener);
 
     // Listen for create-recording-embed event from slash command
-    editorElement.addEventListener('create-recording-embed', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'create-recording-embed', ((
+      event: CustomEvent,
+    ) => {
       const range = event.detail?.range;
       this.createRecordingEmbed(range);
     }) as EventListener);
 
     // Listen for create-whiteboard-embed event from slash command
-    editorElement.addEventListener('create-whiteboard-embed', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'create-whiteboard-embed', ((
+      event: CustomEvent,
+    ) => {
       const range = event.detail?.range;
       this.createWhiteboardEmbed(range);
     }) as EventListener);
 
     // Listen for upload-image event from slash command
-    editorElement.addEventListener('upload-image', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'upload-image', ((event: CustomEvent) => {
       const range = event.detail?.range;
       this.handleImageUpload(range);
     }) as EventListener);
@@ -881,7 +951,7 @@ export class NotebookEditorComponent implements OnDestroy {
     if (!editorElement) return;
 
     // Listen for AI bot widget mount events
-    editorElement.addEventListener('ai-bot-widget-mounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'ai-bot-widget-mounted', ((event: CustomEvent) => {
       const { id, prompt, status, errorMessage, history, element, editor, getPos } = event.detail;
       this.mountAiBotWidgetComponent(
         id,
@@ -896,13 +966,15 @@ export class NotebookEditorComponent implements OnDestroy {
     }) as EventListener);
 
     // Listen for AI bot widget unmount events
-    editorElement.addEventListener('ai-bot-widget-unmounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'ai-bot-widget-unmounted', ((
+      event: CustomEvent,
+    ) => {
       const { id } = event.detail;
       this.unmountAiBotWidgetComponent(id);
     }) as EventListener);
 
     // Listen for create-ai-bot-widget event from slash command
-    editorElement.addEventListener('create-ai-bot-widget', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'create-ai-bot-widget', ((event: CustomEvent) => {
       this.createAiBotWidget();
     }) as EventListener);
   }
@@ -985,17 +1057,17 @@ export class NotebookEditorComponent implements OnDestroy {
     const editorElement = this.editorRef?.nativeElement;
     if (!editorElement) return;
 
-    editorElement.addEventListener('api-block-mounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'api-block-mounted', ((event: CustomEvent) => {
       const { element, getPos, parseResult, parseError, yamlContent } = event.detail;
       this.mountApiBlockComponent(element, getPos, parseResult, parseError, yamlContent);
     }) as EventListener);
 
-    editorElement.addEventListener('api-block-updated', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'api-block-updated', ((event: CustomEvent) => {
       const { element, parseResult, parseError, yamlContent } = event.detail;
       this.updateApiBlockComponent(element, parseResult, parseError, yamlContent);
     }) as EventListener);
 
-    editorElement.addEventListener('api-block-unmounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'api-block-unmounted', ((event: CustomEvent) => {
       const { element } = event.detail;
       this.unmountApiBlockComponent(element);
     }) as EventListener);
@@ -1076,13 +1148,13 @@ export class NotebookEditorComponent implements OnDestroy {
     if (!editorElement) return;
 
     // Listen for agenda date click events - show date picker
-    editorElement.addEventListener('agenda-date-click', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'agenda-date-click', ((event: CustomEvent) => {
       const { agendaId, currentDate, position } = event.detail;
       this.showAgendaDatePicker(agendaId, currentDate, position);
     }) as EventListener);
 
     // Listen for agenda AI click events - generate summary
-    editorElement.addEventListener('agenda-ai-click', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'agenda-ai-click', ((event: CustomEvent) => {
       const { agendaId } = event.detail;
       this.generateAgendaSummary(agendaId);
     }) as EventListener);
@@ -1129,7 +1201,7 @@ export class NotebookEditorComponent implements OnDestroy {
     const editorElement = this.editorRef?.nativeElement;
     if (!editorElement) return;
 
-    editorElement.addEventListener('inline-mention-click', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'inline-mention-click', ((event: CustomEvent) => {
       const { type, value, pos, element } = event.detail;
       this.handleInlineMentionClick(type, value, pos, element);
     }) as EventListener);
@@ -1363,13 +1435,13 @@ export class NotebookEditorComponent implements OnDestroy {
     if (!editorElement) return;
 
     // Listen for AI writing command events from slash commands
-    editorElement.addEventListener('ai-writing-command', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'ai-writing-command', ((event: CustomEvent) => {
       const { type } = event.detail as { type: AIWritingType };
       this.handleAIWritingCommand(type);
     }) as EventListener);
 
     // Listen for keyboard shortcut (Cmd/Ctrl+J) to open AI menu
-    editorElement.addEventListener('keydown', ((event: KeyboardEvent) => {
+    this.addEditorElementListener(editorElement, 'keydown', ((event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 'j') {
         event.preventDefault();
         this.openAICommandMenu();
@@ -1778,7 +1850,7 @@ export class NotebookEditorComponent implements OnDestroy {
     const el = this.editorRef?.nativeElement;
     if (!el) return;
 
-    el.addEventListener('gcal-event-popup', ((e: CustomEvent) => {
+    this.addEditorElementListener(el, 'gcal-event-popup', ((e: CustomEvent) => {
       const { mode, calendarId, event, defaultDate, timeZone } = e.detail;
       this.gcalPopupMode.set(mode);
       this.gcalPopupCalendarId.set(calendarId);
@@ -1822,6 +1894,16 @@ export class NotebookEditorComponent implements OnDestroy {
    * Handle editor content updates - extract first heading and sync as title
    */
   private handleContentUpdate(editor: Editor): void {
+    // onUpdate also fires for remote collaborator transactions applied via Y.js.
+    // A read-only viewer must not run any server sync (each PATCH 403s) or local
+    // save, so bail before doing the full-document scans below.
+    // NOTE (residual RE-11): editable collaborators still run these scans and may
+    // redundantly PATCH on remote-origin updates; fully gating that needs the
+    // y-prosemirror sync-plugin transaction meta to detect remote origin.
+    if (!editor.isEditable) {
+      return;
+    }
+
     const title = this.extractFirstHeadingText(editor)?.trim();
 
     // Always extract and emit tags and mentions (they have their own dedup/debounce)
@@ -1840,14 +1922,17 @@ export class NotebookEditorComponent implements OnDestroy {
       }, 2000);
     }
 
-    // Skip title and todo syncs during initial load
-    if (!this.lastSyncedTitle) {
-      this.lastSyncedTitle = title || '';
+    // Skip title sync only during the initial sync-settle window, not for every
+    // note whose heading starts empty. The old `!this.lastSyncedTitle` guard
+    // swallowed the FIRST real title edit on new notes (they stayed "Untitled").
+    if (this.isInitialSync) {
+      this.lastSyncedTitle = title ?? '';
       return;
     }
 
-    // Only update if title changed and not empty
-    if (title && title !== this.lastSyncedTitle) {
+    // Emit whenever the title changed — including when it was cleared to empty,
+    // so a deleted title syncs instead of leaving a stale server value.
+    if (title !== undefined && title !== this.lastSyncedTitle) {
       // Clear existing timeout
       if (this.titleUpdateTimeout) {
         clearTimeout(this.titleUpdateTimeout);
@@ -2111,9 +2196,18 @@ export class NotebookEditorComponent implements OnDestroy {
       this.localSaveTimeout = null;
     }
 
-    // Clear any pending todo sync
-    if (this.lastPageId) {
-      this.todoSyncService.clearPendingSync(this.lastPageId);
+    // Clear the pending tag-sync timer too, so a debounced #tag edit from the
+    // page being torn down can't fire against (and mis-attribute tags to) the
+    // next page.
+    if (this.tagUpdateTimeout) {
+      clearTimeout(this.tagUpdateTimeout);
+      this.tagUpdateTimeout = null;
+    }
+
+    // Clear any pending todo sync for the document that is actually open
+    // (not lastPageId, which the effect has already advanced to the new page).
+    if (this.openDocPageId) {
+      this.todoSyncService.clearPendingSync(this.openDocPageId);
     }
 
     // Clean up recording components (legacy)
@@ -2159,36 +2253,43 @@ export class NotebookEditorComponent implements OnDestroy {
       this.bubbleMenuElement = null;
     }
 
+    // Remove all container listeners registered during this init pass.
+    this.editorElementListeners?.abort();
+    this.editorElementListeners = null;
+
     // Clean up page link listeners
     this.cleanupPageLinkListeners();
     this.cleanupJsonRefListeners();
     this.closeJsonRefConfig();
+
+    // Flush any pending mention sync while the editor still exists, so a
+    // navigation within the debounce window doesn't drop the last mention edit.
+    if (this.mentionUpdateTimeout) {
+      clearTimeout(this.mentionUpdateTimeout);
+      this.mentionUpdateTimeout = null;
+      if (this._editor) {
+        const mentions = this.extractUserMentions(this._editor);
+        const serialized = JSON.stringify(mentions);
+        if (serialized !== this.lastSyncedMentions) {
+          this.mentionsChanged.emit(mentions);
+        }
+      }
+    }
 
     if (this._editor) {
       this._editor.destroy();
       this._editor = null;
     }
 
-    if (this.lastPageId) {
-      this.memoService.closeDocument(this.lastPageId);
+    // Close the document that is actually open (see openDocPageId).
+    if (this.openDocPageId) {
+      this.memoService.closeDocument(this.openDocPageId);
+      this.openDocPageId = null;
     }
 
     this.ydoc = null;
     this.awareness = null;
     this.isReady.set(false);
-    // Flush pending mention sync before destroying
-    if (this.mentionUpdateTimeout && this._editor) {
-      clearTimeout(this.mentionUpdateTimeout);
-      this.mentionUpdateTimeout = null;
-      const mentions = this.extractUserMentions(this._editor);
-      const serialized = JSON.stringify(mentions);
-      if (serialized !== this.lastSyncedMentions) {
-        this.mentionsChanged.emit(mentions);
-      }
-    } else if (this.mentionUpdateTimeout) {
-      clearTimeout(this.mentionUpdateTimeout);
-      this.mentionUpdateTimeout = null;
-    }
     this.lastSyncedTitle = '';
     this.lastSyncedMentions = '';
     this.isInitialSync = true;
@@ -2392,6 +2493,7 @@ export class NotebookEditorComponent implements OnDestroy {
 
   private jsonRefListeners: { event: string; handler: EventListener }[] = [];
   private jsonRefConfigElement: HTMLElement | null = null;
+  private jsonRefConfigComponentRef: ComponentRef<JsonRefConfigComponent> | null = null;
 
   private setupJsonRefListeners(): void {
     const editorElement = this.editorRef?.nativeElement;
@@ -2450,6 +2552,7 @@ export class NotebookEditorComponent implements OnDestroy {
       environmentInjector: this.injector,
       hostElement: container,
     });
+    this.jsonRefConfigComponentRef = componentRef;
 
     componentRef.setInput('mode', mode);
     componentRef.setInput('notebookId', this.notebookId());
@@ -2495,6 +2598,14 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   private closeJsonRefConfig(): void {
+    // Detach + destroy the dynamically created view; removing only the host
+    // element (the old behaviour) leaked a change-detected Angular view and its
+    // output subscriptions on every open.
+    if (this.jsonRefConfigComponentRef) {
+      this.appRef.detachView(this.jsonRefConfigComponentRef.hostView);
+      this.jsonRefConfigComponentRef.destroy();
+      this.jsonRefConfigComponentRef = null;
+    }
     if (this.jsonRefConfigElement) {
       this.jsonRefConfigElement.remove();
       this.jsonRefConfigElement = null;

@@ -3,6 +3,24 @@ import { PluginKey } from '@tiptap/pm/state';
 import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion';
 
 /**
+ * The avatar URL comes from node attributes, which pasted content can control.
+ * Only load same-origin/relative, blob, inline-image, or https URLs so a pasted
+ * mention can't turn into a zero-click tracking beacon; anything else renders
+ * the no-avatar fallback icon instead.
+ */
+function safeAvatarUrl(url: unknown): string {
+  if (typeof url !== 'string' || !url) return '';
+  if (url.startsWith('/') || url.startsWith('blob:') || url.startsWith('data:image/')) {
+    return url;
+  }
+  try {
+    return new URL(url).protocol === 'https:' ? url : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Format time for display (e.g., "2:30 PM")
  */
 export function formatTime(timeStr: string): string {
@@ -252,10 +270,11 @@ export const InlineMention = Node.create<InlineMentionOptions>({
       dom.classList.add('inline-mention', `inline-mention-${type}`);
 
       // Create content based on type
-      if (type === 'user' && node.attrs['avatarUrl']) {
+      const avatarUrl = safeAvatarUrl(node.attrs['avatarUrl']);
+      if (type === 'user' && avatarUrl) {
         // User with avatar
         const avatar = document.createElement('img');
-        avatar.src = node.attrs['avatarUrl'];
+        avatar.src = avatarUrl;
         avatar.classList.add('inline-mention-avatar');
         avatar.alt = '';
         dom.appendChild(avatar);

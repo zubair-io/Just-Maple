@@ -68,6 +68,37 @@ function parseUrls(urlsAttr: string | MemoImageUrls | null): MemoImageUrls | nul
   }
 }
 
+const IMAGE_SIZES: ImageSize[] = ['small', 'medium', 'large', 'cover'];
+
+/**
+ * Node attributes can be attacker-controlled via pasted HTML. Coerce an
+ * arbitrary `size` value to a known enum member before it is used as a CSS class
+ * token (`classList.add` throws on tokens containing whitespace).
+ */
+function safeImageSize(size: unknown): ImageSize {
+  return typeof size === 'string' && (IMAGE_SIZES as string[]).includes(size)
+    ? (size as ImageSize)
+    : 'medium';
+}
+
+/**
+ * Only render media URLs we trust. Pasted content can set an arbitrary `src`,
+ * which is a zero-click tracking beacon (or worse). Allow same-origin/relative
+ * paths, local blob previews, inline image data, and https; reject everything
+ * else (http:, javascript:, etc.).
+ */
+function safeMediaUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.startsWith('/') || url.startsWith('blob:') || url.startsWith('data:image/')) {
+    return url;
+  }
+  try {
+    return new URL(url).protocol === 'https:' ? url : '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Memo Image Node Extension
  * Supports size options: small (200px), medium (400px), large (800px), cover (1200x300)
@@ -305,7 +336,7 @@ export const ImageNode = Node.create<ImageNodeOptions>({
     return ({ node, getPos, editor }) => {
       const urls = parseUrls(node.attrs['urls']) as MemoImageUrls | null;
       const alt = node.attrs['alt'] as string;
-      const size = (node.attrs['size'] as ImageSize) || 'medium';
+      const size = safeImageSize(node.attrs['size']);
       const loading = node.attrs['loading'] as boolean;
       const previewUrl = node.attrs['previewUrl'] as string | null;
 
@@ -325,8 +356,11 @@ export const ImageNode = Node.create<ImageNodeOptions>({
 
       // Create image element
       const img = document.createElement('img');
-      // Use preview URL while loading, otherwise use the appropriate sized URL
-      img.src = loading && previewUrl ? previewUrl : urls ? getUrlForSize(urls, size) : '';
+      // Use preview URL while loading, otherwise use the appropriate sized URL.
+      // Both come from node attributes, so validate before assigning to src.
+      img.src = safeMediaUrl(
+        loading && previewUrl ? previewUrl : urls ? getUrlForSize(urls, size) : '',
+      );
       img.alt = alt || '';
       img.draggable = false;
 

@@ -263,9 +263,6 @@ export const TodoBox = Node.create<TodoBoxOptions>({
         }
       };
 
-      // Initial status
-      updateStatus();
-
       header.appendChild(nameInput);
       header.appendChild(statusDisplay);
 
@@ -295,6 +292,10 @@ export const TodoBox = Node.create<TodoBoxOptions>({
       completedToggle.addEventListener('click', () => {
         (editor.commands as any).toggleTodoBoxCompleted(boxId);
       });
+
+      // Initial status (must run after completedToggle/completedCount exist,
+      // since updateStatus() references both).
+      updateStatus();
 
       // Set initial show completed state
       dom.setAttribute('data-show-completed', String(node.attrs['showCompleted'] !== false));
