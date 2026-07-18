@@ -313,6 +313,44 @@
           .todo-drag-handle {
             opacity: 1;
           }
+
+          .todo-settings-btn {
+            opacity: 1;
+          }
+        }
+
+        // Settings button (opens the priority/color/due-date popover)
+        .todo-settings-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          flex-shrink: 0;
+          padding: 0;
+          border: none;
+          background: transparent;
+          border-radius: 6px;
+          cursor: pointer;
+          opacity: 0;
+          color: var(--color-text-muted);
+          transition:
+            opacity 0.15s ease,
+            background 0.15s ease;
+
+          &:hover {
+            background: var(--color-bg-hover, rgba(0, 0, 0, 0.08));
+            color: var(--color-text-main);
+          }
+
+          .material-symbols-rounded {
+            font-size: 18px;
+          }
+
+          // Always show on mobile/touch devices
+          @media (max-width: 768px), (pointer: coarse) {
+            opacity: 0.5;
+          }
         }
 
         // Drag handle

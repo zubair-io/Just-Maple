@@ -602,11 +602,47 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
 
       renderMeta();
 
-      // Assemble flat structure: li > [dragHandle, checkbox, content, meta]
+      // Settings button — opens the todo popover (priority / color / due date).
+      // Dispatches the todo-settings-click event the editor component listens
+      // for; reads the current node attrs at click time (node is kept fresh in
+      // update()). The Mod-Shift-D shortcut also targets this button.
+      const settingsBtn = document.createElement('button');
+      settingsBtn.type = 'button';
+      settingsBtn.classList.add('todo-settings-btn');
+      settingsBtn.contentEditable = 'false';
+      settingsBtn.title = 'Task options';
+      const settingsIcon = document.createElement('span');
+      settingsIcon.classList.add('material-symbols-rounded');
+      settingsIcon.textContent = 'more_horiz';
+      settingsBtn.appendChild(settingsIcon);
+      settingsBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        settingsBtn.dispatchEvent(
+          new CustomEvent('todo-settings-click', {
+            bubbles: true,
+            detail: {
+              todoId: nodeId,
+              attrs: {
+                id: nodeId,
+                checked: node.attrs['checked'],
+                dueDate: node.attrs['dueDate'],
+                priority: node.attrs['priority'],
+                color: node.attrs['color'],
+              },
+              element: dom,
+              position: settingsBtn.getBoundingClientRect(),
+            },
+          }),
+        );
+      });
+
+      // Assemble flat structure: li > [dragHandle, checkbox, content, meta, settings]
       dom.appendChild(dragHandleEl);
       dom.appendChild(checkboxWrapper);
       dom.appendChild(content);
       dom.appendChild(metaWrapper);
+      dom.appendChild(settingsBtn);
 
       const unregisterDateRefresh = registerDateRefresh(renderMeta);
 

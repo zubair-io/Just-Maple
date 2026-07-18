@@ -96,6 +96,7 @@ import { AiBotWidgetComponent } from '../../molecules/ai-bot-widget/ai-bot-widge
 import { AIPreviewPanelComponent } from '../../molecules/ai-preview-panel/ai-preview-panel.component';
 import { AICommandMenuComponent } from '../../molecules/ai-command-menu/ai-command-menu.component';
 import { EditorBubbleMenuComponent } from '../../molecules/editor-bubble-menu/editor-bubble-menu.component';
+import { TodoPopoverComponent } from '../../molecules/todo-popover/todo-popover.component';
 import { ApiBlockComponent } from '../../molecules/api-block/api-block.component';
 import { AIWritingService } from '../../../services/ai-writing.service';
 import { TagService } from '../../../services/tag.service';
@@ -602,6 +603,9 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up bubble menu component
         this.setupBubbleMenuComponent();
+
+        // Set up the task settings (priority/color/due-date) popover listener
+        this.setupTodoSettingsListener();
 
         // Check for Claude bot availability
         this.checkClaudeBotAvailability();
@@ -1461,7 +1465,9 @@ export class NotebookEditorComponent implements OnDestroy {
       hostElement: this.bubbleMenuElement,
     });
 
-    // Set the editor input
+    // Give the menu the editor so it can render selection formatting controls.
+    componentRef.setInput('editor', this._editor);
+
     // Handle opening the AI menu
     componentRef.instance.openAIMenu.subscribe(() => {
       this.openAICommandMenu();
@@ -1469,6 +1475,84 @@ export class NotebookEditorComponent implements OnDestroy {
 
     this.appRef.attachView(componentRef.hostView);
     this.bubbleMenuComponentRef = componentRef;
+  }
+
+  private todoPopoverComponentRef: ComponentRef<TodoPopoverComponent> | null = null;
+  private todoPopoverElement: HTMLElement | null = null;
+
+  /**
+   * Listen for a task item's settings button and open the todo popover so the
+   * user can set priority, color, and due date. Changes are applied through the
+   * enhanced-task-item `updateTodoAttrs` command (keyed by todo id).
+   */
+  private setupTodoSettingsListener(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    this.addEditorElementListener(editorElement, 'todo-settings-click', ((event: CustomEvent) => {
+      event.stopPropagation();
+      const { todoId, attrs, position } = event.detail as {
+        todoId: string;
+        attrs: Record<string, unknown>;
+        position: DOMRect;
+      };
+      this.openTodoPopover(todoId, attrs, position);
+    }) as EventListener);
+  }
+
+  private openTodoPopover(todoId: string, attrs: Record<string, unknown>, position: DOMRect): void {
+    this.closeTodoPopover();
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    this.todoPopoverElement = container;
+
+    const componentRef = createComponent(TodoPopoverComponent, {
+      environmentInjector: this.injector,
+      hostElement: container,
+    });
+    this.todoPopoverComponentRef = componentRef;
+
+    componentRef.setInput('todoId', todoId);
+    componentRef.setInput('attrs', attrs);
+    componentRef.setInput('position', position);
+
+    componentRef.instance.attrsChange.subscribe((changes: Record<string, unknown>) => {
+      (this._editor?.commands as any)?.updateTodoAttrs(todoId, changes);
+    });
+    componentRef.instance.close.subscribe(() => {
+      this.closeTodoPopover();
+    });
+
+    this.appRef.attachView(componentRef.hostView);
+
+    // Dismiss when clicking outside the popover.
+    setTimeout(() => {
+      const onDocClick = (e: MouseEvent) => {
+        if (this.todoPopoverElement && !this.todoPopoverElement.contains(e.target as Node)) {
+          document.removeEventListener('mousedown', onDocClick);
+          this.closeTodoPopover();
+        }
+      };
+      document.addEventListener('mousedown', onDocClick);
+      this.todoPopoverDismiss = () => document.removeEventListener('mousedown', onDocClick);
+    }, 0);
+  }
+
+  private todoPopoverDismiss?: () => void;
+
+  private closeTodoPopover(): void {
+    this.todoPopoverDismiss?.();
+    this.todoPopoverDismiss = undefined;
+    if (this.todoPopoverComponentRef) {
+      this.appRef.detachView(this.todoPopoverComponentRef.hostView);
+      this.todoPopoverComponentRef.destroy();
+      this.todoPopoverComponentRef = null;
+    }
+    if (this.todoPopoverElement) {
+      this.todoPopoverElement.remove();
+      this.todoPopoverElement = null;
+    }
   }
 
   /**
@@ -2261,6 +2345,7 @@ export class NotebookEditorComponent implements OnDestroy {
     this.cleanupPageLinkListeners();
     this.cleanupJsonRefListeners();
     this.closeJsonRefConfig();
+    this.closeTodoPopover();
 
     // Flush any pending mention sync while the editor still exists, so a
     // navigation within the debounce window doesn't drop the last mention edit.
