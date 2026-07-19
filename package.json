@@ -41,6 +41,9 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "overrides": {
+    "@tiptap/pm": "3.15.3"
+  },
   "dependencies": {
     "mongodb": "^7.0.0",
     "nanoid": "^5.1.6",
