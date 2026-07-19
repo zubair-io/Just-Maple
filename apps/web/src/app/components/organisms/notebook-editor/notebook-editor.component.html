@@ -20,6 +20,64 @@
       ></div>
     </div>
 
+    <!-- Find & Replace bar (Cmd/Ctrl+F) -->
+    @if (searchOpen()) {
+      <div class="editor-search-bar">
+        <div class="editor-search-row">
+          <input
+            class="editor-search-input"
+            type="text"
+            placeholder="Find"
+            [value]="searchQuery()"
+            (input)="onSearchQueryChange($any($event.target).value)"
+            (keydown.enter)="searchFindNext()"
+          />
+          <span class="editor-search-count">
+            {{ searchInfo().count ? searchInfo().active + '/' + searchInfo().count : 'No results' }}
+          </span>
+          <button
+            type="button"
+            class="editor-search-btn"
+            title="Previous (Shift+Enter)"
+            (click)="searchFindPrevious()"
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            class="editor-search-btn"
+            title="Next (Enter)"
+            (click)="searchFindNext()"
+          >
+            ↓
+          </button>
+          <button
+            type="button"
+            class="editor-search-btn"
+            title="Close (Esc)"
+            (click)="closeSearch()"
+          >
+            ✕
+          </button>
+        </div>
+        <div class="editor-search-row">
+          <input
+            class="editor-search-input"
+            type="text"
+            placeholder="Replace"
+            [value]="searchReplaceTerm()"
+            (input)="onReplaceTermChange($any($event.target).value)"
+          />
+          <button type="button" class="editor-search-btn text" (click)="searchReplaceCurrent()">
+            Replace
+          </button>
+          <button type="button" class="editor-search-btn text" (click)="searchReplaceAll()">
+            All
+          </button>
+        </div>
+      </div>
+    }
+
     <!-- Floating Toolbar -->
     <app-editor-toolbar [editor]="getEditor()" />
 

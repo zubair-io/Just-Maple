@@ -82,6 +82,8 @@ import {
   JsonDataRef,
   JsonLoopBlock,
   TodoBox,
+  SearchReplace,
+  searchReplacePluginKey,
   formatTime,
   formatDate,
   type SlashCommandItem,
@@ -171,6 +173,12 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly isFullWidth = signal(false);
   readonly hasClaudeBot = signal(false);
   readonly mentionableUsers = signal<MentionableUser[]>([]);
+
+  // In-document find & replace state
+  readonly searchOpen = signal(false);
+  readonly searchQuery = signal('');
+  readonly searchReplaceTerm = signal('');
+  readonly searchInfo = signal<{ count: number; active: number }>({ count: 0, active: 0 });
 
   // Page link search state
   readonly pageLinkSearchOpen = signal(false);
@@ -415,6 +423,8 @@ export class NotebookEditorComponent implements OnDestroy {
           }),
           // To-do Box: a titled container wrapping a task list (/To-do Box)
           TodoBox,
+          // In-document find & replace (Cmd/Ctrl+F)
+          SearchReplace,
           // Table support
           ...getTableExtensions(),
           // Table of Contents
@@ -1503,11 +1513,18 @@ export class NotebookEditorComponent implements OnDestroy {
       this.handleAIWritingCommand(type);
     }) as EventListener);
 
-    // Listen for keyboard shortcut (Cmd/Ctrl+J) to open AI menu
+    // Listen for keyboard shortcut (Cmd/Ctrl+J) to open AI menu, and
+    // Cmd/Ctrl+F to open in-document find & replace.
     this.addEditorElementListener(editorElement, 'keydown', ((event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 'j') {
         event.preventDefault();
         this.openAICommandMenu();
+      } else if ((event.metaKey || event.ctrlKey) && event.key === 'f') {
+        event.preventDefault();
+        this.openSearch();
+      } else if (event.key === 'Escape' && this.searchOpen()) {
+        event.preventDefault();
+        this.closeSearch();
       }
     }) as EventListener);
   }
@@ -1612,6 +1629,85 @@ export class NotebookEditorComponent implements OnDestroy {
       this.todoPopoverElement.remove();
       this.todoPopoverElement = null;
     }
+  }
+
+  // ==========================================
+  // Find & Replace
+  // ==========================================
+
+  openSearch(): void {
+    this.searchOpen.set(true);
+    // Seed with the current selection text if any.
+    const editor = this._editor;
+    if (editor) {
+      const { from, to } = editor.state.selection;
+      if (to > from) {
+        const selected = editor.state.doc.textBetween(from, to);
+        if (selected && !selected.includes('\n')) {
+          this.searchQuery.set(selected);
+          editor.commands.setSearchTerm(selected);
+        }
+      }
+    }
+    this.refreshSearchInfo();
+    setTimeout(() => {
+      const input = document.querySelector('.editor-search-input') as HTMLInputElement | null;
+      input?.focus();
+      input?.select();
+    }, 0);
+  }
+
+  closeSearch(): void {
+    this.searchOpen.set(false);
+    this._editor?.commands.clearSearch();
+    this._editor?.commands.focus();
+  }
+
+  onSearchQueryChange(value: string): void {
+    this.searchQuery.set(value);
+    this._editor?.commands.setSearchTerm(value);
+    this.refreshSearchInfo();
+    // Jump to the first match.
+    this._editor?.commands.findNext();
+    this.refreshSearchInfo();
+  }
+
+  onReplaceTermChange(value: string): void {
+    this.searchReplaceTerm.set(value);
+    this._editor?.commands.setReplaceTerm(value);
+  }
+
+  searchFindNext(): void {
+    this._editor?.commands.findNext();
+    this.refreshSearchInfo();
+  }
+
+  searchFindPrevious(): void {
+    this._editor?.commands.findPrevious();
+    this.refreshSearchInfo();
+  }
+
+  searchReplaceCurrent(): void {
+    this._editor?.commands.replaceCurrent();
+    this.refreshSearchInfo();
+  }
+
+  searchReplaceAll(): void {
+    this._editor?.commands.replaceAll();
+    this.refreshSearchInfo();
+  }
+
+  private refreshSearchInfo(): void {
+    const editor = this._editor;
+    if (!editor) {
+      this.searchInfo.set({ count: 0, active: 0 });
+      return;
+    }
+    const state = searchReplacePluginKey.getState(editor.state);
+    this.searchInfo.set({
+      count: state?.matches.length ?? 0,
+      active: state && state.matches.length > 0 ? state.activeIndex + 1 : 0,
+    });
   }
 
   /**
