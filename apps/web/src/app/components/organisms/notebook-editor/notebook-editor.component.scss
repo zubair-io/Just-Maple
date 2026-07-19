@@ -2710,3 +2710,35 @@
     white-space: nowrap;
   }
 }
+
+::ng-deep .editor-content .ProseMirror {
+  .footnote-ref {
+    color: var(--color-primary);
+    cursor: pointer;
+    font-weight: 600;
+    padding: 0 1px;
+    user-select: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+::ng-deep .editor-content .ProseMirror {
+  .memo-image-caption {
+    display: block;
+    margin-top: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    text-align: center;
+    outline: none;
+
+    &.is-empty::before {
+      content: attr(data-placeholder);
+      color: var(--color-text-muted);
+      opacity: 0.6;
+      pointer-events: none;
+    }
+  }
+}

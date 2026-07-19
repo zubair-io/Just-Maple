@@ -176,6 +176,16 @@ export const ImageNode = Node.create<ImageNodeOptions>({
           return { title: attributes['title'] };
         },
       },
+      caption: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-caption'),
+        renderHTML: (attributes) => {
+          if (!attributes['caption']) {
+            return {};
+          }
+          return { 'data-caption': attributes['caption'] };
+        },
+      },
       size: {
         default: 'medium',
         parseHTML: (element) => element.getAttribute('data-size') || 'medium',
@@ -380,6 +390,32 @@ export const ImageNode = Node.create<ImageNodeOptions>({
 
       dom.appendChild(wrapper);
 
+      // Editable caption (figcaption). The node is atomic, so we sync the
+      // contentEditable text back to the `caption` attribute on blur.
+      const caption = document.createElement('figcaption');
+      caption.classList.add('memo-image-caption');
+      caption.contentEditable = 'true';
+      caption.setAttribute('data-placeholder', 'Add a caption…');
+      caption.textContent = (node.attrs['caption'] as string) || '';
+      caption.classList.toggle('is-empty', !caption.textContent);
+      caption.addEventListener('input', () => {
+        caption.classList.toggle('is-empty', !caption.textContent);
+      });
+      caption.addEventListener('blur', () => {
+        const pos = typeof getPos === 'function' ? getPos() : null;
+        if (pos === null || pos === undefined) return;
+        const value = caption.textContent?.trim() || null;
+        if (value === ((node.attrs['caption'] as string) || null)) return;
+        editor
+          .chain()
+          .command(({ tr }) => {
+            tr.setNodeMarkup(pos, undefined, { ...node.attrs, caption: value });
+            return true;
+          })
+          .run();
+      });
+      dom.appendChild(caption);
+
       // Create size toolbar (visible on selection, hidden during loading)
       const toolbar = document.createElement('div');
       toolbar.classList.add('memo-image-toolbar');
@@ -461,6 +497,16 @@ export const ImageNode = Node.create<ImageNodeOptions>({
             return false;
           }
 
+          // Keep the captured node current for the caption blur handler.
+          node = updatedNode;
+
+          // Sync caption text if it changed elsewhere and the field isn't focused.
+          const newCaption = (updatedNode.attrs['caption'] as string) || '';
+          if (document.activeElement !== caption && caption.textContent !== newCaption) {
+            caption.textContent = newCaption;
+            caption.classList.toggle('is-empty', !newCaption);
+          }
+
           const newSize = updatedNode.attrs['size'] as ImageSize;
           const newUrls = parseUrls(updatedNode.attrs['urls']);
           const newLoading = updatedNode.attrs['loading'] as boolean;
@@ -501,6 +547,13 @@ export const ImageNode = Node.create<ImageNodeOptions>({
 
           return true;
         },
+        // Let the contentEditable caption handle its own events; allow drag
+        // events through so the figure can still be reordered.
+        stopEvent: (event) => {
+          if (event.type.startsWith('drag')) return false;
+          return caption.contains(event.target as globalThis.Node | null);
+        },
+        ignoreMutation: (mutation) => caption.contains(mutation.target as globalThis.Node | null),
         selectNode: () => updateSelected(true),
         deselectNode: () => updateSelected(false),
       };

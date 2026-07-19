@@ -88,3 +88,4 @@ export {
 } from './json-loop-block';
 export { TodoBox, type TodoBoxAttrs, type TodoBoxOptions } from './todo-box';
 export { SearchReplace, searchReplacePluginKey, type SearchMatch } from './search-replace';
+export { Footnote, type FootnoteAttrs, type FootnoteOptions } from './footnote';

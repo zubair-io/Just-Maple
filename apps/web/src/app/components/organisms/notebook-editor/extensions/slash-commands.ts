@@ -143,6 +143,14 @@ export const defaultSlashCommands: SlashCommandItem[] = [
     },
   },
   {
+    title: 'Footnote',
+    description: 'Insert an inline footnote',
+    icon: '†',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).insertFootnote().run();
+    },
+  },
+  {
     title: 'Divider',
     description: 'Visual divider line',
     icon: '—',

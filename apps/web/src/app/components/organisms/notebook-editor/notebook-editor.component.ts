@@ -84,6 +84,7 @@ import {
   TodoBox,
   SearchReplace,
   searchReplacePluginKey,
+  Footnote,
   formatTime,
   formatDate,
   type SlashCommandItem,
@@ -465,6 +466,8 @@ export class NotebookEditorComponent implements OnDestroy {
           TodoBox,
           // In-document find & replace (Cmd/Ctrl+F)
           SearchReplace,
+          // Inline footnotes (content stored on the node, shown on hover/click)
+          Footnote,
           // Table support
           ...getTableExtensions(),
           // Table of Contents
