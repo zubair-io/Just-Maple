@@ -42,7 +42,7 @@
             title="Previous (Shift+Enter)"
             (click)="searchFindPrevious()"
           >
-            ↑
+            <span class="material-symbols-rounded">keyboard_arrow_up</span>
           </button>
           <button
             type="button"
@@ -50,7 +50,7 @@
             title="Next (Enter)"
             (click)="searchFindNext()"
           >
-            ↓
+            <span class="material-symbols-rounded">keyboard_arrow_down</span>
           </button>
           <button
             type="button"
@@ -58,7 +58,7 @@
             title="Close (Esc)"
             (click)="closeSearch()"
           >
-            ✕
+            <span class="material-symbols-rounded">close</span>
           </button>
         </div>
         <div class="editor-search-row">
@@ -85,7 +85,9 @@
         <div class="editor-shortcut-modal" (click)="$event.stopPropagation()">
           <div class="editor-shortcut-header">
             <span>Keyboard shortcuts</span>
-            <button type="button" class="editor-search-btn" (click)="closeShortcutHelp()">✕</button>
+            <button type="button" class="editor-search-btn" (click)="closeShortcutHelp()">
+              <span class="material-symbols-rounded">close</span>
+            </button>
           </div>
           <div class="editor-shortcut-groups">
             @for (group of shortcutGroups; track group.title) {
@@ -112,7 +114,7 @@
       (click)="shortcutHelpOpen.set(true)"
       (keydown.escape)="closeShortcutHelp()"
     >
-      ?
+      <span class="material-symbols-rounded">keyboard</span>
     </button>
 
     <!-- Floating Toolbar -->

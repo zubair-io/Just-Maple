@@ -6,7 +6,7 @@
 >
   <!-- Header with icon and delete button -->
   <div class="flex items-start justify-between mb-2">
-    <span class="text-2xl">{{ template().icon ?? '📄' }}</span>
+    <span class="text-2xl material-symbols-rounded">{{ template().icon ?? 'description' }}</span>
     @if (showDelete()) {
       <button
         class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[var(--color-bg-hover)] text-[var(--color-text-muted)] hover:text-red-500 transition-all"

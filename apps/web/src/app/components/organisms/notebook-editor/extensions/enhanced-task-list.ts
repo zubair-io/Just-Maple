@@ -331,8 +331,8 @@ export const EnhancedTaskList = TaskList.extend<EnhancedTaskListOptions>({
 
       const clearDateBtn = document.createElement('button');
       clearDateBtn.type = 'button';
-      clearDateBtn.classList.add('toolbar-btn', 'clear-date-btn');
-      clearDateBtn.textContent = '✕';
+      clearDateBtn.classList.add('toolbar-btn', 'clear-date-btn', 'material-symbols-rounded');
+      clearDateBtn.textContent = 'close';
       clearDateBtn.title = 'Clear date';
       clearDateBtn.style.display = 'none';
       clearDateBtn.addEventListener('click', () => {

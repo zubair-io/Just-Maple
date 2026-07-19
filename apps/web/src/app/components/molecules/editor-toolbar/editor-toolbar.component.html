@@ -11,7 +11,7 @@
           [title]="btn.label"
           (click)="btn.action()"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
+          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
         </button>
       }
     </div>
@@ -29,9 +29,7 @@
           [title]="btn.label"
           (click)="btn.action()"
         >
-          <span class="btn-icon" [class.bold]="btn.icon === 'B'" [class.italic]="btn.icon === 'I'">
-            {{ btn.icon }}
-          </span>
+          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
         </button>
       }
     </div>
@@ -49,7 +47,7 @@
           [title]="btn.label"
           (click)="btn.action()"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
+          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
         </button>
       }
     </div>
@@ -66,7 +64,7 @@
           [title]="btn.label"
           (click)="btn.action()"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
+          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
         </button>
       }
     </div>
@@ -76,11 +74,11 @@
     <!-- Text color -->
     <div class="toolbar-group">
       <label class="toolbar-btn toolbar-color" title="Text color">
-        <span class="btn-icon">A</span>
+        <span class="btn-icon material-symbols-rounded">format_color_text</span>
         <input type="color" (change)="applyColor($any($event.target).value)" />
       </label>
       <button type="button" class="toolbar-btn" title="Clear color" (click)="clearColor()">
-        <span class="btn-icon">A⊘</span>
+        <span class="btn-icon material-symbols-rounded">format_color_reset</span>
       </button>
     </div>
 
@@ -97,7 +95,7 @@
           [title]="btn.label"
           (click)="btn.action()"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
+          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
         </button>
       }
     </div>
@@ -117,7 +115,7 @@
           [title]="btn.label"
           (click)="btn.action()"
         >
-          <span class="btn-icon">{{ btn.icon }}</span>
+          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
         </button>
       }
     </div>
@@ -128,7 +126,7 @@
       <div class="toolbar-group">
         @for (btn of tableButtons(); track btn.label) {
           <button type="button" class="toolbar-btn" [title]="btn.label" (click)="btn.action()">
-            <span class="btn-icon">{{ btn.icon }}</span>
+            <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
           </button>
         }
       </div>

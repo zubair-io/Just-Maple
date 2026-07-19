@@ -1,5 +1,5 @@
 <div class="sync-status" [class]="status()">
-  <span class="status-indicator" [class.spinning]="status() === 'syncing'">
+  <span class="status-indicator material-symbols-rounded" [class.spinning]="status() === 'syncing'">
     {{ statusIcon() }}
   </span>
   <span
@@ -11,7 +11,7 @@
 
   @if (peersCount() > 0) {
     <span class="peers-count" title="Connected collaborators">
-      <span class="peers-icon">👥</span>
+      <span class="peers-icon material-symbols-rounded">group</span>
       {{ peersCount() }}
     </span>
   }
