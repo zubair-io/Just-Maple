@@ -597,6 +597,12 @@ export class NotebookEditorComponent implements OnDestroy {
             if (files.length === 0) return false;
             event.preventDefault();
             files.forEach((file) => this.uploadAndInsertImageFile(file));
+            // Preserve any accompanying plain text (e.g. a selection that
+            // included an inline image) rather than silently dropping it.
+            const text = event.clipboardData?.getData('text/plain');
+            if (text && text.trim()) {
+              this._editor?.commands.insertContent(text);
+            }
             return true;
           },
           handleDrop: (_view, event) => {
@@ -1719,7 +1725,10 @@ export class NotebookEditorComponent implements OnDestroy {
     if (editor) {
       const { from, to } = editor.state.selection;
       if (to > from) {
-        const selected = editor.state.doc.textBetween(from, to);
+        // Pass a block separator so a selection spanning blocks contains a
+        // newline; the single-line guard below then correctly rejects it
+        // (search matches never span block boundaries).
+        const selected = editor.state.doc.textBetween(from, to, '\n');
         if (selected && !selected.includes('\n')) {
           this.searchQuery.set(selected);
           editor.commands.setSearchTerm(selected);

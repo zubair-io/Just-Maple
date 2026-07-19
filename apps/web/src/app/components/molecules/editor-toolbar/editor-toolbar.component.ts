@@ -33,8 +33,11 @@ interface ToolbarButton {
 export class EditorToolbarComponent implements OnInit, OnDestroy {
   readonly editor = input.required<Editor | null>();
 
-  // Signal to track editor state updates (increments on each transaction)
+  // Signal to track editor state updates (increments on each transaction).
   private readonly editorStateVersion = signal(0);
+  // Increments only when the document actually changed — used for word count so
+  // it doesn't re-serialize the whole doc on every cursor move.
+  private readonly editorDocVersion = signal(0);
 
   // Keyboard offset for mobile browsers (not iOS native app)
   readonly keyboardOffset = signal(0);
@@ -54,15 +57,18 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
       }
 
       if (ed) {
-        // Subscribe to editor updates
-        const handler = () => {
+        // The `transaction` event already covers selection changes (they are
+        // transactions too), so one subscription suffices — no need to also
+        // listen to `selectionUpdate` and double-count every keystroke.
+        const handler = (props: { transaction?: { docChanged?: boolean } }) => {
           this.editorStateVersion.update((v) => v + 1);
+          if (props?.transaction?.docChanged) {
+            this.editorDocVersion.update((v) => v + 1);
+          }
         };
-        ed.on('selectionUpdate', handler);
         ed.on('transaction', handler);
 
         this.editorUnsubscribe = () => {
-          ed.off('selectionUpdate', handler);
           ed.off('transaction', handler);
         };
       }
@@ -231,7 +237,12 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
         icon: '⇤',
         label: 'Align left',
         action: () => (ed.chain().focus() as any).setTextAlign('left').run(),
-        isActive: () => ed.isActive({ textAlign: 'left' }),
+        // Left is the default, so show it active when nothing else is set.
+        isActive: () =>
+          ed.isActive({ textAlign: 'left' }) ||
+          (!ed.isActive({ textAlign: 'center' }) &&
+            !ed.isActive({ textAlign: 'right' }) &&
+            !ed.isActive({ textAlign: 'justify' })),
       },
       {
         icon: '↔',
@@ -367,9 +378,9 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
     ];
   });
 
-  // Live word count for the document (recomputed per transaction).
+  // Live word count for the document (recomputed only when the doc changes).
   readonly wordCount = computed<number>(() => {
-    this.editorStateVersion();
+    this.editorDocVersion();
     const ed = this.editor();
     if (!ed) return 0;
     const text = ed.getText().trim();
