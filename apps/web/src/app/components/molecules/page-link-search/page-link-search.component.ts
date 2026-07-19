@@ -157,15 +157,15 @@ export class PageLinkSearchComponent {
   getPageIcon(type: string): string {
     switch (type) {
       case 'memo':
-        return '📝';
+        return 'description';
       case 'whiteboard':
-        return '🎨';
+        return 'draw';
       case 'kanban':
-        return '📋';
+        return 'view_kanban';
       case 'recording':
-        return '🎙️';
+        return 'mic';
       default:
-        return '📄';
+        return 'description';
     }
   }
 }

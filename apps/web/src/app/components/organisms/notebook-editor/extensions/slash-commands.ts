@@ -19,7 +19,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Heading 1',
     description: 'Large section heading',
-    icon: 'H1',
+    icon: 'format_h1',
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run();
     },
@@ -27,7 +27,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Heading 2',
     description: 'Medium section heading',
-    icon: 'H2',
+    icon: 'format_h2',
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run();
     },
@@ -35,7 +35,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Heading 3',
     description: 'Small section heading',
-    icon: 'H3',
+    icon: 'format_h3',
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run();
     },
@@ -43,7 +43,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Heading 4',
     description: 'Subsection heading',
-    icon: 'H4',
+    icon: 'format_h4',
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 4 }).run();
     },
@@ -51,7 +51,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Heading 5',
     description: 'Minor heading',
-    icon: 'H5',
+    icon: 'format_h5',
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 5 }).run();
     },
@@ -59,7 +59,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Heading 6',
     description: 'Smallest heading',
-    icon: 'H6',
+    icon: 'format_h6',
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).setNode('heading', { level: 6 }).run();
     },
@@ -67,7 +67,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Bullet List',
     description: 'Create a simple bullet list',
-    icon: '•',
+    icon: 'format_list_bulleted',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).toggleBulletList().run();
     },
@@ -75,7 +75,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Numbered List',
     description: 'Create a numbered list',
-    icon: '1.',
+    icon: 'format_list_numbered',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).toggleOrderedList().run();
     },
@@ -83,7 +83,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'To-do List',
     description: 'Track tasks with checkboxes',
-    icon: '☑',
+    icon: 'checklist',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).toggleTaskList().run();
     },
@@ -91,7 +91,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'To-do Box',
     description: 'Named todo list with status tracking',
-    icon: '📋',
+    icon: 'check_box',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).insertTodoBox().run();
     },
@@ -99,7 +99,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Quote',
     description: 'Capture a quote',
-    icon: '"',
+    icon: 'format_quote',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).toggleBlockquote().run();
     },
@@ -107,7 +107,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Code Block',
     description: 'Add a code snippet',
-    icon: '</>',
+    icon: 'code_blocks',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).toggleCodeBlock().run();
     },
@@ -115,7 +115,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Inline Code',
     description: 'Mark text as code',
-    icon: '`',
+    icon: 'code',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).toggleCode().run();
     },
@@ -123,7 +123,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'API Block',
     description: 'Interactive API endpoint tester',
-    icon: '{}',
+    icon: 'api',
     command: ({ editor, range }) => {
       editor
         .chain()
@@ -137,7 +137,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Toggle',
     description: 'Collapsible toggle block',
-    icon: '▸',
+    icon: 'arrow_right',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).setDetails().run();
     },
@@ -145,7 +145,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Footnote',
     description: 'Insert an inline footnote',
-    icon: '†',
+    icon: 'note_alt',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).insertFootnote().run();
     },
@@ -153,7 +153,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Divider',
     description: 'Visual divider line',
-    icon: '—',
+    icon: 'horizontal_rule',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).setHorizontalRule().run();
     },
@@ -161,7 +161,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Table',
     description: 'Insert a table',
-    icon: '▦',
+    icon: 'table',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any)
         .insertTable({
@@ -175,7 +175,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Table of Contents',
     description: 'Auto-generated navigation',
-    icon: '☰',
+    icon: 'toc',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).insertTableOfContents().run();
     },
@@ -183,7 +183,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Date',
     description: 'Insert current date',
-    icon: '📅',
+    icon: 'calendar_today',
     command: ({ editor, range }) => {
       editor
         .chain()
@@ -202,7 +202,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Time',
     description: 'Insert current time',
-    icon: '🕐',
+    icon: 'schedule',
     command: ({ editor, range }) => {
       editor
         .chain()
@@ -221,7 +221,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Agenda',
     description: 'Add a date-based section',
-    icon: '📆',
+    icon: 'view_agenda',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).insertAgenda().run();
     },
@@ -229,7 +229,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Google Calendar',
     description: 'Show events from Google Calendar',
-    icon: '📆',
+    icon: 'calendar_month',
     command: ({ editor, range }) => {
       (editor.chain().focus().deleteRange(range) as any).insertGoogleCalendarAgenda().run();
     },
@@ -237,7 +237,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Voice Recording',
     description: 'Record audio with your microphone',
-    icon: '🎙️',
+    icon: 'mic',
     command: ({ editor, range }) => {
       // Dispatch event with range info so the handler can delete and insert atomically
       editor.view.dom.dispatchEvent(
@@ -251,7 +251,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Whiteboard',
     description: 'Draw and sketch ideas',
-    icon: '🎨',
+    icon: 'draw',
     command: ({ editor, range }) => {
       // Dispatch event with range info so the handler can delete and insert atomically
       editor.view.dom.dispatchEvent(
@@ -265,7 +265,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Image',
     description: 'Upload an image',
-    icon: '🖼️',
+    icon: 'image',
     command: ({ editor, range }) => {
       // Dispatch event with range info so the handler can delete and insert atomically
       editor.view.dom.dispatchEvent(
@@ -279,7 +279,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Claude Widget',
     description: 'AI assistant widget for document editing',
-    icon: '🤖',
+    icon: 'smart_toy',
     command: ({ editor, range }) => {
       // Delete the slash command text and insert AI bot widget
       editor.chain().focus().deleteRange(range).run();
@@ -295,7 +295,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Page Link',
     description: 'Link to another page',
-    icon: '🔗',
+    icon: 'link',
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run();
       // Dispatch event to open page link search
@@ -310,7 +310,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Page Embed',
     description: 'Embed a page with preview',
-    icon: '📎',
+    icon: 'attachment',
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run();
       // Dispatch event to open page link search for embed
@@ -325,7 +325,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'New Page',
     description: 'Create a new page and link to it',
-    icon: '📄+',
+    icon: 'note_add',
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run();
       // Dispatch event to create new page and auto-link
@@ -340,7 +340,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'Tag',
     description: 'Add a hashtag for organization',
-    icon: '#',
+    icon: 'tag',
     command: ({ editor, range }) => {
       // Delete the slash command and insert # to trigger hashtag suggestions
       editor.chain().focus().deleteRange(range).insertContent('#').run();
@@ -349,7 +349,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'JSON Reference',
     description: 'Insert a live value from a JSON page',
-    icon: '{ }',
+    icon: 'data_object',
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run();
       editor.view.dom.dispatchEvent(
@@ -363,7 +363,7 @@ export const defaultSlashCommands: SlashCommandItem[] = [
   {
     title: 'JSON Table',
     description: 'Display JSON array data as a table or list',
-    icon: '[ ]',
+    icon: 'table_chart',
     command: ({ editor, range }) => {
       editor.chain().focus().deleteRange(range).run();
       editor.view.dom.dispatchEvent(

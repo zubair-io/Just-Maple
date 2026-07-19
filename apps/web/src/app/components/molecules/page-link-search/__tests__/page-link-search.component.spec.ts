@@ -270,8 +270,8 @@ describe('PageLinkSearchComponent', () => {
       hostFixture.detectChanges();
 
       const icons = hostFixture.nativeElement.querySelectorAll('.result-icon');
-      expect(icons[0]?.textContent?.trim()).toBe('📝');
-      expect(icons[1]?.textContent?.trim()).toBe('🎨');
+      expect(icons[0]?.textContent?.trim()).toBe('description');
+      expect(icons[1]?.textContent?.trim()).toBe('draw');
     }));
   });
 });

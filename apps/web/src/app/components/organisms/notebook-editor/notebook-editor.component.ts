@@ -3073,11 +3073,11 @@ export class NotebookEditorComponent implements OnDestroy {
     const getPageIcon = (type: string): string => {
       switch (type) {
         case 'memo':
-          return '📝';
+          return 'description';
         case 'whiteboard':
-          return '🎨';
+          return 'draw';
         default:
-          return '📄';
+          return 'description';
       }
     };
 
@@ -3257,7 +3257,7 @@ export class NotebookEditorComponent implements OnDestroy {
         itemsMap.set(id, item);
         return {
           id,
-          icon: '#',
+          icon: 'tag',
           title: item.name,
           description:
             item.count && item.count > 0

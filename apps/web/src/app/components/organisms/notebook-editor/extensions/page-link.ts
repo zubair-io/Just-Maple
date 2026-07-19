@@ -169,8 +169,8 @@ export const PageLink = Node.create<PageLinkOptions>({
 
       // Icon
       const icon = document.createElement('span');
-      icon.classList.add('page-link-icon');
-      icon.textContent = '📄';
+      icon.classList.add('page-link-icon', 'material-symbols-rounded');
+      icon.textContent = 'description';
       dom.appendChild(icon);
 
       // Title

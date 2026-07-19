@@ -168,8 +168,8 @@ export const PageLinkBlock = Node.create<PageLinkBlockOptions>({
 
       // Icon
       const icon = document.createElement('span');
-      icon.classList.add('page-link-block-icon');
-      icon.textContent = '📄';
+      icon.classList.add('page-link-block-icon', 'material-symbols-rounded');
+      icon.textContent = 'description';
       header.appendChild(icon);
 
       // Title
