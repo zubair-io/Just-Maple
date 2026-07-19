@@ -3,7 +3,9 @@
   [class.notification-item--unread]="!notification().read"
   (click)="onClick()"
 >
-  <div class="notification-item__icon">{{ getNotificationIcon(notification().type) }}</div>
+  <div class="notification-item__icon material-symbols-rounded">
+    {{ getNotificationIcon(notification().type) }}
+  </div>
 
   <div class="notification-item__content">
     <div class="notification-item__header">

@@ -42,19 +42,19 @@ export class NotificationItemComponent {
   getNotificationIcon(type: string): string {
     switch (type) {
       case 'share_received':
-        return '🔗';
+        return 'share';
       case 'message_received':
-        return '💬';
+        return 'chat_bubble';
       case 'transcription_complete':
-        return '✅';
+        return 'check_circle';
       case 'reminder':
-        return '⏰';
+        return 'alarm';
       case 'export_ready':
-        return '📦';
+        return 'download';
       case 'processing_failed':
-        return '❌';
+        return 'error';
       default:
-        return '🔔';
+        return 'notifications';
     }
   }
 
