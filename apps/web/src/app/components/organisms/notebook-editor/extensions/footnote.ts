@@ -113,6 +113,25 @@ export const Footnote = Node.create<FootnoteOptions>({
 
       render();
 
+      // The number depends on OTHER footnotes' positions, and ProseMirror does
+      // not call this NodeView's update() when only sibling footnotes change.
+      // Re-render on every editor update so numbering stays correct as footnotes
+      // are added or removed anywhere in the document (incl. remote collab edits).
+      editor.on('update', render);
+
+      // Assign a stable id to a footnote that has none, so serialization is
+      // deterministic (renderHTML must not mint a new id each call).
+      if (!node.attrs['id']) {
+        setTimeout(() => {
+          const pos = typeof getPos === 'function' ? getPos() : null;
+          if (pos === null || pos === undefined) return;
+          editor.commands.command(({ tr }) => {
+            tr.setNodeMarkup(pos, undefined, { ...node.attrs, id: generateFootnoteId() });
+            return true;
+          });
+        }, 0);
+      }
+
       dom.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -137,6 +156,9 @@ export const Footnote = Node.create<FootnoteOptions>({
           node = updatedNode;
           render();
           return true;
+        },
+        destroy: () => {
+          editor.off('update', render);
         },
       };
     };

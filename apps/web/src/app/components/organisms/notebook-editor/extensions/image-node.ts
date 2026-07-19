@@ -391,20 +391,29 @@ export const ImageNode = Node.create<ImageNodeOptions>({
       dom.appendChild(wrapper);
 
       // Editable caption (figcaption). The node is atomic, so we sync the
-      // contentEditable text back to the `caption` attribute on blur.
+      // contentEditable text back to the `caption` attribute.
       const caption = document.createElement('figcaption');
       caption.classList.add('memo-image-caption');
       caption.contentEditable = 'true';
       caption.setAttribute('data-placeholder', 'Add a caption…');
       caption.textContent = (node.attrs['caption'] as string) || '';
       caption.classList.toggle('is-empty', !caption.textContent);
-      caption.addEventListener('input', () => {
-        caption.classList.toggle('is-empty', !caption.textContent);
-      });
-      caption.addEventListener('blur', () => {
+
+      // Track whether the user actually typed since focusing, so we never
+      // overwrite a concurrent remote caption edit on a no-op blur.
+      let captionDirty = false;
+      let captionCommitTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const commitCaption = () => {
+        if (captionCommitTimer) {
+          clearTimeout(captionCommitTimer);
+          captionCommitTimer = null;
+        }
+        if (!captionDirty) return;
         const pos = typeof getPos === 'function' ? getPos() : null;
         if (pos === null || pos === undefined) return;
         const value = caption.textContent?.trim() || null;
+        captionDirty = false;
         if (value === ((node.attrs['caption'] as string) || null)) return;
         editor
           .chain()
@@ -413,6 +422,32 @@ export const ImageNode = Node.create<ImageNodeOptions>({
             return true;
           })
           .run();
+      };
+
+      caption.addEventListener('focus', () => {
+        captionDirty = false;
+      });
+      caption.addEventListener('input', () => {
+        captionDirty = true;
+        caption.classList.toggle('is-empty', !caption.textContent);
+        // Persist periodically so the caption isn't lost if the node is removed
+        // or the page is switched before blur (blur doesn't fire on removal).
+        if (captionCommitTimer) clearTimeout(captionCommitTimer);
+        captionCommitTimer = setTimeout(commitCaption, 600);
+      });
+      caption.addEventListener('blur', commitCaption);
+      // Enter should finish the caption, not insert a <div>/newline.
+      caption.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          caption.blur();
+        }
+      });
+      // Force plain-text paste so rich/multiline HTML never enters the caption.
+      caption.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = e.clipboardData?.getData('text/plain') ?? '';
+        document.execCommand('insertText', false, text.replace(/\s+/g, ' '));
       });
       dom.appendChild(caption);
 
@@ -500,14 +535,21 @@ export const ImageNode = Node.create<ImageNodeOptions>({
           // Keep the captured node current for the caption blur handler.
           node = updatedNode;
 
-          // Sync caption text if it changed elsewhere and the field isn't focused.
+          // Sync caption text if it changed elsewhere and the user isn't
+          // mid-edit (don't clobber in-progress typing / pending commit).
           const newCaption = (updatedNode.attrs['caption'] as string) || '';
-          if (document.activeElement !== caption && caption.textContent !== newCaption) {
+          if (
+            document.activeElement !== caption &&
+            !captionDirty &&
+            caption.textContent !== newCaption
+          ) {
             caption.textContent = newCaption;
             caption.classList.toggle('is-empty', !newCaption);
           }
 
-          const newSize = updatedNode.attrs['size'] as ImageSize;
+          // Validate attrs the same way construction does — a pasted/remote
+          // update can carry a whitespace size token or an unsafe URL.
+          const newSize = safeImageSize(updatedNode.attrs['size']);
           const newUrls = parseUrls(updatedNode.attrs['urls']);
           const newLoading = updatedNode.attrs['loading'] as boolean;
           const newPreviewUrl = updatedNode.attrs['previewUrl'] as string | null;
@@ -535,25 +577,30 @@ export const ImageNode = Node.create<ImageNodeOptions>({
           });
 
           // Update image src
-          const newSrc =
+          const newSrc = safeMediaUrl(
             newLoading && newPreviewUrl
               ? newPreviewUrl
               : newUrls
                 ? getUrlForSize(newUrls, newSize)
-                : '';
+                : '',
+          );
           if (img.src !== newSrc && newSrc) {
             img.src = newSrc;
           }
 
           return true;
         },
-        // Let the contentEditable caption handle its own events; allow drag
-        // events through so the figure can still be reordered.
+        // Events inside the contentEditable caption are handled by the browser
+        // (text selection, cursor, its own drag). Everything else falls to
+        // ProseMirror, including drag on the figure so the block can reorder.
         stopEvent: (event) => {
+          if (caption.contains(event.target as globalThis.Node | null)) return true;
           if (event.type.startsWith('drag')) return false;
-          return caption.contains(event.target as globalThis.Node | null);
+          return false;
         },
-        ignoreMutation: (mutation) => caption.contains(mutation.target as globalThis.Node | null),
+        // This is an atom NodeView that manages its own DOM (image + caption),
+        // so ProseMirror must ignore all DOM mutations within it.
+        ignoreMutation: () => true,
         selectNode: () => updateSelected(true),
         deselectNode: () => updateSelected(false),
       };

@@ -23,6 +23,7 @@ import { firstValueFrom } from 'rxjs';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { Editor } from '@tiptap/core';
+import { TextSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
@@ -199,7 +200,7 @@ export class NotebookEditorComponent implements OnDestroy {
         { keys: '/', label: 'Slash commands' },
         { keys: '⌘/Ctrl F', label: 'Find & replace' },
         { keys: '⌘/Ctrl J', label: 'AI assistant' },
-        { keys: '⌘/Ctrl ?', label: 'This shortcut help' },
+        { keys: '⌘/Ctrl /', label: 'This shortcut help' },
         { keys: '⌘/Ctrl Z', label: 'Undo / Redo (⇧)' },
       ],
     },
@@ -406,9 +407,9 @@ export class NotebookEditorComponent implements OnDestroy {
           // Inline text color (TextStyle is the required base mark for Color).
           TextStyle,
           Color,
-          // Superscript / subscript marks
-          Superscript,
-          Subscript,
+          // Superscript / subscript marks (mutually exclusive)
+          Superscript.extend({ excludes: 'subscript' }),
+          Subscript.extend({ excludes: 'superscript' }),
           // Text alignment for paragraphs and headings
           TextAlign.configure({
             types: ['heading', 'paragraph'],
@@ -1001,7 +1002,11 @@ export class NotebookEditorComponent implements OnDestroy {
    */
   private uploadAndInsertImageFile(file: File): void {
     const pageId = this.pageId();
-    if (!pageId || !this._editor) return;
+    // Capture the editor instance so the async callbacks act on the document
+    // this image was inserted into — not whatever page the user switched to
+    // mid-upload (`this._editor` may have been replaced by then).
+    const editor = this._editor;
+    if (!pageId || !editor) return;
 
     // Create a local blob URL for preview
     const previewUrl = URL.createObjectURL(file);
@@ -1020,7 +1025,7 @@ export class NotebookEditorComponent implements OnDestroy {
     };
 
     // Insert image immediately with loading state and preview
-    (this._editor.chain().focus() as any)
+    (editor.chain().focus() as any)
       .insertMemoImage({
         urls: placeholderUrls,
         size: 'medium',
@@ -1032,21 +1037,24 @@ export class NotebookEditorComponent implements OnDestroy {
     // Upload the image in background
     this.memoImageService.uploadImage(pageId, file).subscribe({
       next: (result) => {
-        // Update the image with real URLs and remove loading state
-        (this._editor?.chain() as any)
-          ?.updateMemoImage(placeholderUrl, {
-            urls: result.urls,
-            loading: false,
-          })
-          .run();
-
+        // Update the captured editor's document; skip if it was destroyed.
+        if (!editor.isDestroyed) {
+          (editor.chain() as any)
+            .updateMemoImage(placeholderUrl, {
+              urls: result.urls,
+              loading: false,
+            })
+            .run();
+        }
         // Clean up blob URL
         URL.revokeObjectURL(previewUrl);
       },
       error: (err) => {
         console.error('[NotebookEditor] Failed to upload image:', err);
-        // Remove the failed image from editor
-        (this._editor?.chain() as any)?.deleteMemoImage(placeholderUrl).run();
+        // Remove the failed image from the captured editor if still alive.
+        if (!editor.isDestroyed) {
+          (editor.chain() as any).deleteMemoImage(placeholderUrl).run();
+        }
         // Clean up blob URL
         URL.revokeObjectURL(previewUrl);
       },
@@ -1559,13 +1567,16 @@ export class NotebookEditorComponent implements OnDestroy {
     // Listen for keyboard shortcut (Cmd/Ctrl+J) to open AI menu, and
     // Cmd/Ctrl+F to open in-document find & replace.
     this.addEditorElementListener(editorElement, 'keydown', ((event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === 'j') {
+      const mod = event.metaKey || event.ctrlKey;
+      const plain = mod && !event.shiftKey && !event.altKey;
+      const key = event.key.toLowerCase();
+      if (plain && key === 'j') {
         event.preventDefault();
         this.openAICommandMenu();
-      } else if ((event.metaKey || event.ctrlKey) && event.key === 'f') {
+      } else if (plain && key === 'f') {
         event.preventDefault();
         this.openSearch();
-      } else if ((event.metaKey || event.ctrlKey) && event.key === '/') {
+      } else if (plain && key === '/') {
         event.preventDefault();
         this.shortcutHelpOpen.update((v) => !v);
       } else if (event.key === 'Escape' && this.shortcutHelpOpen()) {
@@ -1642,12 +1653,17 @@ export class NotebookEditorComponent implements OnDestroy {
     });
     this.todoPopoverComponentRef = componentRef;
 
+    // Track the live attrs so we can refresh the popover after each change and
+    // it doesn't keep highlighting the old priority/color/date.
+    let currentAttrs = attrs;
     componentRef.setInput('todoId', todoId);
-    componentRef.setInput('attrs', attrs);
+    componentRef.setInput('attrs', currentAttrs);
     componentRef.setInput('position', position);
 
     componentRef.instance.attrsChange.subscribe((changes: Record<string, unknown>) => {
       (this._editor?.commands as any)?.updateTodoAttrs(todoId, changes);
+      currentAttrs = { ...currentAttrs, ...changes };
+      componentRef.setInput('attrs', currentAttrs);
     });
     componentRef.instance.close.subscribe(() => {
       this.closeTodoPopover();
@@ -1656,7 +1672,8 @@ export class NotebookEditorComponent implements OnDestroy {
     this.appRef.attachView(componentRef.hostView);
 
     // Dismiss when clicking outside the popover.
-    setTimeout(() => {
+    this.todoPopoverOpenTimeout = setTimeout(() => {
+      this.todoPopoverOpenTimeout = undefined;
       const onDocClick = (e: MouseEvent) => {
         if (this.todoPopoverElement && !this.todoPopoverElement.contains(e.target as Node)) {
           document.removeEventListener('mousedown', onDocClick);
@@ -1669,8 +1686,15 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   private todoPopoverDismiss?: () => void;
+  private todoPopoverOpenTimeout?: ReturnType<typeof setTimeout>;
 
   private closeTodoPopover(): void {
+    // Cancel a not-yet-fired outside-click registration so it can't attach a
+    // document listener after the popover is already gone.
+    if (this.todoPopoverOpenTimeout) {
+      clearTimeout(this.todoPopoverOpenTimeout);
+      this.todoPopoverOpenTimeout = undefined;
+    }
     this.todoPopoverDismiss?.();
     this.todoPopoverDismiss = undefined;
     if (this.todoPopoverComponentRef) {
@@ -1719,10 +1743,25 @@ export class NotebookEditorComponent implements OnDestroy {
   onSearchQueryChange(value: string): void {
     this.searchQuery.set(value);
     this._editor?.commands.setSearchTerm(value);
+    // Scroll to the first (already-active, index 0) match — do NOT call
+    // findNext(), which would advance to the SECOND match on every keystroke.
+    this.scrollToActiveMatch();
     this.refreshSearchInfo();
-    // Jump to the first match.
-    this._editor?.commands.findNext();
-    this.refreshSearchInfo();
+  }
+
+  private scrollToActiveMatch(): void {
+    const editor = this._editor;
+    if (!editor) return;
+    const state = searchReplacePluginKey.getState(editor.state);
+    const match = state?.matches[state.activeIndex];
+    if (!match) return;
+    editor.commands.command(({ tr, dispatch }) => {
+      if (dispatch) {
+        tr.setSelection(TextSelection.near(tr.doc.resolve(match.from)));
+        tr.scrollIntoView();
+      }
+      return true;
+    });
   }
 
   onReplaceTermChange(value: string): void {

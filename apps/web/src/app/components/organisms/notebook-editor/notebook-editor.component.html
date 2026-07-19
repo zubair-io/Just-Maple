@@ -22,7 +22,7 @@
 
     <!-- Find & Replace bar (Cmd/Ctrl+F) -->
     @if (searchOpen()) {
-      <div class="editor-search-bar">
+      <div class="editor-search-bar" (keydown.escape)="closeSearch()">
         <div class="editor-search-row">
           <input
             class="editor-search-input"
@@ -31,6 +31,7 @@
             [value]="searchQuery()"
             (input)="onSearchQueryChange($any($event.target).value)"
             (keydown.enter)="searchFindNext()"
+            (keydown.shift.enter)="searchFindPrevious()"
           />
           <span class="editor-search-count">
             {{ searchInfo().count ? searchInfo().active + '/' + searchInfo().count : 'No results' }}
@@ -109,6 +110,7 @@
       class="editor-shortcut-trigger"
       title="Keyboard shortcuts (⌘/Ctrl + /)"
       (click)="shortcutHelpOpen.set(true)"
+      (keydown.escape)="closeShortcutHelp()"
     >
       ?
     </button>
