@@ -2,10 +2,11 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "web",
-      "runtimeExecutable": "bun",
-      "runtimeArgs": ["run", "--cwd", "apps/web", "start"],
-      "port": 4200
+      "name": "web-worktree",
+      "runtimeExecutable": "bunx",
+      "runtimeArgs": ["ng", "serve", "--host", "127.0.0.1", "--port", "4300"],
+      "cwd": "apps/web",
+      "port": 4300
     }
   ]
 }

@@ -56,6 +56,36 @@
 
     <div class="toolbar-divider"></div>
 
+    <!-- Alignment buttons -->
+    <div class="toolbar-group">
+      @for (btn of alignButtons(); track btn.label) {
+        <button
+          type="button"
+          class="toolbar-btn"
+          [class.active]="btn.isActive?.()"
+          [title]="btn.label"
+          (click)="btn.action()"
+        >
+          <span class="btn-icon">{{ btn.icon }}</span>
+        </button>
+      }
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Text color -->
+    <div class="toolbar-group">
+      <label class="toolbar-btn toolbar-color" title="Text color">
+        <span class="btn-icon">A</span>
+        <input type="color" (input)="applyColor($any($event.target).value)" />
+      </label>
+      <button type="button" class="toolbar-btn" title="Clear color" (click)="clearColor()">
+        <span class="btn-icon">A⊘</span>
+      </button>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
     <!-- Insert buttons -->
     <div class="toolbar-group">
       @for (btn of insertButtons(); track btn.label) {

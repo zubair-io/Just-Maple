@@ -205,8 +205,60 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
         action: () => (ed.chain().focus() as any).toggleHighlight().run(),
         isActive: () => ed.isActive('highlight'),
       },
+      {
+        icon: 'x²',
+        label: 'Superscript',
+        action: () => (ed.chain().focus() as any).toggleSuperscript().run(),
+        isActive: () => ed.isActive('superscript'),
+      },
+      {
+        icon: 'x₂',
+        label: 'Subscript',
+        action: () => (ed.chain().focus() as any).toggleSubscript().run(),
+        isActive: () => ed.isActive('subscript'),
+      },
     ];
   });
+
+  // Text alignment controls.
+  readonly alignButtons = computed<ToolbarButton[]>(() => {
+    this.editorStateVersion();
+    const ed = this.editor();
+    if (!ed) return [];
+
+    return [
+      {
+        icon: '⇤',
+        label: 'Align left',
+        action: () => (ed.chain().focus() as any).setTextAlign('left').run(),
+        isActive: () => ed.isActive({ textAlign: 'left' }),
+      },
+      {
+        icon: '↔',
+        label: 'Align center',
+        action: () => (ed.chain().focus() as any).setTextAlign('center').run(),
+        isActive: () => ed.isActive({ textAlign: 'center' }),
+      },
+      {
+        icon: '⇥',
+        label: 'Align right',
+        action: () => (ed.chain().focus() as any).setTextAlign('right').run(),
+        isActive: () => ed.isActive({ textAlign: 'right' }),
+      },
+    ];
+  });
+
+  /** Apply an inline text color to the selection. */
+  applyColor(color: string): void {
+    const ed = this.editor();
+    if (ed) (ed.chain().focus() as any).setColor(color).run();
+  }
+
+  /** Remove any inline text color from the selection. */
+  clearColor(): void {
+    const ed = this.editor();
+    if (ed) (ed.chain().focus() as any).unsetColor().run();
+  }
 
   readonly blockButtons = computed<ToolbarButton[]>(() => {
     // Depend on state version so active states recompute per transaction.

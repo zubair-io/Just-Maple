@@ -2488,3 +2488,51 @@
     }
   }
 }
+
+/* Collapsible toggle blocks (Details extension) */
+.toggle-block,
+[data-type='details'] {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+
+  > button {
+    flex: 0 0 auto;
+    margin-top: 0.15rem;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+
+    &::before {
+      content: '▸';
+      display: inline-block;
+      transition: transform 0.15s ease;
+    }
+  }
+
+  &.is-open > button::before,
+  &[open] > button::before {
+    transform: rotate(90deg);
+  }
+
+  [data-type='detailsSummary'] {
+    font-weight: 600;
+  }
+
+  [data-type='detailsContent'] {
+    flex: 1 1 auto;
+  }
+
+  > div {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}

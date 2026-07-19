@@ -28,6 +28,11 @@ import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
 import Highlight from '@tiptap/extension-highlight';
+import { TextAlign } from '@tiptap/extension-text-align';
+import { TextStyle, Color } from '@tiptap/extension-text-style';
+import { Superscript } from '@tiptap/extension-superscript';
+import { Subscript } from '@tiptap/extension-subscript';
+import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details';
 import BubbleMenu from '@tiptap/extension-bubble-menu';
 import { marked } from 'marked';
 import { NativeBridgeService } from '../../../services/native-bridge.service';
@@ -349,6 +354,23 @@ export class NotebookEditorComponent implements OnDestroy {
           // Highlight mark (<mark>) — needed so highlighted content round-trips
           // and matches the read-only content renderer's schema.
           Highlight,
+          // Inline text color (TextStyle is the required base mark for Color).
+          TextStyle,
+          Color,
+          // Superscript / subscript marks
+          Superscript,
+          Subscript,
+          // Text alignment for paragraphs and headings
+          TextAlign.configure({
+            types: ['heading', 'paragraph'],
+          }),
+          // Collapsible toggle blocks (details / summary / content)
+          Details.configure({
+            persist: true,
+            HTMLAttributes: { class: 'toggle-block' },
+          }),
+          DetailsSummary,
+          DetailsContent,
           // Placeholder with different text for headings
           Placeholder.configure({
             placeholder: ({ node }) => {

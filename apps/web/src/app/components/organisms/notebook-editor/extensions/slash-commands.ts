@@ -111,6 +111,14 @@ export const defaultSlashCommands: SlashCommandItem[] = [
     },
   },
   {
+    title: 'Toggle',
+    description: 'Collapsible toggle block',
+    icon: '▸',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).setDetails().run();
+    },
+  },
+  {
     title: 'Divider',
     description: 'Visual divider line',
     icon: '—',
