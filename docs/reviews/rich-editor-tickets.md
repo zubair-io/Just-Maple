@@ -107,4 +107,14 @@ Status legend: 🔴 Critical · 🟠 High · 🟡 Medium · ⚪ Low
 - **RE-F4** Bubble menu is AI-only. **RESOLVED** — editor passed to `EditorBubbleMenuComponent`; bold/italic/underline/strike/code/highlight/link buttons render on selection (AI button kept).
 - **RE-F5** Placeholder `.configure` commented out. **RESOLVED** — re-enabled (heading → "Note title", else "Type '/' for commands…").
 - **RE-F6** Highlight registered in renderer but not editor. **RESOLVED** — `Highlight` added to the editor schema + a toolbar/bubble highlight button.
-- **RE-F7** Long tail of missing features. **PARTIAL** — done: table insert, highlight, **image paste/drag-drop upload**. Remaining need a **dependency or UX decision** and were intentionally not added autonomously: text color, text alignment, superscript/subscript, toggle/collapsible blocks, find & replace (each needs a new `@tiptap/*` package — the repo already has version-drift concerns), plus word count, image alt/caption UI, footnotes, and a shortcut-help modal (need a UX/placement decision).
+- **RE-F7** Long tail of missing features. **RESOLVED** — all built (v3 `@tiptap` extensions pinned to core 3.15.3):
+    - Table insert + **row/column operations** (add/delete row & column, delete table)
+    - **Highlight**, **text color** (text-style + color), **text alignment** (left/center/right)
+    - **Superscript / subscript**
+    - **Toggle/collapsible blocks** (details extension, `/Toggle`)
+    - **Find & replace** — custom ProseMirror decoration plugin (no dep), Cmd/Ctrl+F
+    - **Word count** in the toolbar
+    - **Image**: paste/drag-drop upload, alt-text control, editable caption
+    - **Footnotes** — inline auto-numbered node (`/Footnote`), text shown on hover/click
+    - **Keyboard-shortcut help** modal (Cmd/Ctrl+/ or the ? button); **H4–H6** in the slash menu
+    - **Verification:** full production Angular build passes on every commit (`ng build` via pre-commit) + `tsc --noEmit` clean. Interactive click-through E2E on the worktree dev server (:4300) is blocked by the first-run auth gate (sign-in / OS folder picker) — needs the user's session.
