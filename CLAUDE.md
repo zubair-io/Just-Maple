@@ -169,6 +169,8 @@ const response = await fetch('/api/notebook/state', {
 });
 ```
 
+**Documented exception:** `ApiRequestService` (`services/api-request.service.ts`) uses raw `fetch()` on purpose. It sends requests to arbitrary third-party APIs defined in note content, so the app's auth interceptor must NOT run — it would attach the user's Maple bearer token to every external call and leak it. It uses `credentials: 'omit'` and confirms the destination origin before sending an auth token. Do not convert it to `HttpClient` without an interceptor bypass (e.g. an `HttpContext` flag or `HttpBackend`).
+
 ### Routing
 
 - Use ID-based routes: `/:tagId/:id` (page ID)

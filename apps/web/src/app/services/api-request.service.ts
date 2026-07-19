@@ -3,8 +3,13 @@ import type { ApiResponse } from '../utils/api-spec-parser';
 
 /**
  * Service for sending HTTP requests to arbitrary external URLs.
- * Uses raw fetch() instead of HttpClient because requests go to external
- * APIs where the app's auth interceptor would be wrong.
+ *
+ * Intentional exception to the project rule "always use HttpClient" (see
+ * CLAUDE.md → API Conventions): this service targets third-party APIs specified
+ * in note content, so the app's auth interceptor MUST NOT run — it would attach
+ * the user's Maple bearer token to every external call and leak it. Raw fetch()
+ * (with `credentials: 'omit'`) is the correct tool here. Do not "fix" this to
+ * HttpClient without an interceptor bypass.
  */
 @Injectable({ providedIn: 'root' })
 export class ApiRequestService {
@@ -19,6 +24,7 @@ export class ApiRequestService {
     const start = performance.now();
 
     try {
+      // eslint-disable-next-line no-restricted-globals -- external API calls must bypass the app's auth interceptor; see class doc.
       const resp = await fetch(payload.url, {
         method: payload.method,
         headers: payload.headers,
