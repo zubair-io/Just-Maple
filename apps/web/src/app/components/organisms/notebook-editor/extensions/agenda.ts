@@ -52,10 +52,22 @@ function generateAgendaId(): string {
 }
 
 /**
+ * Format a Date as a local-calendar YYYY-MM-DD string. All parsing in this file
+ * uses `dateStr + 'T00:00:00'` (local midnight), so dates must be produced from
+ * local components too; toISOString() is UTC and drifts a day for non-UTC zones.
+ */
+function formatLocalDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Get today's date in ISO format (YYYY-MM-DD)
  */
 function getTodayDate(): string {
-  return new Date().toISOString().split('T')[0];
+  return formatLocalDate(new Date());
 }
 
 /**
@@ -104,7 +116,7 @@ export function getRelativeDateText(dateStr: string): string {
 function getNextDayDate(currentDate: string): string {
   const date = new Date(currentDate + 'T00:00:00');
   date.setDate(date.getDate() + 1);
-  return date.toISOString().split('T')[0];
+  return formatLocalDate(date);
 }
 
 /**

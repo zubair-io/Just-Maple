@@ -1,4 +1,24 @@
 <div class="bubble-menu">
+  @for (btn of formattingButtons(); track btn.label) {
+    <button
+      class="bubble-btn"
+      [class.active]="btn.isActive()"
+      [title]="btn.label"
+      (click)="btn.action()"
+    >
+      <span
+        class="bubble-btn-icon"
+        [class.bold]="btn.icon === 'B'"
+        [class.italic]="btn.icon === 'I'"
+        [class.underline]="btn.icon === 'U'"
+        [class.strike]="btn.icon === 'S'"
+        >{{ btn.icon }}</span
+      >
+    </button>
+  }
+
+  <span class="bubble-divider"></span>
+
   <button class="bubble-btn ai-btn" (click)="onOpenAIMenu()" title="AI Assistant (Cmd+J)">
     <ui-icon name="auto_awesome" size="sm" />
   </button>

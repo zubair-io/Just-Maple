@@ -36,10 +36,10 @@
       }
     </div>
 
-    <!-- <div class="toolbar-divider"></div> -->
+    <div class="toolbar-divider"></div>
 
     <!-- Block buttons -->
-    <!-- <div class="toolbar-group">
+    <div class="toolbar-group">
       @for (btn of blockButtons(); track btn.label) {
         <button
           type="button"
@@ -52,12 +52,42 @@
           <span class="btn-icon">{{ btn.icon }}</span>
         </button>
       }
-    </div> -->
+    </div>
 
-    <!-- <div class="toolbar-divider"></div> -->
+    <div class="toolbar-divider"></div>
+
+    <!-- Alignment buttons -->
+    <div class="toolbar-group">
+      @for (btn of alignButtons(); track btn.label) {
+        <button
+          type="button"
+          class="toolbar-btn"
+          [class.active]="btn.isActive?.()"
+          [title]="btn.label"
+          (click)="btn.action()"
+        >
+          <span class="btn-icon">{{ btn.icon }}</span>
+        </button>
+      }
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Text color -->
+    <div class="toolbar-group">
+      <label class="toolbar-btn toolbar-color" title="Text color">
+        <span class="btn-icon">A</span>
+        <input type="color" (change)="applyColor($any($event.target).value)" />
+      </label>
+      <button type="button" class="toolbar-btn" title="Clear color" (click)="clearColor()">
+        <span class="btn-icon">A⊘</span>
+      </button>
+    </div>
+
+    <div class="toolbar-divider"></div>
 
     <!-- Insert buttons -->
-    <!-- <div class="toolbar-group">
+    <div class="toolbar-group">
       @for (btn of insertButtons(); track btn.label) {
         <button
           type="button"
@@ -72,10 +102,13 @@
       }
     </div>
 
-    <div class="toolbar-spacer"></div> -->
+    <div class="toolbar-spacer"></div>
+
+    <!-- Word count -->
+    <span class="toolbar-wordcount" title="Word count">{{ wordCount() }}w</span>
 
     <!-- History buttons -->
-    <!-- <div class="toolbar-group">
+    <div class="toolbar-group">
       @for (btn of historyButtons(); track btn.label) {
         <button
           type="button"
@@ -87,9 +120,18 @@
           <span class="btn-icon">{{ btn.icon }}</span>
         </button>
       }
-    </div> -->
+    </div>
 
-    <!-- Slot for header actions -->
-    <!-- <ng-content></ng-content> -->
+    <!-- Table controls (only while inside a table) -->
+    @if (tableButtons().length) {
+      <div class="toolbar-divider"></div>
+      <div class="toolbar-group">
+        @for (btn of tableButtons(); track btn.label) {
+          <button type="button" class="toolbar-btn" [title]="btn.label" (click)="btn.action()">
+            <span class="btn-icon">{{ btn.icon }}</span>
+          </button>
+        }
+      </div>
+    }
   </div>
 </div>

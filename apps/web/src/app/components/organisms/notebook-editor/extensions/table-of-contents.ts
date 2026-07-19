@@ -108,8 +108,19 @@ export const TableOfContents = Node.create<TableOfContentsOptions>({
       itemsContainer.classList.add('toc-items');
       dom.appendChild(itemsContainer);
 
+      // Skip the (expensive) innerHTML rebuild unless the heading set actually
+      // changed. `editor.on('update')` fires on every keystroke and every remote
+      // collab transaction, so rebuilding unconditionally caused visible jank.
+      let lastSignature = '';
+
       const updateToc = () => {
         const items = extractTocItems(editor);
+        const signature = items.map((item) => `${item.level}:${item.text}`).join('|');
+        if (signature === lastSignature) {
+          return;
+        }
+        lastSignature = signature;
+
         itemsContainer.innerHTML = '';
 
         if (items.length === 0) {
@@ -134,16 +145,30 @@ export const TableOfContents = Node.create<TableOfContentsOptions>({
         });
       };
 
+      // Coalesce bursts of updates (e.g. fast typing) into a single scan.
+      let pending: ReturnType<typeof setTimeout> | null = null;
+      const scheduleUpdate = () => {
+        if (pending) return;
+        pending = setTimeout(() => {
+          pending = null;
+          updateToc();
+        }, 150);
+      };
+
       // Initial render
       updateToc();
 
       // Update on document changes
-      const unsubscribe = editor.on('update', updateToc);
+      editor.on('update', scheduleUpdate);
 
       return {
         dom,
         destroy: () => {
-          editor.off('update', updateToc);
+          editor.off('update', scheduleUpdate);
+          if (pending) {
+            clearTimeout(pending);
+            pending = null;
+          }
         },
       };
     };
