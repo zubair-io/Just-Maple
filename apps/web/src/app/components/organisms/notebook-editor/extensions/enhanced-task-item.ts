@@ -96,6 +96,40 @@ function isOverdue(dueDate: string): boolean {
   return targetDate < today;
 }
 
+const TODO_PRIORITIES = ['low', 'medium', 'high'];
+
+/**
+ * Priority comes from a node attribute that pasted content can control. Only
+ * accept known values before using it as a CSS class token; `classList.add`
+ * throws on tokens containing whitespace.
+ */
+function isValidPriority(priority: unknown): priority is string {
+  return typeof priority === 'string' && TODO_PRIORITIES.includes(priority);
+}
+
+// Relative date labels ("Today", "2d overdue") are computed at render time, so a
+// note left open past midnight would otherwise show stale text. A single shared
+// timer re-runs every registered task item's meta render once a minute; the last
+// item to unregister stops the timer.
+const dateRefreshCallbacks = new Set<() => void>();
+let dateRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+function registerDateRefresh(callback: () => void): () => void {
+  dateRefreshCallbacks.add(callback);
+  if (!dateRefreshTimer) {
+    dateRefreshTimer = setInterval(() => {
+      dateRefreshCallbacks.forEach((cb) => cb());
+    }, 60_000);
+  }
+  return () => {
+    dateRefreshCallbacks.delete(callback);
+    if (dateRefreshCallbacks.size === 0 && dateRefreshTimer) {
+      clearInterval(dateRefreshTimer);
+      dateRefreshTimer = null;
+    }
+  };
+}
+
 /**
  * Enhanced TaskItem extension with additional attributes:
  * - id: Unique identifier for deep linking
@@ -406,31 +440,53 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
           }
 
           const { tr } = newState;
-          const seenIds = new Set<string>();
-          const nodesToFix: { pos: number; node: any }[] = [];
 
-          // First pass: collect all task item IDs and find duplicates
+          // Group task items by id (in document order).
+          const byId = new Map<string, { pos: number; node: any }[]>();
           newState.doc.descendants((node, pos) => {
             if (node.type.name === extensionThis.name) {
               const id = node.attrs['id'];
               if (id) {
-                if (seenIds.has(id)) {
-                  // Duplicate ID found
-                  nodesToFix.push({ pos, node });
+                const group = byId.get(id);
+                if (group) {
+                  group.push({ pos, node });
                 } else {
-                  seenIds.add(id);
+                  byId.set(id, [{ pos, node }]);
                 }
               }
             }
             return true;
           });
 
-          // If no duplicates, no need for a transaction
+          // For each duplicated id, keep it on the node that RETAINS text content
+          // and reassign the others. Pressing Enter at the start of a task splits
+          // it so the new EMPTY node comes first; keeping the id on the first node
+          // (the old behaviour) would move the canonical id off the original task
+          // and break deep links. Preferring the content-bearing node fixes that.
+          const nodesToFix: { pos: number; node: any }[] = [];
+          for (const group of byId.values()) {
+            if (group.length < 2) continue;
+            let keeper = group[0];
+            for (const candidate of group) {
+              const candidateHasText = candidate.node.textContent.trim().length > 0;
+              const keeperHasText = keeper.node.textContent.trim().length > 0;
+              // Upgrade the keeper only when it is empty and the candidate has
+              // text; ties keep the earliest node (group is in document order).
+              if (candidateHasText && !keeperHasText) {
+                keeper = candidate;
+              }
+            }
+            for (const entry of group) {
+              if (entry !== keeper) nodesToFix.push(entry);
+            }
+          }
+
+          // If no duplicates, no need for a transaction. Once ids are unique this
+          // is a no-op, so two collaborators can't ping-pong reassignments.
           if (nodesToFix.length === 0) {
             return null;
           }
 
-          // Fix duplicate IDs
           nodesToFix.forEach(({ pos, node }) => {
             tr.setNodeMarkup(pos, undefined, {
               ...node.attrs,
@@ -519,36 +575,84 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
       metaWrapper.classList.add('todo-meta');
       metaWrapper.contentEditable = 'false';
 
-      // Add priority badge if set
-      if (node.attrs['priority']) {
-        const priorityBadge = document.createElement('span');
-        priorityBadge.classList.add('todo-priority', `priority-${node.attrs['priority']}`);
-        priorityBadge.textContent =
-          node.attrs['priority'].charAt(0).toUpperCase() + node.attrs['priority'].slice(1);
-        metaWrapper.appendChild(priorityBadge);
-      }
+      // (Re)build the priority badge and due-date chip from the current node.
+      // Used at construction, on update, and from the shared midnight-crossing
+      // refresh timer so overdue/relative labels never go stale.
+      const renderMeta = () => {
+        metaWrapper.innerHTML = '';
 
-      // Add due date chip if set
-      if (node.attrs['dueDate']) {
-        const dueDateChip = document.createElement('span');
-        dueDateChip.classList.add('todo-due-date');
-        if (!node.attrs['checked'] && isOverdue(node.attrs['dueDate'])) {
-          dueDateChip.classList.add('overdue');
+        const priority = node.attrs['priority'];
+        if (isValidPriority(priority)) {
+          const priorityBadge = document.createElement('span');
+          priorityBadge.classList.add('todo-priority', `priority-${priority}`);
+          priorityBadge.textContent = priority.charAt(0).toUpperCase() + priority.slice(1);
+          metaWrapper.appendChild(priorityBadge);
         }
-        dueDateChip.textContent = getRelativeDateText(node.attrs['dueDate']);
-        metaWrapper.appendChild(dueDateChip);
-      }
 
-      // Assemble flat structure: li > [dragHandle, checkbox, content, meta]
+        if (node.attrs['dueDate']) {
+          const dueDateChip = document.createElement('span');
+          dueDateChip.classList.add('todo-due-date');
+          if (!node.attrs['checked'] && isOverdue(node.attrs['dueDate'])) {
+            dueDateChip.classList.add('overdue');
+          }
+          dueDateChip.textContent = getRelativeDateText(node.attrs['dueDate']);
+          metaWrapper.appendChild(dueDateChip);
+        }
+      };
+
+      renderMeta();
+
+      // Settings button — opens the todo popover (priority / color / due date).
+      // Dispatches the todo-settings-click event the editor component listens
+      // for; reads the current node attrs at click time (node is kept fresh in
+      // update()). The Mod-Shift-D shortcut also targets this button.
+      const settingsBtn = document.createElement('button');
+      settingsBtn.type = 'button';
+      settingsBtn.classList.add('todo-settings-btn');
+      settingsBtn.contentEditable = 'false';
+      settingsBtn.title = 'Task options';
+      const settingsIcon = document.createElement('span');
+      settingsIcon.classList.add('material-symbols-rounded');
+      settingsIcon.textContent = 'more_horiz';
+      settingsBtn.appendChild(settingsIcon);
+      settingsBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        settingsBtn.dispatchEvent(
+          new CustomEvent('todo-settings-click', {
+            bubbles: true,
+            detail: {
+              todoId: nodeId,
+              attrs: {
+                id: nodeId,
+                checked: node.attrs['checked'],
+                dueDate: node.attrs['dueDate'],
+                priority: node.attrs['priority'],
+                color: node.attrs['color'],
+              },
+              element: dom,
+              position: settingsBtn.getBoundingClientRect(),
+            },
+          }),
+        );
+      });
+
+      // Assemble flat structure: li > [dragHandle, checkbox, content, meta, settings]
       dom.appendChild(dragHandleEl);
       dom.appendChild(checkboxWrapper);
       dom.appendChild(content);
       dom.appendChild(metaWrapper);
+      dom.appendChild(settingsBtn);
+
+      const unregisterDateRefresh = registerDateRefresh(renderMeta);
 
       return {
         dom,
         contentDOM: content,
         dragHandle: dragHandleEl,
+        destroy: () => {
+          unregisterDateRefresh();
+        },
         update: (updatedNode) => {
           if (updatedNode.type.name !== this.name) {
             return false;
@@ -562,6 +666,12 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
             return false;
           }
 
+          // Keep the captured `node` current so event handlers (e.g. the
+          // checkbox change listener) spread the latest attrs instead of the
+          // stale construction-time snapshot, which would wipe priority/color/
+          // dueDate on the next toggle.
+          node = updatedNode;
+
           // Update checkbox state
           checkbox.checked = updatedNode.attrs['checked'] || false;
           dom.setAttribute('data-checked', String(updatedNode.attrs['checked'] || false));
@@ -573,37 +683,15 @@ export const EnhancedTaskItem = TaskItem.extend<EnhancedTaskItemOptions>({
             dom.removeAttribute('data-color');
           }
 
-          // Update priority
-          if (updatedNode.attrs['priority']) {
+          // Update priority — validate before using as an attribute/class token
+          if (isValidPriority(updatedNode.attrs['priority'])) {
             dom.setAttribute('data-priority', updatedNode.attrs['priority']);
           } else {
             dom.removeAttribute('data-priority');
           }
 
-          // Update metadata
-          metaWrapper.innerHTML = '';
-
-          if (updatedNode.attrs['priority']) {
-            const priorityBadge = document.createElement('span');
-            priorityBadge.classList.add(
-              'todo-priority',
-              `priority-${updatedNode.attrs['priority']}`,
-            );
-            priorityBadge.textContent =
-              updatedNode.attrs['priority'].charAt(0).toUpperCase() +
-              updatedNode.attrs['priority'].slice(1);
-            metaWrapper.appendChild(priorityBadge);
-          }
-
-          if (updatedNode.attrs['dueDate']) {
-            const dueDateChip = document.createElement('span');
-            dueDateChip.classList.add('todo-due-date');
-            if (!updatedNode.attrs['checked'] && isOverdue(updatedNode.attrs['dueDate'])) {
-              dueDateChip.classList.add('overdue');
-            }
-            dueDateChip.textContent = getRelativeDateText(updatedNode.attrs['dueDate']);
-            metaWrapper.appendChild(dueDateChip);
-          }
+          // Rebuild the meta badges from the now-current node.
+          renderMeta();
 
           return true;
         },

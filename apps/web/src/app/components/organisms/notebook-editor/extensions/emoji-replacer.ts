@@ -30,9 +30,11 @@ export const EmojiReplacer = Extension.create({
       textInputRule({ find: />:-\( $/, replace: '😠 ' }),
       textInputRule({ find: /:@ $/, replace: '😠 ' }),
       textInputRule({ find: /O:-\) $/, replace: '😇 ' }),
-      // Hearts
-      textInputRule({ find: /<3 $/, replace: '❤️ ' }),
-      textInputRule({ find: /<\/3 $/, replace: '💔 ' }),
+      // Hearts — require start-of-block or whitespace before the emoticon so it
+      // doesn't fire inside expressions like "x<3 " or "a<3". The lookbehind
+      // asserts the boundary without consuming the preceding character.
+      textInputRule({ find: /(?<=^|\s)<3 $/, replace: '❤️ ' }),
+      textInputRule({ find: /(?<=^|\s)<\/3 $/, replace: '💔 ' }),
       // Symbols
       textInputRule({ find: /\/shrug $/, replace: '¯\\_(ツ)_/¯ ' }),
       textInputRule({ find: /\(y\) $/, replace: '👍 ' }),

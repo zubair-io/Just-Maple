@@ -68,6 +68,37 @@ function parseUrls(urlsAttr: string | MemoImageUrls | null): MemoImageUrls | nul
   }
 }
 
+const IMAGE_SIZES: ImageSize[] = ['small', 'medium', 'large', 'cover'];
+
+/**
+ * Node attributes can be attacker-controlled via pasted HTML. Coerce an
+ * arbitrary `size` value to a known enum member before it is used as a CSS class
+ * token (`classList.add` throws on tokens containing whitespace).
+ */
+function safeImageSize(size: unknown): ImageSize {
+  return typeof size === 'string' && (IMAGE_SIZES as string[]).includes(size)
+    ? (size as ImageSize)
+    : 'medium';
+}
+
+/**
+ * Only render media URLs we trust. Pasted content can set an arbitrary `src`,
+ * which is a zero-click tracking beacon (or worse). Allow same-origin/relative
+ * paths, local blob previews, inline image data, and https; reject everything
+ * else (http:, javascript:, etc.).
+ */
+function safeMediaUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.startsWith('/') || url.startsWith('blob:') || url.startsWith('data:image/')) {
+    return url;
+  }
+  try {
+    return new URL(url).protocol === 'https:' ? url : '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Memo Image Node Extension
  * Supports size options: small (200px), medium (400px), large (800px), cover (1200x300)
@@ -143,6 +174,16 @@ export const ImageNode = Node.create<ImageNodeOptions>({
             return {};
           }
           return { title: attributes['title'] };
+        },
+      },
+      caption: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-caption'),
+        renderHTML: (attributes) => {
+          if (!attributes['caption']) {
+            return {};
+          }
+          return { 'data-caption': attributes['caption'] };
         },
       },
       size: {
@@ -305,7 +346,7 @@ export const ImageNode = Node.create<ImageNodeOptions>({
     return ({ node, getPos, editor }) => {
       const urls = parseUrls(node.attrs['urls']) as MemoImageUrls | null;
       const alt = node.attrs['alt'] as string;
-      const size = (node.attrs['size'] as ImageSize) || 'medium';
+      const size = safeImageSize(node.attrs['size']);
       const loading = node.attrs['loading'] as boolean;
       const previewUrl = node.attrs['previewUrl'] as string | null;
 
@@ -325,8 +366,11 @@ export const ImageNode = Node.create<ImageNodeOptions>({
 
       // Create image element
       const img = document.createElement('img');
-      // Use preview URL while loading, otherwise use the appropriate sized URL
-      img.src = loading && previewUrl ? previewUrl : urls ? getUrlForSize(urls, size) : '';
+      // Use preview URL while loading, otherwise use the appropriate sized URL.
+      // Both come from node attributes, so validate before assigning to src.
+      img.src = safeMediaUrl(
+        loading && previewUrl ? previewUrl : urls ? getUrlForSize(urls, size) : '',
+      );
       img.alt = alt || '';
       img.draggable = false;
 
@@ -345,6 +389,67 @@ export const ImageNode = Node.create<ImageNodeOptions>({
       wrapper.appendChild(loadingOverlay);
 
       dom.appendChild(wrapper);
+
+      // Editable caption (figcaption). The node is atomic, so we sync the
+      // contentEditable text back to the `caption` attribute.
+      const caption = document.createElement('figcaption');
+      caption.classList.add('memo-image-caption');
+      caption.contentEditable = 'true';
+      caption.setAttribute('data-placeholder', 'Add a caption…');
+      caption.textContent = (node.attrs['caption'] as string) || '';
+      caption.classList.toggle('is-empty', !caption.textContent);
+
+      // Track whether the user actually typed since focusing, so we never
+      // overwrite a concurrent remote caption edit on a no-op blur.
+      let captionDirty = false;
+      let captionCommitTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const commitCaption = () => {
+        if (captionCommitTimer) {
+          clearTimeout(captionCommitTimer);
+          captionCommitTimer = null;
+        }
+        if (!captionDirty) return;
+        const pos = typeof getPos === 'function' ? getPos() : null;
+        if (pos === null || pos === undefined) return;
+        const value = caption.textContent?.trim() || null;
+        captionDirty = false;
+        if (value === ((node.attrs['caption'] as string) || null)) return;
+        editor
+          .chain()
+          .command(({ tr }) => {
+            tr.setNodeMarkup(pos, undefined, { ...node.attrs, caption: value });
+            return true;
+          })
+          .run();
+      };
+
+      caption.addEventListener('focus', () => {
+        captionDirty = false;
+      });
+      caption.addEventListener('input', () => {
+        captionDirty = true;
+        caption.classList.toggle('is-empty', !caption.textContent);
+        // Persist periodically so the caption isn't lost if the node is removed
+        // or the page is switched before blur (blur doesn't fire on removal).
+        if (captionCommitTimer) clearTimeout(captionCommitTimer);
+        captionCommitTimer = setTimeout(commitCaption, 600);
+      });
+      caption.addEventListener('blur', commitCaption);
+      // Enter should finish the caption, not insert a <div>/newline.
+      caption.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          caption.blur();
+        }
+      });
+      // Force plain-text paste so rich/multiline HTML never enters the caption.
+      caption.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = e.clipboardData?.getData('text/plain') ?? '';
+        document.execCommand('insertText', false, text.replace(/\s+/g, ' '));
+      });
+      dom.appendChild(caption);
 
       // Create size toolbar (visible on selection, hidden during loading)
       const toolbar = document.createElement('div');
@@ -373,20 +478,40 @@ export const ImageNode = Node.create<ImageNodeOptions>({
                         <rect x="2" y="6" width="20" height="12" rx="2"/>
                     </svg>
                 </button>
+                <button type="button" data-action="alt" title="Alt text (accessibility)" class="${alt ? 'active' : ''}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 20l6-14 6 14M6.5 15h7"/>
+                        <path d="M20 20V9m0 0a2 2 0 1 0-3 0"/>
+                    </svg>
+                </button>
             `;
       dom.appendChild(toolbar);
 
-      // Add click handlers for size buttons
+      // Add click handlers for the size buttons and the alt-text button
       toolbar.querySelectorAll('button').forEach((button) => {
         button.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (typeof getPos !== 'function') return;
+          const pos = getPos();
+          if (pos === undefined) return;
+
+          if (button.getAttribute('data-action') === 'alt') {
+            const current = (node.attrs['alt'] as string) || '';
+            const next = window.prompt('Alt text (describe the image for screen readers)', current);
+            if (next === null) return; // cancelled
+            editor
+              .chain()
+              .focus()
+              .setNodeSelection(pos)
+              .updateAttributes('memoImage', { alt: next.trim() || null })
+              .run();
+            return;
+          }
+
           const newSize = button.getAttribute('data-size') as ImageSize;
-          if (newSize && typeof getPos === 'function') {
-            const pos = getPos();
-            if (pos !== undefined) {
-              editor.chain().focus().setNodeSelection(pos).setImageSize(newSize).run();
-            }
+          if (newSize) {
+            editor.chain().focus().setNodeSelection(pos).setImageSize(newSize).run();
           }
         });
       });
@@ -407,7 +532,24 @@ export const ImageNode = Node.create<ImageNodeOptions>({
             return false;
           }
 
-          const newSize = updatedNode.attrs['size'] as ImageSize;
+          // Keep the captured node current for the caption blur handler.
+          node = updatedNode;
+
+          // Sync caption text if it changed elsewhere and the user isn't
+          // mid-edit (don't clobber in-progress typing / pending commit).
+          const newCaption = (updatedNode.attrs['caption'] as string) || '';
+          if (
+            document.activeElement !== caption &&
+            !captionDirty &&
+            caption.textContent !== newCaption
+          ) {
+            caption.textContent = newCaption;
+            caption.classList.toggle('is-empty', !newCaption);
+          }
+
+          // Validate attrs the same way construction does — a pasted/remote
+          // update can carry a whitespace size token or an unsafe URL.
+          const newSize = safeImageSize(updatedNode.attrs['size']);
           const newUrls = parseUrls(updatedNode.attrs['urls']);
           const newLoading = updatedNode.attrs['loading'] as boolean;
           const newPreviewUrl = updatedNode.attrs['previewUrl'] as string | null;
@@ -435,18 +577,30 @@ export const ImageNode = Node.create<ImageNodeOptions>({
           });
 
           // Update image src
-          const newSrc =
+          const newSrc = safeMediaUrl(
             newLoading && newPreviewUrl
               ? newPreviewUrl
               : newUrls
                 ? getUrlForSize(newUrls, newSize)
-                : '';
+                : '',
+          );
           if (img.src !== newSrc && newSrc) {
             img.src = newSrc;
           }
 
           return true;
         },
+        // Events inside the contentEditable caption are handled by the browser
+        // (text selection, cursor, its own drag). Everything else falls to
+        // ProseMirror, including drag on the figure so the block can reorder.
+        stopEvent: (event) => {
+          if (caption.contains(event.target as globalThis.Node | null)) return true;
+          if (event.type.startsWith('drag')) return false;
+          return false;
+        },
+        // This is an atom NodeView that manages its own DOM (image + caption),
+        // so ProseMirror must ignore all DOM mutations within it.
+        ignoreMutation: () => true,
         selectNode: () => updateSelected(true),
         deselectNode: () => updateSelected(false),
       };

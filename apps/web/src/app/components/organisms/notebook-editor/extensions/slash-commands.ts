@@ -41,6 +41,30 @@ export const defaultSlashCommands: SlashCommandItem[] = [
     },
   },
   {
+    title: 'Heading 4',
+    description: 'Subsection heading',
+    icon: 'H4',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).setNode('heading', { level: 4 }).run();
+    },
+  },
+  {
+    title: 'Heading 5',
+    description: 'Minor heading',
+    icon: 'H5',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).setNode('heading', { level: 5 }).run();
+    },
+  },
+  {
+    title: 'Heading 6',
+    description: 'Smallest heading',
+    icon: 'H6',
+    command: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).setNode('heading', { level: 6 }).run();
+    },
+  },
+  {
     title: 'Bullet List',
     description: 'Create a simple bullet list',
     icon: '•',
@@ -108,6 +132,22 @@ export const defaultSlashCommands: SlashCommandItem[] = [
         .setCodeBlock({ language: 'api' })
         .insertContent('path: /api/v1/resource\nmethod: GET\nserver: http://localhost:3000')
         .run();
+    },
+  },
+  {
+    title: 'Toggle',
+    description: 'Collapsible toggle block',
+    icon: '▸',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).setDetails().run();
+    },
+  },
+  {
+    title: 'Footnote',
+    description: 'Insert an inline footnote',
+    icon: '†',
+    command: ({ editor, range }) => {
+      (editor.chain().focus().deleteRange(range) as any).insertFootnote().run();
     },
   },
   {

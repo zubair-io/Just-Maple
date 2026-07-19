@@ -18,7 +18,43 @@
   border: none;
   border-radius: 6px;
   cursor: pointer;
+  background: transparent;
+  color: var(--color-text-main, #1f2937);
   transition: background-color 0.15s ease;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
+  }
+
+  &.active {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.1));
+    color: var(--color-primary, #d94e3b);
+  }
+}
+
+.bubble-btn-icon {
+  font-size: 14px;
+  line-height: 1;
+
+  &.bold {
+    font-weight: 700;
+  }
+  &.italic {
+    font-style: italic;
+  }
+  &.underline {
+    text-decoration: underline;
+  }
+  &.strike {
+    text-decoration: line-through;
+  }
+}
+
+.bubble-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--color-border, #e5e7eb);
 }
 
 .ai-btn {

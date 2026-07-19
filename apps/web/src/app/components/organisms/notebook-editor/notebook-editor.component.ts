@@ -12,6 +12,7 @@ import {
   DestroyRef,
   ApplicationRef,
   createComponent,
+  type ComponentRef,
   EnvironmentInjector,
   ViewEncapsulation,
 } from '@angular/core';
@@ -22,10 +23,17 @@ import { firstValueFrom } from 'rxjs';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { Editor } from '@tiptap/core';
+import { TextSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import Placeholder from '@tiptap/extension-placeholder';
+import Highlight from '@tiptap/extension-highlight';
+import { TextAlign } from '@tiptap/extension-text-align';
+import { TextStyle, Color } from '@tiptap/extension-text-style';
+import { Superscript } from '@tiptap/extension-superscript';
+import { Subscript } from '@tiptap/extension-subscript';
+import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details';
 import BubbleMenu from '@tiptap/extension-bubble-menu';
 import { marked } from 'marked';
 import { NativeBridgeService } from '../../../services/native-bridge.service';
@@ -74,6 +82,10 @@ import {
   MarkdownPaste,
   JsonDataRef,
   JsonLoopBlock,
+  TodoBox,
+  SearchReplace,
+  searchReplacePluginKey,
+  Footnote,
   formatTime,
   formatDate,
   type SlashCommandItem,
@@ -93,6 +105,7 @@ import { AiBotWidgetComponent } from '../../molecules/ai-bot-widget/ai-bot-widge
 import { AIPreviewPanelComponent } from '../../molecules/ai-preview-panel/ai-preview-panel.component';
 import { AICommandMenuComponent } from '../../molecules/ai-command-menu/ai-command-menu.component';
 import { EditorBubbleMenuComponent } from '../../molecules/editor-bubble-menu/editor-bubble-menu.component';
+import { TodoPopoverComponent } from '../../molecules/todo-popover/todo-popover.component';
 import { ApiBlockComponent } from '../../molecules/api-block/api-block.component';
 import { AIWritingService } from '../../../services/ai-writing.service';
 import { TagService } from '../../../services/tag.service';
@@ -163,6 +176,52 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly hasClaudeBot = signal(false);
   readonly mentionableUsers = signal<MentionableUser[]>([]);
 
+  // In-document find & replace state
+  readonly searchOpen = signal(false);
+  readonly searchQuery = signal('');
+  readonly searchReplaceTerm = signal('');
+  readonly searchInfo = signal<{ count: number; active: number }>({ count: 0, active: 0 });
+
+  // Keyboard shortcut cheatsheet
+  readonly shortcutHelpOpen = signal(false);
+  readonly shortcutGroups: { title: string; items: { keys: string; label: string }[] }[] = [
+    {
+      title: 'Formatting',
+      items: [
+        { keys: '⌘/Ctrl B', label: 'Bold' },
+        { keys: '⌘/Ctrl I', label: 'Italic' },
+        { keys: '⌘/Ctrl U', label: 'Underline' },
+        { keys: '⌘/Ctrl E', label: 'Inline code' },
+      ],
+    },
+    {
+      title: 'Editor',
+      items: [
+        { keys: '/', label: 'Slash commands' },
+        { keys: '⌘/Ctrl F', label: 'Find & replace' },
+        { keys: '⌘/Ctrl J', label: 'AI assistant' },
+        { keys: '⌘/Ctrl /', label: 'This shortcut help' },
+        { keys: '⌘/Ctrl Z', label: 'Undo / Redo (⇧)' },
+      ],
+    },
+    {
+      title: 'Blocks & mentions',
+      items: [
+        { keys: 'Tab / ⇧ Tab', label: 'Indent / outdent list' },
+        { keys: '[[', label: 'Link to a page' },
+        { keys: '@', label: 'Mention a person / date' },
+        { keys: '#', label: 'Hashtag' },
+      ],
+    },
+    {
+      title: 'Tasks',
+      items: [
+        { keys: '⌘/Ctrl ⇧ P', label: 'Cycle task priority' },
+        { keys: '⌘/Ctrl ⇧ D', label: 'Task options (priority/color/date)' },
+      ],
+    },
+  ];
+
   // Page link search state
   readonly pageLinkSearchOpen = signal(false);
   readonly pageLinkSearchMode = signal<'inline' | 'block'>('inline');
@@ -180,6 +239,11 @@ export class NotebookEditorComponent implements OnDestroy {
   private awareness: Awareness | null = null;
   private readonly viewReady = signal(false);
   private lastPageId: string | null = null;
+  // The page whose document is actually open (editor built + Y.js doc opened).
+  // Distinct from lastPageId, which the effect updates synchronously on every
+  // page change: cleanup() must close the doc that is really open, not the one
+  // we are navigating to.
+  private openDocPageId: string | null = null;
   private titleUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
   private localSaveTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastSyncedTitle: string = '';
@@ -203,6 +267,12 @@ export class NotebookEditorComponent implements OnDestroy {
 
   // Event listener cleanup - store bound handlers for removal
   private pageLinkListeners: { event: string; handler: EventListener }[] = [];
+
+  // Aborts every listener attached to the persistent #editorElement container
+  // during a single initializeEditor() pass. Recreated per init and aborted in
+  // cleanup() so listeners don't accumulate across page switches (which would
+  // otherwise fire duplicate node insertions).
+  private editorElementListeners: AbortController | null = null;
 
   // AI Writing Assistant state
   private aiPreviewComponent: { componentRef: any; element: HTMLElement } | null = null;
@@ -244,11 +314,20 @@ export class NotebookEditorComponent implements OnDestroy {
       }
     });
 
-    // Disable editing when server indicates read-only access
+    // Reflect read-only access on the editor in BOTH directions: disable when
+    // the server marks the page read-only, and re-enable when access is
+    // restored. (The old code only ever disabled, leaving the editor stuck
+    // read-only until reload.)
     effect(() => {
       const pageId = this.pageId();
-      if (pageId && this.memoService.isReadOnly(pageId) && this._editor) {
-        this._editor.setEditable(false);
+      const editableInput = this.editable();
+      if (!pageId || !this._editor) {
+        return;
+      }
+      const isDocPage = pageId.startsWith(DOC_PAGE_PREFIX);
+      const shouldBeEditable = editableInput && !isDocPage && !this.memoService.isReadOnly(pageId);
+      if (this._editor.isEditable !== shouldBeEditable) {
+        this._editor.setEditable(shouldBeEditable);
       }
     });
 
@@ -273,11 +352,25 @@ export class NotebookEditorComponent implements OnDestroy {
       // Open document via service (handles offline-first loading)
       const { ydoc, awareness, markdownContent, initialContent } =
         await this.memoService.openDocument(pageId);
+
+      // Reentrancy guard: the user may have navigated to another page while we
+      // were awaiting. If so, this call has been superseded — close the doc we
+      // just opened (openDocument refcounts it) and abort before building an
+      // editor, so we never stack two editors or write this page's content into
+      // the newer one.
+      if (pageId !== this.lastPageId) {
+        this.memoService.closeDocument(pageId);
+        return;
+      }
+
       this.ydoc = ydoc;
       this.awareness = awareness;
+      this.openDocPageId = pageId;
 
       // Wait for editor element
       if (!this.editorRef?.nativeElement) {
+        this.memoService.closeDocument(pageId);
+        this.openDocPageId = null;
         return;
       }
 
@@ -308,15 +401,35 @@ export class NotebookEditorComponent implements OnDestroy {
           } as any),
           // Code block with syntax highlighting, language selector, and interactive API blocks
           ApiCodeBlock,
+          // Highlight mark (<mark>) — needed so highlighted content round-trips
+          // and matches the read-only content renderer's schema.
+          Highlight,
+          // Inline text color (TextStyle is the required base mark for Color).
+          TextStyle,
+          Color,
+          // Superscript / subscript marks (mutually exclusive)
+          Superscript.extend({ excludes: 'subscript' }),
+          Subscript.extend({ excludes: 'superscript' }),
+          // Text alignment for paragraphs and headings
+          TextAlign.configure({
+            types: ['heading', 'paragraph'],
+          }),
+          // Collapsible toggle blocks (details / summary / content)
+          Details.configure({
+            persist: true,
+            HTMLAttributes: { class: 'toggle-block' },
+          }),
+          DetailsSummary,
+          DetailsContent,
           // Placeholder with different text for headings
-          // Placeholder.configure({
-          //   placeholder: ({ node }) => {
-          //     if (node.type.name === 'heading') {
-          //       return 'Note title';
-          //     }
-          //     return "Type '/' for commands...";
-          //   },
-          // }) as any,
+          Placeholder.configure({
+            placeholder: ({ node }) => {
+              if (node.type.name === 'heading') {
+                return 'Note title';
+              }
+              return "Type '/' for commands...";
+            },
+          }) as any,
           // YJS Collaboration
           Collaboration.configure({
             document: ydoc,
@@ -350,6 +463,12 @@ export class NotebookEditorComponent implements OnDestroy {
           EnhancedTaskItem.configure({
             nested: true,
           }),
+          // To-do Box: a titled container wrapping a task list (/To-do Box)
+          TodoBox,
+          // In-document find & replace (Cmd/Ctrl+F)
+          SearchReplace,
+          // Inline footnotes (content stored on the node, shown on hover/click)
+          Footnote,
           // Table support
           ...getTableExtensions(),
           // Table of Contents
@@ -465,10 +584,35 @@ export class NotebookEditorComponent implements OnDestroy {
           } as any),
         ],
         // Doc pages are always read-only
-        editable: isDocPageView ? false : this.editable(),
+        editable: isDocPageView ? false : this.editable() && !this.memoService.isReadOnly(pageId),
         onFocus: () => this.isFocused.set(true),
         onBlur: () => this.isFocused.set(false),
         onUpdate: ({ editor }) => this.handleContentUpdate(editor),
+        editorProps: {
+          // Upload images pasted or dropped into the editor (screenshots, files
+          // from the OS). Returns true only when image files are present so
+          // normal text paste/drop still flows through the default handlers.
+          handlePaste: (_view, event) => {
+            const files = this.getImageFiles(event.clipboardData);
+            if (files.length === 0) return false;
+            event.preventDefault();
+            files.forEach((file) => this.uploadAndInsertImageFile(file));
+            // Preserve any accompanying plain text (e.g. a selection that
+            // included an inline image) rather than silently dropping it.
+            const text = event.clipboardData?.getData('text/plain');
+            if (text && text.trim()) {
+              this._editor?.commands.insertContent(text);
+            }
+            return true;
+          },
+          handleDrop: (_view, event) => {
+            const files = this.getImageFiles((event as DragEvent).dataTransfer);
+            if (files.length === 0) return false;
+            event.preventDefault();
+            files.forEach((file) => this.uploadAndInsertImageFile(file));
+            return true;
+          },
+        },
       });
 
       // For doc pages or local pages with markdown content
@@ -477,6 +621,7 @@ export class NotebookEditorComponent implements OnDestroy {
           // Doc pages: server markdown → HTML
           const htmlContent = await marked.parse(markdownContent);
           setTimeout(() => {
+            if (this.openDocPageId !== pageId) return;
             this._editor?.commands.setContent(htmlContent);
           }, 0);
         } else {
@@ -485,6 +630,7 @@ export class NotebookEditorComponent implements OnDestroy {
           const body = 'error' in fmResult ? markdownContent : fmResult.body;
           const doc = markdownBodyToDoc(body);
           setTimeout(() => {
+            if (this.openDocPageId !== pageId) return;
             this._editor?.commands.setContent(doc);
           }, 0);
         }
@@ -505,6 +651,7 @@ export class NotebookEditorComponent implements OnDestroy {
             );
             if (hasContent) {
               setTimeout(() => {
+                if (this.openDocPageId !== pageId) return;
                 this._editor?.commands.setContent(contentToUse);
               }, 0);
             }
@@ -522,6 +669,10 @@ export class NotebookEditorComponent implements OnDestroy {
 
       // Set up recording block event listeners (legacy) - skip for doc pages
       if (!isDocPageView) {
+        // Fresh controller for this init; container listeners below register
+        // with its signal so cleanup() can remove them all at once.
+        this.editorElementListeners = new AbortController();
+
         this.setupRecordingBlockListeners();
 
         // Set up embed event listeners (new system)
@@ -553,6 +704,9 @@ export class NotebookEditorComponent implements OnDestroy {
 
         // Set up bubble menu component
         this.setupBubbleMenuComponent();
+
+        // Set up the task settings (priority/color/due-date) popover listener
+        this.setupTodoSettingsListener();
 
         // Check for Claude bot availability
         this.checkClaudeBotAvailability();
@@ -595,18 +749,35 @@ export class NotebookEditorComponent implements OnDestroy {
   /**
    * Set up listeners for recording block mount/unmount events
    */
+  /**
+   * Register a listener on the persistent #editorElement container tied to the
+   * current init's AbortController, so cleanup()/the next init removes it and
+   * handlers don't stack across page switches.
+   */
+  private addEditorElementListener(
+    element: HTMLElement,
+    type: string,
+    handler: EventListener,
+  ): void {
+    element.addEventListener(type, handler, { signal: this.editorElementListeners?.signal });
+  }
+
   private setupRecordingBlockListeners(): void {
     const editorElement = this.editorRef?.nativeElement;
     if (!editorElement) return;
 
     // Listen for recording node mount events
-    editorElement.addEventListener('recording-node-mounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'recording-node-mounted', ((
+      event: CustomEvent,
+    ) => {
       const { recordingId, element, editor } = event.detail;
       this.mountRecordingComponent(recordingId, element);
     }) as EventListener);
 
     // Listen for recording node unmount events
-    editorElement.addEventListener('recording-node-unmounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'recording-node-unmounted', ((
+      event: CustomEvent,
+    ) => {
       const { recordingId } = event.detail;
       this.unmountRecordingComponent(recordingId);
     }) as EventListener);
@@ -662,32 +833,36 @@ export class NotebookEditorComponent implements OnDestroy {
     if (!editorElement) return;
 
     // Listen for embed node mount events
-    editorElement.addEventListener('embed-node-mounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'embed-node-mounted', ((event: CustomEvent) => {
       const { id, type, createdBy, element } = event.detail;
       console.log('[NotebookEditor] embed-node-mounted event:', { id, type, createdBy });
       this.mountEmbedComponent(id, type, createdBy, element);
     }) as EventListener);
 
     // Listen for embed node unmount events
-    editorElement.addEventListener('embed-node-unmounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'embed-node-unmounted', ((event: CustomEvent) => {
       const { id } = event.detail;
       this.unmountEmbedComponent(id);
     }) as EventListener);
 
     // Listen for create-recording-embed event from slash command
-    editorElement.addEventListener('create-recording-embed', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'create-recording-embed', ((
+      event: CustomEvent,
+    ) => {
       const range = event.detail?.range;
       this.createRecordingEmbed(range);
     }) as EventListener);
 
     // Listen for create-whiteboard-embed event from slash command
-    editorElement.addEventListener('create-whiteboard-embed', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'create-whiteboard-embed', ((
+      event: CustomEvent,
+    ) => {
       const range = event.detail?.range;
       this.createWhiteboardEmbed(range);
     }) as EventListener);
 
     // Listen for upload-image event from slash command
-    editorElement.addEventListener('upload-image', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'upload-image', ((event: CustomEvent) => {
       const range = event.detail?.range;
       this.handleImageUpload(range);
     }) as EventListener);
@@ -823,6 +998,22 @@ export class NotebookEditorComponent implements OnDestroy {
       return; // User cancelled
     }
 
+    this.uploadAndInsertImageFile(file);
+  }
+
+  /**
+   * Insert an image file with an optimistic loading placeholder, then upload it
+   * and swap in the real URLs. Shared by the slash-command picker and the
+   * paste/drag-drop handlers.
+   */
+  private uploadAndInsertImageFile(file: File): void {
+    const pageId = this.pageId();
+    // Capture the editor instance so the async callbacks act on the document
+    // this image was inserted into — not whatever page the user switched to
+    // mid-upload (`this._editor` may have been replaced by then).
+    const editor = this._editor;
+    if (!pageId || !editor) return;
+
     // Create a local blob URL for preview
     const previewUrl = URL.createObjectURL(file);
 
@@ -840,7 +1031,7 @@ export class NotebookEditorComponent implements OnDestroy {
     };
 
     // Insert image immediately with loading state and preview
-    (this._editor?.chain().focus() as any)
+    (editor.chain().focus() as any)
       .insertMemoImage({
         urls: placeholderUrls,
         size: 'medium',
@@ -852,25 +1043,34 @@ export class NotebookEditorComponent implements OnDestroy {
     // Upload the image in background
     this.memoImageService.uploadImage(pageId, file).subscribe({
       next: (result) => {
-        // Update the image with real URLs and remove loading state
-        (this._editor?.chain() as any)
-          .updateMemoImage(placeholderUrl, {
-            urls: result.urls,
-            loading: false,
-          })
-          .run();
-
+        // Update the captured editor's document; skip if it was destroyed.
+        if (!editor.isDestroyed) {
+          (editor.chain() as any)
+            .updateMemoImage(placeholderUrl, {
+              urls: result.urls,
+              loading: false,
+            })
+            .run();
+        }
         // Clean up blob URL
         URL.revokeObjectURL(previewUrl);
       },
       error: (err) => {
         console.error('[NotebookEditor] Failed to upload image:', err);
-        // Remove the failed image from editor
-        (this._editor?.chain() as any).deleteMemoImage(placeholderUrl).run();
+        // Remove the failed image from the captured editor if still alive.
+        if (!editor.isDestroyed) {
+          (editor.chain() as any).deleteMemoImage(placeholderUrl).run();
+        }
         // Clean up blob URL
         URL.revokeObjectURL(previewUrl);
       },
     });
+  }
+
+  /** Extract image files from a paste/drop event's data transfer. */
+  private getImageFiles(data: DataTransfer | null): File[] {
+    if (!data) return [];
+    return Array.from(data.files).filter((f) => f.type.startsWith('image/'));
   }
 
   /**
@@ -881,7 +1081,7 @@ export class NotebookEditorComponent implements OnDestroy {
     if (!editorElement) return;
 
     // Listen for AI bot widget mount events
-    editorElement.addEventListener('ai-bot-widget-mounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'ai-bot-widget-mounted', ((event: CustomEvent) => {
       const { id, prompt, status, errorMessage, history, element, editor, getPos } = event.detail;
       this.mountAiBotWidgetComponent(
         id,
@@ -896,13 +1096,15 @@ export class NotebookEditorComponent implements OnDestroy {
     }) as EventListener);
 
     // Listen for AI bot widget unmount events
-    editorElement.addEventListener('ai-bot-widget-unmounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'ai-bot-widget-unmounted', ((
+      event: CustomEvent,
+    ) => {
       const { id } = event.detail;
       this.unmountAiBotWidgetComponent(id);
     }) as EventListener);
 
     // Listen for create-ai-bot-widget event from slash command
-    editorElement.addEventListener('create-ai-bot-widget', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'create-ai-bot-widget', ((event: CustomEvent) => {
       this.createAiBotWidget();
     }) as EventListener);
   }
@@ -985,17 +1187,17 @@ export class NotebookEditorComponent implements OnDestroy {
     const editorElement = this.editorRef?.nativeElement;
     if (!editorElement) return;
 
-    editorElement.addEventListener('api-block-mounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'api-block-mounted', ((event: CustomEvent) => {
       const { element, getPos, parseResult, parseError, yamlContent } = event.detail;
       this.mountApiBlockComponent(element, getPos, parseResult, parseError, yamlContent);
     }) as EventListener);
 
-    editorElement.addEventListener('api-block-updated', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'api-block-updated', ((event: CustomEvent) => {
       const { element, parseResult, parseError, yamlContent } = event.detail;
       this.updateApiBlockComponent(element, parseResult, parseError, yamlContent);
     }) as EventListener);
 
-    editorElement.addEventListener('api-block-unmounted', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'api-block-unmounted', ((event: CustomEvent) => {
       const { element } = event.detail;
       this.unmountApiBlockComponent(element);
     }) as EventListener);
@@ -1076,13 +1278,13 @@ export class NotebookEditorComponent implements OnDestroy {
     if (!editorElement) return;
 
     // Listen for agenda date click events - show date picker
-    editorElement.addEventListener('agenda-date-click', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'agenda-date-click', ((event: CustomEvent) => {
       const { agendaId, currentDate, position } = event.detail;
       this.showAgendaDatePicker(agendaId, currentDate, position);
     }) as EventListener);
 
     // Listen for agenda AI click events - generate summary
-    editorElement.addEventListener('agenda-ai-click', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'agenda-ai-click', ((event: CustomEvent) => {
       const { agendaId } = event.detail;
       this.generateAgendaSummary(agendaId);
     }) as EventListener);
@@ -1129,7 +1331,7 @@ export class NotebookEditorComponent implements OnDestroy {
     const editorElement = this.editorRef?.nativeElement;
     if (!editorElement) return;
 
-    editorElement.addEventListener('inline-mention-click', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'inline-mention-click', ((event: CustomEvent) => {
       const { type, value, pos, element } = event.detail;
       this.handleInlineMentionClick(type, value, pos, element);
     }) as EventListener);
@@ -1363,18 +1565,38 @@ export class NotebookEditorComponent implements OnDestroy {
     if (!editorElement) return;
 
     // Listen for AI writing command events from slash commands
-    editorElement.addEventListener('ai-writing-command', ((event: CustomEvent) => {
+    this.addEditorElementListener(editorElement, 'ai-writing-command', ((event: CustomEvent) => {
       const { type } = event.detail as { type: AIWritingType };
       this.handleAIWritingCommand(type);
     }) as EventListener);
 
-    // Listen for keyboard shortcut (Cmd/Ctrl+J) to open AI menu
-    editorElement.addEventListener('keydown', ((event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === 'j') {
+    // Listen for keyboard shortcut (Cmd/Ctrl+J) to open AI menu, and
+    // Cmd/Ctrl+F to open in-document find & replace.
+    this.addEditorElementListener(editorElement, 'keydown', ((event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey;
+      const plain = mod && !event.shiftKey && !event.altKey;
+      const key = event.key.toLowerCase();
+      if (plain && key === 'j') {
         event.preventDefault();
         this.openAICommandMenu();
+      } else if (plain && key === 'f') {
+        event.preventDefault();
+        this.openSearch();
+      } else if (plain && key === '/') {
+        event.preventDefault();
+        this.shortcutHelpOpen.update((v) => !v);
+      } else if (event.key === 'Escape' && this.shortcutHelpOpen()) {
+        event.preventDefault();
+        this.shortcutHelpOpen.set(false);
+      } else if (event.key === 'Escape' && this.searchOpen()) {
+        event.preventDefault();
+        this.closeSearch();
       }
     }) as EventListener);
+  }
+
+  closeShortcutHelp(): void {
+    this.shortcutHelpOpen.set(false);
   }
 
   /**
@@ -1389,7 +1611,9 @@ export class NotebookEditorComponent implements OnDestroy {
       hostElement: this.bubbleMenuElement,
     });
 
-    // Set the editor input
+    // Give the menu the editor so it can render selection formatting controls.
+    componentRef.setInput('editor', this._editor);
+
     // Handle opening the AI menu
     componentRef.instance.openAIMenu.subscribe(() => {
       this.openAICommandMenu();
@@ -1397,6 +1621,194 @@ export class NotebookEditorComponent implements OnDestroy {
 
     this.appRef.attachView(componentRef.hostView);
     this.bubbleMenuComponentRef = componentRef;
+  }
+
+  private todoPopoverComponentRef: ComponentRef<TodoPopoverComponent> | null = null;
+  private todoPopoverElement: HTMLElement | null = null;
+
+  /**
+   * Listen for a task item's settings button and open the todo popover so the
+   * user can set priority, color, and due date. Changes are applied through the
+   * enhanced-task-item `updateTodoAttrs` command (keyed by todo id).
+   */
+  private setupTodoSettingsListener(): void {
+    const editorElement = this.editorRef?.nativeElement;
+    if (!editorElement) return;
+
+    this.addEditorElementListener(editorElement, 'todo-settings-click', ((event: CustomEvent) => {
+      event.stopPropagation();
+      const { todoId, attrs, position } = event.detail as {
+        todoId: string;
+        attrs: Record<string, unknown>;
+        position: DOMRect;
+      };
+      this.openTodoPopover(todoId, attrs, position);
+    }) as EventListener);
+  }
+
+  private openTodoPopover(todoId: string, attrs: Record<string, unknown>, position: DOMRect): void {
+    this.closeTodoPopover();
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    this.todoPopoverElement = container;
+
+    const componentRef = createComponent(TodoPopoverComponent, {
+      environmentInjector: this.injector,
+      hostElement: container,
+    });
+    this.todoPopoverComponentRef = componentRef;
+
+    // Track the live attrs so we can refresh the popover after each change and
+    // it doesn't keep highlighting the old priority/color/date.
+    let currentAttrs = attrs;
+    componentRef.setInput('todoId', todoId);
+    componentRef.setInput('attrs', currentAttrs);
+    componentRef.setInput('position', position);
+
+    componentRef.instance.attrsChange.subscribe((changes: Record<string, unknown>) => {
+      (this._editor?.commands as any)?.updateTodoAttrs(todoId, changes);
+      currentAttrs = { ...currentAttrs, ...changes };
+      componentRef.setInput('attrs', currentAttrs);
+    });
+    componentRef.instance.close.subscribe(() => {
+      this.closeTodoPopover();
+    });
+
+    this.appRef.attachView(componentRef.hostView);
+
+    // Dismiss when clicking outside the popover.
+    this.todoPopoverOpenTimeout = setTimeout(() => {
+      this.todoPopoverOpenTimeout = undefined;
+      const onDocClick = (e: MouseEvent) => {
+        if (this.todoPopoverElement && !this.todoPopoverElement.contains(e.target as Node)) {
+          document.removeEventListener('mousedown', onDocClick);
+          this.closeTodoPopover();
+        }
+      };
+      document.addEventListener('mousedown', onDocClick);
+      this.todoPopoverDismiss = () => document.removeEventListener('mousedown', onDocClick);
+    }, 0);
+  }
+
+  private todoPopoverDismiss?: () => void;
+  private todoPopoverOpenTimeout?: ReturnType<typeof setTimeout>;
+
+  private closeTodoPopover(): void {
+    // Cancel a not-yet-fired outside-click registration so it can't attach a
+    // document listener after the popover is already gone.
+    if (this.todoPopoverOpenTimeout) {
+      clearTimeout(this.todoPopoverOpenTimeout);
+      this.todoPopoverOpenTimeout = undefined;
+    }
+    this.todoPopoverDismiss?.();
+    this.todoPopoverDismiss = undefined;
+    if (this.todoPopoverComponentRef) {
+      this.appRef.detachView(this.todoPopoverComponentRef.hostView);
+      this.todoPopoverComponentRef.destroy();
+      this.todoPopoverComponentRef = null;
+    }
+    if (this.todoPopoverElement) {
+      this.todoPopoverElement.remove();
+      this.todoPopoverElement = null;
+    }
+  }
+
+  // ==========================================
+  // Find & Replace
+  // ==========================================
+
+  openSearch(): void {
+    this.searchOpen.set(true);
+    // Seed with the current selection text if any.
+    const editor = this._editor;
+    if (editor) {
+      const { from, to } = editor.state.selection;
+      if (to > from) {
+        // Pass a block separator so a selection spanning blocks contains a
+        // newline; the single-line guard below then correctly rejects it
+        // (search matches never span block boundaries).
+        const selected = editor.state.doc.textBetween(from, to, '\n');
+        if (selected && !selected.includes('\n')) {
+          this.searchQuery.set(selected);
+          editor.commands.setSearchTerm(selected);
+        }
+      }
+    }
+    this.refreshSearchInfo();
+    setTimeout(() => {
+      const input = document.querySelector('.editor-search-input') as HTMLInputElement | null;
+      input?.focus();
+      input?.select();
+    }, 0);
+  }
+
+  closeSearch(): void {
+    this.searchOpen.set(false);
+    this._editor?.commands.clearSearch();
+    this._editor?.commands.focus();
+  }
+
+  onSearchQueryChange(value: string): void {
+    this.searchQuery.set(value);
+    this._editor?.commands.setSearchTerm(value);
+    // Scroll to the first (already-active, index 0) match — do NOT call
+    // findNext(), which would advance to the SECOND match on every keystroke.
+    this.scrollToActiveMatch();
+    this.refreshSearchInfo();
+  }
+
+  private scrollToActiveMatch(): void {
+    const editor = this._editor;
+    if (!editor) return;
+    const state = searchReplacePluginKey.getState(editor.state);
+    const match = state?.matches[state.activeIndex];
+    if (!match) return;
+    editor.commands.command(({ tr, dispatch }) => {
+      if (dispatch) {
+        tr.setSelection(TextSelection.near(tr.doc.resolve(match.from)));
+        tr.scrollIntoView();
+      }
+      return true;
+    });
+  }
+
+  onReplaceTermChange(value: string): void {
+    this.searchReplaceTerm.set(value);
+    this._editor?.commands.setReplaceTerm(value);
+  }
+
+  searchFindNext(): void {
+    this._editor?.commands.findNext();
+    this.refreshSearchInfo();
+  }
+
+  searchFindPrevious(): void {
+    this._editor?.commands.findPrevious();
+    this.refreshSearchInfo();
+  }
+
+  searchReplaceCurrent(): void {
+    this._editor?.commands.replaceCurrent();
+    this.refreshSearchInfo();
+  }
+
+  searchReplaceAll(): void {
+    this._editor?.commands.replaceAll();
+    this.refreshSearchInfo();
+  }
+
+  private refreshSearchInfo(): void {
+    const editor = this._editor;
+    if (!editor) {
+      this.searchInfo.set({ count: 0, active: 0 });
+      return;
+    }
+    const state = searchReplacePluginKey.getState(editor.state);
+    this.searchInfo.set({
+      count: state?.matches.length ?? 0,
+      active: state && state.matches.length > 0 ? state.activeIndex + 1 : 0,
+    });
   }
 
   /**
@@ -1778,7 +2190,7 @@ export class NotebookEditorComponent implements OnDestroy {
     const el = this.editorRef?.nativeElement;
     if (!el) return;
 
-    el.addEventListener('gcal-event-popup', ((e: CustomEvent) => {
+    this.addEditorElementListener(el, 'gcal-event-popup', ((e: CustomEvent) => {
       const { mode, calendarId, event, defaultDate, timeZone } = e.detail;
       this.gcalPopupMode.set(mode);
       this.gcalPopupCalendarId.set(calendarId);
@@ -1822,6 +2234,16 @@ export class NotebookEditorComponent implements OnDestroy {
    * Handle editor content updates - extract first heading and sync as title
    */
   private handleContentUpdate(editor: Editor): void {
+    // onUpdate also fires for remote collaborator transactions applied via Y.js.
+    // A read-only viewer must not run any server sync (each PATCH 403s) or local
+    // save, so bail before doing the full-document scans below.
+    // NOTE (residual RE-11): editable collaborators still run these scans and may
+    // redundantly PATCH on remote-origin updates; fully gating that needs the
+    // y-prosemirror sync-plugin transaction meta to detect remote origin.
+    if (!editor.isEditable) {
+      return;
+    }
+
     const title = this.extractFirstHeadingText(editor)?.trim();
 
     // Always extract and emit tags and mentions (they have their own dedup/debounce)
@@ -1840,14 +2262,17 @@ export class NotebookEditorComponent implements OnDestroy {
       }, 2000);
     }
 
-    // Skip title and todo syncs during initial load
-    if (!this.lastSyncedTitle) {
-      this.lastSyncedTitle = title || '';
+    // Skip title sync only during the initial sync-settle window, not for every
+    // note whose heading starts empty. The old `!this.lastSyncedTitle` guard
+    // swallowed the FIRST real title edit on new notes (they stayed "Untitled").
+    if (this.isInitialSync) {
+      this.lastSyncedTitle = title ?? '';
       return;
     }
 
-    // Only update if title changed and not empty
-    if (title && title !== this.lastSyncedTitle) {
+    // Emit whenever the title changed — including when it was cleared to empty,
+    // so a deleted title syncs instead of leaving a stale server value.
+    if (title !== undefined && title !== this.lastSyncedTitle) {
       // Clear existing timeout
       if (this.titleUpdateTimeout) {
         clearTimeout(this.titleUpdateTimeout);
@@ -2111,9 +2536,18 @@ export class NotebookEditorComponent implements OnDestroy {
       this.localSaveTimeout = null;
     }
 
-    // Clear any pending todo sync
-    if (this.lastPageId) {
-      this.todoSyncService.clearPendingSync(this.lastPageId);
+    // Clear the pending tag-sync timer too, so a debounced #tag edit from the
+    // page being torn down can't fire against (and mis-attribute tags to) the
+    // next page.
+    if (this.tagUpdateTimeout) {
+      clearTimeout(this.tagUpdateTimeout);
+      this.tagUpdateTimeout = null;
+    }
+
+    // Clear any pending todo sync for the document that is actually open
+    // (not lastPageId, which the effect has already advanced to the new page).
+    if (this.openDocPageId) {
+      this.todoSyncService.clearPendingSync(this.openDocPageId);
     }
 
     // Clean up recording components (legacy)
@@ -2159,36 +2593,44 @@ export class NotebookEditorComponent implements OnDestroy {
       this.bubbleMenuElement = null;
     }
 
+    // Remove all container listeners registered during this init pass.
+    this.editorElementListeners?.abort();
+    this.editorElementListeners = null;
+
     // Clean up page link listeners
     this.cleanupPageLinkListeners();
     this.cleanupJsonRefListeners();
     this.closeJsonRefConfig();
+    this.closeTodoPopover();
+
+    // Flush any pending mention sync while the editor still exists, so a
+    // navigation within the debounce window doesn't drop the last mention edit.
+    if (this.mentionUpdateTimeout) {
+      clearTimeout(this.mentionUpdateTimeout);
+      this.mentionUpdateTimeout = null;
+      if (this._editor) {
+        const mentions = this.extractUserMentions(this._editor);
+        const serialized = JSON.stringify(mentions);
+        if (serialized !== this.lastSyncedMentions) {
+          this.mentionsChanged.emit(mentions);
+        }
+      }
+    }
 
     if (this._editor) {
       this._editor.destroy();
       this._editor = null;
     }
 
-    if (this.lastPageId) {
-      this.memoService.closeDocument(this.lastPageId);
+    // Close the document that is actually open (see openDocPageId).
+    if (this.openDocPageId) {
+      this.memoService.closeDocument(this.openDocPageId);
+      this.openDocPageId = null;
     }
 
     this.ydoc = null;
     this.awareness = null;
     this.isReady.set(false);
-    // Flush pending mention sync before destroying
-    if (this.mentionUpdateTimeout && this._editor) {
-      clearTimeout(this.mentionUpdateTimeout);
-      this.mentionUpdateTimeout = null;
-      const mentions = this.extractUserMentions(this._editor);
-      const serialized = JSON.stringify(mentions);
-      if (serialized !== this.lastSyncedMentions) {
-        this.mentionsChanged.emit(mentions);
-      }
-    } else if (this.mentionUpdateTimeout) {
-      clearTimeout(this.mentionUpdateTimeout);
-      this.mentionUpdateTimeout = null;
-    }
     this.lastSyncedTitle = '';
     this.lastSyncedMentions = '';
     this.isInitialSync = true;
@@ -2392,6 +2834,7 @@ export class NotebookEditorComponent implements OnDestroy {
 
   private jsonRefListeners: { event: string; handler: EventListener }[] = [];
   private jsonRefConfigElement: HTMLElement | null = null;
+  private jsonRefConfigComponentRef: ComponentRef<JsonRefConfigComponent> | null = null;
 
   private setupJsonRefListeners(): void {
     const editorElement = this.editorRef?.nativeElement;
@@ -2450,6 +2893,7 @@ export class NotebookEditorComponent implements OnDestroy {
       environmentInjector: this.injector,
       hostElement: container,
     });
+    this.jsonRefConfigComponentRef = componentRef;
 
     componentRef.setInput('mode', mode);
     componentRef.setInput('notebookId', this.notebookId());
@@ -2495,6 +2939,14 @@ export class NotebookEditorComponent implements OnDestroy {
   }
 
   private closeJsonRefConfig(): void {
+    // Detach + destroy the dynamically created view; removing only the host
+    // element (the old behaviour) leaked a change-detected Angular view and its
+    // output subscriptions on every open.
+    if (this.jsonRefConfigComponentRef) {
+      this.appRef.detachView(this.jsonRefConfigComponentRef.hostView);
+      this.jsonRefConfigComponentRef.destroy();
+      this.jsonRefConfigComponentRef = null;
+    }
     if (this.jsonRefConfigElement) {
       this.jsonRefConfigElement.remove();
       this.jsonRefConfigElement = null;

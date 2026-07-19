@@ -33,8 +33,11 @@ interface ToolbarButton {
 export class EditorToolbarComponent implements OnInit, OnDestroy {
   readonly editor = input.required<Editor | null>();
 
-  // Signal to track editor state updates (increments on each transaction)
+  // Signal to track editor state updates (increments on each transaction).
   private readonly editorStateVersion = signal(0);
+  // Increments only when the document actually changed — used for word count so
+  // it doesn't re-serialize the whole doc on every cursor move.
+  private readonly editorDocVersion = signal(0);
 
   // Keyboard offset for mobile browsers (not iOS native app)
   readonly keyboardOffset = signal(0);
@@ -54,15 +57,18 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
       }
 
       if (ed) {
-        // Subscribe to editor updates
-        const handler = () => {
+        // The `transaction` event already covers selection changes (they are
+        // transactions too), so one subscription suffices — no need to also
+        // listen to `selectionUpdate` and double-count every keystroke.
+        const handler = (props: { transaction?: { docChanged?: boolean } }) => {
           this.editorStateVersion.update((v) => v + 1);
+          if (props?.transaction?.docChanged) {
+            this.editorDocVersion.update((v) => v + 1);
+          }
         };
-        ed.on('selectionUpdate', handler);
         ed.on('transaction', handler);
 
         this.editorUnsubscribe = () => {
-          ed.off('selectionUpdate', handler);
           ed.off('transaction', handler);
         };
       }
@@ -199,32 +205,81 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
         action: () => (ed.chain().focus() as any).toggleCode().run(),
         isActive: () => ed.isActive('code'),
       },
+      {
+        icon: '🖍',
+        label: 'Highlight',
+        action: () => (ed.chain().focus() as any).toggleHighlight().run(),
+        isActive: () => ed.isActive('highlight'),
+      },
+      {
+        icon: 'x²',
+        label: 'Superscript',
+        action: () => (ed.chain().focus() as any).toggleSuperscript().run(),
+        isActive: () => ed.isActive('superscript'),
+      },
+      {
+        icon: 'x₂',
+        label: 'Subscript',
+        action: () => (ed.chain().focus() as any).toggleSubscript().run(),
+        isActive: () => ed.isActive('subscript'),
+      },
     ];
   });
 
-  readonly blockButtons = computed<ToolbarButton[]>(() => {
+  // Text alignment controls.
+  readonly alignButtons = computed<ToolbarButton[]>(() => {
+    this.editorStateVersion();
     const ed = this.editor();
     if (!ed) return [];
 
     return [
       {
-        icon: 'H1',
-        label: 'Heading 1',
-        action: () => (ed.chain().focus() as any).toggleHeading({ level: 1 }).run(),
-        isActive: () => ed.isActive('heading', { level: 1 }),
+        icon: '⇤',
+        label: 'Align left',
+        action: () => (ed.chain().focus() as any).setTextAlign('left').run(),
+        // Left is the default, so show it active when nothing else is set.
+        isActive: () =>
+          ed.isActive({ textAlign: 'left' }) ||
+          (!ed.isActive({ textAlign: 'center' }) &&
+            !ed.isActive({ textAlign: 'right' }) &&
+            !ed.isActive({ textAlign: 'justify' })),
       },
       {
-        icon: 'H2',
-        label: 'Heading 2',
-        action: () => (ed.chain().focus() as any).toggleHeading({ level: 2 }).run(),
-        isActive: () => ed.isActive('heading', { level: 2 }),
+        icon: '↔',
+        label: 'Align center',
+        action: () => (ed.chain().focus() as any).setTextAlign('center').run(),
+        isActive: () => ed.isActive({ textAlign: 'center' }),
       },
       {
-        icon: 'H3',
-        label: 'Heading 3',
-        action: () => (ed.chain().focus() as any).toggleHeading({ level: 3 }).run(),
-        isActive: () => ed.isActive('heading', { level: 3 }),
+        icon: '⇥',
+        label: 'Align right',
+        action: () => (ed.chain().focus() as any).setTextAlign('right').run(),
+        isActive: () => ed.isActive({ textAlign: 'right' }),
       },
+    ];
+  });
+
+  /** Apply an inline text color to the selection. */
+  applyColor(color: string): void {
+    const ed = this.editor();
+    if (ed) (ed.chain().focus() as any).setColor(color).run();
+  }
+
+  /** Remove any inline text color from the selection. */
+  clearColor(): void {
+    const ed = this.editor();
+    if (ed) (ed.chain().focus() as any).unsetColor().run();
+  }
+
+  readonly blockButtons = computed<ToolbarButton[]>(() => {
+    // Depend on state version so active states recompute per transaction.
+    this.editorStateVersion();
+    const ed = this.editor();
+    if (!ed) return [];
+
+    // Headings are already exposed via textTypeButtons; this group covers the
+    // block types that have no other toolbar control.
+    return [
       {
         icon: '•',
         label: 'Bullet List',
@@ -258,10 +313,17 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
   });
 
   readonly insertButtons = computed<ToolbarButton[]>(() => {
+    this.editorStateVersion();
     const ed = this.editor();
     if (!ed) return [];
 
     return [
+      {
+        icon: '🔗',
+        label: 'Link',
+        action: () => this.editLink(ed),
+        isActive: () => ed.isActive('link'),
+      },
       {
         icon: '▦',
         label: 'Table',
@@ -277,7 +339,26 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
     ];
   });
 
+  /**
+   * Minimal link insert/edit flow: prompt for a URL, applying it to the current
+   * selection (or the whole link under the cursor). An empty value removes the
+   * link. The Link mark validates the protocol, so javascript: URLs are dropped.
+   */
+  private editLink(ed: Editor): void {
+    const previousUrl = (ed.getAttributes('link')?.['href'] as string) || '';
+    const url = window.prompt('Link URL', previousUrl);
+    if (url === null) {
+      return; // cancelled
+    }
+    if (url.trim() === '') {
+      (ed.chain().focus() as any).extendMarkRange('link').unsetLink().run();
+      return;
+    }
+    (ed.chain().focus() as any).extendMarkRange('link').setLink({ href: url.trim() }).run();
+  }
+
   readonly historyButtons = computed<ToolbarButton[]>(() => {
+    this.editorStateVersion();
     const ed = this.editor();
     if (!ed) return [];
 
@@ -293,6 +374,50 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
         label: 'Redo',
         action: () => ed.chain().focus().redo().run(),
         disabled: () => !ed.can().redo(),
+      },
+    ];
+  });
+
+  // Live word count for the document (recomputed only when the doc changes).
+  readonly wordCount = computed<number>(() => {
+    this.editorDocVersion();
+    const ed = this.editor();
+    if (!ed) return 0;
+    const text = ed.getText().trim();
+    return text ? text.split(/\s+/).length : 0;
+  });
+
+  // Table row/column controls — only shown while the cursor is inside a table.
+  readonly tableButtons = computed<ToolbarButton[]>(() => {
+    this.editorStateVersion();
+    const ed = this.editor();
+    if (!ed || !ed.isActive('table')) return [];
+
+    return [
+      {
+        icon: 'R+',
+        label: 'Add row below',
+        action: () => (ed.chain().focus() as any).addRowAfter().run(),
+      },
+      {
+        icon: 'R−',
+        label: 'Delete row',
+        action: () => (ed.chain().focus() as any).deleteRow().run(),
+      },
+      {
+        icon: 'C+',
+        label: 'Add column right',
+        action: () => (ed.chain().focus() as any).addColumnAfter().run(),
+      },
+      {
+        icon: 'C−',
+        label: 'Delete column',
+        action: () => (ed.chain().focus() as any).deleteColumn().run(),
+      },
+      {
+        icon: '⌫',
+        label: 'Delete table',
+        action: () => (ed.chain().focus() as any).deleteTable().run(),
       },
     ];
   });
