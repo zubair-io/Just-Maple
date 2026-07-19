@@ -74,6 +74,9 @@
 
     <div class="toolbar-spacer"></div>
 
+    <!-- Word count -->
+    <span class="toolbar-wordcount" title="Word count">{{ wordCount() }}w</span>
+
     <!-- History buttons -->
     <div class="toolbar-group">
       @for (btn of historyButtons(); track btn.label) {
@@ -88,5 +91,17 @@
         </button>
       }
     </div>
+
+    <!-- Table controls (only while inside a table) -->
+    @if (tableButtons().length) {
+      <div class="toolbar-divider"></div>
+      <div class="toolbar-group">
+        @for (btn of tableButtons(); track btn.label) {
+          <button type="button" class="toolbar-btn" [title]="btn.label" (click)="btn.action()">
+            <span class="btn-icon">{{ btn.icon }}</span>
+          </button>
+        }
+      </div>
+    }
   </div>
 </div>

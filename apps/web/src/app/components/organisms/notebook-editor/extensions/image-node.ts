@@ -407,20 +407,40 @@ export const ImageNode = Node.create<ImageNodeOptions>({
                         <rect x="2" y="6" width="20" height="12" rx="2"/>
                     </svg>
                 </button>
+                <button type="button" data-action="alt" title="Alt text (accessibility)" class="${alt ? 'active' : ''}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 20l6-14 6 14M6.5 15h7"/>
+                        <path d="M20 20V9m0 0a2 2 0 1 0-3 0"/>
+                    </svg>
+                </button>
             `;
       dom.appendChild(toolbar);
 
-      // Add click handlers for size buttons
+      // Add click handlers for the size buttons and the alt-text button
       toolbar.querySelectorAll('button').forEach((button) => {
         button.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (typeof getPos !== 'function') return;
+          const pos = getPos();
+          if (pos === undefined) return;
+
+          if (button.getAttribute('data-action') === 'alt') {
+            const current = (node.attrs['alt'] as string) || '';
+            const next = window.prompt('Alt text (describe the image for screen readers)', current);
+            if (next === null) return; // cancelled
+            editor
+              .chain()
+              .focus()
+              .setNodeSelection(pos)
+              .updateAttributes('memoImage', { alt: next.trim() || null })
+              .run();
+            return;
+          }
+
           const newSize = button.getAttribute('data-size') as ImageSize;
-          if (newSize && typeof getPos === 'function') {
-            const pos = getPos();
-            if (pos !== undefined) {
-              editor.chain().focus().setNodeSelection(pos).setImageSize(newSize).run();
-            }
+          if (newSize) {
+            editor.chain().focus().setNodeSelection(pos).setImageSize(newSize).run();
           }
         });
       });

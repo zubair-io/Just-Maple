@@ -93,3 +93,11 @@
 .toolbar-spacer {
   flex: 1;
 }
+
+.toolbar-wordcount {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  padding: 0 6px;
+  white-space: nowrap;
+  user-select: none;
+}

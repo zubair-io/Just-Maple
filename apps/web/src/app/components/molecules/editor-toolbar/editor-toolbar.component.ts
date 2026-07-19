@@ -314,4 +314,48 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
       },
     ];
   });
+
+  // Live word count for the document (recomputed per transaction).
+  readonly wordCount = computed<number>(() => {
+    this.editorStateVersion();
+    const ed = this.editor();
+    if (!ed) return 0;
+    const text = ed.getText().trim();
+    return text ? text.split(/\s+/).length : 0;
+  });
+
+  // Table row/column controls — only shown while the cursor is inside a table.
+  readonly tableButtons = computed<ToolbarButton[]>(() => {
+    this.editorStateVersion();
+    const ed = this.editor();
+    if (!ed || !ed.isActive('table')) return [];
+
+    return [
+      {
+        icon: 'R+',
+        label: 'Add row below',
+        action: () => (ed.chain().focus() as any).addRowAfter().run(),
+      },
+      {
+        icon: 'R−',
+        label: 'Delete row',
+        action: () => (ed.chain().focus() as any).deleteRow().run(),
+      },
+      {
+        icon: 'C+',
+        label: 'Add column right',
+        action: () => (ed.chain().focus() as any).addColumnAfter().run(),
+      },
+      {
+        icon: 'C−',
+        label: 'Delete column',
+        action: () => (ed.chain().focus() as any).deleteColumn().run(),
+      },
+      {
+        icon: '⌫',
+        label: 'Delete table',
+        action: () => (ed.chain().focus() as any).deleteTable().run(),
+      },
+    ];
+  });
 }
