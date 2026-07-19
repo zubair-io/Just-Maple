@@ -5,7 +5,7 @@
       <div
         class="max-w-[400px] rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-8 py-12 text-center"
       >
-        <div class="mb-4 text-6xl">📬</div>
+        <div class="mb-4 text-6xl material-symbols-rounded">mail</div>
         <h2 class="m-0 mb-2 text-[var(--color-text-main)]">Connect Gmail</h2>
         <p class="mb-6 leading-relaxed text-[var(--color-text-muted)]">
           Access your emails directly in Maple. Your email content stays on your device and is never
@@ -53,7 +53,7 @@
               "
               (click)="selectFilter(filter)"
             >
-              <span class="text-lg">{{ filter.icon || '📁' }}</span>
+              <span class="text-lg material-symbols-rounded">{{ filter.icon || 'folder' }}</span>
               <span class="flex-1">{{ filter.name }}</span>
             </button>
           }
@@ -64,7 +64,9 @@
             class="w-full cursor-pointer rounded-lg border-none bg-transparent px-3 py-2 text-left text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-bg-hover)]"
             (click)="openSettings()"
           >
-            <span>⚙️ Settings</span>
+            <span class="inline-flex items-center gap-1">
+              <span class="material-symbols-rounded">settings</span> Settings
+            </span>
           </button>
           <div class="mt-2 px-3 text-xs text-[var(--color-text-muted)]">
             @if (syncService.isSyncing()) {
@@ -91,11 +93,11 @@
             />
           </div>
           <button
-            class="cursor-pointer rounded-lg border-none bg-transparent p-2 text-lg transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-50"
+            class="material-symbols-rounded cursor-pointer rounded-lg border-none bg-transparent p-2 text-lg transition-colors hover:bg-[var(--color-bg-hover)] disabled:opacity-50"
             (click)="refreshEmails()"
             [disabled]="syncService.isSyncing()"
           >
-            🔄
+            refresh
           </button>
         </div>
 
@@ -107,10 +109,10 @@
               (click)="selectEmail(email)"
             >
               <button
-                class="cursor-pointer border-none bg-transparent p-1 text-base"
+                class="material-symbols-rounded cursor-pointer border-none bg-transparent p-1 text-base"
                 (click)="toggleStar(email, $event)"
               >
-                {{ email.isStarred ? '⭐' : '☆' }}
+                {{ email.isStarred ? 'star' : 'star_border' }}
               </button>
               <div class="min-w-0 flex-1">
                 <div class="mb-1 flex justify-between gap-2">
@@ -135,7 +137,7 @@
                 </div>
               </div>
               @if (email.hasAttachments) {
-                <span class="shrink-0 text-sm">📎</span>
+                <span class="shrink-0 text-sm material-symbols-rounded">attachment</span>
               }
             </div>
           } @empty {
@@ -158,36 +160,36 @@
               class="cursor-pointer rounded-lg border-none bg-transparent px-4 py-2 text-[var(--color-text-main)] transition-colors hover:bg-[var(--color-bg-hover)]"
               (click)="selectedEmailId.set(null)"
             >
-              ← Back
+              <span class="material-symbols-rounded align-middle">arrow_back</span> Back
             </button>
             <div class="flex gap-2">
               <button
-                class="cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
+                class="material-symbols-rounded cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
                 (click)="toggleStar(email, $event)"
                 title="Star"
               >
-                {{ email.isStarred ? '⭐' : '☆' }}
+                {{ email.isStarred ? 'star' : 'star_border' }}
               </button>
               <button
-                class="cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
+                class="material-symbols-rounded cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
                 (click)="archiveEmail(email)"
                 title="Archive"
               >
-                📥
+                archive
               </button>
               <button
-                class="cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
+                class="material-symbols-rounded cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
                 (click)="trashEmail(email)"
                 title="Delete"
               >
-                🗑️
+                delete
               </button>
               <button
-                class="cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
+                class="material-symbols-rounded cursor-pointer rounded-lg border-none bg-transparent p-2 text-base transition-colors hover:bg-[var(--color-bg-hover)]"
                 (click)="markAsUnread(email)"
                 title="Mark unread"
               >
-                📩
+                mark_email_unread
               </button>
             </div>
           </div>
@@ -246,7 +248,7 @@
                       class="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-2 transition-colors hover:bg-[var(--color-bg-hover)]"
                       (click)="downloadAttachment(email.id, attachment.id, attachment.filename)"
                     >
-                      <span>📎</span>
+                      <span class="material-symbols-rounded">attachment</span>
                       <span class="text-[var(--color-text-main)]">{{ attachment.filename }}</span>
                       <span class="text-xs text-[var(--color-text-muted)]">{{
                         formatFileSize(attachment.size)
@@ -262,13 +264,13 @@
                 class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-2 text-[var(--color-text-main)] transition-colors hover:bg-[var(--color-bg-hover)]"
                 (click)="openReply(email)"
               >
-                ↩️ Reply
+                <span class="material-symbols-rounded align-middle">reply</span> Reply
               </button>
               <button
                 class="cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-2 text-[var(--color-text-main)] transition-colors hover:bg-[var(--color-bg-hover)]"
                 (click)="openReply(email, true)"
               >
-                ↩️↩️ Reply All
+                <span class="material-symbols-rounded align-middle">reply_all</span> Reply All
               </button>
             </div>
           </div>
@@ -297,10 +299,10 @@
               {{ replyToEmail() ? 'Reply' : 'New Email' }}
             </h3>
             <button
-              class="cursor-pointer border-none bg-transparent p-2 text-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
+              class="material-symbols-rounded cursor-pointer border-none bg-transparent p-2 text-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
               (click)="closeCompose()"
             >
-              ✕
+              close
             </button>
           </div>
 
@@ -357,7 +359,7 @@
               (click)="sendEmail()"
               [disabled]="composeTo().length === 0 || !composeSubject()"
             >
-              Send ▶️
+              Send <span class="material-symbols-rounded align-middle">send</span>
             </button>
           </div>
         </div>
@@ -379,10 +381,10 @@
           >
             <h3 class="m-0 text-[var(--color-text-main)]">Gmail Settings</h3>
             <button
-              class="cursor-pointer border-none bg-transparent p-2 text-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
+              class="material-symbols-rounded cursor-pointer border-none bg-transparent p-2 text-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-main)]"
               (click)="closeSettings()"
             >
-              ✕
+              close
             </button>
           </div>
 
@@ -393,7 +395,8 @@
                 class="flex items-center justify-between rounded-lg bg-[var(--color-bg-secondary)] p-3"
               >
                 <span class="text-[var(--color-text-main)]">
-                  ✉️ {{ authService.connectedEmail() }}
+                  <span class="material-symbols-rounded align-middle">mail</span>
+                  {{ authService.connectedEmail() }}
                 </span>
                 <button
                   class="cursor-pointer rounded-md border border-[var(--color-border)] bg-transparent px-4 py-2 text-[var(--color-text-muted)] transition-colors hover:border-[#dc2626] hover:bg-[var(--color-bg-hover)] hover:text-[#dc2626]"

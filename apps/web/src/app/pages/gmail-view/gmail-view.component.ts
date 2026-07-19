@@ -67,7 +67,7 @@ export class GmailViewComponent implements OnInit, OnDestroy {
       name: 'All Mail',
       type: 'all',
       value: '',
-      icon: '📬',
+      icon: 'all_inbox',
     };
     return [defaultFilter, ...(page?.gmailConfig?.filters || [])];
   });

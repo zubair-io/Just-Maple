@@ -55,17 +55,17 @@ export class SyncStatusComponent {
   readonly statusIcon = computed(() => {
     switch (this.status()) {
       case 'synced':
-        return '✓';
+        return 'cloud_done';
       case 'syncing':
-        return '↻';
+        return 'sync';
       case 'pending':
-        return '○';
+        return 'cloud_queue';
       case 'offline':
-        return '⊘';
+        return 'cloud_off';
       case 'failed':
-        return '✗';
+        return 'sync_problem';
       case 'conflict':
-        return '⚠';
+        return 'warning';
       default:
         return '';
     }
