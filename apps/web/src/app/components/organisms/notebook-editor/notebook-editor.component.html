@@ -78,6 +78,41 @@
       </div>
     }
 
+    <!-- Keyboard shortcut cheatsheet (Cmd/Ctrl+/) -->
+    @if (shortcutHelpOpen()) {
+      <div class="editor-shortcut-overlay" (click)="closeShortcutHelp()">
+        <div class="editor-shortcut-modal" (click)="$event.stopPropagation()">
+          <div class="editor-shortcut-header">
+            <span>Keyboard shortcuts</span>
+            <button type="button" class="editor-search-btn" (click)="closeShortcutHelp()">✕</button>
+          </div>
+          <div class="editor-shortcut-groups">
+            @for (group of shortcutGroups; track group.title) {
+              <div class="editor-shortcut-group">
+                <h4>{{ group.title }}</h4>
+                @for (item of group.items; track item.label) {
+                  <div class="editor-shortcut-item">
+                    <span class="editor-shortcut-label">{{ item.label }}</span>
+                    <kbd>{{ item.keys }}</kbd>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Keyboard shortcut help trigger -->
+    <button
+      type="button"
+      class="editor-shortcut-trigger"
+      title="Keyboard shortcuts (⌘/Ctrl + /)"
+      (click)="shortcutHelpOpen.set(true)"
+    >
+      ?
+    </button>
+
     <!-- Floating Toolbar -->
     <app-editor-toolbar [editor]="getEditor()" />
 

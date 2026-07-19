@@ -180,6 +180,46 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly searchReplaceTerm = signal('');
   readonly searchInfo = signal<{ count: number; active: number }>({ count: 0, active: 0 });
 
+  // Keyboard shortcut cheatsheet
+  readonly shortcutHelpOpen = signal(false);
+  readonly shortcutGroups: { title: string; items: { keys: string; label: string }[] }[] = [
+    {
+      title: 'Formatting',
+      items: [
+        { keys: '⌘/Ctrl B', label: 'Bold' },
+        { keys: '⌘/Ctrl I', label: 'Italic' },
+        { keys: '⌘/Ctrl U', label: 'Underline' },
+        { keys: '⌘/Ctrl E', label: 'Inline code' },
+      ],
+    },
+    {
+      title: 'Editor',
+      items: [
+        { keys: '/', label: 'Slash commands' },
+        { keys: '⌘/Ctrl F', label: 'Find & replace' },
+        { keys: '⌘/Ctrl J', label: 'AI assistant' },
+        { keys: '⌘/Ctrl ?', label: 'This shortcut help' },
+        { keys: '⌘/Ctrl Z', label: 'Undo / Redo (⇧)' },
+      ],
+    },
+    {
+      title: 'Blocks & mentions',
+      items: [
+        { keys: 'Tab / ⇧ Tab', label: 'Indent / outdent list' },
+        { keys: '[[', label: 'Link to a page' },
+        { keys: '@', label: 'Mention a person / date' },
+        { keys: '#', label: 'Hashtag' },
+      ],
+    },
+    {
+      title: 'Tasks',
+      items: [
+        { keys: '⌘/Ctrl ⇧ P', label: 'Cycle task priority' },
+        { keys: '⌘/Ctrl ⇧ D', label: 'Task options (priority/color/date)' },
+      ],
+    },
+  ];
+
   // Page link search state
   readonly pageLinkSearchOpen = signal(false);
   readonly pageLinkSearchMode = signal<'inline' | 'block'>('inline');
@@ -1522,11 +1562,21 @@ export class NotebookEditorComponent implements OnDestroy {
       } else if ((event.metaKey || event.ctrlKey) && event.key === 'f') {
         event.preventDefault();
         this.openSearch();
+      } else if ((event.metaKey || event.ctrlKey) && event.key === '/') {
+        event.preventDefault();
+        this.shortcutHelpOpen.update((v) => !v);
+      } else if (event.key === 'Escape' && this.shortcutHelpOpen()) {
+        event.preventDefault();
+        this.shortcutHelpOpen.set(false);
       } else if (event.key === 'Escape' && this.searchOpen()) {
         event.preventDefault();
         this.closeSearch();
       }
     }) as EventListener);
+  }
+
+  closeShortcutHelp(): void {
+    this.shortcutHelpOpen.set(false);
   }
 
   /**
