@@ -6,14 +6,7 @@
       [title]="btn.label"
       (click)="btn.action()"
     >
-      <span
-        class="bubble-btn-icon"
-        [class.bold]="btn.icon === 'B'"
-        [class.italic]="btn.icon === 'I'"
-        [class.underline]="btn.icon === 'U'"
-        [class.strike]="btn.icon === 'S'"
-        >{{ btn.icon }}</span
-      >
+      <span class="bubble-btn-icon material-symbols-rounded">{{ btn.icon }}</span>
     </button>
   }
 

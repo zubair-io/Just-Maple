@@ -68,43 +68,43 @@ export class EditorBubbleMenuComponent implements OnDestroy {
 
     return [
       {
-        icon: 'B',
+        icon: 'format_bold',
         label: 'Bold',
         action: () => (ed.chain().focus() as any).toggleBold().run(),
         isActive: () => ed.isActive('bold'),
       },
       {
-        icon: 'I',
+        icon: 'format_italic',
         label: 'Italic',
         action: () => (ed.chain().focus() as any).toggleItalic().run(),
         isActive: () => ed.isActive('italic'),
       },
       {
-        icon: 'U',
+        icon: 'format_underlined',
         label: 'Underline',
         action: () => (ed.chain().focus() as any).toggleUnderline().run(),
         isActive: () => ed.isActive('underline'),
       },
       {
-        icon: 'S',
+        icon: 'format_strikethrough',
         label: 'Strikethrough',
         action: () => (ed.chain().focus() as any).toggleStrike().run(),
         isActive: () => ed.isActive('strike'),
       },
       {
-        icon: '</>',
+        icon: 'code',
         label: 'Code',
         action: () => (ed.chain().focus() as any).toggleCode().run(),
         isActive: () => ed.isActive('code'),
       },
       {
-        icon: '🖍',
+        icon: 'ink_highlighter',
         label: 'Highlight',
         action: () => (ed.chain().focus() as any).toggleHighlight().run(),
         isActive: () => ed.isActive('highlight'),
       },
       {
-        icon: '🔗',
+        icon: 'link',
         label: 'Link',
         action: () => this.editLink(ed),
         isActive: () => ed.isActive('link'),

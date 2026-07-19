@@ -142,25 +142,25 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
 
     return [
       {
-        icon: '¶',
+        icon: 'format_paragraph',
         label: 'Paragraph',
         action: () => (ed.chain().focus() as any).setParagraph().run(),
         isActive: () => ed.isActive('paragraph') && !ed.isActive('heading'),
       },
       {
-        icon: 'H1',
+        icon: 'format_h1',
         label: 'Heading 1',
         action: () => (ed.chain().focus() as any).toggleHeading({ level: 1 }).run(),
         isActive: () => ed.isActive('heading', { level: 1 }),
       },
       {
-        icon: 'H2',
+        icon: 'format_h2',
         label: 'Heading 2',
         action: () => (ed.chain().focus() as any).toggleHeading({ level: 2 }).run(),
         isActive: () => ed.isActive('heading', { level: 2 }),
       },
       {
-        icon: 'H3',
+        icon: 'format_h3',
         label: 'Heading 3',
         action: () => (ed.chain().focus() as any).toggleHeading({ level: 3 }).run(),
         isActive: () => ed.isActive('heading', { level: 3 }),
@@ -176,49 +176,49 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
 
     return [
       {
-        icon: 'B',
+        icon: 'format_bold',
         label: 'Bold',
         action: () => (ed.chain().focus() as any).toggleBold().run(),
         isActive: () => ed.isActive('bold'),
       },
       {
-        icon: 'I',
+        icon: 'format_italic',
         label: 'Italic',
         action: () => (ed.chain().focus() as any).toggleItalic().run(),
         isActive: () => ed.isActive('italic'),
       },
       {
-        icon: 'U',
+        icon: 'format_underlined',
         label: 'Underline',
         action: () => (ed.chain().focus() as any).toggleUnderline().run(),
         isActive: () => ed.isActive('underline'),
       },
       {
-        icon: 'S',
+        icon: 'format_strikethrough',
         label: 'Strikethrough',
         action: () => (ed.chain().focus() as any).toggleStrike().run(),
         isActive: () => ed.isActive('strike'),
       },
       {
-        icon: '</>',
+        icon: 'code',
         label: 'Code',
         action: () => (ed.chain().focus() as any).toggleCode().run(),
         isActive: () => ed.isActive('code'),
       },
       {
-        icon: '🖍',
+        icon: 'ink_highlighter',
         label: 'Highlight',
         action: () => (ed.chain().focus() as any).toggleHighlight().run(),
         isActive: () => ed.isActive('highlight'),
       },
       {
-        icon: 'x²',
+        icon: 'superscript',
         label: 'Superscript',
         action: () => (ed.chain().focus() as any).toggleSuperscript().run(),
         isActive: () => ed.isActive('superscript'),
       },
       {
-        icon: 'x₂',
+        icon: 'subscript',
         label: 'Subscript',
         action: () => (ed.chain().focus() as any).toggleSubscript().run(),
         isActive: () => ed.isActive('subscript'),
@@ -234,7 +234,7 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
 
     return [
       {
-        icon: '⇤',
+        icon: 'format_align_left',
         label: 'Align left',
         action: () => (ed.chain().focus() as any).setTextAlign('left').run(),
         // Left is the default, so show it active when nothing else is set.
@@ -245,13 +245,13 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
             !ed.isActive({ textAlign: 'justify' })),
       },
       {
-        icon: '↔',
+        icon: 'format_align_center',
         label: 'Align center',
         action: () => (ed.chain().focus() as any).setTextAlign('center').run(),
         isActive: () => ed.isActive({ textAlign: 'center' }),
       },
       {
-        icon: '⇥',
+        icon: 'format_align_right',
         label: 'Align right',
         action: () => (ed.chain().focus() as any).setTextAlign('right').run(),
         isActive: () => ed.isActive({ textAlign: 'right' }),
@@ -281,31 +281,31 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
     // block types that have no other toolbar control.
     return [
       {
-        icon: '•',
+        icon: 'format_list_bulleted',
         label: 'Bullet List',
         action: () => (ed.chain().focus() as any).toggleBulletList().run(),
         isActive: () => ed.isActive('bulletList'),
       },
       {
-        icon: '1.',
+        icon: 'format_list_numbered',
         label: 'Numbered List',
         action: () => (ed.chain().focus() as any).toggleOrderedList().run(),
         isActive: () => ed.isActive('orderedList'),
       },
       {
-        icon: '☑',
+        icon: 'checklist',
         label: 'Task List',
         action: () => (ed.chain().focus() as any).toggleTaskList().run(),
         isActive: () => ed.isActive('taskList'),
       },
       {
-        icon: '"',
+        icon: 'format_quote',
         label: 'Quote',
         action: () => (ed.chain().focus() as any).toggleBlockquote().run(),
         isActive: () => ed.isActive('blockquote'),
       },
       {
-        icon: '—',
+        icon: 'horizontal_rule',
         label: 'Divider',
         action: () => (ed.chain().focus() as any).setHorizontalRule().run(),
       },
@@ -319,19 +319,19 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
 
     return [
       {
-        icon: '🔗',
+        icon: 'link',
         label: 'Link',
         action: () => this.editLink(ed),
         isActive: () => ed.isActive('link'),
       },
       {
-        icon: '▦',
+        icon: 'table',
         label: 'Table',
         action: () =>
           (ed.chain().focus() as any).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
       },
       {
-        icon: '{ }',
+        icon: 'code_blocks',
         label: 'Code Block',
         action: () => (ed.chain().focus() as any).toggleCodeBlock().run(),
         isActive: () => ed.isActive('codeBlock'),
@@ -364,13 +364,13 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
 
     return [
       {
-        icon: '↩',
+        icon: 'undo',
         label: 'Undo',
         action: () => ed.chain().focus().undo().run(),
         disabled: () => !ed.can().undo(),
       },
       {
-        icon: '↪',
+        icon: 'redo',
         label: 'Redo',
         action: () => ed.chain().focus().redo().run(),
         disabled: () => !ed.can().redo(),
@@ -395,27 +395,27 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
 
     return [
       {
-        icon: 'R+',
+        icon: 'add_row_below',
         label: 'Add row below',
         action: () => (ed.chain().focus() as any).addRowAfter().run(),
       },
       {
-        icon: 'R−',
+        icon: 'table_rows_narrow',
         label: 'Delete row',
         action: () => (ed.chain().focus() as any).deleteRow().run(),
       },
       {
-        icon: 'C+',
+        icon: 'add_column_right',
         label: 'Add column right',
         action: () => (ed.chain().focus() as any).addColumnAfter().run(),
       },
       {
-        icon: 'C−',
+        icon: 'view_column',
         label: 'Delete column',
         action: () => (ed.chain().focus() as any).deleteColumn().run(),
       },
       {
-        icon: '⌫',
+        icon: 'delete',
         label: 'Delete table',
         action: () => (ed.chain().focus() as any).deleteTable().run(),
       },
