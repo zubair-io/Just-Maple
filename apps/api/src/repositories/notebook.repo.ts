@@ -517,19 +517,30 @@ export async function getNotebookMembersWithUserData(
     // Get the users collection
     const usersCollection = getDb().collection('users');
 
-    // Fetch full user data for each member
-    const members: NotebookMember[] = [];
-    for (const member of notebook.sharing.sharedWith) {
-        // Validate that userId is a valid ObjectId before querying
+    // Filter valid member ObjectIds
+    const validMembers = notebook.sharing.sharedWith.filter((member) => {
         if (!ObjectId.isValid(member.userId)) {
             console.warn(
                 `[NotebookRepo] Invalid userId in sharedWith: ${member.userId} for notebook ${notebookId}`,
             );
-            continue;
+            return false;
         }
+        return true;
+    });
 
-        try {
-            const user = await usersCollection.findOne({ _id: new ObjectId(member.userId) });
+    if (validMembers.length === 0) {
+        return [];
+    }
+
+    const validObjectIds = validMembers.map((m) => new ObjectId(m.userId));
+    const members: NotebookMember[] = [];
+
+    try {
+        const users = await usersCollection.find({ _id: { $in: validObjectIds } }).toArray();
+        const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+
+        for (const member of validMembers) {
+            const user = userMap.get(member.userId);
             if (user) {
                 members.push({
                     userId: member.userId,
@@ -539,13 +550,9 @@ export async function getNotebookMembersWithUserData(
                     accessLevel: member.accessLevel,
                 });
             }
-        } catch (error) {
-            console.error(
-                `[NotebookRepo] Failed to fetch user ${member.userId} for notebook ${notebookId}:`,
-                error,
-            );
-            // Continue to next member
         }
+    } catch (error) {
+        console.error(`[NotebookRepo] Failed to fetch users for notebook ${notebookId}:`, error);
     }
 
     return members;

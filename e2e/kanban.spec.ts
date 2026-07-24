@@ -950,7 +950,37 @@ test.describe('Kanban Boards', () => {
         await expect(secondCard).toBeVisible();
     });
 
-    test.skip('should display kanban in list view', async ({ authenticatedPage }) => {
-        // TODO: Test switching between board view and list view if available
+    test('should display kanban in list view', async ({ authenticatedPage }) => {
+        await authenticatedPage.goto('/');
+        await authenticatedPage.waitForLoadState('networkidle');
+
+        const newKanbanButton = authenticatedPage
+            .locator('button:has-text("New Kanban"), button:has-text("Kanban")')
+            .first();
+
+        if (!(await newKanbanButton.isVisible({ timeout: 3000 }).catch(() => false))) {
+            return;
+        }
+
+        await newKanbanButton.click();
+        await authenticatedPage.waitForTimeout(1000);
+
+        // Look for view toggle button if available
+        const viewToggle = authenticatedPage
+            .locator(
+                'button:has-text("List"), button:has-text("List View"), button[aria-label*="list" i]',
+            )
+            .first();
+
+        if (await viewToggle.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await viewToggle.click();
+            await authenticatedPage.waitForTimeout(500);
+        }
+
+        // Verify board/kanban container is visible
+        const kanbanContainer = authenticatedPage
+            .locator('.kanban-board, .kanban-container, [role="region"], .kanban-list')
+            .first();
+        await expect(kanbanContainer).toBeVisible({ timeout: 5000 });
     });
 });

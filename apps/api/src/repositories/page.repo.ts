@@ -13,7 +13,7 @@ import type {
 } from '@maple/shared';
 import { extractSlugId } from '@maple/shared/utils/slug';
 import { findNotebooksByUserId, findNotebookByIdWithAccess } from './notebook.repo';
-import { deleteMemo, deleteMemosByPageId, getMemoState } from './memo.repo';
+import { deleteMemo, deleteMemosByPageId, getMemoState, findMemosByPageIds } from './memo.repo';
 import { deleteWhiteboard } from './whiteboard.repo';
 import { deleteKanbanBoard } from './kanban-board.repo';
 import { deleteJsonDocument } from './json-document.repo';
@@ -1078,27 +1078,46 @@ export async function bulkPublishPagesForNotebook(notebookId: string): Promise<n
             })
             .toArray();
 
-        let count = 0;
+        if (docs.length === 0) return 0;
+
+        const pageIds = docs.map((d) => d.id);
+        const memos = await findMemosByPageIds(pageIds);
+        const memoMap = new Map(memos.map((m) => [m.pageId, m.state]));
+
+        const now = new Date();
+        const bulkOps = [];
+
         for (const doc of docs) {
             const slug = await generateUniquePageSlug(oid);
-            const bulkMemoState = await getMemoState(doc.id);
-            const yContent = bulkMemoState ? yDocStateToJSON(bulkMemoState) : null;
-            await getCollection().updateOne(
-                { _id: doc._id },
-                {
-                    $set: {
-                        isPublished: true,
-                        publishedSlug: slug,
-                        publishedContent: yContent || doc.content,
-                        publishedTitle: doc.title,
-                        publishedAt: new Date(),
-                        updatedAt: new Date(),
+            const state = memoMap.get(doc.id);
+            const stateBytes = state
+                ? state instanceof Uint8Array
+                    ? state
+                    : new Uint8Array(state as ArrayBuffer)
+                : null;
+            const yContent = stateBytes ? yDocStateToJSON(stateBytes) : null;
+
+            bulkOps.push({
+                updateOne: {
+                    filter: { _id: doc._id },
+                    update: {
+                        $set: {
+                            isPublished: true,
+                            publishedSlug: slug,
+                            publishedContent: yContent || doc.content,
+                            publishedTitle: doc.title,
+                            publishedAt: now,
+                            updatedAt: now,
+                        },
                     },
                 },
-            );
-            count++;
+            });
         }
-        return count;
+
+        if (bulkOps.length > 0) {
+            await getCollection().bulkWrite(bulkOps);
+        }
+        return bulkOps.length;
     } catch {
         return 0;
     }

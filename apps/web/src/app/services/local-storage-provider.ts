@@ -262,11 +262,60 @@ export class LocalStorageProvider implements StorageProvider {
 
   // ─── Watch ────────────────────────────────────────────────────────
 
-  watch(_notebookId: string, _callback: (changes: FileChange[]) => void): () => void {
-    // TODO: Implement polling-based file watcher for external changes
-    // File System Access API doesn't provide native watch events,
-    // so this will need periodic polling in a future iteration.
-    return () => {};
+  watch(notebookId: string, callback: (changes: FileChange[]) => void): () => void {
+    let active = true;
+    const knownFiles = new Map<string, string>();
+
+    firstValueFrom(this.fsService.listMarkdownFiles(notebookId))
+      .then((files) => {
+        if (!active) return;
+        for (const file of files) {
+          knownFiles.set(file.id, file.lastModified || '');
+        }
+      })
+      .catch(() => {});
+
+    const intervalId = setInterval(async () => {
+      if (!active) return;
+      try {
+        const files = await firstValueFrom(this.fsService.listMarkdownFiles(notebookId));
+        const currentIds = new Set<string>();
+        const changes: FileChange[] = [];
+
+        for (const file of files) {
+          currentIds.add(file.id);
+          const modified = file.lastModified || '';
+          const prevModified = knownFiles.get(file.id);
+          if (prevModified === undefined) {
+            knownFiles.set(file.id, modified);
+            const filename = `${file.name}${file.extension}`;
+            changes.push({ type: 'added', filename });
+          } else if (prevModified !== modified) {
+            knownFiles.set(file.id, modified);
+            const filename = `${file.name}${file.extension}`;
+            changes.push({ type: 'modified', filename });
+          }
+        }
+
+        for (const [id] of knownFiles) {
+          if (!currentIds.has(id)) {
+            knownFiles.delete(id);
+            changes.push({ type: 'removed', filename: id });
+          }
+        }
+
+        if (changes.length > 0 && active) {
+          callback(changes);
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, 3000);
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
   }
 
   // ─── Private helpers ──────────────────────────────────────────────

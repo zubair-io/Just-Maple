@@ -208,19 +208,85 @@ export async function updateLinksForPage(
     );
 
     // Add backlinks to newly linked pages
-    for (const link of addedLinks) {
-        await pages.updateOne({ id: link.pageId }, {
-            $push: {
-                'linksMeta.backlinks': {
-                    pageId: pageId,
-                    title: pageTitle,
-                    type: link.type,
-                } as PageLink,
+    if (addedLinks.length > 0) {
+        const bulkOps = addedLinks.map((link) => ({
+            updateOne: {
+                filter: { id: link.pageId },
+                update: {
+                    $push: {
+                        'linksMeta.backlinks': {
+                            pageId: pageId,
+                            title: pageTitle,
+                            type: link.type,
+                        } as PageLink,
+                    },
+                } as any,
             },
-        } as any);
+        }));
+        await pages.bulkWrite(bulkOps);
     }
 
     // Remove backlinks from pages we no longer link to
+    if (removedLinkIds.length > 0) {
+        await pages.updateMany({ id: { $in: removedLinkIds as string[] } }, {
+            $pull: {
+                'linksMeta.backlinks': { pageId: pageId },
+            },
+        } as any);
+    }
+}
+
+/**
+ * Update forward links, user mentions, and backlinks from Y.Doc instance
+ */
+export async function updateLinksFromYdoc(pageId: string, ydoc: Y.Doc): Promise<void> {
+    const db = getDb();
+    const pages = db.collection('pages');
+
+    const xmlFragment = ydoc.getXmlFragment('prosemirror');
+    const newLinks = extractLinksFromYjs(xmlFragment);
+    const mentions = extractUserMentionsFromYjs(xmlFragment);
+
+    const currentPage = await pages.findOne({ id: pageId });
+    if (!currentPage) return;
+
+    const pageTitle = currentPage.title || 'Untitled';
+    const oldLinks = currentPage.linksMeta?.forwardLinks || [];
+    const oldLinkIds = new Set(oldLinks.map((l: PageLink) => l.pageId));
+    const newLinkIds = new Set(newLinks.map((l) => l.pageId));
+
+    const addedLinks = newLinks.filter((l) => !oldLinkIds.has(l.pageId));
+    const removedLinkIds = [...oldLinkIds].filter((id) => !newLinkIds.has(id));
+
+    await pages.updateOne(
+        { id: pageId },
+        {
+            $set: {
+                'linksMeta.forwardLinks': newLinks,
+                'linksMeta.lastIndexedAt': new Date().toISOString(),
+                mentionsMeta: mentions,
+            },
+        },
+    );
+
+    if (addedLinks.length > 0) {
+        const bulkOps = addedLinks.map((link) => ({
+            updateOne: {
+                filter: { id: link.pageId },
+                update: {
+                    $push: {
+                        'linksMeta.backlinks': {
+                            pageId: pageId,
+                            title: pageTitle,
+                            type: link.type,
+                        } as PageLink,
+                    },
+                } as any,
+            },
+        }));
+        await pages.bulkWrite(bulkOps);
+    }
+
     if (removedLinkIds.length > 0) {
         await pages.updateMany({ id: { $in: removedLinkIds as string[] } }, {
             $pull: {
@@ -531,54 +597,77 @@ export async function getLocalGraph(
     const db = getDb();
     const pages = db.collection('pages');
 
-    // BFS to get nodes within depth
     const visited = new Set<string>();
-    const queue: Array<{ id: string; level: number }> = [{ id: pageId, level: 0 }];
     const nodes: GraphNode[] = [];
     const edges: GraphEdge[] = [];
+    const addedEdges = new Set<string>();
 
-    while (queue.length > 0) {
-        const { id, level } = queue.shift()!;
-        if (visited.has(id) || level > depth) continue;
-        visited.add(id);
+    let currentLevelIds: string[] = [pageId];
 
-        const page = await pages.findOne({
-            id,
-            userId: new ObjectId(userId),
-        });
-        if (!page) continue;
+    for (let level = 0; level <= depth && currentLevelIds.length > 0; level++) {
+        const idsToFetch = currentLevelIds.filter((id) => !visited.has(id));
+        if (idsToFetch.length === 0) break;
 
-        nodes.push({
-            id: page.id,
-            label: page.title || 'Untitled',
-            type: page.type || 'memo',
-            linkCount:
-                (page.linksMeta?.forwardLinks?.length || 0) +
-                (page.linksMeta?.backlinks?.length || 0),
-            isCenter: id === pageId,
-        });
+        for (const id of idsToFetch) {
+            visited.add(id);
+        }
 
-        // Add connected pages to queue
-        const allLinks = [
-            ...(page.linksMeta?.forwardLinks || []),
-            ...(page.linksMeta?.backlinks || []),
-        ];
+        const pageDocs = await pages
+            .find({
+                id: { $in: idsToFetch },
+                userId: new ObjectId(userId),
+            })
+            .toArray();
 
-        for (const link of allLinks) {
-            if (!visited.has(link.pageId)) {
-                queue.push({ id: link.pageId, level: level + 1 });
+        const nextLevelIds: string[] = [];
 
-                // Add edge
-                const isForward = page.linksMeta?.forwardLinks?.some(
-                    (l: PageLink) => l.pageId === link.pageId,
-                );
-                edges.push({
-                    source: isForward ? id : link.pageId,
-                    target: isForward ? link.pageId : id,
-                    type: link.type || 'inline',
-                });
+        for (const page of pageDocs) {
+            nodes.push({
+                id: page.id,
+                label: page.title || 'Untitled',
+                type: page.type || 'memo',
+                linkCount:
+                    (page.linksMeta?.forwardLinks?.length || 0) +
+                    (page.linksMeta?.backlinks?.length || 0),
+                isCenter: page.id === pageId,
+            });
+
+            // Process forward links
+            const forwardLinks: PageLink[] = page.linksMeta?.forwardLinks || [];
+            for (const link of forwardLinks) {
+                const edgeKey = `${page.id}->${link.pageId}`;
+                if (!addedEdges.has(edgeKey)) {
+                    addedEdges.add(edgeKey);
+                    edges.push({
+                        source: page.id,
+                        target: link.pageId,
+                        type: link.type || 'inline',
+                    });
+                }
+                if (level < depth && !visited.has(link.pageId)) {
+                    nextLevelIds.push(link.pageId);
+                }
+            }
+
+            // Process backlinks
+            const backlinks: PageLink[] = page.linksMeta?.backlinks || [];
+            for (const link of backlinks) {
+                const edgeKey = `${link.pageId}->${page.id}`;
+                if (!addedEdges.has(edgeKey)) {
+                    addedEdges.add(edgeKey);
+                    edges.push({
+                        source: link.pageId,
+                        target: page.id,
+                        type: link.type || 'inline',
+                    });
+                }
+                if (level < depth && !visited.has(link.pageId)) {
+                    nextLevelIds.push(link.pageId);
+                }
             }
         }
+
+        currentLevelIds = nextLevelIds;
     }
 
     return { nodes, edges };
@@ -645,6 +734,7 @@ export async function getConnectionGraph(
             tags: 1,
             'linksMeta.forwardLinks': 1,
             'linksMeta.backlinks': 1,
+            mentionsMeta: 1,
         })
         .toArray();
 
@@ -669,8 +759,20 @@ export async function getConnectionGraph(
             pageLinksMap.set(page.id, page.linksMeta.forwardLinks);
         }
 
-        if (page.type === 'memo') {
-            // Try to extract links and user mentions from Y.js content
+        if (page.mentionsMeta?.length > 0) {
+            for (const m of page.mentionsMeta) {
+                const existing = userMentionsMap.get(m.userId);
+                if (existing) {
+                    existing.pageIds.add(page.id);
+                } else {
+                    userMentionsMap.set(m.userId, {
+                        displayName: m.displayName,
+                        pageIds: new Set([page.id]),
+                    });
+                }
+            }
+        } else if (page.type === 'memo' && (!page.linksMeta || !page.mentionsMeta)) {
+            // Fallback for legacy memos that haven't been indexed on save
             try {
                 const state = await getMemoState(page.id);
                 if (state) {
