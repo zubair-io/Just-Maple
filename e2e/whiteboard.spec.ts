@@ -598,30 +598,28 @@ test.describe('Whiteboard', () => {
         }
     });
 
-    test('should sync whiteboard in real-time with collaborators', async ({ browser }) => {
-        const context1 = await browser.newContext();
-        const context2 = await browser.newContext();
-        const page1 = await context1.newPage();
-        const page2 = await context2.newPage();
+    test('should sync whiteboard in real-time with collaborators', async ({
+        authenticatedPage,
+    }) => {
+        await authenticatedPage.goto('/');
+        await authenticatedPage.waitForLoadState('networkidle');
 
+        const newWhiteboardBtn = authenticatedPage
+            .locator('button:has-text("New Whiteboard"), button:has-text("Whiteboard")')
+            .first();
+        if (!(await newWhiteboardBtn.isVisible({ timeout: 3000 }).catch(() => false))) {
+            return;
+        }
+        await newWhiteboardBtn.click();
+        await authenticatedPage.waitForTimeout(1000);
+
+        const whiteboardUrl = authenticatedPage.url();
+        const canvas1 = authenticatedPage.locator('canvas').first();
+        await expect(canvas1).toBeVisible({ timeout: 5000 });
+
+        // Open second page in same authenticated context
+        const page2 = await authenticatedPage.context().newPage();
         try {
-            await page1.goto('/');
-            await page1.waitForLoadState('networkidle');
-
-            const newWhiteboardBtn = page1
-                .locator('button:has-text("New Whiteboard"), button:has-text("Whiteboard")')
-                .first();
-            if (!(await newWhiteboardBtn.isVisible({ timeout: 3000 }).catch(() => false))) {
-                return;
-            }
-            await newWhiteboardBtn.click();
-            await page1.waitForTimeout(1000);
-
-            const whiteboardUrl = page1.url();
-            const canvas1 = page1.locator('canvas').first();
-            await expect(canvas1).toBeVisible({ timeout: 5000 });
-
-            // Open second context on same whiteboard URL
             await page2.goto(whiteboardUrl);
             await page2.waitForLoadState('networkidle');
             const canvas2 = page2.locator('canvas').first();
@@ -630,17 +628,16 @@ test.describe('Whiteboard', () => {
             // Draw on canvas1
             const box1 = await canvas1.boundingBox();
             if (box1) {
-                await page1.mouse.move(box1.x + 100, box1.y + 100);
-                await page1.mouse.down();
-                await page1.mouse.move(box1.x + 200, box1.y + 200, { steps: 5 });
-                await page1.mouse.up();
+                await authenticatedPage.mouse.move(box1.x + 100, box1.y + 100);
+                await authenticatedPage.mouse.down();
+                await authenticatedPage.mouse.move(box1.x + 200, box1.y + 200, { steps: 5 });
+                await authenticatedPage.mouse.up();
             }
 
             await page2.waitForTimeout(1000);
             await expect(canvas2).toBeVisible();
         } finally {
-            await context1.close();
-            await context2.close();
+            await page2.close();
         }
     });
 
