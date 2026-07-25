@@ -3,6 +3,7 @@ import { updateMemoForYJS, getMemoState, memoExists } from '../repositories/memo
 import { realtimeWSService } from './realtime-ws.service';
 import { maybeCreateSnapshot } from './memo-version.service';
 import { indexPage } from '../repositories/search.repo';
+import { updateLinksFromYdoc } from './link.service';
 
 /**
  * YJS Document Manager Service
@@ -188,6 +189,11 @@ class YJSDocumentService {
         try {
             await this.persistDocument(noteId, ydoc);
             console.log(`[YJS] Saved document to database: ${noteId}`);
+
+            // Persist links & mentions metadata to MongoDB
+            updateLinksFromYdoc(noteId, ydoc).catch((err) =>
+                console.error(`[YJS] Failed to update links for ${noteId}:`, err),
+            );
 
             // Check if we should create a version snapshot
             maybeCreateSnapshot(noteId, ydoc).catch((err) => {
