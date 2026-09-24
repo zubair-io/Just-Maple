@@ -1,0 +1,150 @@
+@if (subject) {
+  <mui-button
+    variant="ghost"
+    (pressed)="
+      world.go(
+        propertyInfo()?.lens === 'Activities'
+          ? 'activities/' + subject
+          : propertyInfo()?.lens?.toLowerCase() || 'me'
+      )
+    "
+    >← Back to state</mui-button
+  >
+  <div class="eyebrow">State → evidence → correction</div>
+  <h1>{{ propertyInfo()?.label || property }}</h1>
+  @if (selected(); as state) {
+    <section class="right-now">
+      <small>{{ state.status }}</small>
+      <h2>{{ state.value || "Unknown" }}</h2>
+      <p>{{ state.reason }}</p>
+    </section>
+    <dl class="detail-list">
+      <dt>Selected as of</dt>
+      <dd>{{ state.asOf * 1000 | date: "medium" }}</dd>
+    </dl>
+    @for (c of state.candidates; track c.id) {
+      <article class="panel">
+        <h3>{{ c.value }}</h3>
+        @if (c.sourceQuote) {<blockquote>{{ c.sourceQuote }}</blockquote>}
+        @if (c.provider) {<small>{{ c.provider }}</small>}
+        <p>
+          {{ c.origin }} ·
+          {{ c.sourceAvailable ? "Source available" : "Source unavailable" }}
+        </p>
+        <dl class="detail-list">
+          <dt>Observed</dt>
+          <dd>{{ c.observedAt * 1000 | date: "medium" }}</dd>
+          <dt>Effective from</dt>
+          <dd>{{ c.validFrom * 1000 | date: "medium" }}</dd>
+          <dt>Until</dt>
+          <dd>
+            {{
+              c.validUntil
+                ? (c.validUntil * 1000 | date: "medium")
+                : "Until changed"
+            }}
+          </dd>
+          <dt>Confidence</dt>
+          <dd>
+            {{
+              c.confidence === undefined
+                ? "Not calibrated / unavailable"
+                : c.confidence
+            }}
+          </dd>
+        </dl>
+      </article>
+    }
+    <div class="actions">
+      <mui-button (pressed)="evidence()">Inspect sources</mui-button
+      ><mui-button variant="primary" (pressed)="correct()">{{
+        state.value ? "This is wrong / Edit" : "Add a correction"
+      }}</mui-button>
+    </div>
+  } @else {
+    <p>There is no projection for this state.</p>
+  }
+  @if (editing) {
+    <section class="panel">
+      <h2>Your correction</h2>
+      <div class="field">
+        <mui-input ariaLabel="Corrected state" [(value)]="value" />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="state-start">Effective from · this Mac's local time</label
+          ><input id="state-start" type="datetime-local" [(ngModel)]="start" />
+        </div>
+        <div class="field">
+          <label for="state-duration">Scope</label
+          ><select id="state-duration" [(ngModel)]="duration">
+            <option value="900">For 15 minutes</option>
+            <option value="3600">For one hour</option>
+            <option value="86400">For 24 hours</option>
+            @if (propertyInfo()?.durable) {
+              <option value="durable">Until changed</option>
+            }
+          </select>
+        </div>
+      </div>
+      <p>
+        Your correction takes precedence for this period. Earlier source
+        evidence remains inspectable.
+      </p>
+      <div class="actions">
+        <mui-button
+          variant="primary"
+          [disabled]="!value.trim() || world.bridge.pending()"
+          (pressed)="save()"
+          >Save correction</mui-button
+        ><mui-button (pressed)="revision = world.data().revision"
+          >Use latest revision, keep draft</mui-button
+        ><mui-button (pressed)="editing = false">Cancel</mui-button>
+      </div>
+    </section>
+  }
+  @for (source of sources(); track source.id) {
+    <section class="panel">
+      <small>{{ source.source.connector }}</small>
+      <p class="event">{{ source.content }}</p>
+    </section>
+  }
+} @else {
+  <div class="eyebrow">Your world / {{ lens }}</div>
+  <h1>{{ lens }}</h1>
+  <p>What is true now, with the evidence and freshness behind it.</p>
+  @if (lens === "Health") {
+    <section class="right-now">
+      <h2>Health is not enabled.</h2>
+      <p>
+        No health measurements are collected or inferred for this release. A
+        task tagged with a Health activity does not enable health access.
+      </p>
+    </section>
+  } @else {
+    <div class="state-grid">
+      @for (p of properties(); track p.key) {
+        @if (projection(p.key); as state) {
+          <button class="state-card" (click)="world.inspect(state)">
+            <small>{{ p.label }} · {{ state.status }}</small>
+            <h3>{{ state.value || "Unknown" }}</h3>
+            <span>Evidence & correction →</span>
+          </button>
+        }
+      }
+    </div>
+  }
+  @if (lens === "Home") {
+    <p class="footnote">
+      Connected device readings do not prove the entire home is normal. Identity
+      mapping and property-specific adapters must provide scoped evidence.
+    </p>
+  }
+  @if (lens === "Me") {
+    <div class="actions">
+      <mui-button variant="ghost" (pressed)="world.go('profile-evidence')"
+        >Review source assertions about you</mui-button
+      >
+    </div>
+  }
+}

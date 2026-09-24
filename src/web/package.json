@@ -1,0 +1,50 @@
+{
+  "name": "just-maple-web",
+  "private": true,
+  "scripts": {
+    "start": "ng serve just-maple --host 127.0.0.1",
+    "build": "ng build just-maple",
+    "test": "ng test just-maple --watch=false",
+    "build:ui": "ng build maple-common"
+  },
+  "dependencies": {
+    "@angular/cdk": "^21.2.0",
+    "@angular/common": "^21.2.0",
+    "@angular/compiler": "^21.2.0",
+    "@angular/core": "^21.2.0",
+    "@angular/forms": "^21.2.0",
+    "@angular/platform-browser": "^21.2.0",
+    "@angular/router": "^21.2.0",
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-code-block-lowlight": "^3.31.3",
+    "@tiptap/extension-placeholder": "^3.31.3",
+    "@tiptap/extension-table": "^3.31.3",
+    "@tiptap/extension-table-cell": "^3.31.3",
+    "@tiptap/extension-table-header": "^3.31.3",
+    "@tiptap/extension-table-row": "^3.31.3",
+    "@tiptap/extension-task-item": "^3.31.3",
+    "@tiptap/extension-task-list": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
+    "@types/markdown-it": "^14.2.0",
+    "lowlight": "^3.3.0",
+    "markdown-it": "^14.1.1",
+    "marked": "^17.0.1",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@angular/build": "^21.2.8",
+    "@angular/cli": "^21.2.3",
+    "@angular/compiler-cli": "^21.2.0",
+    "@playwright/test": "^1.59.1",
+    "@tailwindcss/postcss": "^4.1.0",
+    "jsdom": "^28.0.0",
+    "ng-packagr": "^21.2.0",
+    "prettier": "^3.9.8",
+    "tailwindcss": "^4.1.0",
+    "typescript": "~5.9.2",
+    "vitest": "^4.0.8"
+  }
+}

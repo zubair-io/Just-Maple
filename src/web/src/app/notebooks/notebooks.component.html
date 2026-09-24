@@ -1,0 +1,41 @@
+@if (!notes.book()) {
+  <div class="eyebrow">Your own words</div>
+  <div class="row"><div><h1>Notes & notebooks</h1><p>A place for the things you want to keep.</p></div><div class="actions"><mui-button (pressed)="notes.connect()">Connect folder</mui-button><mui-button variant="primary" [disabled]="!notes.catalog().cloudAvailable" (pressed)="show('book')">New notebook</mui-button></div></div>
+  <p class="storage-note">{{notes.catalog().cloudAvailable ? 'Notebooks in your Just Maple iCloud folder appear automatically.' : companion ? 'iCloud Drive is unavailable. Connect a folder from Files to start.' : 'iCloud Drive is unavailable. Connect a folder on your Mac to start.'}}</p>
+  <div class="section-label">Notebooks</div>
+  <div class="notebook-covers">
+    @for (book of notes.catalog().notebooks; track book.id; let index=$index) {
+      <button class="memo-cover" (click)="notes.selectBook(book.id)">
+        <small>MAPLE / MEMO BOOK</small><h2>{{book.name}}</h2><span>No. {{index+1}} / PERSONAL NOTES</span><p>Space to work things out.</p><div class="cover-bottom"><small>{{book.cloud ? 'ICLOUD DRIVE' : 'CONNECTED FOLDER'}}</small><p>{{book.notes.length}} notes</p><b>Open notebook →</b></div>
+        @if (!book.available) {<p>{{book.error}}</p>}
+      </button>
+    } @empty {<section class="quiet-state"><h3>A notebook is a folder.</h3><p>Connect an existing folder of Markdown files, or create a notebook in iCloud Drive.</p></section>}
+  </div>
+} @else {
+  @if (notes.book(); as book) {
+    <div class="row"><mui-button variant="ghost" (pressed)="notes.selectBook('')">← All notebooks</mui-button><span>{{book.name}}</span><div class="actions"><mui-button [disabled]="!book.available" variant="primary" (pressed)="show('note')">+ New note</mui-button>@if (!book.cloud) {<mui-button variant="ghost" (pressed)="notes.disconnect()">Disconnect folder</mui-button>}</div></div>
+    @if (notes.loading()) {<p role="status">Opening note{{ book.cloud ? ' · downloading from iCloud if needed' : '' }}…</p>}
+    <div class="notebook-layout" [class.editor-open]="notes.document()">
+      <aside class="note-list"><h2>{{book.name}}</h2><small>{{book.notes.length}} NOTES · {{book.cloud ? 'ICLOUD' : 'FOLDER'}}</small>
+        @for (note of book.notes; track note.path) {<button [class.selected]="notes.document()?.path===note.path" (click)="notes.open(note.path)"><strong>{{note.name}}</strong><small>{{note.modifiedAt*1000|date:'mediumDate'}}</small></button>}
+        <p class="folder-location">{{book.location}}</p>
+      </aside>
+      <section class="note-paper">
+        @if (notes.document(); as doc) {
+          <div class="mobile-note-back"><mui-button variant="ghost" (pressed)="notes.closeNote()">← Notes in this notebook</mui-button></div>
+          <div class="paper-heading"><small>{{doc.path}} · Markdown</small><div class="actions"><small role="status">{{notes.status()}}</small><mui-button [disabled]="notes.saving() || !notes.dirty()" (pressed)="notes.flush()">Save</mui-button><mui-button variant="ghost" (pressed)="show('copy')">Save a copy</mui-button></div></div>
+          @if (doc.indexingWarning) {<p class="indexing-warning" role="status">{{doc.indexingWarning}}</p>}
+          @for (key of [notes.generation()]; track key) {<maple-markdown-editor [initial]="notes.initial()" (changed)="notes.change($event)" />}
+        } @else {<h2>A little space to think.</h2><p>Open a note or start a new one.</p>}
+      </section>
+    </div>
+  }
+}
+@if (notes.error()) {<div class="error notebook-error" role="alert">{{notes.error()}}</div>}
+@if (dialog) {
+  <section class="notebook-name panel" role="dialog" aria-label="Name your notebook or note">
+    <h2>{{dialog==='book' ? 'New iCloud notebook' : dialog==='copy' ? 'Save a copy' : 'New note'}}</h2>
+    <mui-input ariaLabel="Name" [(value)]="name" placeholder="Name" />
+    <div class="actions"><mui-button variant="primary" [disabled]="!name.trim()" (pressed)="submit()">{{dialog==='copy' ? 'Save copy' : 'Create'}}</mui-button><mui-button (pressed)="dialog=''">Cancel</mui-button></div>
+  </section>
+}

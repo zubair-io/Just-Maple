@@ -1,0 +1,26 @@
+// Residue only — everything else moved to template utility classes
+// (see mui-button.component.ts/.html) per the Tailwind conversion recipe
+// (styles/TAILWIND-CONVERSION.md). What's left needs raw CSS: a
+// content/geometry pseudo-element and a custom-timed @keyframes animation,
+// both explicitly allowed as residue by the conversion constraints.
+
+// Minimum 44×44 hit target (button.md Accessibility) even when the visible
+// box is smaller — an invisible centered pad, not a bigger box.
+.mui-button::before {
+  content: '';
+  position: absolute;
+  inset: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+.spinner {
+  animation: mui-button-spin 700ms linear infinite;
+}
+
+@keyframes mui-button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

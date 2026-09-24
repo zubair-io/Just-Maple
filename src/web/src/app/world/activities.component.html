@@ -1,0 +1,151 @@
+@if (!id()) {
+  <div class="eyebrow">Activities / your life</div>
+  <div class="row">
+    <h1>Activities</h1>
+    <mui-button variant="primary" (pressed)="world.go('activities/new')"
+      >+ New activity</mui-button
+    >
+  </div>
+  <p>
+    Ongoing areas and things you’re pursuing. Tasks can connect to more than
+    one.
+  </p>
+  @for (kind of ["area", "pursuit"]; track kind) {
+    <div class="section-label">
+      {{ kind === "area" ? "Ongoing areas" : "Current pursuits" }}
+    </div>
+    <div class="activity-grid">
+      @for (a of list(kind); track a.id) {
+        <button class="activity-card" (click)="world.go('activities/' + a.id)">
+          <h3>{{ a.name }}</h3>
+          <p>
+            {{ world.state(a.id, "milestone")?.value || a.lifecycle }} ·
+            {{ world.visibleCount(a.id) }} open tasks
+          </p>
+        </button>
+      } @empty {
+        <p>No {{ kind === "area" ? "areas" : "pursuits" }} yet.</p>
+      }
+    </div>
+  }
+  <details>
+    <summary>Archived activities</summary>
+    @for (a of world.data().activities; track a.id) {
+      @if (a.lifecycle === "archived") {
+        <mui-button variant="ghost" (pressed)="world.go('activities/' + a.id)"
+          >{{ a.name }} · archived</mui-button
+        >
+      }
+    }
+  </details>
+} @else if (editing()) {
+  <mui-button variant="ghost" (pressed)="world.go('activities')"
+    >← Activities</mui-button
+  >
+  <h1>{{ id() === "new" ? "New activity" : "Edit activity" }}</h1>
+  <p>An area of life or a pursuit—not a concrete task.</p>
+  <div class="field">
+    <label>Name</label
+    ><mui-input ariaLabel="Activity name" [(value)]="draft.name" />
+  </div>
+  <div class="field">
+    <label for="activity-kind">Kind</label
+    ><select id="activity-kind" [(ngModel)]="draft.kind">
+      <option value="area">Ongoing area</option>
+      <option value="pursuit">Pursuit</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="activity-purpose">Purpose or outcome · optional</label
+    ><textarea id="activity-purpose" [(ngModel)]="draft.purpose"></textarea>
+  </div>
+  <div class="actions">
+    <mui-button
+      variant="primary"
+      [disabled]="!draft.name.trim() || world.bridge.pending()"
+      (pressed)="save()"
+      >Save activity</mui-button
+    >
+    @if (activity()) {
+      <mui-button (pressed)="edit()">Reload latest version</mui-button
+      ><mui-button (pressed)="editing.set(false)">Cancel edit</mui-button>
+    }
+  </div>
+} @else if (activity(); as a) {
+  <mui-button variant="ghost" (pressed)="world.go('activities')"
+    >← Activities</mui-button
+  >
+  <div class="row">
+    <h1>{{ a.name }}</h1>
+    <mui-button (pressed)="edit()">Edit</mui-button>
+  </div>
+  <p>
+    {{ a.kind === "area" ? "Ongoing area" : "Pursuit" }} · {{ a.lifecycle }}
+  </p>
+  <p>{{ a.purpose || "No purpose or outcome added." }}</p>
+  @if (world.state(a.id, "milestone"); as state) {
+    <section class="right-now">
+      <div class="row">
+        <div>
+          <small>Current state · {{ state.status }}</small>
+          <h3>{{ state.value || "Unknown" }}</h3>
+        </div>
+        <mui-button variant="ghost" (pressed)="world.inspect(state)"
+          >Why this state? / Edit →</mui-button
+        >
+      </div>
+    </section>
+  }
+  <div class="actions">
+    <mui-button
+      (pressed)="lifecycle(a.lifecycle === 'paused' ? 'active' : 'paused')"
+      >{{ a.lifecycle === "paused" ? "Resume" : "Pause" }}</mui-button
+    >
+    @if (a.kind === "pursuit") {
+      <mui-button
+        (pressed)="
+          lifecycle(a.lifecycle === 'completed' ? 'active' : 'completed')
+        "
+        >{{
+          a.lifecycle === "completed" ? "Reopen pursuit" : "Complete pursuit"
+        }}</mui-button
+      >
+    }
+    <mui-button
+      variant="ghost"
+      (pressed)="lifecycle(a.lifecycle === 'archived' ? 'active' : 'archived')"
+      >{{
+        a.lifecycle === "archived" ? "Restore activity" : "Archive activity"
+      }}</mui-button
+    >
+  </div>
+  <small>Activity lifecycle never completes or cancels its tasks.</small>
+  <div class="row">
+    <h2>Tasks · {{ world.visibleCount(a.id) }} open</h2>
+    <mui-button (pressed)="world.go('tasks/new?activity=' + a.id)">Add task</mui-button>
+  </div>
+  <maple-ranked-task-rows [items]="ranked()" [details]="true" />
+  <h2>Supporting evidence</h2>
+  @for (link of links(); track link.suggestionID) {<article class="item"><p>{{ link.reason }}</p>@if (link.quote) {<blockquote>{{ link.quote }}</blockquote>}<mui-button variant="ghost" (pressed)="evidence(link.eventID)">Inspect supporting source</mui-button></article>}
+  <details><summary>Correct this grouping</summary>
+  <p>Move selected tasks to a new activity, or merge all tasks into an existing one.</p>
+  <label for="regroup-target">Destination</label><select id="regroup-target" [(ngModel)]="targetID"><option value="">New activity</option>@for (other of world.data().activities; track other.id) {@if(other.id !== a.id && other.lifecycle === 'active') {<option [value]="other.id">{{ other.name }}</option>}}</select>
+  @if (!targetID) {<mui-input ariaLabel="New activity name" [(value)]="splitName" />}
+  @for (item of ranked(); track item.id) {<div class="regroup-choice"><mui-checkbox [label]="item.task.title" [checked]="selected.has(item.suggestion?.id || item.task.id)" (checkedChange)="select(item.suggestion?.id || item.task.id, $event)" /></div>}
+  <div class="actions"><mui-button [disabled]="!selected.size || (!targetID && !splitName.trim()) || world.bridge.pending()" (pressed)="regroup(false)">Move selected tasks</mui-button><mui-button [disabled]="!targetID || world.bridge.pending()" (pressed)="regroup(true)">Merge all tasks</mui-button></div><p>Remove this activity and its tags. Tasks and source evidence stay saved. The same evidence will not immediately recreate it.</p><mui-button (pressed)="remove()">Remove activity</mui-button></details>
+  <h2>Related context</h2>
+  <p>Context explicitly linked through this Activity’s tasks.</p>
+  <div class="tag-row">@for (person of people(); track person) {<span class="activity-tag">{{ person }}</span>} @empty {<small>No people linked yet.</small>}</div>
+  <div class="actions">@for (id of evidenceIDs(); track id) {<mui-button (pressed)="evidence(id)">Inspect linked source</mui-button>}</div>
+  @if (source(); as event) {<article class="panel"><small>{{ event.source.connector }}</small><p class="event">{{ event.content }}</p></article>}
+  <h2>History</h2>
+  @for (h of history(); track h.id) {
+    <div class="item">
+      <b>{{ h.type.replaceAll(".", " ").replaceAll("_", " ") }}</b>
+      <p>{{ h.recordedAt * 1000 | date: "medium" }}</p>
+    </div>
+  }
+} @else {
+  <h1>Activity unavailable</h1>
+  <p>This activity could not be found.</p>
+}

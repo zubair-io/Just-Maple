@@ -1,0 +1,115 @@
+<mui-button variant="ghost" (pressed)="world.go('tasks')"
+  >← Tasks</mui-button
+>
+<div class="eyebrow">Review first</div>
+@if (suggestion(); as s) {
+  <h1>
+    {{
+      s.reviewStatus === "pending"
+        ? "Action from your source"
+        : s.reviewStatus === "accepted"
+          ? "Task added"
+          : s.reviewStatus === "rejected"
+            ? "Action dismissed"
+            : "Action no longer current"
+    }}
+  </h1>
+  <p>
+    Review the action and original messages. Confirming keeps it as a saved task; later evidence can update its progress.
+  </p>
+  <h2>{{ s.candidate.title }}</h2>
+  <maple-task-evidence [nodeID]="'source:' + s.id" />
+  @if (s.sourceSubject) {<p><strong>{{ s.sourceSubject }}</strong><br>{{ s.sourceSender }}</p>}
+  <p>{{ s.candidate.description }}</p>
+  <div class="tag-row">@for (id of s.candidate.activityIDs; track id) {
+    <button class="activity-tag" (click)="world.go('activities/' + id)">{{ world.activity(id)?.name }}</button>
+  }</div>
+  <mui-button (pressed)="evidence()">Show original message</mui-button>
+  @if (source(); as event) {<article class="panel"><p class="event">{{ event.content }}</p></article>}
+  <section class="right-now">
+    <p>“{{ s.quote }}”</p>
+    <small
+      >{{ s.provider }} · Confidence
+      {{ s.confidence === undefined ? "not calibrated" : s.confidence }}</small
+    >
+    <p>{{ s.deadlineExplanation }}</p>
+  </section>
+  @if (s.linkedTaskID) {
+    <section class="attention-row">
+      <h3>This is an update proposal for an existing task.</h3>
+      <p>
+        Your edits will not be applied until you accept. Review the linked task
+        first.
+      </p>
+      <mui-button (pressed)="world.go('tasks/' + s.linkedTaskID)"
+        >Open linked task</mui-button
+      >
+    </section>
+  }
+  @if (s.possibleDuplicateIDs.length) {
+    <p class="error">
+      Possible duplicate: a matching task already exists. Review before adding.
+    </p>
+  }
+  @if (s.reviewStatus === "pending") {
+    <div class="field">
+      <label>Proposed task · editable</label
+      ><mui-input ariaLabel="Proposed task title" [(value)]="draft.title" />
+    </div>
+    <div class="field"><label for="suggested-details">What to do</label><textarea id="suggested-details" [(ngModel)]="draft.description"></textarea></div>
+    <fieldset class="field">
+      <legend>Proposed activities</legend>
+      <div class="tag-row">
+        @for (a of world.data().activities; track a.id) {
+          <mui-checkbox
+            [label]="a.name"
+            [checked]="draft.activityIDs.includes(a.id)"
+            (checkedChange)="tag(a.id, $event)"
+          />
+        }
+      </div>
+    </fieldset>
+    <div class="form-grid">
+      <div class="field">
+        <label for="suggested-date">Due date · confirm interpretation</label
+        ><input id="suggested-date" type="date" [(ngModel)]="dueDate" />
+      </div>
+      <div class="field">
+        <label>Time zone</label
+        ><mui-input ariaLabel="Suggested due time zone" [(value)]="zone" />
+      </div>
+    </div>
+    <div class="field">
+      <label>Responsible person · private label</label
+      ><mui-input
+        ariaLabel="Suggested responsible person"
+        [(value)]="draft.assignee"
+      />
+    </div>
+    <div class="actions">
+      <mui-button
+        variant="primary"
+        [disabled]="!draft.title.trim() || world.bridge.pending()"
+        (pressed)="review('accept')"
+        >{{ s.linkedTaskID ? "Apply reviewed update" : "Add task" }}</mui-button
+      ><mui-button (pressed)="review('reject')">Not a task</mui-button>
+    </div>
+  }
+  @if (s.reviewStatus === "rejected") {
+    <mui-button (pressed)="review('undoReject')">Undo dismissal</mui-button>
+  }
+  @if (s.reviewStatus === "accepted") {
+    <div class="actions">
+      <mui-button
+        variant="primary"
+        (pressed)="world.go('tasks/' + s.acceptedTaskID)"
+        >Open task</mui-button
+      ><mui-button (pressed)="review('detach')"
+        >Undo link · keep task</mui-button
+      >
+    </div>
+    <p>Undo detaches this suggestion; the task and any edits remain intact.</p>
+  }
+} @else {
+  <h1>Action unavailable</h1>
+}

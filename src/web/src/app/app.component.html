@@ -1,0 +1,56 @@
+@if (companion) {<maple-companion />} @else {
+<mui-app-shell navPlacement="side"
+  ><aside slot="nav" class="sidebar">
+    <div class="brand">
+      <img src="maple-leaf.svg" alt="Just Maple leaf" />Just Maple
+    </div>
+    @if (s().loaded && s().step >= 0) {
+      <mui-sidebar
+        role="tree"
+        aria-label="Workspace navigation"
+        [sections]="steps()"
+        [activeId]="'' + s().step"
+        (activeIdChange)="step($event)"
+      />
+    } @else {
+      <mui-sidebar
+        role="tree"
+        aria-label="Workspace navigation"
+        [sections]="sections"
+        [activeId]="active()"
+        (activeIdChange)="navigate($event)"
+      />
+    }
+    <footer>
+      {{ s().name || "Your knowledge lives here." }}<br /><small
+        >On your Mac. In your control.</small
+      >
+    </footer>
+  </aside>
+  <main>
+    @if (bridge.error() || s().error) {
+      <div class="error notice" role="alert">
+        {{ bridge.error() || s().error
+        }}<mui-button
+          variant="ghost"
+          (pressed)="bridge.act({ action: 'clearError' })"
+          >Dismiss</mui-button
+        >
+      </div>
+    }
+    @if (
+      s().message &&
+      ["connections", "processing"].includes(active()!)
+    ) {
+      <p class="notice" role="status">{{ s().message }}</p>
+    }
+    @if (!s().loaded) {
+      <h1>Opening your workspace…</h1>
+    } @else if (s().step >= 0) {
+      <maple-onboarding />
+    } @else {
+      <router-outlet />
+    }</main
+></mui-app-shell>
+
+}
