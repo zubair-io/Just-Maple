@@ -1,0 +1,638 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://just-maple.invalid/evaluation/daily-actions-v1.schema.json",
+  "title": "Daily actions local evaluation files",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Manifest"
+    },
+    {
+      "$ref": "#/$defs/Labels"
+    },
+    {
+      "$ref": "#/$defs/Predictions"
+    }
+  ],
+  "$defs": {
+    "SourceIdentity": {
+      "type": "object",
+      "properties": {
+        "connector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accountRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "externalID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "connector",
+        "accountRef",
+        "externalID",
+        "revision"
+      ],
+      "additionalProperties": false
+    },
+    "ModelEvidence": {
+      "type": "object",
+      "properties": {
+        "eventID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date-time"
+        },
+        "sentAt": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "eventID",
+        "occurredAt",
+        "sentAt"
+      ],
+      "additionalProperties": false
+    },
+    "SourceSample": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stratum": {
+          "enum": [
+            "conversational_info",
+            "direct_obligation",
+            "waiting_delegated",
+            "calendar_time_sensitive",
+            "noise_transport"
+          ]
+        },
+        "split": {
+          "enum": [
+            "holdout",
+            "tuning"
+          ]
+        },
+        "sourceIdentity": {
+          "$ref": "#/$defs/SourceIdentity"
+        },
+        "occurredAt": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date-time"
+        },
+        "snapshotAt": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date-time"
+        },
+        "eligible30Days": {
+          "type": "boolean"
+        },
+        "localEvidenceRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "stratum",
+        "split",
+        "sourceIdentity",
+        "occurredAt",
+        "snapshotAt",
+        "eligible30Days"
+      ],
+      "additionalProperties": false
+    },
+    "TaskSample": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "taskID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "snapshotID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "split": {
+          "enum": [
+            "holdout",
+            "tuning"
+          ]
+        },
+        "sourceEventIDs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "localEvidenceRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "taskID",
+        "revision",
+        "snapshotID",
+        "split",
+        "sourceEventIDs"
+      ],
+      "additionalProperties": false
+    },
+    "Snapshot": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date-time"
+        },
+        "split": {
+          "enum": [
+            "holdout",
+            "tuning"
+          ]
+        },
+        "needsYouVisibleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "needsYouTaskSampleIDs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "maxItems": 10,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "at",
+        "split",
+        "needsYouVisibleCount",
+        "needsYouTaskSampleIDs"
+      ],
+      "additionalProperties": false
+    },
+    "Manifest": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "manifest"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "datasetKind": {
+          "enum": [
+            "live_local",
+            "synthetic_scorer_test"
+          ]
+        },
+        "selection": {
+          "type": "object",
+          "properties": {
+            "seed": {
+              "type": "string",
+              "minLength": 1
+            },
+            "method": {
+              "type": "string",
+              "minLength": 1
+            },
+            "frozenAt": {
+              "type": "string",
+              "minLength": 1,
+              "format": "date-time"
+            },
+            "holdoutFrozenBeforeTuning": {
+              "const": true
+            }
+          },
+          "required": [
+            "seed",
+            "method",
+            "frozenAt",
+            "holdoutFrozenBeforeTuning"
+          ],
+          "additionalProperties": false
+        },
+        "sourceSamples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceSample"
+          }
+        },
+        "taskSamples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaskSample"
+          }
+        },
+        "snapshots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Snapshot"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "id",
+        "datasetKind",
+        "selection",
+        "sourceSamples",
+        "taskSamples",
+        "snapshots"
+      ],
+      "additionalProperties": false
+    },
+    "SourceLabel": {
+      "type": "object",
+      "properties": {
+        "sampleID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "judgment": {
+          "enum": [
+            "obligation",
+            "non_obligation",
+            "ambiguous"
+          ]
+        },
+        "obligations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "matchedPredictionIDs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "id",
+              "matchedPredictionIDs"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "sampleID",
+        "judgment",
+        "obligations"
+      ],
+      "additionalProperties": false
+    },
+    "TaskLabel": {
+      "type": "object",
+      "properties": {
+        "sampleID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionable": {
+          "enum": [
+            "yes",
+            "no",
+            "ambiguous"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "sampleID",
+        "actionable"
+      ],
+      "additionalProperties": false
+    },
+    "CompletionLabel": {
+      "type": "object",
+      "properties": {
+        "completionID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "support": {
+          "enum": [
+            "supported",
+            "unsupported",
+            "ambiguous"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewer": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "completionID",
+        "support"
+      ],
+      "additionalProperties": false
+    },
+    "Labels": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "labels"
+        },
+        "manifestID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceLabels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceLabel"
+          }
+        },
+        "taskLabels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaskLabel"
+          }
+        },
+        "completionLabels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CompletionLabel"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "manifestID",
+        "sourceLabels",
+        "taskLabels",
+        "completionLabels"
+      ],
+      "additionalProperties": false
+    },
+    "SourcePrediction": {
+      "type": "object",
+      "properties": {
+        "sampleID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed",
+            "pending",
+            "skipped"
+          ]
+        },
+        "surfacedTaskIDs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "modelEvidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ModelEvidence"
+          }
+        },
+        "needsYouTaskIDs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "sampleID",
+        "status",
+        "surfacedTaskIDs",
+        "modelEvidence",
+        "needsYouTaskIDs"
+      ],
+      "additionalProperties": false
+    },
+    "TaskPrediction": {
+      "type": "object",
+      "properties": {
+        "sampleID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "taskID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surface": {
+          "enum": [
+            "needs_you",
+            "waiting",
+            "later",
+            "history"
+          ]
+        },
+        "modelEvidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ModelEvidence"
+          }
+        }
+      },
+      "required": [
+        "sampleID",
+        "taskID",
+        "surface",
+        "modelEvidence"
+      ],
+      "additionalProperties": false
+    },
+    "Completion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sampleKind": {
+          "enum": [
+            "source",
+            "task"
+          ]
+        },
+        "sampleID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "taskID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidenceIDs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "id",
+        "sampleKind",
+        "sampleID",
+        "taskID",
+        "evidenceIDs"
+      ],
+      "additionalProperties": false
+    },
+    "Predictions": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "kind": {
+          "const": "predictions"
+        },
+        "manifestID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pipelineVersion": {
+              "type": "string",
+              "minLength": 1
+            },
+            "at": {
+              "type": "string",
+              "minLength": 1,
+              "format": "date-time"
+            },
+            "wholePipeline": {
+              "const": true
+            }
+          },
+          "required": [
+            "id",
+            "pipelineVersion",
+            "at",
+            "wholePipeline"
+          ],
+          "additionalProperties": false
+        },
+        "sourcePredictions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourcePrediction"
+          }
+        },
+        "taskPredictions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaskPrediction"
+          }
+        },
+        "automaticCompletions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Completion"
+          }
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "kind",
+        "manifestID",
+        "run",
+        "sourcePredictions",
+        "taskPredictions",
+        "automaticCompletions"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

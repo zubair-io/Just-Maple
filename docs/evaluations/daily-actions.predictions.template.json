@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "kind": "predictions",
+  "manifestID": "daily-actions-UNLABELED-TEMPLATE",
+  "run": {
+    "id": "UNEXECUTED-TEMPLATE",
+    "pipelineVersion": "REPLACE_WITH_VERSION",
+    "at": "2026-09-23T00:00:00Z",
+    "wholePipeline": true
+  },
+  "sourcePredictions": [],
+  "taskPredictions": [],
+  "automaticCompletions": []
+}
