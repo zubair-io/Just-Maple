@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Just Maple reads selected calendar events to understand your plans. It does not modify calendars.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Just Maple reads names, organizations, email addresses and phone numbers to build your local contact context.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Just Maple connects to your selected Home Assistant server to read entity states.</string>
+</dict>
+</plist>
