@@ -33,6 +33,7 @@ final class AppModel {
     }
     var running = false
     var busy = false
+    var downstreamBusy = false
     var ready = false
     var loaded = false
     var message = "Your context database lives on this Mac."
@@ -41,6 +42,7 @@ final class AppModel {
     var claims: [Claim] = []
     var decisions: [Decision] = []
     var queue: [QueueItem] = []
+    var processingQueueCounts: [String:Int] = [:]
     var work: [WorkItem] = []
     var count = 0
     var world: WorldSnapshot?
@@ -124,8 +126,9 @@ final class AppModel {
             taskExtractionQueue = try await store.taskExtractionQueue()
             claims = try await store.state()
             importantPeople = try await store.people()
-            decisions = try await store.decisions().reversed()
-            queue = try await store.queue()
+            decisions = try await store.recentDecisions(limit:30)
+            queue = try await store.recentQueue(limit:100)
+            processingQueueCounts = try await store.processingQueueCounts()
             work = try await store.workItems()
             count = try await store.eventCount()
             appleContacts = try await store.appleRecords("apple_contacts")
@@ -230,14 +233,33 @@ final class AppModel {
         } catch {localIntelligenceStatus="State or task learning needs attention. Evidence is saved; retry from Processing."}
     }
 
-    func tick() async {
-        guard running, !busy, let classifier, let store else { return }
+    func tick(classifier override: (any Classifier)? = nil) async {
+        guard running, !busy, let classifier = override ?? classifier, let store else { return }
         busy = true
         defer { busy = false }
         do {
-            let result = try await IntelligenceEngine(store: store, classifier: classifier).run(limit: 1)
-            if result.completed > 0 { message = "Learned from a new event. Its decision and evidence are below." }
+            let result = try await withThrowingTaskGroup(of: RunReport.self) { group in
+                for _ in 0..<2 {
+                    group.addTask { try await IntelligenceEngine(store: store, classifier: classifier).run(limit: 4) }
+                }
+                var total = (completed: 0, deferred: 0)
+                for try await report in group {
+                    total.completed += report.completed; total.deferred += report.deferred
+                }
+                return total
+            }
+            guard result.completed > 0 || result.deferred > 0 else {return}
+            if result.completed > 0 { message = "Jev classified \(result.completed) events. Decisions and evidence are in History." }
             if result.deferred > 0 { message = "Jev could not complete a request. The event is saved for retry." }
+            await refresh()
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func extractionTick() async {
+        guard running, !downstreamBusy, let store else {return}
+        downstreamBusy = true
+        defer {downstreamBusy = false}
+        do {
             if running {
                 if try await FactExtractionEngine(store: store, extractor: factExtractor).runOne() {
                     message = "Fact extraction finished. Source-linked assertions are available in People & context."

@@ -103,6 +103,7 @@ export interface Snapshot {
   decisions: Decision[];
   work: Work[];
   queue: Job[];
+  processingQueueCounts?: Record<string, number>;
   factQueue: Job[];
   calendarChoices: Choice[];
   selectedCalendarIDs: string[];
@@ -367,6 +368,7 @@ export class NativeBridge implements OnDestroy {
       this.pending.set(false);
     }
   }
+  async historyInbox<T>(cursor?: unknown,connector?:string): Promise<T> { return this.query<T>({action:"historyInbox",cursor,connector}); }
   async history(before?: number, subjects: string[] = []): Promise<History[]> {
     return this.query({ action: "worldHistory", before, subjects });
   }

@@ -20,12 +20,25 @@ struct JustMapleApp: App {
                     }
                     await model.start()
                     while !Task.isCancelled {
-                        await model.tick()
                         await model.pollMessages()
                         await model.pollApple()
                         await model.pollHome()
                         await model.pollGoogle()
                         try? await Task.sleep(for: .seconds(3))
+                    }
+                }
+                .task {
+                    guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil, !ProcessInfo.processInfo.arguments.contains("--testing"), !ProcessInfo.processInfo.arguments.contains("--cloud-diagnostics") else {return}
+                    while !Task.isCancelled {
+                        await model.tick()
+                        try? await Task.sleep(for: .seconds(0.25))
+                    }
+                }
+                .task {
+                    guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil, !ProcessInfo.processInfo.arguments.contains("--testing"), !ProcessInfo.processInfo.arguments.contains("--cloud-diagnostics") else {return}
+                    while !Task.isCancelled {
+                        await model.extractionTick()
+                        try? await Task.sleep(for: .seconds(1))
                     }
                 }
                 .task {

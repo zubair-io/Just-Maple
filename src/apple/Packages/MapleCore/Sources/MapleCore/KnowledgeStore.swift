@@ -12,6 +12,7 @@ public actor KnowledgeStore {
         try db.migrateTaskActions()
         try db.migrateWaitingFollowUps()
         try db.migrateObligationAggregation()
+        try db.migrateProcessingSchedule()
     }
 
     /// Event and queue insertion are atomic. Returns the canonical ID on duplicate delivery.
@@ -105,6 +106,11 @@ public actor KnowledgeStore {
         Claim(id: row["id"]!, subject: row["subject"]!, predicate: row["predicate"]!, value: row["value"]!,
               evidenceEventID: row["evidence_event_id"]!, observedAt: Date(timeIntervalSince1970: Double(row["observed_at"]!)!),
               confidence: Double(row["confidence"]!)!, origin: row["origin"]!)
+    }
+
+    public func decision(eventID:String) throws -> Decision? {
+        guard let row = try db.rows("SELECT json FROM decisions WHERE event_id=?",[eventID]).first else {return nil}
+        return try JSONCodec.decode(Decision.self,from:Data(row["json"]!.utf8))
     }
 
     public func decisions() throws -> [Decision] {
