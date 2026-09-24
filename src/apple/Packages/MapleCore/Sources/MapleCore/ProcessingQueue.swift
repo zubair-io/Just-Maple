@@ -28,7 +28,7 @@ extension KnowledgeStore {
             guard let row = try db.rows("""
                 SELECT p.event_id FROM processing_jobs p JOIN events e ON e.id=p.event_id
                 WHERE \(eligible) AND e.connector=?
-                ORDER BY e.occurred_at \(direction),p.next_attempt_at,p.rowid LIMIT 1
+                ORDER BY CASE WHEN p.status='leased' THEN 0 ELSE 1 END, e.occurred_at \(direction),p.next_attempt_at,p.rowid LIMIT 1
                 """, parameters + [connector]).first else {return nil}
             try db.execute("""
                 INSERT INTO processing_schedule(connector,last_turn,dispatches)
@@ -45,7 +45,7 @@ extension KnowledgeStore {
     func finish(_ lease: Lease, decision: Decision, raw: Data, now: Date) throws -> Bool {
         try db.transaction {
             guard try owns(lease, now: now) else { return false }
-            let freshContext = try modelContext(for:lease.eventID,at:now)
+            let freshContext = try classificationValidationSnapshot(for: lease.eventID, at: now)
             let fresh = freshContext.currentState
             // A correction/another event can arrive while the network request is in flight.
             guard Array(fresh.prefix(24)) == decision.context.currentState else {
@@ -53,14 +53,14 @@ extension KnowledgeStore {
                                [String(now.timeIntervalSince1970), lease.eventID])
                 return false
             }
-            let freshFacts = freshContext.sourceFacts ?? []
+            let freshFacts = freshContext.sourceFacts
             guard freshFacts == (decision.context.sourceFacts ?? []) else {
                 try db.execute("UPDATE processing_jobs SET status='pending', next_attempt_at=?, lease_token=NULL, lease_until=NULL WHERE event_id=?", [String(now.timeIntervalSince1970), lease.eventID])
                 return false
             }
             // Quiet historical retention does not imply an explicit request is resolved.
             let signals=decision.assessment.message
-            if decision.route != .retain || (signals?.actionNeeded ?? 0) >= 0.85 || (signals?.replyNeeded ?? 0) >= 0.85 || (signals?.commitmentChanged ?? 0) >= 0.85 {
+            if signals.map({ $0.warrantsTaskReview }) ?? (decision.route != .retain) {
                 try enqueueTaskExtraction(decision.context.event)
             }
             let assessment = decision.assessment

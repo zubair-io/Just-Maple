@@ -156,11 +156,11 @@ struct WorldPersistenceTests {
 struct WorldExtractionTests {
     @Test func invalidCandidateRollsBackWholeBatchAndExpiredLeaseCannotWrite() async throws {
         let store=try KnowledgeStore(path:":memory:")
-        let event=Event(type:"mail",source:Source(connector:"gmail",account:"test",externalID:"mail-1",revision:"1"),occurredAt:Date(),subjects:["person:self"],content:"Please call Alex.")
+        let event=Event(type:"mail",source:Source(connector:"gmail",account:"test",externalID:"mail-1",revision:"1"),occurredAt:Date(),subjects:["person:self"],content:"Direction: incoming\nBody:\nPlease call Alex.")
         _ = try await store.ingest(event)
         try await store.requestTaskExtraction(eventID:event.id)
         let lease=try #require(await store.acquireTaskExtraction(at:Date()))
-        var valid=TaskSuggestion();valid.eventID=event.id;valid.quote="Please call Alex.";valid.provider="fixture";valid.candidate.title="Call Alex"
+        var valid=TaskSuggestion();valid.eventID=event.id;valid.quote="Please call Alex.";valid.provider="fixture";valid.obligation="user_action";valid.actorID="person:self";valid.candidate.title="Call Alex"
         var invalid=valid;invalid.id="invalid";invalid.quote="Invented quote"
         do {try await store.commitTaskExtraction([valid,invalid],eventID:event.id,token:lease.1);Issue.record("Invalid batch accepted")} catch {}
         #expect(try await store.worldSnapshot().suggestions.isEmpty)

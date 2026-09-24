@@ -32,6 +32,18 @@ struct ProcessingScheduleTests {
         #expect(try await store.acquire(now:now.addingTimeInterval(6),eventIDs:[mail[0]])?.eventID==mail[0])
         #expect(try await store.acquire(now:now,eventIDs:[])==nil)
     }
+    @Test func expiredLeaseRecoversBeforeFreshBacklogWithinConnector() async throws {
+        let store=try KnowledgeStore(path:":memory:"),now=Date()
+        let ids=try await seed(store,"home_assistant",20,now:now)
+        let old=try #require(await store.acquire(now:now,duration:1,eventIDs:[ids[10]]))
+        let recovered=try #require(await store.acquire(now:now.addingTimeInterval(2)))
+        #expect(recovered.eventID==old.eventID)
+        #expect(recovered.token != old.token)
+        let context=try await store.modelContext(for:old.eventID)
+        let assessment=Assessment(notify:0,askUser:0,reason:0,summarize:0,jobStage:.unchanged,stageConfidence:1,model:"synthetic",provider:"fixture")
+        let stale=try await store.finish(old,decision:Policy.decide(context:context,assessment:assessment),raw:Data("{}".utf8),now:now.addingTimeInterval(2))
+        #expect(!stale)
+    }
     @Test func concurrentWorkersNeverLeaseTheSameEvent() async throws {
         let store=try KnowledgeStore(path:":memory:"),now=Date()
         _ = try await seed(store,"gmail",8,now:now)

@@ -62,6 +62,12 @@ extension KnowledgeStore {
                     content: active ? record.content : "This source is no longer available to the connector in its current access scope or calendar window. This does not prove deletion or cancellation. Previous source:\n" + record.content)
                 try event.validate()
                 let eventID = try insert(event, enqueue: true)
+                if connector == "home_assistant", active, prior?["active"] == "1",
+                   let previousJSON = prior?["json"], let previousID = prior?["event_id"] {
+                    let previousRecord = try JSONCodec.decode(ConnectorSourceRecord.self, from: Data(previousJSON.utf8))
+                    try coalesceHomeTelemetry(previous: previousRecord, current: record,
+                                              previousID: previousID, event: event, eventID: eventID)
+                }
                 try db.execute("INSERT INTO connector_source_records VALUES (?,?,?,?,?) ON CONFLICT(connector,id) DO UPDATE SET json=excluded.json,event_id=excluded.event_id,active=excluded.active",
                                [connector, record.id, json, eventID, active ? "1" : "0"])
                 changes += 1

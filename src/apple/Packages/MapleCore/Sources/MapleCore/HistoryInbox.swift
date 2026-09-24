@@ -95,6 +95,7 @@ extension KnowledgeStore {
             else if taskStates.contains("waiting") {status="waiting";detail="A linked action is waiting on someone or something."}
             else if ["failed","blocked"].contains(processing) {status="failed";detail="Source processing needs retry. The source is preserved."}
             else if ["ask_user","notify"].contains(row["route"] ?? "") {status="flagged";detail="Source processing flagged this for your attention."}
+            else if processing=="coalesced" {status="indexed";detail="Retained locally; a newer cumulative energy reading is queued instead. This observation was not classified."}
             else if processing=="outside_window" {status="indexed";detail="Retained locally; outside the AI processing window."}
             else if row["route"] != nil || processing=="succeeded" {status="processed";detail=analysis=="waiting" ? "Source classification finished. Deeper analysis is waiting.":analysis=="failed" ? "Source classification finished. Deeper analysis needs retry.":"Source processing finished."}
             else {status="waiting";detail="Waiting for source classification."}

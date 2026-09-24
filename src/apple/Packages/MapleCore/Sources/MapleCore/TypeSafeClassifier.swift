@@ -32,12 +32,13 @@ public struct TypeSafeClassifier: Classifier {
     }
 
     public func classify(_ context: Context) async throws -> ClassifierResult {
-        let context=try AIProcessingWindow.filtered(context)
+        var context=try AIProcessingWindow.filtered(context)
         var request = URLRequest(url: URL(string: "https://api.typesafe.ai/v1/systemone")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let isMessage = ["imessage", "gmail"].contains(context.event.source.connector) || (context.event.source.connector == "feedback" && context.event.subjects.contains { $0.hasPrefix("thread:imessage:") || $0.hasPrefix("thread:gmail:") })
+        if isMessage { context = try MessageScreeningContext.filtered(context) }
         var questions = isMessage ? Self.messageQuestions : Self.questions
         questions["contains_facts"] = Self.factQuestion
         questions = questions.mapValues { Question(type: $0.type, instructions: $0.instructions + " sourceFacts are unverified source assertions; explicit currentState entries with origin=user take precedence over conflicting source assertions.", criteria: $0.criteria) }
@@ -67,13 +68,13 @@ public struct TypeSafeClassifier: Classifier {
                 let message = MessageAssessment(kind: kind, confidence: confidence, replyNeeded: try probability("reply_needed"),
                                                 timeSensitive: try probability("time_sensitive"), commitmentChanged: try probability("commitment_changed"),
                                                 contextConflict: try probability("context_conflict"), meaningfulUpdate: try probability("meaningful_update"),
-                                                needsReasoning: try probability("needs_reasoning"), actionNeeded: try probability("action_needed"))
+                                                needsReasoning: try probability("needs_reasoning"), actionNeeded: try probability("action_needed"), taskReviewNeeded: try probability("task_review_needed"))
                 let assessment = Assessment(notify: message.timeSensitive, askUser: max(message.replyNeeded, message.contextConflict),
                                             reason: message.needsReasoning, summarize: message.meaningfulUpdate,
                                             jobStage: .unchanged, stageConfidence: 1, model: response.model, provider: "typesafe", message: message,
                                             containsFacts: try probability("contains_facts"))
                 try assessment.validate()
-                return ClassifierResult(assessment: assessment, rawResponse: data)
+                return ClassifierResult(assessment: assessment, rawResponse: data, inputContext: context)
             }
             guard let stage = response.answers["job_stage"], stage.type == "choice",
                   let value = stage.choice.flatMap(JobStage.init(rawValue:)), let confidence = stage.confidence,
@@ -88,7 +89,7 @@ public struct TypeSafeClassifier: Classifier {
                                         jobStage: value, stageConfidence: confidence, model: response.model, provider: "typesafe",
                                         containsFacts: try probability("contains_facts"))
             try assessment.validate()
-            return ClassifierResult(assessment: assessment, rawResponse: data)
+            return ClassifierResult(assessment: assessment, rawResponse: data, inputContext: context)
         } catch let error as MapleError { throw error }
         catch { throw MapleError.provider("TypeSafe response did not match the required answer schema.") }
     }
@@ -162,8 +163,9 @@ public struct TypeSafeClassifier: Classifier {
                 "noise": "Reaction, duplicate, spam or non-substantive content.",
                 "uncertain": "The supplied evidence is insufficient to identify intent."
             ]),
-            "action_needed": Question(type: "noul", instructions: "Does this incoming observation establish a concrete action the user still needs to take, whether or not an email reply is required? Include direct requests for information or scheduling, and account-specific expiry or renewal notices with a consequence for an existing service. An action can matter beyond the next 24 hours. Distinguish a renewed request from an older quoted request already answered. For outgoing iMessage, count an explicit definite commitment made by the user as their action; exclude outgoing requests asking somebody else to act and exclude outgoing email. Another person’s promise is their commitment, not a user action. Exclude generic marketing calls to action, optional promotional offers, FYI/status links and actions explicitly completed or cancelled. Do not infer an action from a sender or subject alone." + boundary),
-            "reply_needed": Question(type: "noul", instructions: "Does this incoming message leave a concrete question or request for the user to answer? Answer low for outgoing messages, explicit user feedback, resolved requests, reactions, rhetorical questions or FYI updates." + boundary),
+            "task_review_needed": Question(type: "noul", instructions: "Should a more capable model inspect this observation and supplied context for a potentially unresolved personal obligation or a change to one? This is a screening decision, NOT permission to create a task or interrupt. Include a requested decision, a requested quote awaiting a decision, an account/service problem with a concrete consequence, a specific scheduling or information request, and an explicit commitment by the user or another person. Include ambiguity about responsibility or resolution when the source supplies a concrete personal stake that merits checking. Routine successful status reports, receipts, generic sales offers, optional surveys/reviews/feedback invitations, social conversation and unrelated context do not qualify. An automated sender is neither sufficient nor disqualifying. Do not infer a problem or obligation merely from a link, subject, date, or imperative." + boundary),
+            "action_needed": Question(type: "noul", instructions: "Does this incoming observation establish a concrete action the user still needs to take, whether or not an email reply is required? Include requested decisions (including a requested quote to review), direct requests for information or scheduling, concrete unresolved service faults requiring investigation, and account-specific expiry or renewal notices with a consequence for an existing service. An action can matter beyond the next 24 hours. Distinguish a renewed request from an older quoted request already answered. For outgoing iMessage, count an explicit definite commitment made by the user as their action; exclude outgoing requests asking somebody else to act and exclude outgoing email. Another person’s promise is their commitment, not a user action. Exclude generic marketing calls to action, optional promotional offers, FYI/status links and actions explicitly completed or cancelled. Do not infer an action from a sender or subject alone." + boundary),
+            "reply_needed": Question(type: "noul", instructions: "Does this incoming message leave a concrete personally relevant obligation for the user to answer? Optional surveys, ratings, reviews, feedback invitations, marketing questions and promotional calls to action are not owed replies, even when phrased as a direct request. Answer low for those and for outgoing messages, explicit user feedback, resolved requests, reactions, rhetorical questions or FYI updates." + boundary),
             "time_sensitive": Question(type: "noul", instructions: "Does this incoming message describe a current, near-term development for which delayed attention would have a concrete consequence? Compare event occurrence and receipt dates with supplied context; old deadlines and unsupported urgency are not time-sensitive." + boundary),
             "commitment_changed": Question(type: "noul", instructions: "Does this event explicitly establish, change, complete or cancel an agreement, commitment or plan? Suggestions, hypotheticals and unaccepted invitations alone do not establish commitments." + boundary),
             "context_conflict": Question(type: "noul", instructions: "Does this event expose an unresolved contradiction with supplied known context that requires the user's choice? Missing context alone is not a conflict. Explicit user feedback resolving an earlier choice is a resolution, not a new conflict." + boundary),

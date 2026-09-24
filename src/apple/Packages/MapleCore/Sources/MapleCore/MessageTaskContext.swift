@@ -12,11 +12,14 @@ extension TaskEvidenceRules {
     /// Ownership is explicit provider output, checked against connector-authored speaker metadata.
     /// False means a tentative plan: preserve the source, never manufacture a task.
     public static func configureOwnership(_ suggestion:inout TaskSuggestion,obligation:String?,actorID:String?,event:Event)throws->Bool {
-        guard event.source.connector=="imessage" else{return true}
+        guard ["imessage","gmail"].contains(event.source.connector) else{return true}
         guard let direction=messageDirection(event),let obligation,let actorID,
               ["user_action","waiting_on_other","tentative_plan"].contains(obligation),
               actorID.hasPrefix("person:"),event.subjects.contains(actorID) else {
             throw MapleError.provider("Message task extraction needs supported speaker and obligation evidence.")
+        }
+        if event.source.connector=="gmail", direction=="outgoing" {
+            throw MapleError.provider("Outgoing messages cannot create action requests.")
         }
         if obligation=="tentative_plan" {return false}
         suggestion.obligation=obligation;suggestion.actorID=actorID
@@ -25,6 +28,13 @@ extension TaskEvidenceRules {
             suggestion.candidate.status = .open;suggestion.candidate.assignee="You";suggestion.candidate.waitingReason=""
         } else {
             guard direction=="incoming",actorID != "person:self" else {throw MapleError.provider("A waiting commitment must belong to the incoming speaker.")}
+            if event.source.connector=="gmail" {
+                guard let sender=messageHeader(event,"Sender"), let address=GoogleMailMessage.address(sender),
+                      address != event.source.account.lowercased(),
+                      actorID == "person:email:" + ConnectorSourceRecord.identifier(address) else {
+                    throw MapleError.provider("A waiting commitment must belong to the incoming speaker.")
+                }
+            }
             suggestion.candidate.status = .waiting
             suggestion.candidate.assignee=messageHeader(event,"Sender") ?? "Other person"
             suggestion.candidate.waitingReason=suggestion.quote
@@ -56,6 +66,9 @@ extension KnowledgeStore {
     public func taskModelContext(for eventID:String,at:Date=Date())throws->Context {
         if let row=try db.rows("SELECT json FROM decisions WHERE event_id=?",[eventID]).first,let json=row["json"] {
             let decision=try JSONCodec.decode(Decision.self,from:Data(json.utf8))
+            // Screening deliberately omits broad world context. Deeper review rebuilds current
+            // evidence, including user corrections and available activity associations.
+            if decision.context.version == "message-screening-v1" || decision.context.event.content.utf8.count > 12_000 { return try modelContext(for:eventID,at:at) }
             return try AIProcessingWindow.filtered(decision.context,at:at)
         }
         return try modelContext(for:eventID,at:at)
@@ -70,11 +83,10 @@ extension KnowledgeStore {
             INSERT OR IGNORE INTO task_extraction_jobs(event_id)
             SELECT e.id FROM events e JOIN decisions d ON d.event_id=e.id
             LEFT JOIN task_extraction_jobs j ON j.event_id=e.id
-            WHERE e.connector='imessage' AND e.occurred_at>=? AND j.event_id IS NULL
-            AND (json_extract(d.json,'$.route')<>'retain'
-                OR json_extract(d.json,'$.assessment.message.actionNeeded')>=0.85
-                OR json_extract(d.json,'$.assessment.message.replyNeeded')>=0.85
-                OR json_extract(d.json,'$.assessment.message.commitmentChanged')>=0.85)
+            WHERE e.connector IN ('imessage','gmail') AND e.occurred_at>=? AND j.event_id IS NULL
+            AND (json_extract(d.json,'$.assessment.message.actionNeeded')>=0.5
+                OR json_extract(d.json,'$.assessment.message.taskReviewNeeded')>=0.5
+                OR json_extract(d.json,'$.assessment.message.commitmentChanged')>=0.5)
             ORDER BY e.occurred_at DESC LIMIT 100
             """,[String(at.addingTimeInterval(-AIProcessingWindow.duration).timeIntervalSince1970)])
     }

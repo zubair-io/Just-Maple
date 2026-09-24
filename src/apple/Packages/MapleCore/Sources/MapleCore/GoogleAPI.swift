@@ -175,7 +175,9 @@ struct GoogleMailMessage: Decodable {
         func header(_ name: String) -> String { payload.headers?.first { $0.name.lowercased() == name.lowercased() }?.value ?? "" }
         guard let milliseconds = Double(internalDate), milliseconds.isFinite else { throw MapleError.provider("Gmail returned an invalid message date.") }
         let sender = header("From"), address = Self.address(sender)
-        let outgoing = labelIds?.contains("SENT") == true || address == account.lowercased()
+        // Sender addresses can be shared by automated delivery or spoofed. Gmail's
+        // per-message SENT label is the mailbox evidence of outgoing direction.
+        let outgoing = labelIds?.contains("SENT") == true
         let plain = payload.plainText()
         let fallback=plain.isEmpty ? payload.plainText(htmlFallback:true) : plain
         let body = String(MailText.visible(fallback.isEmpty ? snippet ?? "" : fallback).prefix(40000))

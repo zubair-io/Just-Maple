@@ -38,6 +38,14 @@ struct JustMapleCommand {
         let classifier: (any Classifier)? = live ? try TypeSafeClassifier(
             apiKey: ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"] ?? "",
             model: ProcessInfo.processInfo.environment["TYPESAFE_MODEL"] ?? "jev-latest") : (replay ? DemoReplayClassifier() : nil)
+        if command == "evaluate-message-screening" {
+            let output = try take("--output") ?? ".maple/screening-evaluations/\(UUID().uuidString)"
+            guard live, !replay, args.isEmpty, suppliedDB == nil, let classifier else { throw MapleError.invalid("Usage: evaluate-message-screening --live [--output NEW_DIRECTORY]") }
+            let report = try await MessageScreeningEvaluation.run(classifier: classifier, directory: URL(fileURLWithPath: output))
+            try printJSON(report)
+            if report["passed"] != "true" { exit(2) }
+            return
+        }
         if command == "evaluate-messages" {
             let output = try take("--output") ?? ".maple/message-evaluations/\(UUID().uuidString)"
             guard live, !replay, args.isEmpty, suppliedDB == nil, let classifier else {
@@ -81,6 +89,10 @@ struct JustMapleCommand {
         }
         let store = try KnowledgeStore(path: dbPath)
         switch command {
+        case "retry-task-reviews":
+            guard args.isEmpty else { throw MapleError.invalid("Usage: retry-task-reviews [--db PATH]") }
+            try await store.retryFailedTaskExtractions()
+            try printJSON(["status":"Eligible failed task reviews queued; automatic processing will resume in the app."])
         case "reconcile-tasks":
             guard let runner=try take("--runner"),args.isEmpty else {throw MapleError.invalid("Usage: reconcile-tasks --runner PATH [--db PATH]")}
             try await TaskReconciliationEngine(store:store,client:ACPClient(provider:"codex",runner:URL(fileURLWithPath:runner))).runOne()
