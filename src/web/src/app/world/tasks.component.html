@@ -1,0 +1,35 @@
+<div class="eyebrow">Tasks / now</div>
+<div class="row">
+  <h1>Tasks</h1>
+  <mui-button variant="primary" (pressed)="world.go('tasks/new')"
+    >+ New task</mui-button
+  >
+</div>
+<p>Concrete next steps, connected to the activities that matter to you.</p>
+<div class="actions filter-bar">
+  @for (label of filters; track label) {
+    <mui-button
+      variant="ghost"
+      [active]="filter() === label"
+      (pressed)="filter.set(label)"
+      >{{ label }}</mui-button
+    >
+  }
+</div>
+<details open>
+  <summary>Filter by activities · matches any selected activity</summary>
+  <div class="tag-row">
+    @for (a of world.data().activities; track a.id) {
+      <mui-checkbox
+        [label]="a.name"
+        [checked]="tags().includes(a.id)"
+        (checkedChange)="toggle(a.id, $event)"
+      />
+    }
+  </div>
+</details>
+<p class="footnote">Ordered by urgency, priority and current context. Open an item to inspect its source.</p>
+<maple-ranked-task-rows [items]="tasks()" [details]="true" />
+<p class="footnote">
+  Each task is counted once here, even when it has several activity tags.
+</p>

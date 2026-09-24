@@ -1,0 +1,254 @@
+/* ============================================================
+   Just Maple — Design Tokens
+   Source: apps/web/src/styles.scss (Tailwind v4 @theme block)
+   Converted to plain CSS custom properties so designs render
+   these tokens without a Tailwind build step.
+   ============================================================ */
+
+:root {
+    /* Primary Colors - Maple */
+    --color-primary: #993629;
+    --color-primary-hover: #7a2b21;
+    --color-primary-light: #f5e6e4;
+
+    /* Background Colors */
+    --color-bg: #fdfbf7;
+    --color-surface: #ffffff;
+    --color-surface-alt: #f5f2eb;
+    --color-surface-hover: #f5f5f4;
+    --color-sidebar: #f5f2eb;
+    --color-input-bg: #ffffff;
+    --color-bg-hover: rgba(0, 0, 0, 0.06);
+    --color-bg-active: rgba(0, 0, 0, 0.1);
+    --color-bg-secondary: #f5f2eb;
+
+    /* Text Colors */
+    --color-text-main: #292524;
+    --color-text-muted: #78716c;
+
+    /* Border Colors */
+    --color-border: #e7e5e4;
+
+    /* Legacy colors (for backwards compatibility) */
+    --color-maple: #d94e3b;
+    --color-maple-light: #fbeae5;
+    --color-maple-hover: #b93826;
+    --color-charcoal: #292524;
+    --color-warm-gray: #78716c;
+    --color-mist: #a8a29e;
+    --color-pearl: #e7e5e4;
+    --color-cream: #fdfbf7;
+    --color-snow: #ffffff;
+
+    /* Semantic Colors */
+    --color-error: #dc3545;
+    --color-error-bg: #f8d7da;
+    --color-success: #28a745;
+    --color-success-bg: #d4edda;
+    --color-info: #007bff;
+    --color-info-bg: #e7f3ff;
+
+    /* API Method Colors */
+    --color-method-get: #22c55e;
+    --color-method-post: #3b82f6;
+    --color-method-put: #f59e0b;
+    --color-method-patch: #a855f7;
+    --color-method-delete: #ef4444;
+
+    /* Response Status Colors */
+    --color-status-success-bg: #dcfce7;
+    --color-status-success-text: #166534;
+    --color-status-error-bg: #fee2e2;
+    --color-status-error-text: #991b1b;
+
+    /* Code Block Colors */
+    --color-code-bg: #1e1e1e;
+    --color-code-text: #d4d4d4;
+
+    /* Font Families */
+    --font-sans: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-serif: 'Merriweather', Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+    /* Shadows */
+    --shadow-soft: 0 2px 8px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.02);
+    --shadow-lifted: 0 10px 30px -5px rgba(0, 0, 0, 0.08);
+}
+
+/* ============================================
+   Dark Mode
+   ============================================ */
+.dark,
+[data-theme='dark'] {
+    --color-bg: #1c1917;
+    --color-surface: #262524;
+    --color-surface-alt: #2e2c2a;
+    --color-surface-hover: #3a3836;
+    --color-sidebar: #292524;
+    --color-input-bg: #1c1917;
+    --color-text-main: #e7e5e4;
+    --color-text-muted: #a8a29e;
+    --color-border: #44403c;
+    --color-primary-light: #422016;
+    --color-bg-hover: rgba(255, 255, 255, 0.1);
+    --color-bg-active: rgba(255, 255, 255, 0.15);
+    --color-bg-secondary: #292524;
+
+    /* Response Status Colors (dark) */
+    --color-status-success-bg: rgba(34, 197, 94, 0.2);
+    --color-status-success-text: #4ade80;
+    --color-status-error-bg: rgba(239, 68, 68, 0.2);
+    --color-status-error-text: #f87171;
+
+    /* Legacy */
+    --color-cream: #1c1917;
+    --color-snow: #262524;
+    --color-charcoal: #e7e5e4;
+    --color-warm-gray: #a8a29e;
+    --color-pearl: #44403c;
+}
+
+/* ============================================
+   Solarized Theme — Warm, low-contrast for extended reading
+   ============================================ */
+.theme-solarized,
+[data-theme='solarized'] {
+    --color-primary: #b58900;
+    --color-primary-hover: #996f00;
+    --color-primary-light: #fdf6e3;
+    --color-bg: #fdf6e3;
+    --color-surface: #eee8d5;
+    --color-surface-alt: #e4ddc7;
+    --color-surface-hover: #e4ddc7;
+    --color-sidebar: #eee8d5;
+    --color-input-bg: #fdf6e3;
+    --color-text-main: #657b83;
+    --color-text-muted: #93a1a1;
+    --color-border: #d3cbb8;
+
+    /* Legacy */
+    --color-maple: #b58900;
+    --color-maple-light: #fdf6e3;
+    --color-maple-hover: #996f00;
+    --color-charcoal: #657b83;
+    --color-warm-gray: #93a1a1;
+    --color-cream: #fdf6e3;
+    --color-snow: #eee8d5;
+    --color-pearl: #d3cbb8;
+}
+
+/* ============================================
+   Warm Theme — Cozy earth tones
+   ============================================ */
+.theme-warm,
+[data-theme='warm'] {
+    --color-primary: #c2410c;
+    --color-primary-hover: #9a3412;
+    --color-primary-light: #fff7ed;
+    --color-bg: #faf5f0;
+    --color-surface: #fff8f0;
+    --color-surface-alt: #fef3e2;
+    --color-surface-hover: #fef3e2;
+    --color-sidebar: #fef3e2;
+    --color-input-bg: #fffcf5;
+    --color-text-main: #422006;
+    --color-text-muted: #78350f;
+    --color-border: #fed7aa;
+
+    /* Legacy */
+    --color-maple: #c2410c;
+    --color-maple-light: #fff7ed;
+    --color-maple-hover: #9a3412;
+    --color-charcoal: #422006;
+    --color-warm-gray: #78350f;
+    --color-cream: #faf5f0;
+    --color-snow: #fff8f0;
+    --color-pearl: #fed7aa;
+}
+
+/* ============================================
+   Cool Theme — Calm blue-grey palette
+   ============================================ */
+.theme-cool,
+[data-theme='cool'] {
+    --color-primary: #2563eb;
+    --color-primary-hover: #1d4ed8;
+    --color-primary-light: #eff6ff;
+    --color-bg: #f0f4f8;
+    --color-surface: #ffffff;
+    --color-surface-alt: #e2e8f0;
+    --color-surface-hover: #f1f5f9;
+    --color-sidebar: #e2e8f0;
+    --color-input-bg: #ffffff;
+    --color-text-main: #1e293b;
+    --color-text-muted: #64748b;
+    --color-border: #cbd5e1;
+
+    /* Legacy */
+    --color-maple: #2563eb;
+    --color-maple-light: #eff6ff;
+    --color-maple-hover: #1d4ed8;
+    --color-charcoal: #1e293b;
+    --color-warm-gray: #64748b;
+    --color-cream: #f0f4f8;
+    --color-snow: #ffffff;
+    --color-pearl: #cbd5e1;
+}
+
+/* ============================================
+   Rose Theme — Soft pink aesthetic
+   ============================================ */
+.theme-rose,
+[data-theme='rose'] {
+    --color-primary: #db2777;
+    --color-primary-hover: #be185d;
+    --color-primary-light: #fdf2f8;
+    --color-bg: #fdf2f8;
+    --color-surface: #ffffff;
+    --color-surface-alt: #fce7f3;
+    --color-surface-hover: #fdf2f8;
+    --color-sidebar: #fce7f3;
+    --color-input-bg: #ffffff;
+    --color-text-main: #4a044e;
+    --color-text-muted: #9d174d;
+    --color-border: #fbcfe8;
+
+    /* Legacy */
+    --color-maple: #db2777;
+    --color-maple-light: #fdf2f8;
+    --color-maple-hover: #be185d;
+    --color-charcoal: #4a044e;
+    --color-warm-gray: #9d174d;
+    --color-cream: #fdf2f8;
+    --color-snow: #ffffff;
+    --color-pearl: #fbcfe8;
+}
+
+/* ============================================
+   Forest Theme — Nature-inspired greens
+   ============================================ */
+.theme-forest,
+[data-theme='forest'] {
+    --color-primary: #16a34a;
+    --color-primary-hover: #15803d;
+    --color-primary-light: #f0fdf4;
+    --color-bg: #f0fdf4;
+    --color-surface: #ffffff;
+    --color-surface-alt: #dcfce7;
+    --color-surface-hover: #ecfdf5;
+    --color-sidebar: #dcfce7;
+    --color-input-bg: #ffffff;
+    --color-text-main: #14532d;
+    --color-text-muted: #166534;
+    --color-border: #bbf7d0;
+
+    /* Legacy */
+    --color-maple: #16a34a;
+    --color-maple-light: #f0fdf4;
+    --color-maple-hover: #15803d;
+    --color-charcoal: #14532d;
+    --color-warm-gray: #166534;
+    --color-cream: #f0fdf4;
+    --color-snow: #ffffff;
+    --color-pearl: #bbf7d0;
+}

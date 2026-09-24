@@ -1,0 +1,344 @@
+@if (scope() === "all") {
+  <div class="grid">
+    <section class="panel">
+      <h3>iPhone companion</h3>
+      <p>Capture on your phone. See your tasks and current state from this Mac.</p>
+      <p>{{ s().companionStatus }}</p>
+      <p class="muted">With the same iCloud account and Keychain sync enabled, your iPhone connects automatically. Your iPhone can sync over any internet connection. Keep Maple running on this Mac to process new captures and publish updates.</p>
+    </section>
+    <section class="panel">
+      <h3>Messages</h3>
+      <p>Your conversations, read on this Mac.</p>
+      <p>{{ s().messagesStatus }}</p>
+      @if (s().messagesError) {
+        <p class="error">{{ s().messagesError }}</p>
+      }
+      <div class="actions">
+        <mui-button
+          (pressed)="act(s().messagesEnabled ? 'poll' : 'messages')"
+          >{{
+            s().messagesEnabled ? "Import now" : "Connect iMessage"
+          }}</mui-button
+        >
+        @if (s().messagesEnabled) {
+          <mui-button (pressed)="act('pauseMessages')">Pause</mui-button>
+        }
+      </div>
+      <div class="actions">
+        <mui-button variant="ghost" (pressed)="act('diskAccess')"
+          >Full Disk Access</mui-button
+        ><mui-button variant="ghost" (pressed)="act('showApp')"
+          >Show app in Finder</mui-button
+        >
+      </div>
+    </section>
+    <section class="panel">
+      <h3>Notes & documents</h3>
+      <p>A note, a résumé, or context you want Maple to remember.</p>
+      <div class="actions">
+        <mui-button (pressed)="act('importNote')">Import note</mui-button
+        ><mui-button (pressed)="act('resume')">Import résumé</mui-button>
+      </div>
+    </section>
+    <section class="panel">
+      <h3>Apple Contacts</h3>
+      <p>
+        Names, organizations, email addresses and phone numbers from the
+        contacts you allow.
+      </p>
+      <p>{{ s().contactsStatus }}</p>
+      <div class="actions">
+        <mui-button
+          [disabled]="s().appleImporting"
+          (pressed)="act(s().contactsEnabled ? 'pollContacts' : 'contacts')"
+          >{{
+            s().contactsEnabled ? "Import now" : "Connect Contacts"
+          }}</mui-button
+        >
+        @if (s().contactsEnabled) {
+          <mui-button (pressed)="act('pauseContacts')">Pause</mui-button>
+        }
+        <mui-button variant="ghost" (pressed)="act('contactsSettings')"
+          >Permissions</mui-button
+        >
+      </div>
+    </section>
+    <section class="panel">
+      <h3>Home Assistant</h3>
+      <p>Read home and presence states into your local context.</p>
+      <p>{{ s().homeStatus }}</p>
+      <div class="field">
+        <mui-input
+          ariaLabel="Home Assistant URL"
+          placeholder="http://homeassistant.local:8123"
+          [(value)]="url"
+        />
+      </div>
+      <div class="field">
+        <mui-input
+          ariaLabel="Home Assistant token"
+          placeholder="Long-lived access token"
+          [masked]="true"
+          autocomplete="off"
+          [(value)]="token"
+        />
+      </div>
+      <div class="actions">
+        <mui-button
+          variant="primary"
+          [disabled]="s().homeImporting || !url || !token"
+          (pressed)="connectHome()"
+          >Connect Home Assistant</mui-button
+        ><mui-button (pressed)="act('homeUnlock')"
+          >Unlock saved connection</mui-button
+        >
+      </div>
+      <mui-checkbox
+        label="Only use exposed entities"
+        [checked]="s().homeExposedOnly"
+        [disabled]="s().homeImporting"
+        (checkedChange)="exposure($event)"
+      />
+      <p>Uses the entities you expose to Assist, Alexa or Google Assistant.</p>
+      @if (s().homeHasToken) {
+        <div class="actions">
+          <mui-button [disabled]="s().homeImporting" (pressed)="act('homePoll')"
+            >Import now</mui-button
+          ><mui-button
+            (pressed)="act(s().homeEnabled ? 'homePause' : 'homeResume')"
+            >{{ s().homeEnabled ? "Pause" : "Resume" }}</mui-button
+          >
+        </div>
+      }
+      @if (!s().homeExposedOnly) {
+        <div class="choices">
+          @for (e of s().homeEntities; track e.id) {
+            <mui-checkbox
+              [label]="e.name"
+              [checked]="homeSelection.includes(e.id)"
+              (checkedChange)="toggle('home', e.id, $event)"
+            />
+          }
+        </div>
+        <mui-button [disabled]="s().homeImporting" (pressed)="save('home')"
+          >Save entities</mui-button
+        >
+      }
+    </section>
+  </div>
+}
+@if (scope() !== "intelligence") {
+  <section class="panel">
+    <h3>Apple Calendar</h3>
+    <p>Read selected calendars on this Mac, including synced accounts.</p>
+    <p>{{ s().calendarStatus }}</p>
+    <div class="actions">
+      <mui-button
+        [disabled]="s().appleImporting"
+        (pressed)="act(s().calendarEnabled ? 'pollCalendar' : 'calendar')"
+        >{{
+          s().calendarEnabled ? "Import now" : "Connect Calendar"
+        }}</mui-button
+      >
+      @if (s().calendarEnabled) {
+        <mui-button (pressed)="act('pauseCalendar')">Pause</mui-button>
+      }
+      <mui-button variant="ghost" (pressed)="act('calendarSettings')"
+        >Permissions</mui-button
+      ><mui-button
+        [disabled]="s().appleImporting"
+        (pressed)="act('calendarList')"
+        >Refresh calendar list</mui-button
+      >
+    </div>
+    <div class="choices">
+      @for (c of s().calendarChoices; track c.id) {
+        <mui-checkbox
+          [label]="c.name + (c.account ? ' · ' + c.account : '')"
+          [checked]="appleSelection.includes(c.id)"
+          (checkedChange)="toggle('apple', c.id, $event)"
+        />
+      }
+    </div>
+    <div class="actions">
+      <mui-button variant="ghost" (pressed)="choose('apple', true)"
+        >Select all</mui-button
+      ><mui-button variant="ghost" (pressed)="choose('apple', false)"
+        >Clear</mui-button
+      ><mui-button
+        variant="primary"
+        [disabled]="s().appleImporting"
+        (pressed)="save('apple')"
+        >Save calendars</mui-button
+      >
+    </div>
+  </section>
+  <section class="panel">
+    <h3>Google</h3>
+    <p>Gmail, Google Calendar and Google Contacts.</p>
+    <p>{{ s().googleStatus }} {{ s().googleAccount }}</p>
+    <div class="actions">
+      <mui-button [disabled]="s().googleBusy" (pressed)="act('googleConfigure')"
+        >Import OAuth configuration</mui-button
+      >
+      @if (s().googleConfigured) {
+        <mui-button
+          variant="primary"
+          [disabled]="s().googleBusy"
+          (pressed)="act('googleConnect')"
+          >{{
+            s().googleConnected ? "Reconnect Google" : "Connect Google"
+          }}</mui-button
+        >
+      }
+      @if (s().googleBusy) {
+        <mui-button (pressed)="act('googleCancel')">Cancel sign-in</mui-button>
+      }
+      @if (s().googleAccount) {
+        @if (!s().googleConnected) {
+          <mui-button (pressed)="act('googleUnlock')"
+            >Unlock saved connection</mui-button
+          >
+        }
+        <mui-button
+          [disabled]="s().googleBusy"
+          (pressed)="act('googleDisconnect')"
+          >Disconnect</mui-button
+        >
+      }
+    </div>
+    @if (s().googleConnected) {
+      <h3>Google Contacts</h3>
+      <p>
+        {{
+          s().googleContactsGranted
+            ? s().googleContactsStatus
+            : "Reconnect Google to grant read-only Contacts access."
+        }}
+      </p>
+      <div class="actions">
+        <mui-button
+          (pressed)="
+            act(
+              s().googleContactsGranted
+                ? s().googleContactsEnabled
+                  ? 'googleContactsPause'
+                  : 'googleContactsResume'
+                : 'googleConnect'
+            )
+          "
+          >{{
+            !s().googleContactsGranted
+              ? "Connect Contacts"
+              : s().googleContactsEnabled
+                ? "Pause Contacts"
+                : "Resume Contacts"
+          }}</mui-button
+        >
+      </div>
+      <h3>Gmail</h3>
+      <p>{{ s().googleMailStatus }}</p>
+      <small>Up to 100 messages from the last 30 days. No attachments.</small>
+      <div class="actions">
+        <mui-button
+          (pressed)="
+            act(s().googleMailEnabled ? 'googleMailPause' : 'googleMailResume')
+          "
+          >{{
+            s().googleMailEnabled ? "Pause Gmail" : "Resume Gmail"
+          }}</mui-button
+        ><mui-button [disabled]="s().googleBusy" (pressed)="act('googlePoll')"
+          >Import now</mui-button
+        >
+      </div>
+      <h3>Google Calendar</h3>
+      <p>{{ s().googleCalendarStatus }}</p>
+      <div class="actions">
+        <mui-button
+          (pressed)="
+            act(
+              s().googleCalendarEnabled
+                ? 'googleCalendarPause'
+                : 'googleCalendarResume'
+            )
+          "
+          >{{
+            s().googleCalendarEnabled ? "Pause Calendar" : "Resume Calendar"
+          }}</mui-button
+        ><mui-button
+          [disabled]="s().googleBusy"
+          (pressed)="act('googleCalendarList')"
+          >Refresh calendar list</mui-button
+        >
+      </div>
+      <div class="choices">
+        @for (c of s().googleCalendars; track c.id) {
+          <mui-checkbox
+            [label]="c.name"
+            [checked]="googleSelection.includes(c.id)"
+            (checkedChange)="toggle('google', c.id, $event)"
+          />
+        }
+      </div>
+      <div class="actions">
+        <mui-button variant="ghost" (pressed)="choose('google', true)"
+          >Select all</mui-button
+        ><mui-button variant="ghost" (pressed)="choose('google', false)"
+          >Clear</mui-button
+        ><mui-button
+          variant="primary"
+          [disabled]="s().googleBusy"
+          (pressed)="save('google')"
+          >Save Google calendars</mui-button
+        >
+      </div>
+    }
+    <small
+      >Read only. Tokens stay in Keychain. Imported history is retained when you
+      pause.</small
+    >
+  </section>
+}
+@if (scope() !== "calendar") {
+  <h2>Intelligence</h2>
+  @for (p of [{id:'codex',name:'ChatGPT · Codex',login:'codex login'}, {id:'claude',name:'Claude',login:'claude auth login'}]; track p.id) {
+    <section class="panel">
+      <h3>{{ p.name }}</h3>
+      <p>Uses your existing local subscription login. Sign in with <code>{{ p.login }}</code> if needed.</p>
+      <p>{{ s().providerStatus?.[p.id] || 'Not tested in this session' }}</p>
+      <p>When selected, source text is sent to this provider to extract facts and suggest tasks. Jev still classifies events. Tests send only a connection-check prompt.</p>
+      <div class="actions">
+        <mui-button [disabled]="s().providerTesting === true" (pressed)="provider('providerTest',p.id)">Connect &amp; test</mui-button>
+        <mui-button [disabled]="!s().testedProviders?.includes(p.id) || s().busy || s().running" (pressed)="provider('providerSelect',p.id)">{{ s().extractionProvider === p.id ? 'Selected for extraction' : 'Use for extraction' }}</mui-button>
+      </div>
+    </section>
+  }
+  <section class="panel">
+    <h3>Jev · understand what matters</h3>
+    <p>
+      Classifies events with historical context. Running the loop sends relevant
+      context to Jev.
+    </p>
+    @if (s().connected) {
+      <mui-button (pressed)="act('disconnect')">Disconnect Jev</mui-button>
+    } @else {
+      <mui-button (pressed)="act('unlockKey')">Unlock saved key</mui-button>
+      <div class="field">
+        <mui-input
+          ariaLabel="Jev development API key"
+          [masked]="true"
+          autocomplete="off"
+          [(value)]="key"
+        />
+      </div>
+      <mui-button variant="primary" [disabled]="!key" (pressed)="connectJev()"
+        >Save in Keychain</mui-button
+      >
+    }
+  </section>
+  <section class="panel">
+    <h3>Apple · extract facts locally</h3>
+    <p>{{ s().extractor }}</p>
+    <mui-button [disabled]="s().busy || s().running" (pressed)="provider('providerSelect','apple')">{{ (s().extractionProvider || 'apple') === 'apple' ? 'Selected for extraction' : 'Use Apple for extraction' }}</mui-button>
+  </section>
+}

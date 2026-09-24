@@ -1,0 +1,10 @@
+:host {display:block;max-width:1000px;margin:auto}
+.eyebrow {margin-bottom:24px}
+h1 {font-size:32px;letter-spacing:-.04em}
+.section-heading {margin:20px 0 10px}
+.section-heading .section-label {margin:0}
+.right-now {margin:8px 0 20px;padding:16px 20px}
+.activity-card {padding:16px;min-height:76px}
+.activity-card h3 {font-size:16px}
+.recent-strip {margin-top:24px}
+.processing-details {margin-top:24px;border-top:1px solid var(--color-border);font-size:12px}

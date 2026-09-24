@@ -1,0 +1,67 @@
+<div
+  class="mui-input flex flex-col gap-1"
+  [class]="'variant-' + variant() + ' size-' + size()"
+  [class.is-focused]="focused()"
+  [class.is-filled]="isFilled()"
+  [class.is-error]="!!error()"
+  [class.is-disabled]="disabled()"
+>
+  <div [class]="fieldClasses()">
+    @if (variant() === 'search') {
+      <mui-icon name="search" size="sm" class="prefix text-text-muted flex-none" />
+    }
+    <input
+      [type]="controlType()"
+      [class]="controlClasses()"
+      [attr.id]="inputId()"
+      [value]="value()"
+      [placeholder]="placeholder()"
+      [disabled]="disabled()"
+      [readOnly]="readOnly()"
+      [attr.autocomplete]="autocomplete()"
+      [attr.autofocus]="autofocus() ? '' : null"
+      [attr.aria-label]="ariaLabel()"
+      [attr.aria-invalid]="error() ? 'true' : null"
+      [attr.aria-describedby]="error() ? 'mui-input-error' : null"
+      (input)="onInput($any($event.target).value)"
+      (focus)="onFocus()"
+      (blur)="onBlur()"
+      (keydown)="onKeydown($event)"
+    />
+    @if (showClear()) {
+      <button
+        type="button"
+        class="clear inline-flex items-center justify-center flex-none p-0 border-0 bg-transparent text-text-muted cursor-pointer hover:text-text-main"
+        aria-label="Clear"
+        (click)="clear()"
+      >
+        <mui-icon name="x" size="xs" />
+      </button>
+    }
+    @if (variant() === 'numeric') {
+      <div class="steppers flex flex-col flex-none -my-2 -mr-4 ml-0 border-l border-border">
+        <button
+          type="button"
+          class="stepper flex-1 min-w-[24px] border-0 bg-transparent text-text-muted cursor-pointer leading-none text-[11px] [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border enabled:hover:bg-surface-hover enabled:hover:text-text-main disabled:cursor-not-allowed disabled:opacity-45"
+          aria-label="Decrease"
+          [disabled]="disabled() || readOnly()"
+          (click)="stepBy(-1)"
+        >
+          &minus;
+        </button>
+        <button
+          type="button"
+          class="stepper flex-1 min-w-[24px] border-0 bg-transparent text-text-muted cursor-pointer leading-none text-[11px] [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border enabled:hover:bg-surface-hover enabled:hover:text-text-main disabled:cursor-not-allowed disabled:opacity-45"
+          aria-label="Increase"
+          [disabled]="disabled() || readOnly()"
+          (click)="stepBy(1)"
+        >
+          +
+        </button>
+      </div>
+    }
+  </div>
+  @if (error()) {
+    <div id="mui-input-error" [class]="helperClasses" role="alert">{{ error() }}</div>
+  }
+</div>

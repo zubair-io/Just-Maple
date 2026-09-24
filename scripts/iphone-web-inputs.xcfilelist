@@ -1,0 +1,3 @@
+$(SRCROOT)/../../scripts/bundle-web.sh
+$(SRCROOT)/../../src/web
+/opt/homebrew

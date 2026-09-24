@@ -1,0 +1,21 @@
+// Residue only — everything else moved to template utility classes
+// (see mui-spinner.component.ts/.html) per the Tailwind conversion recipe
+// (styles/TAILWIND-CONVERSION.md). @keyframes stay in plain CSS (allowed
+// residue); the template references them by name via arbitrary
+// `[animation:...]` utilities, which resolves fine since keyframe names are
+// global regardless of which stylesheet declares them.
+
+// Zero-duration, `forwards`-filled opacity step, delayed by `delayMs()` — the
+// spinner simply doesn't exist visually until the threshold passes, so a
+// load that resolves faster than the delay never flashes one at all.
+@keyframes mui-spinner-appear {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mui-spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

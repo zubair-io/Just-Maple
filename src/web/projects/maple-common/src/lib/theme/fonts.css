@@ -1,0 +1,48 @@
+
+@font-face {
+  font-family: 'Lato';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../../assets/fonts/Lato-Regular.woff2') format('woff2');
+  size-adjust: 111.25%;
+  ascent-override: 86.91%;
+  descent-override: 18.96%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Lato';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../../assets/fonts/Lato-Bold.woff2') format('woff2');
+  size-adjust: 109.36%;
+  ascent-override: 88.41%;
+  descent-override: 19.29%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Merriweather';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../../assets/fonts/Merriweather-Bold.woff2') format('woff2');
+  size-adjust: 88.94%;
+  ascent-override: 103.1%;
+  descent-override: 24.65%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../../assets/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  size-adjust: 103.03%;
+  ascent-override: 93.84%;
+  descent-override: 20.47%;
+  line-gap-override: 0%;
+}

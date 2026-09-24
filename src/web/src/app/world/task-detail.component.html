@@ -1,0 +1,276 @@
+<mui-button variant="ghost" (pressed)="world.go('tasks')">← Tasks</mui-button>
+@if (id() === "new" || record()) {
+  @if (editing()) {
+    <div class="row">
+      <h1>{{ id() === "new" ? "New task" : "Edit task" }}</h1>
+      @if (id() !== "new") {
+        <mui-button variant="ghost" (pressed)="editing.set(false)"
+          >Cancel edit</mui-button
+        >
+      }
+    </div>
+    <p>A concrete action. Add context now or leave it untagged.</p>
+    <div class="field">
+      <label>Task</label
+      ><mui-input
+        ariaLabel="Task title"
+        [(value)]="draft.title"
+        placeholder="What needs to happen?"
+      />
+    </div>
+    <div class="field">
+      <label for="task-description">Description</label
+      ><textarea
+        id="task-description"
+        [(ngModel)]="draft.description"
+      ></textarea>
+    </div>
+    <fieldset class="field">
+      <legend>Activities · choose any number</legend>
+      <div class="tag-row">
+        @for (a of world.data().activities; track a.id) {
+          <mui-checkbox
+            [label]="a.name + (a.lifecycle === 'archived' ? ' · archived' : '')"
+            [checked]="draft.activityIDs.includes(a.id)"
+            (checkedChange)="tag(a.id, $event)"
+          />
+        }
+      </div>
+    </fieldset>
+    <div class="form-grid">
+      <div class="field">
+        <label>Responsible person</label
+        ><mui-input
+          ariaLabel="Responsible person"
+          [(value)]="draft.assignee"
+          placeholder="Private label · no message is sent"
+        />
+      </div>
+      <div class="field">
+        <label for="task-priority">Priority</label
+        ><select id="task-priority" [(ngModel)]="draft.priority">
+          <option [ngValue]="0">Normal</option>
+          <option [ngValue]="1">Low</option>
+          <option [ngValue]="2">Medium</option>
+          <option [ngValue]="3">High</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Where</label
+        ><mui-input ariaLabel="Task place" [(value)]="draft.place" />
+      </div>
+      <div class="field">
+        <label>Related people</label
+        ><mui-input
+          ariaLabel="Related people"
+          [(value)]="peopleText"
+          placeholder="Comma-separated names"
+        />
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label for="due-kind">Due</label
+        ><select id="due-kind" [(ngModel)]="dueKind">
+          <option value="none">No date</option>
+          <option value="date">Date only</option>
+          <option value="instant">Exact time</option>
+        </select>
+      </div>
+      <div class="field">
+        @if (dueKind === "date") {
+          <label for="due-date">Date</label
+          ><input id="due-date" type="date" [(ngModel)]="dueDate" />
+        }
+        @if (dueKind === "instant") {
+          <label for="due-time">Date and time · this Mac's local time</label
+          ><input id="due-time" type="datetime-local" [(ngModel)]="dueTime" />
+        }
+      </div>
+      <div class="field">
+        <label>Interpretation time zone</label
+        ><mui-input ariaLabel="Task time zone" [(value)]="zone" />
+      </div>
+      <div class="field">
+        <label for="scheduled-date">Schedule for a day (optional)</label
+        ><input id="scheduled-date" type="date" [(ngModel)]="scheduledDate" />
+      </div>
+    </div>
+    <div class="field">
+      <label>Relevant when your location / presence is</label
+      ><mui-input
+        ariaLabel="Required presence"
+        [(value)]="conditionValue"
+        placeholder="Optional, for example Home"
+      /><small
+        >A mismatch asks for clarification; it never completes the task or
+        changes its due date.</small
+      >
+    </div>
+    @if (draft.status === "waiting") {
+      <div class="field">
+        <label>Waiting reason</label
+        ><mui-input
+          ariaLabel="Waiting reason"
+          [(value)]="draft.waitingReason"
+        />
+      </div>
+    }
+    @if (id() === "new") {
+      <div class="form-grid">
+        <div class="field">
+          <label for="repeat">Repeat</label
+          ><select id="repeat" [(ngModel)]="repeat">
+            <option value="none">Does not repeat</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </div>
+        @if (repeat !== "none") {
+          <div class="field">
+            <label for="repeat-start">First occurrence</label
+            ><input id="repeat-start" type="date" [(ngModel)]="repeatStart" />
+          </div>
+          <div class="field">
+            <label for="repeat-time">Local time in {{ zone }}</label
+            ><input id="repeat-time" type="time" [(ngModel)]="repeatTime" />
+          </div>
+        }
+      </div>
+    }
+    @if (draft.seriesID) {
+      <div class="field">
+        <label for="edit-scope">Apply this edit to</label
+        ><select id="edit-scope" [(ngModel)]="scope">
+          <option value="occurrence">This occurrence</option>
+          <option value="future">
+            Future open occurrences and template
+          </option></select
+        ><small
+          >Recurring times stay in the original time zone. Pause the series to
+          replace its schedule.</small
+        >
+      </div>
+    }
+    <div class="actions">
+      <mui-button
+        variant="primary"
+        [disabled]="!draft.title.trim() || world.bridge.pending()"
+        (pressed)="save()"
+        >Save task</mui-button
+      >
+      @if (record()) {
+        <mui-button (pressed)="reload()">Reload latest version</mui-button>
+      }
+    </div>
+  } @else if (record(); as task) {
+    <div class="row">
+      <h1>{{ task.title }}</h1>
+      <mui-button (pressed)="edit()">Edit</mui-button>
+    </div>
+    <div class="tag-row">
+      @for (id of task.activityIDs; track id) {
+        <button class="activity-tag" (click)="world.go('activities/' + id)">
+          {{ world.activity(id)?.name
+          }}{{
+            world.activity(id)?.lifecycle === "archived" ? " · archived" : ""
+          }}
+        </button>
+      }
+    </div>
+    <p>{{ task.description }}</p>
+    <dl class="detail-list">
+      <dt>Status</dt>
+      <dd>{{ task.status.replaceAll("_", " ") }}</dd>
+      <dt>When</dt>
+      <dd>
+        {{ world.dueLabel(task.due) }}
+        @if (task.due) {
+          · {{ task.due.timeZone }}
+        }
+      </dd>
+      <dt>Scheduled</dt>
+      <dd>{{ world.dueLabel(task.scheduled) }}</dd>
+      <dt>Responsible person</dt>
+      <dd>{{ task.assignee || "Not assigned" }} · private label</dd>
+      <dt>Where</dt>
+      <dd>{{ task.place || "Not set" }}</dd>
+      <dt>People</dt>
+      <dd>{{ task.people.join(", ") || "None linked" }}</dd>
+      @if (task.seriesID) {
+        <dt>Occurrence</dt>
+        <dd>{{ task.occurrenceKey }}</dd>
+      }
+    </dl>
+    @for (item of world.data().attention; track item.id) {
+      @if (item.taskID === task.id) {
+        <section
+          class="right-now"
+          [class.mismatch]="item.category === 'context_mismatch'"
+        >
+          <h3>{{ item.category.replaceAll("_", " ") }}</h3>
+          <p>{{ item.explanation }}</p>
+        </section>
+      }
+    }
+    <div class="actions">
+      @if (isOpen(task)) {
+        <mui-button
+          variant="primary"
+          [disabled]="world.bridge.pending()"
+          (pressed)="world.status(task, 'completed')"
+          >{{
+            task.seriesID ? "Complete this occurrence" : "Mark complete"
+          }}</mui-button
+        ><mui-button (pressed)="world.status(task, 'in_progress')"
+          >In progress</mui-button
+        ><mui-button (pressed)="edit(); draft.status = 'waiting'"
+          >Waiting</mui-button
+        ><mui-button (pressed)="world.status(task, 'cancelled')">{{
+          task.seriesID ? "Skip this occurrence" : "Cancel task"
+        }}</mui-button>
+      } @else {
+        <mui-button (pressed)="world.status(task, 'open')">Reopen</mui-button>
+      }
+      @if (task.seriesID) {
+        <mui-button variant="ghost" (pressed)="pauseSeries()"
+          >Pause / resume future generation</mui-button
+        >
+      }
+    </div>
+    <h2>Relevant when</h2>
+    @for (c of task.conditions; track c.property) {
+      <p>{{ c.property }} is {{ c.value }}</p>
+    } @empty {
+      <p>No context conditions set.</p>
+    }
+    <maple-task-evidence [nodeID]="'task:' + task.id" />
+    <h2>Sources</h2>
+    @for (id of task.evidenceIDs; track id) {
+      <mui-button (pressed)="evidence(id)">Inspect source</mui-button>
+    } @empty {
+      <p>Captured by you. No external source is linked.</p>
+    }
+    <h2>Task history</h2>
+    @for (h of history(); track h.id) {
+      <div class="item">
+        <b>{{ h.type.replaceAll(".", " ").replaceAll("_", " ") }}</b>
+        <p>{{ h.recordedAt * 1000 | date: "medium" }} · {{ h.actor }}</p>
+      </div>
+    } @empty {
+      <p>Older changes are available in History.</p>
+    }
+  }
+} @else {
+  <h1>Task unavailable</h1>
+  <p>It may have changed or this link may be invalid.</p>
+}
+@if (source()) {
+  <section class="panel">
+    <h3>Source evidence</h3>
+    <p class="event">{{ source()!.content }}</p>
+    <mui-button variant="ghost" (pressed)="source.set(null)"
+      >Close source</mui-button
+    >
+  </section>
+}

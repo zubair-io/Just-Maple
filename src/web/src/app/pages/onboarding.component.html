@@ -1,0 +1,128 @@
+<div class="setup">
+  @switch (s().step) {
+    @case (0) {
+      <div class="hero">
+        <div class="eyebrow">Private by design</div>
+        <h1>Your personal intelligence, built around you.</h1>
+        <p>
+          Connect the information already in your life. Maple helps you
+          understand what matters.
+        </p>
+        <div class="actions">
+          <mui-button size="lg" variant="primary" (pressed)="step(1)"
+            >Get started</mui-button
+          >
+        </div>
+        <p>Local first. Your sources. Your say.</p>
+      </div>
+    }
+    @case (1) {
+      <div class="eyebrow">Start with the simple things</div>
+      <h1>What should Maple call you?</h1>
+      <p>Just the essentials. We can discover the rest together.</p>
+      <div class="field">
+        <mui-input
+          ariaLabel="Your name"
+          placeholder="Your name"
+          [(value)]="name"
+        />
+      </div>
+      <section class="panel soft">
+        <h3>You are more than a profile form.</h3>
+        <p>Add what feels useful. Leave the rest for later.</p>
+      </section>
+      <mui-button
+        variant="primary"
+        [disabled]="!name.trim()"
+        (pressed)="introduce()"
+        >Continue</mui-button
+      >
+    }
+    @case (2) {
+      <div class="eyebrow">A starting point</div>
+      <h1>You already have a story.</h1>
+      <p>A résumé or short bio gives Maple some context.</p>
+      <section class="panel">
+        <h2>{{ s().resume || "Bring your résumé" }}</h2>
+        <p>PDF with selectable text, Markdown, or a text file.</p>
+        <mui-button
+          variant="primary"
+          (pressed)="bridge.act({ action: 'resume' })"
+          >Choose file</mui-button
+        >
+      </section>
+      <p>
+        Source assertions keep their evidence. You can inspect and correct what
+        Maple learns.
+      </p>
+    }
+    @case (3) {
+      <div class="eyebrow">From your sources</div>
+      <h1>Here’s a first picture of you.</h1>
+      <p>
+        Grounded in what you shared. Review and correct these in Me at any time.
+      </p>
+      <section class="panel">
+        @for (f of s().facts; track f.id) {
+          @if (f.subject === "person:self") {
+            <article class="item">
+              <h3>{{ f.value }}</h3>
+              <p>“{{ f.sourceQuote }}”</p>
+            </article>
+          }
+        }
+        @if (!s().facts.length) {
+          <p>Your source facts will appear after the intelligence loop runs.</p>
+        }
+      </section>
+    }
+    @case (4) {
+      <div class="eyebrow">Your connections</div>
+      <h1>Bring your world together.</h1>
+      <p>Start with one connection. Add more when you’re ready.</p>
+      <maple-connections />
+    }
+    @case (5) {
+      <div class="eyebrow">Your intelligence</div>
+      <h1>Choose how Maple learns.</h1>
+      <p>Classification with Jev, source fact extraction on your Mac.</p>
+      <maple-connections scope="intelligence" />
+    }
+    @default {
+      <div class="eyebrow">Your world</div>
+      <h1>Does this feel like you?</h1>
+      <p>
+        {{ s().name }} · {{ s().count }} observations ·
+        {{ s().importantPeople.length }} important people.
+      </p>
+      <section class="panel soft">
+        <h3>Learning runs automatically</h3>
+        <p>
+          Once Jev is connected, Maple automatically classifies observations, extracts supported facts and surfaces
+          questions that need your input.
+        </p>
+        <mui-button
+          variant="primary"
+          [disabled]="!s().connected"
+          (pressed)="bridge.act({ action: 'loop' })"
+          >{{ s().running ? "Pause loop" : "Resume loop" }}</mui-button
+        >
+      </section>
+    }
+  }
+  <div class="actions setup-footer">
+    @if (s().step > 0) {
+      <mui-button (pressed)="step(s().step - 1)">Back</mui-button>
+    }
+    @if (s().step > 1) {
+      <mui-button
+        variant="primary"
+        (pressed)="step(s().step >= 6 ? -1 : s().step + 1)"
+        >{{ s().step >= 6 ? "Open my world" : "Continue" }}</mui-button
+      >
+    }
+    @if (s().name) {
+      <mui-button variant="ghost" (pressed)="step(-1)">Back to Home</mui-button>
+    }
+  </div>
+</div>

@@ -1,0 +1,13 @@
+{
+  "name": "just-maple",
+  "private": true,
+  "scripts": {
+    "setup": "npm ci --prefix src/web && npm ci --prefix src/providers",
+    "build": "bash scripts/build-app.sh",
+    "build:web": "npm run build --prefix src/web",
+    "test": "npm test --prefix src/web",
+    "test:core": "swift test --package-path src/apple/Packages/MapleCore",
+    "test:apple": "xcodebuild -project 'src/apple/Just Maple.xcodeproj' -scheme 'Just Maple' -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode test",
+    "test:providers": "npm test --prefix src/providers"
+  }
+}

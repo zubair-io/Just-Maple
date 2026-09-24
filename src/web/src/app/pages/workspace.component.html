@@ -1,0 +1,385 @@
+@switch (page) {
+  @case ("Home") {
+    <div class="eyebrow">Your local workspace</div>
+    <h1>Hello, {{ s().name }}.</h1>
+    <p>Your world, a little clearer.</p>
+    <div class="grid workspace">
+      <section>
+        <h2>Needs your attention</h2>
+        @for (w of attention(); track w.id) {
+          <article class="panel">
+            <h3>
+              {{
+                w.kind === "ask_user"
+                  ? "A little input would help"
+                  : "Something worth noticing"
+              }}
+            </h3>
+            <p>{{ decision(w.eventID)?.explanation?.join(" ") }}</p>
+            <div class="actions">
+              <mui-button variant="primary" (pressed)="review(w)"
+                >Review</mui-button
+              ><mui-button
+                (pressed)="bridge.act({ action: 'dismiss', id: w.id })"
+                >Dismiss</mui-button
+              >
+            </div>
+          </article>
+        } @empty {
+          <article class="panel">
+            <h3>A little breathing room.</h3>
+            <p>
+              No open questions right now. Add context to begin learning what
+              matters.
+            </p>
+            <mui-button (pressed)="go('/notes')">Add an observation</mui-button>
+          </article>
+        }
+      </section>
+      <section>
+        <h2>Your next step</h2>
+        <div class="panel soft">
+          <h3>
+            {{
+              s().running
+                ? "Your loop is running"
+                : "Make room for understanding."
+            }}
+          </h3>
+          <p>{{ s().count }} observations in your local store.</p>
+          <mui-button
+            variant="primary"
+            [disabled]="!s().connected"
+            (pressed)="act('loop')"
+            >{{ s().running ? "Pause loop" : "Resume loop" }}</mui-button
+          >
+          <div class="actions">
+            <mui-button variant="ghost" (pressed)="go('/connections')"
+              >Manage connections</mui-button
+            >
+          </div>
+        </div>
+      </section>
+    </div>
+    <h2>Your world</h2>
+    <div class="grid">
+      <section class="panel">
+        <div class="metric">{{ s().importantPeople.length }}</div>
+        <p>Important people · pins and recent interactions</p>
+        <mui-button (pressed)="go('/people')">Your people</mui-button>
+      </section>
+      <section class="panel">
+        <div class="metric">{{ s().facts.length }}</div>
+        <p>Source assertions with evidence</p>
+        <mui-button (pressed)="go('/me')">Your context</mui-button>
+      </section>
+    </div>
+    <div class="grid workspace">
+      <section>
+        <h2>Recently learned</h2>
+        <div class="panel">
+          @for (f of s().facts.slice(0, 3); track f.id) {
+            <article class="item">
+              <h3>{{ f.value }}</h3>
+              <small>{{ subjectName(f.subject) }} · {{ f.predicate }}</small>
+              <div class="actions">
+                <mui-button variant="ghost" (pressed)="source(f.eventID)"
+                  >View source</mui-button
+                >
+              </div>
+            </article>
+          } @empty {
+            <p>Your source-linked facts will appear here.</p>
+          }
+        </div>
+      </section>
+      <section>
+        <h2>Recent activity</h2>
+        <div class="panel">
+          @for (d of s().decisions.slice(0, 3); track d.eventID) {
+            <article class="item">
+              <h3>{{ d.route.replaceAll("_", " ") }}</h3>
+              <small
+                >{{ d.context.event.source.connector }} ·
+                {{ d.createdAt * 1000 | date }}</small
+              >
+            </article>
+          } @empty {
+            <p>Your first decision starts with a little context.</p>
+          }
+          <div class="actions">
+            <mui-button variant="ghost" (pressed)="go('/activity')"
+              >See the loop</mui-button
+            >
+          </div>
+        </div>
+      </section>
+    </div>
+  }
+  @case ("Connections") {
+    <h1>Your connections.</h1>
+    <p>You choose what Maple can learn from.</p>
+    <mui-button (pressed)="bridge.act({ action: 'step', value: 0 })"
+      >Review setup</mui-button
+    ><maple-connections />
+  }
+  @case ("Calendar") {
+    <h1>Your plans, in context.</h1>
+    <p>
+      Upcoming events from your selected calendars. Imported history remains
+      searchable.
+    </p>
+    <details>
+      <summary>Calendar connections & selection</summary>
+      <maple-connections scope="calendar" />
+    </details>
+    <h2>Upcoming</h2>
+    @for (e of calendar(); track e.id) {
+      <article class="panel" [attr.data-event-id]="e.id">
+        <h3>{{ e.name }}</h3>
+        <p>
+          {{ e.start * 1000 | date: "medium" }} –
+          {{ e.end * 1000 | date: "shortTime" }}
+        </p>
+        <details>
+          <summary>Source details</summary>
+          <p class="event">{{ e.content }}</p>
+        </details>
+      </article>
+    } @empty {
+      <p>No imported upcoming events. Select calendars above to begin.</p>
+    }
+  }
+  @case ("Me") {
+    <h1>A picture of you.</h1>
+    <p>Your corrections take priority over source assertions.</p>
+    <section class="panel">
+      @for (c of ownClaims(); track c.id) {
+        <article class="item">
+          <small>{{ c.predicate }} · {{ c.origin }}</small>
+          <h3>{{ c.value }}</h3>
+        </article>
+      }
+    </section>
+    <h2>What your sources say</h2>
+    <section class="panel">
+      @for (f of ownFacts(); track f.id) {
+        <article class="item">
+          <small>{{ f.predicate }} · {{ f.provider }}</small>
+          <h3>{{ f.value }}</h3>
+          <p>“{{ f.sourceQuote }}”</p>
+          <div class="actions">
+            <mui-button (pressed)="source(f.eventID)">View source</mui-button
+            ><mui-button (pressed)="edit(f)">Correct</mui-button>
+          </div>
+        </article>
+      } @empty {
+        <p>No extracted facts yet. Import a source and start the loop.</p>
+      }
+    </section>
+  }
+  @case ("People") {
+    <h1>The people who matter.</h1>
+    <p>Pinned people first, then recent message interactions.</p>
+    <div class="field">
+      <mui-input
+        variant="search"
+        ariaLabel="Find a person"
+        placeholder="Name, email or phone"
+        [(value)]="query"
+      />
+    </div>
+    <div class="actions">
+      <mui-button (pressed)="findPerson()">Find person</mui-button>
+      @if (peopleResults() !== null) {
+        <mui-button (pressed)="peopleResults.set(null)"
+          >Back to important people</mui-button
+        >
+      }
+    </div>
+    <h2>
+      {{ peopleResults() !== null ? "Search results" : "Important people" }}
+    </h2>
+    @for (p of peopleResults() ?? s().importantPeople; track p.id) {
+      <article class="panel">
+        <div class="row">
+          <h3>{{ p.name }}</h3>
+          <mui-button (pressed)="pin(p)">{{
+            p.pinned ? "Unpin" : "Pin"
+          }}</mui-button>
+        </div>
+        <p>{{ p.relationship || p.source }}</p>
+        <small>{{ p.reason }}</small>
+        <div class="actions">
+          <mui-button (pressed)="personState(p)">What Maple knows</mui-button>
+        </div>
+      </article>
+    } @empty {
+      <p>
+        Search for someone to pin, or connect Messages to find recent
+        interactions.
+      </p>
+    }
+    <details>
+      <summary>Add a person yourself</summary>
+      <div class="field">
+        <mui-input
+          ariaLabel="Person name"
+          placeholder="Name"
+          [(value)]="personName"
+        />
+      </div>
+      <div class="field">
+        <mui-input
+          ariaLabel="Relationship"
+          placeholder="Relationship"
+          [(value)]="relationship"
+        />
+      </div>
+      <mui-button [disabled]="!personName.trim()" (pressed)="savePerson()"
+        >Save person</mui-button
+      >
+    </details>
+  }
+  @case ("Notes") {
+    <h1>A little context goes a long way.</h1>
+    <p>Notes are another way for Maple to learn.</p>
+    <section class="panel">
+      <label for="note">What would you like Maple to know?</label
+      ><textarea
+        id="note"
+        [(ngModel)]="note"
+        placeholder="Something you learned, a changed plan, a detail to remember…"
+      ></textarea>
+      <div class="actions">
+        <mui-button
+          variant="primary"
+          [disabled]="!note.trim() || bridge.pending()"
+          (pressed)="saveNote()"
+          >Save observation</mui-button
+        ><mui-button (pressed)="act('importNote')"
+          >Import Markdown or text</mui-button
+        >
+      </div>
+    </section>
+    <small
+      >Saved in the local intelligence store. The full notebook editor is still
+      to come.</small
+    >
+  }
+  @case ("Search") {
+    <h1>Find the thread.</h1>
+    <p>Search source observations stored on this Mac.</p>
+    <div class="field">
+      <mui-input
+        variant="search"
+        ariaLabel="Search context"
+        [(value)]="query"
+      />
+    </div>
+    <mui-button variant="primary" (pressed)="search()"
+      >Search context</mui-button
+    >
+    @for (e of results(); track e.id) {
+      <article class="panel">
+        <small>{{ e.source.connector }} · {{ e.type }}</small>
+        <p class="event">{{ e.content }}</p>
+      </article>
+    } @empty {
+      <p>No results to show yet.</p>
+    }
+  }
+  @case ("Activity") {
+    <h1>The loop, in the open.</h1>
+    <section class="panel"><h2>Connector audit</h2><p>Import 30 days of Messages and up to 100 matching emails. Run the real classifiers and review suggested follow-ups.</p><mui-input ariaLabel="Gmail audit query" [(value)]="auditQuery"/><mui-button [disabled]="s().auditRunning || !s().connected || s().busy" (pressed)="runAudit()">Run connector audit</mui-button><mui-button [disabled]="s().auditRunning || !s().connected || s().busy" (pressed)="runAudit(true)">Audit imported evidence</mui-button><p>For imported evidence, enter plain search words instead of Gmail query operators.</p><p role="status">{{s().auditStatus}}</p></section>
+    <p>Every decision keeps its context and evidence.</p>
+    <div class="actions">
+      <mui-button
+        variant="primary"
+        [disabled]="!s().connected"
+        (pressed)="act('loop')"
+        >{{ s().running ? "Pause loop" : "Resume loop" }}</mui-button
+      ><mui-button (pressed)="act('retry')">Retry failed events</mui-button
+      ><mui-button (pressed)="act('retryFacts')"
+        >Retry fact extraction</mui-button
+      >
+    </div>
+    @for (d of s().decisions; track d.eventID) {
+      <article class="panel">
+        <h3>{{ d.route.replaceAll("_", " ") }}</h3>
+        <p>{{ d.explanation.join(" ") }}</p>
+        <div class="actions">
+          <mui-button (pressed)="detail.set(d)">Inspect decision</mui-button
+          ><mui-button
+            [disabled]="!s().connected || s().busy"
+            (pressed)="bridge.act({ action: 'checkFacts', id: d.eventID })"
+            >Ask Jev: new facts?</mui-button
+          ><mui-button (pressed)="bridge.act({ action: 'extractTasks', id: d.eventID })">Review for tasks</mui-button
+          >
+        </div>
+      </article>
+    } @empty {
+      <p>No decisions yet. Add context and start the loop.</p>
+    }
+    <h2>Processing queue</h2>
+    @for (q of s().queue; track q.eventID) {
+      <div class="item">
+        <strong>{{ q.status === 'outside_window' ? 'Older than 30 days · local index only' : q.status }}</strong> · {{ q.attempts }} attempts
+        <p>{{ q.error }}</p>
+      </div>
+    }
+    <h2>Task extraction</h2>
+    @for (q of s().taskExtractionQueue ?? []; track q.eventID) {
+      <div class="item"><strong>{{ q.status === 'outside_window' ? 'Older than 30 days · local index only' : q.status }}</strong> · {{ q.attempts }} attempts<p>{{ q.error }}</p>
+      @if (q.status === 'failed') {<mui-button (pressed)="bridge.act({action: 'extractTasks', id: q.eventID})">Retry task extraction</mui-button>}
+      </div>
+    }
+    <h2>Fact extraction</h2>
+    @for (q of s().factQueue; track q.eventID) {
+      <div class="item">
+        <strong>{{ q.status === 'outside_window' ? 'Older than 30 days · local index only' : q.status }}</strong> · {{ q.attempts }} attempts
+        <p>{{ q.error }}</p>
+      </div>
+    }
+  }
+}
+@if (detail()) {
+  <div class="modal-backdrop" (keydown.escape)="close()">
+    <section
+      class="modal"
+      cdkTrapFocus
+      [cdkTrapFocusAutoCapture]="true"
+      role="dialog"
+      aria-modal="true"
+      aria-label="In context"
+    >
+      <div class="row">
+        <h2>In context</h2>
+        <mui-button ariaLabel="Close details" (pressed)="close()"
+          >Close</mui-button
+        >
+      </div>
+      @if (selectedFact()) {
+        <div class="field">
+          <mui-input ariaLabel="Correct fact" [(value)]="correction" />
+        </div>
+        <mui-button variant="primary" (pressed)="correct()"
+          >Save correction</mui-button
+        >
+      }
+      @if (selectedWork()?.kind === "ask_user") {
+        <p>{{ s().prompts[selectedWork()!.eventID] }}</p>
+        <textarea aria-label="Your response" [(ngModel)]="answer"></textarea>
+        <div class="actions">
+          <mui-button
+            variant="primary"
+            [disabled]="!answer.trim()"
+            (pressed)="respond()"
+            >Save response</mui-button
+          >
+        </div>
+      }
+      <pre>{{ detail() | json }}</pre>
+    </section>
+  </div>
+}
