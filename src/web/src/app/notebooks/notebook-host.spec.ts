@@ -30,4 +30,28 @@ describe('Notebook native transport',()=>{
   (window as any).mapleHost='iphone';await service.refresh();
   expect(desktop).toHaveBeenCalledTimes(1);expect(service.error()).toContain('iPhone notebook storage is unavailable');
  });
+ it('preserves edits typed while Save a copy is creating and writing its file',async()=>{
+  let releaseCreate!:(value:any)=>void;
+  const created=new Promise(resolve=>releaseCreate=resolve);
+  const send=vi.fn(async(action:string,data:any)=>{
+   if(action==='noteCreate')return created;
+   if(action==='noteSave')return {notebookID:data.id,path:data.path,content:data.content,revision:'saved-'+data.content};
+   if(action==='notebookCatalog')return {notebooks:[],cloudAvailable:true};
+   return {saved:true};
+  });
+  TestBed.configureTestingModule({providers:[{provide:NativeBridge,useValue:{notebook:send}}]});
+  const service=TestBed.inject(NotebookService);
+  service.load({notebookID:'book',path:'original.md',content:'Before copy',revision:'original'});
+  const work=service.saveCopy('Copy');await Promise.resolve();await Promise.resolve();
+  service.change('Typed during copy');
+  releaseCreate({notebookID:'book',path:'copy.md',content:'',revision:'empty'});
+  await work;
+  expect(service.document()).toMatchObject({path:'copy.md',content:'Typed during copy'});
+  expect(service.dirty()).toBe(true);
+  expect(send).toHaveBeenCalledWith('noteDraft',{record:expect.objectContaining({path:'copy.md',content:'Typed during copy'})});
+  expect(await service.flush()).toBe(true);
+  expect(send).toHaveBeenCalledWith('noteSave',expect.objectContaining({path:'copy.md',content:'Typed during copy'}));
+  expect(send.mock.calls.filter(([action,data])=>action==='noteSave'&&data.path==='original.md')).toHaveLength(0);
+ });
+
 });

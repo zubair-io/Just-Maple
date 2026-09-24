@@ -33,7 +33,9 @@ struct CompanionSyncProjectionTests {
         let response = CompanionSyncProjection.make(world: world, deviceID: UUID(), receivedIDs: [])
         #expect(response.tasks.map(\.id) == ["source:root", "task:canonical"])
         #expect(response.tasks.first?.activities == [a.name,b.name])
+        #expect(response.tasks.first?.activityIDs == [a.id,b.id])
         #expect(response.tasks.first?.due != nil)
+        #expect(response.tasks.first?.dueAt == (try due.boundary(endOfDay:true)))
         #expect(response.tasks.first?.due?.contains(":") == false)
     }
 
@@ -49,6 +51,39 @@ struct CompanionSyncProjectionTests {
         #expect(response.tasks.count == 1)
         #expect(response.tasks.first?.id == "task:canonical")
         #expect(response.tasks.first?.due == nil)
+    }
+
+    @Test func waitingCannotStarveNeedsYouAndActivityIdentitySurvivesTruncatedLabels() async throws {
+        var world = try await emptyWorld()
+        var due = DueSpec();due.kind = .instant;due.instant = now.addingTimeInterval(-86400);due.timeZone = "UTC"
+        world.tasks = (0..<60).map { index in var value = task("waiting-\(index)",status:.waiting);value.due=due;return value }
+        var action=task("action");action.activityIDs=["first","second"];world.tasks.append(action)
+        var first=LifeActivity();first.id="first";first.name=String(repeating:"Long name ",count:20)+"A"
+        var second=first;second.id="second";second.name=String(repeating:"Long name ",count:20)+"B"
+        world.activities=[first,second]
+        let response=CompanionSyncProjection.make(world:world,deviceID:UUID(),receivedIDs:[])
+        #expect(response.tasks.count==50)
+        #expect(response.tasks.first?.id=="task:action")
+        #expect(response.needsYouTotal==1 && response.waitingTotal==60)
+        #expect(response.tasks.first?.activities.first==response.tasks.first?.activities.last)
+        #expect(response.tasks.first?.activityIDs==["first","second"])
+        world.tasks += (0..<60).map {task("action-\($0)")}
+        let both=CompanionSyncProjection.make(world:world,deviceID:UUID(),receivedIDs:[])
+        #expect(both.tasks.filter{$0.status != "waiting"}.count==40)
+        #expect(both.tasks.filter{$0.status == "waiting"}.count==10)
+    }
+
+    @Test func deferredTaskRemainsAccessibleButDoesNotCountAsNeedsYouUntilResurfaceTime() async throws {
+        let store=try KnowledgeStore(path:":memory:"),device=UUID()
+        var value=task("later");value=try await store.saveTask(value,expectedVersion:0,requestID:UUID().uuidString,at:now)
+        let actionID=UUID().uuidString.lowercased()
+        _ = try await store.applyTaskAction(nodeID:"task:later",change:.init(kind:"later",issuedAt:now,resurfaceAt:now.addingTimeInterval(3600)),expectedVersion:value.version,requestID:actionID,scope:device.uuidString.lowercased(),at:now)
+        let first=CompanionSyncProjection.make(world:try await store.worldSnapshot(at:now),deviceID:device,receivedIDs:[])
+        #expect(first.needsYouTotal==0 && first.laterTotal==1)
+        #expect(first.tasks.first?.actionState?.lastMutationID==actionID)
+        #expect(first.tasks.first?.actionState?.canUndo==true)
+        let later=CompanionSyncProjection.make(world:try await store.worldSnapshot(at:now.addingTimeInterval(3601)),deviceID:device,receivedIDs:[])
+        #expect(later.needsYouTotal==1 && later.laterTotal==0)
     }
 
     @Test func snapshotOmitsPrivateSourceFieldsAndBoundsPayload() async throws {

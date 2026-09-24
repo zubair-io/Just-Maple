@@ -97,6 +97,7 @@ extension KnowledgeStore {
             var task = input;task.activityIDs = Array(Set(input.activityIDs)).sorted();task.version = expectedVersion+1
             task.createdAt = old?.createdAt ?? at;task.updatedAt = at
             task.seriesID = old?.seriesID;task.occurrenceKey = old?.occurrenceKey
+            task.actionState = old?.status == task.status ? old?.actionState : nil
             if let old,old.status != task.status {
                 try db.execute("INSERT OR REPLACE INTO task_inference_corrections VALUES (?,'status')",["task:"+task.id])
                 try db.execute("DELETE FROM task_progress_evidence WHERE id=?",["task:"+task.id])

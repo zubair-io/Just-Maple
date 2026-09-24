@@ -43,6 +43,7 @@ public struct RelevanceCondition: Codable, Sendable, Equatable {
     public init() {}
 }
 public struct LifeTask: Codable, Sendable, Equatable {
+    public var actionState: TaskActionState?
     public var id = UUID().uuidString
     public let ownerID = "local"
     public var title = ""

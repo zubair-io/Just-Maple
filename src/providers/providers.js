@@ -1,21 +1,13 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { ACPProvider, adapterEntry } from "./acp-provider.js";
 
-const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
+import { ClaudeTextProvider } from './claude-text-provider.js';
 
 export const providers = Object.freeze({
-  claude: new ACPProvider({
+  claude: new ClaudeTextProvider({
     id: "claude",
     displayName: "Claude",
     cli: "claude",
     adapterPath: adapterEntry("@agentclientprotocol/claude-agent-acp"),
-    adapterEnvironment(cliPath) {
-      return {
-        CLAUDE_CODE_EXECUTABLE: path.join(sourceDirectory, "claude-subscription-wrapper.js"),
-        POC_REAL_CLAUDE_EXECUTABLE: cliPath
-      };
-    },
     versionArgs: ["--version"],
     authArgs: ["auth", "status"],
     parseAuthentication(result) {

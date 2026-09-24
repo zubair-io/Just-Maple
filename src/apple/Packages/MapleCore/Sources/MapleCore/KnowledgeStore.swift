@@ -9,6 +9,7 @@ public actor KnowledgeStore {
         try db.migrateIntelligence()
         try db.migrateDiscovery()
         try db.migrateTaskReconciliation()
+        try db.migrateTaskActions()
     }
 
     /// Event and queue insertion are atomic. Returns the canonical ID on duplicate delivery.

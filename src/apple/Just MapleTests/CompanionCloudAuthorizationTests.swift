@@ -43,6 +43,7 @@ import MapleCompanionTransport
     let preferences: UserDefaults
     var local: [String: Data] = [:]
     var remote: FixtureRemoteMailbox?
+    var supportedTaskIntents=SyncTaskIntent.allCases
     var active: PairingConfiguration?
     var stops = 0
     var suspendStart = false
@@ -55,7 +56,7 @@ import MapleCompanionTransport
             start: { configuration, _ in
                 self.active = configuration
                 if self.suspendStart { self.suspendStart = false; await withCheckedContinuation { self.startGate = $0 } }
-            }, stop: { self.stops += 1; self.active = nil }, isListening: { self.active != nil }, mailboxFactory: remote.map { remote in { _,_,authorize in remote.authorize = authorize; return remote } }, automaticMonitoring: false))
+            }, stop: { self.stops += 1; self.active = nil }, isListening: { self.active != nil }, mailboxFactory: remote.map { remote in { _,_,authorize in remote.authorize = authorize; return remote } }, supportedTaskIntents:supportedTaskIntents, automaticMonitoring: false))
     }
     func model() async throws -> AppModel { let model = AppModel(); model.store = try KnowledgeStore(path: ":memory:"); return model }
     func request() throws -> Data { try SyncCodec.encode(SyncRequest(deviceID: UUID(), operation: "sync")) }
@@ -186,17 +187,43 @@ import MapleCompanionTransport
 }
 
 @MainActor struct CompanionRemoteMailboxTests {
-    @Test func typedIntentRemainsPendingUntilLifecycleDispatcherIsAvailable() async throws {
-        let fixture=AuthorizationFixture(),mailbox=FixtureRemoteMailbox();fixture.remote=mailbox
+    @Test func unsupportedIntentDoesNotBlockCapturesOrSnapshot() async throws {
+        let fixture=AuthorizationFixture(),mailbox=FixtureRemoteMailbox();fixture.remote=mailbox;fixture.supportedTaskIntents=[]
         let host=fixture.controller(),model=try await fixture.model(),store=try #require(model.store)
         var task=LifeTask();task.title="Synthetic guarded intent"
         task=try await store.saveTask(task,expectedVersion:0,requestID:UUID().uuidString)
         mailbox.actions=[.init(deviceID:UUID(),action:.init(taskID:"task:"+task.id,expectedVersion:task.version,intent:.done))]
+        mailbox.requests=[.init(deviceID:UUID(),operation:"sync",captures:[.init(id:UUID(),text:"Synthetic unrelated capture",createdAt:Date())])]
         await host.restore(model:model)
-        #expect(mailbox.actionReceipts.isEmpty)
-        #expect(mailbox.actions.count==1)
+        #expect(mailbox.acknowledgments.count==1)
+        #expect(mailbox.snapshots.first?.supportedTaskIntents==[])
+        #expect(mailbox.actionReceipts.first?.outcome=="unsupported")
+        #expect(mailbox.actions.isEmpty)
+        #expect(!mailbox.snapshots.isEmpty)
         #expect(try await store.tasks().first?.version==task.version)
         #expect(try await store.tasks().first?.status==task.status)
+    }
+    @Test func typedCompletionAndUndoUseReceiptRevisionAndAuthenticatedDeviceScope() async throws {
+        let fixture=AuthorizationFixture(),mailbox=FixtureRemoteMailbox();fixture.remote=mailbox
+        let host=fixture.controller(),model=try await fixture.model(),store=try #require(model.store)
+        var task=LifeTask();task.title="Synthetic typed action"
+        task=try await store.saveTask(task,expectedVersion:0,requestID:UUID().uuidString)
+        let device=UUID(),done=SyncTaskAction(taskID:"task:"+task.id,expectedVersion:task.version,intent:.done)
+        mailbox.actions=[.init(deviceID:device,action:done)];mailbox.failAcknowledgment=true
+        await host.restore(model:model)
+        #expect(try await store.tasks().first?.status == .completed)
+        mailbox.failAcknowledgment=false;await host.cloudTick()
+        let receipt=try #require(mailbox.actionReceipts.first)
+        #expect(receipt.outcome=="applied" && receipt.resultingVersion==task.version+1)
+        #expect(mailbox.snapshots.last?.tasks.isEmpty==true)
+        let foreignUndo=SyncTaskAction(taskID:done.taskID,expectedVersion:task.version+1,intent:.undo,payload:.init(targetMutationID:done.id))
+        mailbox.actions=[.init(deviceID:UUID(),action:foreignUndo)];await host.cloudTick()
+        #expect(mailbox.actionReceipts.last?.outcome=="conflict")
+        let undo=SyncTaskAction(taskID:done.taskID,expectedVersion:task.version+1,intent:.undo,payload:.init(targetMutationID:done.id))
+        mailbox.actions=[.init(deviceID:device,action:undo)];await host.cloudTick()
+        #expect(mailbox.actionReceipts.last?.outcome=="applied")
+        #expect(mailbox.actionReceipts.last?.resultingVersion==task.version+2)
+        #expect(try await store.tasks().first?.status == .open)
     }
     @Test func taskActionsCommitOnceAndStaleVersionReturnsConflict()async throws {
         let fixture=AuthorizationFixture(),mailbox=FixtureRemoteMailbox();fixture.remote=mailbox
