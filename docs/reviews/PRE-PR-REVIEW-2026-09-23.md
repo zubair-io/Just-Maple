@@ -2,7 +2,9 @@
 
 September 23, 2026. Findings are open; this is not a merge approval.
 
-The checkout has no commits or remote. Four stacked initial-import PRs are prepared: Swift core/storage/transport; shared Angular UI/providers; Apple hosts/connectors/sync; product/design/evaluation. Repository selection is pending. No PR has been published by this preparation.
+Four stacked initial-import draft PRs are open in the public `zubair-io/Just-Maple` repository: [core/storage/transport (#1)](https://github.com/zubair-io/Just-Maple/pull/1), [shared UI/providers (#2)](https://github.com/zubair-io/Just-Maple/pull/2), [Apple apps/sync (#3)](https://github.com/zubair-io/Just-Maple/pull/3), and [product/design/evaluation (#4)](https://github.com/zubair-io/Just-Maple/pull/4). Merge in order after resolving findings and retarget dependent PRs as their bases merge. No app feature PR was merged during preparation.
+
+The public snapshot and full initial commit stack passed Gitleaks with zero findings. Historical local reports and private evaluation outputs are excluded; the published dataset templates are empty. Ignore rules exclude credentials, signing material, databases, build outputs and Xcode user state. A separate source review found no private message fixtures or hardcoded credentials in the proposed source.
 
 ## Open findings
 
