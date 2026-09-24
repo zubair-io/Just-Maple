@@ -3,6 +3,8 @@ import CloudKit
 import MapleCompanionTransport
 
 @MainActor protocol PhoneCloudMailbox {
+    func uploadGroupActions(deviceID:UUID,actions:[SyncGroupAction])async throws
+    func groupActionReceipts(deviceID:UUID,ids:[UUID])async throws->[SyncGroupActionReceipt]
     func uploadActions(deviceID:UUID,actions:[SyncTaskAction])async throws
     func actionReceipts(deviceID:UUID,ids:[UUID])async throws->[SyncTaskActionReceipt]
     func upload(_ request:SyncRequest) async throws
@@ -11,6 +13,8 @@ import MapleCompanionTransport
 }
 extension CloudCompanionMailbox: PhoneCloudMailbox {}
 extension PhoneCloudMailbox {
+    func uploadGroupActions(deviceID:UUID,actions:[SyncGroupAction])async throws{if !actions.isEmpty{throw CloudMailboxError.invalidPayload}}
+    func groupActionReceipts(deviceID:UUID,ids:[UUID])async throws->[SyncGroupActionReceipt]{guard ids.isEmpty else{throw CloudMailboxError.invalidPayload};return []}
     func uploadActions(deviceID:UUID,actions:[SyncTaskAction])async throws {if !actions.isEmpty {throw CloudMailboxError.invalidPayload}}
     func actionReceipts(deviceID:UUID,ids:[UUID])async throws->[SyncTaskActionReceipt]{guard ids.isEmpty else{throw CloudMailboxError.invalidPayload};return []}
 }
@@ -141,6 +145,14 @@ extension PhoneCloudMailbox {
         }
         let mailbox=dependencies.mailbox(configuration,account,check)
         try await check()
+        let groupActions=Array(store.pendingGroupActions.prefix(4))
+        if !groupActions.isEmpty {
+            try await mailbox.uploadGroupActions(deviceID:request.deviceID,actions:groupActions)
+            try await check()
+            let receipts=try await mailbox.groupActionReceipts(deviceID:request.deviceID,ids:groupActions.map(\.id))
+            try await check()
+            try store.acceptGroupActionReceipts(receipts,sent:Set(groupActions.map(\.id)))
+        }
         let actions=Array(store.pendingTaskActions.prefix(8))
         if !actions.isEmpty {
             try await mailbox.uploadActions(deviceID:request.deviceID,actions:actions)

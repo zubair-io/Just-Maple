@@ -28,7 +28,7 @@ try {
 } catch (error) {
   // Never return raw provider diagnostics, which can contain prompts or credentials.
   const limited = /usage limit|weekly limit|rate.?limit|hit your limit|resets|quota/i.test(String(error?.message));
-  process.stdout.write(JSON.stringify({ok:false,error:error?.code === 'PROVIDER_ISOLATION_UNSUPPORTED' ? error.message : limited ? 'Provider subscription limit reached. Retry after your allowance resets.' : 'Provider could not complete this request. Check its login, subscription allowance and availability, then retry.'}));
+  process.stdout.write(JSON.stringify({ok:false,error:['PROVIDER_ISOLATION_UNSUPPORTED','PROVIDER_SUBSCRIPTION_DISABLED'].includes(error?.code) ? error.message : limited ? 'Provider subscription limit reached. Retry after your allowance resets.' : 'Provider could not complete this request. Check its login, subscription allowance and availability, then retry.'}));
 } finally {
   // Also retire interrupted/failed requests when the adapter is still reachable.
   try { await provider?.archiveSession(); } catch {}

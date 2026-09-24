@@ -13,7 +13,7 @@ export interface TaskActionRequest {requestID:string;intent:TaskIntent;issuedAt:
  @if(mode==='waiting') {<mui-input ariaLabel="Waiting on" [(value)]="waitingOn" placeholder="Person or event" />}
  <label>{{mode==='later'?'Resurface at':'Review again (optional)'}} · your local time <input type="datetime-local" [(ngModel)]="when" [attr.aria-label]="mode==='later'?'Resurface at':'Review again'" /></label>
  @if(mode==='later' && afterDeadline()) {<p role="status">This is after the original deadline. The deadline will stay unchanged.</p>}
- @if(mode==='waiting') {<p>A review time is saved with this task. Automatic follow-up reminders are not available yet.</p>}
+ @if(mode==='waiting') {<p>When this review time arrives, Maple adds a separate follow-up task. The original obligation stays waiting.</p>}
  <div class="actions"><mui-button [disabled]="disabled() || !validDate(mode)" (pressed)="send(mode)">Save {{mode==='later'?'for later':'waiting status'}}</mui-button><mui-button variant="ghost" (pressed)="cancel()">Cancel</mui-button></div>
  </section>}
  <small>These actions update Maple only. No reply is sent.</small>`,

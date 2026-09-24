@@ -60,8 +60,11 @@ struct JustMapleCommand {
             return
         }
         if command == "evaluate-message-tasks" {
-            guard let runner=try take("--runner"),args.isEmpty,suppliedDB==nil else {throw MapleError.invalid("Usage: evaluate-message-tasks --runner PATH")}
-            let report=try await MessageTaskEvaluation.run(client:ACPClient(provider:"codex",runner:URL(fileURLWithPath:runner)))
+            let provider=try take("--provider") ?? "codex"
+            let runner=try take("--runner")
+            guard args.isEmpty,suppliedDB==nil,["apple","claude","codex"].contains(provider),provider=="apple" || runner != nil else {throw MapleError.invalid("Usage: evaluate-message-tasks --provider apple|claude|codex [--runner PATH]")}
+            let extractor:any TaskCandidateExtractor = provider=="apple" ? AppleTaskExtractor() : ACPExtractor(client:ACPClient(provider:provider,runner:URL(fileURLWithPath:runner!)))
+            let report=try await MessageTaskEvaluation.run(extractor:extractor,provider:provider)
             try printJSON(report);if report["passed"] != "true" {exit(2)};return
         }
         if command == "evaluate-task-reconciliation" {

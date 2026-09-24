@@ -1,3 +1,4 @@
+import { SourceEvidence } from '../sources/source.models';
 import type {
   WorldSnapshot,
   Activity,
@@ -375,9 +376,12 @@ export class NativeBridge implements OnDestroy {
   async people(query: string): Promise<Person[]> {
     return this.query({ action: "peopleSearch", query });
   }
+  async inspectSource(id:string):Promise<SourceEvidence> { return this.query({action:'sourceInspect',id}); }
+  async copySource(text:string):Promise<{copied:boolean}> { return this.query({action:'copySource',text}); }
   async evidence(id: string): Promise<SourceEvent | null> {
     return this.query({ action: "evidence", id });
   }
+  async group<T>(body: Record<string, unknown>): Promise<T> { return this.query<T>(body); }
   async notebook<T>(action: string, data: Record<string, unknown> = {}): Promise<T> { return this.query({action, ...data}); }
   private async query<T>(body: unknown): Promise<T> {
     try {

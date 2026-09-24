@@ -23,3 +23,7 @@ Overview intentionally bounds lists and separates waiting. Dynamic activity sele
 Verified the mobile task and Overview layouts in the actual Sugar Maple window, and the editor reported a saved `.syrup` bundle. A read-only export of the seven pages/tokens/nodes is retained in [daily-actions-design.json](daily-actions-design.json), document revision 189. Existing pages were not replaced. Additional grouped-request layouts and full dark/keyboard/accessibility review remain follow-on design work.
 
 Implementation contracts: [Daily actions](DAILY-ACTIONS-CONTRACT.md). Product scope: [PRD](PRD-JUST-MAPLE.md).
+
+## September 24 additions
+
+Three additive review pages now cover Follow-up, Grouped requests and Source details at phone width. They reuse the Just Maple document's tokens and explicitly label synthetic content. The grouped action describes reviewed membership and preserves later arrivals; the follow-up preserves the blocked original. Read-only export: [follow-up design](daily-actions-followup-design.json), revision 190. The grouped-request board was visually checked in Sugar Maple and the document saved. These boards specify interactions, not a claim that every depicted control is implemented on both hosts.

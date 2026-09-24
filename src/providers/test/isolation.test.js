@@ -77,3 +77,8 @@ test('pinned SDK forwards actual tool-free CLI flags before spawning (no provide
   assert.ok(args.includes('--no-session-persistence'));
   assert.ok(args.includes('--setting-sources='));
 });
+
+ test('organization subscription rejection is actionable without returning provider diagnostics',async()=>{
+ const p=provider(()=>(async function*(){yield init;yield {...success,is_error:true,result:'Your organization has disabled Claude subscription access for Claude Code · private diagnostic fixture'};})());
+ await assert.rejects(p.send('synthetic fixture'),e=>e.code==='PROVIDER_SUBSCRIPTION_DISABLED'&&!e.message.includes('private diagnostic'));
+ });

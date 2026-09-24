@@ -12,6 +12,8 @@ import Foundation
     private let store:any CloudMailboxStore
     private let accountCheck:@MainActor ()async throws->Void
     private let scope:String
+    private var groupCursor:Data?
+    private var waitingGroups:[String:SyncDeviceGroupAction]=[:]
     private var actionCursor:Data?
     private var waitingActions:[String:SyncDeviceTaskAction]=[:]
     private var cursor:Data?
@@ -169,8 +171,56 @@ import Foundation
         }
         return waitingActions.sorted{$0.key<$1.key}.prefix(32).map(\.value)
     }
+    public func uploadGroupActions(deviceID:UUID,actions:[SyncGroupAction])async throws {
+        guard actions.count<=4,Set(actions.map(\.id)).count==actions.count,actions.allSatisfy(\.valid) else{throw CloudMailboxError.invalidPayload}
+        for action in actions {
+            let id="g-"+captureID(deviceID,action.id),value=SyncDeviceGroupAction(deviceID:deviceID,action:action)
+            if let old=try await fetch([id]).first {guard try open(SyncDeviceGroupAction.self,record:old)==value else{throw CloudMailboxError.conflictingCapture};continue}
+            do{try await save(.init(id:id,payload:seal(value,id:id)))}catch CloudMailboxError.conflict {
+                guard let old=try await fetch([id]).first,try open(SyncDeviceGroupAction.self,record:old)==value else{throw CloudMailboxError.conflictingCapture}
+            }
+        }
+    }
+    public func groupActionReceipts(deviceID:UUID,ids:[UUID])async throws->[SyncGroupActionReceipt] {
+        guard ids.count<=16 else{throw CloudMailboxError.invalidPayload}
+        return try await fetch(ids.map{"gr-"+captureID(deviceID,$0)}).map {record in
+            let value=try open(SyncGroupActionReceipt.self,record:record)
+            guard value.valid,ids.contains(value.id),record.id=="gr-"+captureID(deviceID,value.id) else{throw CloudMailboxError.invalidPayload}
+            return value
+        }
+    }
+    public func acknowledgeGroupAction(deviceID:UUID,receipt:SyncGroupActionReceipt)async throws {
+        guard receipt.valid else{throw CloudMailboxError.invalidPayload}
+        let id="gr-"+captureID(deviceID,receipt.id)
+        do{try await save(.init(id:id,payload:seal(receipt,id:id)))}catch CloudMailboxError.conflict {
+            guard try await groupActionReceipts(deviceID:deviceID,ids:[receipt.id])==[receipt] else{throw CloudMailboxError.conflict}
+        }
+        waitingGroups["g-"+captureID(deviceID,receipt.id)]=nil
+    }
+    public func pendingGroupActions()async throws->[SyncDeviceGroupAction] {
+        try await check()
+        if waitingGroups.count<16 {
+            let page:CloudMailboxPage
+            do{page=try await store.changes(after:groupCursor,limit:100)}catch CloudMailboxError.invalidCursor{groupCursor=nil;throw CloudMailboxError.invalidCursor}
+            try await check();guard page.records.count<=100 else{throw CloudMailboxError.invalidPayload}
+            var additions:[String:SyncDeviceGroupAction]=[:]
+            for record in page.records where record.id.hasPrefix("g-") {
+                let value=try open(SyncDeviceGroupAction.self,record:record)
+                guard value.action.valid,record.id=="g-"+captureID(value.deviceID,value.action.id) else{throw CloudMailboxError.invalidPayload}
+                additions[record.id]=value
+            }
+            waitingGroups.merge(additions){_,new in new};groupCursor=page.cursor
+        }
+        for (device,entries) in Dictionary(grouping:Array(waitingGroups.values),by:{$0.deviceID}) {
+            let ids=entries.map{$0.action.id}
+            for offset in stride(from:0,to:ids.count,by:16) {
+                for receipt in try await groupActionReceipts(deviceID:device,ids:Array(ids[offset..<min(offset+16,ids.count)])){waitingGroups["g-"+captureID(device,receipt.id)]=nil}
+            }
+        }
+        return waitingGroups.sorted{$0.key<$1.key}.prefix(16).map(\.value)
+    }
     public func publishSnapshot(_ response:SyncResponse)async throws {
-        guard response.version==1,response.tasks.count<=50,response.states.count<=32,response.activities.count<=32,response.people.count<=12,response.asOf.timeIntervalSince1970.isFinite,response.asOf<=Date().addingTimeInterval(300) else{throw CloudMailboxError.invalidPayload}
+        guard response.validGroups,response.version==1,response.tasks.count<=50,response.states.count<=32,response.activities.count<=32,response.people.count<=12,response.asOf.timeIntervalSince1970.isFinite,response.asOf<=Date().addingTimeInterval(300) else{throw CloudMailboxError.invalidPayload}
         var value=response;value.deviceID=configuration.id;value.receivedIDs=[]
         for _ in 0..<3 {
             let existing=try await fetch(["snapshot"]).first
@@ -182,7 +232,7 @@ import Foundation
     public func snapshot(deviceID:UUID)async throws->SyncResponse? {
         guard let record=try await fetch(["snapshot"]).first else{return nil}
         var value=try open(SyncResponse.self,record:record)
-        guard value.version==1,value.tasks.count<=50,value.states.count<=32,value.activities.count<=32,value.people.count<=12,value.asOf.timeIntervalSince1970.isFinite,value.asOf<=Date().addingTimeInterval(300) else{throw CloudMailboxError.invalidPayload}
+        guard value.validGroups,value.version==1,value.tasks.count<=50,value.states.count<=32,value.activities.count<=32,value.people.count<=12,value.asOf.timeIntervalSince1970.isFinite,value.asOf<=Date().addingTimeInterval(300) else{throw CloudMailboxError.invalidPayload}
         value.deviceID=deviceID;value.receivedIDs=[]
         for index in value.tasks.indices {
             if let state=value.tasks[index].actionState {

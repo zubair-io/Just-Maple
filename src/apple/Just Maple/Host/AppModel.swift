@@ -17,6 +17,9 @@ final class AppModel {
     var companion = CompanionMacController()
     var notebooks: NotebookLibrary?
     var localIndex: LocalIndexStatus?
+    private var lastWaitingReviewTick = Date.distantPast
+    private var lastGroupingProposalTick = Date.distantPast
+    private var groupingProposalBusy = false
     var stateExtractionBusy=false
     var localIntelligenceStatus="Preparing local intelligence…"
     var auditRunning=false
@@ -177,8 +180,17 @@ final class AppModel {
         } catch { self.error = error.localizedDescription }
     }
 
+    func waitingReviewTick(at:Date=Date()) async {
+        guard let store,at.timeIntervalSince(lastWaitingReviewTick)>=15 else {return}
+        lastWaitingReviewTick=at
+        do {
+            if try await store.materializeWaitingFollowUps(at:at) {world=try await store.worldSnapshot(at:at)}
+        } catch {localIntelligenceStatus="Waiting reviews need attention. Maple will retry; your original obligations are preserved."}
+    }
+
     func indexTick() async {
         guard let store else {return}
+        await waitingReviewTick()
         do {
             try await store.excludeExpiredAIWork()
             try await store.indexBatch()
@@ -188,7 +200,20 @@ final class AppModel {
         } catch {localIntelligenceStatus = "Local indexing needs attention. Retry from Processing."}
     }
 
+    func groupingProposalTick(provider:(any ObligationGroupingProvider)?=nil,at:Date=Date()) async {
+        guard running,!groupingProposalBusy,let store,at.timeIntervalSince(lastGroupingProposalTick)>=15 else {return}
+        do {
+            guard try await store.obligationGroupingConfiguration() != nil else {return}
+            guard provider != nil || ["codex","claude"].contains(extractionProvider) else {return}
+            groupingProposalBusy=true;lastGroupingProposalTick=at
+            defer {groupingProposalBusy=false}
+            let selected=provider ?? ACPObligationGroupingProvider(client:ACPClient(provider:extractionProvider,runner:acpRunner))
+            try await ObligationGroupingEngine(store:store,provider:selected).runOne(at:at)
+        } catch {localIntelligenceStatus="Task grouping needs attention. The failed work is saved for retry; no task action was applied."}
+    }
+
     func stateTick() async {
+        await groupingProposalTick()
         guard running, !stateExtractionBusy, !auditRunning, let store else {return}
         guard ["codex","claude"].contains(extractionProvider) else {
             localIntelligenceStatus="State extraction needs a connected ChatGPT or Claude provider."
