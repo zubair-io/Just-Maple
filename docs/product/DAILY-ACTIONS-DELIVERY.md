@@ -13,7 +13,7 @@ September 24, 2026
 - Mac and iPhone share a source inspector with captured text, sender/time, clipboard support and explicit unavailable/truncated states. Phone previews are bounded inside the encrypted envelope.
 - Reviewed groups capture exact child IDs and revisions. Done, Not needed and scoped Undo are atomic across the reviewed set; later arrivals are unaffected. The phone uses a separate durable group queue and applied/conflict receipts.
 - Optional grouping suggestions use the selected provider after an explicit window is configured. Inputs are bounded and respect the 30-day evidence policy; successful coverage advances through task versions. Exact supporting quotes are validated and shown before user review. Suggestions never perform group actions themselves.
-- Claude extraction uses a tested text-only SDK configuration. ChatGPT extraction now fails explicitly before prompt submission because the pinned Codex adapter lacks a verified tools-disabled contract. Authentication detection remains available; no automatic provider fallback occurs. See [provider isolation](../../src/providers/ISOLATION.md).
+- Claude extraction uses a tested text-only SDK configuration. ChatGPT extraction is restored using its existing ACP transport, explicit approval mode and temporary-session archival. A live synthetic request passed; this is not a tool-free contract or a broad quality result. No automatic provider fallback occurs. See [provider isolation](../../src/providers/ISOLATION.md).
 - Mac and phone Overview show at most five non-waiting open actions and six activities. Waiting has a separate count and filtered destination. Needs you and Waiting filters preserve full task access. Recent Overview history suppresses source/transport noise without deleting History.
 - Seven synthetic Sugar Maple review pages are saved under Daily actions · Release 1. See [design handoff](DAILY-ACTIONS-DESIGN-HANDOFF.md).
 - Offline evaluation protocol, scorer and blind imported-source inventory/review tooling are ready. A private unlabeled inventory has been frozen; the stratified 100-source and separate 50-task benchmark still need human labeling and end-to-end predictions. No accuracy result is claimed.
@@ -24,7 +24,7 @@ The integration has regression coverage for lifecycle identity, idempotency, gua
 
 ## Remaining work before Release 1
 
-1. Complete live provider validation. Claude subscription access is disabled by the current organization; the local Apple synthetic task rubric failed evidence validation; ChatGPT remains blocked by its adapter contract. No provider was silently switched.
+1. Complete live provider validation. Claude subscription access is disabled by the current organization; the local Apple synthetic task rubric failed evidence validation; ChatGPT connectivity and session archival have been restored; held-out quality scoring remains outstanding. No provider was silently switched.
 2. Human-review the frozen source inventory, complete the separate task sample, collect whole-pipeline telemetry and score the held-out benchmark before quality tuning.
 3. Verify real iCloud reconnect, concurrent edits and undownloaded-note integrity on the physical iPhone. Synthetic native tests do not certify those conditions.
 4. Evaluate learned grouping proposal quality on diverse sources. Input coverage and exact-quote validation do not prove semantic accuracy.

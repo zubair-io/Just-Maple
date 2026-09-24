@@ -15,7 +15,7 @@ try {
   if (!readiness.installed || !readiness.adapterInstalled || readiness.authenticated !== true) {
     process.stdout.write(JSON.stringify({ok:false,error:`Install and sign in using ${request.provider === 'codex' ? 'codex login (ChatGPT)' : 'claude auth login (claude.ai)'}.`}));
   } else if (request.action === 'detect') {
-    process.stdout.write(JSON.stringify({ok:true,text:request.provider === 'codex' ? 'Signed in. ChatGPT extraction is unavailable until a tool-free mode is supported. Choose Claude or another provider.' : 'Signed in; ready for text-only extraction.'}));
+    process.stdout.write(JSON.stringify({ok:true,text:request.provider === 'codex' ? 'Signed in; ready for ChatGPT extraction.' : 'Signed in; ready for text-only extraction.'}));
   } else {
     if (typeof request.prompt !== 'string' || request.prompt.length > 80000) throw new Error('Invalid prompt');
     directory = await providerWorkspace();

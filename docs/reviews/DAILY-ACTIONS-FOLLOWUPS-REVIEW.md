@@ -30,3 +30,7 @@ No live extraction accuracy is claimed. The Claude organization currently denies
 The frozen private inventory remains unlabeled. Complete the stratified 100-source sample, separate 50-task sample, whole-pipeline telemetry, and held-out scoring before quality tuning. Imported-source coverage alone cannot establish upstream ingestion recall.
 
 Explicit user Waiting corrections remain protected. Existing inferred-state reconciliation is retained; an arriving reply is not automatically treated as proof that every blocker cleared. Reviewed grouping quality still needs evaluation on diverse evidence. There is no automatic reply sending.
+
+## ChatGPT restoration follow-up
+
+At the user's request, the working Codex ACP extraction path is restored with the stable workspace and session archiving retained. Explicit approval mode is selected and permission requests are denied; the adapter is not represented as tool-free. Provider regressions (16), core tests (162), transport tests (28), CLI build and macOS build passed. A live structured-response check and all four synthetic task-parser cases passed using the ChatGPT login. These results supersede the ChatGPT blocker above; the broader human-labeled accuracy gate remains open.
