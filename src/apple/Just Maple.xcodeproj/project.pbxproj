@@ -1,0 +1,939 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 90;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000003 /* MapleCore in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000002 /* MapleCore */; };
+		A10000000000000000000021 /* MapleCore in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000020 /* MapleCore */; };
+		C91000000000000000000001 /* MapleCompanionTransport in Frameworks */ = {isa = PBXBuildFile; productRef = C90000000000000000000001 /* MapleCompanionTransport */; };
+		C91000000000000000000002 /* MapleCompanionTransport in Frameworks */ = {isa = PBXBuildFile; productRef = C90000000000000000000002 /* MapleCompanionTransport */; };
+		C91000000000000000000003 /* MapleCompanionTransport in Frameworks */ = {isa = PBXBuildFile; productRef = C90000000000000000000003 /* MapleCompanionTransport */; };
+		C91000000000000000000004 /* MapleCompanionTransport in Frameworks */ = {isa = PBXBuildFile; productRef = C90000000000000000000004 /* MapleCompanionTransport */; };
+		C93000000000000000000003 /* MapleNotebooks in Frameworks */ = {isa = PBXBuildFile; productRef = C92000000000000000000003 /* MapleNotebooks */; };
+		C93000000000000000000004 /* MapleNotebooks in Frameworks */ = {isa = PBXBuildFile; productRef = C92000000000000000000004 /* MapleNotebooks */; };
+		E3E476653063551700D22F98 /* browser in Resources */ = {isa = PBXBuildFile; fileRef = E3E476643063550D00D22F98 /* browser */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A10000000000000000000018 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000100000000;
+			remoteInfo = "Just Maple";
+		};
+		E3E4762C306352A800D22F98 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E3E4761E306352A700D22F98;
+			remoteInfo = "Just Maple iPhone";
+		};
+		E3E47636306352A800D22F98 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E3E4761E306352A700D22F98;
+			remoteInfo = "Just Maple iPhone";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		000000000000000000000120 /* Just Maple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Just Maple.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000015 /* Just MapleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = "Just MapleTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3E4761F306352A700D22F98 /* Just Maple iPhone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Just Maple iPhone.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3E4762B306352A800D22F98 /* Just Maple iPhoneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Just Maple iPhoneTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3E47635306352A800D22F98 /* Just Maple iPhoneUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Just Maple iPhoneUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E3E476643063550D00D22F98 /* browser */ = {isa = PBXFileReference; lastKnownFileType = folder; name = browser; path = "../web/dist/just-maple/browser"; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		000000000000000000000010 /* Just Maple */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Just Maple";
+			sourceTree = "<group>";
+		};
+		A10000000000000000000010 /* Just MapleTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Just MapleTests";
+			sourceTree = "<group>";
+		};
+		E3E47620306352A700D22F98 /* Just Maple iPhone */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Just Maple iPhone";
+			sourceTree = "<group>";
+		};
+		E3E4762E306352A800D22F98 /* Just Maple iPhoneTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Just Maple iPhoneTests";
+			sourceTree = "<group>";
+		};
+		E3E47638306352A800D22F98 /* Just Maple iPhoneUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Just Maple iPhoneUITests";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		000000000000000130000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				C91000000000000000000001 /* MapleCompanionTransport in Frameworks */,
+				A10000000000000000000003 /* MapleCore in Frameworks */,
+			);
+		};
+		A10000000000000000000014 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				C91000000000000000000002 /* MapleCompanionTransport in Frameworks */,
+				A10000000000000000000021 /* MapleCore in Frameworks */,
+			);
+		};
+		E3E4761C306352A700D22F98 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				C93000000000000000000003 /* MapleNotebooks in Frameworks */,
+				C91000000000000000000003 /* MapleCompanionTransport in Frameworks */,
+			);
+		};
+		E3E47628306352A800D22F98 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				C93000000000000000000004 /* MapleNotebooks in Frameworks */,
+				C91000000000000000000004 /* MapleCompanionTransport in Frameworks */,
+			);
+		};
+		E3E47632306352A800D22F98 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		000000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				E3E476643063550D00D22F98 /* browser */,
+				000000000000000000000010 /* Just Maple */,
+				A10000000000000000000010 /* Just MapleTests */,
+				E3E47620306352A700D22F98 /* Just Maple iPhone */,
+				E3E4762E306352A800D22F98 /* Just Maple iPhoneTests */,
+				E3E47638306352A800D22F98 /* Just Maple iPhoneUITests */,
+				000000000000000000000020 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		000000000000000000000020 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				000000000000000000000120 /* Just Maple.app */,
+				A10000000000000000000015 /* Just MapleTests.xctest */,
+				E3E4761F306352A700D22F98 /* Just Maple iPhone.app */,
+				E3E4762B306352A800D22F98 /* Just Maple iPhoneTests.xctest */,
+				E3E47635306352A800D22F98 /* Just Maple iPhoneUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		000000000000000100000000 /* Just Maple */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 000000000000000110000000 /* Build configuration list for PBXNativeTarget "Just Maple" */;
+			buildPhases = (
+				000000000000000120000000 /* Sources */,
+				000000000000000130000000 /* Frameworks */,
+				000000000000000140000000 /* Resources */,
+				A10000000000000000000004 /* Build Angular UI */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				000000000000000000000010 /* Just Maple */,
+			);
+			name = "Just Maple";
+			packageProductDependencies = (
+				C90000000000000000000001 /* MapleCompanionTransport */,
+				A10000000000000000000002 /* MapleCore */,
+			);
+			productName = "Just Maple";
+			productReference = 000000000000000000000120 /* Just Maple.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A10000000000000000000011 /* Just MapleTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000012 /* Build configuration list for PBXNativeTarget "Just MapleTests" */;
+			buildPhases = (
+				A10000000000000000000013 /* Sources */,
+				A10000000000000000000014 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A10000000000000000000019 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A10000000000000000000010 /* Just MapleTests */,
+			);
+			name = "Just MapleTests";
+			packageProductDependencies = (
+				C90000000000000000000002 /* MapleCompanionTransport */,
+				A10000000000000000000020 /* MapleCore */,
+			);
+			productName = "Just MapleTests";
+			productReference = A10000000000000000000015 /* Just MapleTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E3E4761E306352A700D22F98 /* Just Maple iPhone */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E3E4763B306352A800D22F98 /* Build configuration list for PBXNativeTarget "Just Maple iPhone" */;
+			buildPhases = (
+				E3E4761B306352A700D22F98 /* Sources */,
+				E3E4761C306352A700D22F98 /* Frameworks */,
+				E3E47644306352E900D22F98 /* ShellScript */,
+				E3E4761D306352A700D22F98 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				E3E47620306352A700D22F98 /* Just Maple iPhone */,
+			);
+			name = "Just Maple iPhone";
+			packageProductDependencies = (
+				C92000000000000000000003 /* MapleNotebooks */,
+				C90000000000000000000003 /* MapleCompanionTransport */,
+			);
+			productName = "Just Maple iPhone";
+			productReference = E3E4761F306352A700D22F98 /* Just Maple iPhone.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E3E4762A306352A800D22F98 /* Just Maple iPhoneTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E3E4763E306352A800D22F98 /* Build configuration list for PBXNativeTarget "Just Maple iPhoneTests" */;
+			buildPhases = (
+				E3E47627306352A800D22F98 /* Sources */,
+				E3E47628306352A800D22F98 /* Frameworks */,
+				E3E47629306352A800D22F98 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E3E4762D306352A800D22F98 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				E3E4762E306352A800D22F98 /* Just Maple iPhoneTests */,
+			);
+			name = "Just Maple iPhoneTests";
+			packageProductDependencies = (
+				C92000000000000000000004 /* MapleNotebooks */,
+				C90000000000000000000004 /* MapleCompanionTransport */,
+			);
+			productName = "Just Maple iPhoneTests";
+			productReference = E3E4762B306352A800D22F98 /* Just Maple iPhoneTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E3E47634306352A800D22F98 /* Just Maple iPhoneUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E3E47641306352A800D22F98 /* Build configuration list for PBXNativeTarget "Just Maple iPhoneUITests" */;
+			buildPhases = (
+				E3E47631306352A800D22F98 /* Sources */,
+				E3E47632306352A800D22F98 /* Frameworks */,
+				E3E47633306352A800D22F98 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E3E47637306352A800D22F98 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				E3E47638306352A800D22F98 /* Just Maple iPhoneUITests */,
+			);
+			name = "Just Maple iPhoneUITests";
+			productName = "Just Maple iPhoneUITests";
+			productReference = E3E47635306352A800D22F98 /* Just Maple iPhoneUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		000000000000000000000000 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					000000000000000100000000 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					E3E4761E306352A700D22F98 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					E3E4762A306352A800D22F98 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = E3E4761E306352A700D22F98;
+					};
+					E3E47634306352A800D22F98 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = E3E4761E306352A700D22F98;
+					};
+				};
+			};
+			buildConfigurationList = 000000000000000010000000 /* Build configuration list for PBXProject "Just Maple" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 000000000000000000000001;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A10000000000000000000001 /* XCLocalSwiftPackageReference "Packages/MapleCore" */,
+			);
+			preferredProjectObjectVersion = 90;
+			productRefGroup = 000000000000000000000020 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				000000000000000100000000 /* Just Maple */,
+				A10000000000000000000011 /* Just MapleTests */,
+				E3E4761E306352A700D22F98 /* Just Maple iPhone */,
+				E3E4762A306352A800D22F98 /* Just Maple iPhoneTests */,
+				E3E47634306352A800D22F98 /* Just Maple iPhoneUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		000000000000000140000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		E3E4761D306352A700D22F98 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+				E3E476653063551700D22F98 /* browser in Resources */,
+			);
+		};
+		E3E47629306352A800D22F98 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		E3E47633306352A800D22F98 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A10000000000000000000004 /* Build Angular UI */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			name = "Build Angular UI";
+			shellPath = /bin/bash;
+			shellScript = (
+				"\"$SRCROOT/../../scripts/bundle-web.sh\"",
+			);
+		};
+		E3E47644306352E900D22F98 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			inputFileListPaths = (
+				"$(SRCROOT)/../../scripts/iphone-web-inputs.xcfilelist",
+			);
+			outputFileListPaths = (
+				"$(SRCROOT)/../../scripts/iphone-web-outputs.xcfilelist",
+			);
+			shellPath = /bin/sh;
+			shellScript = (
+				"bash \"$SRCROOT/../../scripts/bundle-web.sh\"",
+				"",
+			);
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		000000000000000120000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		A10000000000000000000013 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		E3E4761B306352A700D22F98 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		E3E47627306352A800D22F98 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		E3E47631306352A800D22F98 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A10000000000000000000019 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 000000000000000100000000 /* Just Maple */;
+			targetProxy = A10000000000000000000018 /* PBXContainerItemProxy */;
+		};
+		E3E4762D306352A800D22F98 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E3E4761E306352A700D22F98 /* Just Maple iPhone */;
+			targetProxy = E3E4762C306352A800D22F98 /* PBXContainerItemProxy */;
+		};
+		E3E47637306352A800D22F98 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E3E4761E306352A700D22F98 /* Just Maple iPhone */;
+			targetProxy = E3E47636306352A800D22F98 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		000000000000000011000000 /* Debug configuration for PBXProject "Just Maple" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DRIVERKIT_DEPLOYMENT_TARGET = 27.0;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PROJECT_UNIQUE_VALUE = G3Y5Z09O;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				TVOS_DEPLOYMENT_TARGET = 27.0;
+				WATCHOS_DEPLOYMENT_TARGET = 27.0;
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Debug;
+		};
+		000000000000000012000000 /* Release configuration for PBXProject "Just Maple" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DRIVERKIT_DEPLOYMENT_TARGET = 27.0;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PROJECT_UNIQUE_VALUE = G3Y5Z09O;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				TVOS_DEPLOYMENT_TARGET = 27.0;
+				WATCHOS_DEPLOYMENT_TARGET = 27.0;
+				XROS_DEPLOYMENT_TARGET = 27.0;
+			};
+			name = Release;
+		};
+		000000000000000111000000 /* Debug configuration for PBXNativeTarget "Just Maple" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Just Maple/Just Maple.entitlements";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Companion-Info.plist";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MAPLE_ICLOUD_ENVIRONMENT = Development;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.just.maple.JapaneseMaple;
+				PRODUCT_MODULE_NAME = Just_Maple;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+			};
+			name = Debug;
+		};
+		000000000000000112000000 /* Release configuration for PBXNativeTarget "Just Maple" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "Just Maple/Just Maple.entitlements";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Companion-Info.plist";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MAPLE_ICLOUD_ENVIRONMENT = Production;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.just.maple.JapaneseMaple;
+				PRODUCT_MODULE_NAME = Just_Maple;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+			};
+			name = Release;
+		};
+		A10000000000000000000016 /* Debug configuration for PBXNativeTarget "Just MapleTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.just.maple.JapaneseMaple.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Just Maple.app/Contents/MacOS/Just Maple";
+			};
+			name = Debug;
+		};
+		A10000000000000000000017 /* Release configuration for PBXNativeTarget "Just MapleTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.just.maple.JapaneseMaple.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Just Maple.app/Contents/MacOS/Just Maple";
+			};
+			name = Release;
+		};
+		E3E4763C306352A800D22F98 /* Debug configuration for PBXNativeTarget "Just Maple iPhone" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Companion-iPhone.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Companion-Info.plist";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MAPLE_ICLOUD_ENVIRONMENT = Development;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.just.maple.JapaneseMaple;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		E3E4763D306352A800D22F98 /* Release configuration for PBXNativeTarget "Just Maple iPhone" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Companion-iPhone.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Companion-Info.plist";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MAPLE_ICLOUD_ENVIRONMENT = Production;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.just.maple.JapaneseMaple;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		E3E4763F306352A800D22F98 /* Debug configuration for PBXNativeTarget "Just Maple iPhoneTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.just.maple.Just-Maple-iPhoneTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Just Maple iPhone.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Just Maple iPhone";
+			};
+			name = Debug;
+		};
+		E3E47640306352A800D22F98 /* Release configuration for PBXNativeTarget "Just Maple iPhoneTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.just.maple.Just-Maple-iPhoneTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Just Maple iPhone.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Just Maple iPhone";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		E3E47642306352A800D22F98 /* Debug configuration for PBXNativeTarget "Just Maple iPhoneUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.just.maple.Just-Maple-iPhoneUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "Just Maple iPhone";
+			};
+			name = Debug;
+		};
+		E3E47643306352A800D22F98 /* Release configuration for PBXNativeTarget "Just Maple iPhoneUITests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QREP66JW5U;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.just.maple.Just-Maple-iPhoneUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "Just Maple iPhone";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		000000000000000010000000 /* Build configuration list for PBXProject "Just Maple" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000011000000 /* Debug configuration for PBXProject "Just Maple" */,
+				000000000000000012000000 /* Release configuration for PBXProject "Just Maple" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		000000000000000110000000 /* Build configuration list for PBXNativeTarget "Just Maple" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000111000000 /* Debug configuration for PBXNativeTarget "Just Maple" */,
+				000000000000000112000000 /* Release configuration for PBXNativeTarget "Just Maple" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000012 /* Build configuration list for PBXNativeTarget "Just MapleTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000016 /* Debug configuration for PBXNativeTarget "Just MapleTests" */,
+				A10000000000000000000017 /* Release configuration for PBXNativeTarget "Just MapleTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		E3E4763B306352A800D22F98 /* Build configuration list for PBXNativeTarget "Just Maple iPhone" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E3E4763C306352A800D22F98 /* Debug configuration for PBXNativeTarget "Just Maple iPhone" */,
+				E3E4763D306352A800D22F98 /* Release configuration for PBXNativeTarget "Just Maple iPhone" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		E3E4763E306352A800D22F98 /* Build configuration list for PBXNativeTarget "Just Maple iPhoneTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E3E4763F306352A800D22F98 /* Debug configuration for PBXNativeTarget "Just Maple iPhoneTests" */,
+				E3E47640306352A800D22F98 /* Release configuration for PBXNativeTarget "Just Maple iPhoneTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		E3E47641306352A800D22F98 /* Build configuration list for PBXNativeTarget "Just Maple iPhoneUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E3E47642306352A800D22F98 /* Debug configuration for PBXNativeTarget "Just Maple iPhoneUITests" */,
+				E3E47643306352A800D22F98 /* Release configuration for PBXNativeTarget "Just Maple iPhoneUITests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A10000000000000000000001 /* XCLocalSwiftPackageReference "Packages/MapleCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/MapleCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A10000000000000000000002 /* MapleCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000001 /* XCLocalSwiftPackageReference "Packages/MapleCore" */;
+			productName = MapleCore;
+		};
+		A10000000000000000000020 /* MapleCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000001 /* XCLocalSwiftPackageReference "Packages/MapleCore" */;
+			productName = MapleCore;
+		};
+		C90000000000000000000001 /* MapleCompanionTransport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000001 /* XCLocalSwiftPackageReference "Packages/MapleCore" */;
+			productName = MapleCompanionTransport;
+		};
+		C90000000000000000000002 /* MapleCompanionTransport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000001 /* XCLocalSwiftPackageReference "Packages/MapleCore" */;
+			productName = MapleCompanionTransport;
+		};
+		C90000000000000000000003 /* MapleCompanionTransport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000001 /* XCLocalSwiftPackageReference "Packages/MapleCore" */;
+			productName = MapleCompanionTransport;
+		};
+		C90000000000000000000004 /* MapleCompanionTransport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000001 /* XCLocalSwiftPackageReference "Packages/MapleCore" */;
+			productName = MapleCompanionTransport;
+		};
+		C92000000000000000000003 /* MapleNotebooks */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000001 /* XCLocalSwiftPackageReference "Packages/MapleCore" */;
+			productName = MapleNotebooks;
+		};
+		C92000000000000000000004 /* MapleNotebooks */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000001 /* XCLocalSwiftPackageReference "Packages/MapleCore" */;
+			productName = MapleNotebooks;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 000000000000000000000000 /* Project object */;
+}
