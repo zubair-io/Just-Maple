@@ -27,6 +27,7 @@ struct CompanionWebView: UIViewRepresentable {
     private var store:CompanionStore?
     private var sync:CompanionSync?
     private var notebooks:iPhoneNotebookBridge?
+    init(store:CompanionStore){self.store=store;super.init()}
     override init(){
         super.init()
         let base=FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0]
@@ -68,6 +69,15 @@ struct CompanionWebView: UIViewRepresentable {
         }
     }
     func stop(){sync?.stop()}
+    private func bridgeDate(_ value:Any?)throws->Date? {
+        guard let value else{return nil}
+        guard let text=value as? String,text.utf8.count<=64 else{throw CompanionError.invalidCapture}
+        let format=ISO8601DateFormatter();format.formatOptions=[.withInternetDateTime,.withFractionalSeconds]
+        if let date=format.date(from:text){return date}
+        format.formatOptions=[.withInternetDateTime]
+        guard let date=format.date(from:text) else{throw CompanionError.invalidCapture}
+        return date
+    }
     private func reply()throws->Any {
         guard let store,var value=try store.reply() as? [String:Any] else{throw CompanionError.storageUnavailable}
         value["cloudEnabled"]=sync?.cloudEnabled ?? true
@@ -79,8 +89,22 @@ struct CompanionWebView: UIViewRepresentable {
         switch action {
         case "snapshot":break
         case "taskAction":
-            guard let id=body["id"] as? String,let uuid=UUID(uuidString:id),let taskID=body["taskID"] as? String,let version=body["expectedVersion"] as? Int,let status=body["status"] as? String else{throw CompanionError.invalidCapture}
-            try store.taskAction(.init(id:uuid,taskID:taskID,expectedVersion:version,status:status))
+            guard let id=(body["id"] ?? body["requestID"]) as? String,let uuid=UUID(uuidString:id),let taskID=body["taskID"] as? String,let version=body["expectedVersion"] as? Int else{throw CompanionError.invalidCapture}
+            if let value=body["intent"],!(value is String) {throw CompanionError.invalidCapture}
+            if let raw=body["intent"] as? String {
+                guard let intent=SyncTaskIntent(rawValue:raw),let issuedAt=try bridgeDate(body["issuedAt"]) else{throw CompanionError.invalidCapture}
+                if let value=body["payload"],!(value is [String:Any]) {throw CompanionError.invalidCapture}
+                let payload=body["payload"] as? [String:Any] ?? [:]
+                let target:UUID?
+                if let rawTarget=payload["targetMutationID"] {guard let value=rawTarget as? String,let parsed=UUID(uuidString:value) else{throw CompanionError.invalidCapture};target=parsed} else{target=nil}
+                if let actor=payload["waitingOn"],!(actor is String) {throw CompanionError.invalidCapture}
+                let command=SyncTaskAction(id:uuid,taskID:taskID,expectedVersion:version,intent:intent,issuedAt:issuedAt,
+                    payload:.init(resurfaceAt:try bridgeDate(payload["resurfaceAt"]),reviewAt:try bridgeDate(payload["reviewAt"]),waitingOn:payload["waitingOn"] as? String,targetMutationID:target))
+                try store.taskAction(command)
+            } else {
+                guard let status=body["status"] as? String else{throw CompanionError.invalidCapture}
+                try store.taskAction(.init(id:uuid,taskID:taskID,expectedVersion:version,status:status))
+            }
         case "capture":
             guard let id=body["id"] as? String,let text=body["text"] as? String else {throw CompanionError.invalidCapture}
             try store.capture(id:id,text:text)

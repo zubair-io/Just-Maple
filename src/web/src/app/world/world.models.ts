@@ -22,7 +22,9 @@ export interface Condition {
 }
 export type TaskStatus =
   "open" | "in_progress" | "waiting" | "completed" | "cancelled";
+export interface TaskActionState {resurfaceAt?:number;reviewAt?:number;waitingOn?:string;lastMutationID:string;lastAction:string;lastMutationScope?:string}
 export interface LifeTask {
+  actionState?:TaskActionState;
   id: string;
   ownerID: string;
   title: string;
@@ -235,7 +237,9 @@ export function taskInFilter(
   if (!isOpen(task)) return false;
   if (filter === "All open") return true;
   if (filter === "Waiting") return task.status === "waiting";
-  if (filter === "Needs you") return task.status !== "waiting";
+  const deferred=(task.actionState?.resurfaceAt ?? 0)>now;
+  if (filter === "Later") return deferred;
+  if (filter === "Needs you") return task.status !== "waiting" && !deferred;
   const due = task.due,
     scheduled = task.scheduled;
   if (filter === "Today")

@@ -130,4 +130,32 @@ describe('iPhone companion',()=>{
     expect(fixture.nativeElement.textContent).toContain('External edit conflict');
   });
 
+  it('filters long colliding activity labels by stable ID',async()=>{
+    const prefix='A'.repeat(80);
+    const state={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],activities:[{id:'one',name:prefix+' one',kind:'area',lifecycle:'active',openTaskCount:1},{id:'two',name:prefix+' two',kind:'area',lifecycle:'active',openTaskCount:1}],tasks:[{id:'a',title:'First',status:'open',activities:[prefix],activityIDs:['one']},{id:'b',title:'Second',status:'open',activities:[prefix],activityIDs:['two']}]}};
+    (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:vi.fn().mockResolvedValue(state)}}};
+    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();
+    fixture.componentInstance.showActivity('two');fixture.detectChanges();
+    expect(fixture.componentInstance.visibleTasks().map(t=>t.id)).toEqual(['b']);
+  });
+  it('uses typed row completion, preserves retries, and offers Undo after the task disappears',async()=>{
+    const task={id:'task:fixture',title:'Fixture action',status:'open',version:3,activities:[]};
+    const state:any={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],tasks:[task],supportedTaskIntents:['done','later','waiting','notNeeded','undo']}};
+    let fail=true;
+    const send=vi.fn(async(body:any)=>{
+      if(body.action!=='taskAction')return state;
+      if(fail){fail=false;throw new Error('lost reply');}
+      if(body.intent==='done')return {...state,mac:{...state.mac,tasks:[]},taskActions:[{id:body.id,taskID:body.taskID,expectedVersion:3,status:'completed',intent:'done'}],taskActionReceipts:[{id:body.id,outcome:'applied',resultingVersion:4}]};
+      return state;
+    });
+    (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
+    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();const c=fixture.componentInstance;
+    await c.completeTask(task);await c.completeTask(task);
+    const commands=send.mock.calls.map(c=>c[0]).filter(c=>c.action==='taskAction');
+    expect(commands[0]).toEqual(commands[1]);expect(commands[0].intent).toBe('done');
+    expect(c.undoableChanges()).toHaveLength(1);
+    await c.undoChange(c.undoableChanges()[0]);
+    const undo=send.mock.calls.at(-1)![0];expect(undo.intent).toBe('undo');expect(undo.expectedVersion).toBe(4);expect(undo.payload.targetMutationID).toBe(commands[0].id);
+  });
+
 });

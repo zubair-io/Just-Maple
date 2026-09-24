@@ -179,6 +179,7 @@
       }
     </div>
     <p>{{ task.description }}</p>
+    <maple-desktop-task-actions [nodeID]="'task:' + task.id" />
     <dl class="detail-list">
       <dt>Status</dt>
       <dd>{{ task.status.replaceAll("_", " ") }}</dd>
@@ -213,6 +214,7 @@
         </section>
       }
     }
+    <details><summary>More task controls</summary>
     <div class="actions">
       @if (isOpen(task)) {
         <mui-button
@@ -238,6 +240,7 @@
         >
       }
     </div>
+    </details>
     <h2>Relevant when</h2>
     @for (c of task.conditions; track c.property) {
       <p>{{ c.property }} is {{ c.value }}</p>

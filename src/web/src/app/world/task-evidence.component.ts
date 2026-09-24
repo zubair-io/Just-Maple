@@ -16,7 +16,7 @@ import { TaskStatus } from './world.models';
  <div class="actions">
  @if (relations().length) {<mui-button [disabled]="world.bridge.pending()" (pressed)="correct(undefined,true)">Keep these tasks separate</mui-button>}
  @if (record()?.status !== 'open') {<mui-button [disabled]="world.bridge.pending()" (pressed)="correct('open')">This task is still open</mui-button>}
- @if (root().startsWith('source:') && record()?.status !== 'completed') {<mui-button [disabled]="world.bridge.pending()" (pressed)="correct('completed')">Mark complete</mui-button>}
+
  </div>
  <small>Your status corrections take priority over automatic updates.</small>
  </section>`})

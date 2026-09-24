@@ -43,6 +43,79 @@ import MapleCompanionTransport
         #expect(reopened.pendingTaskActions.isEmpty)
         #expect(try CompanionStore(directory:root).snapshot.taskActionReceipts==mailbox.actionReplies)
     }
+    @Test func committedMutationRetrySurvivesSnapshotRemovalAndUnsupportedReceiptIsNotApplication() throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer{try? FileManager.default.removeItem(at:root)}
+        let store=try CompanionStore(directory:root),device=try #require(UUID(uuidString:store.snapshot.deviceID)),now=Date()
+        var task=SyncTask(id:"task:retry",title:"Retry fixture",status:"open",activities:[],due:nil);task.version=1
+        try store.accept(.init(deviceID:device,receivedIDs:[],asOf:now,tasks:[task]),sentIDs:[])
+        let command=SyncTaskAction(taskID:task.id,expectedVersion:1,status:"completed")
+        try store.taskAction(command)
+        try store.accept(.init(deviceID:device,receivedIDs:[],asOf:now.addingTimeInterval(1),tasks:[]),sentIDs:[])
+        try store.taskAction(command)
+        #expect(store.pendingTaskActions==[command])
+        var changed=command;changed.status="open"
+        #expect(throws:CompanionError.self){try store.taskAction(changed)}
+        try store.acceptActionReceipts([.init(id:command.id,outcome:"unsupported")],sent:[command.id])
+        #expect(store.pendingTaskActions.isEmpty)
+        #expect(try CompanionStore(directory:root).snapshot.taskActionReceipts?.first?.outcome=="unsupported")
+    }
+    @Test func undoOfRemovedTaskRequiresOwnAppliedReceiptRevision() throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer{try? FileManager.default.removeItem(at:root)}
+        let store=try CompanionStore(directory:root),device=try #require(UUID(uuidString:store.snapshot.deviceID)),now=Date()
+        var task=SyncTask(id:"task:undo",title:"Undo fixture",status:"open",activities:[],due:nil);task.version=1
+        try store.accept(.init(deviceID:device,receivedIDs:[],asOf:now,tasks:[task]),sentIDs:[])
+        let command=SyncTaskAction(taskID:task.id,expectedVersion:1,intent:.done)
+        try store.taskAction(command)
+        try store.acceptActionReceipts([.init(id:command.id,outcome:"applied",resultingVersion:2)],sent:[command.id])
+        try store.accept(.init(deviceID:device,receivedIDs:[],asOf:now.addingTimeInterval(1),tasks:[]),sentIDs:[])
+        let undo=SyncTaskAction(taskID:task.id,expectedVersion:2,intent:.undo,payload:.init(targetMutationID:command.id))
+        var invalid=undo;invalid.expectedVersion=3
+        #expect(throws:CompanionError.self){try store.taskAction(invalid)}
+        invalid=undo;invalid.taskID="task:other"
+        #expect(throws:CompanionError.self){try store.taskAction(invalid)}
+        try store.taskAction(undo)
+        #expect(try CompanionStore(directory:root).pendingTaskActions==[undo])
+    }
+    @Test func snapshotCanAuthorizeOwnUndoAfterLocalHistoryWasPrunedButNeverAnotherDevice() throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer{try? FileManager.default.removeItem(at:root)}
+        let store=try CompanionStore(directory:root),device=try #require(UUID(uuidString:store.snapshot.deviceID)),now=Date(),target=UUID()
+        var task=SyncTask(id:"task:pruned",title:"Pruned history fixture",status:"waiting",activities:[],due:nil);task.version=3
+        task.actionState = .init(resurfaceAt:nil,reviewAt:nil,waitingOn:"Actor",lastMutationScope:UUID().uuidString.lowercased(),lastMutationID:target.uuidString.lowercased(),lastAction:"waiting",canUndo:true)
+        try store.accept(.init(deviceID:device,receivedIDs:[],asOf:now,tasks:[task]),sentIDs:[])
+        let undo=SyncTaskAction(taskID:task.id,expectedVersion:3,intent:.undo,payload:.init(targetMutationID:target))
+        #expect(throws:CompanionError.self){try store.taskAction(undo)}
+        task.actionState?.lastMutationScope=device.uuidString.lowercased()
+        try store.accept(.init(deviceID:device,receivedIDs:[],asOf:now.addingTimeInterval(1),tasks:[task]),sentIDs:[])
+        var wrong=undo;wrong.expectedVersion=2
+        #expect(throws:CompanionError.self){try store.taskAction(wrong)}
+        wrong=undo;wrong.payload?.targetMutationID=UUID()
+        #expect(throws:CompanionError.self){try store.taskAction(wrong)}
+        #expect(store.snapshot.taskActions==nil && store.snapshot.taskActionReceipts==nil)
+        try store.taskAction(undo)
+        #expect(try CompanionStore(directory:root).pendingTaskActions==[undo])
+    }
+    @Test func typedBridgePreservesISODateAndMutationIDAcrossRetries() throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer{try? FileManager.default.removeItem(at:root)}
+        let store=try CompanionStore(directory:root),device=try #require(UUID(uuidString:store.snapshot.deviceID)),now=Date()
+        var task=SyncTask(id:"task:bridge",title:"Bridge fixture",status:"open",activities:[],due:nil);task.version=1
+        try store.accept(.init(deviceID:device,receivedIDs:[],asOf:now,tasks:[task]),sentIDs:[])
+        let bridge=CompanionBridge(store:store),id=UUID(),format=ISO8601DateFormatter()
+        format.formatOptions=[.withInternetDateTime,.withFractionalSeconds]
+        let body:[String:Any]=["requestID":id.uuidString,"taskID":task.id,"expectedVersion":1,"intent":"later","issuedAt":format.string(from:now),"payload":["resurfaceAt":format.string(from:now.addingTimeInterval(3600))]]
+        _ = try bridge.perform("taskAction",body:body)
+        _ = try bridge.perform("taskAction",body:body)
+        #expect(store.pendingTaskActions.count==1)
+        #expect(store.pendingTaskActions.first?.id==id)
+        #expect(store.pendingTaskActions.first?.intent == .later)
+        var malformed=body;malformed["requestID"]=UUID().uuidString;malformed["payload"]=["resurfaceAt":"not a date"]
+        #expect(throws:CompanionError.self){try bridge.perform("taskAction",body:malformed)}
+        malformed=body;malformed["intent"]="sendReply"
+        #expect(throws:CompanionError.self){try bridge.perform("taskAction",body:malformed)}
+    }
     @Test func oldPausePreferenceMigratesAndMissingCredentialReconnectsWithoutUserAction() async throws {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let suite="fixture-auto-"+UUID().uuidString

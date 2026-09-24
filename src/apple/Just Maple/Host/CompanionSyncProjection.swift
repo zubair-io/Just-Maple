@@ -64,24 +64,50 @@ enum CompanionSyncProjection {
             return $0.id.localizedCompare($1.id) == .orderedAscending
         }
         let activityNames = Dictionary(world.activities.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
-        let tasks = ranked.filter { !$0.task.status.terminal }.prefix(50).map { entry in
+        let visible = ranked.filter { !$0.task.status.terminal }
+        let actionable = visible.filter { $0.task.status != .waiting && !($0.task.actionState?.isDeferred(at:world.asOf) ?? false) }
+        let waiting = visible.filter { $0.task.status == .waiting }
+        // Reserve room for both lists before truncation. Unused slots flow to the other
+        // list; grouping also prevents payload-size trimming from evicting Needs you first.
+        let later=visible.filter { $0.task.status != .waiting && ($0.task.actionState?.isDeferred(at:world.asOf) ?? false) }
+        var chosenLater=Array(later.prefix(5))
+        var chosenActions = Array(actionable.prefix(40-chosenLater.count))
+        var chosenWaiting = Array(waiting.prefix(10))
+        var capacity = 50 - chosenActions.count - chosenWaiting.count - chosenLater.count
+        let extraActions = Array(actionable.dropFirst(chosenActions.count).prefix(capacity))
+        chosenActions += extraActions; capacity -= extraActions.count
+        let extraWaiting=Array(waiting.dropFirst(chosenWaiting.count).prefix(capacity))
+        chosenWaiting += extraWaiting;capacity -= extraWaiting.count
+        chosenLater += later.dropFirst(chosenLater.count).prefix(capacity)
+        let tasks = (chosenActions + chosenWaiting + chosenLater).map { entry in
             var value = SyncTask(id: entry.id.utf8.count <= 1024 ? entry.id : "task-hash:" + ConnectorSourceRecord.identifier(entry.id),
                      title: bounded(entry.task.title, 512), status: entry.task.status.rawValue,
-                     activities: Array(entry.task.activityIDs.compactMap { activityNames[$0] }.prefix(8)).map { bounded($0, 80) },
+                     activities: Array(entry.task.activityIDs.filter { $0.utf8.count <= 1024 && activityNames[$0] != nil }.prefix(8)).compactMap { activityNames[$0] }.map { bounded($0, 80) },
                      due: entry.task.due.flatMap(dueLabel))
+            value.dueAt=entry.task.due.flatMap { try? $0.boundary(endOfDay:true) }
+            value.activityIDs=Array(entry.task.activityIDs.filter { $0.utf8.count <= 1024 && activityNames[$0] != nil }.prefix(8))
             value.version=entry.id.hasPrefix("source:") ? entry.suggestion?.version : entry.task.version
             if value.id != entry.id {value.version=nil}
             value.detail=bounded(entry.task.description,4096)
             value.assignee=bounded(entry.task.assignee,160)
+            if let state=entry.task.actionState {
+                value.actionState = .init(resurfaceAt:state.resurfaceAt,reviewAt:state.reviewAt,waitingOn:state.waitingOn,
+                    lastMutationScope:state.lastMutationScope,lastMutationID:state.lastMutationID,lastAction:state.lastAction,
+                    canUndo:state.lastMutationScope==deviceID.uuidString.lowercased() && state.lastAction != "undo")
+            }
             return value
         }
         let states = world.states.filter { $0.subject == "person:self" }.prefix(32).map {
             SyncState(property: bounded($0.property, 80), status: bounded($0.status, 32), value: $0.value.map { bounded($0, 512) })
         }
         var response = SyncResponse(deviceID: deviceID, receivedIDs: Array(receivedIDs.prefix(1000)), asOf: world.asOf, tasks: tasks, states: states)
+        response.needsYouTotal = actionable.count
+        response.waitingTotal = waiting.count
+        response.laterTotal = later.count
+        response.supportedTaskIntents = SyncTaskIntent.allCases.map(\.rawValue)
         response.displayName = displayName.map { bounded($0, 160) }
-        response.activities = world.activities.filter { $0.lifecycle == .active || $0.lifecycle == .paused }.prefix(32).map { activity in
-            SyncActivity(id: bounded(activity.id, 1024), name: bounded(activity.name, 160), kind: activity.kind.rawValue,
+        response.activities = world.activities.filter { ($0.lifecycle == .active || $0.lifecycle == .paused) && $0.id.utf8.count <= 1024 }.prefix(32).map { activity in
+            SyncActivity(id: activity.id, name: bounded(activity.name, 160), kind: activity.kind.rawValue,
                          lifecycle: activity.lifecycle.rawValue,
                          openTaskCount: ranked.filter { !$0.task.status.terminal && $0.task.activityIDs.contains(activity.id) }.count)
         }

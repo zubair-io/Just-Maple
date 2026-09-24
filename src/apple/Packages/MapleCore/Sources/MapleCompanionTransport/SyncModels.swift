@@ -15,12 +15,29 @@ public struct SyncRequest: Codable, Sendable {
     public var captures: [SyncCapture]
     public init(deviceID:UUID,operation:String,captures:[SyncCapture]=[]){self.deviceID=deviceID;self.operation=operation;self.captures=captures}
 }
+public struct SyncTaskActionState: Codable, Sendable, Equatable {
+    public var resurfaceAt:Date?
+    public var reviewAt:Date?
+    public var waitingOn:String?
+    public var lastMutationScope:String
+    public var lastMutationID:String
+    public var lastAction:String
+    public var canUndo:Bool
+    public init(resurfaceAt:Date?,reviewAt:Date?,waitingOn:String?,lastMutationScope:String,lastMutationID:String,lastAction:String,canUndo:Bool) {
+        self.resurfaceAt=resurfaceAt;self.reviewAt=reviewAt;self.waitingOn=waitingOn
+        self.lastMutationScope=lastMutationScope;self.lastMutationID=lastMutationID;self.lastAction=lastAction;self.canUndo=canUndo
+    }
+}
 public struct SyncTask: Codable, Sendable, Equatable {
     public var id: String
     public var title: String
     public var status: String
     public var activities: [String]
+    public var activityIDs:[String]?
+    public var actionState:SyncTaskActionState?
     public var due: String?
+    /// Absolute deadline boundary; phone reply encodes ISO8601 for the shared action UI.
+    public var dueAt:Date?
     public var version:Int?
     public var detail:String?
     public var assignee:String?
@@ -50,8 +67,12 @@ public struct SyncResponse: Codable, Sendable {
     public var activities:[SyncActivity]
     public var people:[SyncPerson]
     public var displayName:String?
+    public var needsYouTotal:Int?
+    public var waitingTotal:Int?
+    public var laterTotal:Int?
+    public var supportedTaskIntents:[String]?
     public init(deviceID:UUID,receivedIDs:[UUID],asOf:Date=Date(),tasks:[SyncTask]=[],states:[SyncState]=[],activities:[SyncActivity]=[],people:[SyncPerson]=[]){self.deviceID=deviceID;self.receivedIDs=receivedIDs;self.asOf=asOf;self.tasks=tasks;self.states=states;self.activities=activities;self.people=people}
-    private enum CodingKeys:String,CodingKey {case version,deviceID,receivedIDs,asOf,tasks,states,activities,people,displayName}
+    private enum CodingKeys:String,CodingKey {case version,deviceID,receivedIDs,asOf,tasks,states,activities,people,displayName,needsYouTotal,waitingTotal,laterTotal,supportedTaskIntents}
     public init(from decoder:Decoder)throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         version=try c.decode(Int.self,forKey:.version);deviceID=try c.decode(UUID.self,forKey:.deviceID)
@@ -60,6 +81,10 @@ public struct SyncResponse: Codable, Sendable {
         activities=try c.decodeIfPresent([SyncActivity].self,forKey:.activities) ?? []
         people=try c.decodeIfPresent([SyncPerson].self,forKey:.people) ?? []
         displayName=try c.decodeIfPresent(String.self,forKey:.displayName)
+        needsYouTotal=try c.decodeIfPresent(Int.self,forKey:.needsYouTotal)
+        waitingTotal=try c.decodeIfPresent(Int.self,forKey:.waitingTotal)
+        laterTotal=try c.decodeIfPresent(Int.self,forKey:.laterTotal)
+        supportedTaskIntents=try c.decodeIfPresent([String].self,forKey:.supportedTaskIntents)
     }
 }
 public enum SyncCodec {

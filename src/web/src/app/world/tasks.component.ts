@@ -28,6 +28,7 @@ export class TasksComponent {
     "All open",
     "Needs you",
     "Waiting",
+    "Later",
     "Today",
     "Upcoming",
     "Completed",

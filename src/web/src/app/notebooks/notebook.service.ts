@@ -11,6 +11,7 @@ export class NotebookService {
   readonly bookID=signal('');readonly document=signal<NoteDocument|null>(null);readonly generation=signal(0);readonly initial=signal('');
   readonly dirty=signal(false);readonly saving=signal(false);readonly status=signal('');readonly error=signal('');readonly loading=signal(false);
   private opening=0;
+  private copyWork?:Promise<void>;
   private timer?:ReturnType<typeof setTimeout>;private saveWork?:Promise<boolean>;private draftWork:Promise<unknown>=Promise.resolve();
   private request<T>(action:string,data:Record<string,unknown>={}):Promise<T>{
     if(!isCompanion())return this.bridge.notebook<T>(action,data);
@@ -40,7 +41,7 @@ export class NotebookService {
     const record={...doc,content};this.draftWork=this.draftWork.catch(()=>{}).then(()=>this.request('noteDraft',{record})).catch(e=>{this.fail(e);});
     this.timer=setTimeout(()=>void this.flush(),700);
   }
-  async flush():Promise<boolean>{clearTimeout(this.timer);if(this.saveWork){await this.saveWork;if(this.error())return false;}if(!this.dirty())return true;
+  async flush():Promise<boolean>{clearTimeout(this.timer);if(this.copyWork){await this.copyWork;if(this.error())return false;}if(this.saveWork){await this.saveWork;if(this.error())return false;}if(!this.dirty())return true;
     this.saveWork=this.save();const ok=await this.saveWork;this.saveWork=undefined;if(ok&&this.dirty())return this.flush();return ok;
   }
   private async save(){const doc=this.document();if(!doc)return true;this.saving.set(true);try {
@@ -49,10 +50,35 @@ export class NotebookService {
     const latest=this.document();if(latest?.path===doc.path&&latest.notebookID===doc.notebookID){this.document.set({...saved,content:latest.content});this.dirty.set(latest.content!==doc.content);if(this.dirty()){const record={...saved,content:latest.content};await this.request('noteDraft',{record});}}
     this.error.set('');this.status.set(this.dirty()?'Saving…':'Saved');return true;
   }catch(e){this.fail(e);this.status.set('Draft kept · save needs attention');return false;}finally{this.saving.set(false);}}
-  async saveCopy(name:string){const doc=this.document();if(!doc)return;clearTimeout(this.timer);if(this.saveWork)await this.saveWork;try{
-    const copy=await this.request<NoteDocument>('noteCreate',{id:doc.notebookID,name});
-    const saved=await this.request<NoteDocument>('noteSave',{id:copy.notebookID,path:copy.path,revision:copy.revision,content:doc.content});
-    this.load(saved);this.status.set('Copy saved; original unchanged');await this.refresh();
-  }catch(e){this.fail(e);}}
+  async saveCopy(name:string){
+    if(this.copyWork)return this.copyWork;
+    const work=this.createCopy(name);this.copyWork=work;
+    try{await work;}finally{this.copyWork=undefined;}
+  }
+  private async createCopy(name:string){
+    clearTimeout(this.timer);if(this.saveWork)await this.saveWork;
+    const doc=this.document();if(!doc)return;
+    this.saving.set(true);
+    try{
+      await this.draftWork;
+      const copy=await this.request<NoteDocument>('noteCreate',{id:doc.notebookID,name});
+      const saved=await this.request<NoteDocument>('noteSave',{id:copy.notebookID,path:copy.path,revision:copy.revision,content:doc.content});
+      const latest=this.document();
+      // Navigation waits for copyWork. Preserve edits made while native I/O was in flight.
+      if(latest?.notebookID===doc.notebookID&&latest.path===doc.path){
+        const changed=latest.content!==doc.content;
+        const merged={...saved,content:latest.content};
+        this.load(merged);this.dirty.set(changed);
+        if(changed){
+          await this.draftWork;
+          await this.request('noteDraft',{record:merged});
+          this.status.set('Copy saved · newer edits kept');
+          clearTimeout(this.timer);this.timer=setTimeout(()=>void this.flush(),700);
+        }else this.status.set('Copy saved; original unchanged');
+      }
+      await this.refresh();
+    }catch(e){this.fail(e);this.status.set('Draft kept · copy needs attention');}
+    finally{this.saving.set(false);}
+  }
   fail(e:unknown){this.error.set(e instanceof Error?e.message:String(e));}
 }
