@@ -3,6 +3,12 @@ import MapleCore
 
 @main
 struct JustMapleCommand {
+    static func writePrivate<T:Encodable>(_ value:T,path:String) throws {
+        guard !FileManager.default.fileExists(atPath:path) else {throw MapleError.invalid("Use a new private output file.")}
+        let url=URL(fileURLWithPath:path)
+        try FileManager.default.createDirectory(at:url.deletingLastPathComponent(),withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
+        guard FileManager.default.createFile(atPath:path,contents:try JSONCodec.encode(value),attributes:[.posixPermissions:0o600]) else {throw MapleError.invalid("Could not save the private rebuild file.")}
+    }
     static func main() async {
         do { try await run() }
         catch {
@@ -67,6 +73,12 @@ struct JustMapleCommand {
             if !report.passed { exit(2) }
             return
         }
+        if command == "evaluate-task-cleanup" {
+            guard let runner=try take("--runner"),args.isEmpty,suppliedDB==nil else {throw MapleError.invalid("Usage: evaluate-task-cleanup --runner PATH")}
+            let extractor=ACPExtractor(client:ACPClient(provider:"codex",runner:URL(fileURLWithPath:runner)))
+            let report=try await TaskCleanupEvaluation.run(extractor:extractor,provider:"codex")
+            try printJSON(report);if !report.passed {exit(2)};return
+        }
         if command == "evaluate-message-tasks" {
             let provider=try take("--provider") ?? "codex"
             let runner=try take("--runner")
@@ -89,6 +101,54 @@ struct JustMapleCommand {
         }
         let store = try KnowledgeStore(path: dbPath)
         switch command {
+        case "task-rebuild-plan":
+            guard let output=try take("--output"),args.isEmpty else {throw MapleError.invalid("Usage: task-rebuild-plan --output NEW_PRIVATE_FILE --db PATH")}
+            let plan=try await store.planTaskRebuild()
+            try writePrivate(plan,path:output)
+            try printJSON(["archive":plan.archive.count,"protected":plan.protected.count,"sources":plan.sources.count])
+        case "task-rebuild-stage":
+            guard let input=try take("--plan"),let runner=try take("--runner"),args.isEmpty else {throw MapleError.invalid("Usage: task-rebuild-stage --plan FILE --runner PATH --db STAGING_COPY")}
+            let plan=try JSONCodec.decode(TaskRebuildPlan.self,from:Data(contentsOf:URL(fileURLWithPath:input)))
+            _ = try await store.applyTaskRebuild(plan)
+            let ids=plan.sources.map(\.eventID)
+            let extractor=ACPExtractor(client:ACPClient(provider:"codex",runner:URL(fileURLWithPath:runner)))
+            let completed=try await withThrowingTaskGroup(of:Int.self) { group in
+                for _ in 0..<3 { group.addTask {
+                    var count=0
+                    while count<ids.count,try await TaskExtractionEngine(store:store,extractor:extractor).runOne(eventIDs:ids) {count+=1}
+                    return count
+                }}
+                var total=0;for try await count in group {total+=count};return total
+            }
+            try printJSON(["attempted":completed,"sources":ids.count])
+            _ = try await store.exportTaskRebuild(plan)
+        case "task-rebuild-repair-retirements":
+            guard let input=try take("--plan"),args.isEmpty else {throw MapleError.invalid("Usage: task-rebuild-repair-retirements --plan FILE --db STAGING_COPY")}
+            let plan=try JSONCodec.decode(TaskRebuildPlan.self,from:Data(contentsOf:URL(fileURLWithPath:input)))
+            let restored=try await store.repairTaskRebuildRetirements(plan)
+            try printJSON(["restoredProtectedRecords":restored])
+        case "task-rebuild-export":
+            guard let input=try take("--plan"),let output=try take("--output"),args.isEmpty else {throw MapleError.invalid("Usage: task-rebuild-export --plan FILE --output NEW_PRIVATE_FILE --db STAGING_COPY")}
+            let plan=try JSONCodec.decode(TaskRebuildPlan.self,from:Data(contentsOf:URL(fileURLWithPath:input)))
+            let batches=try await store.exportTaskRebuild(plan)
+            try writePrivate(batches,path:output)
+            try printJSON(["sources":batches.count,"candidates":batches.reduce(0){$0+$1.candidates.count}])
+        case "task-rebuild-consolidate":
+            guard let input=try take("--plan"),let output=try take("--output"),let runner=try take("--runner"),args.isEmpty else {throw MapleError.invalid("Usage: task-rebuild-consolidate --plan FILE --output NEW_PRIVATE_FILE --runner PATH --db STAGING_COPY")}
+            let plan=try JSONCodec.decode(TaskRebuildPlan.self,from:Data(contentsOf:URL(fileURLWithPath:input)))
+            let batches=try await store.exportTaskRebuild(plan)
+            let versions=Dictionary(uniqueKeysWithValues:batches.flatMap(\.candidates).map{("source:"+$0.id,$0.version)})
+            let result=try await StageReconciliationEngine(store:store,client:ACPClient(provider:"codex",runner:URL(fileURLWithPath:runner))).run(runID:plan.id,nodeVersions:versions)
+            try writePrivate(result,path:output)
+            try printJSON(["reviewedCandidates":versions.count,"duplicateLinks":result.relations.count])
+        case "task-rebuild-promote":
+            let reconciliationFile=try take("--reconciliation")
+            guard let input=try take("--plan"),let batchFile=try take("--batches"),args.isEmpty else {throw MapleError.invalid("Usage: task-rebuild-promote --plan FILE --batches FILE [--reconciliation FILE] --db PATH")}
+            let plan=try JSONCodec.decode(TaskRebuildPlan.self,from:Data(contentsOf:URL(fileURLWithPath:input)))
+            let batches=try JSONCodec.decode([TaskRebuildBatch].self,from:Data(contentsOf:URL(fileURLWithPath:batchFile)))
+            let reconciliation=try reconciliationFile.map{try JSONCodec.decode(StageReconciliationResult.self,from:Data(contentsOf:URL(fileURLWithPath:$0)))}
+            _ = try await store.promoteTaskRebuild(plan,batches:batches,reconciliation:reconciliation)
+            try printJSON(["status":"Reviewed task rebuild applied atomically."])
         case "retry-task-reviews":
             guard args.isEmpty else { throw MapleError.invalid("Usage: retry-task-reviews [--db PATH]") }
             try await store.retryFailedTaskExtractions()
@@ -247,6 +307,12 @@ struct JustMapleCommand {
                                   Optional: --output NEW_DIRECTORY
     evaluate-messages --live      Test iMessage routing/feedback on synthetic messages
                                   Optional: --output NEW_DIRECTORY
+    evaluate-task-cleanup --runner PATH  Test current-obligation policy on synthetic sources
+    task-rebuild-plan --output FILE      Freeze a private maintenance plan
+    task-rebuild-stage --plan FILE --runner PATH  Review an isolated database copy
+    task-rebuild-export --plan FILE --output FILE  Export complete reviewed batches
+    task-rebuild-consolidate --plan FILE --runner PATH --output FILE  Prove duplicates
+    task-rebuild-promote --plan FILE --batches FILE [--reconciliation FILE]  Apply atomically
     export-demo                   Print example event JSON (Unix-second dates)
     ingest events.json            Durably enqueue normalized events
     note file.md --subject ID     Import a note as one source event

@@ -6,6 +6,7 @@ public actor KnowledgeStore {
         db = try SQLite(path: path)
         try db.migrate()
         try db.migrateWorld()
+        try db.migrateTaskUserProtection()
         try db.migrateTaskExtractionRetries()
         try db.migrateIntelligence()
         try db.migrateDiscovery()

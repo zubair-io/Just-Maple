@@ -64,6 +64,9 @@ extension TaskEvidenceRules {
 
 extension KnowledgeStore {
     public func taskModelContext(for eventID:String,at:Date=Date())throws->Context {
+        if let source = try event(eventID), ["gmail", "imessage"].contains(source.source.connector) {
+            return try freshTaskReviewContext(source, at: at)
+        }
         if let row=try db.rows("SELECT json FROM decisions WHERE event_id=?",[eventID]).first,let json=row["json"] {
             let decision=try JSONCodec.decode(Decision.self,from:Data(json.utf8))
             // Screening deliberately omits broad world context. Deeper review rebuilds current
