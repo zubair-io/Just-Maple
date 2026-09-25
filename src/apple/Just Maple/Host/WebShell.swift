@@ -73,6 +73,9 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
         case "providerSelect": try model.selectProvider(string(body,"provider",limit:16))
         case "snapshot":
             if let store = model.store { model.world = try await store.worldSnapshot() }
+        case "retryObligationGrouping", "obligationGroupingSettings", "configureObligationGrouping", "reviewedObligationGroups", "reviewObligationGroup", "applyObligationGroupAction", "undoObligationGroupAction":
+            return try await obligationGroupCommand(action,body)
+        case "historyInbox": return try await historyInbox(body)
         case "applyTaskAction", "correctTaskInference", "regroupActivity", "removeActivity", "saveActivity", "saveTask", "saveSeries", "correctState", "reviewSuggestion", "acknowledgeAttention", "extractTasks", "worldHistory":
             return try await worldCommand(action, body)
         case "step":
@@ -158,6 +161,18 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
             guard let fact = model.sourceFacts.first(where: { $0.id == id }) else { throw MapleError.invalid("Unknown fact.") }
             try await model.store?.correct(subject: fact.subject, predicate: fact.predicate, value: try string(body, "value", limit: 4096))
             await model.refresh()
+        case "sourceInspect":
+            let id=try string(body,"id",limit:1024)
+            return try json(SourceEvidenceProjection.make(try await model.store?.event(id),id:id))
+        case "copySource":
+            let text=try string(body,"text",limit:270_000)
+            NSPasteboard.general.clearContents()
+            guard NSPasteboard.general.setString(text,forType:.string) else{throw MapleError.invalid("Could not copy this source.")}
+            return ["copied":true]
+        case "decisionDetail":
+            let id = try string(body, "id", limit: 256)
+            guard let decision = try await model.store?.decision(eventID:id) else {return NSNull()}
+            return ["decision": try json(decision), "prompt": decision.userPrompt]
         case "evidence":
             let id = try string(body, "id", limit: 256)
             return try json(try await model.store?.event(id))
@@ -177,7 +192,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
                 "connected": model.connected, "running": model.running, "busy": model.busy,
                 "message": model.message, "error": model.error ?? "", "count": model.count,
                 "importantPeople": try json(model.importantPeople), "claims": try json(model.claims), "facts": try json(model.sourceFacts),
-                "prompts": Dictionary(model.decisions.map { ($0.eventID, $0.userPrompt) }, uniquingKeysWith: { _, last in last }), "decisions": try json(model.decisions), "work": try json(model.work), "queue": try json(model.queue),
+                "prompts": Dictionary(model.decisions.map { ($0.eventID, $0.userPrompt) }, uniquingKeysWith: { _, last in last }), "decisions": try json(model.decisions), "work": try json(model.work), "queue": try json(model.queue), "processingQueueCounts": model.processingQueueCounts,
                 "factQueue": try json(model.factQueue), "factChecks": model.factChecks.map { ["eventID": $0.eventID, "probability": $0.probability, "provider": $0.provider, "model": $0.model] as [String: Any] },
                 "calendarChoices": try json(model.calendarChoices), "selectedCalendarIDs": model.selectedCalendarIDs.sorted(),
                 "googleConfigured": model.googleConfigured, "googleAccount": model.googleSettings.account,

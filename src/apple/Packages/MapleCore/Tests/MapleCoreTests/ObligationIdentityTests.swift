@@ -5,10 +5,10 @@ import Testing
 struct ObligationIdentityTests {
     let now = Date()
     func event(_ revision: String, occurrence: String = "request", text: String = "Please send the form.") -> Event {
-        Event(type:"message.received", source:Source(connector:"gmail",account:"fixture",externalID:occurrence,revision:revision), occurredAt:now, receivedAt:now.addingTimeInterval(Double(revision) ?? 0), subjects:["person:self","thread:gmail:fixture"], content:"Subject: Fixture\nBody:\n" + text)
+        Event(type:"message.received", source:Source(connector:"gmail",account:"fixture",externalID:occurrence,revision:revision), occurredAt:now, receivedAt:now.addingTimeInterval(Double(revision) ?? 0), subjects:["person:self","thread:gmail:fixture"], content:"Direction: incoming\nSubject: Fixture\nBody:\n" + text)
     }
     func suggestion(_ event: Event, title: String = "Send the form") -> TaskSuggestion {
-        var s=TaskSuggestion(); s.eventID=event.id; s.quote="Please send the form."; s.provider="fixture"; s.candidate.title=title
+        var s=TaskSuggestion(); s.eventID=event.id; s.quote="Please send the form."; s.provider="fixture"; s.obligation="user_action"; s.actorID="person:self"; s.candidate.title=title
         return s
     }
     func extract(_ store: KnowledgeStore, _ event: Event, _ suggestions: [TaskSuggestion]) async throws {

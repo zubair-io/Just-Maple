@@ -24,6 +24,7 @@ export type TaskStatus =
   "open" | "in_progress" | "waiting" | "completed" | "cancelled";
 export interface TaskActionState {resurfaceAt?:number;reviewAt?:number;waitingOn?:string;lastMutationID:string;lastAction:string;lastMutationScope?:string}
 export interface LifeTask {
+  waitingFollowUp?: {parentNodeID:string;triggerAt:number;reason:string};
   actionState?:TaskActionState;
   id: string;
   ownerID: string;

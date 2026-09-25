@@ -38,6 +38,9 @@ enum CompanionSyncProjection {
                 entry.task.due = members.compactMap { $0.task.due }.min { instant($0, endOfDay: true) < instant($1, endOfDay: true) }
             }
             var seen = Set<String>()
+            var seenEvidence=Set<String>()
+            let evidence=world.taskProgress.filter { $0.nodeID == entry.id }.map(\.eventID) + members.flatMap { ($0.suggestion.map { [$0.eventID] } ?? []) + $0.task.evidenceIDs }
+            entry.task.evidenceIDs=evidence.filter { !$0.isEmpty && seenEvidence.insert($0).inserted }
             entry.task.activityIDs = members.flatMap { $0.task.activityIDs }.filter { seen.insert($0).inserted }
             let due = instant(entry.task.due, endOfDay: true), scheduled = instant(entry.task.scheduled)
             entry.when = min(due, scheduled)
@@ -84,6 +87,13 @@ enum CompanionSyncProjection {
                      title: bounded(entry.task.title, 512), status: entry.task.status.rawValue,
                      activities: Array(entry.task.activityIDs.filter { $0.utf8.count <= 1024 && activityNames[$0] != nil }.prefix(8)).compactMap { activityNames[$0] }.map { bounded($0, 80) },
                      due: entry.task.due.flatMap(dueLabel))
+            if let followUp=entry.task.waitingFollowUp {
+                value.waitingParentNodeID=followUp.parentNodeID
+                value.waitingParentTitle=entries.first(where:{$0.id==followUp.parentNodeID}).map { bounded($0.task.title,512) }
+                value.waitingReviewReason=followUp.reason
+            }
+            value.sourceCount=entry.task.evidenceIDs.count
+            value.sourceIDs=Array(entry.task.evidenceIDs.filter { $0.utf8.count<=1024 }.prefix(16))
             value.dueAt=entry.task.due.flatMap { try? $0.boundary(endOfDay:true) }
             value.activityIDs=Array(entry.task.activityIDs.filter { $0.utf8.count <= 1024 && activityNames[$0] != nil }.prefix(8))
             value.version=entry.id.hasPrefix("source:") ? entry.suggestion?.version : entry.task.version

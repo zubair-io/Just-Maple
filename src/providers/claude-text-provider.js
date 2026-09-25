@@ -68,6 +68,11 @@ export class ClaudeTextProvider extends ACPProvider {
         } else if (message.type === 'result') {
           if (!initialized) throw new ProviderIsolationError();
           if (message.subtype !== 'success' || message.is_error || typeof message.result !== 'string') {
+            if (message.is_error && /organization has disabled.*subscription access/i.test(message.result ?? '')) {
+              const error = new Error('Your organization has disabled Claude Code subscription access. Ask its administrator to enable access or select an available provider.');
+              error.code = 'PROVIDER_SUBSCRIPTION_DISABLED';
+              throw error;
+            }
             throw new Error('Claude did not complete text extraction.');
           }
           result = { text: message.result.trim(), durationMs: Math.round(performance.now() - started),

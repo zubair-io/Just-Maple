@@ -165,6 +165,10 @@ import MapleCompanionTransport
 }
 
 @MainActor private final class FixtureRemoteMailbox: CompanionMacMailbox {
+    var groupActions:[SyncDeviceGroupAction]=[]
+    var groupReceipts:[SyncGroupActionReceipt]=[]
+    func pendingGroupActions()async throws->[SyncDeviceGroupAction]{try await authorize?();return groupActions}
+    func acknowledgeGroupAction(deviceID:UUID,receipt:SyncGroupActionReceipt)async throws{try await authorize?();if failAcknowledgment{throw CompanionErrorFixture.failed};groupReceipts.append(receipt);groupActions.removeAll{$0.deviceID==deviceID && $0.action.id==receipt.id}}
     var actions:[SyncDeviceTaskAction]=[]
     var actionReceipts:[SyncTaskActionReceipt]=[]
     func pendingActions()async throws->[SyncDeviceTaskAction]{try await authorize?();return actions}
@@ -224,6 +228,39 @@ import MapleCompanionTransport
         #expect(mailbox.actionReceipts.last?.outcome=="applied")
         #expect(mailbox.actionReceipts.last?.resultingVersion==task.version+2)
         #expect(try await store.tasks().first?.status == .open)
+    }
+    @Test func groupActionsKeepReviewedMembershipAcrossArrivalRetryAndScopedUndo() async throws {
+        let fixture=AuthorizationFixture(),mailbox=FixtureRemoteMailbox();fixture.remote=mailbox
+        let host=fixture.controller(),model=try await fixture.model(),store=try #require(model.store),device=UUID()
+        func seed(_ id:String)async throws->LifeTask {
+            let event=Event(type:"message.received",source:.init(connector:"gmail",account:"fixture",externalID:id,revision:"1"),occurredAt:Date(),subjects:["thread:group-fixture"],content:"Synthetic group source")
+            try await store.ingest(event);var task=LifeTask();task.id=id;task.title="Fixture "+id;task.evidenceIDs=[event.id]
+            return try await store.saveTask(task,expectedVersion:0,requestID:UUID().uuidString)
+        }
+        let a=try await seed("a"),b=try await seed("b")
+        let review=try await store.createReviewedObligationGroup(children:[.init(nodeID:"task:a",expectedVersion:a.version),.init(nodeID:"task:b",expectedVersion:b.version)],intent:"Review",actor:"Fixture actor",target:"Fixture forms",maximumSpan:3600,requestID:UUID().uuidString)
+        let wire=try SyncCodec.decode(SyncGroupReview.self,from:JSONCodec.encode(review)),done=SyncGroupAction(intent:.done,review:wire)
+        _ = try await seed("later-arrival")
+        mailbox.groupActions=[.init(deviceID:device,action:done)];mailbox.failAcknowledgment=true
+        await host.restore(model:model)
+        #expect(try await store.tasks().first(where:{$0.id=="a"})?.status == .completed)
+        #expect(try await store.tasks().first(where:{$0.id=="later-arrival"})?.status == .open)
+        mailbox.failAcknowledgment=false;await host.cloudTick()
+        #expect(mailbox.groupReceipts.first?.outcome=="applied")
+        #expect(try await store.tasks().first(where:{$0.id=="a"})?.version==a.version+1)
+        let wrong=SyncGroupAction(intent:.undo,targetMutationID:done.id)
+        mailbox.groupActions=[.init(deviceID:UUID(),action:wrong)];await host.cloudTick()
+        #expect(mailbox.groupReceipts.last?.outcome=="conflict")
+        let undo=SyncGroupAction(intent:.undo,targetMutationID:done.id)
+        mailbox.groupActions=[.init(deviceID:device,action:undo)];await host.cloudTick()
+        #expect(mailbox.groupReceipts.last?.outcome=="applied")
+        #expect(try await store.tasks().first(where:{$0.id=="a"})?.status == .open)
+        let fresh=try await store.createReviewedObligationGroup(children:[.init(nodeID:"task:a",expectedVersion:a.version+2),.init(nodeID:"task:b",expectedVersion:b.version+2)],intent:"Review",actor:"Fixture actor",target:"Fixture forms",maximumSpan:3600,requestID:UUID().uuidString)
+        var changed=try #require(try await store.tasks().first(where:{$0.id=="b"}));changed.title="Edited elsewhere"
+        _ = try await store.saveTask(changed,expectedVersion:changed.version,requestID:UUID().uuidString)
+        mailbox.groupActions=[.init(deviceID:device,action:.init(intent:.notNeeded,review:try SyncCodec.decode(SyncGroupReview.self,from:JSONCodec.encode(fresh))))];await host.cloudTick()
+        #expect(mailbox.groupReceipts.last?.outcome=="conflict")
+        #expect(try await store.tasks().first(where:{$0.id=="a"})?.version==a.version+2)
     }
     @Test func taskActionsCommitOnceAndStaleVersionReturnsConflict()async throws {
         let fixture=AuthorizationFixture(),mailbox=FixtureRemoteMailbox();fixture.remote=mailbox

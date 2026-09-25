@@ -76,6 +76,49 @@ private enum FixtureFailure:Error {case unavailable,accountChanged}
         #expect(try await phone.snapshot(deviceID:other)?.tasks.first?.actionState?.canUndo==false)
         #expect(try await phone.snapshot(deviceID:device)?.tasks.first?.activityIDs==["activity:stable"])
     }
+    @Test func sourcePreviewIsEncryptedAndRetainsTruncationAndAttribution() async throws {
+        let store=FixtureMailboxStore(),config=try PairingConfiguration.create(),device=UUID(),mac=mailbox(store,config)
+        var task=SyncTask(id:"task:source",title:"Fixture",status:"open",activities:[],due:nil)
+        task.sources=[.init(id:"fixture-source",connector:"imessage",sender:"Fixture actor",occurredAt:Date(timeIntervalSince1970:1_800_000_000),content:"PRIVATE SYNTHETIC SOURCE",truncated:true)]
+        task.sourceIDs=["fixture-source"];task.sourceCount=1
+        try await mac.publishSnapshot(.init(deviceID:device,receivedIDs:[],tasks:[task]))
+        #expect(!String(decoding:try #require(store.records["snapshot"]).payload,as:UTF8.self).contains("PRIVATE SYNTHETIC SOURCE"))
+        let received=try #require(try await mac.snapshot(deviceID:device)?.tasks.first?.sources?.first)
+        #expect(received==task.sources?.first)
+    }
+    @Test func groupMailboxIsEncryptedIdempotentAndSeparateFromTaskAndCaptureReceipts() async throws {
+        let store=FixtureMailboxStore(),config=try PairingConfiguration.create(),device=UUID(),phone=mailbox(store,config),mac=mailbox(store,config)
+        let review=GroupActionContractTests().review(),action=SyncGroupAction(intent:.done,review:review)
+        store.failAfterWrite=true
+        await #expect(throws:FixtureFailure.self){try await phone.uploadGroupActions(deviceID:device,actions:[action])}
+        try await phone.uploadGroupActions(deviceID:device,actions:[action])
+        #expect(store.records.count==1)
+        #expect(!String(decoding:try #require(store.records.values.first).payload,as:UTF8.self).contains("Fixture forms"))
+        #expect(try await mac.pendingGroupActions()==[.init(deviceID:device,action:action)])
+        #expect(try await mac.pendingActions().isEmpty)
+        #expect(try await mac.pending().isEmpty)
+        let receipt=SyncGroupActionReceipt(id:action.id,outcome:"applied",children:review.children.map{.init(nodeID:$0.nodeID,version:$0.expectedVersion+1,mutationID:"child-"+$0.nodeID)})
+        try await mac.acknowledgeGroupAction(deviceID:device,receipt:receipt)
+        #expect(try await mailbox(store,config).pendingGroupActions().isEmpty)
+        #expect(try await phone.groupActionReceipts(deviceID:device,ids:[action.id])==[receipt])
+        #expect(try await phone.actionReceipts(deviceID:device,ids:[action.id]).isEmpty)
+        var changed=action;changed.review?.children.append(.init(nodeID:"task:new-arrival",expectedVersion:1))
+        await #expect(throws:CloudMailboxError.self){try await phone.uploadGroupActions(deviceID:device,actions:[changed])}
+    }
+    @Test func subMillisecondLegacyCaptureRetriesAtWirePrecisionWithoutRewritingSource() async throws {
+        let store=FixtureMailboxStore(),config=try PairingConfiguration.create(),device=UUID(),phone=mailbox(store,config)
+        var original=capture();original.createdAt=Date(timeIntervalSince1970:1_700_000_000.123456)
+        store.failAfterWrite=true
+        await #expect(throws:FixtureFailure.self){try await phone.upload(.init(deviceID:device,operation:"sync",captures:[original]))}
+        let retry=SyncCapture(id:original.id,text:original.text,createdAt:original.createdAt)
+        try await phone.upload(.init(deviceID:device,operation:"sync",captures:[retry]))
+        #expect(store.records.count==1 && store.log.count==1)
+        let pending=try #require(try await mailbox(store,config).pending().first?.captures.first)
+        #expect(abs(pending.createdAt.timeIntervalSince(original.createdAt))<0.001)
+        #expect(pending==retry)
+        var changed=retry;changed.createdAt=retry.createdAt.addingTimeInterval(0.01)
+        await #expect(throws:CloudMailboxError.self){try await phone.upload(.init(deviceID:device,operation:"sync",captures:[changed]))}
+    }
     @Test func immutableEncryptedUploadRetriesAfterLostCloudReply()async throws {
         let store=FixtureMailboxStore(),config=try PairingConfiguration.create(),device=UUID(),item=capture()
         let phone=mailbox(store,config)

@@ -1,3 +1,4 @@
+import { taskRoot } from './task-ranking';
 import { DesktopTaskActionsComponent } from './desktop-task-actions.component';
 import { TaskEvidenceComponent } from "./task-evidence.component";
 import {
@@ -36,6 +37,17 @@ import { SourceEvent } from "../core/native-bridge.service";
 })
 export class TaskDetailComponent {
   readonly world = inject(WorldService);
+  readonly waitingParent = computed(() => {
+    const link=this.record()?.waitingFollowUp;if(!link)return null;
+    const world=this.world.data();let id=link.parentNodeID;
+    const accepted=world.suggestions.find(s=>'source:'+s.id===id)?.acceptedTaskID;
+    if(accepted)id='task:'+accepted;
+    id=taskRoot(id,world);
+    const task=id.startsWith('task:')?world.tasks.find(t=>'task:'+t.id===id):world.suggestions.find(s=>'source:'+s.id===id)?.candidate;
+    return task?{id,title:task.title}:null;
+  });
+  openWaitingParent(){const parent=this.waitingParent();if(parent)this.world.go(parent.id.startsWith('task:')?'tasks/'+parent.id.slice(5):'suggestions/'+parent.id.slice(7));}
+
   readonly route = inject(ActivatedRoute);
   readonly params = toSignal(this.route.paramMap, {
     initialValue: this.route.snapshot.paramMap,

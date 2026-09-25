@@ -15,7 +15,7 @@ try {
   if (!readiness.installed || !readiness.adapterInstalled || readiness.authenticated !== true) {
     process.stdout.write(JSON.stringify({ok:false,error:`Install and sign in using ${request.provider === 'codex' ? 'codex login (ChatGPT)' : 'claude auth login (claude.ai)'}.`}));
   } else if (request.action === 'detect') {
-    process.stdout.write(JSON.stringify({ok:true,text:request.provider === 'codex' ? 'Signed in. ChatGPT extraction is unavailable until a tool-free mode is supported. Choose Claude or another provider.' : 'Signed in; ready for text-only extraction.'}));
+    process.stdout.write(JSON.stringify({ok:true,text:request.provider === 'codex' ? 'Signed in; ready for ChatGPT extraction.' : 'Signed in; ready for text-only extraction.'}));
   } else {
     if (typeof request.prompt !== 'string' || request.prompt.length > 80000) throw new Error('Invalid prompt');
     directory = await providerWorkspace();
@@ -28,7 +28,7 @@ try {
 } catch (error) {
   // Never return raw provider diagnostics, which can contain prompts or credentials.
   const limited = /usage limit|weekly limit|rate.?limit|hit your limit|resets|quota/i.test(String(error?.message));
-  process.stdout.write(JSON.stringify({ok:false,error:error?.code === 'PROVIDER_ISOLATION_UNSUPPORTED' ? error.message : limited ? 'Provider subscription limit reached. Retry after your allowance resets.' : 'Provider could not complete this request. Check its login, subscription allowance and availability, then retry.'}));
+  process.stdout.write(JSON.stringify({ok:false,error:['PROVIDER_ISOLATION_UNSUPPORTED','PROVIDER_SUBSCRIPTION_DISABLED'].includes(error?.code) ? error.message : limited ? 'Provider subscription limit reached. Retry after your allowance resets.' : 'Provider could not complete this request. Check its login, subscription allowance and availability, then retry.'}));
 } finally {
   // Also retire interrupted/failed requests when the adapter is still reachable.
   try { await provider?.archiveSession(); } catch {}

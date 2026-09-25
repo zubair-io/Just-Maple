@@ -83,6 +83,20 @@ describe('iPhone companion',()=>{
     expect(fixture.nativeElement.textContent).not.toContain(waiting.title);
     expect(fixture.nativeElement.textContent).not.toContain('Completed work');
   });
+  it('opens cached source fallback and copies it without completing or sending anything',async()=>{
+    const source={id:'evidence-fixture',connector:'imessage',sender:'Fixture actor',occurredAt:'2026-09-24T10:00:00Z',content:'Could you confirm the delivery time?',available:true,truncated:false};
+    const task={id:'task:source',title:'Confirm delivery time',status:'open',version:1,activities:[],sources:[source],sourceCount:1};
+    const state={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],tasks:[task]}};
+    const send=vi.fn(async(body:any)=>body.action==='copySource'?{copied:true}:state);
+    (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
+    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();fixture.detectChanges();
+    fixture.componentInstance.openTask(task);fixture.detectChanges();
+    const open=[...fixture.nativeElement.querySelectorAll('[role="dialog"] button')].find((b:any)=>b.textContent.includes('Open source')) as HTMLButtonElement;open.click();fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('maple-source-inspector').textContent).toContain(source.content);
+    expect(fixture.nativeElement.querySelector('maple-source-inspector').textContent).toContain(source.sender);
+    const copy=[...fixture.nativeElement.querySelectorAll('maple-source-inspector button')].find((b:any)=>b.textContent.includes('Copy source')) as HTMLButtonElement;copy.click();await fixture.whenStable();
+    expect(send.mock.calls.map(c=>c[0].action)).toEqual(['snapshot','copySource']);
+  });
   it('opens task details and queues completion without claiming the Mac saved it',async()=>{
     const task={id:'task:fixture',title:'Confirm appointment',status:'open',version:3,detail:'Ask for the available morning time',activities:['House']};
     const state:any={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],tasks:[task]}};
@@ -128,6 +142,28 @@ describe('iPhone companion',()=>{
     component.notes.change('Keep my unsaved iPhone edit');await component.selectView('overview');fixture.detectChanges();
     expect(component.view()).toBe('notebooks');expect(component.notes.document()?.content).toBe('Keep my unsaved iPhone edit');
     expect(fixture.nativeElement.textContent).toContain('External edit conflict');
+  });
+
+  it('collapses only complete reviewed groups in All tasks and preserves filtered or missing children',async()=>{
+    const tasks=[{id:'task:a',title:'First request',status:'open',version:1,activities:['One']},{id:'task:b',title:'Second request',status:'open',version:2,activities:['Two']},{id:'task:c',title:'New arrival',status:'open',version:1,activities:[]}];
+    const group={review:{id:'review',context:{intentID:'Review requests',actorID:'Fixture actor',targetID:'Fixture target',connector:'fixture',account:'fixture',sourceScopeID:'thread'},maximumSpan:3600,children:[{nodeID:'task:a',expectedVersion:1},{nodeID:'task:b',expectedVersion:2}]},titles:{'task:a':'First request','task:b':'Second request'}};
+    const state={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],tasks,reviewedGroups:[group],reviewedGroupTotal:1}};
+    (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:vi.fn().mockResolvedValue(state)}}};
+    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();const c=fixture.componentInstance;
+    c.showTasks();fixture.detectChanges();
+    expect(c.ungroupedTasks().map(t=>t.id)).toEqual(['task:c']);
+    const details=fixture.nativeElement.querySelector('maple-companion-groups details');
+    expect(details.open).toBe(false);expect(details.textContent).toContain('First request');expect(details.textContent).toContain('Second request');
+    expect(fixture.nativeElement.querySelector('[data-task-id="task:a"]')).toBeNull();
+    expect(c.attention().map(t=>t.id)).toEqual(['task:a','task:b','task:c']);
+    c.filterTasks('One');fixture.detectChanges();
+    expect(c.visibleGroups()).toEqual([]);expect(c.ungroupedTasks().map(t=>t.id)).toEqual(['task:a']);
+    expect(fixture.nativeElement.querySelector('[data-task-id="task:a"]')).not.toBeNull();
+    c.showNeedsYou();expect(c.ungroupedTasks()).toHaveLength(3);
+    c.showTasks();c.state.set({...state,mac:{...state.mac,tasks:[tasks[0],tasks[2]]}});
+    expect(c.visibleGroups()).toEqual([]);expect(c.ungroupedTasks().map(t=>t.id)).toEqual(['task:a','task:c']);
+    c.state.set({...state,mac:{...state.mac,tasks:[{...tasks[0],version:3},tasks[1],tasks[2]]}});
+    expect(c.visibleGroups()).toEqual([]);expect(c.ungroupedTasks()).toHaveLength(3);
   });
 
   it('filters long colliding activity labels by stable ID',async()=>{

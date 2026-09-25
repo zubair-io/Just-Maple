@@ -88,20 +88,26 @@ struct IMessageTests {
         var distribution = Dictionary(uniqueKeysWithValues: MessageKind.allCases.map { ($0.rawValue, 0.0) })
         distribution["request"] = 1
         var answers: [String: Any] = ["message_kind": ["type": "choice", "choice": "request", "confidence": 0.95, "probabilities": distribution]]
-        for key in ["action_needed", "reply_needed", "time_sensitive", "commitment_changed", "context_conflict", "meaningful_update", "needs_reasoning", "contains_facts"] {
+        for key in ["task_review_needed", "action_needed", "reply_needed", "time_sensitive", "commitment_changed", "context_conflict", "meaningful_update", "needs_reasoning", "contains_facts"] {
             answers[key] = ["type": "noul", "noul": 0.9]
         }
         let transport = CapturingTransport(data: try JSONSerialization.data(withJSONObject: ["model": "test-jev", "answers": answers]))
         let result = try await TypeSafeClassifier(apiKey: "test", transport: transport).classify(context)
         #expect(result.assessment.message?.kind == .request)
+        #expect(result.inputContext?.version == "message-screening-v1")
         let request = try #require(await transport.request)
         let json = try #require(JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
         let questions = try #require(json["questions"] as? [String: Any])
-        #expect(questions.count == 9)
+        #expect(questions.count == 10)
         #expect(questions["job_stage"] == nil)
-        answers.removeValue(forKey: "reply_needed")
+        answers.removeValue(forKey: "task_review_needed")
         let broken = CapturingTransport(data: try JSONSerialization.data(withJSONObject: ["model": "test-jev", "answers": answers]))
         await #expect(throws: MapleError.self) { try await TypeSafeClassifier(apiKey: "test", transport: broken).classify(context) }
+        for invalid in [["type": "noul", "noul": 1.1], ["type": "choice", "choice": "yes"]] as [[String: Any]] {
+            answers["task_review_needed"] = invalid
+            let invalidTransport = CapturingTransport(data: try JSONSerialization.data(withJSONObject: ["model": "test-jev", "answers": answers]))
+            await #expect(throws: MapleError.self) { try await TypeSafeClassifier(apiKey: "test", transport: invalidTransport).classify(context) }
+        }
     }
 
     @Test func existingV1DatabaseMigratesWithoutLosingEvents() async throws {

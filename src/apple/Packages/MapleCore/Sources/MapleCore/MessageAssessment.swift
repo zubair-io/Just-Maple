@@ -9,6 +9,7 @@ public struct MessageAssessment: Codable, Sendable {
     public let confidence: Double
     public let replyNeeded: Double
     public let actionNeeded: Double?
+    public let taskReviewNeeded: Double?
     public let timeSensitive: Double
     public let commitmentChanged: Double
     public let contextConflict: Double
@@ -17,16 +18,16 @@ public struct MessageAssessment: Codable, Sendable {
     public let questionVersion: String
 
     public init(kind: MessageKind, confidence: Double, replyNeeded: Double, timeSensitive: Double,
-                commitmentChanged: Double, contextConflict: Double, meaningfulUpdate: Double, needsReasoning: Double, actionNeeded: Double? = nil) {
-        self.actionNeeded=actionNeeded
+                commitmentChanged: Double, contextConflict: Double, meaningfulUpdate: Double, needsReasoning: Double, actionNeeded: Double? = nil, taskReviewNeeded: Double? = nil) {
+        self.actionNeeded=actionNeeded; self.taskReviewNeeded=taskReviewNeeded
         self.kind = kind; self.confidence = confidence; self.replyNeeded = replyNeeded
         self.timeSensitive = timeSensitive; self.commitmentChanged = commitmentChanged
         self.contextConflict = contextConflict; self.meaningfulUpdate = meaningfulUpdate
-        self.needsReasoning = needsReasoning; questionVersion = "message-actions-v2"
+        self.needsReasoning = needsReasoning; questionVersion = "message-actions-v3"
     }
 
     func validate() throws {
-        guard [actionNeeded ?? 0, confidence, replyNeeded, timeSensitive, commitmentChanged, contextConflict, meaningfulUpdate, needsReasoning]
+        guard [taskReviewNeeded ?? 0, actionNeeded ?? 0, confidence, replyNeeded, timeSensitive, commitmentChanged, contextConflict, meaningfulUpdate, needsReasoning]
             .allSatisfy({ $0.isFinite && (0...1).contains($0) }) else {
             throw MapleError.provider("Jev returned an invalid message assessment.")
         }
@@ -53,8 +54,8 @@ extension Policy {
             reason = "Historical import: retain useful context without prompting or interrupting."
         } else if inbound && signals.contextConflict >= 0.85 {
             route = .askUser; reason = "Context conflict met 0.85; ask the user to resolve it."
-        } else if inbound && signals.replyNeeded >= 0.85 {
-            route = .askUser; reason = "Reply needed met 0.85; offer a local response prompt."
+        } else if inbound && signals.replyNeeded >= 0.85 && (signals.actionNeeded ?? 0) >= 0.5 {
+            route = .askUser; reason = "Reply needed met 0.85 and action needed met 0.50; offer a local response prompt."
         } else if inbound && signals.timeSensitive >= 0.9 && signals.meaningfulUpdate >= 0.8 {
             route = .notify; reason = "Time sensitivity met 0.90 with meaningful update at least 0.80."
         } else if signals.needsReasoning >= 0.85 && signals.meaningfulUpdate >= 0.8 {
@@ -62,13 +63,21 @@ extension Policy {
         } else if signals.meaningfulUpdate >= 0.8 || signals.commitmentChanged >= 0.85 {
             route = .summarize; reason = "New information or a changed commitment should update a summary proposal."
         } else {
-            route = .retain; reason = "No action threshold met. Remember quietly."
+            route = .retain; reason = "No interruption or summary threshold met. Retain the observation."
         }
         let trace = ["Message kind: \(signals.kind.rawValue), confidence \(signals.confidence).",
-                     "Questions: \(signals.questionVersion). Reply \(signals.replyNeeded); action \(signals.actionNeeded ?? 0); time-sensitive \(signals.timeSensitive); commitment \(signals.commitmentChanged); conflict \(signals.contextConflict); new information \(signals.meaningfulUpdate); reasoning \(signals.needsReasoning).",
+                     "Questions: \(signals.questionVersion). Task review \(signals.taskReviewNeeded ?? 0); reply \(signals.replyNeeded); action \(signals.actionNeeded ?? 0); time-sensitive \(signals.timeSensitive); commitment \(signals.commitmentChanged); conflict \(signals.contextConflict); new information \(signals.meaningfulUpdate); reasoning \(signals.needsReasoning).",
                      "Thread context: \(context.recentEvents.count) recent observations, \(context.relatedEvidence.count) evidence records.",
-                     "Classifier: \(assessment.provider)/\(assessment.model).", reason]
+                     "Classifier: \(assessment.provider)/\(assessment.model).",
+                     signals.warrantsTaskReview ? "Task screening: deeper review requested; this is not yet a task." : "Task screening: no deeper task review requested.", reason]
         return Decision(eventID: context.event.id, route: route, assessment: assessment, context: context,
-                        explanation: trace, policyVersion: "imessage-routing-v1", createdAt: now)
+                        explanation: trace, policyVersion: "message-routing-v2", createdAt: now)
+    }
+}
+
+// Screening authorizes deeper local review, never a task, interruption or external action.
+extension MessageAssessment {
+    public var warrantsTaskReview: Bool {
+        (taskReviewNeeded ?? 0) >= 0.5 || (actionNeeded ?? 0) >= 0.5 || commitmentChanged >= 0.5
     }
 }

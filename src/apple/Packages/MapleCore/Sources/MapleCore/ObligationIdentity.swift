@@ -52,6 +52,10 @@ extension KnowledgeStore {
     }
 
     func obligationIsProtected(_ suggestion: TaskSuggestion, relations: [TaskRelation]) throws -> Bool {
+        let canonical = obligationRoot(suggestion, relations: relations)
+        let rawCanonical = String(canonical.dropFirst(canonical.hasPrefix("task:") ? 5 : 7))
+        if try db.rows("SELECT subject FROM task_user_history_subjects WHERE subject IN (?,?,?,?) LIMIT 1",
+                       [suggestion.id, "source:" + suggestion.id, canonical, rawCanonical]).first != nil { return true }
         if try db.rows("SELECT id FROM task_inference_corrections WHERE id=? AND kind='status'",["source:" + suggestion.id]).first != nil { return true }
         if suggestion.reviewStatus == "rejected" || suggestion.candidate.status.terminal || suggestion.candidate.actionState != nil { return true }
         if let accepted = suggestion.acceptedTaskID,

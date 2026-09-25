@@ -13,6 +13,7 @@ import { MuiButtonComponent, MuiInputComponent } from "@maple/ui";
 import {
   NativeBridge,
   Fact,
+  Decision,
   Person,
   SourceEvent,
   Work,
@@ -72,6 +73,7 @@ export class WorkspaceComponent {
   readonly detail = signal<unknown>(null);
   readonly selectedFact = signal<Fact | null>(null);
   readonly selectedWork = signal<Work | null>(null);
+  readonly selectedPrompt = signal("");
   query = "";
   note = "";
   personName = "";
@@ -137,10 +139,19 @@ export class WorkspaceComponent {
       this.detail.set(await this.bridge.evidence(id));
     } catch {}
   }
-  review(w: Work) {
+  async review(w: Work) {
     this.answer = "";
     this.selectedWork.set(w);
-    this.detail.set(this.decision(w.eventID));
+    this.selectedPrompt.set("");
+    this.detail.set({ status: "Loading decision…" });
+    try {
+      const result = await this.bridge.notebook<{decision:Decision;prompt:string} | null>("decisionDetail", { id: w.eventID });
+      if (this.selectedWork()?.id !== w.id) return;
+      this.detail.set(result?.decision ?? { status: "Decision unavailable" });
+      this.selectedPrompt.set(result?.prompt ?? "");
+    } catch {
+      if (this.selectedWork()?.id === w.id) this.detail.set({ status: "Could not load this decision. Close and retry." });
+    }
   }
   close() {
     this.detail.set(null);
