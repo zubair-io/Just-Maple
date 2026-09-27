@@ -12,6 +12,8 @@ struct CompanionSnapshot: Codable {
     var receivedIDs: [String]?
     var uploadedIDs: [String]?
     var mac: SyncResponse?
+    var groupActions:[SyncGroupAction]?
+    var groupActionReceipts:[SyncGroupActionReceipt]?
     var taskActions:[SyncTaskAction]?
     var taskActionReceipts:[SyncTaskActionReceipt]?
     var cloudAccountID:String?
@@ -57,6 +59,49 @@ enum CompanionError: Error, LocalizedError {
         try Self.write(next,to:file)
         snapshot=next
     }
+    var pendingGroupActions:[SyncGroupAction] {
+        let received=Set((snapshot.groupActionReceipts ?? []).map(\.id))
+        return (snapshot.groupActions ?? []).filter{!received.contains($0.id)}
+    }
+    private func groupMembers(_ action:SyncGroupAction)->Set<String> {
+        if let children=action.review?.children{return Set(children.map(\.nodeID))}
+        if let target=action.targetMutationID,let original=snapshot.groupActions?.first(where:{$0.id==target}) {return Set(original.review?.children.map(\.nodeID) ?? [])}
+        return []
+    }
+    func groupAction(_ action:SyncGroupAction)throws {
+        if let old=snapshot.groupActions?.first(where:{$0.id==action.id}){guard old==action else{throw CompanionError.conflictingRequest};return}
+        guard action.valid,action.issuedAt<=Date().addingTimeInterval(300) else{throw CompanionError.invalidCapture}
+        if action.intent == .undo {
+            guard let target=action.targetMutationID,snapshot.groupActions?.contains(where:{$0.id==target && $0.intent != .undo})==true,
+                  snapshot.groupActionReceipts?.contains(where:{$0.id==target && $0.outcome=="applied"})==true else{throw CompanionError.invalidCapture}
+        } else {
+            guard snapshot.mac?.reviewedGroups?.contains(where:{$0.review==action.review})==true else{throw CompanionError.invalidCapture}
+        }
+        let members=groupMembers(action)
+        guard pendingGroupActions.count<50,!members.isEmpty,
+              pendingTaskActions.allSatisfy({!members.contains($0.taskID)}),
+              pendingGroupActions.allSatisfy({groupMembers($0).isDisjoint(with:members)}) else{throw CompanionError.queueFull}
+        var next=snapshot
+        let pinned=Set((pendingGroupActions+[action]).flatMap{[$0.id,$0.targetMutationID].compactMap{$0}})
+        let recent=Set((snapshot.groupActionReceipts ?? []).suffix(50).map(\.id))
+        let retained=recent.union(pinned)
+        next.groupActions=(next.groupActions ?? []).filter{retained.contains($0.id)}+[action]
+        next.groupActionReceipts=(next.groupActionReceipts ?? []).filter{retained.contains($0.id)}
+        try Self.write(next,to:file);snapshot=next
+    }
+    func acceptGroupActionReceipts(_ receipts:[SyncGroupActionReceipt],sent:Set<UUID>)throws {
+        guard Set(receipts.map(\.id)).count==receipts.count,receipts.allSatisfy({$0.valid && sent.contains($0.id)}),sent.isSubset(of:Set((snapshot.groupActions ?? []).map(\.id))) else{throw CompanionError.invalidCapture}
+        var next=snapshot,values=Dictionary((snapshot.groupActionReceipts ?? []).map{($0.id,$0)},uniquingKeysWith:{a,_ in a})
+        for receipt in receipts {
+            if let old=values[receipt.id],old != receipt{throw CompanionError.conflictingRequest}
+            if let children=receipt.children,let action=snapshot.groupActions?.first(where:{$0.id==receipt.id}) {
+                guard Set(children.map(\.nodeID))==groupMembers(action) else{throw CompanionError.invalidCapture}
+            }
+            values[receipt.id]=receipt
+        }
+        next.groupActionReceipts=(next.groupActions ?? []).compactMap{values[$0.id]}
+        try Self.write(next,to:file);snapshot=next
+    }
     var pendingTaskActions:[SyncTaskAction] {
         let done=Set((snapshot.taskActionReceipts ?? []).map(\.id))
         return (snapshot.taskActions ?? []).filter{!done.contains($0.id)}
@@ -78,7 +123,7 @@ enum CompanionError: Error, LocalizedError {
         } else {
             guard let task=snapshot.mac?.tasks.first(where:{$0.id==action.taskID}),task.version==action.expectedVersion else{throw CompanionError.invalidCapture}
         }
-        guard pendingTaskActions.count<100,!pendingTaskActions.contains(where:{$0.taskID==action.taskID}) else{throw CompanionError.queueFull}
+        guard pendingGroupActions.allSatisfy({!groupMembers($0).contains(action.taskID)}),pendingTaskActions.count<100,!pendingTaskActions.contains(where:{$0.taskID==action.taskID}) else{throw CompanionError.queueFull}
         var next=snapshot
         // Keep outstanding actions and a bounded recent receipt history.
         let keep=Set((snapshot.taskActionReceipts ?? []).suffix(100).map(\.id)).union(pendingTaskActions.map(\.id))
@@ -94,7 +139,7 @@ enum CompanionError: Error, LocalizedError {
         try Self.write(next,to:file);snapshot=next
     }
     func accept(_ response:SyncResponse,sentIDs:Set<UUID>)throws {
-        guard response.version==1,response.deviceID.uuidString.lowercased()==snapshot.deviceID.lowercased(),
+        guard response.validGroups,response.version==1,response.deviceID.uuidString.lowercased()==snapshot.deviceID.lowercased(),
               Set(response.receivedIDs).count==response.receivedIDs.count,
               Set(response.receivedIDs).isSubset(of:sentIDs),
               response.tasks.count<=50,response.states.count<=32,

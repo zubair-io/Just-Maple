@@ -29,7 +29,8 @@
   </div>
 </details>
 <p class="footnote">Ordered by urgency, priority and current context. Open an item to inspect its source.</p>
-<maple-ranked-task-rows [items]="tasks()" [details]="true" />
+<maple-task-group-panel [items]="tasks()" [collapse]="filter()==='All open' && !tags().length" (groupedIDs)="groupedIDs.set($event)" />
+<maple-ranked-task-rows [items]="individualTasks()" [details]="true" />
 <p class="footnote">
-  Each task is counted once here, even when it has several activity tags.
+  {{tasks().length}} tasks in this view. Reviewed groups collapse their members only in All open without activity filters; counts still include every task.
 </p>

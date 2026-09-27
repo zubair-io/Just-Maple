@@ -5,7 +5,13 @@ extension KnowledgeStore {
         guard let event = try event(eventID) else { throw MapleError.invalid("Unknown event \(eventID)") }
         let threads = event.subjects.filter { $0.hasPrefix("thread:imessage:") || $0.hasPrefix("thread:gmail:") }
         // Shared person:self must not mix unrelated conversations into a message's thread history.
-        let historySubjects = threads.isEmpty ? event.subjects : threads
+        let historySubjects: [String]
+        if event.source.connector == "home_assistant" {
+            // Shared self is useful for claims, not an entity's observation history.
+            historySubjects = event.subjects.filter { $0.hasPrefix("home:") && $0 != "home:self" }
+        } else {
+            historySubjects = threads.isEmpty ? event.subjects : threads
+        }
         let marks = Array(repeating: "?", count: historySubjects.count).joined(separator: ",")
         let recent = try db.rows("""
             SELECT DISTINCT e.json FROM events e JOIN event_subjects s ON e.id=s.event_id
@@ -23,7 +29,7 @@ extension KnowledgeStore {
         }
         var matches = try search(event.content, limit: 4, subjects: historySubjects)
         if try indexStatus().chunks > 0 {
-            matches += try semanticSearch(event.content, limit: 4, before: event.occurredAt, subjects: event.subjects)
+            matches += try semanticSearch(event.content, limit: 4, before: event.occurredAt, subjects: historySubjects)
         }
         for match in matches where match.id != event.id && match.occurredAt <= event.occurredAt && !evidence.contains(where: { $0.id == match.id }) {
             if evidence.count < 12 { evidence.append(match) }
@@ -60,10 +66,20 @@ extension KnowledgeStore {
             """, args).map { try JSONCodec.decode(Event.self, from: Data($0["json"]!.utf8)) }
     }
 
+    static func utf8Excerpt(_ text: String, limit: Int) -> String {
+        var result = String.UnicodeScalarView(), count = 0
+        for scalar in text.unicodeScalars {
+            let bytes = scalar.utf8.count
+            guard count + bytes <= limit else { break }
+            result.append(scalar); count += bytes
+        }
+        return String(result)
+    }
+
     private func excerpt(_ event: Event, limit: Int) -> Event {
         Event(id: event.id, type: event.type, source: event.source, occurredAt: event.occurredAt,
               receivedAt: event.receivedAt, subjects: event.subjects,
-              content: String(event.content.prefix(limit)))
+              content: Self.utf8Excerpt(event.content, limit: limit))
     }
 }
 

@@ -61,7 +61,7 @@ struct CompanionWebView: UIViewRepresentable {
                 if action=="syncMac" {await sync?.sync()}
                 else {_ = try perform(action,body:body)}
                 replyHandler(try reply(),nil)
-                if action=="taskAction" {Task {await sync?.sync()}}
+                if action=="taskAction" || action=="groupAction" {Task {await sync?.sync()}}
             } catch {
                 if iPhoneNotebookBridge.actions.contains(action) {replyHandler(nil,error.localizedDescription)}
                 else {replyHandler(nil,"Could not complete this request. iCloud will reconnect automatically when available.")}
@@ -88,6 +88,22 @@ struct CompanionWebView: UIViewRepresentable {
         guard let store else {throw CompanionError.storageUnavailable}
         switch action {
         case "snapshot":break
+        case "copySource":
+            guard let text=body["text"] as? String,text.utf8.count<=270_000 else{throw CompanionError.invalidCapture}
+            UIPasteboard.general.string=text
+            return ["copied":true]
+        case "groupAction":
+            guard let rawID=(body["id"] ?? body["requestID"]) as? String,let id=UUID(uuidString:rawID),let raw=body["intent"] as? String,let intent=SyncGroupIntent(rawValue:raw),let issuedAt=try bridgeDate(body["issuedAt"]) else{throw CompanionError.invalidCapture}
+            var review:SyncGroupReview?
+            if let value=body["review"] {
+                guard JSONSerialization.isValidJSONObject(value) else{throw CompanionError.invalidCapture}
+                let data=try JSONSerialization.data(withJSONObject:value)
+                guard data.count<=160_000 else{throw CompanionError.invalidCapture}
+                review=try SyncCodec.decode(SyncGroupReview.self,from:data)
+            }
+            var target:UUID?
+            if let value=body["targetMutationID"] {guard let text=value as? String,let uuid=UUID(uuidString:text) else{throw CompanionError.invalidCapture};target=uuid}
+            try store.groupAction(.init(id:id,intent:intent,issuedAt:issuedAt,review:review,targetMutationID:target))
         case "taskAction":
             guard let id=(body["id"] ?? body["requestID"]) as? String,let uuid=UUID(uuidString:id),let taskID=body["taskID"] as? String,let version=body["expectedVersion"] as? Int else{throw CompanionError.invalidCapture}
             if let value=body["intent"],!(value is String) {throw CompanionError.invalidCapture}

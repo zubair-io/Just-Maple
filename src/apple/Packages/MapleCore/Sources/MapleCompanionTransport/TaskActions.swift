@@ -39,7 +39,11 @@ public struct SyncTaskAction: Codable, Sendable, Equatable {
                 payload: SyncTaskActionPayload = .init()) {
         self.id = id; self.taskID = taskID; self.expectedVersion = expectedVersion
         self.status = "intent:" + intent.rawValue; self.intent = intent
-        self.issuedAt = issuedAt; self.payload = payload
+        self.issuedAt = SyncWireDate.normalized(issuedAt)
+        var normalized=payload
+        normalized.resurfaceAt=payload.resurfaceAt.map(SyncWireDate.normalized)
+        normalized.reviewAt=payload.reviewAt.map(SyncWireDate.normalized)
+        self.payload = normalized
     }
 
     private static func validDate(_ date: Date) -> Bool {

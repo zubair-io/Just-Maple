@@ -11,7 +11,7 @@ public enum AIProcessingWindow {
         var world=context.world
         if var value=world {
         value.activities=value.activities.filter{includes($0.updatedAt,at:at)}
-        value.tasks=value.tasks.filter{includes($0.updatedAt,at:at)}
+        value.tasks=value.tasks.filter{$0.waitingFollowUp==nil && includes($0.updatedAt,at:at)}
         value.states=value.states.compactMap { state in
             let candidates=state.candidates.filter{includes($0.observedAt,at:at)}
             guard !candidates.isEmpty,let property=StateProperty.catalog.first(where:{$0.key==state.property}) else {return nil}

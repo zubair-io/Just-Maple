@@ -322,6 +322,8 @@
       <p>No decisions yet. Add context and start the loop.</p>
     }
     <h2>Processing queue</h2>
+    <p>{{ s().processingQueueCounts?.['pending'] ?? 0 }} waiting · {{ s().processingQueueCounts?.['leased'] ?? 0 }} processing · {{ s().processingQueueCounts?.['blocked'] ?? 0 }} need retry · {{ s().processingQueueCounts?.['succeeded'] ?? 0 }} processed</p>
+    <p>Showing up to 100 recent records. Open History to browse source observations.</p>
     @for (q of s().queue; track q.eventID) {
       <div class="item">
         <strong>{{ q.status === 'outside_window' ? 'Older than 30 days · local index only' : q.status }}</strong> · {{ q.attempts }} attempts
@@ -368,7 +370,7 @@
         >
       }
       @if (selectedWork()?.kind === "ask_user") {
-        <p>{{ s().prompts[selectedWork()!.eventID] }}</p>
+        <p>{{ selectedPrompt() }}</p>
         <textarea aria-label="Your response" [(ngModel)]="answer"></textarea>
         <div class="actions">
           <mui-button

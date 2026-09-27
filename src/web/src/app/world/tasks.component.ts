@@ -9,11 +9,12 @@ import { ActivatedRoute } from "@angular/router";
 import { MuiButtonComponent, MuiCheckboxComponent } from "@maple/ui";
 import { WorldService } from "./world.service";
 import { taskInFilter } from "./world.models";
+import { TaskGroupPanelComponent } from "./task-group-panel.component";
 import { RankedTaskRowsComponent } from "./ranked-task-rows.component";
 @Component({
   selector: "maple-tasks",
   standalone: true,
-  imports: [MuiButtonComponent, MuiCheckboxComponent, RankedTaskRowsComponent],
+  imports: [MuiButtonComponent, MuiCheckboxComponent, RankedTaskRowsComponent, TaskGroupPanelComponent],
   templateUrl: "./tasks.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -37,6 +38,8 @@ export class TasksComponent {
   readonly tasks = computed(() => this.world.rankedTasks().filter(item =>
     taskInFilter(item.task, this.filter() === 'Suggested' ? 'All open' : this.filter(), this.world.data().asOf) &&
     (!this.tags().length || item.task.activityIDs.some(id => this.tags().includes(id)))));
+  readonly groupedIDs=signal<string[]>([]);
+  readonly individualTasks=computed(()=>this.tasks().filter(item=>!this.groupedIDs().includes(item.id)));
   toggle(id: string, on: boolean) {
     this.tags.update((ids) =>
       on ? [...ids, id] : ids.filter((i) => i !== id),

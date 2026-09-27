@@ -114,8 +114,9 @@ public struct Assessment: Codable, Sendable {
 public struct ClassifierResult: Sendable {
     public let assessment: Assessment
     public let rawResponse: Data
-    public init(assessment: Assessment, rawResponse: Data) {
-        self.assessment = assessment; self.rawResponse = rawResponse
+    public let inputContext: Context?
+    public init(assessment: Assessment, rawResponse: Data, inputContext: Context? = nil) {
+        self.assessment = assessment; self.rawResponse = rawResponse; self.inputContext = inputContext
     }
 }
 

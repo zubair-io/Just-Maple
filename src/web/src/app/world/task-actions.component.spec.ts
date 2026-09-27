@@ -79,7 +79,7 @@ describe('shared daily task actions', () => {
     expect(emitted[0].payload).toEqual({ waitingOn: 'Fixture contractor' });
     c.when = '2000-01-01T10:00'; c.send('waiting');
     expect(emitted).toHaveLength(1);
-    expect(fixture.nativeElement.textContent).toContain('Automatic follow-up reminders are not available yet');
+    expect(fixture.nativeElement.textContent).toContain('Maple adds a separate follow-up task');
   });
 
   it('does not offer Later for blocked Waiting work', () => {

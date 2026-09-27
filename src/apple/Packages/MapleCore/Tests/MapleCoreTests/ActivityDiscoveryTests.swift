@@ -55,8 +55,8 @@ struct ActivityDiscoveryTests {
 }
 struct DeadlineContractTests {
     @Test func resolvedDatesRequireSourceDeadlineAndValidCalendarDate()throws {
-        let event=Event(type:"message.received",source:Source(connector:"gmail",account:"fixture",externalID:"deadline",revision:"1"),occurredAt:Date(),subjects:["person:self"],content:"Return the form by September 30.")
-        let valid=#"{"tasks":[{"title":"Return the enrollment form","details":"Return the form","quote":"Return the form by September 30.","deadline":"September 30","dueDate":"2026-09-30","activityIDs":[]}]}"#
+        let event=Event(type:"message.received",source:Source(connector:"gmail",account:"fixture",externalID:"deadline",revision:"1"),occurredAt:Date(),subjects:["person:self"],content:"Direction: incoming\nBody:\nReturn the form by September 30.")
+        let valid=#"{"tasks":[{"title":"Return the enrollment form","details":"Return the form","quote":"Return the form by September 30.","deadline":"September 30","dueDate":"2026-09-30","activityIDs":[],"obligation":"user_action","actorID":"person:self"}]}"#
         #expect(try ACPExtractor.tasks(valid,event:event,activities:[],provider:"fixture").first?.candidate.due?.date=="2026-09-30")
         #expect(throws:Error.self){try ACPExtractor.tasks(valid.replacingOccurrences(of:"2026-09-30",with:"2026-02-30"),event:event,activities:[],provider:"fixture")}
         #expect(throws:Error.self){try ACPExtractor.tasks(valid.replacingOccurrences(of:#""deadline":"September 30""#,with:#""deadline":"""#),event:event,activities:[],provider:"fixture")}

@@ -83,6 +83,7 @@ extension KnowledgeStore {
         }
     }
     public func retryLocalIntelligence()throws {
+        try retryFailedTaskExtractions()
         try db.execute("UPDATE task_reconciliation_clock SET checked_at=0")
         try db.execute("UPDATE task_reconciliation_jobs SET status='pending',error=NULL,created_at=0 WHERE status='failed'")
         try db.execute("UPDATE activity_discovery_jobs SET status='pending',error=NULL WHERE status='failed'")

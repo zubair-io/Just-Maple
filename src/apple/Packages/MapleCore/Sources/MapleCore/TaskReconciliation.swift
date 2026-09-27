@@ -116,7 +116,7 @@ extension KnowledgeStore {
             guard reconciliationRoot(id,relations:relations)==id else {continue}
             nodes.append(ReconciliationNode(id:id,version:s.version,title:s.candidate.title,details:String(s.candidate.description.prefix(600)),status:s.candidate.status,due:s.candidate.due,sourceIDs:[source.id],requestedAt:source.occurredAt,userStatus:overrides.contains(id)))
         }
-        for task in try tasks() where AIProcessingWindow.includes(task.updatedAt,at:at) {
+        for task in try tasks() where task.waitingFollowUp==nil && AIProcessingWindow.includes(task.updatedAt,at:at) {
             let original=Array(try task.evidenceIDs.compactMap{try event($0)}.filter{AIProcessingWindow.includes($0.occurredAt,at:at)}.sorted{$0.occurredAt<$1.occurredAt}.prefix(3))
             guard !original.isEmpty else {continue}
             for source in original {sources[source.id]=source}

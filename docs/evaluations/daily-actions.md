@@ -1,6 +1,6 @@
 # Daily-action evaluation protocol and offline scaffold
 
-Status: **specification and scorer only; no real messages or tasks have been selected, labeled, or evaluated by this work.** The JSON templates contain zero samples. The small in-code synthetic fixture tests arithmetic and validation only.
+Status: **scorer plus read-only blind inventory exporter. No stratified benchmark has been labeled or scored.** The JSON templates contain zero samples. The small in-code synthetic fixture tests arithmetic and validation only.
 
 This implements the measurement portion of [the daily-actions PRD](../product/PRD-JUST-MAPLE.md), section 8, and [the product audit](../product/PRODUCT-AUDIT-2026-09-23.md). The audit's 115 open tasks, 27 activities and 48 screen-time tasks are descriptive observations, not labeled accuracy results. None is used as a gold label or sampling shortcut here.
 
@@ -52,7 +52,7 @@ Use reviewer and reason fields to document decisions and disagreements. Adjudica
 
 `surfacedTaskIDs` may include valid Waiting or Later tasks. `needsYouTaskIDs` identifies which of them consumed direct-action attention. This distinguishes monitoring from false urgency. Task snapshot top lists must agree with predicted Needs you membership.
 
-Raw extractor output is not accepted as an end-to-end result: `wholePipeline` must be true and the local collector must actually derive output after routing, extraction, reconciliation, user corrections and final presentation. The flag is a provenance assertion, not an automated guarantee. This scaffold contains **no live collector, provider caller, replay runner or app-database exporter**. Capturing complete model-input telemetry and matching final UI IDs remains integration work.
+Raw extractor output is not accepted as an end-to-end result: `wholePipeline` must be true and the local collector must actually derive output after routing, extraction, reconciliation, user corrections and final presentation. The flag is a provenance assertion, not an automated guarantee. The separate blind inventory exporter reads imported source messages only; it is not a whole-pipeline prediction exporter. This scaffold contains **no complete live collector or replay runner**. Capturing complete model-input telemetry and matching final UI IDs remains integration work.
 
 ## Run offline
 
@@ -89,3 +89,13 @@ Eligibility uses original source occurrence time, not receipt/index time, with t
 - Freeze partition membership before tuning, inspect local evidence, collect whole-pipeline predictions and automatic-completion transitions, then run the scorer.
 - Record false negatives, incorrect responsibility, wrong timing, repeated obligations, waiting work incorrectly demanding attention, unsupported completion, and correction persistence failures in the local review log.
 - Reconnect/restart idempotency, acknowledged-command durability, correction persistence, real-phone notebook safety, no automatic external actions, source-to-surface delay and freshness remain separate acceptance checks. This scorer does not convert their absence into a release pass.
+
+## Blind source inventory
+
+Run `python3 scripts/daily-action-inventory.py --db /private/path/core.sqlite --output /private/new-directory --seed REVIEW_SEED` to freeze the latest imported Gmail/iMessage revisions known at the snapshot time. It uses a read-only SQLite transaction, includes only the rolling 30-day source window, writes owner-only local files, leaves labels blank and assigns deterministic conversation-level partitions before tuning. It does not expose predictions in the labeling file, alter tasks, or call a provider. Test with `python3 scripts/daily-action-inventory-test.py`.
+
+A private inventory was frozen on September 24: 2,031 imported messages (399 Gmail, 1,632 Messages). These are inventory counts, not an accuracy result or the final 100-source sample. Upstream import gaps remain outside this inventory; human stratification, adjudication, the separate 50-task sample and complete inference telemetry are still required. No private content is committed.
+
+Synthetic provider smoke tests are separate from the benchmark: `just-maple evaluate-message-tasks --provider apple` or `--provider claude --runner /absolute/path/src/providers/runner.js`. They do not change the app's selected provider or read personal messages. A provider failure propagates as failure, never a substitute answer.
+
+The exporter also writes `review.html`, a standalone local review page with blank judgments, stratum quotas and explicit download/resume. It sends no data and deliberately does not autosave. Sources are rendered as text; embedded HTML/script cannot execute. Use the v2 inventory for review: it supersedes the initial unlabeled v1 before any tuning, and keeps a conversation within one partition. The page produces a human review draft; it does not claim scored benchmark completion or replace adjudication.

@@ -3,11 +3,12 @@ import Testing
 @testable import MapleCore
 
 struct GoogleConnectorTests {
-    func mail(id: String = "m1", sender: String = "Alex <alex@example.test>") throws -> GoogleMailMessage {
-        let json: [String: Any] = ["id": id, "threadId": "thread1", "internalDate": "1700000000000", "snippet": "preview", "payload": [
+    func mail(id: String = "m1", sender: String = "Alex <alex@example.test>", labels: [String]? = nil) throws -> GoogleMailMessage {
+        var json: [String: Any] = ["id": id, "threadId": "thread1", "internalDate": "1700000000000", "snippet": "preview", "payload": [
             "mimeType": "multipart/alternative", "headers": [["name": "From", "value": sender], ["name": "Subject", "value": "Alpine"]],
             "parts": [["mimeType": "text/plain", "body": ["data": Data("Can we meet tomorrow?".utf8).base64EncodedString()]],
                       ["mimeType": "text/html", "body": ["data": Data("<script>unsafe</script>".utf8).base64EncodedString()]]]]]
+        if let labels { json["labelIds"] = labels }
         return try JSONDecoder().decode(GoogleMailMessage.self, from: JSONSerialization.data(withJSONObject: json))
     }
     @Test func gmailIdentityBodyAndAtomicDeduplication() async throws {
@@ -20,7 +21,7 @@ struct GoogleConnectorTests {
         #expect(try await store.ingestGoogleMail([event]) == 1)
         #expect(try await store.ingestGoogleMail([mail().event(account: "owner@example.test")]) == 0)
         #expect(try await store.queue().count == 1)
-        let own = try mail(sender: "Owner <owner@example.test>").event(account: "owner@example.test")
+        let own = try mail(sender: "Owner <owner@example.test>", labels: ["SENT"]).event(account: "owner@example.test")
         #expect(own.type == "message.sent")
         #expect(own.subjects.filter { $0.hasPrefix("person:") } == ["person:self"])
         let differentAccount = try mail().event(account: "second@example.test")
@@ -28,6 +29,22 @@ struct GoogleConnectorTests {
         let invalid = Event(type: "mail", source: Source(connector: "gmail", account: "owner", externalID: "bad", revision: "1"), occurredAt: Date(), subjects: [], content: "bad")
         do { _ = try await store.ingestGoogleMail([mail(id: "m2").event(account: "owner@example.test"), invalid]); Issue.record("Accepted invalid batch") } catch {}
         #expect(try await store.eventCount() == 1)
+    }
+    @Test func gmailDirectionUsesMailboxLabelsInsteadOfSenderIdentity() throws {
+        // Synthetic fixtures: an automated service can use the mailbox owner's From address.
+        for labels: [String]? in [nil, [], ["INBOX", "UNREAD"], ["IMPORTANT"]] {
+            let incoming = try mail(sender: "Automated service <owner@example.test>", labels: labels).event(account: "owner@example.test")
+            #expect(incoming.type == "message.received")
+            #expect(incoming.content.contains("Direction: incoming"))
+        }
+        for sender in ["Owner <owner@example.test>", "Alias <alias@example.test>"] {
+            for labels in [["SENT"], ["INBOX", "SENT"]] {
+                let sent = try mail(sender: sender, labels: labels).event(account: "owner@example.test")
+                #expect(sent.type == "message.sent")
+                #expect(sent.content.contains("Direction: outgoing"))
+                #expect(sent.subjects.filter { $0.hasPrefix("person:") } == ["person:self"])
+            }
+        }
     }
     @Test func calendarAllDayTimezoneStableIdentityAndScopes() async throws {
         let data = Data(#"{"id":"recurring_occurrence","summary":"Trip","status":"confirmed","start":{"date":"2026-09-22"},"end":{"date":"2026-09-23"}}"#.utf8)

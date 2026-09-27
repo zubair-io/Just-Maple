@@ -4,6 +4,10 @@ import MapleCompanionTransport
 @testable import Just_Maple_iPhone
 
 @MainActor private final class FixtureMailbox: PhoneCloudMailbox {
+    var groupActions:[SyncGroupAction]=[]
+    var groupReplies:[SyncGroupActionReceipt]=[]
+    func uploadGroupActions(deviceID:UUID,actions:[SyncGroupAction])async throws{if fail{throw CompanionError.storageUnavailable};groupActions=actions}
+    func groupActionReceipts(deviceID:UUID,ids:[UUID])async throws->[SyncGroupActionReceipt]{groupReplies.filter{ids.contains($0.id)}}
     var actions:[SyncTaskAction]=[]
     var actionReplies:[SyncTaskActionReceipt]=[]
     func uploadActions(deviceID:UUID,actions:[SyncTaskAction])async throws{if fail {throw CompanionError.storageUnavailable};self.actions=actions}
@@ -116,6 +120,52 @@ import MapleCompanionTransport
         malformed=body;malformed["intent"]="sendReply"
         #expect(throws:CompanionError.self){try bridge.perform("taskAction",body:malformed)}
     }
+    @Test func groupOutboxPersistsExactMembershipBlocksOverlapAndAcknowledgesOnlyMatchingChildren() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),suite="fixture-groups-"+UUID().uuidString
+        let preferences=UserDefaults(suiteName:suite)!
+        defer{try? FileManager.default.removeItem(at:root);preferences.removePersistentDomain(forName:suite)}
+        let store=try CompanionStore(directory:root),device=try #require(UUID(uuidString:store.snapshot.deviceID)),now=Date()
+        let review=SyncGroupReview(id:"fixture-review",context:.init(intentID:"Review",actorID:"Actor",targetID:"Forms",connector:"gmail",account:"fixture",sourceScopeID:"thread:fixture"),maximumSpan:3600,children:[.init(nodeID:"task:a",expectedVersion:1),.init(nodeID:"task:b",expectedVersion:1)])
+        var response=SyncResponse(deviceID:device,receivedIDs:[],asOf:now);response.reviewedGroups=[.init(review:review,titles:["task:a":"A","task:b":"B"])]
+        var task=SyncTask(id:"task:a",title:"A",status:"open",activities:[],due:nil);task.version=1;response.tasks=[task]
+        try store.accept(response,sentIDs:[])
+        let action=SyncGroupAction(intent:.done,review:review)
+        try store.groupAction(action)
+        #expect(throws:CompanionError.self){try store.taskAction(.init(taskID:task.id,expectedVersion:1,intent:.done))}
+        response.reviewedGroups=[];response.asOf=now.addingTimeInterval(1);try store.accept(response,sentIDs:[])
+        try store.groupAction(action)
+        let restarted=try CompanionStore(directory:root),mailbox=FixtureMailbox(),config=try PairingConfiguration.create()
+        let sync=CompanionSync(store:restarted,dependencies:.init(accountID:{"fixture-account"},load:{_ in config},mailbox:{_,_,_ in mailbox}),preferences:preferences)
+        await sync.sync();#expect(mailbox.groupActions==[action] && restarted.pendingGroupActions==[action])
+        let children=review.children.map{SyncGroupChildResult(nodeID:$0.nodeID,version:2,mutationID:"child-"+$0.nodeID)}
+        var wrong=children;wrong[0].nodeID="task:new-arrival"
+        #expect(throws:CompanionError.self){try restarted.acceptGroupActionReceipts([.init(id:action.id,outcome:"applied",children:wrong)],sent:[action.id])}
+        mailbox.groupReplies=[.init(id:action.id,outcome:"applied",children:children)]
+        await sync.sync();#expect(restarted.pendingGroupActions.isEmpty)
+        let undo=SyncGroupAction(intent:.undo,targetMutationID:action.id)
+        try restarted.groupAction(undo)
+        #expect(try CompanionStore(directory:root).pendingGroupActions==[undo])
+    }
+    @Test func pendingGroupUndoPinsOriginalMembershipThroughHistoryPruning() throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer{try? FileManager.default.removeItem(at:root)}
+        let store=try CompanionStore(directory:root),device=try #require(UUID(uuidString:store.snapshot.deviceID))
+        func saveGroup(_ index:Int)throws->SyncGroupAction {
+            let children=[SyncGroupChild(nodeID:"task:a-\(index)",expectedVersion:1),.init(nodeID:"task:b-\(index)",expectedVersion:1)]
+            let review=SyncGroupReview(id:"group-\(index)",context:.init(intentID:"Review",actorID:"Actor",targetID:"Forms",connector:"gmail",account:"fixture",sourceScopeID:"thread:fixture"),maximumSpan:3600,children:children)
+            var response=SyncResponse(deviceID:device,receivedIDs:[]);response.reviewedGroups=[.init(review:review,titles:Dictionary(uniqueKeysWithValues:children.map{($0.nodeID,"Fixture")}))]
+            try store.accept(response,sentIDs:[])
+            let action=SyncGroupAction(intent:.done,review:review);try store.groupAction(action)
+            try store.acceptGroupActionReceipts([.init(id:action.id,outcome:"applied",children:children.map{.init(nodeID:$0.nodeID,version:2,mutationID:"child-"+$0.nodeID)})],sent:[action.id])
+            return action
+        }
+        let first=try saveGroup(0),undo=SyncGroupAction(intent:.undo,targetMutationID:first.id)
+        try store.groupAction(undo)
+        for index in 1...55 {_ = try saveGroup(index)}
+        #expect(store.snapshot.groupActions?.contains(where:{$0.id==first.id})==true)
+        try store.acceptGroupActionReceipts([.init(id:undo.id,outcome:"applied",children:first.review!.children.map{.init(nodeID:$0.nodeID,version:3,mutationID:"undo-"+$0.nodeID)})],sent:[undo.id])
+        #expect(store.pendingGroupActions.isEmpty)
+    }
     @Test func oldPausePreferenceMigratesAndMissingCredentialReconnectsWithoutUserAction() async throws {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let suite="fixture-auto-"+UUID().uuidString
@@ -150,7 +200,9 @@ import MapleCompanionTransport
         let config=try PairingConfiguration.create(), mailbox=FixtureMailbox()
         let sync=CompanionSync(store:store,dependencies:.init(accountID:{"fixture-account"},load:{_ in config},mailbox:{_,_,_ in mailbox}),preferences:preferences)
         await sync.sync()
-        #expect(mailbox.requests.first?.captures.first?.createdAt==date)
+        let wireDate=Date(timeIntervalSince1970:(date.timeIntervalSince1970*1000).rounded()/1000)
+        #expect(mailbox.requests.first?.captures.first?.createdAt==wireDate)
+        #expect(store.snapshot.captures.first?.createdAt==date)
         #expect(store.pending.count==1)
         #expect(store.snapshot.uploadedIDs==[id.uuidString.lowercased()])
         #expect((store.snapshot.receivedIDs ?? []).isEmpty)

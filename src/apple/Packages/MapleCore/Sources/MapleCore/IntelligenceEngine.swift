@@ -22,7 +22,7 @@ public struct IntelligenceEngine: Sendable {
                 let context = try await store.modelContext(for: lease.eventID)
                 let result = try await classifier.classify(context)
                 try result.assessment.validate()
-                let decision = Policy.decide(context: context, assessment: result.assessment)
+                let decision = Policy.decide(context: result.inputContext ?? context, assessment: result.assessment)
                 if try await store.finish(lease, decision: decision, raw: result.rawResponse, now: Date()) {
                     report.completed += 1
                 } else { report.stale += 1 }

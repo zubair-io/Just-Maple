@@ -60,6 +60,6 @@ extension KnowledgeStore {
         }
     }
     public func materializeOccurrences(at:Date = Date()) throws {
-        try db.transaction {for series in try records("task_series",as:TaskSeries.self) where !series.paused {try materialize(series,through:at.addingTimeInterval(31*86400),at:at)}}
+        try db.transaction {for series in try records("task_series",as:TaskSeries.self) where !series.paused {try materialize(series,through:at.addingTimeInterval(31*86400),at:at)};try materializeWaitingFollowUpsInTransaction(at:at)}
     }
 }

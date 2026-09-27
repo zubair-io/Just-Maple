@@ -10,12 +10,31 @@ extension KnowledgeStore {
         try excludeExpiredAIWork(at:now)
         return try db.transaction {
             if let eventIDs,eventIDs.isEmpty {return nil}
-            let filter=eventIDs.map{" AND event_id IN ("+Array(repeating:"?",count:$0.count).joined(separator:",")+")"} ?? ""
+            let filter=eventIDs.map{" AND p.event_id IN ("+Array(repeating:"?",count:$0.count).joined(separator:",")+")"} ?? ""
+            let parameters = [String(now.timeIntervalSince1970), String(now.timeIntervalSince1970)] + (eventIDs ?? [])
+            let eligible = "((p.status='pending' AND p.next_attempt_at<=?) OR (p.status='leased' AND p.lease_until<=?))\(filter)"
+            // Rotate between connectors so bulk telemetry cannot starve mail.
+            guard let lane = try db.rows("""
+                SELECT e.connector,COALESCE(s.dispatches,0) AS dispatches
+                FROM processing_jobs p JOIN events e ON e.id=p.event_id
+                LEFT JOIN processing_schedule s ON s.connector=e.connector
+                WHERE \(eligible) GROUP BY e.connector
+                ORDER BY COALESCE(s.last_turn,0),MIN(e.received_at),e.connector LIMIT 1
+                """, parameters).first else {return nil}
+            let connector = lane["connector"]!
+            // Three recent observations, then one oldest: fresh input progresses
+            // promptly while retained backlog still has a guaranteed share.
+            let direction = (Int(lane["dispatches"] ?? "0") ?? 0) % 4 == 3 ? "ASC" : "DESC"
             guard let row = try db.rows("""
-                SELECT event_id FROM processing_jobs WHERE
-                ((status='pending' AND next_attempt_at<=?) OR (status='leased' AND lease_until<=?))\(filter)
-                ORDER BY next_attempt_at,rowid LIMIT 1
-                """, [String(now.timeIntervalSince1970), String(now.timeIntervalSince1970)] + (eventIDs ?? [])).first else { return nil }
+                SELECT p.event_id FROM processing_jobs p JOIN events e ON e.id=p.event_id
+                WHERE \(eligible) AND e.connector=?
+                ORDER BY CASE WHEN p.status='leased' THEN 0 ELSE 1 END, e.occurred_at \(direction),p.next_attempt_at,p.rowid LIMIT 1
+                """, parameters + [connector]).first else {return nil}
+            try db.execute("""
+                INSERT INTO processing_schedule(connector,last_turn,dispatches)
+                VALUES (?,(SELECT COALESCE(MAX(last_turn),0)+1 FROM processing_schedule),1)
+                ON CONFLICT(connector) DO UPDATE SET last_turn=excluded.last_turn,dispatches=dispatches+1
+                """,[connector])
             let lease = Lease(eventID: row["event_id"]!, token: UUID().uuidString)
             try db.execute("UPDATE processing_jobs SET status='leased', attempts=attempts+1, lease_token=?, lease_until=?, error=NULL WHERE event_id=?",
                            [lease.token, String(now.addingTimeInterval(duration).timeIntervalSince1970), lease.eventID])
@@ -26,7 +45,7 @@ extension KnowledgeStore {
     func finish(_ lease: Lease, decision: Decision, raw: Data, now: Date) throws -> Bool {
         try db.transaction {
             guard try owns(lease, now: now) else { return false }
-            let freshContext = try modelContext(for:lease.eventID,at:now)
+            let freshContext = try classificationValidationSnapshot(for: lease.eventID, at: now)
             let fresh = freshContext.currentState
             // A correction/another event can arrive while the network request is in flight.
             guard Array(fresh.prefix(24)) == decision.context.currentState else {
@@ -34,14 +53,14 @@ extension KnowledgeStore {
                                [String(now.timeIntervalSince1970), lease.eventID])
                 return false
             }
-            let freshFacts = freshContext.sourceFacts ?? []
+            let freshFacts = freshContext.sourceFacts
             guard freshFacts == (decision.context.sourceFacts ?? []) else {
                 try db.execute("UPDATE processing_jobs SET status='pending', next_attempt_at=?, lease_token=NULL, lease_until=NULL WHERE event_id=?", [String(now.timeIntervalSince1970), lease.eventID])
                 return false
             }
             // Quiet historical retention does not imply an explicit request is resolved.
             let signals=decision.assessment.message
-            if decision.route != .retain || (signals?.actionNeeded ?? 0) >= 0.85 || (signals?.replyNeeded ?? 0) >= 0.85 || (signals?.commitmentChanged ?? 0) >= 0.85 {
+            if signals.map({ $0.warrantsTaskReview }) ?? (decision.route != .retain) {
                 try enqueueTaskExtraction(decision.context.event)
             }
             let assessment = decision.assessment

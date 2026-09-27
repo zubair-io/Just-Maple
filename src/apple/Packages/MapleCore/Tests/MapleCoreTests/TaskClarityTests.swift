@@ -22,7 +22,7 @@ struct TaskClarityTests {
         var b=LifeActivity();b.name="Employer"
         a=try await store.saveActivity(a,expectedVersion:0,requestID:"a")
         b=try await store.saveActivity(b,expectedVersion:0,requestID:"b")
-        var suggestion=TaskSuggestion();suggestion.eventID=event.id;suggestion.provider="fixture";suggestion.quote="Please send your availability.";suggestion.candidate.title="Send interview availability"
+        var suggestion=TaskSuggestion();suggestion.eventID=event.id;suggestion.provider="fixture";suggestion.obligation="user_action";suggestion.actorID="person:self";suggestion.quote="Please send your availability.";suggestion.candidate.title="Send interview availability"
         let original=try await store.offerTask(suggestion)
         try await store.requestTaskExtraction(eventID:event.id,reprocess:true)
         let (_,token)=try #require(await store.acquireTaskExtraction(at:Date(),eventIDs:[event.id]))
@@ -45,7 +45,7 @@ struct TaskClarityTests {
         for (e,title) in [(older,"Send interview availability"),(newer,"Send available interview times to the recruiter"),(older,"Send interview availability")] {
             try await store.ingest(e);try await store.requestTaskExtraction(eventID:e.id,reprocess:true)
             let (_,token)=try #require(await store.acquireTaskExtraction(at:Date(),eventIDs:[e.id]))
-            var s=TaskSuggestion();s.eventID=e.id;s.quote="Please send your availability.";s.provider="fixture";s.candidate.title=title
+            var s=TaskSuggestion();s.eventID=e.id;s.quote="Please send your availability.";s.provider="fixture";s.obligation="user_action";s.actorID="person:self";s.candidate.title=title
             try await store.commitTaskExtraction([s],eventID:e.id,token:token)
         }
         let pending=try await store.worldSnapshot().suggestions.filter{$0.reviewStatus=="pending"}

@@ -100,7 +100,7 @@ public struct HomeAssistantClient: Sendable {
                   seen.insert(entity).inserted, let state = value["state"] as? String,
                   let attributes = value["attributes"] as? [String: Any] else { throw MapleError.provider("Home Assistant returned an invalid entity. No partial state list was imported.") }
             // Exclude transport timestamps and arbitrary attribute blobs from memory.
-            let keys = ["friendly_name", "unit_of_measurement", "device_class", "latitude", "longitude", "gps_accuracy", "battery_level", "source_type", "temperature", "humidity", "current_temperature", "hvac_action", "brightness"]
+            let keys = ["friendly_name", "unit_of_measurement", "device_class", "state_class", "latitude", "longitude", "gps_accuracy", "battery_level", "source_type", "temperature", "humidity", "current_temperature", "hvac_action", "brightness"]
             let relevant = attributes.filter { keys.contains($0.key) }
             let json = try JSONSerialization.data(withJSONObject: relevant, options: [.sortedKeys])
             let name = attributes["friendly_name"] as? String ?? entity

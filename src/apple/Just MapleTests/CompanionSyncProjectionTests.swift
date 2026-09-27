@@ -86,9 +86,60 @@ struct CompanionSyncProjectionTests {
         #expect(later.needsYouTotal==1 && later.laterTotal==0)
     }
 
+    @Test func followUpProjectionRetainsParentContextWithoutChangingParent() async throws {
+        let store=try KnowledgeStore(path:":memory:")
+        var parent=task("waiting-parent",status:.waiting);parent.waitingReason="Fixture actor"
+        var due=DueSpec();due.kind = .instant;due.instant=now.addingTimeInterval(-10);due.timeZone="UTC";parent.due=due
+        _ = try await store.saveTask(parent,expectedVersion:0,requestID:UUID().uuidString,at:now.addingTimeInterval(-30))
+        _ = try await store.materializeWaitingFollowUps(at:now)
+        let response=CompanionSyncProjection.make(world:try await store.worldSnapshot(at:now),deviceID:UUID(),receivedIDs:[])
+        let followUp=try #require(response.tasks.first(where:{$0.waitingParentNodeID != nil}))
+        #expect(followUp.waitingParentNodeID=="task:waiting-parent")
+        #expect(followUp.waitingParentTitle==parent.title)
+        #expect(try await store.tasks().first(where:{$0.id==parent.id})?.status == .waiting)
+    }
+
+    @Test func encryptedSourcePreviewsAreBoundedAttributedAndExplicitlyUnavailable() async throws {
+        let store=try KnowledgeStore(path:":memory:")
+        let event=Event(id:"fixture-source",type:"message.received",source:.init(connector:"gmail",account:"fixture",externalID:"fixture",revision:"1"),occurredAt:now,subjects:["person:self"],content:"Gmail message\nSender: Fixture Sender\nSubject: Fixture subject\nBody:\n"+String(repeating:"Long fixture body ",count:2000))
+        try await store.ingest(event)
+        var world=try await emptyWorld(),value=task("source-task");value.evidenceIDs=[event.id,"missing-source"];world.tasks=[value]
+        var response=CompanionSyncProjection.make(world:world,deviceID:UUID(),receivedIDs:[])
+        try await SourceEvidenceProjection.attach(to:&response,store:store)
+        let sources=try #require(response.tasks.first?.sources)
+        let preview=try #require(sources.first(where:{$0.id==event.id}))
+        #expect(preview.sender=="Fixture Sender" && preview.subject=="Fixture subject")
+        #expect(preview.occurredAt==now && preview.truncated && preview.content.utf8.count<=4096)
+        #expect(sources.first(where:{$0.id=="missing-source"})?.available==false)
+        #expect(try await store.tasks().isEmpty)
+        #expect(try SyncCodec.encode(response).count<256_000)
+        let full=SourceEvidenceProjection.make(event,id:event.id)
+        #expect(full.content==event.content && !full.truncated)
+    }
+
+    @Test func oversizedReviewedGroupIsOmittedWholeWithTotalCountPreserved() async throws {
+        let store=try KnowledgeStore(path:":memory:")
+        let event=Event(type:"message.received",source:.init(connector:"gmail",account:"fixture",externalID:"fixture-group-source",revision:"1"),occurredAt:now,subjects:["thread:fixture-group"],content:"Synthetic grouping source")
+        try await store.ingest(event)
+        var children=[ObligationGroupChild]()
+        for index in 0..<100 {
+            var value=task("\(index)-"+String(repeating:"x",count:240));value.title=String(repeating:"Fixture title ",count:30);value.evidenceIDs=[event.id]
+            value=try await store.saveTask(value,expectedVersion:0,requestID:UUID().uuidString,at:now)
+            children.append(.init(nodeID:"task:"+value.id,expectedVersion:value.version))
+        }
+        _ = try await store.createReviewedObligationGroup(children:children,intent:"Review forms",actor:"Fixture actor",target:"Forms",maximumSpan:3600,requestID:UUID().uuidString,at:now)
+        let world=try await store.worldSnapshot(at:now)
+        var response=CompanionSyncProjection.make(world:world,deviceID:UUID(),receivedIDs:[])
+        try await ReviewedGroupProjection.attach(to:&response,world:world,store:store)
+        #expect(response.reviewedGroupTotal==1)
+        #expect(response.reviewedGroups?.isEmpty==true)
+        #expect(try SyncCodec.encode(response).count<256_000)
+        #expect(try await store.reviewedObligationGroups().first?.children.count==100)
+    }
+
     @Test func snapshotOmitsPrivateSourceFieldsAndBoundsPayload() async throws {
         var world = try await emptyWorld()
-        var first = task("one"); first.description = "Task details visible on Mac"; first.assignee = "Fixture person"; first.evidenceIDs = ["PRIVATE EVIDENCE"]
+        var first = task("one"); first.description = "Task details visible on Mac"; first.assignee = "Fixture person"; first.evidenceIDs = ["fixture-evidence-id"]
         var suggestion = TaskSuggestion(); suggestion.id = "detected"; suggestion.candidate = task("candidate"); suggestion.quote = "PRIVATE QUOTE"; suggestion.sourceSender = "PRIVATE SENDER"; suggestion.provider = "PRIVATE PROVIDER"
         world.tasks = [first]; world.suggestions = [suggestion]
         world.states = [try state("person:self", value: "Home"), try state("person:other", value: "PRIVATE PERSON")]

@@ -1,0 +1,20 @@
+<div class="eyebrow">Your sources</div>
+<div class="history-heading"><div><h1>History</h1><p>Messages and updates, with their latest processing status and activities.</p></div><mui-button variant="ghost" [disabled]="loading()" (pressed)="refresh()">Refresh</mui-button></div>
+<div class="source-filters" aria-label="Filter history by source"><mui-button variant="ghost" [active]="!connector()" (pressed)="selectConnector('')">All sources</mui-button>@for(source of sources();track source.connector){<mui-button variant="ghost" [active]="connector()===source.connector" (pressed)="selectConnector(source.connector)">{{source.name}} · {{source.count}}</mui-button>}</div>
+<p class="history-count" role="status">{{rows().length}} of {{total()}} updates loaded@if(loading()){ · Loading…}</p>
+@if(error()){<p role="alert">{{error()}}</p><mui-button [disabled]="loading()" (pressed)="next()?more():refresh()">Retry</mui-button>}
+<div class="history-layout" [class.has-source]="source() || sourceLoading() || sourceError()">
+<section aria-label="Source history inbox">
+<cdk-virtual-scroll-viewport [itemSize]="112" [minBufferPx]="336" [maxBufferPx]="672" (scrolledIndexChange)="nearEnd($event)" class="history-viewport" role="list" aria-label="Source updates">
+ <button *cdkVirtualFor="let item of rows(); trackBy: track" class="inbox-row" type="button" role="listitem" (click)="inspect(item.id)" [attr.aria-label]="item.sender + ', ' + item.subject + ', ' + statusLabel(item.status)">
+  <span class="inbox-top"><strong class="sender">{{item.sender}}</strong><time [dateTime]="item.occurredAt * 1000 | date:'yyyy-MM-ddTHH:mm:ss'">{{item.occurredAt * 1000 | date:'MMM d, h:mm a'}}</time></span>
+  <span class="inbox-middle"><strong class="subject">{{item.subject}}</strong><span class="status" [attr.data-status]="item.status" [title]="item.statusDetail">{{statusLabel(item.status)}}</span></span>
+  <span class="preview">{{item.preview || 'Open to inspect the captured source.'}}</span>
+  <span class="inbox-tags"><span class="connector">{{item.connector.replaceAll('_',' ')}}</span>@if(item.analysisStatus){<span class="tag">Analysis {{item.analysisStatus==='failed'?'needs retry':'waiting'}}</span>}@for(tag of item.tags;track tag.id){<span class="tag">{{tag.name}}</span>}</span>
+ </button>
+</cdk-virtual-scroll-viewport>
+@if(loaded()&&!rows().length){<p>No source updates yet. Connected sources will appear here.</p>}
+@if(next()){<mui-button variant="ghost" [disabled]="loading()" (pressed)="more()">Load older updates</mui-button>}
+</section>
+@if(sourceLoading() || sourceError() || source()){<aside aria-label="Selected source">@if(sourceLoading()){<p role="status">Opening source…</p>}@if(sourceError()){<p role="alert">{{sourceError()}}</p><mui-button variant="ghost" (pressed)="closeSource()">Close</mui-button>}@if(source();as selected){<maple-source-inspector [source]="selected" (closed)="closeSource()"/>}</aside>}
+</div>

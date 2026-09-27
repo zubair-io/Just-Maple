@@ -179,6 +179,12 @@
       }
     </div>
     <p>{{ task.description }}</p>
+    @if(task.waitingFollowUp) {
+      <section class="panel" aria-label="Linked waiting obligation">
+        <p>This is a follow-up review. Completing it does not complete the original obligation.</p>
+        @if(waitingParent(); as parent) {<mui-button variant="ghost" (pressed)="openWaitingParent()">Open linked task: {{parent.title}}</mui-button>}
+      </section>
+    }
     <maple-desktop-task-actions [nodeID]="'task:' + task.id" />
     <dl class="detail-list">
       <dt>Status</dt>

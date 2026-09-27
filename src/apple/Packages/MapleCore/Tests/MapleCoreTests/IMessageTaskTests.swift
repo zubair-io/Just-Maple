@@ -22,7 +22,7 @@ struct IMessageTaskTests {
     func message(_ body:String,offset:Double=0,thread:String="fixture",outgoing:Bool=false)->Event {
         Event(type:outgoing ? "message.sent":"message.received",source:.init(connector:"imessage",account:"fixture",externalID:UUID().uuidString,revision:"1",timeZone:"America/New_York"),occurredAt:Date().addingTimeInterval(offset),subjects:["person:self","person:imessage:fixture","thread:imessage:"+thread],content:"Thread: Fixture thread\nSender: \(outgoing ? "Me":"Fixture Taylor")\nDirection: \(outgoing ? "outgoing":"incoming")\n\n\(body)")
     }
-    @Test func classificationQueuesMessageAndExtractorReceivesSameThreadDecisionContext() async throws {
+    @Test func classificationQueuesMessageAndExtractorReceivesFreshSameThreadReviewContext() async throws {
         let store=try KnowledgeStore(path:":memory:")
         let earlier=message("Which replacement are we discussing?",offset:-60)
         let unrelated=message("Unrelated fixture conversation",offset:-50,thread:"other")
@@ -31,12 +31,19 @@ struct IMessageTaskTests {
         let report=try await IntelligenceEngine(store:store,classifier:CommitmentFixtureClassifier()).run(limit:1,eventIDs:[event.id])
         #expect(report.completed==1)
         #expect(try await store.taskExtractionQueue().count==1)
+        let later=message("Thanks for clarifying the replacement.",offset:0,outgoing:true)
+        try await store.ingest(later)
         let extractor=ContextFixtureExtractor()
         #expect(try await TaskExtractionEngine(store:store,extractor:extractor).runOne(eventIDs:[event.id]))
         let seen=try #require(await extractor.seen)
-        #expect(seen.recentEvents.map(\.id)==[earlier.id])
+        #expect(seen.recentEvents.map(\.id)==[later.id,earlier.id])
         let decision=try #require(await store.decisions().first)
-        #expect(seen.relatedEvidence.map(\.id)==decision.context.relatedEvidence.map(\.id))
+        #expect(!decision.context.recentEvents.contains {$0.id==later.id})
+        #expect(seen.event.id==event.id && seen.event.source==event.source)
+        #expect(abs(seen.event.occurredAt.timeIntervalSince(event.occurredAt))<0.001)
+        #expect(seen.relatedEvidence.isEmpty)
+        #expect(!seen.recentEvents.contains {$0.id==unrelated.id})
+        #expect((seen.world?.asOf.timeIntervalSince(decision.createdAt) ?? -1) >= 0)
         let suggestion=try #require(await store.worldSnapshot().suggestions.first)
         #expect(suggestion.candidate.status == .waiting)
         #expect(suggestion.actorID=="person:imessage:fixture")

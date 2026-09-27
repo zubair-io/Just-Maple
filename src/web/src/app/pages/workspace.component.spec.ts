@@ -131,3 +131,17 @@ describe("Angular workspace state", () => {
     );
   });
 });
+
+ it('loads older decisions on demand and ignores results after close',async()=>{
+ const {bridge,fixture}=await setup('Processing');
+ let resolve!:(value:any)=>void;
+ const notebook=vi.spyOn(bridge,'notebook').mockImplementation(()=>new Promise<any>(r=>resolve=r));
+ const c=fixture.componentInstance;
+ const work={id:'old-work',eventID:'old-event',kind:'ask_user',status:'unread'};
+ const first=c.review(work);
+ resolve({decision:{eventID:'old-event'},prompt:'Synthetic original question'});await first;
+ expect(notebook).toHaveBeenCalledWith('decisionDetail',{id:'old-event'});
+ expect(c.selectedPrompt()).toBe('Synthetic original question');
+ const second=c.review(work);c.close();resolve({decision:{eventID:'old-event'},prompt:'late'});await second;
+ expect(c.detail()).toBeNull();
+ });

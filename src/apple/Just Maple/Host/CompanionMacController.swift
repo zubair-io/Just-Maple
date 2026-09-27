@@ -7,12 +7,16 @@ import MapleCompanionTransport
 @MainActor protocol CompanionMacMailbox {
     func pending(limit: Int) async throws -> [SyncRequest]
     func acknowledge(deviceID: UUID, captureIDs: [UUID]) async throws
+    func pendingGroupActions() async throws -> [SyncDeviceGroupAction]
+    func acknowledgeGroupAction(deviceID:UUID,receipt:SyncGroupActionReceipt)async throws
     func pendingActions() async throws -> [SyncDeviceTaskAction]
     func acknowledgeAction(deviceID:UUID,receipt:SyncTaskActionReceipt) async throws
     func publishSnapshot(_ response: SyncResponse) async throws
 }
 extension CloudCompanionMailbox: CompanionMacMailbox {}
 extension CompanionMacMailbox {
+    func pendingGroupActions()async throws->[SyncDeviceGroupAction]{[]}
+    func acknowledgeGroupAction(deviceID:UUID,receipt:SyncGroupActionReceipt)async throws{throw CloudMailboxError.invalidPayload}
     func pendingActions()async throws->[SyncDeviceTaskAction]{[]}
     func acknowledgeAction(deviceID:UUID,receipt:SyncTaskActionReceipt)async throws{throw CloudMailboxError.invalidPayload}
 }
@@ -29,6 +33,7 @@ extension CompanionMacMailbox {
     var stop: () -> Void
     var isListening: () -> Bool
     var mailboxFactory: ((PairingConfiguration, String, @escaping Authorization) -> any CompanionMacMailbox)?
+    var supportedGroupIntents = SyncGroupIntent.allCases
     var supportedTaskIntents = SyncTaskIntent.allCases
     var automaticMonitoring = true
     var alert: ((NSAlert) async -> NSApplication.ModalResponse)?
@@ -173,7 +178,11 @@ extension CompanionMacMailbox {
             let people=try await store.people(limit:12)
             try await validateCloud(configuration: configuration, accountID: binding.accountID, generation: generation)
             status="Connected through iCloud · last sync \(Date().formatted(date:.omitted,time:.shortened))"
-            return try SyncCodec.encode(CompanionSyncProjection.make(world:world,deviceID:request.deviceID,receivedIDs:receipts,people:people))
+            var response=CompanionSyncProjection.make(world:world,deviceID:request.deviceID,receivedIDs:receipts,people:people)
+            try await ReviewedGroupProjection.attach(to:&response,world:world,store:store)
+            try await SourceEvidenceProjection.attach(to:&response,store:store)
+            try await validateCloud(configuration:configuration,accountID:binding.accountID,generation:generation)
+            return try SyncCodec.encode(response)
         }
         if record==nil {
             guard request.operation=="pair",invitation?.id==configuration.id,
@@ -203,7 +212,10 @@ extension CompanionMacMailbox {
         guard self.record?.configuration.id==configuration.id else{throw MapleError.invalid("Device disconnected.")}
         status="Paired · last connected \(Date().formatted(date:.omitted,time:.shortened))"
         // Acknowledged IDs come only from committed ingestion; a lost reply is safe to retry.
-        return try SyncCodec.encode(CompanionSyncProjection.make(world:world,deviceID:record.deviceID,receivedIDs:receipts,people:people))
+        var response=CompanionSyncProjection.make(world:world,deviceID:record.deviceID,receivedIDs:receipts,people:people)
+        try await ReviewedGroupProjection.attach(to:&response,world:world,store:store)
+            try await SourceEvidenceProjection.attach(to:&response,store:store)
+        return try SyncCodec.encode(response)
     }
     private func invalidateCloud(){
         cloudGeneration+=1
@@ -308,6 +320,29 @@ extension CompanionMacMailbox {
                              accountID: String, generation: Int) async throws {
         guard let store = model?.store else { throw MapleError.invalid("Mac data is not ready.") }
         try await validateCloud(configuration: configuration, accountID: accountID, generation: generation)
+        for envelope in try await mailbox.pendingGroupActions() {
+            try await validateCloud(configuration:configuration,accountID:accountID,generation:generation)
+            let action=envelope.action
+            guard action.valid else{throw CloudMailboxError.invalidPayload}
+            var children:[SyncGroupChildResult]?
+            let outcome:String
+            if !dependencies.supportedGroupIntents.contains(action.intent) {outcome="unsupported"}
+            else {
+                do {
+                    let result:ObligationGroupActionResult
+                    if action.intent == .undo,let target=action.targetMutationID {
+                        result=try await store.undoObligationGroupAction(targetMutationID:target.uuidString.lowercased(),requestID:action.id.uuidString.lowercased(),scope:envelope.deviceID.uuidString.lowercased(),issuedAt:action.issuedAt)
+                    } else if let review=action.review {
+                        let decoded=try JSONCodec.decode(ObligationGroupReview.self,from:SyncCodec.encode(review))
+                        result=try await store.applyObligationGroupAction(review:decoded,change:.init(kind:action.intent.rawValue,issuedAt:action.issuedAt),requestID:action.id.uuidString.lowercased(),scope:envelope.deviceID.uuidString.lowercased())
+                    } else {throw MapleError.invalid("Group action unavailable.")}
+                    children=result.children.map{.init(nodeID:$0.nodeID,version:$0.version,mutationID:$0.mutationID)}
+                    outcome="applied"
+                } catch MapleError.invalid {outcome="conflict"}
+            }
+            try await validateCloud(configuration:configuration,accountID:accountID,generation:generation)
+            try await mailbox.acknowledgeGroupAction(deviceID:envelope.deviceID,receipt:.init(id:action.id,outcome:outcome,children:children))
+        }
         let actions=try await mailbox.pendingActions()
         for envelope in actions.prefix(32) {
             try await validateCloud(configuration:configuration,accountID:accountID,generation:generation)
@@ -363,6 +398,10 @@ extension CompanionMacMailbox {
         let people = try await store.people(limit: 12)
         try await validateCloud(configuration: configuration, accountID: accountID, generation: generation)
         var response = CompanionSyncProjection.make(world: world, deviceID: configuration.id, receivedIDs: [], people: people, displayName: model?.name)
+        try await ReviewedGroupProjection.attach(to:&response,world:world,store:store)
+            try await SourceEvidenceProjection.attach(to:&response,store:store)
+        try await validateCloud(configuration:configuration,accountID:accountID,generation:generation)
+        response.supportedGroupIntents=dependencies.supportedGroupIntents.map(\.rawValue)
         response.supportedTaskIntents=dependencies.supportedTaskIntents.map(\.rawValue)
         var comparable = response; comparable.asOf = Date(timeIntervalSince1970: 0)
         let fingerprint = try JSONSerialization.data(withJSONObject: JSONSerialization.jsonObject(with: SyncCodec.encode(comparable)), options: [.sortedKeys])
