@@ -1,0 +1,8 @@
+{
+  "fixture": "synthetic near-limit managed Markdown",
+  "bytes": 248167,
+  "samples": 37,
+  "p95Milliseconds": 18.09999990463257,
+  "targetMilliseconds": 50,
+  "method": "beforeinput to next requestAnimationFrame; browser integration estimate"
+}

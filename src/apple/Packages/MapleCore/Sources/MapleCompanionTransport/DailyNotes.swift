@@ -42,6 +42,7 @@ public struct SyncDailyNote: Codable, Sendable, Equatable {
     public var cleared: [SyncDailyBlock]
     public var revision: Int64
     public var partial: Bool?
+    public var readOnly: Bool?
     public var projection: SyncDailyProjection?
     public var valid: Bool {
         SyncDailyMutation.validDay(day, zone: timeZone) && blocks.count + cleared.count <= 500 &&

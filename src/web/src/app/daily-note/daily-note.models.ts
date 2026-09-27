@@ -8,8 +8,9 @@ export interface DailyBlock {
 }
 export interface DailyNoteSnapshot {
   day: string; timeZone: string; blocks: DailyBlock[]; cleared: DailyBlock[]; revision: number;
+  readOnly?: boolean;
   projection?: { remainingTasks: number };
-  sync?: { status: 'cached' | 'pending' | 'conflict'; pending: string[]; conflicts: string[]; asOf: number; partial?: boolean };
+  sync?: { readOnly?: boolean; status: 'cached' | 'pending' | 'conflict'; pending: string[]; conflicts: string[]; asOf: number; partial?: boolean };
 }
 export interface DailyBlockMutation {
   kind: 'create' | 'edit' | 'clear' | 'restore' | 'move' | 'complete';

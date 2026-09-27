@@ -1,6 +1,6 @@
 # Today and Sources — product requirements
 
-Status: Proposed for build · September 27, 2026  
+Status: Approved for build · September 27, 2026
 Implementation: existing Just Maple app, Angular + Tiptap  
 Companions: [Engineering design](../engineering/TODAY-AND-SOURCES.md) · [Build plan](../../plans/today-and-sources/BUILD-PLAN.md)
 

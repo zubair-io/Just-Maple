@@ -2,12 +2,21 @@ import Foundation
 import Testing
 import WebKit
 import MapleCore
+import MapleNotebooks
 @testable import Just_Maple
 
 @MainActor
 struct BridgeTests {
     @Test func bundledAngularBootsAndReceivesNativeSnapshot() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root.appendingPathComponent("Cloud/Fixture"),withIntermediateDirectories:true)
+        let library=try NotebookLibrary(registryURL:root.appendingPathComponent("registry.json"),cloudRoot:root.appendingPathComponent("Cloud"))
+        let notebookID=try #require(await library.catalog().notebooks.first?.id)
+        let previousNotebook=UserDefaults.standard.string(forKey:"todayNotebookID")
+        UserDefaults.standard.set(notebookID,forKey:"todayNotebookID")
+        defer { UserDefaults.standard.set(previousNotebook,forKey:"todayNotebookID");try? FileManager.default.removeItem(at:root) }
         let model = AppModel()
+        model.notebooks=library
         model.store = try KnowledgeStore(path: ":memory:")
         model.loaded = true
         model.name = "Angular integration test"
@@ -18,12 +27,37 @@ struct BridgeTests {
         var text = ""
         for _ in 0..<50 {
             text = (try? await web.evaluateJavaScript("document.body.textContent") as? String) ?? ""
-            if text.contains("Today") && text.contains("Add block") { break }
+            if text.contains("Today, a little clearer.") && text.contains("View Markdown") { break }
             try await Task.sleep(for: .milliseconds(100))
         }
-        #expect(text.contains("Today") && text.contains("Add block"))
+        #expect(text.contains("Today, a little clearer.") && text.contains("View Markdown"))
         #expect(!text.contains("Untrusted request."))
         #expect(try await web.evaluateJavaScript("document.querySelector('maple-root').getAttribute('ng-version')") as? String != nil)
+    }
+    @Test func todayAndSourcesBridgePreserveRevisionAndReplayInlineAfterEdits() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at:root.appendingPathComponent("Cloud/Fixture"),withIntermediateDirectories:true)
+        defer{try? FileManager.default.removeItem(at:root)}
+        let library=try NotebookLibrary(registryURL:root.appendingPathComponent("registry.json"),cloudRoot:root.appendingPathComponent("Cloud"))
+        let notebookID=try #require(await library.catalog().notebooks.first?.id)
+        let model=AppModel();model.notebooks=library
+        let store=try KnowledgeStore(path:root.appendingPathComponent("store.db").path);model.store=store
+        let coordinator=TodayDocumentCoordinator(store:store,library:library);model.todayDocuments=coordinator
+        let bridge=Bridge(model:model)
+        let opened=try await coordinator.open(notebookID:notebookID,day:"2026-10-30")
+        let content=opened.content+"\n"+(try ManagedMarkdown.marker(["id":"request","kind":"maple-request"]))+"\n@maple Find my emails.\n"
+        let saved=try #require(try await bridge.perform("documentCommit",["documentID":opened.documentID,"expectedRevision":opened.revision,"content":content,"commandID":"native-save"]) as? [String:Any])
+        let revision=try #require(saved["revision"] as? String)
+        let request=InlineMapleRequest(commandID:"native-inline",documentID:opened.documentID,requestBlockID:"request",expectedRevision:revision,text:"Find my emails.")
+        let run=try await store.queueInlineMaple(request,provider:"synthetic-never-executed")
+        _ = try await store.cancelInlineMaple(run.runID)
+        _ = try await coordinator.commit(documentID:opened.documentID,expectedRevision:revision,content:content+"\nLater writing.\n",commandID:"later")
+        let replay=try #require(try await bridge.perform("mapleSubmit",["commandID":request.commandID,"documentID":request.documentID,"requestBlockID":request.requestBlockID,"expectedRevision":request.expectedRevision,"text":request.text]) as? [String:Any])
+        #expect(replay["runID"] as? String == run.runID)
+        #expect(replay["status"] as? String == "canceled")
+        #expect(model.inlineTasks.isEmpty)
+        let page=try #require(try await bridge.perform("sourceList",["query":["types":[],"connectors":[],"accounts":[],"states":[],"receivedAfter":"2000-01-01T00:00:00.000Z","receivedBefore":"2099-12-31T23:59:59.999Z"]]) as? [String:Any])
+        #expect((page["total"] as? Int ?? 0)>0)
     }
     @Test func routerFragmentsStayWithinBundledDocument() {
         let bridge = Bridge(model: AppModel())

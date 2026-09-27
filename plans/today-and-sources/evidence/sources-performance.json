@@ -1,0 +1,31 @@
+{
+  "fixture": "Synthetic, file-backed SQLite; 10,000 events; Gmail/iMessage/Home Assistant; four accounts; ~1.6KB source bodies",
+  "hardware": "Apple M5 Max, 128GB RAM",
+  "os": "macOS 27.0 (26A428)",
+  "configuration": "Swift debug build; 3 warmups; 20 new unfiltered snapshot first-page captures; 60 rows per page",
+  "samplesMilliseconds": [
+    41.430708,
+    66.65975,
+    55.151917,
+    56.88475,
+    54.234459,
+    56.43175,
+    56.639416,
+    59.205666,
+    55.33175,
+    58.460583,
+    56.351625,
+    62.263,
+    56.707584,
+    56.829709,
+    60.624792,
+    61.914583,
+    61.832833,
+    57.515792,
+    56.406334,
+    60.676041
+  ],
+  "p95Milliseconds": 62.263,
+  "targetMilliseconds": 200,
+  "passed": true
+}

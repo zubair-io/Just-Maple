@@ -1,9 +1,9 @@
 # Just Maple engineering direction
 
-Build the daily living note as the primary experience, following the user's September 27 direction and docs/product/LIVING-DAILY-NOTE.md. Preserve the intelligent core as the source of evidence-backed context. This direction supersedes the detached Overview/Tasks landing experience in the earlier PRD; its ingestion, privacy, task correctness and signing invariants still apply.
+Build the daily living note as the primary experience, following the approved docs/product/PRD-TODAY-AND-SOURCES.md and docs/engineering/TODAY-AND-SOURCES.md. Preserve the intelligent core as the source of evidence-backed context. This direction supersedes the detached Overview/Tasks landing experience in the earlier PRD; its ingestion, privacy, task correctness and signing invariants still apply.
 
 - Daily blocks have stable identities, versioned mutations and recoverable history. Clearing attention is separate from completing a linked task. Moves retain identity; bot refreshes must preserve user edits and cleared tombstones.
-- Keep daily-block SQLite storage separate from user-owned Markdown notebook files. Do not materialize each incoming message as a Markdown file. Phone commands must remain visibly pending until acknowledged by the Mac.
+- User-owned dated Markdown owns daily writing and block order. SQLite separately owns immutable source evidence, canonical tasks, identity/history and recoverable file-mutation journals. Follow the approved codec and expected-revision contracts; do not keep two writable prose authorities. Do not materialize each incoming message as a Markdown file. Phone commands must remain visibly pending until acknowledged by the Mac.
 
 - The app is the Xcode project in src/apple; the UI is Angular in src/web. Reuse @maple/ui components from projects/maple-common. Do not create a separate Swift executable app or handwritten WebView renderer. MapleCore is a UI-independent local library package under src/apple/Packages.
 - The Mac owns local SQLite. Do not add MongoDB, Meilisearch, a remote knowledge backend or remote collector enrollment. Direct Jev calls are the development path; a Cloudflare Worker API intermediary is planned for later distribution (docs/ARCHITECTURE.md).

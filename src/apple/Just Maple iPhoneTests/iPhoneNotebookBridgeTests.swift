@@ -55,6 +55,22 @@ import MapleNotebooks
         let savedDraft = try #require(try await reopened.command("noteReadDraft", body: ["id": id, "path": "Conflict.md"], store: store) as? [String: Any])
         #expect(savedDraft["content"] as? String == "Fixture unsaved draft")
     }
+    @Test func managedNotebookRefusesDirectPhoneSaveAndKeepsDraft() async throws {
+        let(root,store,bridge)=try fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let id=try await notebook(bridge,store)
+        let file=root.appendingPathComponent("Cloud/Fixture notebook/Managed.md")
+        let original="---\nmaple:\n  format: 1\n  document: \"fixture\"\n---\nMac-owned note.\n"
+        try Data(original.utf8).write(to:file)
+        var draft=try #require(try await bridge.command("noteRead",body:["id":id,"path":"Managed.md"],store:store) as? [String:Any])
+        #expect(draft["readOnly"] as? Bool == true)
+        draft["content"]="Local pending draft"
+        _ = try await bridge.command("noteDraft",body:["record":draft],store:store)
+        do {_ = try await bridge.command("noteSave",body:["id":id,"path":"Managed.md","revision":draft["revision"]!,"content":"Local pending draft"],store:store);Issue.record("Managed note changed directly on phone")}catch{}
+        #expect(try String(contentsOf:file,encoding:.utf8)==original)
+        #expect(store.snapshot.captures.isEmpty)
+        let retained=try #require(try await bridge.command("noteReadDraft",body:["id":id,"path":"Managed.md"],store:store) as? [String:Any])
+        #expect(retained["content"] as? String == "Local pending draft")
+    }
     @Test func largeNotesRemainIntactWithExplicitIndexingNoticeAndOldReadsNeverQueue() async throws {
         let (root,store,bridge) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
         let id = try await notebook(bridge, store)

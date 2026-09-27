@@ -16,6 +16,8 @@ final class AppModel {
     var store: KnowledgeStore?
     var companion = CompanionMacController()
     var notebooks: NotebookLibrary?
+    var todayDocuments: TodayDocumentCoordinator?
+    var inlineTasks: [String: Task<Void, Never>] = [:]
     var localIndex: LocalIndexStatus?
     private var lastWaitingReviewTick = Date.distantPast
     private var lastGroupingProposalTick = Date.distantPast
@@ -102,6 +104,18 @@ final class AppModel {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             store = try KnowledgeStore(path: directory.appendingPathComponent("core.sqlite").path)
+            try await store?.recoverInterruptedInlineMaple()
+            // Recover journaled file/task operations before processing resumes. Unavailable
+            // notebooks retain their reservations and an actionable recovery notice.
+            do {
+                let coordinator=try await Bridge(model:self).todayCoordinator()
+                let recovery=try await coordinator.recoverPendingDocuments()
+                if !recovery.issues.isEmpty || recovery.hasMore {
+                    error="Some note actions need recovery. Open their notes in Today or Notebooks; pending task changes remain reserved."
+                }
+            } catch {
+                self.error="Notebook recovery is unavailable. Reconnect your notebook folders before retrying pending note actions."
+            }
             if NSClassFromString("XCTestCase")==nil {await companion.restore(model:self)}
             loadAppleSettings()
             await refresh()
@@ -275,9 +289,7 @@ final class AppModel {
         busy = true
         defer { busy = false }
         do {
-            let context = try await store.modelContext(for: eventID)
-            let result = try await classifier.checkFacts(context)
-            try await store.recordFactCheck(eventID: eventID, probability: result.probability, provider: "typesafe", model: result.model, context: context, rawResponse: String(decoding: result.rawResponse, as: UTF8.self))
+            let result = try await store.checkSourceFacts(eventID:eventID,classifier:classifier)
             message = result.probability >= 0.85 ? "Facts worth extracting. Extraction is queued for the selected provider." : "Jev did not find enough new factual content to schedule extraction."
             await refresh()
         } catch { self.error = error.localizedDescription }

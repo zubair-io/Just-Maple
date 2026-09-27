@@ -60,7 +60,7 @@ struct CoreTests {
 
     @Test func classifierFailureDoesNotBecomeIgnore() async throws {
         struct Offline: Classifier {
-            func classify(_ context: Context) async throws -> ClassifierResult { throw MapleError.provider("TypeSafe unavailable") }
+            func classify(_ context: Context) async throws -> ClassifierResult { throw MapleError.provider("Private provider diagnostic must not escape") }
         }
         let store = try KnowledgeStore(path: ":memory:")
         try await store.ingest(DemoScenario.events()[0])
@@ -70,7 +70,8 @@ struct CoreTests {
         let queue = try await store.queue()
         #expect(queue.first?.status == "pending")
         #expect(queue.first?.attempts == 1)
-        #expect(queue.first?.error == "TypeSafe unavailable")
+        #expect(queue.first?.error == "Classification failed or output was invalid. Check provider availability and retry.")
+        #expect(queue.first?.error?.contains("Private provider diagnostic") == false)
         try await store.retryFailures()
         let success = try await IntelligenceEngine(store: store, classifier: DemoReplayClassifier()).run()
         #expect(success.completed == 1)

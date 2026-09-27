@@ -20,7 +20,7 @@ public struct IntelligenceEngine: Sendable {
             guard let lease = try await store.acquire(now: Date(), eventIDs:eventIDs) else { break }
             do {
                 let context = try await store.modelContext(for: lease.eventID)
-                let result = try await classifier.classify(context)
+                let result = try await classifier.classifyAudited(context) { audit in try await store.recordProviderAudit(audit,eventID:lease.eventID,leaseID:lease.token,stage:"classification") }
                 try result.assessment.validate()
                 let decision = Policy.decide(context: result.inputContext ?? context, assessment: result.assessment)
                 if try await store.finish(lease, decision: decision, raw: result.rawResponse, now: Date()) {
@@ -28,7 +28,7 @@ public struct IntelligenceEngine: Sendable {
                 } else { report.stale += 1 }
             } catch {
                 // Never persist request/response bodies or credentials in queue errors.
-                let message = (error as? MapleError)?.errorDescription ?? "Classification failed; retry required."
+                let message = "Classification failed or output was invalid. Check provider availability and retry."
                 try await store.fail(lease, error: message, now: Date())
                 report.deferred += 1
             }

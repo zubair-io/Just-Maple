@@ -53,6 +53,7 @@ extension Bridge {
     }
     static func read(store:KnowledgeStore,day requested:String,timeZone:String,at:Date=Date()) async throws -> DailyNoteSnapshot {
         guard SyncDailyMutation.validDay(requested,zone:timeZone) else {throw MapleError.invalid("Choose a valid day and time zone.")}
+        if try await store.isManagedDailyDay(requested) {return try await store.dailyNote(day:requested,timeZone:timeZone,at:at)}
         if requested==day(at:at,timeZone:timeZone) {
             _ = try await store.refreshDailyCarryForward(to:requested,timeZone:timeZone,at:at)
             let world=try await store.worldSnapshot(at:at)
@@ -85,6 +86,7 @@ extension Bridge {
             let value=try await read(store:store,day:day(at:date,timeZone:zone),timeZone:zone,at:at)
             var note=try JSONDecoder().decode(SyncDailyNote.self,from:JSONCodec.encode(value))
             if offset==0 {note.projection=SyncDailyProjection(remainingTasks:max(0,eligibleTasks(world:try await store.worldSnapshot(at:at),timeZone:zone,at:at).count-20))}
+            if try await store.isManagedDailyDay(note.day) {note.readOnly=true}
             notes.append(note)
         }
         response.dailyNotes=notes

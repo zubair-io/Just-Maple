@@ -44,6 +44,8 @@ extension KnowledgeStore {
 
     func finish(_ lease: Lease, decision: Decision, raw: Data, now: Date) throws -> Bool {
         try db.transaction {
+            try recordSourceArtifact(eventID:lease.eventID,attemptID:lease.token,stage:"classification",kind:"response",payload:String(decoding:raw,as:UTF8.self),provider:decision.assessment.provider,model:decision.assessment.model)
+            try recordSourceArtifact(eventID:lease.eventID,attemptID:lease.token,stage:"classification",kind:"decision_context",payload:try JSONCodec.string(decision.context))
             guard try owns(lease, now: now) else { return false }
             let freshContext = try classificationValidationSnapshot(for: lease.eventID, at: now)
             let fresh = freshContext.currentState
@@ -81,6 +83,11 @@ extension KnowledgeStore {
                 let status = [.notify, .askUser].contains(decision.route) ? "unread" : "proposed"
                 try db.execute("INSERT OR IGNORE INTO work_items VALUES (?,?,?,?)",
                                [UUID().uuidString, lease.eventID, decision.route.rawValue, status])
+            }
+            for (table,stage) in [("fact_jobs","facts"),("task_extraction_jobs","tasks")] {
+                if try db.rows("SELECT event_id FROM \(table) WHERE event_id=?",[lease.eventID]).isEmpty {
+                    try db.execute("INSERT INTO source_transitions(event_id,stage,to_state,attempt_id,reason,at) VALUES (?,?,'not_needed',?,'routing_policy_did_not_schedule_stage',?)",[lease.eventID,stage,lease.token,String(now.timeIntervalSince1970)])
+                }
             }
             try db.execute("UPDATE processing_jobs SET status='succeeded', lease_token=NULL, lease_until=NULL, error=NULL WHERE event_id=?", [lease.eventID])
             return true

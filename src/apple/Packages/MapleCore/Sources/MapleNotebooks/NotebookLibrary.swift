@@ -10,6 +10,7 @@ public struct NotebookNote: Codable, Sendable {
 }
 public struct NotebookDocument: Codable, Sendable {
     public var notebookID:String; public var path:String; public var content:String; public var revision:String
+    public init(notebookID:String,path:String,content:String,revision:String) {self.notebookID=notebookID;self.path=path;self.content=content;self.revision=revision}
 }
 public struct NotebookCatalog: Codable, Sendable {
     public var notebooks:[Notebook]; public var cloudAvailable:Bool
@@ -202,5 +203,31 @@ private enum NotebookCodec {
     static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .secondsSince1970
         return try decoder.decode(type, from: data)
+    }
+}
+
+extension NotebookLibrary {
+    /// Creates only the known daily-note subdirectory inside a granted notebook.
+    public func prepareDailyDirectory(notebookID:String) throws {
+        let destination=try file(notebookID,"Daily/placeholder.md").deletingLastPathComponent()
+        try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:true)
+    }
+    public func readIfPresent(notebookID:String,path:String) async throws -> NotebookDocument? {
+        let url=try file(notebookID,path)
+        let placeholder=url.deletingLastPathComponent().appendingPathComponent("."+url.lastPathComponent+".icloud")
+        if FileManager.default.fileExists(atPath:placeholder.path) {return try await read(notebookID:notebookID,path:path)}
+        // Do not classify permission, download or malformed-data failures as absence.
+        do {_ = try url.resourceValues(forKeys:[.isRegularFileKey])}
+        catch let error as NSError where error.domain==NSCocoaErrorDomain && error.code==NSFileReadNoSuchFileError {return nil}
+        return try await read(notebookID:notebookID,path:path)
+    }
+}
+
+extension NotebookLibrary {
+    /// A save command can arrive after the next keystroke's durable draft. Never replace that
+    /// newer/different draft with captured command bytes; the coordinator journals those bytes.
+    public func preserveCommitDraft(_ document:NotebookDocument) throws {
+        if let existing=try readDraft(notebookID:document.notebookID,path:document.path),existing.content != document.content {return}
+        try saveDraft(document)
     }
 }

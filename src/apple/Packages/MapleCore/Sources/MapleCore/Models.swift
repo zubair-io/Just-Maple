@@ -122,6 +122,7 @@ public struct ClassifierResult: Sendable {
 
 public protocol Classifier: Sendable {
     func classify(_ context: Context) async throws -> ClassifierResult
+    func classifyAudited(_ context:Context,audit:@escaping ProviderAuditSink) async throws -> ClassifierResult
 }
 
 public enum Route: String, Codable, Sendable {

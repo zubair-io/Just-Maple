@@ -208,9 +208,7 @@ struct JustMapleCommand {
             guard live, args.count == 1, let classifier = classifier as? TypeSafeClassifier else {
                 throw MapleError.invalid("Usage: check-facts EVENT_ID --live [--db PATH]")
             }
-            let context = try await store.modelContext(for: args[0])
-            let check = try await classifier.checkFacts(context)
-            try await store.recordFactCheck(eventID: args[0], probability: check.probability, provider: "typesafe", model: check.model, context: context, rawResponse: String(decoding: check.rawResponse, as: UTF8.self))
+            _ = try await store.checkSourceFacts(eventID:args[0],classifier:classifier)
             try printJSON(try await store.factChecks())
         case "extract-facts":
             guard args.isEmpty else { throw MapleError.invalid("Usage: extract-facts [--db PATH]") }

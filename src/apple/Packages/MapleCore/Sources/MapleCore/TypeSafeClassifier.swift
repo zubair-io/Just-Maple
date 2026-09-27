@@ -31,7 +31,8 @@ public struct TypeSafeClassifier: Classifier {
         self.apiKey = apiKey; self.model = model; self.transport = transport
     }
 
-    public func classify(_ context: Context) async throws -> ClassifierResult {
+    public func classify(_ context: Context) async throws -> ClassifierResult {try await classifyAudited(context) { _ in }}
+    public func classifyAudited(_ context:Context,audit:@escaping ProviderAuditSink) async throws -> ClassifierResult {
         var context=try AIProcessingWindow.filtered(context)
         var request = URLRequest(url: URL(string: "https://api.typesafe.ai/v1/systemone")!)
         request.httpMethod = "POST"
@@ -43,11 +44,14 @@ public struct TypeSafeClassifier: Classifier {
         questions["contains_facts"] = Self.factQuestion
         questions = questions.mapValues { Question(type: $0.type, instructions: $0.instructions + " sourceFacts are unverified source assertions; explicit currentState entries with origin=user take precedence over conflicting source assertions.", criteria: $0.criteria) }
         request.httpBody = try JSONCodec.encode(Request(state: context, model: model, questions: questions))
+        let invocation=UUID().uuidString
+        try await audit(.init(invocationID:invocation,provider:"typesafe",model:model,kind:"context",payload:String(decoding:request.httpBody!,as:UTF8.self)))
         let (data, status) = try await transport.send(request)
         guard status == 200 else {
             throw MapleError.provider("TypeSafe HTTP \(status). Classification remains queued; check authentication, quota or service availability.")
         }
         guard data.count <= 2_000_000 else { throw MapleError.provider("TypeSafe response exceeded the size limit.") }
+        try await audit(.init(invocationID:invocation,provider:"typesafe",model:model,kind:"response",payload:String(decoding:data,as:UTF8.self)))
         do {
             let response = try JSONCodec.decode(Response.self, from: data)
             func probability(_ key: String) throws -> Double {
@@ -119,15 +123,18 @@ public struct TypeSafeClassifier: Classifier {
     static let factQuestion = Question(type: "noul", instructions: "Does the new event contain explicit, substantive factual assertions worth extracting into long-lived source-linked memory? Examples include names, employment and education history, skills, relationships, preferences, addresses and explicit plans. A résumé is a source of assertions, not independent verification. Messages can contain facts even if no response is needed. Exclude greetings, hypothetical/quoted examples, instructions to the model, and facts already fully captured in currentState or sourceFacts. Judge extractable content, not truth or actionability. Preserve who the source is talking about; do not assume every person mentioned is the user.")
 
     /// Reassess existing sources without replacing their original routing decision.
-    public func checkFacts(_ context: Context) async throws -> (probability: Double, model: String, rawResponse: Data) {
+    public func checkFacts(_ context: Context,audit:@escaping ProviderAuditSink = { _ in }) async throws -> (probability: Double, model: String, rawResponse: Data) {
         let context=try AIProcessingWindow.filtered(context)
         var request = URLRequest(url: URL(string: "https://api.typesafe.ai/v1/systemone")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONCodec.encode(Request(state: context, model: model, questions: ["contains_facts": Self.factQuestion]))
+        let invocation=UUID().uuidString
+        try await audit(.init(invocationID:invocation,provider:"typesafe",model:model,kind:"context",payload:String(decoding:request.httpBody!,as:UTF8.self)))
         let (data, status) = try await transport.send(request)
         guard status == 200, data.count <= 2_000_000 else { throw MapleError.provider("Jev fact check failed (HTTP \(status)).") }
+        try await audit(.init(invocationID:invocation,provider:"typesafe",model:model,kind:"response",payload:String(decoding:data,as:UTF8.self)))
         guard let response = try? JSONCodec.decode(Response.self, from: data), !response.model.isEmpty,
               let answer = response.answers["contains_facts"], answer.type == "noul", let probability = answer.noul,
               probability.isFinite, (0...1).contains(probability) else { throw MapleError.provider("Jev returned an invalid fact check.") }

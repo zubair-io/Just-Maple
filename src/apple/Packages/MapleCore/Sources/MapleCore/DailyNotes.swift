@@ -44,6 +44,7 @@ extension KnowledgeStore {
         return try JSONCodec.decode(DailyBlock.self, from: Data(json.utf8))
     }
     private func writeDailyBlock(_ block: DailyBlock, sourceKey: String? = nil) throws {
+        guard try !isManagedDailyDay(block.day), try dailyBlock(block.id).map({ try !isManagedDailyDay($0.day) }) ?? true else { throw MapleError.invalid("This day is managed by its Markdown document. Open Today on your Mac; legacy block writes are disabled.") }
         try db.execute("INSERT INTO daily_blocks (id,day,position,version,source_key,json) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET day=excluded.day,position=excluded.position,version=excluded.version,json=excluded.json", [block.id, block.day, String(block.position), String(block.version), sourceKey, try JSONCodec.string(block)])
     }
     private func dailyRecord(_ before: DailyBlock?, _ after: DailyBlock, kind: String, requestID: String, actor: DailyBlockActor, at: Date) throws {
@@ -116,7 +117,7 @@ extension KnowledgeStore {
         }
     }
     private func dailyCarryCandidates(before day: String) throws -> [DailyBlock] {
-        let older = try db.rows("SELECT json FROM daily_blocks WHERE day<? AND json_extract(json,'$.kind')='task' AND json_extract(json,'$.clearedAt') IS NULL AND json_extract(json,'$.completedAt') IS NULL ORDER BY day,position,id", [day]).map { try JSONCodec.decode(DailyBlock.self, from: Data($0["json"]!.utf8)) }
+        let older = try db.rows("SELECT json FROM daily_blocks WHERE day NOT IN (SELECT day FROM managed_documents WHERE day IS NOT NULL) AND day<? AND json_extract(json,'$.kind')='task' AND json_extract(json,'$.clearedAt') IS NULL AND json_extract(json,'$.completedAt') IS NULL ORDER BY day,position,id", [day]).map { try JSONCodec.decode(DailyBlock.self, from: Data($0["json"]!.utf8)) }
         return try older.filter { block in
             // A task resolved elsewhere must not be carried as unfinished.
             if let nodeID = block.taskNodeID, let task = try taskNode(nodeID), task.status.terminal { return false }

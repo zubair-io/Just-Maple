@@ -1,6 +1,6 @@
 # Today and Sources — engineering design
 
-Status: Proposed · September 27, 2026  
+Status: Approved · September 27, 2026
 Requirements: [PRD](../product/PRD-TODAY-AND-SOURCES.md) · Delivery: [Build plan](../../plans/today-and-sources/BUILD-PLAN.md)
 
 ## Architecture and ownership

@@ -81,6 +81,7 @@ enum CompanionError: Error, LocalizedError {
         }
     }
     func dailyAction(_ action:SyncDailyAction)throws {
+        guard snapshot.mac?.dailyNotes?.first(where:{$0.day==action.mutation.day})?.readOnly != true, snapshot.mac?.dailyNotes?.first(where:{$0.day==action.mutation.targetDay})?.readOnly != true else {throw CompanionError.invalidDailyNote}
         if let old=snapshot.dailyActions?.first(where:{$0.id==action.id}) {guard old==action else{throw CompanionError.conflictingRequest};return}
         guard action.valid, let day=snapshot.mac?.dailyNotes?.first(where:{$0.day==action.mutation.day}) else{throw CompanionError.invalidDailyNote}
         guard (pendingDailyActions+awaitingDailySnapshot).count<32,!(pendingDailyActions+awaitingDailySnapshot).contains(where:{$0.mutation.blockID==action.mutation.blockID}) else{throw CompanionError.pendingDailyNote}
@@ -123,7 +124,7 @@ enum CompanionError: Error, LocalizedError {
                 later.mutation.blockID==action.mutation.blockID && receipts[later.id]?.outcome=="applied"
             }
         }.map{$0.element.id.uuidString.lowercased()}
-        result["sync"]=["status":!pending.isEmpty ? "pending":(!conflicts.isEmpty ? "conflict":"cached"),"pending":pending,"conflicts":conflicts,"asOf":snapshot.mac!.asOf.timeIntervalSince1970,"partial":note.partial ?? false] as [String:Any]
+        result["sync"]=["status":!pending.isEmpty ? "pending":(!conflicts.isEmpty ? "conflict":"cached"),"pending":pending,"conflicts":conflicts,"asOf":snapshot.mac!.asOf.timeIntervalSince1970,"partial":note.partial ?? false,"readOnly":note.readOnly ?? false] as [String:Any]
         return result
     }
     var pendingGroupActions:[SyncGroupAction] {

@@ -1,0 +1,218 @@
+import Foundation
+import MapleNotebooks
+
+/// Serializes managed document commands. SQLite intent commits before coordinated file writes;
+/// recovery uses before/after hashes, never a blind overwrite of an external editor's content.
+public actor TodayDocumentCoordinator {
+    let store:KnowledgeStore
+    let library:NotebookLibrary
+    var busy=Set<String>()
+    public init(store:KnowledgeStore,library:NotebookLibrary) {self.store=store;self.library=library}
+
+    public func open(notebookID:String,day requested:String?=nil,timeZone:String=TimeZone.current.identifier,migrateLegacy:Bool=false,recoveryCopy:Bool=false) async throws -> TodayDocumentSnapshot {
+        let day=try requested ?? ManagedMarkdown.day(timeZone:timeZone)
+        try ManagedMarkdown.validateDay(day,timeZone:timeZone)
+        let key=notebookID+":"+day
+        guard busy.insert(key).inserted else {throw MapleError.invalid("This day is already opening. Try again.")};defer{busy.remove(key)}
+        if let document=try await store.managedDailyDocument(notebookID:notebookID,day:day) {return try await open(documentID:document.documentID)}
+        let legacy=try await store.dailyNote(day:day,timeZone:timeZone)
+        let hasLegacy = !legacy.blocks.isEmpty || !legacy.cleared.isEmpty
+        let id=UUID().uuidString.lowercased()
+        let path="Daily/"+day+(recoveryCopy ? "-recovered-"+String(id.prefix(8)):"")+".md"
+        try await library.prepareDailyDirectory(notebookID:notebookID)
+        if let existing=try await library.readIfPresent(notebookID:notebookID,path:path) {
+            if let embedded=ManagedMarkdown.documentID(existing.content) {
+                try ManagedMarkdown.validate(existing.content,documentID:embedded)
+                let record=ManagedDocumentRecord(documentID:embedded,notebookID:notebookID,path:path,day:day,timeZone:timeZone,revision:existing.revision)
+                try await store.registerManagedDocument(record,initialContent:existing.content,initialBefore:existing.content)
+                return try await commit(documentID:embedded,expectedRevision:existing.revision,content:existing.content,commandID:"create:"+embedded)
+            }
+            return TodayDocumentSnapshot(documentID:"",notebookID:notebookID,path:path,day:day,timeZone:timeZone,content:existing.content,revision:existing.revision,readOnly:true,warning:"This date already contains a user-owned file. It has not been overwritten. Open it in Notebooks, or explicitly recover legacy blocks to a separate note.",indexingPending:false,legacyMigrationAvailable:hasLegacy)
+        }
+        let content=try hasLegacy ? Self.export(legacy,documentID:id):ManagedMarkdown.header(documentID:id,day:day,timeZone:timeZone)+"\n"
+        if hasLegacy && !migrateLegacy {
+            return TodayDocumentSnapshot(documentID:"",notebookID:notebookID,path:path,day:day,timeZone:timeZone,content:content,revision:"",readOnly:true,warning:"Legacy daily blocks are available. Review this preview, then import them to Markdown. The original blocks and cleared history will be retained.",indexingPending:false,legacyMigrationAvailable:true)
+        }
+        let record=ManagedDocumentRecord(documentID:id,notebookID:notebookID,path:path,day:day,timeZone:timeZone,revision:nil)
+        try await store.registerManagedDocument(record,initialContent:content,legacySnapshot:hasLegacy ? legacy:nil)
+        let result=try await commit(documentID:id,expectedRevision:nil,content:content,commandID:"create:"+id)
+        if hasLegacy {try await store.recordDailyDocumentImport(legacy,documentID:id)}
+        return result
+    }
+    public func open(documentID:String) async throws -> TodayDocumentSnapshot {
+        guard busy.insert(documentID).inserted else {throw MapleError.invalid("This document has a save in progress. Try again.")};defer{busy.remove(documentID)}
+        let record=try await record(documentID)
+        var warning:String?
+        for operation in try await store.pendingDocumentOperations(documentID:documentID) {
+            do {try await recoverOperation(operation,alreadyLocked:documentID)}
+            catch {warning="A block action is pending reconciliation. Both file versions are preserved; a linked task remains pending until recovery completes."}
+        }
+        for mutation in try await store.pendingDocumentMutations(documentID:documentID) {
+            let disk=try await library.readIfPresent(notebookID:record.notebookID,path:record.path)
+            if disk?.revision==mutation.targetRevision {try await store.finalizeDocumentMutation(mutation)}
+            else if disk?.revision==mutation.expectedRevision {
+                _ = try await library.save(notebookID:record.notebookID,path:record.path,content:mutation.after,expectedRevision:mutation.expectedRevision)
+                try await store.finalizeDocumentMutation(mutation)
+            } else {
+                try await store.markDocumentConflict(mutation)
+                warning="An interrupted save conflicts with external changes. Both versions are preserved in document history; your draft is retained."
+            }
+        }
+        do {try await store.drainDocumentOutbox()} catch {warning="The file is saved. Indexing is pending and will retry when reopened."}
+        guard let disk=try await library.readIfPresent(notebookID:record.notebookID,path:record.path) else {throw MapleError.invalid("This managed file is missing. Its recoverable versions remain in document history.")}
+        var result=try await snapshot(record,disk);if let warning {result.warning=warning}
+        return result
+    }
+    public func commit(documentID:String,expectedRevision:String?,content:String,commandID:String,preserveDraft:Bool=false) async throws -> TodayDocumentSnapshot {
+        guard busy.insert(documentID).inserted else {throw MapleError.invalid("This document has a save in progress. Try again.")};defer{busy.remove(documentID)}
+        let record=try await record(documentID)
+        try ManagedMarkdown.validate(content,documentID:documentID)
+        let existing=try await library.readIfPresent(notebookID:record.notebookID,path:record.path)
+        let prior=try await store.documentMutation(commandID)
+        if preserveDraft,let draft=try await library.readDraft(notebookID:record.notebookID,path:record.path),draft.content != existing?.content,draft.content != content {
+            throw MapleError.invalid("A newer user draft is pending. The generated response is retained but cannot replace that draft.")
+        }
+        // Generated writes and command replay never replace a newer user draft. New user
+        // commands persist their draft before file mutation or revision-conflict detection.
+        if prior==nil && !preserveDraft {try await library.preserveCommitDraft(NotebookDocument(notebookID:record.notebookID,path:record.path,content:content,revision:expectedRevision ?? ""))}
+        let proposal=DocumentMutationRecord(commandID:commandID,documentID:documentID,expectedRevision:expectedRevision,targetRevision:ManagedMarkdown.hash(content),before:existing?.content,after:content,state:"prepared",createdAt:Date())
+        if let old=prior {
+            let replay=try await store.prepareDocumentMutation(proposal)
+            guard replay.state=="committed" || replay.state=="prepared" else {throw MapleError.invalid("This command previously conflicted. Recover the draft with a new command.")}
+            if old.state=="committed" {
+                guard let disk=existing else {throw MapleError.invalid("The saved file has since been removed; the original command remains committed.")}
+                guard disk.revision==old.targetRevision else {throw MapleError.invalid("The original save completed, but this file has changed since then. Your draft and committed history are preserved. Reopen the current file or save a recovery copy before continuing.")}
+                var result=try await snapshot(record,disk);result.commandID=commandID;result.state="committed";return result
+            }
+        } else {
+            guard existing?.revision==expectedRevision else {
+                let conflict=try await store.prepareDocumentMutation(proposal)
+                try await store.markDocumentConflict(conflict)
+                throw MapleError.invalid("This note changed in another app. Your draft and attempted save are kept in history. Reload the file or save a recovery copy.")
+            }
+        }
+        let mutation=try await store.prepareDocumentMutation(proposal)
+        if existing?.revision != mutation.targetRevision {
+            guard existing?.revision==mutation.expectedRevision else {try await store.markDocumentConflict(mutation);throw MapleError.invalid("An interrupted save conflicts with external changes. Your draft and both revisions are retained.")}
+            _ = try await library.save(notebookID:record.notebookID,path:record.path,content:mutation.after,expectedRevision:mutation.expectedRevision)
+        }
+        try await store.finalizeDocumentMutation(mutation)
+        try? await store.drainDocumentOutbox()
+        guard let disk=try await library.readIfPresent(notebookID:record.notebookID,path:record.path) else{throw MapleError.invalid("The file was removed after saving. Recover it from history.")}
+        guard disk.revision==mutation.targetRevision else {throw MapleError.invalid("The save completed, but the file changed again before acknowledgment. The committed version remains in history. Reopen the current file or save a recovery copy before continuing.")}
+        var result=try await snapshot(record,disk);result.commandID=commandID;result.state="committed";return result
+    }
+    public func draft(documentID:String,revision:String,content:String) async throws {
+        let record=try await record(documentID)
+        try await library.saveDraft(NotebookDocument(notebookID:record.notebookID,path:record.path,content:content,revision:revision))
+    }
+    public func recoveryCopy(documentID:String,content:String) async throws -> NotebookDocument {
+        let record=try await record(documentID)
+        let name=URL(fileURLWithPath:record.path).deletingPathExtension().lastPathComponent+"-recovery-"+String(UUID().uuidString.prefix(8))
+        // A recovery file is deliberately unmanaged: retain exact bytes for inspection, but do not
+        // register its copied identity or permit canonical mutations against it.
+        return try await library.save(notebookID:record.notebookID,path:"Daily/"+name+".md",content:content,expectedRevision:nil)
+    }
+    public func insertSource(documentID:String,expectedRevision:String,commandID:String,eventID:String) async throws -> TodayDocumentSnapshot {
+        if let prior=try await store.documentMutation(commandID) {
+            let blockID="source-"+ManagedMarkdown.hash(commandID)
+            guard prior.documentID==documentID,prior.expectedRevision==expectedRevision,try ManagedMarkdown.segments(prior.after).first(where:{$0.id==blockID})?.eventID==eventID else {throw MapleError.invalid("This insertion command was reused for a different source.")}
+            return try await commit(documentID:documentID,expectedRevision:expectedRevision,content:prior.after,commandID:commandID)
+        }
+        guard let event=try await store.event(eventID) else {throw MapleError.invalid("This source is unavailable.")}
+        let current=try await open(documentID:documentID)
+        guard current.revision==expectedRevision else {throw MapleError.invalid("The note changed. Reload before inserting this source.")}
+        let kind=event.source.connector.lowercased().contains("mail") ? "email":"source"
+        let value:[String:Any] = ["v":1,"kind":kind,"eventID":eventID,"label":String(event.content.prefix(120))]
+        let reference=String(decoding:try JSONSerialization.data(withJSONObject:value,options:.sortedKeys),as:UTF8.self)
+        let marker=try ManagedMarkdown.marker(["id":"source-"+ManagedMarkdown.hash(commandID)])
+        return try await commit(documentID:documentID,expectedRevision:expectedRevision,content:current.content+"\n\n"+marker+"```maple-ref\n"+reference+"\n```\n",commandID:commandID)
+    }
+    func record(_ id:String) async throws -> ManagedDocumentRecord {
+        guard let record=try await store.managedDocument(id:id) else{throw MapleError.invalid("Open a registered managed document first.")};return record
+    }
+    func snapshot(_ record:ManagedDocumentRecord,_ disk:NotebookDocument) async throws -> TodayDocumentSnapshot {
+        var warning:String?
+        do {try ManagedMarkdown.validate(disk.content,documentID:record.documentID)} catch {warning=error.localizedDescription}
+        var result=TodayDocumentSnapshot(documentID:record.documentID,notebookID:record.notebookID,path:record.path,day:record.day ?? "",timeZone:record.timeZone,content:disk.content,revision:disk.revision,draft:try await library.readDraft(notebookID:record.notebookID,path:record.path),readOnly:warning != nil,warning:warning,indexingPending:try await store.documentIndexingPending(documentID:record.documentID),legacyMigrationAvailable:false)
+        let blocks=try await store.documentBlocks(documentID:record.documentID)
+        result.blocks=blocks.filter{$0.state=="active"};result.cleared=blocks.filter{$0.state=="cleared"}
+        return result
+    }
+    static func export(_ snapshot:DailyNoteSnapshot,documentID:String) throws -> String {
+        var text=ManagedMarkdown.header(documentID:documentID,day:snapshot.day,timeZone:snapshot.timeZone)
+        for block in snapshot.blocks {
+            var fields=["id":block.id]
+            if let task=block.taskNodeID {fields["taskID"]=task}
+            text += try ManagedMarkdown.marker(fields)
+            if let source=block.source {
+                let object:[String:Any] = ["v":1,"kind":block.kind.rawValue,"eventID":source.eventID,"label":source.title ?? block.content]
+                text += "```maple-ref\n"+String(decoding:try JSONSerialization.data(withJSONObject:object,options:.sortedKeys),as:UTF8.self)+"\n```\n"
+                if block.userEdited {text += "\n"+block.content+"\n"}
+            } else {
+                switch block.kind {
+                case .heading:text += "## "+block.content+"\n"
+                case .task:text += "- ["+(block.completedAt == nil ? " ":"x")+"] "+block.content+"\n"
+                case .code:
+                    let fence=String(repeating:"`",count:max(3,(block.content.components(separatedBy:"\n").map{$0.prefix(while:{$0=="`"}).count}.max() ?? 0)+1))
+                    text += fence+"\n"+block.content+"\n"+fence+"\n"
+                default:text += block.content+"\n"
+                }
+            }
+            text += "\n"
+        }
+        try ManagedMarkdown.validate(text,documentID:documentID)
+        return text
+    }
+}
+
+extension TodayDocumentCoordinator {
+    /// First managed insertion into an ordinary notebook joins the same journal without
+    /// changing its relative path or assigning it a daily date.
+    public func register(notebookID:String,path:String,expectedRevision:String) async throws -> TodayDocumentSnapshot {
+        if let existing=try await store.managedDocument(notebookID:notebookID,path:path) {return try await open(documentID:existing.documentID)}
+        let disk=try await library.read(notebookID:notebookID,path:path)
+        guard disk.revision==expectedRevision else {throw MapleError.invalid("This note changed. Reload before registering its first managed block.")}
+        if let id=ManagedMarkdown.documentID(disk.content) {
+            try ManagedMarkdown.validate(disk.content,documentID:id)
+            let record=ManagedDocumentRecord(documentID:id,notebookID:notebookID,path:path,day:nil,timeZone:TimeZone.current.identifier,revision:disk.revision)
+            try await store.registerManagedDocument(record,initialContent:disk.content,initialBefore:disk.content)
+            return try await commit(documentID:id,expectedRevision:disk.revision,content:disk.content,commandID:"create:"+id)
+        }
+        let id=UUID().uuidString.lowercased()
+        let fields="maple:\n  format: 1\n  document: \"\(id)\"\n"
+        let content:String
+        if disk.content.hasPrefix("---\n") {
+            guard let end=disk.content.dropFirst(4).range(of:"\n---\n") else{throw MapleError.invalid("This frontmatter needs source-mode review before adding managed blocks.")}
+            let front=String(disk.content[..<end.lowerBound])
+            guard front.range(of:#"(?m)^maple\s*:"#,options:.regularExpression)==nil else {throw MapleError.invalid("This note already uses the reserved maple frontmatter namespace. Import it explicitly without overwriting that metadata.")}
+            content=front+"\n"+fields+disk.content[end.lowerBound...].dropFirst()
+        } else {
+            guard !disk.content.hasPrefix("---\r"),!disk.content.hasPrefix("+++") else{throw MapleError.invalid("This metadata format needs source-mode review before adding managed blocks.")}
+            content="---\n"+fields+"---\n\n"+disk.content
+        }
+        let record=ManagedDocumentRecord(documentID:id,notebookID:notebookID,path:path,day:nil,timeZone:TimeZone.current.identifier,revision:disk.revision)
+        try await store.registerManagedDocument(record,initialContent:content,initialBefore:disk.content)
+        return try await commit(documentID:id,expectedRevision:disk.revision,content:content,commandID:"create:"+id)
+    }
+}
+
+extension TodayDocumentCoordinator {
+    /// Startup resumes journaled work without creating days or importing legacy notes.
+    /// Unavailable notebooks and external conflicts stay explicit; reservations never expire.
+    public func recoverPendingDocuments() async throws -> DocumentRecoveryReport {
+        _ = try await library.catalog()
+        let documents=try await store.pendingManagedDocuments()
+        var issues:[DocumentRecoveryIssue]=[],recovered=0
+        for record in documents.prefix(100) {
+            do {
+                let result=try await open(documentID:record.documentID)
+                if let warning=result.warning {issues.append(.init(documentID:record.documentID,path:record.path,message:warning))}
+                else {recovered += 1}
+            } catch {
+                issues.append(.init(documentID:record.documentID,path:record.path,message:"This document needs recovery. Reconnect its notebook or open its history to reconcile external edits. Pending linked-task actions remain unacknowledged."))
+            }
+        }
+        return DocumentRecoveryReport(recoveredCount:recovered,issues:issues,hasMore:documents.count>100)
+    }
+}

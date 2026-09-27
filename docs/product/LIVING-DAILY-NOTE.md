@@ -1,3 +1,5 @@
+> Superseded for daily prose ownership and routes by [Today and Sources PRD](PRD-TODAY-AND-SOURCES.md), approved September 27, 2026. This document records the retained legacy SQLite daily-block behavior and migration source; it does not authorize a second writer for migrated Markdown documents.
+
 # Just Maple — Living daily note
 
 September 27, 2026. User-approved product direction; implementation and validation tracked in [the plan](../../plans/living-daily-note/plan.mdx).

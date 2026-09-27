@@ -69,3 +69,30 @@ struct TypeSafeTests {
         }
     }
 }
+
+private actor ProviderAuditRecorder {
+    var events=[ProviderAuditEvent]()
+    func append(_ event:ProviderAuditEvent) {events.append(event)}
+}
+extension TypeSafeTests {
+    @Test func auditedRequestIsActualBodyAndNeverContainsHeadersOrHTTPErrorBody() async throws {
+        let context=try await context(),recorder=ProviderAuditRecorder(),transport=CapturingTransport(data:try payload())
+        let classifier=try TypeSafeClassifier(apiKey:"fixture-secret-key",transport:transport)
+        _ = try await classifier.classifyAudited(context) {event in await recorder.append(event)}
+        let entries=await recorder.events,request=try #require(await transport.request)
+        #expect(entries.first{$0.kind=="context"}?.payload==String(decoding:request.httpBody!,as:UTF8.self))
+        #expect(entries.contains{$0.kind=="response"})
+        #expect(!entries.contains{$0.payload.contains("fixture-secret-key") || $0.payload.contains("Authorization")})
+        let failed=ProviderAuditRecorder()
+        let denied=try TypeSafeClassifier(apiKey:"fixture-secret-key",transport:CapturingTransport(data:Data("private HTTP error body".utf8),status:401))
+        await #expect(throws:Error.self){try await denied.classifyAudited(context){event in await failed.append(event)}}
+        #expect(await failed.events.count==1)
+        #expect(await failed.events.allSatisfy{$0.kind=="context" && !$0.payload.contains("private HTTP error body")})
+    }
+    @Test func successfulTransportInvalidSchemaRetainsActualOutputForReview()async throws {
+        let recorder=ProviderAuditRecorder(),classifier=try TypeSafeClassifier(apiKey:"fixture",transport:CapturingTransport(data:Data("not valid JSON".utf8)))
+        let context=try await context()
+        await #expect(throws:Error.self){try await classifier.classifyAudited(context){event in await recorder.append(event)}}
+        #expect(await recorder.events.contains{$0.kind=="response" && $0.payload=="not valid JSON"})
+    }
+}

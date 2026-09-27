@@ -15,7 +15,7 @@ import {
   MuiButtonComponent,
 } from "@maple/ui";
 import { NativeBridge } from "./core/native-bridge.service";
-import { DailyNoteService } from './daily-note/daily-note.service';
+import { TodayDocumentService } from './today/today-document.service';
 import { NotebookService } from './notebooks/notebook.service';
 import { localDay, offsetDay } from './daily-note/daily-note.models';
 import { OnboardingComponent } from "./pages/onboarding.component";
@@ -36,7 +36,7 @@ import { OnboardingComponent } from "./pages/onboarding.component";
 })
 export class AppComponent {
   readonly companion = isCompanion();
-  readonly daily = inject(DailyNoteService);
+  readonly daily = inject(TodayDocumentService);
   readonly notebooks = inject(NotebookService);
   readonly days = () => [{label:"Yesterday",day:offsetDay(localDay(),-1)},{label:"Today",day:localDay()},{label:"Tomorrow",day:offsetDay(localDay(),1)}];
   readonly bridge = inject(NativeBridge);
@@ -50,7 +50,7 @@ export class AppComponent {
           (e as NavigationEnd).urlAfterRedirects.split("?")[0].split("/")[1],
       ),
     ),
-    { initialValue: "daily" },
+    { initialValue: "today" },
   );
   readonly sections: MuiSidebarSection[] = [
     {
@@ -78,7 +78,7 @@ export class AppComponent {
       id: "support",
       label: "",
       nodes: [
-        { id: "history", label: "History", icon: "history" },
+        { id: "sources", label: "Sources", icon: "history" },
         { id: "notebooks", label: "Notebooks", icon: "edit" },
         { id: "connections", label: "Connections", icon: "gear" },
       ],
@@ -104,7 +104,7 @@ export class AppComponent {
   }
   async openDay(day: string) {
     if (!await this.daily.flush()) return;
-    if (this.router.url.split('?')[0] === '/daily' || await this.router.navigateByUrl('/daily')) await this.daily.open(day);
+    await this.router.navigateByUrl('/today/' + day);
   }
   async openNotebook(id: string) {
     if (!await this.daily.flush()) return;

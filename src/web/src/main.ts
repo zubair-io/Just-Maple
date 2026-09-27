@@ -1,5 +1,7 @@
 import { bootstrapApplication } from "@angular/platform-browser";
 import { provideRouter, withHashLocation } from "@angular/router";
+import { TodayComponent } from "./app/today/today.component";
+import { SourcesComponent } from "./app/sources/sources.component";
 import { DailyNoteComponent } from "./app/daily-note/daily-note.component";
 import { AppComponent } from "./app/app.component";
 import { WorkspaceComponent } from "./app/pages/workspace.component";
@@ -15,7 +17,40 @@ bootstrapApplication(AppComponent, {
   providers: [
     provideRouter(
       [
-        { path: "daily", component: DailyNoteComponent, canDeactivate: [(component: DailyNoteComponent) => component.notes.flush()] },
+        {
+          path: "today",
+          component: TodayComponent,
+          canDeactivate: [
+            (component: TodayComponent) => component.notes.flush(),
+          ],
+        },
+        {
+          path: "today/:date",
+          component: TodayComponent,
+          canDeactivate: [
+            (component: TodayComponent) => component.notes.flush(),
+          ],
+        },
+        {
+          matcher: (segments) =>
+            segments[0]?.path === "sources" && segments.length <= 2
+              ? {
+                  consumed: segments,
+                  ...(segments[1]
+                    ? { posParams: { eventID: segments[1] } }
+                    : {}),
+                }
+              : null,
+          component: SourcesComponent,
+        },
+        { path: "daily", redirectTo: "today", pathMatch: "full" },
+        {
+          path: "daily-legacy",
+          component: DailyNoteComponent,
+          canDeactivate: [
+            (component: DailyNoteComponent) => component.notes.flush(),
+          ],
+        },
         { path: "overview", component: OverviewComponent },
         { path: "tasks", component: TasksComponent },
         { path: "tasks/:id", component: TaskDetailComponent },
@@ -28,8 +63,14 @@ bootstrapApplication(AppComponent, {
           component: StateComponent,
           data: { lens },
         })),
-        { path: "history", component: HistoryComponent },
-        {path:"notebooks", component:NotebooksComponent,canDeactivate:[(component:NotebooksComponent)=>component.notes.flush()]},
+        { path: "history", redirectTo: "sources", pathMatch: "full" },
+        {
+          path: "notebooks",
+          component: NotebooksComponent,
+          canDeactivate: [
+            (component: NotebooksComponent) => component.flush(),
+          ],
+        },
         ...[
           { path: "people", page: "People" },
           { path: "schedule", page: "Calendar" },
@@ -44,9 +85,9 @@ bootstrapApplication(AppComponent, {
         })),
         { path: "notes", redirectTo: "notebooks", pathMatch: "full" },
         { path: "calendar", redirectTo: "schedule", pathMatch: "full" },
-        { path: "activity", redirectTo: "history", pathMatch: "full" },
-        { path: "", redirectTo: "daily", pathMatch: "full" },
-        { path: "**", redirectTo: "daily" },
+        { path: "activity", redirectTo: "sources", pathMatch: "full" },
+        { path: "", redirectTo: "today", pathMatch: "full" },
+        { path: "**", redirectTo: "today" },
       ],
       withHashLocation(),
     ),

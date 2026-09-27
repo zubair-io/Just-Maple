@@ -49,7 +49,11 @@ import UniformTypeIdentifiers
             let document: NotebookDocument
             switch action {
             case "noteCreate": document = try await library.createNote(notebookID: id, name: string(body, "name", limit: 180))
-            case "noteSave": document = try await library.save(notebookID: id, path: string(body, "path", limit: 4096), content: string(body, "content", limit: 256000, allowEmpty: true), expectedRevision: string(body, "revision", limit: 128))
+            case "noteSave":
+                let path=try string(body,"path",limit:4096)
+                let current=try await library.read(notebookID:id,path:path)
+                guard !(current.content.hasPrefix("---\n") && current.content.contains("\nmaple:\n")) else {throw NotebookError.invalid("This managed document is read-only on iPhone. Open Today on your Mac to save changes; your local draft is retained.")}
+                document = try await library.save(notebookID: id, path:path, content: string(body, "content", limit: 256000, allowEmpty: true), expectedRevision: string(body, "revision", limit: 128))
             default: document = try await library.read(notebookID: id, path: string(body, "path", limit: 4096))
             }
             indexingNotice = nil
@@ -64,7 +68,10 @@ import UniformTypeIdentifiers
                 }
             }
             var result = try json(document) as! [String: Any]
-            if let indexingNotice { result["indexingWarning"] = indexingNotice }
+            if document.content.hasPrefix("---\n") && document.content.contains("\nmaple:\n") {
+                result["readOnly"]=true
+                result["indexingWarning"]="Managed note · read-only on iPhone. Changes are coordinated by your Mac."
+            } else if let indexingNotice { result["indexingWarning"] = indexingNotice }
             return result
         }
     }

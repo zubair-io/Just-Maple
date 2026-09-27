@@ -13,6 +13,7 @@ export class DailyNoteService implements OnDestroy {
   readonly loading = signal(false); readonly busy = signal(false); readonly error = signal(''); readonly notice = signal('');
   readonly drafts = signal<Record<string, Draft>>(this.readDrafts());
   readonly undoBlock = signal<DailyBlock | null>(null);
+  readonly readOnly = computed(() => !!(this.snapshot()?.readOnly || this.snapshot()?.sync?.readOnly));
   readonly pending = computed(() => !!this.snapshot()?.sync?.pending.length);
   readonly blocks = computed(() => this.snapshot()?.blocks ?? []);
   readonly recoveredDrafts = computed(() => Object.entries(this.drafts()).filter(([id]) => !this.blocks().some(block => block.id === id)).map(([id, draft]) => ({ id, ...draft })));
@@ -48,6 +49,7 @@ export class DailyNoteService implements OnDestroy {
   private persistDrafts() { try { localStorage.setItem('maple.daily.drafts.v1', JSON.stringify(this.drafts())); } catch { this.notice.set('Your edit is held here. Keep this page open until it saves.'); } }
   content(block: DailyBlock) { return this.drafts()[block.id]?.content ?? block.content; }
   change(block: DailyBlock, content: string) {
+    if(this.readOnly()) return;
     const old = this.drafts()[block.id];
     this.drafts.update(d => ({ ...d, [block.id]: { content, version: old?.version ?? block.version, day: block.day } }));
     this.persistDrafts(); clearTimeout(this.timer);
@@ -91,6 +93,7 @@ export class DailyNoteService implements OnDestroy {
   private mutate(input: Omit<DailyBlockMutation, 'requestID' | 'timeZone'>): Promise<boolean> {
     const record: DailyBlockMutation = { ...input, timeZone: this.timeZone, requestID: this.requestID(input) };
     const job = this.writeTail.then(async () => {
+      if(this.readOnly()){this.notice.set('This day is now a Markdown document. Open it on your Mac; this compatible snapshot is read only.');return false;}
       if (this.pending()) { this.notice.set('This change is waiting for your Mac. More edits can be saved after it syncs.'); return false; }
       this.busy.set(true); this.error.set(''); this.generation++; this.loading.set(false);
       try {
@@ -124,6 +127,7 @@ export class DailyNoteService implements OnDestroy {
   discardDraft(id: string) { this.drafts.update(d => { const next = { ...d }; delete next[id]; return next; }); this.persistDrafts(); this.error.set(''); }
   async flush(): Promise<boolean> {
     clearTimeout(this.timer); await this.writeTail;
+    if(this.readOnly()) return true;
     for (const id of Object.keys(this.drafts())) if (this.blocks().some(block => block.id === id) && !await this.saveDraft(id)) return false;
     return true;
   }

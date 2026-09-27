@@ -60,6 +60,14 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
     func perform(_ action: String, _ body: [String: Any]) async throws -> Any {
         if action != "snapshot" { model.error = nil }
         switch action {
+        case "todayOpen", "todayMigrate", "documentOpen", "documentCommit", "documentDraft", "documentHistory", "documentRecoveryCopy", "sourceInsert", "documentBlockMutate", "documentRegister", "documentOperationHistory", "documentOperationResolve":
+            return try await todayDocumentCommand(action, body)
+        case "documentSuggestions", "taskInsert":
+            return try await documentSuggestionsCommand(action,body)
+        case "mapleSubmit", "mapleRuns", "mapleRun", "mapleCancel", "mapleAttempts", "mapleInsertResponse":
+            return try await inlineMapleCommand(action, body)
+        case "sourceList", "sourceDetail", "sourceHistory", "sourceArtifact", "sourceRetry":
+            return try await sourcesCommand(action, body)
         case "dailyNote", "dailyBlockMutate", "dailyBlockHistory", "dailyCarryForward":
             return try await dailyCommand(action,body)
         case "notebookCatalog", "notebookConnect", "notebookDisconnect", "notebookCreate", "noteRead", "noteSave", "noteCreate", "noteDraft", "noteReadDraft":

@@ -29,6 +29,19 @@ import MapleCompanionTransport
         reply=try #require(try reopened.dailyReply(day:"2026-09-27",timeZone:"UTC") as? [String:Any])
         #expect((reply["sync"] as? [String:Any])?["status"] as? String == "cached")
     }
+    @Test func migratedSnapshotRejectsLegacyWritesAndExposesReadOnly()throws {
+        let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer{try? FileManager.default.removeItem(at:directory)}
+        let store=try CompanionStore(directory:directory),device=try #require(UUID(uuidString:store.snapshot.deviceID))
+        var migrated=try note();migrated.readOnly=true
+        var response=SyncResponse(deviceID:device,receivedIDs:[]);response.dailyNotes=[migrated]
+        try store.accept(response,sentIDs:[])
+        let action=SyncDailyAction(mutation:.init(kind:"edit",blockID:"fixture-block",expectedVersion:1,requestID:UUID().uuidString,day:migrated.day,timeZone:"UTC",content:"Old client write"))
+        #expect(throws:Error.self){try store.dailyAction(action)}
+        #expect(store.pendingDailyActions.isEmpty)
+        let reply=try #require(try store.dailyReply(day:migrated.day,timeZone:"UTC") as? [String:Any])
+        #expect((reply["sync"] as? [String:Any])?["readOnly"] as? Bool == true)
+    }
     @Test func movedBlockSettlesWhenOriginalDayAgesOutOfCache()throws {
         let directory=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer{try? FileManager.default.removeItem(at:directory)}

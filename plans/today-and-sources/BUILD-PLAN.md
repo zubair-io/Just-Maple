@@ -1,6 +1,8 @@
 # Today and Sources — build plan
 
-Status: Proposed; implementation has not started under this plan. September 27, 2026.
+Status: Approved and implemented on `codex/today-and-sources`; integrated automated verification passed. September 27, 2026.
+
+See [implementation and verification record](evidence/IMPLEMENTATION.md) for the shipped contracts, measured results, and remaining environment-dependent checks.
 
 [PRD](../../docs/product/PRD-TODAY-AND-SOURCES.md) · [Engineering design](../../docs/engineering/TODAY-AND-SOURCES.md) · [Visual plan source](plan.mdx)
 
@@ -123,4 +125,4 @@ P1 and P2 are independently testable foundations. Ship the smallest internal sli
 | Live model quality | Separately consented limited real Jev/downstream run; evidence and failures inspectable; no fixture fallback |
 | Performance | 256 KB editor and ≥10,000-event Sources fixture; record p95 input and query latency against PRD targets |
 
-The documents are the deliverable for this task. Runtime implementation, schema migration and real-provider testing belong to the subsequent build.
+The approved plan has been implemented. Storage, UI and provider-contract validation use temporary fixtures; live provider quality evaluation remains separate from deterministic integration checks.

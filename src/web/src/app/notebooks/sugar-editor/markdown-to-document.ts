@@ -265,7 +265,8 @@ function inlineToNodes(token: Token, _typedBlocks: Map<string, ExtractedBlock>):
             }
 
             case 'softbreak': {
-                // Treat as space or ignore
+                // A CommonMark soft break separates words; dropping it joins user text.
+                nodes.push({ type: 'text', text: ' ', ...(markStack.length ? { marks: [...markStack] } : {}) });
                 break;
             }
 
