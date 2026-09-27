@@ -1,5 +1,6 @@
 import { bootstrapApplication } from "@angular/platform-browser";
 import { provideRouter, withHashLocation } from "@angular/router";
+import { DailyNoteComponent } from "./app/daily-note/daily-note.component";
 import { AppComponent } from "./app/app.component";
 import { WorkspaceComponent } from "./app/pages/workspace.component";
 import { OverviewComponent } from "./app/world/overview.component";
@@ -14,6 +15,7 @@ bootstrapApplication(AppComponent, {
   providers: [
     provideRouter(
       [
+        { path: "daily", component: DailyNoteComponent, canDeactivate: [(component: DailyNoteComponent) => component.notes.flush()] },
         { path: "overview", component: OverviewComponent },
         { path: "tasks", component: TasksComponent },
         { path: "tasks/:id", component: TaskDetailComponent },
@@ -43,8 +45,8 @@ bootstrapApplication(AppComponent, {
         { path: "notes", redirectTo: "notebooks", pathMatch: "full" },
         { path: "calendar", redirectTo: "schedule", pathMatch: "full" },
         { path: "activity", redirectTo: "history", pathMatch: "full" },
-        { path: "", redirectTo: "overview", pathMatch: "full" },
-        { path: "**", redirectTo: "overview" },
+        { path: "", redirectTo: "daily", pathMatch: "full" },
+        { path: "**", redirectTo: "daily" },
       ],
       withHashLocation(),
     ),

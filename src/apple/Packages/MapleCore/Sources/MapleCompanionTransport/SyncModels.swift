@@ -16,6 +16,7 @@ public struct SyncRequest: Codable, Sendable {
     public var deviceID: UUID
     public var operation: String
     public var captures: [SyncCapture]
+    public var dailyActions: [SyncDailyAction]?
     public init(deviceID:UUID,operation:String,captures:[SyncCapture]=[]){self.deviceID=deviceID;self.operation=operation;self.captures=captures}
 }
 public struct SyncTaskActionState: Codable, Sendable, Equatable {
@@ -83,14 +84,17 @@ public struct SyncResponse: Codable, Sendable {
     public var waitingTotal:Int?
     public var laterTotal:Int?
     public var supportedTaskIntents:[String]?
+    public var dailyNotes:[SyncDailyNote]?
+    public var dailyReceipts:[SyncDailyReceipt]?
     public init(deviceID:UUID,receivedIDs:[UUID],asOf:Date=Date(),tasks:[SyncTask]=[],states:[SyncState]=[],activities:[SyncActivity]=[],people:[SyncPerson]=[]){self.deviceID=deviceID;self.receivedIDs=receivedIDs;self.asOf=asOf;self.tasks=tasks;self.states=states;self.activities=activities;self.people=people}
+    public var validDaily:Bool { (dailyNotes?.count ?? 0) <= 3 && (dailyNotes?.allSatisfy(\.valid) ?? true) && (dailyReceipts?.count ?? 0) <= 8 && (dailyReceipts?.allSatisfy(\.valid) ?? true) }
     public var validGroups:Bool {
         let groups=reviewedGroups ?? []
         return groups.count<=16 && Set(groups.map{$0.review.id}).count==groups.count && groups.allSatisfy { group in
             group.review.valid && Set(group.titles.keys)==Set(group.review.children.map(\.nodeID)) && group.titles.values.allSatisfy{$0.utf8.count<=512}
         }
     }
-    private enum CodingKeys:String,CodingKey {case version,deviceID,receivedIDs,asOf,tasks,states,activities,people,reviewedGroups,reviewedGroupTotal,supportedGroupIntents,displayName,needsYouTotal,waitingTotal,laterTotal,supportedTaskIntents}
+    private enum CodingKeys:String,CodingKey {case version,deviceID,receivedIDs,asOf,tasks,states,activities,people,reviewedGroups,reviewedGroupTotal,supportedGroupIntents,displayName,needsYouTotal,waitingTotal,laterTotal,supportedTaskIntents,dailyNotes,dailyReceipts}
     public init(from decoder:Decoder)throws {
         let c=try decoder.container(keyedBy:CodingKeys.self)
         version=try c.decode(Int.self,forKey:.version);deviceID=try c.decode(UUID.self,forKey:.deviceID)
@@ -106,6 +110,8 @@ public struct SyncResponse: Codable, Sendable {
         waitingTotal=try c.decodeIfPresent(Int.self,forKey:.waitingTotal)
         laterTotal=try c.decodeIfPresent(Int.self,forKey:.laterTotal)
         supportedTaskIntents=try c.decodeIfPresent([String].self,forKey:.supportedTaskIntents)
+        dailyNotes=try c.decodeIfPresent([SyncDailyNote].self,forKey:.dailyNotes)
+        dailyReceipts=try c.decodeIfPresent([SyncDailyReceipt].self,forKey:.dailyReceipts)
     }
 }
 public enum SyncCodec {

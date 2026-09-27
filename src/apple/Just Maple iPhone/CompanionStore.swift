@@ -16,12 +16,17 @@ struct CompanionSnapshot: Codable {
     var groupActionReceipts:[SyncGroupActionReceipt]?
     var taskActions:[SyncTaskAction]?
     var taskActionReceipts:[SyncTaskActionReceipt]?
+    var dailyActions:[SyncDailyAction]?
+    var dailyReceipts:[SyncDailyReceipt]?
     var cloudAccountID:String?
 }
 enum CompanionError: Error, LocalizedError {
-    case invalidCapture, conflictingRequest, storageUnavailable, queueFull, invalidPairing, accountChanged
+    case invalidCapture, conflictingRequest, storageUnavailable, queueFull, invalidPairing, accountChanged, invalidDailyNote, pendingDailyNote, uncachedDailyNote
     var errorDescription: String? {
         switch self {
+        case .invalidDailyNote: "This daily-note change is invalid or no longer matches the synced note."
+        case .pendingDailyNote: "This block has a saved change waiting for your Mac. Sync before editing it again."
+        case .uncachedDailyNote: "This day has not synced to your iPhone. Open it on your Mac, then sync again."
         case .invalidCapture: "Enter a note of up to 16 KB."
         case .conflictingRequest: "This capture ID already belongs to a different note."
         case .storageUnavailable: "Your saved captures could not be opened. They have not been replaced."
@@ -58,6 +63,68 @@ enum CompanionError: Error, LocalizedError {
         next.captures.insert(CompanionCapture(id:id,text:text,createdAt:at),at:0)
         try Self.write(next,to:file)
         snapshot=next
+    }
+    var pendingDailyActions:[SyncDailyAction] {
+        let received=Set((snapshot.dailyReceipts ?? []).map(\.id))
+        return (snapshot.dailyActions ?? []).filter{!received.contains($0.id)}
+    }
+    private func dailySnapshotRevision(for action:SyncDailyAction)->Int64 {
+        let notes=snapshot.mac?.dailyNotes ?? []
+        let relevant=notes.filter{$0.day==action.mutation.day || (action.mutation.kind=="move" && $0.day==action.mutation.targetDay)}
+        // A day outside the published window remains unavailable, never an editable stale success.
+        return relevant.map(\.revision).min() ?? notes.map(\.revision).max() ?? -1
+    }
+    private var awaitingDailySnapshot:[SyncDailyAction] {
+        (snapshot.dailyActions ?? []).filter { action in
+            guard let receipt=snapshot.dailyReceipts?.first(where:{$0.id==action.id}),receipt.outcome=="applied",let revision=receipt.resultingRevision else{return false}
+            return dailySnapshotRevision(for:action) < revision
+        }
+    }
+    func dailyAction(_ action:SyncDailyAction)throws {
+        if let old=snapshot.dailyActions?.first(where:{$0.id==action.id}) {guard old==action else{throw CompanionError.conflictingRequest};return}
+        guard action.valid, let day=snapshot.mac?.dailyNotes?.first(where:{$0.day==action.mutation.day}) else{throw CompanionError.invalidDailyNote}
+        guard (pendingDailyActions+awaitingDailySnapshot).count<32,!(pendingDailyActions+awaitingDailySnapshot).contains(where:{$0.mutation.blockID==action.mutation.blockID}) else{throw CompanionError.pendingDailyNote}
+        if action.mutation.kind != "create" {
+            guard let block=(day.blocks+day.cleared).first(where:{$0.id==action.mutation.blockID}),block.version==action.mutation.expectedVersion else{throw CompanionError.conflictingRequest}
+        }
+        var next=snapshot
+        let keep=Set((snapshot.dailyReceipts ?? []).suffix(100).map(\.id)).union(pendingDailyActions.map(\.id)).union(awaitingDailySnapshot.map(\.id))
+        next.dailyActions=(next.dailyActions ?? []).filter{keep.contains($0.id)}+[action]
+        try Self.write(next,to:file);snapshot=next
+    }
+    func acceptDailyReceipts(_ receipts:[SyncDailyReceipt],sent:Set<UUID>)throws {
+        guard Set(receipts.map(\.id)).count==receipts.count,receipts.allSatisfy({$0.valid && sent.contains($0.id)}),sent.isSubset(of:Set((snapshot.dailyActions ?? []).map(\.id))) else{throw CompanionError.invalidDailyNote}
+        var next=snapshot,values=Dictionary((snapshot.dailyReceipts ?? []).map{($0.id,$0)},uniquingKeysWith:{a,_ in a})
+        for receipt in receipts {
+            if let prior=values[receipt.id],prior != receipt {throw CompanionError.conflictingRequest}
+            values[receipt.id]=receipt
+        }
+        let ordered=(snapshot.dailyActions ?? []).compactMap{values[$0.id]}
+        let waiting=Set((snapshot.dailyActions ?? []).filter { action in
+            guard let receipt=values[action.id] else{return true}
+            guard receipt.outcome=="applied",let revision=receipt.resultingRevision else{return false}
+            return dailySnapshotRevision(for:action)<revision
+        }.map(\.id))
+        let keep=Set(ordered.suffix(100).map(\.id)).union(waiting)
+        next.dailyReceipts=ordered.filter{keep.contains($0.id)}
+        next.dailyActions=(snapshot.dailyActions ?? []).filter{keep.contains($0.id)}
+        try Self.write(next,to:file);snapshot=next
+    }
+    func dailyReply(day:String,timeZone:String)throws->Any {
+        guard SyncDailyMutation.validDay(day,zone:timeZone) else{throw CompanionError.invalidDailyNote}
+        guard let note=snapshot.mac?.dailyNotes?.first(where:{$0.day==day}) else{throw CompanionError.uncachedDailyNote}
+        guard var result=try JSONSerialization.jsonObject(with:JSONEncoder().encode(note)) as? [String:Any] else{throw CompanionError.storageUnavailable}
+        let actions=(snapshot.dailyActions ?? []).filter{$0.mutation.day==day || $0.mutation.targetDay==day}
+        let ids=Set(actions.map(\.id)),pending=(pendingDailyActions+awaitingDailySnapshot).filter{ids.contains($0.id)}.map{$0.id.uuidString.lowercased()}
+        let receipts=Dictionary((snapshot.dailyReceipts ?? []).map{($0.id,$0)},uniquingKeysWith:{a,_ in a})
+        let conflicts=actions.enumerated().filter { index,action in
+            guard let receipt=receipts[action.id],receipt.outcome != "applied" else{return false}
+            return !actions.dropFirst(index+1).contains { later in
+                later.mutation.blockID==action.mutation.blockID && receipts[later.id]?.outcome=="applied"
+            }
+        }.map{$0.element.id.uuidString.lowercased()}
+        result["sync"]=["status":!pending.isEmpty ? "pending":(!conflicts.isEmpty ? "conflict":"cached"),"pending":pending,"conflicts":conflicts,"asOf":snapshot.mac!.asOf.timeIntervalSince1970,"partial":note.partial ?? false] as [String:Any]
+        return result
     }
     var pendingGroupActions:[SyncGroupAction] {
         let received=Set((snapshot.groupActionReceipts ?? []).map(\.id))
@@ -139,7 +206,7 @@ enum CompanionError: Error, LocalizedError {
         try Self.write(next,to:file);snapshot=next
     }
     func accept(_ response:SyncResponse,sentIDs:Set<UUID>)throws {
-        guard response.validGroups,response.version==1,response.deviceID.uuidString.lowercased()==snapshot.deviceID.lowercased(),
+        guard response.validDaily,response.validGroups,response.version==1,response.deviceID.uuidString.lowercased()==snapshot.deviceID.lowercased(),
               Set(response.receivedIDs).count==response.receivedIDs.count,
               Set(response.receivedIDs).isSubset(of:sentIDs),
               response.tasks.count<=50,response.states.count<=32,

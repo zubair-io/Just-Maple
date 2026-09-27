@@ -51,6 +51,12 @@ struct CompanionWebView: UIViewRepresentable {
         guard message.frameInfo.isMainFrame,Self.isBundledPage(message.frameInfo.request.url),let body=message.body as? [String:Any],let action=body["action"] as? String else {replyHandler(nil,"Untrusted request.");return}
         Task { @MainActor in
             do {
+                if action.hasPrefix("daily") {
+                    let result=try performDaily(action,body:body)
+                    replyHandler(result,nil)
+                    if action=="dailyBlockMutate" {Task {await sync?.sync()}}
+                    return
+                }
                 if iPhoneNotebookBridge.actions.contains(action) {
                     guard let notebooks,let store else{throw CompanionError.storageUnavailable}
                     let scene=UIApplication.shared.connectedScenes.first as? UIWindowScene
@@ -63,10 +69,25 @@ struct CompanionWebView: UIViewRepresentable {
                 replyHandler(try reply(),nil)
                 if action=="taskAction" || action=="groupAction" {Task {await sync?.sync()}}
             } catch {
-                if iPhoneNotebookBridge.actions.contains(action) {replyHandler(nil,error.localizedDescription)}
+                if iPhoneNotebookBridge.actions.contains(action) || action.hasPrefix("daily") {replyHandler(nil,error.localizedDescription)}
                 else {replyHandler(nil,"Could not complete this request. iCloud will reconnect automatically when available.")}
             }
         }
+    }
+    func performDaily(_ action:String,body:[String:Any])throws->Any {
+        guard let store else{throw CompanionError.storageUnavailable}
+        if action=="dailyBlockHistory" {throw NSError(domain:"DailyNote",code:1,userInfo:[NSLocalizedDescriptionKey:"Detailed block history is stored on your Mac. Cleared blocks can be restored from this day on your iPhone."])}
+        if action=="dailyCarryForward" {throw NSError(domain:"DailyNote",code:2,userInfo:[NSLocalizedDescriptionKey:"Your Mac carries unfinished tasks into Today automatically. Sync to receive the latest day."])}
+        if action=="dailyBlockMutate" {
+            guard let record=body["record"],JSONSerialization.isValidJSONObject(record) else{throw CompanionError.invalidDailyNote}
+            let data=try JSONSerialization.data(withJSONObject:record)
+            guard data.count<=280_000 else{throw CompanionError.invalidDailyNote}
+            let mutation=try JSONDecoder().decode(SyncDailyMutation.self,from:data)
+            try store.dailyAction(.init(mutation:mutation))
+            return try store.dailyReply(day:mutation.day,timeZone:mutation.timeZone)
+        }
+        guard action=="dailyNote",let day=body["day"] as? String,let zone=body["timeZone"] as? String else{throw CompanionError.invalidDailyNote}
+        return try store.dailyReply(day:day,timeZone:zone)
     }
     func stop(){sync?.stop()}
     private func bridgeDate(_ value:Any?)throws->Date? {

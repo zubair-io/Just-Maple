@@ -15,6 +15,7 @@ public actor KnowledgeStore {
         try db.migrateWaitingFollowUps()
         try db.migrateObligationAggregation()
         try db.migrateProcessingSchedule()
+        try db.migrateDailyNotes()
     }
 
     /// Event and queue insertion are atomic. Returns the canonical ID on duplicate delivery.

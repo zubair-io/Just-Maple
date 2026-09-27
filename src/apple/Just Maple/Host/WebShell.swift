@@ -60,6 +60,8 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
     func perform(_ action: String, _ body: [String: Any]) async throws -> Any {
         if action != "snapshot" { model.error = nil }
         switch action {
+        case "dailyNote", "dailyBlockMutate", "dailyBlockHistory", "dailyCarryForward":
+            return try await dailyCommand(action,body)
         case "notebookCatalog", "notebookConnect", "notebookDisconnect", "notebookCreate", "noteRead", "noteSave", "noteCreate", "noteDraft", "noteReadDraft":
             return try await notebookCommand(action, body)
         case "connectorAudit", "connectorAuditLocal":

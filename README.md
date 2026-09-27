@@ -1,8 +1,8 @@
 # Just Maple
 
-A local-first personal intelligence app for Mac and iPhone. It connects observations to evidence-backed state, activities and actionable tasks. Notes are one connector. The app never automatically sends replies.
+A local-first living notebook for Mac and iPhone. Each day opens to an editable note of writing, tasks and incoming context. Clear a block when it no longer needs attention, recover it in history, or move it to tomorrow. Existing connectors and evidence-backed intelligence maintain context behind the note. The app never automatically sends replies.
 
-This is an early development build. See [the product requirements](docs/product/PRD-JUST-MAPLE.md), [implementation status](docs/product/DAILY-ACTIONS-DELIVERY.md) and [open review findings](docs/reviews/PRE-PR-REVIEW-2026-09-23.md).
+This is an early development build. See [the daily-note direction](docs/product/LIVING-DAILY-NOTE.md), [the implementation plan](plans/living-daily-note/plan.mdx), [the earlier product requirements](docs/product/PRD-JUST-MAPLE.md), [implementation status](docs/product/DAILY-ACTIONS-DELIVERY.md) and [open review findings](docs/reviews/PRE-PR-REVIEW-2026-09-23.md).
 
 ## Structure
 

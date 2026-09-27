@@ -1,0 +1,64 @@
+<div class="daily-shell">
+  <header class="daily-top"><span>Daily notes / {{ title() }}</span><mui-button variant="ghost" (pressed)="historyOpen.set(!historyOpen()); selectedHistory.set(null); historyTitle.set('')">History</mui-button></header>
+  <nav class="day-navigation" aria-label="Daily note dates">
+    <mui-button variant="ghost" ariaLabel="Previous day" (pressed)="navigate(offsetDay(notes.day(), -1))">←</mui-button>
+    <label><span class="sr-only">Choose day</span><input type="date" aria-label="Choose day" [ngModel]="notes.day()" (ngModelChange)="navigate($event)" /></label>
+    <mui-button variant="ghost" ariaLabel="Next day" (pressed)="navigate(offsetDay(notes.day(), 1))">→</mui-button>
+  </nav>
+  <section class="day-heading">
+    <div><p class="date-label">{{ date() | date:'EEEE, MMMM d' }}</p><h1>{{ title() }}</h1><p class="subtitle">Your words. What arrives. What’s next.</p></div>
+    <svg class="interchange" viewBox="0 0 270 86" role="img" aria-label="Your notes and incoming context meet here"><path d="M12 20 H77 L120 60 H255" class="cool-line"/><path d="M255 20 H188 L145 60 H120" class="maple-line"/><circle cx="12" cy="20" r="4" class="cool-station"/><circle cx="255" cy="20" r="4" class="maple-station"/><rect x="126" y="55" width="18" height="10" rx="5"/><text x="0" y="10">CONTEXT</text><text x="202" y="10">YOUR WORDS</text><text x="140" y="82">{{ title() }}</text></svg>
+  </section>
+  @if (notes.error()) {<div class="daily-error" role="alert"><p>{{ notes.error() }}</p><mui-button variant="ghost" (pressed)="notes.refresh()">Refresh & retry</mui-button></div>}
+  @if (notes.snapshot()?.sync; as sync) {
+    <p class="sync-note" role="status">{{ sync.pending.length ? 'Saved on iPhone · waiting for your Mac' : sync.conflicts.length ? 'A change needs review on your Mac. Your edit is kept here.' : 'Cached from your Mac' }} · {{ sync.asOf * 1000 | date:'short' }} @if(sync.partial){ · Some blocks are available only on your Mac.}</p>
+  }
+  @if (notes.loading() && !notes.snapshot()) {<p role="status">Opening your day…</p>}
+  @if (notes.snapshot(); as snapshot) {
+    @if (snapshot.projection?.remainingTasks; as remaining) {<p class="sync-note">{{remaining}} more tasks are available in Workspace tools → Tasks.</p>}
+    @if(notes.recoveredDrafts().length) {<section class="recovered-drafts" aria-label="Recovered edits"><h2>Recovered edits</h2><p>These edits belong to blocks outside this view. Your words are kept here.</p>@for(draft of notes.recoveredDrafts(); track draft.id){<article><p class="block-meta">Draft from {{draft.day}}</p><pre>{{draft.content}}</pre><mui-button [disabled]="notes.busy() || notes.pending()" (pressed)="notes.recoverDraft(draft.id)">Save as new text block</mui-button><details><summary>Discard this recovered edit</summary><p>The saved block stays in history. This removes only your unsaved edit.</p><mui-button variant="ghost" [disabled]="notes.busy() || notes.pending()" (pressed)="notes.discardDraft(draft.id)">Discard edit</mui-button></details></article>}</section>}
+    <div class="note-route" aria-label="Daily note blocks">
+      @for (block of notes.blocks(); track block.id; let index = $index) {
+        <article class="daily-block" [class.source-block]="block.source || block.kind === 'email' || block.kind === 'message'" [class.task-block]="block.kind === 'task'" [class.heading-block]="block.kind === 'heading'" [class.code-block]="block.kind === 'code'" [attr.data-block-id]="block.id">
+          <span class="station" [class.source-station]="block.source || block.taskNodeID" aria-hidden="true"></span>
+          @if (block.source) {<div class="block-provenance">{{ block.source.connector }} @if(block.source.sender){ / {{block.source.sender}}}</div>@if(block.source.title){<h2>{{block.source.title}}</h2>}}
+          <div class="block-writing">
+            @if (block.kind === 'task') {<mui-checkbox [checked]="!!block.completedAt" [disabled]="notes.busy() || notes.pending() || !!block.completedAt" ariaLabel="Complete task" (checkedChange)="$event && notes.action(block, 'complete')" />}
+            <textarea [attr.aria-label]="'Edit ' + block.kind + ' block'" [ngModel]="notes.content(block)" (ngModelChange)="notes.change(block, $event)" [disabled]="notes.pending()" [rows]="block.kind === 'heading' || block.kind === 'task' ? 1 : block.kind === 'code' ? 4 : 2" spellcheck="true"></textarea>
+          </div>
+          @if (block.actor === 'bot') {<p class="block-meta">Maple updated this block · {{ block.updatedAt * 1000 | date:'shortTime' }} @if(block.userEdited){ · Your edits are protected}</p>}
+          @if (block.completedAt) {<p class="block-meta">Completed · restoring this block does not reopen the task</p>}
+          @if (notes.conflict(block)) {<div class="conflict"><p>This block has a newer saved version:</p><blockquote>{{block.content}}</blockquote><mui-button [disabled]="notes.busy() || notes.pending()" (pressed)="notes.saveDraft(block.id, true)">Keep my edit</mui-button><mui-button variant="ghost" (pressed)="notes.discardDraft(block.id)">Use saved version</mui-button></div>}
+          <div class="block-actions">
+            <mui-button variant="ghost" [disabled]="notes.busy() || notes.pending()" (pressed)="notes.action(block, 'clear')">Clear</mui-button>
+            <mui-button variant="ghost" (pressed)="inspect(block)">Block history</mui-button>
+            @if (block.source) {<mui-button variant="ghost" (pressed)="inspectSource(block)">Open original ↗</mui-button>}
+            @if (notes.hasDraft(block)) {<mui-button variant="ghost" [disabled]="notes.busy() || notes.pending()" (pressed)="notes.saveDraft(block.id)">Save edit</mui-button>}
+            <mui-button class="move-action" variant="ghost" [disabled]="notes.busy() || notes.pending()" (pressed)="notes.move(block)">{{ title() === 'Today' ? 'Move to tomorrow →' : 'Move to next day →' }}</mui-button>
+          </div>
+        </article>
+      } @empty {
+        <section class="empty-day"><span class="empty-station" aria-hidden="true"></span><h2>A little breathing room.</h2><p>No blocks left in this day. Your history still holds everything.</p><p class="empty-writing">Leave a thought, or leave the day open.</p></section>
+      }
+    </div>
+    <section class="block-composer" aria-label="Add a block">
+      <textarea aria-label="New block content" [(ngModel)]="composer" placeholder="Type here. Drop in a link. Keep going…" rows="2" [disabled]="notes.pending()"></textarea>
+      <div class="composer-actions"><mui-button variant="ghost" [disabled]="!composer.trim() || notes.busy() || notes.pending()" (pressed)="add()">+ Add block</mui-button><label>Block type <select aria-label="Block type" [(ngModel)]="composerKind" [disabled]="notes.pending()">@for(kind of kinds; track kind){<option [value]="kind">{{kind === 'heading' ? 'Heading' : kind === 'text' ? 'Text' : kind === 'task' ? 'Task' : kind === 'email' ? 'Email' : kind === 'message' ? 'Message' : 'Code'}}</option>}</select></label></div>
+    </section>
+  }
+  @if (notes.notice()) {<div class="save-status" role="status">{{ notes.notice() }} @if(notes.undoBlock()){<mui-button variant="ghost" [disabled]="notes.busy() || notes.pending()" (pressed)="notes.undo()">Undo clear</mui-button>}</div>}
+  @if (sourceError()) {<p role="alert">{{sourceError()}}</p>}
+  @if (source(); as evidence) {<maple-source-inspector [source]="evidence" (closed)="source.set(null)" />}
+  @if (historyOpen()) {
+    <section class="daily-history" aria-label="Daily note history"><div class="history-heading"><h2>{{historyTitle() || 'Cleared from this day'}}</h2><mui-button variant="ghost" (pressed)="closeHistory()">Close history</mui-button></div>
+      @if(historyTitle()) {
+        @if(historyError()){<p role="alert">{{historyError()}}</p>}
+        @else if(selectedHistory(); as records) {@for(entry of records; track entry.id){<article><p class="block-meta">{{entry.type}} · {{entry.actor}} · {{entry.recordedAt * 1000 | date:'short'}}</p><p class="history-content">{{historyContent(entry.after || entry.before)}}</p></article>}@empty{<p>No changes recorded for this block.</p>}}
+        @else{<p role="status">Opening block history…</p>}
+      } @else {
+        <p>Clearing removes a block from your day. It does not send a reply or complete a task.</p>
+        @for(block of notes.snapshot()?.cleared || []; track block.id){<article><p class="history-content">{{block.content}}</p><div class="block-actions"><mui-button [disabled]="notes.busy() || notes.pending()" (pressed)="notes.action(block, 'restore')">Restore block</mui-button><mui-button variant="ghost" (pressed)="inspect(block)">Block history</mui-button></div></article>}@empty{<p>No cleared blocks on this day.</p>}
+      }
+    </section>
+  }
+</div>

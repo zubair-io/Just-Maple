@@ -8,6 +8,7 @@ import MapleCore
 struct BridgeTests {
     @Test func bundledAngularBootsAndReceivesNativeSnapshot() async throws {
         let model = AppModel()
+        model.store = try KnowledgeStore(path: ":memory:")
         model.loaded = true
         model.name = "Angular integration test"
         let bridge = Bridge(model: model)
@@ -17,10 +18,10 @@ struct BridgeTests {
         var text = ""
         for _ in 0..<50 {
             text = (try? await web.evaluateJavaScript("document.body.textContent") as? String) ?? ""
-            if text.contains(", Angular integration test.") { break }
+            if text.contains("Today") && text.contains("Add block") { break }
             try await Task.sleep(for: .milliseconds(100))
         }
-        #expect(text.contains(", Angular integration test."))
+        #expect(text.contains("Today") && text.contains("Add block"))
         #expect(!text.contains("Untrusted request."))
         #expect(try await web.evaluateJavaScript("document.querySelector('maple-root').getAttribute('ng-version')") as? String != nil)
     }

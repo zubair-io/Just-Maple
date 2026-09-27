@@ -3,6 +3,8 @@ import CloudKit
 import MapleCompanionTransport
 
 @MainActor protocol PhoneCloudMailbox {
+    func uploadDailyActions(deviceID:UUID,actions:[SyncDailyAction])async throws
+    func dailyReceipts(deviceID:UUID,ids:[UUID])async throws->[SyncDailyReceipt]
     func uploadGroupActions(deviceID:UUID,actions:[SyncGroupAction])async throws
     func groupActionReceipts(deviceID:UUID,ids:[UUID])async throws->[SyncGroupActionReceipt]
     func uploadActions(deviceID:UUID,actions:[SyncTaskAction])async throws
@@ -13,6 +15,8 @@ import MapleCompanionTransport
 }
 extension CloudCompanionMailbox: PhoneCloudMailbox {}
 extension PhoneCloudMailbox {
+    func uploadDailyActions(deviceID:UUID,actions:[SyncDailyAction])async throws{if !actions.isEmpty{throw CloudMailboxError.invalidPayload}}
+    func dailyReceipts(deviceID:UUID,ids:[UUID])async throws->[SyncDailyReceipt]{guard ids.isEmpty else{throw CloudMailboxError.invalidPayload};return []}
     func uploadGroupActions(deviceID:UUID,actions:[SyncGroupAction])async throws{if !actions.isEmpty{throw CloudMailboxError.invalidPayload}}
     func groupActionReceipts(deviceID:UUID,ids:[UUID])async throws->[SyncGroupActionReceipt]{guard ids.isEmpty else{throw CloudMailboxError.invalidPayload};return []}
     func uploadActions(deviceID:UUID,actions:[SyncTaskAction])async throws {if !actions.isEmpty {throw CloudMailboxError.invalidPayload}}
@@ -114,7 +118,13 @@ extension PhoneCloudMailbox {
                 guard let id=UUID(uuidString:capture.id) else{throw CompanionError.invalidCapture}
                 return .init(id:id,text:capture.text,createdAt:capture.createdAt)
             }
-            let request=SyncRequest(deviceID:device,operation:"sync",captures:captures)
+            var request=SyncRequest(deviceID:device,operation:"sync",captures:captures)
+            request.dailyActions=Array(store.pendingDailyActions.prefix(2))
+            while try SyncCodec.encode(request).count>240_000 {
+                if !request.captures.isEmpty {request.captures.removeLast()}
+                else if !(request.dailyActions?.isEmpty ?? true) {request.dailyActions?.removeLast()}
+                else {throw CompanionError.invalidDailyNote}
+            }
             if let account=cloudAccount {
                 try await syncCloud(configuration:configuration,account:account,request:request,started:started)
                 return
@@ -125,7 +135,9 @@ extension PhoneCloudMailbox {
                 guard try await dependencies.accountID()==account,generation==started,
                       try dependencies.load(account)==configuration else{throw CompanionError.accountChanged}
             }
-            try store.accept(SyncCodec.decode(SyncResponse.self,from:reply),sentIDs:Set(captures.map(\.id)))
+            let response=try SyncCodec.decode(SyncResponse.self,from:reply)
+            try store.accept(response,sentIDs:Set(request.captures.map(\.id)))
+            try store.acceptDailyReceipts(response.dailyReceipts ?? [],sent:Set((request.dailyActions ?? []).map(\.id)))
             status=store.pending.isEmpty ? "Up to date" : "Sending saved captures…"
         } catch CompanionError.accountChanged {
             guard generation==started else{return}
@@ -145,6 +157,14 @@ extension PhoneCloudMailbox {
         }
         let mailbox=dependencies.mailbox(configuration,account,check)
         try await check()
+        let dailyActions=Array(store.pendingDailyActions.prefix(2))
+        if !dailyActions.isEmpty {
+            try await mailbox.uploadDailyActions(deviceID:request.deviceID,actions:dailyActions)
+            try await check()
+            let receipts=try await mailbox.dailyReceipts(deviceID:request.deviceID,ids:dailyActions.map(\.id))
+            try await check()
+            try store.acceptDailyReceipts(receipts,sent:Set(dailyActions.map(\.id)))
+        }
         let groupActions=Array(store.pendingGroupActions.prefix(4))
         if !groupActions.isEmpty {
             try await mailbox.uploadGroupActions(deviceID:request.deviceID,actions:groupActions)

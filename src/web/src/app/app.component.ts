@@ -15,6 +15,9 @@ import {
   MuiButtonComponent,
 } from "@maple/ui";
 import { NativeBridge } from "./core/native-bridge.service";
+import { DailyNoteService } from './daily-note/daily-note.service';
+import { NotebookService } from './notebooks/notebook.service';
+import { localDay, offsetDay } from './daily-note/daily-note.models';
 import { OnboardingComponent } from "./pages/onboarding.component";
 @Component({
   selector: "maple-root",
@@ -28,10 +31,14 @@ import { OnboardingComponent } from "./pages/onboarding.component";
     OnboardingComponent,
   ],
   templateUrl: "./app.component.html",
+  styleUrl: "./app.component.css",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppComponent {
   readonly companion = isCompanion();
+  readonly daily = inject(DailyNoteService);
+  readonly notebooks = inject(NotebookService);
+  readonly days = () => [{label:"Yesterday",day:offsetDay(localDay(),-1)},{label:"Today",day:localDay()},{label:"Tomorrow",day:offsetDay(localDay(),1)}];
   readonly bridge = inject(NativeBridge);
   readonly s = this.bridge.state;
   readonly router = inject(Router);
@@ -43,7 +50,7 @@ export class AppComponent {
           (e as NavigationEnd).urlAfterRedirects.split("?")[0].split("/")[1],
       ),
     ),
-    { initialValue: "overview" },
+    { initialValue: "daily" },
   );
   readonly sections: MuiSidebarSection[] = [
     {
@@ -93,7 +100,16 @@ export class AppComponent {
     },
   ]);
   constructor() {
-    if (!this.companion) this.bridge.start();
+    if (!this.companion) { this.bridge.start(); void this.notebooks.refresh(); }
+  }
+  async openDay(day: string) {
+    if (!await this.daily.flush()) return;
+    if (this.router.url.split('?')[0] === '/daily' || await this.router.navigateByUrl('/daily')) await this.daily.open(day);
+  }
+  async openNotebook(id: string) {
+    if (!await this.daily.flush()) return;
+    await this.notebooks.selectBook(id);
+    await this.router.navigateByUrl('/notebooks');
   }
   navigate(id: string | null) {
     if (id !== null) void this.router.navigateByUrl("/" + id);

@@ -1,6 +1,8 @@
 # Just Maple — Product Requirements
 
-Version 0.2 · September 23, 2026 · **Direction approved; implementation in progress**
+Version 0.2 · September 23, 2026 · **Earlier product baseline**
+
+The September 27 [living daily-note direction](LIVING-DAILY-NOTE.md) supersedes this document’s primary navigation and release surface. Retain the underlying source, evidence, task-correctness and privacy requirements.
 
 This document describes the product we are building, the current baseline, and the proposed next releases. Existing user decisions are identified separately from proposals. It does not claim that proposed capabilities are implemented or that implementation alone proves product quality.
 

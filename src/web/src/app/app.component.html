@@ -13,13 +13,18 @@
         (activeIdChange)="step($event)"
       />
     } @else {
-      <mui-sidebar
-        role="tree"
-        aria-label="Workspace navigation"
-        [sections]="sections"
-        [activeId]="active()"
-        (activeIdChange)="navigate($event)"
-      />
+      <div class="daily-navigation">
+        <p class="nav-caption">Your days</p><div class="day-rail">
+          @for(day of days(); track day.day){<button type="button" [attr.aria-current]="active() === 'daily' && daily.day() === day.day ? 'page' : null" (click)="openDay(day.day)"><span class="nav-station"></span>{{day.label}}</button>}
+        </div>
+        <p class="nav-caption">Notebook routes</p><div class="notebook-routes">
+          @for(book of notebooks.catalog().notebooks; track book.id){<button type="button" (click)="openNotebook(book.id)"><span class="notebook-station"></span>{{book.name}}</button>}
+          <button type="button" (click)="navigate('notebooks')">All notebooks</button>
+        </div>
+        <button class="secondary-nav" type="button" (click)="navigate('history')">Sources & history</button>
+        <details class="workspace-tools"><summary>Workspace tools</summary><mui-sidebar role="tree" aria-label="Additional workspace tools" [sections]="sections" [activeId]="active()" (activeIdChange)="navigate($event)" /></details>
+        <button class="secondary-nav" type="button" (click)="navigate('connections')">Connections & settings</button>
+      </div>
     }
     <footer>
       {{ s().name || "Your knowledge lives here." }}<br /><small
