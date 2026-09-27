@@ -1,7 +1,7 @@
 <mui-button variant="ghost" (pressed)="world.go('tasks')"
   >← Tasks</mui-button
 >
-<div class="eyebrow">Review first</div>
+<div class="eyebrow">Task details</div>
 @if (suggestion(); as s) {
   <h1>
     {{
@@ -15,9 +15,10 @@
     }}
   </h1>
   <p>
-    Review the action and original messages. Confirming keeps it as a saved task; later evidence can update its progress.
+    Act on this task now, or inspect its evidence and correct the details. Nothing sends a reply.
   </p>
   <h2>{{ s.candidate.title }}</h2>
+  @if(s.reviewStatus === "pending") {<maple-desktop-task-actions [nodeID]="'source:' + s.id" />}
   <maple-task-evidence [nodeID]="'source:' + s.id" />
   @if (s.sourceSubject) {<p><strong>{{ s.sourceSubject }}</strong><br>{{ s.sourceSender }}</p>}
   <p>{{ s.candidate.description }}</p>
@@ -52,6 +53,7 @@
     </p>
   }
   @if (s.reviewStatus === "pending") {
+    <details><summary>Edit details or save as a manual task</summary>
     <div class="field">
       <label>Proposed task · editable</label
       ><mui-input ariaLabel="Proposed task title" [(value)]="draft.title" />
@@ -94,6 +96,7 @@
         >{{ s.linkedTaskID ? "Apply reviewed update" : "Add task" }}</mui-button
       ><mui-button (pressed)="review('reject')">Not a task</mui-button>
     </div>
+    </details>
   }
   @if (s.reviewStatus === "rejected") {
     <mui-button (pressed)="review('undoReject')">Undo dismissal</mui-button>

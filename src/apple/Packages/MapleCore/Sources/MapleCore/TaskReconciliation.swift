@@ -62,6 +62,7 @@ public struct TaskReconciliationJob:Sendable {
 extension SQLite {
     func migrateTaskReconciliation()throws {
         try transaction {
+            try execute("CREATE INDEX IF NOT EXISTS task_suggestion_event ON task_suggestions(json_extract(json, '$.eventID'))")
             try execute("CREATE TABLE IF NOT EXISTS task_reconciliation_clock (id INTEGER PRIMARY KEY, checked_at REAL NOT NULL)")
             try execute("INSERT OR IGNORE INTO task_reconciliation_clock VALUES (1,0)")
             try execute("CREATE TABLE IF NOT EXISTS task_relations (duplicate_id TEXT PRIMARY KEY, json TEXT NOT NULL)")
@@ -175,11 +176,11 @@ extension KnowledgeStore {
     }
     func writeInferredStatus(nodeID:String,status:TaskStatus,reason:String,at:Date,command:String,actor:String)throws {
         if nodeID.hasPrefix("task:"),var task=try taskNode(nodeID) {
-            let old=task;task.status=status;task.waitingReason=status == .waiting ? reason:"";task.completedAt=status == .completed ? at:nil;task.updatedAt=at;task.version+=1
+            let old=task;task.actionState=nil;task.status=status;task.waitingReason=status == .waiting ? reason:"";task.completedAt=status == .completed ? at:nil;task.updatedAt=at;task.version+=1
             try writeTask(task,at:at)
             try history(subjects:[task.id],type:"task.\(status.rawValue)",before:old,after:task,command:command,at:at,actor:actor)
         } else if var s=try record("task_suggestions",id:String(nodeID.dropFirst(7)),as:TaskSuggestion.self) {
-            let old=s;s.candidate.status=status;s.candidate.waitingReason=status == .waiting ? reason:"";s.candidate.completedAt=status == .completed ? at:nil;s.version+=1
+            let old=s;s.candidate.actionState=nil;s.candidate.status=status;s.candidate.waitingReason=status == .waiting ? reason:"";s.candidate.completedAt=status == .completed ? at:nil;s.version+=1
             try db.execute("UPDATE task_suggestions SET json=? WHERE id=?",[try JSONCodec.string(s),s.id])
             try history(subjects:[s.id],type:"task.\(status.rawValue)",before:old,after:s,command:command,at:at,actor:actor)
         }

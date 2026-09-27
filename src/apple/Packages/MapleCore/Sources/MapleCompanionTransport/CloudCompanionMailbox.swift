@@ -134,12 +134,12 @@ import Foundation
         guard ids.count<=32 else{throw CloudMailboxError.invalidPayload}
         return try await fetch(ids.map{"ar-"+captureID(deviceID,$0)}).map {record in
             let receipt=try open(SyncTaskActionReceipt.self,record:record)
-            guard ids.contains(receipt.id),record.id=="ar-"+captureID(deviceID,receipt.id),["applied","conflict"].contains(receipt.outcome) else{throw CloudMailboxError.invalidPayload}
+            guard ids.contains(receipt.id),record.id=="ar-"+captureID(deviceID,receipt.id),receipt.valid else{throw CloudMailboxError.invalidPayload}
             return receipt
         }
     }
     public func acknowledgeAction(deviceID:UUID,receipt:SyncTaskActionReceipt)async throws {
-        guard ["applied","conflict"].contains(receipt.outcome) else{throw CloudMailboxError.invalidPayload}
+        guard receipt.valid else{throw CloudMailboxError.invalidPayload}
         let id="ar-"+captureID(deviceID,receipt.id)
         do {try await save(.init(id:id,payload:seal(receipt,id:id)))} catch CloudMailboxError.conflict {
             guard try await actionReceipts(deviceID:deviceID,ids:[receipt.id])==[receipt] else{throw CloudMailboxError.conflict}
@@ -183,6 +183,12 @@ import Foundation
         guard let record=try await fetch(["snapshot"]).first else{return nil}
         var value=try open(SyncResponse.self,record:record)
         guard value.version==1,value.tasks.count<=50,value.states.count<=32,value.activities.count<=32,value.people.count<=12,value.asOf.timeIntervalSince1970.isFinite,value.asOf<=Date().addingTimeInterval(300) else{throw CloudMailboxError.invalidPayload}
-        value.deviceID=deviceID;value.receivedIDs=[];return value
+        value.deviceID=deviceID;value.receivedIDs=[]
+        for index in value.tasks.indices {
+            if let state=value.tasks[index].actionState {
+                value.tasks[index].actionState?.canUndo=state.lastMutationScope==deviceID.uuidString.lowercased() && state.lastAction != "undo"
+            }
+        }
+        return value
     }
 }

@@ -1,3 +1,4 @@
+import { DesktopTaskActionsComponent } from './desktop-task-actions.component';
 import { TaskEvidenceComponent } from "./task-evidence.component";
 import {
   Component,
@@ -22,7 +23,7 @@ import { SourceEvent } from "../core/native-bridge.service";
 @Component({
   selector: "maple-task-detail",
   standalone: true,
-  imports: [
+  imports: [DesktopTaskActionsComponent,
     TaskEvidenceComponent,
     DatePipe,
     FormsModule,

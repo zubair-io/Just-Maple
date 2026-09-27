@@ -59,6 +59,23 @@ private enum FixtureFailure:Error {case unavailable,accountChanged}
         var altered=action;altered.status="open"
         await #expect(throws:CloudMailboxError.self){try await phone.uploadActions(deviceID:device,actions:[altered])}
     }
+    @Test func unsupportedDeliveryIsDurableWithoutApplicationAndUndoIsRecipientScoped() async throws {
+        let store=FixtureMailboxStore(),config=try PairingConfiguration.create(),device=UUID(),other=UUID()
+        let phone=mailbox(store,config),mac=mailbox(store,config)
+        let action=SyncTaskAction(taskID:"task:fixture",expectedVersion:1,intent:.done)
+        try await phone.uploadActions(deviceID:device,actions:[action])
+        try await mac.acknowledgeAction(deviceID:device,receipt:.init(id:action.id,outcome:"unsupported"))
+        #expect(try await mac.pendingActions().isEmpty)
+        #expect(try await phone.actionReceipts(deviceID:device,ids:[action.id]).first?.outcome=="unsupported")
+        var task=SyncTask(id:action.taskID,title:"Fixture",status:"waiting",activities:["Label"],due:nil)
+        task.activityIDs=["activity:stable"]
+        task.actionState = .init(resurfaceAt:nil,reviewAt:nil,waitingOn:"Actor",lastMutationScope:device.uuidString.lowercased(),lastMutationID:action.id.uuidString.lowercased(),lastAction:"waiting",canUndo:false)
+        var response=SyncResponse(deviceID:config.id,receivedIDs:[],tasks:[task]);response.supportedTaskIntents=SyncTaskIntent.allCases.map(\.rawValue)
+        try await mac.publishSnapshot(response)
+        #expect(try await phone.snapshot(deviceID:device)?.tasks.first?.actionState?.canUndo==true)
+        #expect(try await phone.snapshot(deviceID:other)?.tasks.first?.actionState?.canUndo==false)
+        #expect(try await phone.snapshot(deviceID:device)?.tasks.first?.activityIDs==["activity:stable"])
+    }
     @Test func immutableEncryptedUploadRetriesAfterLostCloudReply()async throws {
         let store=FixtureMailboxStore(),config=try PairingConfiguration.create(),device=UUID(),item=capture()
         let phone=mailbox(store,config)

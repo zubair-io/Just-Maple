@@ -20,12 +20,12 @@ import { WorldService } from "./world.service";
 })
 export class OverviewComponent {
   readonly world = inject(WorldService);
-  readonly attention = computed(() => this.world.rankedTasks().filter(i => isOpen(i.task) && i.task.status !== "waiting").slice(0, 5));
+  readonly attention = computed(() => this.world.rankedTasks().filter(i => isOpen(i.task) && i.task.status !== "waiting" && (i.task.actionState?.resurfaceAt ?? 0)<=this.world.data().asOf).slice(0, 5));
   readonly waiting = computed(() => this.world.rankedTasks().filter(i => i.task.status === 'waiting').length);
   // Keep the audit trail in History; Overview excludes ingestion and transport churn.
   readonly recentChanges = computed(() => this.world.data().history.filter(entry =>
     !/^(source|transport|sync|connector|index)\./.test(entry.type) && !entry.type.endsWith('.reprocessed')).slice(0, 2));
-  readonly total = computed(() => this.world.rankedTasks().filter(i => isOpen(i.task) && i.task.status !== "waiting").length);
+  readonly total = computed(() => this.world.rankedTasks().filter(i => isOpen(i.task) && i.task.status !== "waiting" && (i.task.actionState?.resurfaceAt ?? 0)<=this.world.data().asOf).length);
   readonly greeting = computed(() => {const hour=new Date(this.world.data().asOf*1000).getHours();return hour<12?'Good morning':hour<18?'Good afternoon':'Good evening';});
   readonly s = this.world.bridge.state;
   readonly nowStates = computed(() =>

@@ -1,12 +1,12 @@
 # Initial PR preparation and code review
 
-September 23, 2026. Findings are open; this is not a merge approval.
+September 23, 2026. Historical pre-merge review. The user subsequently approved merging PRs #1–#4; all four are merged. Follow-up fixes and their verification are tracked in [the next-slice review](DAILY-ACTIONS-NEXT-REVIEW.md).
 
-Four stacked initial-import draft PRs are open in the public `zubair-io/Just-Maple` repository: [core/storage/transport (#1)](https://github.com/zubair-io/Just-Maple/pull/1), [shared UI/providers (#2)](https://github.com/zubair-io/Just-Maple/pull/2), [Apple apps/sync (#3)](https://github.com/zubair-io/Just-Maple/pull/3), and [product/design/evaluation (#4)](https://github.com/zubair-io/Just-Maple/pull/4). Merge in order after resolving findings and retarget dependent PRs as their bases merge. No app feature PR was merged during preparation.
+Four stacked initial-import PRs were opened in the public `zubair-io/Just-Maple` repository: [core/storage/transport (#1)](https://github.com/zubair-io/Just-Maple/pull/1), [shared UI/providers (#2)](https://github.com/zubair-io/Just-Maple/pull/2), [Apple apps/sync (#3)](https://github.com/zubair-io/Just-Maple/pull/3), and [product/design/evaluation (#4)](https://github.com/zubair-io/Just-Maple/pull/4). They were merged in dependency order, retargeting dependent bases. The findings below describe the initial review, before follow-up fixes.
 
 The public snapshot and full initial commit stack passed Gitleaks with zero findings. Historical local reports and private evaluation outputs are excluded; the published dataset templates are empty. Ignore rules exclude credentials, signing material, databases, build outputs and Xcode user state. A separate source review found no private message fixtures or hardcoded credentials in the proposed source.
 
-## Open findings
+## Original findings
 
 1. **P2 — canonical evidence propagation.** `src/apple/Packages/MapleCore/Sources/MapleCore/ObligationIdentity.swift:68`: matching new evidence is retained on the suggestion, but an accepted/completed canonical task does not receive it in its evidence/history. Resolve the visible root and propagate evidence transactionally without reopening it; test canonical and consolidated tasks.
 2. **P2 — extraction scaling.** `ObligationIdentity.swift:59`: full suggestion scans plus repeated relation decoding introduce quadratic work inside extraction transactions. Narrow candidates by source/occurrence or digest and reuse relation lookup. Address before larger imports.

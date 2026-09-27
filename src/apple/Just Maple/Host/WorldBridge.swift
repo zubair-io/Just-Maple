@@ -15,6 +15,8 @@ extension Bridge {
         let requestID=try string(body,"requestID",limit:256)
         guard let version=body["expectedVersion"] as? Int,version>=0 else {throw MapleError.invalid("A current version is required.")}
         switch action {
+        case "applyTaskAction":
+            _ = try await store.applyTaskAction(nodeID:string(body,"id",limit:512),change:decode(TaskActionChange.self,body,"change"),expectedVersion:version,requestID:requestID,scope:"desktop")
         case "correctTaskInference":
             _ = try await store.correctTaskInference(nodeID:string(body,"id",limit:512),status:(body["status"] as? String).flatMap(TaskStatus.init(rawValue:)),separate:body["separate"] as? Bool ?? false,expectedVersion:version,requestID:requestID)
         case "regroupActivity": _ = try await store.regroupActivity(sourceID:string(body,"id",limit:256),target:decode(LifeActivity.self,body,"record"),selectedIDs:body["ids"] as? [String] ?? [],merge:body["merge"] as? Bool ?? false,expectedRevision:Int64(version),requestID:requestID)

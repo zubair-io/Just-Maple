@@ -90,10 +90,11 @@ extension KnowledgeStore {
                 AND (e.received_at>? OR (e.received_at=? AND e.rowid>(SELECT rowid FROM events WHERE id=?))) LIMIT 1
                 """,[source.source.connector,source.source.account,source.source.externalID,String(source.receivedAt.timeIntervalSince1970),String(source.receivedAt.timeIntervalSince1970),eventID]).first != nil
             // Retire only unreviewed output; source revisions must not leave duplicate requests.
-            for var old in try records("task_suggestions",as:TaskSuggestion.self) where old.reviewStatus=="pending" {
+            let relations = try taskRelations()
+            for var old in try suggestionsForSource(source.source) where old.reviewStatus=="pending" {
                 guard let oldSource=try event(old.eventID),oldSource.source.connector==source.source.connector,oldSource.source.account==source.source.account,oldSource.source.externalID==source.source.externalID,oldSource.receivedAt<=source.receivedAt else {continue}
                 if newerProcessed && old.eventID != eventID {continue}
-                if try obligationIsProtected(old) { continue }
+                if try obligationIsProtected(old,relations:relations) { continue }
                 let prior=old;old.reviewStatus="superseded";old.version+=1
                 try db.execute("UPDATE task_suggestions SET json=? WHERE id=?",[try JSONCodec.string(old),old.id])
                 try history(subjects:[old.id],type:"suggestion.reprocessed",before:prior,after:old,command:token,at:at,actor:"extraction")

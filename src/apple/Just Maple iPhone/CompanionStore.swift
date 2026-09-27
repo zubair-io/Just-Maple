@@ -62,8 +62,22 @@ enum CompanionError: Error, LocalizedError {
         return (snapshot.taskActions ?? []).filter{!done.contains($0.id)}
     }
     func taskAction(_ action:SyncTaskAction)throws {
-        guard action.valid, let task=snapshot.mac?.tasks.first(where:{$0.id==action.taskID}),task.version==action.expectedVersion else{throw CompanionError.invalidCapture}
         if let old=snapshot.taskActions?.first(where:{$0.id==action.id}) {guard old==action else{throw CompanionError.conflictingRequest};return}
+        guard action.validForEnqueue() else{throw CompanionError.invalidCapture}
+        if action.intent == .undo, let target=action.payload?.targetMutationID {
+            let receiptProof = snapshot.taskActions?.contains(where:{$0.id==target && $0.taskID==action.taskID && $0.intent != .undo}) == true &&
+                snapshot.taskActionReceipts?.contains(where:{$0.id==target && $0.outcome=="applied" && $0.resultingVersion==action.expectedVersion}) == true
+            // A current authenticated snapshot can outlive the bounded local receipt history.
+            // Recheck scope and revision instead of trusting a UI canUndo flag alone.
+            let snapshotProof = snapshot.mac?.tasks.contains(where:{task in
+                guard task.id==action.taskID,task.version==action.expectedVersion,let state=task.actionState else{return false}
+                return state.canUndo && state.lastMutationScope.lowercased()==snapshot.deviceID.lowercased() &&
+                    UUID(uuidString:state.lastMutationID)==target && ["done","later","waiting","notNeeded"].contains(state.lastAction)
+            }) == true
+            guard receiptProof || snapshotProof else{throw CompanionError.invalidCapture}
+        } else {
+            guard let task=snapshot.mac?.tasks.first(where:{$0.id==action.taskID}),task.version==action.expectedVersion else{throw CompanionError.invalidCapture}
+        }
         guard pendingTaskActions.count<100,!pendingTaskActions.contains(where:{$0.taskID==action.taskID}) else{throw CompanionError.queueFull}
         var next=snapshot
         // Keep outstanding actions and a bounded recent receipt history.
@@ -73,7 +87,7 @@ enum CompanionError: Error, LocalizedError {
         try Self.write(next,to:file);snapshot=next
     }
     func acceptActionReceipts(_ receipts:[SyncTaskActionReceipt],sent:Set<UUID>)throws {
-        guard Set(receipts.map(\.id)).count==receipts.count,receipts.allSatisfy({sent.contains($0.id) && ["applied","conflict"].contains($0.outcome)}),sent.isSubset(of:Set((snapshot.taskActions ?? []).map(\.id))) else{throw CompanionError.invalidCapture}
+        guard Set(receipts.map(\.id)).count==receipts.count,receipts.allSatisfy({sent.contains($0.id) && $0.valid}),sent.isSubset(of:Set((snapshot.taskActions ?? []).map(\.id))) else{throw CompanionError.invalidCapture}
         var next=snapshot,values=Dictionary((snapshot.taskActionReceipts ?? []).map{($0.id,$0)},uniquingKeysWith:{a,_ in a})
         for receipt in receipts {if let old=values[receipt.id],old != receipt{throw CompanionError.conflictingRequest};values[receipt.id]=receipt}
         next.taskActionReceipts=(next.taskActions ?? []).compactMap{values[$0.id]}

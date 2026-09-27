@@ -61,7 +61,7 @@ public struct SyncTaskAction: Codable, Sendable, Equatable {
         if let date = payload.resurfaceAt, !Self.validDate(date) || date <= issuedAt { return false }
         if let date = payload.reviewAt, !Self.validDate(date) || date <= issuedAt { return false }
         if let actor = payload.waitingOn,
-           actor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || actor.utf8.count > 256 { return false }
+           actor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || actor.utf8.count > 512 { return false }
         switch intent {
         case .done, .notNeeded:
             return payload == .init()
@@ -69,7 +69,7 @@ public struct SyncTaskAction: Codable, Sendable, Equatable {
             return payload.resurfaceAt != nil && payload.reviewAt == nil &&
                 payload.waitingOn == nil && payload.targetMutationID == nil
         case .waiting:
-            return payload.resurfaceAt == nil && payload.targetMutationID == nil
+            return payload.waitingOn != nil && payload.resurfaceAt == nil && payload.targetMutationID == nil
         case .undo:
             return payload.targetMutationID != nil && payload.targetMutationID != id &&
                 payload.resurfaceAt == nil && payload.reviewAt == nil && payload.waitingOn == nil
@@ -106,7 +106,13 @@ public struct SyncTaskAction: Codable, Sendable, Equatable {
 public struct SyncTaskActionReceipt:Codable,Sendable,Equatable {
     public var id:UUID
     public var outcome:String
-    public init(id:UUID,outcome:String){self.id=id;self.outcome=outcome}
+    /// Applied revision allows Undo even when a terminal task leaves the compact snapshot.
+    public var resultingVersion:Int?
+    public init(id:UUID,outcome:String,resultingVersion:Int?=nil){self.id=id;self.outcome=outcome;self.resultingVersion=resultingVersion}
+    public var valid:Bool {
+        ["applied","conflict","unsupported"].contains(outcome) &&
+        (resultingVersion == nil || (outcome == "applied" && resultingVersion! > 0))
+    }
 }
 public struct SyncDeviceTaskAction:Codable,Sendable,Equatable {
     public var deviceID:UUID

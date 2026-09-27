@@ -182,6 +182,7 @@ export type SimpleAction =
   | "diskAccess"
   | "showApp";
 export type Command =
+  | { action: "applyTaskAction"; id:string; change:{kind:string;issuedAt:number;resurfaceAt?:number;reviewAt?:number;waitingOn?:string;targetMutationID?:string}; expectedVersion:number; requestID:string }
   | { action: "correctTaskInference"; id: string; status?: import("../world/world.models").TaskStatus; separate?: boolean; expectedVersion: number; requestID: string }
   | { action: "regroupActivity"; id: string; record: Activity; ids: string[]; merge: boolean; expectedVersion: number; requestID: string }
   | { action: "removeActivity"; id: string; expectedVersion: number; requestID: string }

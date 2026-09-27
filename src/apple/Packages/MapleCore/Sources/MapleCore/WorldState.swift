@@ -100,7 +100,7 @@ extension KnowledgeStore {
     public func attention(at:Date = Date()) throws -> [TaskAttention] {
         let states=try worldStates(at:at)
         var items:[TaskAttention]=[]
-        for task in try tasks() where !task.status.terminal {
+        for task in try tasks() where !task.status.terminal && task.status != .waiting && task.actionState?.isDeferred(at:at) != true {
             var reasons:[String]=[],stateIDs:[String]=[];var category="upcoming",rank=4,explanation=""
             let due=try task.due?.boundary(endOfDay:true), scheduled=try task.scheduled?.boundary()
             let when=[due,scheduled].compactMap{$0}.min()

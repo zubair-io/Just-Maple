@@ -26,10 +26,28 @@ struct TaskActionContractTests {
             #expect(try SyncCodec.decode(SyncTaskAction.self, from: SyncCodec.encode(value)) == value)
         }
     }
+    @Test func receiptOutcomesAndNewSnapshotFieldsRemainBackwardCompatible() throws {
+        let id=UUID()
+        let unsupported=SyncTaskActionReceipt(id:id,outcome:"unsupported")
+        #expect(unsupported.valid)
+        #expect(try SyncCodec.decode(SyncTaskActionReceipt.self,from:SyncCodec.encode(unsupported))==unsupported)
+        #expect(!SyncTaskActionReceipt(id:id,outcome:"unsupported",resultingVersion:2).valid)
+        #expect(!SyncTaskActionReceipt(id:id,outcome:"applied",resultingVersion:0).valid)
+        let legacy=Data("{\"id\":\"\(id.uuidString)\",\"outcome\":\"applied\"}".utf8)
+        #expect(try SyncCodec.decode(SyncTaskActionReceipt.self,from:legacy).resultingVersion==nil)
+        let task=SyncTask(id:"task:fixture",title:"Fixture",status:"open",activities:["Legacy label"],due:nil)
+        let decoded=try SyncCodec.decode(SyncTask.self,from:SyncCodec.encode(task))
+        #expect(decoded.activityIDs==nil && decoded.actionState==nil && decoded.dueAt==nil)
+        var dated=task;dated.dueAt=issued
+        #expect(try SyncCodec.decode(SyncTask.self,from:SyncCodec.encode(dated)).dueAt==issued)
+        let phoneEncoder=JSONEncoder();phoneEncoder.dateEncodingStrategy = .iso8601
+        let phoneObject=try #require(JSONSerialization.jsonObject(with:phoneEncoder.encode(dated)) as? [String:Any])
+        #expect((phoneObject["dueAt"] as? String)?.contains("T")==true)
+    }
     @Test func malformedAndCrossIntentPayloadsFailClosed() throws {
-        var bad = [action(.later), action(.undo), action(.done, .init(waitingOn: "actor")),
+        var bad = [action(.later), action(.undo), action(.waiting), action(.done, .init(waitingOn: "actor")),
                    action(.later, .init(resurfaceAt: issued)), action(.waiting, .init(waitingOn: "  ")),
-                   action(.waiting, .init(waitingOn: String(repeating: "x", count: 257))),
+                   action(.waiting, .init(waitingOn: String(repeating: "x", count: 513))),
                    action(.waiting, .init(reviewAt: issued.addingTimeInterval(-1))),
                    action(.undo, .init(resurfaceAt: issued.addingTimeInterval(10), targetMutationID: UUID()))]
         var mismatch = action(.done); mismatch.status = "completed"; bad.append(mismatch)

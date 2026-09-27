@@ -29,6 +29,7 @@ extension CompanionMacMailbox {
     var stop: () -> Void
     var isListening: () -> Bool
     var mailboxFactory: ((PairingConfiguration, String, @escaping Authorization) -> any CompanionMacMailbox)?
+    var supportedTaskIntents = SyncTaskIntent.allCases
     var automaticMonitoring = true
     var alert: ((NSAlert) async -> NSApplication.ModalResponse)?
     static func native() -> Self {
@@ -311,14 +312,32 @@ extension CompanionMacMailbox {
         for envelope in actions.prefix(32) {
             try await validateCloud(configuration:configuration,accountID:accountID,generation:generation)
             let action=envelope.action
-            guard action.valid,action.intent == nil,let status=TaskStatus(rawValue:action.status) else{throw CloudMailboxError.invalidPayload}
+            guard action.valid else{throw CloudMailboxError.invalidPayload}
+            if let intent=action.intent,!dependencies.supportedTaskIntents.contains(intent) {
+                try await mailbox.acknowledgeAction(deviceID:envelope.deviceID,receipt:.init(id:action.id,outcome:"unsupported"))
+                continue
+            }
+            var resultingVersion:Int?
             let outcome:String
             do {
-                _ = try await store.correctTaskInference(nodeID:action.taskID,status:status,separate:false,expectedVersion:action.expectedVersion,requestID:"companion-action:"+envelope.deviceID.uuidString.lowercased()+":"+action.id.uuidString.lowercased())
-                outcome="applied"
+                if let intent=action.intent,let issuedAt=action.issuedAt {
+                    let change=TaskActionChange(kind:intent.rawValue,issuedAt:issuedAt,
+                        resurfaceAt:action.payload?.resurfaceAt,reviewAt:action.payload?.reviewAt,
+                        waitingOn:action.payload?.waitingOn,targetMutationID:action.payload?.targetMutationID?.uuidString.lowercased())
+                    let result=try await store.applyTaskAction(nodeID:action.taskID,change:change,expectedVersion:action.expectedVersion,
+                        requestID:action.id.uuidString.lowercased(),scope:envelope.deviceID.uuidString.lowercased())
+                    resultingVersion=result.version
+                    outcome="applied"
+                } else if let status=TaskStatus(rawValue:action.status) {
+                    _ = try await store.correctTaskInference(nodeID:action.taskID,status:status,separate:false,expectedVersion:action.expectedVersion,requestID:"companion-action:"+envelope.deviceID.uuidString.lowercased()+":"+action.id.uuidString.lowercased())
+                    outcome="applied"
+                } else {
+                    // Terminal delivery receipt, never application. Do not block unrelated work.
+                    outcome="unsupported"
+                }
             } catch MapleError.invalid {outcome="conflict"}
             try await validateCloud(configuration:configuration,accountID:accountID,generation:generation)
-            try await mailbox.acknowledgeAction(deviceID:envelope.deviceID,receipt:.init(id:action.id,outcome:outcome))
+            try await mailbox.acknowledgeAction(deviceID:envelope.deviceID,receipt:.init(id:action.id,outcome:outcome,resultingVersion:resultingVersion))
         }
         let pending = try await mailbox.pending(limit: 32)
         try await validateCloud(configuration: configuration, accountID: accountID, generation: generation)
@@ -343,7 +362,8 @@ extension CompanionMacMailbox {
         let world = try await store.worldSnapshot()
         let people = try await store.people(limit: 12)
         try await validateCloud(configuration: configuration, accountID: accountID, generation: generation)
-        let response = CompanionSyncProjection.make(world: world, deviceID: configuration.id, receivedIDs: [], people: people, displayName: model?.name)
+        var response = CompanionSyncProjection.make(world: world, deviceID: configuration.id, receivedIDs: [], people: people, displayName: model?.name)
+        response.supportedTaskIntents=dependencies.supportedTaskIntents.map(\.rawValue)
         var comparable = response; comparable.asOf = Date(timeIntervalSince1970: 0)
         let fingerprint = try JSONSerialization.data(withJSONObject: JSONSerialization.jsonObject(with: SyncCodec.encode(comparable)), options: [.sortedKeys])
         if fingerprint != publishedSnapshot || publishedAt.map({ Date().timeIntervalSince($0) >= 300 }) != false {

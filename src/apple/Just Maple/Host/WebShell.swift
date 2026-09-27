@@ -73,7 +73,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
         case "providerSelect": try model.selectProvider(string(body,"provider",limit:16))
         case "snapshot":
             if let store = model.store { model.world = try await store.worldSnapshot() }
-        case "correctTaskInference", "regroupActivity", "removeActivity", "saveActivity", "saveTask", "saveSeries", "correctState", "reviewSuggestion", "acknowledgeAttention", "extractTasks", "worldHistory":
+        case "applyTaskAction", "correctTaskInference", "regroupActivity", "removeActivity", "saveActivity", "saveTask", "saveSeries", "correctState", "reviewSuggestion", "acknowledgeAttention", "extractTasks", "worldHistory":
             return try await worldCommand(action, body)
         case "step":
             guard let value = body["value"] as? Int, (-1...7).contains(value), value != -1 || model.ready else { throw MapleError.invalid("Complete your name first.") }

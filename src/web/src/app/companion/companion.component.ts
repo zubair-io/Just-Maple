@@ -1,3 +1,4 @@
+import { TaskActionsComponent, TaskActionRequest } from '../world/task-actions.component';
 import { ChangeDetectionStrategy, Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -8,13 +9,13 @@ import { NotebookService } from '../notebooks/notebook.service';
 import { companionHost } from '../core/companion-host';
 export { companionHost, isCompanion } from '../core/companion-host';
 
-export interface CompanionTask {id:string;title:string;status:string;activities:string[];due?:string;version?:number;detail?:string;assignee?:string}
-export interface CompanionTaskAction {id:string;taskID:string;expectedVersion:number;status:string}
+export interface CompanionTask {id:string;title:string;status:string;activities:string[];activityIDs?:string[];actionState?:{resurfaceAt?:string;reviewAt?:string;waitingOn?:string;lastMutationID:string;lastAction:string;canUndo:boolean};due?:string;dueAt?:string;version?:number;detail?:string;assignee?:string}
+export interface CompanionTaskAction {id:string;taskID:string;expectedVersion:number;status:string;intent?:string}
 export interface CompanionCapture { id: string; text: string; createdAt: string }
-export interface CompanionSnapshot { deviceID: string; captures: CompanionCapture[]; taskActions?:CompanionTaskAction[];taskActionReceipts?:{id:string;outcome:string}[]; receivedIDs?:string[]; uploadedIDs?:string[]; cloudEnabled?:boolean; paired?:boolean; connectionStatus?:string;
-  mac?:{asOf:string;displayName?:string;activities?:{id:string;name:string;kind:string;lifecycle:string;openTaskCount:number}[];people?:{id:string;name:string;pinned:boolean;relationship:string}[];tasks:CompanionTask[];states:{property:string;status:string;value?:string}[]} }
+export interface CompanionSnapshot { deviceID: string; captures: CompanionCapture[]; taskActions?:CompanionTaskAction[];taskActionReceipts?:{id:string;outcome:string;resultingVersion?:number}[]; receivedIDs?:string[]; uploadedIDs?:string[]; cloudEnabled?:boolean; paired?:boolean; connectionStatus?:string;
+  mac?:{asOf:string;needsYouTotal?:number;waitingTotal?:number;laterTotal?:number;supportedTaskIntents?:string[];displayName?:string;activities?:{id:string;name:string;kind:string;lifecycle:string;openTaskCount:number}[];people?:{id:string;name:string;pinned:boolean;relationship:string}[];tasks:CompanionTask[];states:{property:string;status:string;value?:string}[]} }
 @Component({
-  selector: 'maple-companion', standalone: true, imports: [NgTemplateOutlet, FormsModule, MuiButtonComponent, NotebooksComponent, OverviewSurfaceComponent],
+  selector: 'maple-companion', standalone: true, imports: [TaskActionsComponent, NgTemplateOutlet, FormsModule, MuiButtonComponent, NotebooksComponent, OverviewSurfaceComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="companion">
@@ -23,19 +24,21 @@ export interface CompanionSnapshot { deviceID: string; captures: CompanionCaptur
         @for (tab of tabs; track tab.id) {<mui-button variant="ghost" [fullWidth]="true" [attr.aria-current]="view() === tab.id ? 'page' : null" (pressed)="selectView(tab.id)">{{ tab.label }}</mui-button>}
       </nav>
       <p class="sync-status" role="status">{{ state().connectionStatus || 'Connecting to iCloud…' }}</p>
-      @if (state().mac; as mac) {<p class="muted sync-time">Last synced {{ date(mac.asOf) }} · Available offline</p>}
+      @if (state().mac; as mac) {<p class="muted sync-time">Last synced {{ date(mac.asOf) }} · Available offline</p>
+      @if(partialSnapshot()){<p class="muted">Showing a limited set from your Mac. More tasks are available there.</p>}}
       @if (error()) {<p class="error notice" role="alert">{{ error() }}</p>}
       @if (view() === 'notebooks') {<main class="notebooks-page"><maple-notebooks /></main>}
       @else if (view() === 'overview') {<main>
         @if (state().mac; as mac) {
-          <maple-overview-surface [greeting]="greeting()" [name]="mac.displayName || ''" [states]="nowStates()" [activities]="activities()" [total]="needsYouTasks().length" [waiting]="waitingTasks().length" (viewWaiting)="showWaiting()" (viewActivities)="selectView('activities')" [inspectable]="false" (viewTasks)="showNeedsYou()" (activitySelected)="showActivity($event)">
+          <maple-overview-surface [greeting]="greeting()" [name]="mac.displayName || ''" [states]="nowStates()" [activities]="activities()" [total]="mac.needsYouTotal ?? needsYouTasks().length" [waiting]="mac.waitingTotal ?? waitingTasks().length" (viewWaiting)="showWaiting()" (viewActivities)="selectView('activities')" [inspectable]="false" (viewTasks)="showNeedsYou()" (activitySelected)="showActivity($event)">
             <div attention>@for(task of attention(); track task.id) {<ng-container *ngTemplateOutlet="taskRow; context: {$implicit:task}" />}
             @empty {<p class="muted">No tasks need you in your latest Mac update.</p>}</div>
           </maple-overview-surface>
         } @else {<h1>Your overview.</h1><p>{{ loaded() ? 'Waiting for your Mac’s first update. Your overview will appear automatically.' : 'Opening your workspace…' }}</p>}
       </main>}
-      @else if (view() === 'tasks') {<main><h1>{{ activityFilter() || (waitingOnly() ? 'Waiting' : needsOnly() ? 'Needs you' : 'Tasks') }}</h1>
-        @if(activityFilter() || waitingOnly() || needsOnly()) {<mui-button variant="ghost" (pressed)="showTasks()">All tasks</mui-button>}
+      @else if (view() === 'tasks') {<main><h1>{{ activityLabel() || (waitingOnly() ? 'Waiting' : laterOnly() ? 'Later' : needsOnly() ? 'Needs you' : 'Tasks') }}</h1>
+        @if(activityFilter() || waitingOnly() || needsOnly() || laterOnly()) {<mui-button variant="ghost" (pressed)="showTasks()">All tasks</mui-button>}
+        <div class="task-actions"><mui-button variant="ghost" (pressed)="showNeedsYou()">Needs you</mui-button><mui-button variant="ghost" (pressed)="showWaiting()">Waiting</mui-button><mui-button variant="ghost" (pressed)="showLater()">Later</mui-button></div>
         @for(task of visibleTasks(); track task.id) {<ng-container *ngTemplateOutlet="taskRow; context: {$implicit:task}" />}
         @empty {<p class="muted">No open tasks in this Mac update.</p>}
         <p class="muted">Changes sync to your Mac automatically. When offline, they stay queued on this iPhone.</p>
@@ -65,14 +68,18 @@ export interface CompanionSnapshot { deviceID: string; captures: CompanionCaptur
           }
         </section>
       </main>}
-      <ng-template #taskRow let-task><article class="saved-note task-card" [attr.data-task-id]="task.id"><mui-button variant="ghost" [fullWidth]="true" (pressed)="openTask(task)">{{ task.title }}</mui-button><small>{{ task.status === 'waiting' ? 'Waiting' : 'Open' }}{{ task.due ? ' · ' + task.due : '' }}</small><div class="tags">@for(tag of task.activities; track tag) {<mui-button variant="ghost" (pressed)="filterTasks(tag)">{{ tag }}</mui-button>}</div><div class="task-actions"><mui-button variant="ghost" [disabled]="busy() || !task.version || taskPending(task.id) || taskApplied(task)" (pressed)="completeTask(task)">Mark complete</mui-button><small role="status">{{ taskActionStatus(task.id) }}</small></div></article></ng-template>
+      @for(change of undoableChanges(); track change.id){<section class="notice"><p>Task change saved on Mac.</p><mui-button variant="ghost" [disabled]="busy() || taskPending(change.taskID)" (pressed)="undoChange(change)">Undo {{intentLabel(change.intent)}}</mui-button></section>}
+      <ng-template #taskRow let-task><article class="saved-note task-card" [attr.data-task-id]="task.id"><mui-button variant="ghost" [fullWidth]="true" (pressed)="openTask(task)">{{ task.title }}</mui-button><small>{{ task.status === 'waiting' ? 'Waiting' : deferred(task) ? 'Later' : 'Open' }}{{ task.due ? ' · ' + task.due : '' }}</small><div class="tags">@for(tag of task.activities; track $index; let i=$index) {<mui-button variant="ghost" (pressed)="task.activityIDs?.[i] ? showActivity(task.activityIDs[i]) : filterTasks(tag)">{{ tag }}</mui-button>}</div><div class="task-actions"><mui-button variant="ghost" [disabled]="busy() || !task.version || taskPending(task.id) || taskApplied(task)" (pressed)="completeTask(task)">Mark complete</mui-button><small role="status">{{ taskActionStatus(task.id) }}</small></div></article></ng-template>
       @if (selectedTask(); as task) {<section class="task-detail" role="dialog" aria-modal="false" [attr.aria-label]="task.title">
         <mui-button variant="ghost" (pressed)="selectedTaskID.set('')">Close task</mui-button><h2>{{ task.title }}</h2>
         <p>{{ task.detail || 'No additional details in this Mac update.' }}</p>
         @if (task.assignee) {<p>{{ task.status === 'waiting' ? 'Waiting on' : 'Assigned to' }} {{ task.assignee }}</p>}
         @if (task.due) {<p>Due {{ task.due }}</p>}
         <div class="tags">@for(tag of task.activities; track tag){<span>{{ tag }}</span>}</div>
-        <mui-button [disabled]="busy() || !task.version || taskPending(task.id) || taskApplied(task)" (pressed)="completeTask(task)">Mark complete</mui-button>
+        @if(typedActionsAvailable()) {<maple-task-actions [identity]="task.id" [deadline]="taskDeadline(task)" [version]="task.version || 0" [disabled]="busy() || !task.version || taskPending(task.id) || taskApplied(task)" [waiting]="task.status==='waiting'" [terminal]="task.status==='completed'||task.status==='cancelled'" [undoID]="task.actionState?.canUndo ? task.actionState?.lastMutationID || '' : ''" (submitAction)="applyTask(task,$event)" />}
+        @else {<mui-button [disabled]="busy() || !task.version || taskPending(task.id) || taskApplied(task)" (pressed)="completeTask(task)">Mark complete</mui-button>}
+        @if(task.actionState?.resurfaceAt; as at){<p>Deferred until {{date(at)}}.</p>}
+        @if(task.actionState?.reviewAt; as at){<p>Waiting review: {{date(at)}}.</p>}
         <p role="status">{{ taskActionStatus(task.id) }}</p>
         @if (!task.version) {<p>Waiting for an updated Mac snapshot before editing.</p>}
       </section>}
@@ -94,21 +101,33 @@ export class CompanionComponent implements OnDestroy {
   readonly tabs=[{id:'overview',label:'Overview'},{id:'tasks',label:'Tasks'},{id:'people',label:'People'},{id:'notebooks',label:'Notebooks'},{id:'capture',label:'Capture'}] as const;
   readonly view=signal<'overview'|'tasks'|'activities'|'people'|'notebooks'|'capture'>('overview');
   readonly activityFilter=signal('');
+  readonly activityFilterID=signal('');readonly laterOnly=signal(false);
+  readonly activityLabel=computed(()=>this.state().mac?.activities?.find(a=>a.id===this.activityFilterID())?.name || this.activityFilter());
   readonly waitingOnly=signal(false);
   readonly needsOnly=signal(false);
   readonly openTasks=computed(()=>(this.state().mac?.tasks || []).filter(t=>['open','in_progress','waiting'].includes(t.status)));
   readonly waitingTasks=computed(()=>this.openTasks().filter(t=>t.status==='waiting'));
-  readonly needsYouTasks=computed(()=>this.openTasks().filter(t=>t.status!=='waiting'));
+  readonly needsYouTasks=computed(()=>this.openTasks().filter(t=>t.status!=='waiting' && !this.deferred(t)));
   readonly attention=computed(()=>this.needsYouTasks().slice(0,5));
   readonly greeting=computed(()=>{const h=new Date().getHours();return h<12?'Good morning':h<18?'Good afternoon':'Good evening';});
   readonly nowStates=computed(()=>(this.state().mac?.states || []).filter(s=>['known','conflicting'].includes(s.status) && ['presence','currentBehavior','availability','employment','role','projects','travel'].includes(s.property)));
   readonly activities=computed(()=>(this.state().mac?.activities || []).filter(a=>a.lifecycle==='active').map(a=>({...a,detail:a.kind==='area'?'Ongoing':'Active'})));
-  readonly visibleTasks=computed(()=>(this.state().mac?.tasks || []).filter(t=>(!this.activityFilter() || t.activities.includes(this.activityFilter())) && (!this.waitingOnly() || t.status==='waiting') && (!this.needsOnly() || ['open','in_progress'].includes(t.status))));
-  showNeedsYou(){this.needsOnly.set(true);this.waitingOnly.set(false);this.activityFilter.set('');void this.selectView('tasks');}
-  showWaiting(){this.needsOnly.set(false);this.activityFilter.set('');this.waitingOnly.set(true);void this.selectView('tasks');}
-  showTasks(){this.needsOnly.set(false);this.waitingOnly.set(false);this.activityFilter.set('');void this.selectView('tasks');}
-  filterTasks(name:string){this.needsOnly.set(false);this.waitingOnly.set(false);this.activityFilter.set(name);void this.selectView('tasks');}
-  showActivity(id:string){const a=this.state().mac?.activities?.find(a=>a.id===id);if(a)this.filterTasks(a.name);}
+  deferred(task:CompanionTask){return !!task.actionState?.resurfaceAt && Date.parse(task.actionState.resurfaceAt)>Date.now();}
+  readonly partialSnapshot=computed(()=>{const m=this.state().mac;return !!m && (m.needsYouTotal??0)+(m.waitingTotal??0)+(m.laterTotal??0)>m.tasks.length;});
+  readonly visibleTasks=computed(()=>(this.state().mac?.tasks || []).filter(t=>(this.activityFilterID()?this.matchesActivity(t):!this.activityFilter()||t.activities.includes(this.activityFilter())) && (!this.waitingOnly() || t.status==='waiting') && (!this.needsOnly() || ['open','in_progress'].includes(t.status)&&!this.deferred(t)) && (!this.laterOnly() || this.deferred(t))));
+  matchesActivity(task:CompanionTask){
+    if(task.activityIDs)return task.activityIDs.includes(this.activityFilterID());
+    const all=this.state().mac?.activities||[];const selected=all.find(a=>a.id===this.activityFilterID());if(!selected)return false;
+    const label=selected.name.slice(0,80);
+    return all.filter(a=>a.name.slice(0,80)===label).length===1 && task.activities.includes(label);
+  }
+  private clearTaskFilters(){this.needsOnly.set(false);this.waitingOnly.set(false);this.laterOnly.set(false);this.activityFilter.set('');this.activityFilterID.set('');}
+  showNeedsYou(){this.clearTaskFilters();this.needsOnly.set(true);void this.selectView('tasks');}
+  showWaiting(){this.clearTaskFilters();this.waitingOnly.set(true);void this.selectView('tasks');}
+  showLater(){this.clearTaskFilters();this.laterOnly.set(true);void this.selectView('tasks');}
+  showTasks(){this.clearTaskFilters();void this.selectView('tasks');}
+  filterTasks(name:string){this.clearTaskFilters();this.activityFilter.set(name);void this.selectView('tasks');}
+  showActivity(id:string){const a=this.state().mac?.activities?.find(a=>a.id===id);if(a){this.clearTaskFilters();this.activityFilterID.set(id);void this.selectView('tasks');}}
   async selectView(view:'overview'|'tasks'|'activities'|'people'|'notebooks'|'capture'){if(this.view()===view)return;if(this.view()==='notebooks' && !await this.notes.flush())return;this.view.set(view);}
   readonly state=signal<CompanionSnapshot>({deviceID:'',captures:[]});
   readonly busy=signal(false); readonly loaded=signal(false); readonly error=signal(''); readonly saved=signal(false);
@@ -127,13 +146,22 @@ export class CompanionComponent implements OnDestroy {
   readonly selectedTaskID=signal('');
   readonly selectedTask=computed(()=>this.state().mac?.tasks.find(t=>t.id===this.selectedTaskID()));
   private taskRequests=new Map<string,string>();
+  private completionRequests=new Map<string,TaskActionRequest>();
+  private undoRequests=new Map<string,TaskActionRequest>();
   openTask(task:CompanionTask){this.selectedTaskID.set(task.id);}
   private latestAction(taskID:string){return this.state().taskActions?.filter(a=>a.taskID===taskID).at(-1);}
   private receipt(taskID:string){const action=this.latestAction(taskID);return action && this.state().taskActionReceipts?.find(r=>r.id.toLowerCase()===action.id.toLowerCase());}
   taskPending(taskID:string){return !!this.latestAction(taskID) && !this.receipt(taskID);}
   taskApplied(task:CompanionTask){return this.receipt(task.id)?.outcome==='applied' && this.latestAction(task.id)?.expectedVersion===task.version;}
-  taskActionStatus(taskID:string){const r=this.receipt(taskID);return r?.outcome==='applied'?'Completed on Mac':r?.outcome==='conflict'?'Task changed on Mac. Review its latest details before trying again.':this.taskPending(taskID)?'Saved on iPhone · waiting for Mac':'';}
+  taskActionStatus(taskID:string){const r=this.receipt(taskID);return r?.outcome==='applied'?'Change saved on Mac':r?.outcome==='unsupported'?'Your Mac needs an update to perform this action.':r?.outcome==='conflict'?'Task changed on Mac. Review its latest details before trying again.':this.taskPending(taskID)?'Saved on iPhone · waiting for Mac':'';}
+  taskDeadline(task:CompanionTask){const value=task.dueAt?Date.parse(task.dueAt)/1000:NaN;return Number.isFinite(value)?value:undefined;}
   async completeTask(task:CompanionTask){
+    if(this.typedActionsAvailable()){
+      const key=task.id+':'+task.version;
+      let request=this.completionRequests.get(key);
+      if(!request){request={requestID:crypto.randomUUID(),intent:'done',issuedAt:new Date().toISOString(),payload:{}};this.completionRequests.set(key,request);}
+      await this.applyTask(task,request);return;
+    }
     if(this.busy() || !task.version || this.taskPending(task.id) || this.taskApplied(task))return;
     this.busy.set(true);this.error.set('');
     const key=task.id+':'+task.version;
@@ -141,6 +169,22 @@ export class CompanionComponent implements OnDestroy {
     try {this.state.set(await this.command({action:'taskAction',id,taskID:task.id,expectedVersion:task.version,status:'completed'}));this.taskRequests.delete(key);}
     catch {this.error.set('Could not save the task change. Please try again.');}
     finally {this.busy.set(false);}
+  }
+  readonly typedActionsAvailable=computed(()=>['done','later','waiting','notNeeded','undo'].every(i=>this.state().mac?.supportedTaskIntents?.includes(i)));
+  readonly undoableChanges=computed(()=> (this.state().taskActions||[]).filter(a=>a.intent && a.intent!=='undo' && this.latestAction(a.taskID)?.id===a.id && this.state().taskActionReceipts?.some(r=>r.id.toLowerCase()===a.id.toLowerCase()&&r.outcome==='applied'&&!!r.resultingVersion)).slice(-3));
+  intentLabel(intent?:string){return ({done:'completion',later:'deferral',waiting:'waiting change',notNeeded:'dismissal'} as Record<string,string>)[intent||'']||'change';}
+  async applyTask(task:CompanionTask,request:TaskActionRequest){
+    if(this.busy()||!task.version||this.taskPending(task.id))return;
+    this.busy.set(true);this.error.set('');
+    try{this.state.set(await this.command({action:'taskAction',id:request.requestID,taskID:task.id,expectedVersion:task.version,intent:request.intent,issuedAt:request.issuedAt,payload:request.payload}));}
+    catch{this.error.set('Could not confirm the task change. Please retry; the same change will not be applied twice.');}
+    finally{this.busy.set(false);}
+  }
+  async undoChange(change:CompanionTaskAction){
+    const receipt=this.state().taskActionReceipts?.find(r=>r.id.toLowerCase()===change.id.toLowerCase());if(!receipt?.resultingVersion)return;
+    const key='undo:'+change.id;
+    let request=this.undoRequests.get(key);if(!request){request={requestID:crypto.randomUUID(),intent:'undo',issuedAt:new Date().toISOString(),payload:{targetMutationID:change.id}};this.undoRequests.set(key,request);}
+    await this.applyTask({id:change.taskID,title:'',status:'completed',activities:[],version:receipt.resultingVersion},request);
   }
   uploaded(id:string){return this.state().uploadedIDs?.includes(id.toLowerCase()) ?? false;}
   delivered(id:string){return this.state().receivedIDs?.includes(id.toLowerCase()) ?? false;}

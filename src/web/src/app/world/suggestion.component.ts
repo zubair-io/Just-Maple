@@ -1,3 +1,4 @@
+import { DesktopTaskActionsComponent } from './desktop-task-actions.component';
 import { TaskEvidenceComponent } from "./task-evidence.component";
 import {
   Component,
@@ -20,7 +21,7 @@ import { newTask } from "./world.models";
 @Component({
   selector: "maple-suggestion",
   standalone: true,
-  imports: [
+  imports: [DesktopTaskActionsComponent,
     TaskEvidenceComponent,
     FormsModule,
     MuiButtonComponent,
