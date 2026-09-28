@@ -13,5 +13,6 @@ Build the daily living note as the primary experience, following the approved do
 - Fixtures must be visibly labeled. Test transport/storage correctness separately from live model quality.
 - Keep successful responses, context and evidence IDs inspectable. Do not log secrets or private HTTP error bodies.
 - Add a regression test for storage, routing, concurrency or provider-contract changes. Run npm run test:core and build the CLI with --package-path src/apple/Packages/MapleCore. Run Angular and Xcode tests for UI/native changes.
+- After completing and verifying app changes, run `npm run build` to produce a fresh Mac app for ongoing user testing. Report the build result and app path. The running app does not hot reload; do not terminate an active editing session or discard unsaved work to relaunch it.
 - Keep source projects untouched during this build. No blanket editor or server code imports.
 - Preserve the user-created Xcode project, bundle identity, development team and Automatic signing. See docs/ARCHITECTURE.md for the macOS scope, existing unsandboxed Messages requirement and remaining distribution work.
