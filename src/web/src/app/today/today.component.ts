@@ -7,13 +7,13 @@ import {
   inject,
   signal,
 } from "@angular/core";
-import { NotebookService } from "../notebooks/notebook.service";
 import { DatePipe } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ActivatedRoute, Router } from "@angular/router";
 import { Subscription, combineLatest } from "rxjs";
 import { MuiButtonComponent } from "@maple/ui";
 import { TodayDocumentService } from "./today-document.service";
+import { relativeDayLabel } from "./relative-day";
 import { localDay, offsetDay } from "../daily-note/daily-note.models";
 import { MapleEditorComponent } from "../editor/maple-editor.component";
 import {
@@ -34,44 +34,9 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: ` <section class="today-page">
-    <header class="document-top">
-      <span class="document-path">{{
-        notes.document()?.path || "Daily / " + notes.day() + ".md"
-      }}</span>
-      <div>
-        <mui-button variant="ghost" (pressed)="navigateDay(-1)"
-          >← Previous</mui-button
-        ><mui-button variant="ghost" (pressed)="navigateDay(1)"
-          >Next →</mui-button
-        >
-      </div>
+    <header class="note-date">
+      <time class="date-chip" [attr.datetime]="notes.day()" [attr.title]="formattedDay()" [attr.aria-label]="formattedDay()">{{ relativeDay() }}</time>
     </header>
-    <div class="document-location">
-      <label
-        >Notebook
-        <select
-          aria-label="Daily notebook"
-          [ngModel]="notes.document()?.notebookID || ''"
-          (ngModelChange)="selectNotebook($event)"
-        >
-          @for (book of notebooks.catalog().notebooks; track book.id) {
-            <option [value]="book.id">{{ book.name }}</option>
-          }
-          @if (notes.document() && !hasSelectedNotebook()) {
-            <option [value]="notes.document()!.notebookID">
-              Current daily notebook
-            </option>
-          }
-        </select></label
-      ><label
-        >Day
-        <input
-          type="date"
-          aria-label="Daily note date"
-          [ngModel]="notes.day()"
-          (ngModelChange)="router.navigate(['/today', $event])"
-      /></label>
-    </div>
     @if (currentDay() !== openedOnDay() && notes.day() !== currentDay()) {
       <p class="document-notice">
         It is now {{ currentDay() }}. This note stays on {{ notes.day() }} while
@@ -83,31 +48,6 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
         >
       </p>
     }
-    <div class="day-heading">
-      <p>{{ formattedDay() }}</p>
-      <h1>
-        {{
-          notes.day() === localDay()
-            ? "Today, a little clearer."
-            : "A day worth keeping."
-        }}
-      </h1>
-    </div>
-    <div class="document-status" aria-live="polite">
-      <span>{{
-        notes.loading()
-          ? "Opening your daily note…"
-          : notes.saving()
-            ? "Saving…"
-            : notes.status()
-      }}</span>
-      @if (notes.dirty()) {
-        <span>· Unsaved changes</span>
-      }
-      @if (notes.document()?.indexingPending) {
-        <span>· Indexing pending</span>
-      }
-    </div>
     @if (notes.error()) {
       <div class="document-error" role="alert">
         <p>{{ notes.error() }}</p>
@@ -153,6 +93,7 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
         <maple-editor
           #editor
           [initial]="notes.initial()"
+          [showToolbar]="false"
           [readOnly]="doc.readOnly || notes.actionBusy()"
           (changed)="notes.change($event)"
           (inspected)="selected.set($event)"
@@ -208,6 +149,7 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
       </details>
       <details class="document-organizer">
         <summary>Organize blocks · cleared items · document history</summary>
+        <mui-button variant="ghost" (pressed)="toggleMarkdown()">{{ editorInstance?.source() ? "Formatted view" : "View Markdown" }}</mui-button>
         <p class="small">
           Clearing removes a block from this note. Completing a linked task is a
           separate action.
@@ -493,64 +435,26 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
         max-width: 940px;
         margin: auto;
       }
-      .document-top {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 20px;
-        margin: 8px 0 48px;
+      .note-date {
+        margin: 8px 0 28px;
       }
-      .document-path {
-        font: 12px var(--font-mono);
-        color: var(--color-text-muted);
-        overflow-wrap: anywhere;
-      }
-      .document-location {
-        display: flex;
-        gap: 18px;
-        flex-wrap: wrap;
-        margin-bottom: 24px;
-        font: 12px var(--font-sans);
-        color: var(--color-text-muted);
-      }
-      .document-location label {
-        display: flex;
+      .date-chip {
+        display: inline-flex;
         align-items: center;
         gap: 8px;
-      }
-      .document-location select,
-      .document-location input {
-        font: 12px var(--font-sans);
-        color: var(--color-text-main);
-        background: var(--color-bg-secondary);
+        padding: 6px 12px;
         border: 1px solid var(--color-border);
-        border-radius: 5px;
-        padding: 7px 9px;
-        max-width: 240px;
+        border-radius: 999px;
+        background: var(--color-bg-secondary);
+        color: var(--color-text-main);
+        font: 13px/1.5 var(--font-sans);
       }
-      .document-top > div {
-        display: flex;
-        gap: 6px;
-      }
-      .day-heading > p {
-        font: 12px var(--font-sans);
-        letter-spacing: 0.15em;
-        text-transform: uppercase;
-        color: var(--color-text-muted);
-      }
-      h1 {
-        font: clamp(32px, 4.3vw, 58px)/1.2 var(--font-serif);
-        font-weight: 400;
-        letter-spacing: -0.04em;
-        margin: 14px 0 26px;
-      }
-      .document-status {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        font-size: 12px;
-        color: var(--color-text-muted);
-        margin-bottom: 20px;
+      .date-chip::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--color-writing, var(--color-primary));
       }
       .document-error,
       .document-notice {
@@ -710,36 +614,6 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
         outline-offset: 2px;
       }
       @media (max-width: 650px) {
-        .document-top {
-          display: block;
-          margin-bottom: 28px;
-        }
-        .document-location {
-          display: flex;
-          gap: 18px;
-          flex-wrap: wrap;
-          margin-bottom: 24px;
-          font: 12px var(--font-sans);
-          color: var(--color-text-muted);
-        }
-        .document-location label {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .document-location select,
-        .document-location input {
-          font: 12px var(--font-sans);
-          color: var(--color-text-main);
-          background: var(--color-bg-secondary);
-          border: 1px solid var(--color-border);
-          border-radius: 5px;
-          padding: 7px 9px;
-          max-width: 240px;
-        }
-        .document-top > div {
-          margin-top: 12px;
-        }
         .document-organizer {
           font: 13px/1.6 var(--font-sans);
           margin: 24px 0;
@@ -781,7 +655,6 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
 })
 export class TodayComponent implements OnInit, OnDestroy {
   readonly notes = inject(TodayDocumentService);
-  readonly notebooks = inject(NotebookService);
   readonly currentDay = signal(localDay());
   readonly openedOnDay = signal(localDay());
   readonly route = inject(ActivatedRoute);
@@ -792,7 +665,6 @@ export class TodayComponent implements OnInit, OnDestroy {
   readonly matches = signal<SourceRow[]>([]);
   readonly pickerLoading = signal(false);
   readonly pickerError = signal("");
-  readonly localDay = localDay;
   readonly tomorrow = () => offsetDay(this.notes.day(), 1);
   sourceSearch = "";
   private subscription?: Subscription;
@@ -805,7 +677,7 @@ export class TodayComponent implements OnInit, OnDestroy {
       queueMicrotask(() => void this.insertPending(id));
     }
   }
-  private editorInstance?: MapleEditorComponent;
+  protected editorInstance?: MapleEditorComponent;
   ngOnInit() {
     this.subscription = combineLatest([
       this.route.paramMap,
@@ -820,15 +692,8 @@ export class TodayComponent implements OnInit, OnDestroy {
       void this.notes.pollRun();
     }, 2000);
   }
-  hasSelectedNotebook() {
-    return this.notebooks
-      .catalog()
-      .notebooks.some((book) => book.id === this.notes.document()?.notebookID);
-  }
-  async selectNotebook(id: string) {
-    if (await this.notes.open(this.notes.day(), false, id))
-      await this.notebooks.refresh();
-  }
+  relativeDay() { return relativeDayLabel(this.notes.day(), this.currentDay()); }
+  toggleMarkdown() { this.editorInstance?.toggleSource(); }
   ngOnDestroy() {
     this.subscription?.unsubscribe();
     clearInterval(this.timer);
@@ -851,13 +716,6 @@ export class TodayComponent implements OnInit, OnDestroy {
       day: "numeric",
       year: "numeric",
     });
-  }
-  async navigateDay(amount: number) {
-    if (await this.notes.flush())
-      await this.router.navigate([
-        "/today",
-        offsetDay(this.notes.day(), amount),
-      ]);
   }
   openPicker() {
     this.picker.set(true);

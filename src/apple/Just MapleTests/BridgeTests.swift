@@ -27,10 +27,12 @@ struct BridgeTests {
         var text = ""
         for _ in 0..<50 {
             text = (try? await web.evaluateJavaScript("document.body.textContent") as? String) ?? ""
-            if text.contains("Today, a little clearer.") && text.contains("View Markdown") { break }
+            if (try? await web.evaluateJavaScript("!!document.querySelector('maple-today .tiptap')") as? Bool) == true { break }
             try await Task.sleep(for: .milliseconds(100))
         }
-        #expect(text.contains("Today, a little clearer.") && text.contains("View Markdown"))
+        #expect(try await web.evaluateJavaScript("document.querySelector('maple-today .date-chip')?.textContent?.trim()") as? String == "Today")
+        #expect(try await web.evaluateJavaScript("!!document.querySelector('maple-today .tiptap')") as? Bool == true)
+        #expect(try await web.evaluateJavaScript("document.querySelector('maple-today .maple-editor-tools, maple-today .document-location, maple-today .document-status, maple-today h1') === null") as? Bool == true)
         #expect(!text.contains("Untrusted request."))
         #expect(try await web.evaluateJavaScript("document.querySelector('maple-root').getAttribute('ng-version')") as? String != nil)
     }

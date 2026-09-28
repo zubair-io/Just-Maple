@@ -142,6 +142,7 @@ export const StableBlockIdentity = Extension.create({
   imports: [FormsModule, MuiButtonComponent],
   encapsulation: ViewEncapsulation.None,
   template: `
+    @if (showToolbar()) {
     <div class="maple-editor-tools" aria-label="Note formatting">
       <mui-button variant="ghost" (pressed)="toggleSource()">{{
         source() ? "Formatted view" : "View Markdown"
@@ -168,6 +169,7 @@ export const StableBlockIdentity = Extension.create({
         >
       }
     </div>
+    }
     @if (insertionMenu() && !source() && !readOnly()) {
       <div
         class="maple-insertion-menu"
@@ -392,6 +394,7 @@ export const StableBlockIdentity = Extension.create({
 export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   readonly initial = input.required<string>();
   readonly readOnly = input(false);
+  readonly showToolbar = input(true);
   readonly changed = output<string>();
   readonly inspected = output<string>();
   readonly submitted = output<{ blockID: string; text: string }>();

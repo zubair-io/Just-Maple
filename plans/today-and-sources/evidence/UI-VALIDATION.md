@@ -24,3 +24,9 @@ Recording references deliberately say **Audio unavailable** and expose captured 
 Final color-only verification: the dark Sources **Apply filters** button renders white text on the primary red fill using `--color-on-primary`; Today body text, active-day label, source links and agent replies remain legible. Screenshots and performance metadata were refreshed after this change.
 
 Final Sources contract verification: optional Received from/to controls persist in route parameters, convert local calendar days into inclusive UTC boundaries, and reject invalid ranges before querying. Processing and history can open the coalesced representative; related revisions open in the shared inspector while retaining the table filters. Browser smoke exercised both navigation links and inspected the actual submitted date bounds.
+
+## September 27 — note canvas simplification
+
+Removed the file path, previous/next controls, notebook/date fields, decorative heading, routine save-status row and daily formatting toolbar. A relative-date chip now labels the note (Today, Yesterday, Tomorrow, or relative weeks/months/years); its tooltip and accessible label retain the exact date. Markdown source access remains in the collapsed document controls. Conflict/recovery notices remain actionable. The chip is view metadata and does not change the Markdown file.
+
+Validation: 118 Angular tests, 50 Mac tests, production web/Mac builds, and the synthetic browser persistence/inspection journey passed. Core (276) and transport (30) suites plus CLI build passed. Refreshed Today screenshots above use visibly synthetic content. The previously observed live-corpus startup delay is outside this visual change and remains unresolved.

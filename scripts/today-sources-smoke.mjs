@@ -385,7 +385,7 @@ try {
     (process.env.MAPLE_SMOKE_URL || "http://127.0.0.1:4320") + "/#/today",
   );
   await expect(
-    page.getByRole("heading", { name: "Today, a little clearer." }),
+    page.locator("maple-today .date-chip"),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Synthetic proposal", exact: true }),
@@ -410,6 +410,7 @@ try {
     .toContain("Synthetic persisted writing.");
   await page.reload();
   await expect(editor).toContainText("Synthetic persisted writing.");
+  await page.getByText("Organize blocks · cleared items · document history", { exact: true }).click();
   await page
     .getByRole("button", { name: "View Markdown", exact: true })
     .click();
@@ -424,6 +425,7 @@ try {
   await expect(
     page.getByRole("button", { name: "Synthetic proposal", exact: true }),
   ).toBeVisible();
+  await page.getByText("Organize blocks · cleared items · document history", { exact: true }).click();
   await page.getByRole("button", { name: "Ask Maple ↵", exact: true }).click();
   await expect(page.locator(".maple-run")).toContainText("succeeded", {
     timeout: 10000,
