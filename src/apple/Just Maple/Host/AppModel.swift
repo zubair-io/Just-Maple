@@ -38,6 +38,9 @@ final class AppModel {
     var downstreamBusy = false
     var ready = false
     var loaded = false
+    var startupError: String?
+    private(set) var starting = false
+    private let refreshCoordinator = WorkspaceRefreshCoordinator()
     var message = "Your context database lives on this Mac."
     var error: String?
     var importantPeople: [PersonSummary] = []
@@ -90,9 +93,10 @@ final class AppModel {
     let directory: URL
     var classifier: TypeSafeClassifier?
 
-    init() {
+    init(directory override: URL? = nil) {
         let args = ProcessInfo.processInfo.arguments
-        if let index = args.firstIndex(of: "--data-directory"), args.indices.contains(index + 1) {
+        if let override { directory = override }
+        else if let index = args.firstIndex(of: "--data-directory"), args.indices.contains(index + 1) {
             directory = URL(fileURLWithPath: args[index + 1], isDirectory: true)
         } else {
             directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -100,11 +104,33 @@ final class AppModel {
         }
     }
 
+    /// Publish the small local shell before any folder download, companion restore,
+    /// source scan or provider setup. UI snapshot polling must not wait on that work.
+    func openWorkspace() async throws {
+        if store == nil {
+            let path=directory.appendingPathComponent("core.sqlite").path
+            let directory=self.directory
+            store=try await Task.detached(priority:.userInitiated) {
+                try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+                return try KnowledgeStore(path:path)
+            }.value
+        }
+        guard let store else {throw MapleError.invalid("The local workspace is unavailable.")}
+        try await store.recoverInterruptedInlineMaple()
+        claims=try await store.state(subjects:["person:self"])
+        name=claims.first {$0.predicate=="person.name"}?.value ?? ""
+        ready = !name.isEmpty
+        loadAppleSettings()
+        startupError=nil
+        loaded=true
+    }
+
     func start() async {
+        guard !starting,!loaded else {return}
+        starting=true;startupError=nil
+        defer {starting=false}
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            store = try KnowledgeStore(path: directory.appendingPathComponent("core.sqlite").path)
-            try await store?.recoverInterruptedInlineMaple()
+            try await openWorkspace()
             // Recover journaled file/task operations before processing resumes. Unavailable
             // notebooks retain their reservations and an actionable recovery notice.
             do {
@@ -117,41 +143,46 @@ final class AppModel {
                 self.error="Notebook recovery is unavailable. Reconnect your notebook folders before retrying pending note actions."
             }
             if NSClassFromString("XCTestCase")==nil {await companion.restore(model:self)}
-            loadAppleSettings()
             await refresh()
-            name = claims.first { $0.subject == "person:self" && $0.predicate == "person.name" }?.value ?? ""
-            ready = !name.isEmpty
-            loaded = true
             await loadHomeSettings()
             await loadGoogleSettings()
             if let saved = try await Task.detached { try KeyStore.read(allowAuthentication: false) }.value ?? ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"] {
                 classifier = try TypeSafeClassifier(apiKey: saved)
                 connected = true
             }
-        } catch { self.error = error.localizedDescription }
+        } catch {
+            if loaded {
+                startupError=nil
+                self.error="Your workspace is open, but saved connections could not finish restoring. Unlock or reconnect the affected service in Connections. Your notes remain available."
+            } else {
+                startupError="The local workspace could not be opened. Check disk access and available space, then retry. Your existing files have not been reset."
+            }
+        }
     }
 
     func refresh() async {
-        guard let store else { return }
-        do {
-            localIndex = try await store.indexStatus()
-            try await store.materializeOccurrences()
-            world = try await store.worldSnapshot()
-            taskExtractionQueue = try await store.taskExtractionQueue()
-            claims = try await store.state()
-            importantPeople = try await store.people()
-            decisions = try await store.recentDecisions(limit:30)
-            queue = try await store.recentQueue(limit:100)
-            processingQueueCounts = try await store.processingQueueCounts()
-            work = try await store.workItems()
-            count = try await store.eventCount()
-            appleContacts = try await store.appleRecords("apple_contacts")
-            appleCalendar = try await store.appleRecords("apple_calendar")
-            googleCalendar = try await store.sourceRecords("google_calendar")
-            sourceFacts = try await store.sourceFacts(limit: 500)
-            factChecks = try await store.factChecks()
-            factQueue = try await store.factQueue()
-        } catch { self.error = error.localizedDescription }
+        guard let store else {return}
+        await refreshCoordinator.run {
+            do {
+                localIndex = try await store.indexStatus()
+                try await store.materializeOccurrences()
+                world = try await store.worldSnapshot()
+                taskExtractionQueue = try await store.taskExtractionQueue()
+                claims = try await store.state()
+                importantPeople = try await store.people()
+                decisions = try await store.recentDecisions(limit:30)
+                queue = try await store.recentQueue(limit:100)
+                processingQueueCounts = try await store.processingQueueCounts()
+                work = try await store.workItems()
+                count = try await store.eventCount()
+                appleContacts = try await store.appleRecords("apple_contacts")
+                appleCalendar = try await store.appleRecords("apple_calendar")
+                googleCalendar = try await store.sourceRecords("google_calendar")
+                sourceFacts = try await store.sourceFacts(limit: 500)
+                factChecks = try await store.factChecks()
+                factQueue = try await store.factQueue()
+            } catch { self.error = error.localizedDescription }
+        }
     }
 
     func introduce() async {
@@ -206,7 +237,7 @@ final class AppModel {
     }
 
     func indexTick() async {
-        guard let store else {return}
+        guard !starting,let store else {return}
         await waitingReviewTick()
         do {
             try await store.excludeExpiredAIWork()
@@ -230,6 +261,7 @@ final class AppModel {
     }
 
     func stateTick() async {
+        guard !starting else {return}
         await groupingProposalTick()
         guard running, !stateExtractionBusy, !auditRunning, let store else {return}
         guard ["codex","claude"].contains(extractionProvider) else {
@@ -248,7 +280,7 @@ final class AppModel {
     }
 
     func tick(classifier override: (any Classifier)? = nil) async {
-        guard running, !busy, let classifier = override ?? classifier, let store else { return }
+        guard !starting,running, !busy, let classifier = override ?? classifier, let store else { return }
         busy = true
         defer { busy = false }
         do {
@@ -270,7 +302,7 @@ final class AppModel {
     }
 
     func extractionTick() async {
-        guard running, !downstreamBusy, let store else {return}
+        guard !starting,running, !downstreamBusy, let store else {return}
         downstreamBusy = true
         defer {downstreamBusy = false}
         do {
@@ -424,5 +456,30 @@ enum KeyStore {
     static func remove() throws {
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else { throw MapleError.invalid("Could not remove the Jev key (\(status)).") }
+    }
+}
+
+/// Coalesce overlapping context reads, but wait for a trailing pass when a mutation
+/// requests refresh after an earlier pass has already read some of the state.
+@MainActor final class WorkspaceRefreshCoordinator {
+    private var running=false
+    private var requested=false
+    private(set) var waitingCount=0
+    private var waiters:[CheckedContinuation<Void,Never>]=[]
+    func run(_ operation: () async -> Void) async {
+        if running {
+            requested=true
+            waitingCount += 1
+            await withCheckedContinuation {waiters.append($0)}
+            return
+        }
+        running=true
+        repeat {
+            requested=false
+            await operation()
+        } while requested
+        running=false
+        let completed=waiters;waiters=[];waitingCount=0
+        for continuation in completed {continuation.resume()}
     }
 }

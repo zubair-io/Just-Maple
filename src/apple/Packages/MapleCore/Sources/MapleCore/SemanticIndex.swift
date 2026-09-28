@@ -1,5 +1,6 @@
 import Foundation
 import NaturalLanguage
+import Accelerate
 
 extension SQLite {
     func migrateIntelligence() throws {
@@ -29,14 +30,17 @@ public struct LocalIndexStatus: Codable, Sendable {
 public enum LocalEmbedding {
     public static let revision = NLEmbedding.currentSentenceEmbeddingRevision(for: .english)
     public static var model:String { "apple-nl-sentence-en-r\(revision)" }
-    public static func vector(_ text:String) throws -> [Float] {
-        guard let embedding=NLEmbedding.sentenceEmbedding(for:.english, revision:revision),
-              let raw=embedding.vector(for:text), !raw.isEmpty else {
+    public static func vector(_ text:String) throws -> [Float] {try vectors([text])[0]}
+    static func vectors(_ texts:[String]) throws -> [[Float]] {
+        guard let embedding=NLEmbedding.sentenceEmbedding(for:.english, revision:revision) else {
             throw MapleError.provider("The English on-device embedding model is unavailable.")
         }
-        let norm=sqrt(raw.reduce(0){$0+$1*$1})
-        guard norm.isFinite,norm>0 else {throw MapleError.provider("Invalid local embedding.")}
-        return raw.map {Float($0/norm)}
+        return try texts.map { text in
+            guard let raw=embedding.vector(for:text),!raw.isEmpty else {throw MapleError.provider("The English on-device embedding model is unavailable.")}
+            let norm=sqrt(raw.reduce(0){$0+$1*$1})
+            guard norm.isFinite,norm>0 else {throw MapleError.provider("Invalid local embedding.")}
+            return raw.map {Float($0/norm)}
+        }
     }
     public static func chunks(_ text:String)->[String] {
         // Overlapping bounded windows; no truncation of long source documents.
@@ -97,27 +101,57 @@ extension KnowledgeStore {
         return try nearest(vector,model:LocalEmbedding.model,limit:limit,before:before,subjects:subjects)
     }
     func nearest(_ query:[Float],model:String,limit:Int,before:Date,subjects:[String]?=nil)throws->[Event] {
-        var filter="",args:[String?]=[model,String(query.count),String(before.timeIntervalSince1970)]
+        try nearestBatch([query],model:model,limit:limit,before:before,subjects:subjects)[0]
+    }
+    /// Reconciliation evaluates all node queries against one decoded candidate set.
+    /// Eligibility is applied before ranking, rather than dropping top results afterward.
+    func semanticSearchBatch(_ queries:[String],limit:Int,before:Date,after:[Date],connectors:[String])throws->[[Event]] {
+        guard !queries.isEmpty else{return []}
+        guard queries.count<=20,queries.count==after.count else{throw MapleError.invalid("Invalid semantic query batch.")}
+        return try nearestBatch(LocalEmbedding.vectors(queries.map{String($0.prefix(4000))}),model:LocalEmbedding.model,limit:limit,before:before,after:after.map(Optional.some),connectors:connectors)
+    }
+    func nearestBatch(_ queries:[[Float]],model:String,limit:Int,before:Date,subjects:[String]?=nil,after:[Date?]?=nil,connectors:[String]?=nil)throws->[[Event]] {
+        guard let dimension=queries.first?.count else{return []}
+        guard queries.count<=20,dimension>0,queries.allSatisfy({$0.count==dimension && $0.allSatisfy(\.isFinite)}),after==nil || after!.count==queries.count else{throw MapleError.invalid("Invalid semantic query vectors.")}
+        let empty=Array(repeating:[Event](),count:queries.count)
+        var filter="",args:[String?]=[model,String(dimension),String(before.timeIntervalSince1970)]
         if let subjects {
-            guard !subjects.isEmpty else {return []}
-            filter=" AND e.id IN (SELECT event_id FROM event_subjects WHERE subject IN (\(Array(repeating:"?",count:subjects.count).joined(separator:","))))"
+            guard !subjects.isEmpty else{return empty}
+            filter += " AND e.id IN (SELECT event_id FROM event_subjects WHERE subject IN (\(Array(repeating:"?",count:subjects.count).joined(separator:","))))"
             args += subjects
         }
-        // Exact cosine search over local SQLite vectors, latest eligible source revision only.
+        if let connectors {
+            guard !connectors.isEmpty else{return empty}
+            filter += " AND e.connector IN (\(Array(repeating:"?",count:connectors.count).joined(separator:",")))"
+            args += connectors
+        }
+        if let after,after.allSatisfy({$0 != nil}),let earliest=after.compactMap({$0}).min() {
+            filter += " AND e.occurred_at>=?";args.append(String(earliest.timeIntervalSince1970))
+        }
         let rows=try db.rows("""
-        SELECT c.event_id,c.vector FROM semantic_chunks c JOIN events e ON e.id=c.event_id
+        SELECT c.event_id,c.vector,e.occurred_at FROM events e JOIN semantic_chunks c ON e.id=c.event_id
         WHERE c.model=? AND c.dimensions=? AND e.occurred_at<=? \(filter)
         AND json_extract(e.json,'$.type') NOT LIKE '%.unavailable'
         AND NOT EXISTS (SELECT 1 FROM connector_source_records r WHERE r.connector=e.connector AND r.id=e.external_id AND r.active=0)
-        AND NOT EXISTS (SELECT 1 FROM events n WHERE n.connector=e.connector AND n.account=e.account AND n.external_id=e.external_id AND (n.received_at>e.received_at OR (n.received_at=e.received_at AND n.rowid>e.rowid)) AND n.occurred_at<=?)
+        AND e.rowid=(SELECT n.rowid FROM events n INDEXED BY events_entity_received WHERE n.connector=e.connector AND n.account=e.account AND n.external_id=e.external_id AND n.occurred_at<=? ORDER BY n.received_at DESC,n.rowid DESC LIMIT 1)
         """,args+[String(before.timeIntervalSince1970)])
-        var scores:[String:Float]=[:]
+        var scores=Array(repeating:[String:Float](),count:queries.count)
         for row in rows {
-            let v=LocalEmbedding.decode(row["vector"]!)
-            guard v.count==query.count else {continue}
-            let score=zip(v,query).reduce(Float(0)){$0+$1.0*$1.1}
-            if score.isFinite {scores[row["event_id"]!]=max(scores[row["event_id"]!] ?? -.infinity,score)}
+            let vector=LocalEmbedding.decode(row["vector"]!)
+            guard vector.count==dimension,let occurred=Double(row["occurred_at"]!) else{continue}
+            for index in queries.indices {
+                if let threshold=after?[index],occurred<threshold.timeIntervalSince1970 {continue}
+                var score:Float=0
+                vDSP_dotpr(vector,1,queries[index],1,&score,vDSP_Length(dimension))
+                if score.isFinite {scores[index][row["event_id"]!]=max(scores[index][row["event_id"]!] ?? -.infinity,score)}
+            }
         }
-        return try scores.sorted{$0.value == $1.value ? $0.key<$1.key : $0.value>$1.value}.prefix(max(1,min(limit,20))).compactMap {try event($0.key)}
+        var events=[String:Event]()
+        return try scores.map { scores in
+            try scores.sorted{$0.value == $1.value ? $0.key<$1.key:$0.value>$1.value}.prefix(max(1,min(limit,20))).compactMap { scored in
+                if let cached=events[scored.key] {return cached}
+                let value=try event(scored.key);events[scored.key]=value;return value
+            }
+        }
     }
 }

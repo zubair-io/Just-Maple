@@ -35,7 +35,13 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: ` <section class="today-page">
     <header class="note-date">
-      <time class="date-chip" [attr.datetime]="notes.day()" [attr.title]="formattedDay()" [attr.aria-label]="formattedDay()">{{ relativeDay() }}</time>
+      <time
+        class="date-chip"
+        [attr.datetime]="notes.day()"
+        [attr.title]="formattedDay()"
+        [attr.aria-label]="formattedDay()"
+        >{{ relativeDay() }}</time
+      >
     </header>
     @if (currentDay() !== openedOnDay() && notes.day() !== currentDay()) {
       <p class="document-notice">
@@ -149,7 +155,9 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
       </details>
       <details class="document-organizer">
         <summary>Organize blocks · cleared items · document history</summary>
-        <mui-button variant="ghost" (pressed)="toggleMarkdown()">{{ editorInstance?.source() ? "Formatted view" : "View Markdown" }}</mui-button>
+        <mui-button variant="ghost" (pressed)="toggleMarkdown()">{{
+          editorInstance?.source() ? "Formatted view" : "View Markdown"
+        }}</mui-button>
         <p class="small">
           Clearing removes a block from this note. Completing a linked task is a
           separate action.
@@ -670,6 +678,7 @@ export class TodayComponent implements OnInit, OnDestroy {
   private subscription?: Subscription;
   private timer?: ReturnType<typeof setInterval>;
   private pickerGeneration = 0;
+  private destroyed = false;
   @ViewChild("editor") set editor(value: MapleEditorComponent | undefined) {
     this.editorInstance = value;
     if (value && this.notes.pendingSource()) {
@@ -692,9 +701,16 @@ export class TodayComponent implements OnInit, OnDestroy {
       void this.notes.pollRun();
     }, 2000);
   }
-  relativeDay() { return relativeDayLabel(this.notes.day(), this.currentDay()); }
-  toggleMarkdown() { this.editorInstance?.toggleSource(); }
+  relativeDay() {
+    return relativeDayLabel(this.notes.day(), this.currentDay());
+  }
+  toggleMarkdown() {
+    this.editorInstance?.toggleSource();
+  }
   ngOnDestroy() {
+    this.destroyed = true;
+    this.editorInstance = undefined;
+    this.notes.cancelPendingReads();
     this.subscription?.unsubscribe();
     clearInterval(this.timer);
     this.pickerGeneration++;
@@ -764,10 +780,13 @@ export class TodayComponent implements OnInit, OnDestroy {
       );
   }
   private async insertPending(id: string) {
+    if (this.destroyed) return;
     try {
       const detail = await this.sources.detail(id);
-      if (this.notes.pendingSource() === id) this.insertSource(detail.row);
+      if (!this.destroyed && this.notes.pendingSource() === id)
+        this.insertSource(detail.row);
     } catch {
+      if (this.destroyed) return;
       this.picker.set(true);
       this.pickerError.set(
         "The selected source is unavailable. Its ID remains queued for insertion.",

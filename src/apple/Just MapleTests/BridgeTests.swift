@@ -7,6 +7,62 @@ import MapleNotebooks
 
 @MainActor
 struct BridgeTests {
+    @Test func overlappingMutationRefreshWaitsForTheFreshTrailingRead() async {
+        let coordinator=WorkspaceRefreshCoordinator()
+        var stored=0,visible = -1,passes=0
+        var release:CheckedContinuation<Void,Never>?
+        let read: () async -> Void = {
+            passes += 1
+            visible=stored
+            if passes==1 {await withCheckedContinuation {release=$0}}
+        }
+        let initial=Task {await coordinator.run(read)}
+        while release==nil {await Task.yield()}
+        stored=1 // A user mutation commits after the first pass read old data.
+        var mutationReturned=false
+        let mutation=Task {await coordinator.run(read);mutationReturned=true}
+        while coordinator.waitingCount==0 {await Task.yield()}
+        #expect(!mutationReturned && visible==0)
+        release?.resume()
+        await initial.value;await mutation.value
+        #expect(mutationReturned && visible==1 && passes==2)
+    }
+
+    @Test func workspaceOpensBeforeCloudAndBackgroundContextHydration() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        let model=AppModel(directory:root)
+        let store=try KnowledgeStore(path:":memory:")
+        try await store.correct(subject:"person:self",predicate:"person.name",value:"Startup test")
+        model.store=store
+        try await model.openWorkspace()
+        #expect(model.loaded && model.ready)
+        #expect(model.name=="Startup test")
+        #expect(model.world==nil && model.notebooks==nil)
+        let bridge=Bridge(model:model)
+        let snapshot=try #require(try await bridge.perform("snapshot",[:]) as? [String:Any])
+        #expect(snapshot["loaded"] as? Bool==true)
+        #expect(snapshot["world"] is NSNull)
+        #expect(model.world==nil) // Polling does not synchronously rebuild the context graph.
+    }
+
+    @Test func failedStartupIsVisibleAndCanRecoverWithoutResettingData() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        try Data("Existing file".utf8).write(to:root)
+        let model=AppModel(directory:root)
+        await model.start()
+        #expect(!model.loaded && !model.starting)
+        #expect(model.startupError != nil)
+        #expect(try String(contentsOf:root,encoding:.utf8)=="Existing file")
+        let snapshot=try #require(try Bridge(model:model).snapshot() as? [String:Any])
+        #expect(!(snapshot["startupError"] as? String ?? "").isEmpty)
+        // Resolving the unavailable location allows a fresh attempt; no reset is needed.
+        try FileManager.default.removeItem(at:root)
+        try await model.openWorkspace()
+        #expect(model.loaded && model.startupError==nil)
+    }
+
     @Test func todayUsesAppCloudYearMonthDespiteStaleNotebookSelection() async throws {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer {try? FileManager.default.removeItem(at:root)}

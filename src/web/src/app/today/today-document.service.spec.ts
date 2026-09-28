@@ -30,6 +30,64 @@ function setup(handler: (action: string, data: any) => Promise<any>) {
 }
 afterEach(() => TestBed.resetTestingModule());
 describe("Today document coordination", () => {
+  it("ignores a slow Today response after its editor route has closed", async () => {
+    let finish!: (value: TodayDocument) => void;
+    const service = setup(async (action) =>
+      action === "todayOpen"
+        ? new Promise<TodayDocument>((resolve) => (finish = resolve))
+        : [],
+    );
+    const opening = service.open(document.day);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    service.cancelPendingReads();
+    finish(document);
+    expect(await opening).toBe(false);
+    expect(service.document()).toBeNull();
+    expect(service.loading()).toBe(false);
+  });
+  it("does not begin a queued open after route destruction while preserving a dirty save", async () => {
+    let finish!: (value: any) => void;
+    let opens = 0;
+    const service = setup(async (action) => {
+      if (action === "todayOpen") {
+        opens++;
+        return document;
+      }
+      if (action === "documentCommit")
+        return new Promise((resolve) => (finish = resolve));
+      return [];
+    });
+    await service.open(document.day);
+    service.change("Keep this writing");
+    const opening = service.open("2026-09-28");
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    service.cancelPendingReads();
+    finish({
+      ...document,
+      content: "Keep this writing",
+      revision: "r2",
+      state: "committed",
+    });
+    expect(await opening).toBe(false);
+    expect(opens).toBe(1);
+    expect(service.content()).toBe("Keep this writing");
+    expect(service.document()?.revision).toBe("r2");
+    expect(service.dirty()).toBe(false);
+  });
+  it("ignores an error from a closed document read", async () => {
+    let fail!: (error: Error) => void;
+    const service = setup(async (action) =>
+      action === "documentOpen"
+        ? new Promise((_, reject) => (fail = reject))
+        : [],
+    );
+    const opening = service.openDocument("old-doc");
+    await vi.waitFor(() => expect(fail).toBeDefined());
+    service.cancelPendingReads();
+    fail(new Error("Old request failed"));
+    expect(await opening).toBe(false);
+    expect(service.error()).toBe("");
+  });
   it("lets the Mac choose app iCloud storage rather than reusing an open notebook", async () => {
     const requests: any[] = [];
     const service = setup(async (action, data) => {

@@ -145,17 +145,15 @@ export class TodayDocumentService {
   private saveCommand?: { id: string; content: string; revision: string };
   private submissions = new Map<string, string>();
   private actions = new Map<string, string>();
-  async open(
-    day = localDay(),
-    ignoreDraft = false,
-  ): Promise<boolean> {
+  async open(day = localDay(), ignoreDraft = false): Promise<boolean> {
     if (this.actionBusy()) return false;
     if (!validDay(day)) {
       this.error.set("Choose a valid calendar date.");
       return false;
     }
-    if (!(await this.flush())) return false;
     const generation = ++this.openGeneration;
+    if (!(await this.flush()) || generation !== this.openGeneration)
+      return false;
     this.loading.set(true);
     this.error.set("");
     try {
@@ -210,8 +208,9 @@ export class TodayDocumentService {
   }
   async openDocument(documentID: string): Promise<boolean> {
     if (this.actionBusy()) return false;
-    if (!(await this.flush())) return false;
     const generation = ++this.openGeneration;
+    if (!(await this.flush()) || generation !== this.openGeneration)
+      return false;
     this.loading.set(true);
     try {
       const doc = await this.bridge.notebook<TodayDocument>("documentOpen", {
@@ -236,11 +235,16 @@ export class TodayDocumentService {
       void this.loadRuns(documentID, generation);
       return true;
     } catch (e) {
-      this.error.set(this.message(e));
+      if (generation === this.openGeneration) this.error.set(this.message(e));
       return false;
     } finally {
       if (generation === this.openGeneration) this.loading.set(false);
     }
+  }
+  // Invalidate read continuations when the editor leaves the route; saves and drafts keep running.
+  cancelPendingReads() {
+    this.openGeneration++;
+    this.loading.set(false);
   }
   change(content: string) {
     const doc = this.document();
@@ -400,18 +404,23 @@ export class TodayDocumentService {
   }
   async loadSuggestions() {
     const doc = this.document();
+    const generation = this.openGeneration;
     if (!doc?.documentID) return;
     try {
       const value = await this.bridge.notebook<DocumentSuggestions>(
         "documentSuggestions",
         { documentID: doc.documentID },
       );
-      if (this.document()?.documentID === doc.documentID) {
+      if (
+        generation === this.openGeneration &&
+        this.document()?.documentID === doc.documentID
+      ) {
         this.suggestions.set(value);
         this.suggestionError.set("");
       }
     } catch (e) {
-      this.suggestionError.set(this.message(e));
+      if (generation === this.openGeneration)
+        this.suggestionError.set(this.message(e));
     }
   }
   async insertTask(taskID: string) {
@@ -697,12 +706,17 @@ export class TodayDocumentService {
   }
   async pollRun() {
     const previous = this.run();
+    const generation = this.openGeneration;
     if (!previous || !["queued", "running"].includes(previous.status)) return;
     try {
       const result = await this.bridge.notebook<MapleRun>("mapleRun", {
         runID: previous.runID,
       });
-      if (this.run()?.runID !== previous.runID) return;
+      if (
+        generation !== this.openGeneration ||
+        this.run()?.runID !== previous.runID
+      )
+        return;
       this.run.set(result);
       if (
         result.status === "succeeded" &&
@@ -718,6 +732,7 @@ export class TodayDocumentService {
           { documentID },
         );
         if (
+          generation !== this.openGeneration ||
           this.document()?.documentID !== documentID ||
           this.dirty() ||
           this.saving() ||
@@ -728,7 +743,7 @@ export class TodayDocumentService {
         this.status.set("Saved · Maple replied");
       }
     } catch (e) {
-      this.error.set(this.message(e));
+      if (generation === this.openGeneration) this.error.set(this.message(e));
     }
   }
   private message(error: unknown) {

@@ -50,7 +50,13 @@
       <p class="notice" role="status">{{ s().message }}</p>
     }
     @if (!s().loaded) {
-      <h1>Opening your workspace…</h1>
+      @if (s().startupError) {
+        <h1>Unable to open your workspace</h1>
+        <p role="alert">{{ s().startupError }}</p>
+        <mui-button [disabled]="bridge.pending()" (pressed)="bridge.act({ action: 'retryStartup' })">Try again</mui-button>
+      } @else {
+        <h1>Opening your workspace…</h1>
+      }
     } @else if (s().step >= 0) {
       <maple-onboarding />
     } @else {

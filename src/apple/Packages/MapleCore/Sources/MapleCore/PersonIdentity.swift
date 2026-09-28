@@ -74,7 +74,7 @@ extension KnowledgeStore {
         try correct(subject: alias, predicate: "person.identity_separate", value: separated ? "true" : "false")
     }
 
-    static let currentIdentityRevisionSQL = "NOT EXISTS (SELECT 1 FROM events n WHERE n.connector=e.connector AND n.account=e.account AND n.external_id=e.external_id AND (n.received_at>e.received_at OR (n.received_at=e.received_at AND n.rowid>e.rowid)))"
+    static let currentIdentityRevisionSQL = "e.rowid=(SELECT n.rowid FROM events n INDEXED BY events_entity_received WHERE n.connector=e.connector AND n.account=e.account AND n.external_id=e.external_id ORDER BY n.received_at DESC,n.rowid DESC LIMIT 1)"
 
     static func senderIdentity(_ event: Event) -> (alias: String, handle: String)? {
         guard let sender = senderObservation(event), let handle = contactHandle(sender.address) else { return nil }

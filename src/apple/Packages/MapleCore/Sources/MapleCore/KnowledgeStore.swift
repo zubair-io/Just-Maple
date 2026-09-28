@@ -18,6 +18,7 @@ public actor KnowledgeStore {
         try db.migrateDailyNotes()
         try db.migrateSources()
         try db.migrateManagedDocuments()
+        try db.migrateQueryPerformance()
     }
 
     /// Event and queue insertion are atomic. Returns the canonical ID on duplicate delivery.
@@ -67,12 +68,17 @@ public actor KnowledgeStore {
 
     /// Latest explicit correction wins over any inference. All superseded claims remain inspectable.
     public func state(subjects: [String]? = nil) throws -> [Claim] {
-        let rows = try db.rows("SELECT * FROM claims ORDER BY (origin='user') DESC, observed_at DESC, rowid DESC")
+        if subjects?.isEmpty == true {return []}
+        let selected=subjects.map{Array(Set($0))}
+        if let selected,selected.count>500 {
+            return try stride(from:0,to:selected.count,by:500).flatMap{try state(subjects:Array(selected[$0..<min($0+500,selected.count)]))}.sorted{($0.subject,$0.predicate)<($1.subject,$1.predicate)}
+        }
+        let filter=selected.map{" WHERE subject IN ("+Array(repeating:"?",count:$0.count).joined(separator:",")+")"} ?? ""
+        let rows = try db.rows("SELECT * FROM claims"+filter+" ORDER BY (origin='user') DESC, observed_at DESC, rowid DESC",selected ?? [])
         var seen = Set<String>()
         var result: [Claim] = []
         for row in rows {
             let subject = row["subject"]!, predicate = row["predicate"]!
-            guard subjects == nil || subjects!.contains(subject) else { continue }
             let key = try JSONCodec.string([subject, predicate])
             guard seen.insert(key).inserted else { continue }
             result.append(claim(row))

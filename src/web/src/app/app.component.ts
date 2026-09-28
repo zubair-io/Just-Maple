@@ -1,12 +1,21 @@
-import { CompanionComponent, isCompanion } from "./companion/companion.component";
+import {
+  CompanionComponent,
+  isCompanion,
+} from "./companion/companion.component";
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   inject,
 } from "@angular/core";
-import { Router, RouterOutlet, NavigationEnd } from "@angular/router";
-import { toSignal } from "@angular/core/rxjs-interop";
+import {
+  Router,
+  RouterOutlet,
+  NavigationEnd,
+  NavigationStart,
+} from "@angular/router";
+import { takeUntilDestroyed, toSignal } from "@angular/core/rxjs-interop";
 import { filter, map } from "rxjs";
 import {
   MuiAppShellComponent,
@@ -15,9 +24,9 @@ import {
   MuiButtonComponent,
 } from "@maple/ui";
 import { NativeBridge } from "./core/native-bridge.service";
-import { TodayDocumentService } from './today/today-document.service';
-import { NotebookService } from './notebooks/notebook.service';
-import { localDay, offsetDay } from './daily-note/daily-note.models';
+import { TodayDocumentService } from "./today/today-document.service";
+import { NotebookService } from "./notebooks/notebook.service";
+import { localDay, offsetDay } from "./daily-note/daily-note.models";
 import { OnboardingComponent } from "./pages/onboarding.component";
 @Component({
   selector: "maple-root",
@@ -38,7 +47,11 @@ export class AppComponent {
   readonly companion = isCompanion();
   readonly daily = inject(TodayDocumentService);
   readonly notebooks = inject(NotebookService);
-  readonly days = () => [{label:"Yesterday",day:offsetDay(localDay(),-1)},{label:"Today",day:localDay()},{label:"Tomorrow",day:offsetDay(localDay(),1)}];
+  readonly days = () => [
+    { label: "Yesterday", day: offsetDay(localDay(), -1) },
+    { label: "Today", day: localDay() },
+    { label: "Tomorrow", day: offsetDay(localDay(), 1) },
+  ];
   readonly bridge = inject(NativeBridge);
   readonly s = this.bridge.state;
   readonly router = inject(Router);
@@ -99,20 +112,36 @@ export class AppComponent {
       ].map((label, i) => ({ id: String(i), label: `${i + 1}. ${label}` })),
     },
   ]);
+  private navigationIntent = 0;
   constructor() {
-    if (!this.companion) { this.bridge.start(); void this.notebooks.refresh(); }
+    this.router.events
+      .pipe(
+        filter((event) => event instanceof NavigationStart),
+        takeUntilDestroyed(inject(DestroyRef)),
+      )
+      .subscribe(() => this.navigationIntent++);
+    if (!this.companion) {
+      this.bridge.start();
+      void this.notebooks.refresh();
+    }
   }
   async openDay(day: string) {
-    if (!await this.daily.flush()) return;
-    await this.router.navigateByUrl('/today/' + day);
+    const intent = ++this.navigationIntent;
+    if (!(await this.daily.flush()) || intent !== this.navigationIntent) return;
+    await this.router.navigateByUrl("/today/" + day);
   }
   async openNotebook(id: string) {
-    if (!await this.daily.flush()) return;
+    const intent = ++this.navigationIntent;
+    if (!(await this.daily.flush()) || intent !== this.navigationIntent) return;
     await this.notebooks.selectBook(id);
-    await this.router.navigateByUrl('/notebooks');
+    if (intent !== this.navigationIntent) return;
+    await this.router.navigateByUrl("/notebooks");
   }
   navigate(id: string | null) {
-    if (id !== null) void this.router.navigateByUrl("/" + id);
+    if (id !== null) {
+      this.navigationIntent++;
+      void this.router.navigateByUrl("/" + id);
+    }
   }
   step(id: string | null) {
     if (id !== null && (Number(id) <= 1 || this.s().name))

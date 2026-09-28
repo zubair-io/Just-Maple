@@ -57,7 +57,22 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
         guard let value = body[key] as? String, value.utf8.count <= limit else { throw MapleError.invalid("Invalid \(key).") }
         return value
     }
+    /// The shell opens before saved connections finish restoring. Delay only actions whose
+    /// live credentials/settings could otherwise be overwritten by a late restoration result.
+    static func validateStartupAction(_ action:String,starting:Bool) throws {
+        let connectionActions:Set<String>=[
+            "connect","disconnect","unlockKey","loop",
+            "googleConfigure","googleConnect","googleCancel","googleUnlock","googleDisconnect",
+            "googlePoll","googleCalendarList","googleContactsPause","googleContactsResume",
+            "googleMailPause","googleMailResume","googleCalendarPause","googleCalendarResume","googleCalendarSelection",
+            "homeConnect","homeExposure","homeUnlock","homePoll","homePause","homeResume","homeSelection"
+        ]
+        guard !starting || !connectionActions.contains(action) else {
+            throw MapleError.invalid("Saved connections are still being restored. Wait a moment, then try this connection change again. Your notes remain available.")
+        }
+    }
     func perform(_ action: String, _ body: [String: Any]) async throws -> Any {
+        try Self.validateStartupAction(action,starting:model.starting)
         if action != "snapshot" { model.error = nil }
         switch action {
         case "todayOpen", "todayMigrate", "documentOpen", "documentCommit", "documentDraft", "documentHistory", "documentRecoveryCopy", "sourceInsert", "documentBlockMutate", "documentRegister", "documentOperationHistory", "documentOperationResolve":
@@ -81,8 +96,9 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
             let provider=try string(body,"provider",limit:16)
             Task {await model.testProvider(provider)}
         case "providerSelect": try model.selectProvider(string(body,"provider",limit:16))
-        case "snapshot":
-            if let store = model.store { model.world = try await store.worldSnapshot() }
+        case "snapshot": break // Cached UI state must never queue behind database processing.
+        case "retryStartup":
+            Task {await model.start()}
         case "retryObligationGrouping", "obligationGroupingSettings", "configureObligationGrouping", "reviewedObligationGroups", "reviewObligationGroup", "applyObligationGroupAction", "undoObligationGroupAction":
             return try await obligationGroupCommand(action,body)
         case "historyInbox": return try await historyInbox(body)
@@ -198,7 +214,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
         if step == nil, model.loaded {
             step = (try? JSONDecoder().decode(Int.self, from: Data(contentsOf: setupURL))) ?? (model.ready ? -1 : 0)
         }
-        return ["companionCloudEnabled":model.companion.cloudEnabled,"companionStatus":model.companion.status,"companionPaired":model.companion.paired,"localIndex":try json(model.localIndex),"localIntelligenceStatus":model.localIntelligenceStatus,"auditRunning":model.auditRunning,"auditStatus":model.auditStatus,"world": try json(model.world), "taskExtractionQueue": try json(model.taskExtractionQueue), "loaded": model.loaded, "step": step ?? 0, "name": model.name,
+        return ["companionCloudEnabled":model.companion.cloudEnabled,"companionStatus":model.companion.status,"companionPaired":model.companion.paired,"localIndex":try json(model.localIndex),"localIntelligenceStatus":model.localIntelligenceStatus,"auditRunning":model.auditRunning,"auditStatus":model.auditStatus,"world": try json(model.world), "taskExtractionQueue": try json(model.taskExtractionQueue), "loaded": model.loaded, "startupError": model.startupError ?? "", "step": step ?? 0, "name": model.name,
                 "connected": model.connected, "running": model.running, "busy": model.busy,
                 "message": model.message, "error": model.error ?? "", "count": model.count,
                 "importantPeople": try json(model.importantPeople), "claims": try json(model.claims), "facts": try json(model.sourceFacts),
