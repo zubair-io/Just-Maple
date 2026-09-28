@@ -183,6 +183,17 @@ extension NotebookLibrary {
         try FileManager.default.createDirectory(at:url.deletingLastPathComponent(),withIntermediateDirectories:true)
         try NotebookCodec.encode(document).write(to:url,options:.atomic)
     }
+    /// Advance only a retained draft from the exact baseline of an acknowledged user
+    /// save. Generated writes and external revisions never rebase somebody's writing.
+    public func rebaseDraftAfterCommit(notebookID:String,path:String,expectedRevision:String?,targetRevision:String) async throws {
+        guard let expectedRevision,
+              let draft=try readDraft(notebookID:notebookID,path:path),draft.revision==expectedRevision,
+              let disk=try await readIfPresent(notebookID:notebookID,path:path),disk.revision==targetRevision else{return}
+        // readIfPresent may suspend for iCloud. Re-read the draft after that await so a
+        // newer baseline or newer text is never replaced by our earlier snapshot.
+        guard let latest=try readDraft(notebookID:notebookID,path:path),latest.revision==expectedRevision else{return}
+        try saveDraft(NotebookDocument(notebookID:notebookID,path:path,content:latest.content,revision:targetRevision))
+    }
     public func readDraft(notebookID:String,path:String) throws -> NotebookDocument? {
         _ = try file(notebookID,path)
         let url=draftURL(notebookID,path)

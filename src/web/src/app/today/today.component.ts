@@ -55,6 +55,19 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
         >
       </p>
     }
+    @if (notes.loading()) {
+      <p role="status">Opening note…</p>
+    }
+    @if (notes.openError()) {
+      <div class="document-error" role="alert">
+        <p>{{ notes.openError() }}</p>
+        <mui-button variant="ghost" [disabled]="notes.loading()" (pressed)="notes.retryOpen()"
+          >Retry opening note</mui-button>
+        @if (notes.document()) {
+          <p>Your previous note is still open below.</p>
+        }
+      </div>
+    }
     @if (notes.error()) {
       <div class="document-error" role="alert">
         <p>{{ notes.error() }}</p>
@@ -104,7 +117,7 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
           [showToolbar]="true"
           [documentToolsAvailable]="true"
           [dayTransfersAvailable]="true"
-          [readOnly]="doc.readOnly || notes.actionBusy()"
+          [readOnly]="doc.readOnly || notes.actionBusy() || notes.loading()"
           (changed)="notes.change($event)"
           (editingChanged)="notes.setEditing($event)"
           (inspected)="selected.set($event)"

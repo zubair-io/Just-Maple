@@ -7,13 +7,51 @@ public actor TodayDocumentCoordinator {
     let store:KnowledgeStore
     let library:NotebookLibrary
     var busy=Set<String>()
+    private struct DocumentWaiter {
+        let keys:Set<String>
+        let continuation:CheckedContinuation<Void,Never>
+    }
+    private var waiters:[DocumentWaiter]=[]
+
+    // Actors are reentrant across store/file awaits. Queue overlapping commands rather
+    // than treating normal startup, projection, and editor overlap as a save failure.
+    // Admission is atomic for multi-document actions and FIFO for overlapping keys.
+    func acquire(_ ids:[String]) async throws {
+        try Task.checkCancellation()
+        let keys=Set(ids)
+        if keys.isDisjoint(with:busy) && !waiters.contains(where:{!$0.keys.isDisjoint(with:keys)}) {
+            busy.formUnion(keys)
+        } else {
+            await withCheckedContinuation { continuation in
+                waiters.append(DocumentWaiter(keys:keys,continuation:continuation))
+            }
+        }
+        do {try Task.checkCancellation()}
+        catch {release(ids);throw error}
+    }
+
+    func release(_ ids:[String]) {
+        busy.subtract(ids)
+        var blocked=Set<String>()
+        var pending:[DocumentWaiter]=[]
+        for waiter in waiters {
+            if waiter.keys.isDisjoint(with:busy) && waiter.keys.isDisjoint(with:blocked) {
+                busy.formUnion(waiter.keys)
+                waiter.continuation.resume()
+            } else {
+                blocked.formUnion(waiter.keys)
+                pending.append(waiter)
+            }
+        }
+        waiters=pending
+    }
     public init(store:KnowledgeStore,library:NotebookLibrary) {self.store=store;self.library=library}
 
     public func open(notebookID:String,day requested:String?=nil,timeZone:String=TimeZone.current.identifier,migrateLegacy:Bool=false,recoveryCopy:Bool=false) async throws -> TodayDocumentSnapshot {
         let day=try requested ?? ManagedMarkdown.day(timeZone:timeZone)
         try ManagedMarkdown.validateDay(day,timeZone:timeZone)
         let key=notebookID+":"+day
-        guard busy.insert(key).inserted else {throw MapleError.invalid("This day is already opening. Try again.")};defer{busy.remove(key)}
+        try await acquire([key]);defer{release([key])}
         if let document=try await store.managedDailyDocument(notebookID:notebookID,day:day) {return try await open(documentID:document.documentID)}
         let legacy=try await store.dailyNote(day:day,timeZone:timeZone)
         let priorImport=try await store.legacyDailyImportDocument(day:day)
@@ -52,7 +90,7 @@ public actor TodayDocumentCoordinator {
         return result
     }
     public func open(documentID:String) async throws -> TodayDocumentSnapshot {
-        guard busy.insert(documentID).inserted else {throw MapleError.invalid("This document has a save in progress. Try again.")};defer{busy.remove(documentID)}
+        try await acquire([documentID]);defer{release([documentID])}
         let record=try await record(documentID)
         var warning:String?
         for operation in try await store.pendingDocumentOperations(documentID:documentID) {
@@ -76,7 +114,7 @@ public actor TodayDocumentCoordinator {
         return result
     }
     public func commit(documentID:String,expectedRevision:String?,content:String,commandID:String,preserveDraft:Bool=false) async throws -> TodayDocumentSnapshot {
-        guard busy.insert(documentID).inserted else {throw MapleError.invalid("This document has a save in progress. Try again.")};defer{busy.remove(documentID)}
+        try await acquire([documentID]);defer{release([documentID])}
         let record=try await record(documentID)
         try ManagedMarkdown.validate(content,documentID:documentID)
         let existing=try await library.readIfPresent(notebookID:record.notebookID,path:record.path)
@@ -94,6 +132,9 @@ public actor TodayDocumentCoordinator {
             if old.state=="committed" {
                 guard let disk=existing else {throw MapleError.invalid("The saved file has since been removed; the original command remains committed.")}
                 guard disk.revision==old.targetRevision else {throw MapleError.invalid("The original save completed, but this file has changed since then. Your draft and committed history are preserved. Reopen the current file or save a recovery copy before continuing.")}
+                if !preserveDraft {
+                    try await library.rebaseDraftAfterCommit(notebookID:record.notebookID,path:record.path,expectedRevision:old.expectedRevision,targetRevision:old.targetRevision)
+                }
                 var result=try await snapshot(record,disk);result.commandID=commandID;result.state="committed";return result
             }
         } else {
@@ -112,6 +153,9 @@ public actor TodayDocumentCoordinator {
         try? await store.drainDocumentOutbox()
         guard let disk=try await library.readIfPresent(notebookID:record.notebookID,path:record.path) else{throw MapleError.invalid("The file was removed after saving. Recover it from history.")}
         guard disk.revision==mutation.targetRevision else {throw MapleError.invalid("The save completed, but the file changed again before acknowledgment. The committed version remains in history. Reopen the current file or save a recovery copy before continuing.")}
+        if !preserveDraft {
+            try await library.rebaseDraftAfterCommit(notebookID:record.notebookID,path:record.path,expectedRevision:mutation.expectedRevision,targetRevision:mutation.targetRevision)
+        }
         var result=try await snapshot(record,disk);result.commandID=commandID;result.state="committed";return result
     }
     public func draft(documentID:String,revision:String,content:String) async throws {
@@ -186,6 +230,8 @@ extension TodayDocumentCoordinator {
     /// First managed insertion into an ordinary notebook joins the same journal without
     /// changing its relative path or assigning it a daily date.
     public func register(notebookID:String,path:String,expectedRevision:String) async throws -> TodayDocumentSnapshot {
+        let key="register:"+notebookID+":"+path
+        try await acquire([key]);defer{release([key])}
         if let existing=try await store.managedDocument(notebookID:notebookID,path:path) {return try await open(documentID:existing.documentID)}
         let disk=try await library.read(notebookID:notebookID,path:path)
         guard disk.revision==expectedRevision else {throw MapleError.invalid("This note changed. Reload before registering its first managed block.")}

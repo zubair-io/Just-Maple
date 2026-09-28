@@ -51,6 +51,9 @@ function setup() {
     initial: signal("User writing remains here"),
     generation: signal(0),
     error: signal(""),
+    openError: signal(""),
+    loading: signal(false),
+    retryOpen: vi.fn(),
     automaticStatus: signal(""),
     actionBusy: signal(false),
     run: signal(null),
@@ -110,6 +113,23 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("Today document tools", () => {
+  it("offers an opening retry instead of save recovery when loading a note fails", () => {
+    const { fixture, notes, editor } = setup();
+    notes.openError.set("iCloud temporarily unavailable");
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain("Retry opening note");
+    expect(fixture.nativeElement.textContent).not.toContain("Retry save");
+    expect(fixture.nativeElement.textContent).not.toContain("Save recovery copy");
+    const retry = Array.from(fixture.nativeElement.querySelectorAll("button") as NodeListOf<HTMLButtonElement>)
+      .find(button => button.textContent?.includes("Retry opening note"))!;
+    retry.click();
+    expect(notes.retryOpen).toHaveBeenCalledOnce();
+    notes.loading.set(true);
+    fixture.detectChanges();
+    expect(editor.readOnly()).toBe(true);
+    expect(editor.initial()).toBe("User writing remains here");
+  });
+
   it("updates the relative chip after midnight while preserving the open dated writing", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 8, 27, 23, 59, 59));

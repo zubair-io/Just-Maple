@@ -45,8 +45,7 @@ extension TodayDocumentCoordinator {
         default:break
         }
         let ids=([source.documentID]+(target.map{[$0.documentID]} ?? [])).sorted()
-        guard ids.allSatisfy({!busy.contains($0)}) else{throw MapleError.invalid("A document is saving. Try this action again.")}
-        for id in ids {busy.insert(id)};defer{for id in ids {busy.remove(id)}}
+        try await acquire(ids);defer{release(ids)}
         let now=Date()
         var files=[DocumentMutationRecord(commandID:input.commandID+":0",documentID:source.documentID,expectedRevision:source.revision,targetRevision:ManagedMarkdown.hash(sourceAfter),before:source.content,after:sourceAfter,state:"operationPrepared",createdAt:now)]
         if let target {
@@ -68,8 +67,13 @@ extension TodayDocumentCoordinator {
     }
     func recoverOperation(_ operation:DocumentOperation,alreadyLocked:String?=nil) async throws {
         let ids=operation.files.map(\.documentID).filter{$0 != alreadyLocked}.sorted()
-        guard ids.allSatisfy({!busy.contains($0)}) else{throw MapleError.invalid("Another document in this action is busy.")}
-        for id in ids {busy.insert(id)};defer{for id in ids {busy.remove(id)}}
+        if alreadyLocked != nil {
+            // An open already owns one participant. Do not wait while holding it:
+            // another participant may be recovering the same operation concurrently.
+            guard ids.allSatisfy({!busy.contains($0)}) else{throw MapleError.invalid("Another document in this action is busy.")}
+            busy.formUnion(ids)
+        } else {try await acquire(ids)}
+        defer{release(ids)}
         try await applyOperationFiles(operation)
     }
     func applyOperationFiles(_ operation:DocumentOperation) async throws {

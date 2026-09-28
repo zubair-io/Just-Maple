@@ -172,7 +172,7 @@
                   editorLabel="Note editor"
                   [documentToolsAvailable]="true"
                   (documentToolsRequested)="documentTools.set(!documentTools())"
-                  [readOnly]="managedDoc.readOnly || managed.actionBusy()"
+                  [readOnly]="managedDoc.readOnly || managed.actionBusy() || managed.loading()"
                   (changed)="managed.change($event)"
                   (editingChanged)="managed.setEditing($event)"
                   (inspected)="selected.set($event)"
@@ -181,6 +181,11 @@
                   (clearRequested)="managed.blockAction($event, 'clear')"
                 />
               }
+            }
+            @if (managed.openError()) {
+              <p role="alert">{{ managed.openError() }}</p>
+              <mui-button variant="ghost" [disabled]="managed.loading()" (pressed)="managed.retryOpen()"
+                >Retry opening note</mui-button>
             }
             @if (managed.error()) {
               <p role="alert">{{ managed.error() }}</p>

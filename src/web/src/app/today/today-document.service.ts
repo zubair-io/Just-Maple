@@ -119,6 +119,9 @@ export class TodayDocumentService {
   readonly day = signal(localDay());
   readonly selectedNotebook = signal("");
   readonly loading = signal(false);
+  readonly openError = signal("");
+  private lastOpen?: { action: "todayOpen" | "documentOpen"; data: Record<string, unknown> };
+  private readonly openReads = new Map<string, Promise<TodayDocument>>();
   readonly dirty = signal(false);
   readonly conflictedDraft = signal(false);
   private draftRevision = "";
@@ -148,97 +151,73 @@ export class TodayDocumentService {
   private saveCommand?: { id: string; content: string; revision: string };
   private submissions = new Map<string, string>();
   private actions = new Map<string, string>();
-  async open(day = localDay(), ignoreDraft = false): Promise<boolean> {
-    if (this.actionBusy()) return false;
+  open(day = localDay(), ignoreDraft = false): Promise<boolean> {
     if (!validDay(day)) {
-      this.error.set("Choose a valid calendar date.");
-      return false;
+      this.openError.set("Choose a valid calendar date.");
+      return Promise.resolve(false);
     }
-    const generation = ++this.openGeneration;
-    if (!(await this.flush()) || generation !== this.openGeneration)
-      return false;
-    this.loading.set(true);
-    this.error.set("");
-    try {
-      const doc = await this.bridge.notebook<TodayDocument>("todayOpen", {
-        day,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        ignoreDraft,
-      });
-      if (generation !== this.openGeneration) return false;
-      this.document.set(doc);
-      this.selectedNotebook.set(doc.notebookID);
-      this.day.set(doc.day);
-      const text = ignoreDraft
-        ? doc.content
-        : (doc.draft?.content ?? doc.content);
-      this.content.set(text);
-      this.initial.set(text);
-      this.dirty.set(!ignoreDraft && !!doc.draft && text !== doc.content);
-      this.conflictedDraft.set(
-        !ignoreDraft &&
-          !!doc.draft &&
-          text !== doc.content &&
-          doc.draft.revision !== doc.revision,
-      );
-      this.draftRevision =
-        !ignoreDraft && doc.draft ? doc.draft.revision : doc.revision;
-      this.generation.update((v) => v + 1);
-      this.status.set(
-        doc.draft && !ignoreDraft
-          ? "Recovered local draft. Review it before saving."
-          : doc.readOnly
-            ? "Read only"
-            : "Saved",
-      );
-      this.run.set(null);
-      this.runs.set([]);
-      this.attempts.set([]);
-      this.saveCommand = undefined;
-      if (doc.documentID) void this.loadRuns(doc.documentID, generation);
-
-      if (!ignoreDraft && doc.draft && doc.draft.revision !== doc.revision)
-        this.error.set(
-          "The file changed after this draft was written. Your recovered draft is preserved. Save a recovery copy or reopen the current file.",
-        );
-      return true;
-    } catch (e) {
-      if (generation === this.openGeneration) this.error.set(this.message(e));
-      return false;
-    } finally {
-      if (generation === this.openGeneration) this.loading.set(false);
-    }
+    return this.openTarget("todayOpen", {
+      day, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, ignoreDraft,
+    });
   }
-  async openDocument(documentID: string): Promise<boolean> {
+  openDocument(documentID: string): Promise<boolean> {
+    return this.openTarget("documentOpen", { documentID });
+  }
+  retryOpen(): Promise<boolean> {
+    return this.lastOpen
+      ? this.openTarget(this.lastOpen.action, this.lastOpen.data)
+      : Promise.resolve(false);
+  }
+  private async openTarget(
+    action: "todayOpen" | "documentOpen", data: Record<string, unknown>,
+  ): Promise<boolean> {
     if (this.actionBusy()) return false;
     const generation = ++this.openGeneration;
-    if (!(await this.flush()) || generation !== this.openGeneration)
-      return false;
+    this.lastOpen = { action, data };
     this.loading.set(true);
+    this.openError.set("");
     try {
-      const doc = await this.bridge.notebook<TodayDocument>("documentOpen", {
-        documentID,
-      });
+      if (!(await this.flush()) || generation !== this.openGeneration) return false;
+      const previous = this.document();
+      const previousContent = this.content();
+      const key = JSON.stringify([action, data]);
+      let reading = this.openReads.get(key);
+      if (!reading) {
+        reading = this.bridge.notebook<TodayDocument>(action, data);
+        this.openReads.set(key, reading);
+        const clear = () => {
+          if (this.openReads.get(key) === reading) this.openReads.delete(key);
+        };
+        void reading.then(clear, clear);
+      }
+      const doc = await reading;
       if (generation !== this.openGeneration) return false;
+      // A queued editor event must never be replaced by a late open response.
+      if (this.dirty() || this.saving() || this.content() !== previousContent ||
+          this.document()?.documentID !== previous?.documentID ||
+          this.document()?.revision !== previous?.revision) {
+        this.openError.set("Opening paused because your writing changed. Retry opening after it saves.");
+        return false;
+      }
       this.adopt(doc);
-      if (doc.draft && doc.draft.content !== doc.content) {
+      if (!data["ignoreDraft"] && doc.draft && doc.draft.content !== doc.content) {
         this.content.set(doc.draft.content);
         this.initial.set(doc.draft.content);
         this.dirty.set(true);
         this.draftRevision = doc.draft.revision;
         this.conflictedDraft.set(doc.draft.revision !== doc.revision);
-        this.status.set("Recovered local draft");
-        if (doc.draft.revision !== doc.revision)
-          this.error.set(
-            "The file changed after this draft. Save a recovery copy to preserve both versions.",
-          );
+        this.status.set("Recovered local draft. Review it before saving.");
+        if (this.conflictedDraft()) this.error.set(
+          "The file changed after this draft was written. Your recovered draft is preserved. Save a recovery copy or reopen the current file.",
+        );
       } else this.status.set(doc.readOnly ? "Read only" : "Saved");
       this.run.set(null);
       this.runs.set([]);
-      void this.loadRuns(documentID, generation);
+      this.attempts.set([]);
+      if (doc.documentID) void this.loadRuns(doc.documentID, generation);
       return true;
     } catch (e) {
-      if (generation === this.openGeneration) this.error.set(this.message(e));
+      if (generation === this.openGeneration) this.openError.set(this.message(e));
       return false;
     } finally {
       if (generation === this.openGeneration) this.loading.set(false);
@@ -249,6 +228,8 @@ export class TodayDocumentService {
     this.setEditing(false);
     this.openGeneration++;
     this.loading.set(false);
+    this.openError.set("");
+    this.lastOpen = undefined;
   }
   setEditing(editing: boolean) {
     this.editing.set(editing);
@@ -299,7 +280,11 @@ export class TodayDocumentService {
     this.draftWork = this.draftWork
       .catch(() => undefined)
       .then(async () => {
-        await this.bridge.notebook("documentDraft", draft);
+        await this.bridge.notebook("documentDraft", {
+          ...draft,
+          revision: this.document()?.documentID === draft.documentID
+            ? this.draftRevision || draft.revision : draft.revision,
+        });
       });
     this.draftWork.catch(() => {
       this.error.set(
@@ -323,7 +308,20 @@ export class TodayDocumentService {
   private async saveLoop(): Promise<boolean> {
     this.saving.set(true);
     try {
-      await this.draftWork;
+      try {
+        await this.draftWork;
+      } catch {
+        // Retry the latest draft write instead of awaiting the same rejected
+        // promise forever. File commits still require durable draft storage.
+        const doc = this.document();
+        if (!doc || doc.readOnly) return false;
+        this.draftWork = this.bridge.notebook<void>("documentDraft", {
+          documentID: doc.documentID,
+          revision: this.draftRevision || doc.revision,
+          content: this.content(),
+        });
+        await this.draftWork;
+      }
       if (this.conflictedDraft()) {
         this.status.set("Draft conflict · saved file unchanged");
         return false;
@@ -385,11 +383,13 @@ export class TodayDocumentService {
   }
   async reopen() {
     const doc = this.document();
-    if (!doc?.documentID || this.actionBusy()) return;
+    if (!doc?.documentID || this.actionBusy() || this.loading()) return;
     const generation = this.openGeneration;
     const content = this.content();
     this.actionBusy.set(true);
     try {
+      // A save acknowledgment must finish before a read can replace its state.
+      if (this.saveWork) await this.saveWork;
       await this.draftWork;
       const current = await this.bridge.notebook<TodayDocument>(
         "documentOpen",
@@ -763,8 +763,10 @@ export class TodayDocumentService {
         !this.dirty() &&
         !this.saving()
       ) {
-        const documentID = this.document()?.documentID;
-        if (!documentID) return;
+        const before = this.document();
+        const documentID = before?.documentID;
+        const content = this.content();
+        if (!documentID || this.loading() || this.editing()) return;
         const refreshed = await this.bridge.notebook<TodayDocument>(
           "documentOpen",
           { documentID },
@@ -772,6 +774,8 @@ export class TodayDocumentService {
         if (
           generation !== this.openGeneration ||
           this.document()?.documentID !== documentID ||
+          this.document()?.revision !== before?.revision ||
+          this.content() !== content || this.loading() || this.editing() ||
           this.dirty() ||
           this.saving() ||
           this.actionBusy()

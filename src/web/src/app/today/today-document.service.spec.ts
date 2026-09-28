@@ -31,6 +31,145 @@ function setup(handler: (action: string, data: any) => Promise<any>) {
 }
 afterEach(() => TestBed.resetTestingModule());
 describe("Today document coordination", () => {
+  it("coalesces concurrent opens and retries opening errors without presenting a save failure", async () => {
+    let finish!: (value: TodayDocument) => void;
+    let fail = false;
+    const service = setup(async action => {
+      if (action === "todayOpen") {
+        if (fail) throw Error("iCloud temporarily unavailable");
+        return new Promise<TodayDocument>(resolve => finish = resolve);
+      }
+      return [];
+    });
+    const first = service.open(document.day);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    const second = service.open(document.day);
+    await Promise.resolve();
+    expect(vi.mocked(service.bridge.notebook).mock.calls.filter(([action]) => action === "todayOpen")).toHaveLength(1);
+    finish(document);
+    expect(await first).toBe(false);
+    expect(await second).toBe(true);
+    expect(service.generation()).toBe(1);
+    fail = true;
+    expect(await service.open("2026-09-28")).toBe(false);
+    expect(service.openError()).toBe("iCloud temporarily unavailable");
+    expect(service.error()).toBe("");
+    expect(service.content()).toBe("Original");
+    fail = false;
+    const retry = service.retryOpen();
+    await vi.waitFor(() => expect(vi.mocked(service.bridge.notebook).mock.calls.filter(([action]) => action === "todayOpen")).toHaveLength(3));
+    finish({ ...document, documentID: "next", day: "2026-09-28" });
+    expect(await retry).toBe(true);
+    expect(service.day()).toBe("2026-09-28");
+    expect(service.openError()).toBe("");
+    expect(service.loading()).toBe(false);
+  });
+  it("retains writing arriving while a different document is opening", async () => {
+    let finish!: (value: TodayDocument) => void;
+    const service = setup(async (action, data) => {
+      if (action === "todayOpen") return data.day === document.day ? document : new Promise(resolve => finish = resolve);
+      return [];
+    });
+    await service.open(document.day);
+    const next = service.open("2026-09-28");
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    service.change("Late editor input");
+    finish({ ...document, day: "2026-09-28", content: "Next note" });
+    expect(await next).toBe(false);
+    expect(service.content()).toBe("Late editor input");
+    expect(service.dirty()).toBe(true);
+    expect(service.openError()).toContain("writing changed");
+    expect(service.loading()).toBe(false);
+    // Complete the pending timer without committing fixture data.
+    await service.flush();
+  });
+  it("retries a failed durable draft write before committing the latest writing", async () => {
+    let writable = false;
+    const drafts: string[] = [];
+    const commits: string[] = [];
+    const service = setup(async (action, data) => {
+      if (action === "todayOpen") return document;
+      if (action === "documentDraft") {
+        drafts.push(data.content);
+        if (!writable) throw Error("Draft storage unavailable");
+      }
+      if (action === "documentCommit") {
+        commits.push(data.content);
+        return { ...document, content: data.content, revision: "r2", state: "committed" };
+      }
+      return [];
+    });
+    await service.open(document.day);
+    service.change("Keep this draft");
+    expect(await service.flush()).toBe(false);
+    expect(commits).toHaveLength(0);
+    expect(service.dirty()).toBe(true);
+    writable = true;
+    expect(await service.flush()).toBe(true);
+    expect(drafts.at(-1)).toBe("Keep this draft");
+    expect(commits).toEqual(["Keep this draft"]);
+    expect(service.error()).toBe("");
+  });
+  it("finishes an in-flight save before reopening the current file", async () => {
+    let finish!: (value: any) => void;
+    let reads = 0;
+    const service = setup(async action => {
+      if (action === "todayOpen") return document;
+      if (action === "documentCommit") return new Promise(resolve => finish = resolve);
+      if (action === "documentOpen") {
+        reads++;
+        return { ...document, content: "External after save", revision: "r3" };
+      }
+      return [];
+    });
+    await service.open(document.day);
+    service.change("User save");
+    const saving = service.flush();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    const reopening = service.reopen();
+    await Promise.resolve();
+    expect(reads).toBe(0);
+    finish({ ...document, content: "User save", revision: "r2", state: "committed" });
+    await saving;
+    await reopening;
+    expect(reads).toBe(1);
+    expect(service.content()).toBe("External after save");
+    expect(service.document()?.revision).toBe("r3");
+  });
+  it("does not replace an acknowledged save with a late reply refresh", async () => {
+    let finish!: (value: TodayDocument) => void;
+    const service = setup(async (action, data) => {
+      if (action === "todayOpen") return document;
+      if (action === "mapleRun") return { runID: "run", status: "succeeded", requestBlockID: "request", content: "Reply", appliedRevision: "r2" };
+      if (action === "documentOpen") return new Promise(resolve => finish = resolve);
+      if (action === "documentCommit") return { ...document, content: data.content, revision: "r3", state: "committed" };
+      return [];
+    });
+    await service.open(document.day);
+    service.run.set({ runID: "run", status: "running", requestBlockID: "request" });
+    const refresh = service.pollRun();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    service.change("Newly saved writing");
+    expect(await service.flush()).toBe(true);
+    finish({ ...document, content: "Old reply snapshot", revision: "r2" });
+    await refresh;
+    expect(service.content()).toBe("Newly saved writing");
+    expect(service.document()?.revision).toBe("r3");
+  });
+  it("clears loading after a navigation save fails", async () => {
+    const service = setup(async action => {
+      if (action === "todayOpen") return document;
+      if (action === "documentCommit") throw Error("Actual revision conflict");
+      return [];
+    });
+    await service.open(document.day);
+    service.change("Unsaved");
+    expect(await service.open("2026-09-28")).toBe(false);
+    expect(service.loading()).toBe(false);
+    expect(service.error()).toBe("Actual revision conflict");
+    expect(service.content()).toBe("Unsaved");
+  });
+
   it("ignores a slow Today response after its editor route has closed", async () => {
     let finish!: (value: TodayDocument) => void;
     const service = setup(async (action) =>

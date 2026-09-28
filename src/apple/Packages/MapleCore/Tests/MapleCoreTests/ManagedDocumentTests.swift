@@ -12,6 +12,57 @@ struct ManagedDocumentTests {
         let store=try KnowledgeStore(path:root.appendingPathComponent("store.db").path)
         return (root,library,store,TodayDocumentCoordinator(store:store,library:library),id)
     }
+    @Test func concurrentDayOpensShareOneDurableDocument() async throws {
+        let (root,library,store,coordinator,id)=try await fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let documents=try await withThrowingTaskGroup(of:TodayDocumentSnapshot.self) { group in
+            for _ in 0..<20 {group.addTask {try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")}}
+            var documents:[TodayDocumentSnapshot]=[]
+            for try await document in group {documents.append(document)}
+            return documents
+        }
+        let first=try #require(documents.first)
+        #expect(Set(documents.map(\.documentID)).count==1)
+        #expect(Set(documents.map(\.revision)).count==1)
+        #expect(try await store.documentHistory(documentID:first.documentID).count==1)
+        #expect(try await library.read(notebookID:id,path:first.path).content==first.content)
+    }
+    @Test func concurrentSaveReplayAndBackgroundOpensWaitWithoutBusyErrors() async throws {
+        let (root,library,store,coordinator,id)=try await fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let first=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
+        let content=first.content+"Synthetic overlapping editor save\n"
+        try await withThrowingTaskGroup(of:Void.self) { group in
+            for index in 0..<24 {group.addTask {
+                if index.isMultiple(of:3) {
+                    let saved=try await coordinator.commit(documentID:first.documentID,expectedRevision:first.revision,content:content,commandID:"overlapping-save")
+                    #expect(saved.content==content)
+                } else if index.isMultiple(of:2) {
+                    _ = try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
+                } else {
+                    _ = try await coordinator.open(documentID:first.documentID)
+                }
+            }}
+            try await group.waitForAll()
+        }
+        #expect(try await library.read(notebookID:id,path:first.path).content==content)
+        #expect(try await store.documentHistory(documentID:first.documentID).count==2)
+        await #expect(throws:MapleError.self) {
+            try await coordinator.commit(documentID:first.documentID,expectedRevision:first.revision,content:first.content+"Stale different writer\n",commandID:"stale-overlap")
+        }
+        #expect(try await library.read(notebookID:id,path:first.path).content==content)
+    }
+    @Test func failedAndCancelledCommandsReleaseAdmissionForNextOpen() async throws {
+        let (root,_,_,coordinator,id)=try await fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let first=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
+        try await coordinator.acquire([first.documentID])
+        let cancelled=Task {try await coordinator.open(documentID:first.documentID)}
+        cancelled.cancel()
+        await coordinator.release([first.documentID])
+        await #expect(throws:CancellationError.self) {try await cancelled.value}
+        await #expect(throws:MapleError.self) {
+            try await coordinator.commit(documentID:first.documentID,expectedRevision:first.revision,content:"Invalid unmanaged bytes",commandID:"invalid")
+        }
+        #expect(try await coordinator.open(documentID:first.documentID).revision==first.revision)
+    }
     @Test func localDateValidatesCalendarAndAvoidsUTCDate() throws {
         let date=Date(timeIntervalSince1970:1790811000)
         #expect(try ManagedMarkdown.day(at:date,timeZone:"America/New_York") != ManagedMarkdown.day(at:date,timeZone:"Asia/Tokyo"))
@@ -32,6 +83,34 @@ struct ManagedDocumentTests {
         #expect(try await store.documentHistory(documentID:first.documentID).count==2)
         #expect(try await library.read(notebookID:id,path:first.path).content==content)
         await #expect(throws:MapleError.self){try await coordinator.commit(documentID:first.documentID,expectedRevision:first.revision,content:content+"other",commandID:"edit1")}
+    }
+    @Test func acknowledgedUserSaveRebasesNewerTypingWithoutChangingItsBytes() async throws {
+        let (root,library,_,coordinator,id)=try await fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let first=try await coordinator.open(notebookID:id,day:"2026-10-30")
+        let captured=first.content+"First thought\n",newer=captured+"Still typing while saving\n"
+        try await coordinator.draft(documentID:first.documentID,revision:first.revision,content:newer)
+        let saved=try await coordinator.commit(documentID:first.documentID,expectedRevision:first.revision,content:captured,commandID:"captured-save")
+        #expect(saved.content==captured)
+        #expect(saved.draft?.content==newer)
+        #expect(saved.draft?.revision==saved.revision)
+        let reopened=try await coordinator.open(documentID:first.documentID)
+        let recovered=try #require(reopened.draft)
+        let final=try await coordinator.commit(documentID:first.documentID,expectedRevision:recovered.revision,content:recovered.content,commandID:"newer-save")
+        #expect(final.content==newer)
+        #expect(try await library.readDraft(notebookID:id,path:first.path)==nil)
+    }
+    @Test func draftRebaseDoesNotFollowExternalFileOrDifferentBaseline() async throws {
+        let (root,library,_,coordinator,id)=try await fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let first=try await coordinator.open(notebookID:id,day:"2026-10-30")
+        let captured=first.content+"Saved\n",draft=first.content+"Recovery bytes\n"
+        let saved=try await coordinator.commit(documentID:first.documentID,expectedRevision:first.revision,content:captured,commandID:"captured")
+        try await coordinator.draft(documentID:first.documentID,revision:first.revision,content:draft)
+        let external=try await library.save(notebookID:id,path:first.path,content:captured+"External\n",expectedRevision:saved.revision)
+        try await library.rebaseDraftAfterCommit(notebookID:id,path:first.path,expectedRevision:first.revision,targetRevision:saved.revision)
+        #expect(try await library.readDraft(notebookID:id,path:first.path)?.revision==first.revision)
+        try await library.rebaseDraftAfterCommit(notebookID:id,path:first.path,expectedRevision:saved.revision,targetRevision:external.revision)
+        #expect(try await library.readDraft(notebookID:id,path:first.path)?.revision==first.revision)
+        #expect(try await library.readDraft(notebookID:id,path:first.path)?.content==draft)
     }
     @Test func staleRevisionPreservesExternalFileAndDraft() async throws {
         let (root,library,_,coordinator,id)=try await fixture();defer{try? FileManager.default.removeItem(at:root)}
