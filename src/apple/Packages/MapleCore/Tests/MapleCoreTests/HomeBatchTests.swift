@@ -22,7 +22,19 @@ private actor BatchTransport: HTTPTransport {
     func contexts() throws -> [Context] {
         try requests.map { request in
             let object = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
-            return try JSONCodec.decode(Context.self, from: JSONSerialization.data(withJSONObject: object["state"]!))
+            let state = object["state"] as! [String: Any]
+            let event = try JSONCodec.decode(Event.self, from: JSONSerialization.data(withJSONObject: state["event"]!))
+            let entities = state["entities"] as! [String]
+            let subjects = state["entitySubjects"] as! [[String]]
+            func observations(_ key: String) throws -> [Event] {
+                try (state[key] as! [[Any]]).map { row in
+                    let index = row[1] as! Int
+                    let date = try JSONCodec.decode(Date.self, from: JSONSerialization.data(withJSONObject: row[2], options: .fragmentsAllowed))
+                    return Event(id: row[0] as! String, type: "home.state", source: .init(connector: "home_assistant", account: event.source.account, externalID: entities[index], revision: "1"), occurredAt: date, receivedAt: date, subjects: subjects[index], content: row[3] as! String)
+                }
+            }
+            let claims = try JSONCodec.decode([Claim].self, from: JSONSerialization.data(withJSONObject: state["currentState"]!))
+            return Context(event: event, currentState: claims, recentEvents: try observations("recentEvents"), relatedEvidence: try observations("relatedEvidence"), version: "fixture-wire", sourceFacts: [])
         }
     }
 }

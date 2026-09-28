@@ -32,7 +32,9 @@ public struct IntelligenceEngine: Sendable {
                 if let failure = error as? JevProviderError { try await store.pauseJev(after: failure) }
                 // Never persist request/response bodies or credentials in queue errors.
                 let message = (error as? JevProviderError)?.localizedDescription ?? "Classification failed or output was invalid. Check provider availability and retry."
-                if classifier is TypeSafeClassifier, error is MapleError {
+                if error is JevInputTooLarge {
+                    try await store.blockClassification(lease, reason: JevInputTooLarge().localizedDescription, now: Date())
+                } else if classifier is TypeSafeClassifier, error is MapleError {
                     try await store.blockClassification(lease, reason: "Jev input or response validation failed. Inspect the attempt before retrying; no automatic repeat will be sent.", now: Date())
                 } else {
                     try await store.fail(lease, error: message, now: Date())

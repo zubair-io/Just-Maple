@@ -60,3 +60,15 @@ Regression coverage includes shared account holds and concurrent workers, restar
 Validation passed: 348 core tests, 30 transport tests, 186 Angular tests, 69 Mac tests and the audit script's synthetic ledger regression. The MapleCore CLI build, production Angular/Mac build and strict app signature verification passed. The fresh app is `.build/xcode/Build/Products/Debug/Just Maple.app`.
 
 A final read at 05:15 UTC still showed 2,378 audited classification invocations, unchanged since pausing. The app was back in an active note-editing view, so it was not terminated or relaunched. Persistent holds across restart are regression-tested; verification against the live workspace after relaunch remains outstanding. The existing process does not hot reload these changes. After saving and reopening the fresh build, Connections will expose the migrated account hold; resolve the account issue before using its explicit retry action.
+
+## September 28 follow-up: oversized HA batch stopped the queue
+
+After account recovery, eleven more decisions committed before a legacy HA batch returned HTTP 400. A bounded diagnostic replay identified the exact machine error `detail.error_type=max_tokens_exceeded`; private server bodies and credentials were not logged. The batch contained 91 observations across 19 entities, and its original request was 68,243 bytes. Bytes are not token estimates.
+
+The Jev wire representation now interns repeated entity identifiers and sends observation rows with evidence ID, entity index, occurrence time and complete content. Entity subjects remain available to connect user corrections to their entities. Every observation and prior state stays in the single batch request; the original full Context remains the decision/storage authority. No evidence is deleted, truncated or split into per-entity calls.
+
+Only the exact allowlisted HTTP 400 `max_tokens_exceeded` response becomes a source-specific blocked item, with a safe inspectable diagnostic and no automatic repeat. Unknown HTTP 400 errors, authentication/billing holds and transient cooldowns keep their existing safeguards. This also applies to manually requested fact checks without pausing unrelated work.
+
+A live replay of the original failing batch with the compact representation returned HTTP 200 and four answers: 34,032 request bytes, 14,690 provider-reported input tokens, 71 output tokens. This was a diagnostic invocation, not a production decision or a quality evaluation. Regression tests cover lossless compact observations and previous states, continued queue processing after an oversized item, no automatic repetition, and safe error metadata. Provider limits reference: https://docs.typesafe.ai/models (checked September 28, 2026).
+
+Validation: 357 core tests and 30 transport tests passed; the CLI and signed Mac app built successfully. After reopening the updated app and explicitly clearing the old hold, the original rejected batch reached `succeeded` on attempt 2 in the production queue. Subsequent classification responses also committed, with no provider hold present.

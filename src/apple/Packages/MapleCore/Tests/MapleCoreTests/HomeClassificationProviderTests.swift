@@ -104,3 +104,33 @@ struct HomeClassificationProviderTests {
         }
     }
 }
+
+extension HomeClassificationProviderTests {
+    @Test func compactHomeWirePreservesAllObservationsAndEvidenceWithoutRepeatedMetadata() async throws {
+        let observations = (0..<91).map { index in
+            Event(type: "home.state", source: .init(connector: "home_assistant", account: "synthetic-home", externalID: String(repeating: "fixture-", count: 10) + "sensor-\(index % 19)", revision: UUID().uuidString), occurredAt: Date().addingTimeInterval(Double(index)), subjects: ["home:sensor-\(index % 19)"], content: "Synthetic observation \(index): State: \(index). Unicode: 🌳 café.")
+        }
+        let original = context()
+        let full = Context(event: original.event, currentState: [], recentEvents: [observations[0]], relatedEvidence: observations, version: "fixture")
+        let transport = HomeProviderTransport(data: try payload(answers()))
+        let result = try await TypeSafeClassifier(apiKey: "fixture", transport: transport).classify(full)
+        let request = try #require(await transport.requests.first)
+        let body = try #require(JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
+        let state = try #require(body["state"] as? [String: Any])
+        let rows = try #require(state["relatedEvidence"] as? [[Any]])
+        let entities = try #require(state["entities"] as? [String])
+        #expect(rows.count == 91)
+        #expect(entities.count == 19)
+        for (row, observation) in zip(rows, observations) {
+            #expect(row[0] as? String == observation.id)
+            #expect(entities[try #require(row[1] as? Int)] == observation.source.externalID)
+            #expect(row[3] as? String == observation.content)
+            let date = try JSONCodec.decode(Date.self, from: JSONSerialization.data(withJSONObject: row[2], options: .fragmentsAllowed))
+            #expect(abs(date.timeIntervalSince(observation.occurredAt)) < 1)
+        }
+        #expect((state["recentEvents"] as? [[Any]])?.count == 1)
+        #expect(try JSONSerialization.data(withJSONObject: state).count < JSONCodec.encode(full).count / 2)
+        #expect(result.inputContext?.relatedEvidence == observations)
+        #expect(result.inputContext?.recentEvents == [observations[0]])
+    }
+}

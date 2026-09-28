@@ -113,3 +113,41 @@ private extension KnowledgeStore {
         try db.execute("UPDATE processing_jobs SET error='TypeSafe HTTP 402. Classification remains queued; check authentication, quota or service availability.' WHERE event_id=?", [id])
     }
 }
+
+private actor OversizeThenHealthyTransport: HTTPTransport {
+    var calls = 0
+    func send(_ request: URLRequest) async throws -> (Data, Int) {
+        calls += 1
+        if calls == 1 {
+            return (Data(#"{"detail":{"error_type":"max_tokens_exceeded","private":"must never be retained"}}"#.utf8), 400)
+        }
+        return (Data(#"{"model":"fixture","answers":{"notify":{"type":"noul","noul":0},"ask_user":{"type":"noul","noul":0},"reason":{"type":"noul","noul":0},"summarize":{"type":"noul","noul":0}}}"#.utf8), 200)
+    }
+}
+
+extension ProviderPauseTests {
+    @Test func oversizedInputBlocksOnlyItsSourceAndKeepsOtherWorkMoving() async throws {
+        let store = try KnowledgeStore(path: ":memory:"), transport = OversizeThenHealthyTransport()
+        for i in 0..<2 {
+            _ = try await store.ingestSourceSnapshot([ConnectorSourceRecord(id: "sensor.fixture", name: "Synthetic sensor", content: "State: \(i)")], connector: "home_assistant")
+        }
+        let classifier = try TypeSafeClassifier(apiKey: "fixture", transport: transport)
+        let engine = IntelligenceEngine(store: store, classifier: classifier)
+        let report = try await engine.run()
+        #expect(report.deferred == 1)
+        #expect(report.completed == 1)
+        #expect(await transport.calls == 2)
+        #expect(try await store.providerPause("typesafe") == nil)
+        #expect(try await store.queue().filter { $0.status == "blocked" }.count == 1)
+        #expect(try await engine.run().deferred == 0)
+        #expect(await transport.calls == 2)
+        let id = try #require(await store.queue().first { $0.status == "blocked" }?.eventID)
+        let detail = try await store.sourceDetail(eventID: id)
+        let artifact = try #require(detail.artifacts.first { $0.kind == "transport_status" })
+        let saved = try await store.sourceArtifact(eventID: id, artifactID: artifact.id)
+        #expect(saved.content == #"{"http_status":400,"error_type":"max_tokens_exceeded"}"#)
+        #expect(JevInputTooLarge.matches(status: 400, data: Data(#"{"detail":{"error_type":"max_tokens_exceeded"}}"#.utf8)))
+        #expect(!JevInputTooLarge.matches(status: 402, data: Data(#"{"detail":{"error_type":"max_tokens_exceeded"}}"#.utf8)))
+        #expect(!JevInputTooLarge.matches(status: 400, data: Data(#"{"detail":{"error_type":"unknown"}}"#.utf8)))
+    }
+}
