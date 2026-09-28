@@ -113,6 +113,9 @@ extension KnowledgeStore {
             var removed=old;removed.state="removed";removed.version += 1;try putDocumentBlock(removed)
         }
         for segment in segments {
+            if segment.id.hasPrefix("auto-task:") || segment.id.hasPrefix("auto-source:") {
+                try db.execute("INSERT OR IGNORE INTO document_auto_insertions(block_id,document_id,day) SELECT ?,id,day FROM managed_documents WHERE id=? AND day IS NOT NULL",[segment.id,documentID])
+            }
             let prior=try documentBlock(id:segment.id)
             let changed=prior.map{$0.content != segment.content || $0.documentID != documentID || $0.state != "active"} ?? true
             let taskID=segment.metadata["taskID"] as? String

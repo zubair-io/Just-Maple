@@ -52,7 +52,8 @@ try {
     .toContain("Synthetic persisted writing.");
   await page.reload();
   await expect(editor).toContainText("Synthetic persisted writing.");
-  await page.getByText("Organize blocks · cleared items · document history", { exact: true }).click();
+  await page.getByRole("button", { name: "Document tools", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Document tools", exact: true })).toBeVisible();
   await page
     .getByRole("button", { name: "View Markdown", exact: true })
     .click();
@@ -61,13 +62,15 @@ try {
     exact: true,
   });
   await expect(raw).toHaveValue(/maple-ref/);
+  await page.getByRole("button", { name: "Document tools", exact: true }).click();
   await page
     .getByRole("button", { name: "Formatted view", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "Synthetic proposal", exact: true }),
   ).toBeVisible();
-  await page.getByText("Organize blocks · cleared items · document history", { exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Document tools", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Suggested follow ups", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Ask Maple ↵", exact: true }).click();
   await expect(page.locator(".maple-run")).toContainText("succeeded", {
     timeout: 10000,

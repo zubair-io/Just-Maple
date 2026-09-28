@@ -464,6 +464,22 @@ export function createBlockActionsExtension(
                   () => deleteBlock(editor, id, callbacks.onClear),
                 ],
               ];
+              if (callbacks.onMoveToNextDay)
+                choices.push([
+                  "Move to next day",
+                  () => {
+                    callbacks.onMoveToNextDay!(id);
+                    return true;
+                  },
+                ]);
+              if (callbacks.onCopyToNextDay)
+                choices.push([
+                  "Copy to next day",
+                  () => {
+                    callbacks.onCopyToNextDay!(id);
+                    return true;
+                  },
+                ]);
               for (const [label, action, disabled] of choices) {
                 const entry = button(doc, label, () => perform(action));
                 entry.setAttribute("role", "menuitem");

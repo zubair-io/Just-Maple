@@ -1,5 +1,5 @@
 import { TestBed, ComponentFixture } from "@angular/core/testing";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MapleEditorComponent } from "./maple-editor.component";
 import { decodeDaily } from "./daily-markdown-codec";
 let fixture: ComponentFixture<MapleEditorComponent> | undefined;
@@ -17,6 +17,44 @@ afterEach(() => {
   TestBed.resetTestingModule();
 });
 describe("Daily editor floating toolbar", () => {
+  it("reports formatted and Markdown editing presence and releases it on destruction", () => {
+    const component = mount(),
+      presence = vi.fn();
+    component.editingChanged.subscribe(presence);
+    component.editor!.view.dom.dispatchEvent(new FocusEvent("focus"));
+    expect(presence).toHaveBeenLastCalledWith(true);
+    component.editor!.view.dom.dispatchEvent(new FocusEvent("blur"));
+    expect(presence).toHaveBeenLastCalledWith(false);
+    component.toggleSource();
+    fixture!.detectChanges();
+    const textarea = fixture!.nativeElement.querySelector("textarea");
+    textarea.dispatchEvent(new FocusEvent("focus"));
+    expect(presence).toHaveBeenLastCalledWith(true);
+    fixture!.destroy();
+    fixture = undefined;
+    expect(presence).toHaveBeenLastCalledWith(false);
+  });
+  it("opens document tools from the toolbar and retains access in read-only mode", () => {
+    const component = mount();
+    fixture!.componentRef.setInput("documentToolsAvailable", true);
+    fixture!.detectChanges();
+    const requested = vi.fn();
+    component.documentToolsRequested.subscribe(requested);
+    fixture!.nativeElement
+      .querySelector('[aria-label="Document tools"]')
+      .click();
+    expect(requested).toHaveBeenCalledOnce();
+    fixture!.componentRef.setInput("readOnly", true);
+    fixture!.detectChanges();
+    const button = Array.from(
+      fixture!.nativeElement.querySelectorAll(
+        "button",
+      ) as NodeListOf<HTMLButtonElement>,
+    ).find((element) => element.textContent?.trim() === "Document tools")!;
+    expect(button).toBeTruthy();
+    button.click();
+    expect(requested).toHaveBeenCalledTimes(2);
+  });
   it("formats the current selection and preserves Markdown identity across reopening", () => {
     const component = mount();
     component.editor!.commands.setTextSelection({ from: 1, to: 5 });

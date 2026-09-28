@@ -342,6 +342,37 @@ describe("Daily block interactions", () => {
     expect(document.querySelector(".maple-selection-menu")).toBeNull();
     expect(document.querySelector(".maple-block-drop-line")).toBeNull();
   });
+  it("requests next-day transfers from the block menu without replacing its identity locally", () => {
+    const callbacks = {
+      onSource: vi.fn(),
+      onMaple: vi.fn(),
+      onClear: vi.fn(),
+      onMoveToNextDay: vi.fn(),
+      onCopyToNextDay: vi.fn(),
+    };
+    const e = editor([p("original", "Retain identity")], true, callbacks);
+    e.view.dom
+      .querySelector("p")!
+      .dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    const grip =
+      document.querySelector<HTMLButtonElement>(".maple-block-grip")!;
+    for (const label of ["Move to next day", "Copy to next day"]) {
+      grip.click();
+      const action = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(
+          ".maple-block-actions button",
+        ),
+      ).find((button) => button.textContent === label)!;
+      action.click();
+    }
+    expect(callbacks.onMoveToNextDay).toHaveBeenCalledExactlyOnceWith(
+      "original",
+    );
+    expect(callbacks.onCopyToNextDay).toHaveBeenCalledExactlyOnceWith(
+      "original",
+    );
+    expect(ids(e)).toEqual(["original"]);
+  });
   it("formats the text selection through the bubble menu", async () => {
     const e = editor([p("a", "Select these words")], true);
     e.commands.setTextSelection({ from: 1, to: 7 });

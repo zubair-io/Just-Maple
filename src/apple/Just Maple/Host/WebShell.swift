@@ -77,7 +77,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
         switch action {
         case "attachmentImport", "attachmentRead", "attachmentExport":
             return try await attachmentCommand(action, body)
-        case "todayOpen", "todayMigrate", "documentOpen", "documentCommit", "documentDraft", "documentHistory", "documentRecoveryCopy", "sourceInsert", "documentBlockMutate", "documentRegister", "documentOperationHistory", "documentOperationResolve":
+        case "documentPresence", "documentAutoRefresh", "todayOpen", "todayMigrate", "documentOpen", "documentCommit", "documentDraft", "documentHistory", "documentRecoveryCopy", "sourceInsert", "documentBlockMutate", "documentRegister", "documentOperationHistory", "documentOperationResolve":
             return try await todayDocumentCommand(action, body)
         case "documentSuggestions", "taskInsert":
             return try await documentSuggestionsCommand(action,body)

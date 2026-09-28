@@ -7,6 +7,36 @@ import MapleNotebooks
 
 @MainActor
 struct BridgeTests {
+    @Test func automaticRefreshDefersForPresenceAndBackgroundCreatesToday() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        try FileManager.default.createDirectory(at:root.appendingPathComponent("Cloud"),withIntermediateDirectories:true)
+        let library=try NotebookLibrary(registryURL:root.appendingPathComponent("registry.json"),cloudRoot:root.appendingPathComponent("Cloud"))
+        let model=AppModel(directory:root);model.notebooks=library;model.store=try KnowledgeStore(path:":memory:")
+        let bridge=Bridge(model:model)
+        model.loaded=true
+        await model.automaticTodayTick()
+        let notebook=try await library.ensureJustMapleDailyNotebook()
+        let day=try ManagedMarkdown.day()
+        let record=try #require(try await model.store?.managedDailyDocument(notebookID:notebook,day:day))
+        let response=try #require(try await bridge.perform("documentAutoRefresh",["documentID":record.documentID,"editing":true]) as? [String:Any])
+        #expect(response["deferred"] as? Bool==true)
+        #expect(model.isTodayEditing(documentID:record.documentID))
+        _ = try await bridge.perform("documentPresence",["documentID":record.documentID,"editing":false])
+        #expect(!model.isTodayEditing(documentID:record.documentID))
+        let refreshed=try #require(try await bridge.perform("documentAutoRefresh",["documentID":record.documentID,"editing":false]) as? [String:Any])
+        #expect(refreshed["document"] != nil)
+    }
+    @Test func editorPresenceExpiresAndCanBeReleased() {
+        let model=AppModel(),now=Date(timeIntervalSince1970:1000)
+        model.setTodayEditing(documentID:"doc",editing:true,at:now)
+        #expect(model.isTodayEditing(documentID:"doc",at:now.addingTimeInterval(5)))
+        #expect(!model.isTodayEditing(documentID:"doc",at:now.addingTimeInterval(7)))
+        #expect(!model.isTodayEditing(documentID:"other",at:now))
+        model.setTodayEditing(documentID:"doc",editing:false,at:now)
+        #expect(!model.isTodayEditing(documentID:"doc",at:now))
+    }
+
     @Test func overlappingMutationRefreshWaitsForTheFreshTrailingRead() async {
         let coordinator=WorkspaceRefreshCoordinator()
         var stored=0,visible = -1,passes=0

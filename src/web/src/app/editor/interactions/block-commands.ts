@@ -8,6 +8,8 @@ export interface DailyInteractionCallbacks {
   onMaple: () => void;
   onAttachment?: () => void;
   onClear?: (blockID: string) => void;
+  onMoveToNextDay?: (blockID: string) => void;
+  onCopyToNextDay?: (blockID: string) => void;
   onError?: (message: string) => void;
 }
 export type BlockConversion =

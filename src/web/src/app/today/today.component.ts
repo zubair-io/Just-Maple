@@ -4,6 +4,7 @@ import {
   OnInit,
   OnDestroy,
   ViewChild,
+  ElementRef,
   inject,
   signal,
 } from "@angular/core";
@@ -101,193 +102,125 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
           [initial]="notes.initial()"
           [documentID]="doc.documentID"
           [showToolbar]="true"
+          [documentToolsAvailable]="true"
+          [dayTransfersAvailable]="true"
           [readOnly]="doc.readOnly || notes.actionBusy()"
           (changed)="notes.change($event)"
+          (editingChanged)="notes.setEditing($event)"
           (inspected)="selected.set($event)"
           (submitted)="notes.submit($event.blockID, $event.text)"
           (sourceRequested)="openPicker()"
           (clearRequested)="notes.blockAction($event, 'clear')"
+          (blockTransferRequested)="transferBlock($event)"
+          (documentToolsRequested)="openDocumentTools()"
         />
       }
-      <details class="document-organizer">
-        <summary>Suggested follow ups</summary>
-        <p class="small">
-          Choose what belongs in this document. Nothing is inserted
-          automatically.
-        </p>
-        <mui-button variant="ghost" (pressed)="notes.loadSuggestions()"
-          >Refresh suggestions</mui-button
+      @if (toolsOpen()) {
+        <dialog
+          #documentTools
+          class="document-tools-drawer"
+          aria-labelledby="document-tools-title"
+          (cancel)="$event.preventDefault(); closeDocumentTools()"
         >
-        @if (notes.suggestionError()) {
-          <p role="status">{{ notes.suggestionError() }}</p>
-        }
-        @for (task of notes.suggestions().tasks; track task.taskID) {
-          <article class="managed-block">
-            <p>{{ task.title }}</p>
+          <header>
+            <h2 id="document-tools-title">Document tools</h2>
+            <mui-button variant="ghost" (pressed)="closeDocumentTools()"
+              >Close document tools</mui-button
+            >
+          </header>
+          <p class="small">{{ doc.path }} · Preserved history and recovery</p>
+          <div class="document-tool-actions">
             <mui-button
               variant="ghost"
-              [disabled]="notes.actionBusy() || doc.readOnly"
-              (pressed)="notes.insertTask(task.taskID)"
-              >Add linked task</mui-button
+              (pressed)="toggleMarkdown(); closeDocumentTools()"
+              >{{
+                editorInstance?.source() ? "Formatted view" : "View Markdown"
+              }}</mui-button
             >
-          </article>
-        }
-        @for (offer of notes.suggestions().carryForward; track offer.blockID) {
-          <article class="managed-block">
-            <p>{{ offer.label }} · {{ offer.day }}</p>
-            <mui-button
-              variant="ghost"
-              [disabled]="notes.actionBusy() || doc.readOnly"
-              (pressed)="notes.carryForward(offer)"
-              >Bring into this day</mui-button
+            <mui-button variant="ghost" (pressed)="notes.recoveryCopy()"
+              >Save recovery copy</mui-button
             >
-          </article>
-        }
-        @if (
-          !notes.suggestions().tasks.length &&
-          !notes.suggestions().carryForward.length
-        ) {
-          <p class="small">No suggested follow ups need placement.</p>
-        }
-        @if (notes.suggestions().hasMore) {
+            <mui-button variant="ghost" (pressed)="notes.reopen()"
+              >Reopen current file · retain draft</mui-button
+            >
+          </div>
+          @if (notes.automaticStatus()) {
+            <p class="small" role="status">{{ notes.automaticStatus() }}</p>
+          }
           <p class="small">
-            More tasks are available in Workspace tools → Tasks.
+            Clearing a block hides it from this note. It does not complete a
+            linked task.
           </p>
-        }
-      </details>
-      <details class="document-organizer">
-        <summary>Organize blocks · cleared items · document history</summary>
-        <mui-button variant="ghost" (pressed)="toggleMarkdown()">{{
-          editorInstance?.source() ? "Formatted view" : "View Markdown"
-        }}</mui-button>
-        <p class="small">
-          Clearing removes a block from this note. Completing a linked task is a
-          separate action.
-        </p>
-        @for (block of doc.blocks || []; track block.blockID) {
-          <article class="managed-block">
-            <p>{{ blockLabel(block.content, block.kind) }}</p>
-            <div>
-              <mui-button
-                variant="ghost"
-                [disabled]="notes.actionBusy() || doc.readOnly"
-                (pressed)="notes.blockAction(block.blockID, 'clear')"
-                >Clear</mui-button
-              ><mui-button
-                variant="ghost"
-                [disabled]="notes.actionBusy() || doc.readOnly"
-                (pressed)="notes.blockAction(block.blockID, 'move', tomorrow())"
-                >Move to next day →</mui-button
-              >
-              <mui-button
-                variant="ghost"
-                [disabled]="notes.actionBusy() || doc.readOnly"
-                (pressed)="notes.blockAction(block.blockID, 'copy', tomorrow())"
-                >Copy to next day</mui-button
-              >
-              @if (
-                block.taskID &&
-                doc.capabilities.taskActions &&
-                ["completed", "done", "complete"].includes(
-                  block.taskStatus || ""
-                )
-              ) {
+          @if (doc.cleared?.length) {
+            <h2>Cleared from this day</h2>
+            @for (block of doc.cleared; track block.blockID) {
+              <article class="managed-block">
+                <p>{{ blockLabel(block.content, block.kind) }}</p>
                 <mui-button
                   variant="ghost"
                   [disabled]="notes.actionBusy() || doc.readOnly"
-                  (pressed)="notes.blockAction(block.blockID, 'reopen')"
-                  >Reopen completed task</mui-button
+                  (pressed)="notes.blockAction(block.blockID, 'restore')"
+                  >Restore block</mui-button
                 >
-              }
+              </article>
+            }
+          }
+          <mui-button variant="ghost" (pressed)="notes.loadHistory()"
+            >Load document history</mui-button
+          >
+          @for (
+            operation of notes.operations();
+            track operation.input.commandID
+          ) {
+            <details class="revision">
+              <summary>
+                {{ operation.input.kind }} · {{ operation.state }}
+              </summary>
               @if (
-                block.taskID &&
-                doc.capabilities.taskActions &&
-                !["completed", "done", "complete"].includes(
-                  block.taskStatus || ""
-                )
+                operation.state === "prepared" || operation.state === "conflict"
               ) {
+                <p class="small">
+                  This action is not finalized. A linked task remains pending
+                  until recovery resolves it.
+                </p>
                 <mui-button
                   variant="ghost"
-                  [disabled]="
-                    notes.actionBusy() ||
-                    doc.readOnly ||
-                    block.taskStatus === 'completed'
+                  (pressed)="
+                    notes.resolveOperation(operation.input.commandID, 'retry')
                   "
-                  (pressed)="notes.blockAction(block.blockID, 'complete')"
-                  >Complete linked task</mui-button
+                  >Retry recovery</mui-button
+                ><mui-button
+                  variant="ghost"
+                  (pressed)="
+                    notes.resolveOperation(operation.input.commandID, 'abandon')
+                  "
+                  >Abandon pending action · keep current files</mui-button
                 >
               }
-            </div>
-          </article>
-        }
-        @if (doc.cleared?.length) {
-          <h2>Cleared from this day</h2>
-          @for (block of doc.cleared; track block.blockID) {
-            <article class="managed-block">
-              <p>{{ blockLabel(block.content, block.kind) }}</p>
-              <mui-button
-                variant="ghost"
-                [disabled]="notes.actionBusy() || doc.readOnly"
-                (pressed)="notes.blockAction(block.blockID, 'restore')"
-                >Restore block</mui-button
-              >
-            </article>
+              @for (file of operation.files; track file.documentID) {
+                <details>
+                  <summary>Preserved document {{ file.documentID }}</summary>
+                  <pre>{{ file.after }}</pre>
+                </details>
+              }
+            </details>
           }
-        }
-        <mui-button variant="ghost" (pressed)="notes.loadHistory()"
-          >Load document history</mui-button
-        >
-        @for (
-          operation of notes.operations();
-          track operation.input.commandID
-        ) {
-          <details class="revision">
-            <summary>
-              {{ operation.input.kind }} · {{ operation.state }}
-            </summary>
-            @if (
-              operation.state === "prepared" || operation.state === "conflict"
-            ) {
-              <p class="small">
-                This action is not finalized. A linked task remains pending
-                until recovery resolves it.
-              </p>
+          @for (entry of notes.history(); track entry.commandID) {
+            <details class="revision">
+              <summary>
+                {{ entry.createdAt * 1000 | date: "medium" }} ·
+                {{ entry.state }}
+              </summary>
+              <pre>{{ entry.after }}</pre>
               <mui-button
                 variant="ghost"
-                (pressed)="
-                  notes.resolveOperation(operation.input.commandID, 'retry')
-                "
-                >Retry recovery</mui-button
-              ><mui-button
-                variant="ghost"
-                (pressed)="
-                  notes.resolveOperation(operation.input.commandID, 'abandon')
-                "
-                >Abandon pending action · keep current files</mui-button
+                (pressed)="notes.recoveryCopy(entry.after)"
+                >Save this revision as a recovery copy</mui-button
               >
-            }
-            @for (file of operation.files; track file.documentID) {
-              <details>
-                <summary>Preserved document {{ file.documentID }}</summary>
-                <pre>{{ file.after }}</pre>
-              </details>
-            }
-          </details>
-        }
-        @for (entry of notes.history(); track entry.commandID) {
-          <details class="revision">
-            <summary>
-              {{ entry.createdAt * 1000 | date: "medium" }} · {{ entry.state }}
-            </summary>
-            <pre>{{ entry.after }}</pre>
-            <mui-button
-              variant="ghost"
-              (pressed)="notes.recoveryCopy(entry.after)"
-              >Save this revision as a recovery copy</mui-button
-            >
-          </details>
-        }
-      </details>
+            </details>
+          }
+        </dialog>
+      }
       @if (notes.run(); as run) {
         <section
           class="maple-run"
@@ -444,6 +377,40 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
       .today-page {
         max-width: 940px;
         margin: auto;
+      }
+      .document-tools-drawer {
+        position: fixed;
+        inset: 0 0 0 auto;
+        margin: 0;
+        width: min(540px, 100vw);
+        max-width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
+        box-sizing: border-box;
+        padding: 28px;
+        overflow: auto;
+        border: 0;
+        border-left: 1px solid var(--color-border);
+        background: var(--color-bg-secondary);
+        color: var(--color-text-main);
+        font: 14px/1.6 var(--font-sans);
+      }
+      .document-tools-drawer::backdrop {
+        background: #0005;
+      }
+      .document-tools-drawer > header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .document-tools-drawer h2 {
+        font: 25px/1.3 var(--font-serif);
+      }
+      .document-tool-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
       }
       .note-date {
         margin: 8px 0 28px;
@@ -672,6 +639,33 @@ export class TodayComponent implements OnInit, OnDestroy {
   readonly sources = inject(SourcesService);
   readonly selected = signal<string | null>(null);
   readonly picker = signal(false);
+  readonly toolsOpen = signal(false);
+  private toolsDialog?: HTMLDialogElement;
+  @ViewChild("documentTools") set documentTools(
+    value: ElementRef<HTMLDialogElement> | undefined,
+  ) {
+    this.toolsDialog = value?.nativeElement;
+    if (this.toolsDialog) {
+      const dialog = this.toolsDialog;
+      queueMicrotask(() => {
+        if (!this.toolsOpen() || !dialog.isConnected) return;
+        if (typeof dialog.showModal === "function") dialog.showModal();
+        else dialog.setAttribute("open", "");
+      });
+    }
+  }
+  openDocumentTools() {
+    this.toolsOpen.set(true);
+    void this.notes.loadHistory();
+  }
+  closeDocumentTools() {
+    if (this.toolsDialog?.open && typeof this.toolsDialog.close === "function")
+      this.toolsDialog.close();
+    this.toolsOpen.set(false);
+  }
+  transferBlock(event: { blockID: string; kind: "move" | "copy" }) {
+    return this.notes.blockAction(event.blockID, event.kind, this.tomorrow());
+  }
   readonly matches = signal<SourceRow[]>([]);
   readonly pickerLoading = signal(false);
   readonly pickerError = signal("");
@@ -701,6 +695,7 @@ export class TodayComponent implements OnInit, OnDestroy {
     this.timer = setInterval(() => {
       this.currentDay.set(localDay());
       void this.notes.pollRun();
+      void this.notes.pollAutomatic();
     }, 2000);
   }
   relativeDay() {

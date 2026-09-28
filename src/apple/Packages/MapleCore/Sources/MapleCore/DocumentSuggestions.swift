@@ -60,7 +60,7 @@ extension TodayDocumentCoordinator {
         guard try await !store.documentBlocks(documentID:documentID).contains(where:{$0.taskID==taskID}) else{throw MapleError.invalid("This task already has a block here. Use its existing block or restore it from history.")}
         let task=try await store.documentTaskOffer(taskID)
         let title=task.title.map {c in "\\`*_{}[]<>()#+-.!|~".contains(c) ? "\\"+String(c):String(c)}.joined().replacingOccurrences(of:"\n",with:" ")
-        let content=document.content+"\n"+(try ManagedMarkdown.marker(["id":blockID,"taskID":taskID,"kind":"task"]))+"- [ ] "+title+"\n"
+        let content=document.content+"\n"+(try ManagedMarkdown.marker(["id":blockID,"taskID":taskID]))+"- [ ] "+title+"\n"
         return try await commit(documentID:documentID,expectedRevision:expectedRevision,content:content,commandID:commandID)
     }
 }

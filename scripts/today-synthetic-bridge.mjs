@@ -176,6 +176,10 @@ export function syntheticBridge() {
               };
             case "todayOpen":
               return doc();
+            case "documentPresence":
+              return { deferred: true };
+            case "documentAutoRefresh":
+              return { document: doc() };
             case "documentOpen":
               return body.documentID === "synthetic-generic"
                 ? genericDoc()

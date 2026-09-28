@@ -85,6 +85,8 @@ extension KnowledgeStore {
     }
     func writeTask(_ task:LifeTask, at:Date) throws {
         try db.execute("INSERT INTO life_tasks VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET version=excluded.version,json=excluded.json",[task.id,String(task.version),try JSONCodec.string(task)])
+        let dueBoundary=(task.scheduled ?? task.due).flatMap{try? $0.boundary()}
+        try db.execute("INSERT INTO document_task_schedule VALUES (?,?) ON CONFLICT(task_id) DO UPDATE SET boundary=excluded.boundary",[task.id,dueBoundary.map{String($0.timeIntervalSince1970)}])
         let existing = Set(try db.rows("SELECT activity_id FROM task_activities WHERE task_id=?",[task.id]).compactMap{$0["activity_id"]})
         for id in existing.subtracting(task.activityIDs) { try db.execute("DELETE FROM task_activities WHERE task_id=? AND activity_id=?",[task.id,id]) }
         for id in Set(task.activityIDs).subtracting(existing) { try db.execute("INSERT INTO task_activities VALUES (?,?,?,?)",[task.id,id,"user",String(at.timeIntervalSince1970)]) }

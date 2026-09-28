@@ -17,6 +17,9 @@ final class AppModel {
     var companion = CompanionMacController()
     var notebooks: NotebookLibrary?
     var todayDocuments: TodayDocumentCoordinator?
+    var todayEditingLeases: [String: Date] = [:]
+    var automaticTodayBusy = false
+    var lastAutomaticTodayTick = Date.distantPast
     var inlineTasks: [String: Task<Void, Never>] = [:]
     var localIndex: LocalIndexStatus?
     private var lastWaitingReviewTick = Date.distantPast
@@ -239,6 +242,7 @@ final class AppModel {
     func indexTick() async {
         guard !starting,let store else {return}
         await waitingReviewTick()
+        await automaticTodayTick()
         do {
             try await store.excludeExpiredAIWork()
             try await store.indexBatch()

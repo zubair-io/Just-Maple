@@ -1,3 +1,4 @@
+import { localDay } from "../daily-note/daily-note.models";
 import { TestBed } from "@angular/core/testing";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { NativeBridge } from "../core/native-bridge.service";
@@ -306,5 +307,45 @@ describe("Today document coordination", () => {
     service.document.update((doc) => ({ ...doc!, revision: "r2" }));
     await service.submit("request", "Find sources");
     expect(commands[2].commandID).not.toBe(commands[0].commandID);
+  });
+});
+
+describe("automatic daily context", () => {
+  it("adopts new persisted blocks only when the note is idle", async () => {
+    const today={...document,day:localDay()};
+    const updated={...today,revision:"r2",content:"Original\n\n## FYI\nNew source"};
+    const service=setup(async action=>action==="todayOpen" ? today : action==="documentAutoRefresh" ? {document:updated} : []);
+    await service.open();
+    await service.pollAutomatic();
+    expect(service.content()).toBe(updated.content);
+    expect(service.dirty()).toBe(false);
+  });
+  it("does not remount an unchanged document or replace typing begun during a refresh", async () => {
+    const today={...document,day:localDay()};
+    let finish!: (value:any)=>void;
+    const service=setup(async action=>action==="todayOpen" ? today : action==="documentAutoRefresh" ? new Promise(resolve=>finish=resolve) : []);
+    await service.open();
+    const generation=service.generation();
+    const first=service.pollAutomatic();finish({document:today});await first;
+    expect(service.generation()).toBe(generation);
+    const pending=service.pollAutomatic();
+    service.setEditing(true);
+    service.change("My new writing");
+    finish({document:{...today,revision:"r2",content:"Automatic block"}});
+    await pending;
+    expect(service.content()).toBe("My new writing");
+    expect(service.dirty()).toBe(true);
+    service.cancelPendingReads();
+  });
+  it("refreshes presence while focused and ignores replies after route destruction", async () => {
+    const today={...document,day:localDay()};let finish!: (value:any)=>void;
+    const calls:string[]=[];
+    const service=setup(async action=>{calls.push(action);return action==="todayOpen" ? today : action==="documentAutoRefresh" ? new Promise(resolve=>finish=resolve) : [];});
+    await service.open();service.setEditing(true);await service.pollAutomatic();
+    expect(calls.filter(x=>x==="documentPresence").length).toBe(2);
+    expect(calls).not.toContain("documentAutoRefresh");
+    service.setEditing(false);const pending=service.pollAutomatic();service.cancelPendingReads();
+    finish({document:{...today,revision:"r2",content:"New"}});await pending;
+    expect(service.content()).toBe("Original");
   });
 });

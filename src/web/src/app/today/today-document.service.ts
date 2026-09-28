@@ -142,6 +142,9 @@ export class TodayDocumentService {
   private saveWork: Promise<boolean> | null = null;
   private draftWork: Promise<void> = Promise.resolve();
   private openGeneration = 0;
+  private automaticBusy = false;
+  readonly editing = signal(false);
+  readonly automaticStatus = signal("");
   private saveCommand?: { id: string; content: string; revision: string };
   private submissions = new Map<string, string>();
   private actions = new Map<string, string>();
@@ -193,7 +196,7 @@ export class TodayDocumentService {
       this.attempts.set([]);
       this.saveCommand = undefined;
       if (doc.documentID) void this.loadRuns(doc.documentID, generation);
-      if (doc.documentID) void this.loadSuggestions();
+
       if (!ignoreDraft && doc.draft && doc.draft.revision !== doc.revision)
         this.error.set(
           "The file changed after this draft was written. Your recovered draft is preserved. Save a recovery copy or reopen the current file.",
@@ -243,8 +246,43 @@ export class TodayDocumentService {
   }
   // Invalidate read continuations when the editor leaves the route; saves and drafts keep running.
   cancelPendingReads() {
+    this.setEditing(false);
     this.openGeneration++;
     this.loading.set(false);
+  }
+  setEditing(editing: boolean) {
+    this.editing.set(editing);
+    const documentID = this.document()?.documentID;
+    if (documentID) void this.bridge.notebook("documentPresence", {documentID, editing}).catch(() => undefined);
+  }
+  async pollAutomatic() {
+    const doc = this.document();
+    if (!doc?.documentID || doc.day !== localDay() || doc.readOnly || this.loading() || this.automaticBusy) return;
+    // Refresh the native lease even while autosave or another command is running.
+    if (this.editing()) {
+      this.setEditing(true);
+      return;
+    }
+    if (this.dirty() || this.saving() || this.actionBusy() || this.conflictedDraft()) return;
+    const generation = this.openGeneration;
+    const content = this.content();
+    this.automaticBusy = true;
+    try {
+      const result = await this.bridge.notebook<{document?: TodayDocument; deferred?: boolean}>("documentAutoRefresh", {documentID: doc.documentID, editing: false});
+      if (generation !== this.openGeneration || this.document()?.documentID !== doc.documentID ||
+          this.document()?.revision !== doc.revision || this.content() !== content || this.dirty() ||
+          this.saving() || this.actionBusy() || this.editing()) return;
+      const refreshed = result.document;
+      if (!refreshed || refreshed.documentID !== doc.documentID) return;
+      if (refreshed.draft && refreshed.draft.content !== refreshed.content) return;
+      if (refreshed.revision !== doc.revision) {
+        this.adopt(refreshed);
+        this.status.set("Saved");
+      } else this.document.set(refreshed);
+      this.automaticStatus.set(refreshed.warning || "");
+    } catch {
+      if (generation === this.openGeneration) this.automaticStatus.set("New note context is pending. Maple will retry.");
+    } finally { this.automaticBusy = false; }
   }
   change(content: string) {
     const doc = this.document();

@@ -59,6 +59,16 @@
       >
         ↷
       </button>
+      @if (documentToolsAvailable()) {
+        <button
+          type="button"
+          aria-label="Document tools"
+          title="Document history and recovery"
+          (click)="documentToolsRequested.emit()"
+        >
+          ⋯
+        </button>
+      }
     </div>
     @if (palette()) {
       <div class="maple-toolbar-palette" aria-label="Insert a block">
@@ -93,6 +103,15 @@
     }
   </div>
 }
+@if (documentToolsAvailable() && (source() || readOnly())) {
+  <button
+    type="button"
+    class="maple-run-button"
+    (click)="documentToolsRequested.emit()"
+  >
+    Document tools
+  </button>
+}
 @if (notice()) {
   <p class="maple-editor-notice" role="status">{{ notice() }}</p>
 }
@@ -108,5 +127,7 @@
     [readOnly]="readOnly()"
     [ngModel]="raw"
     (ngModelChange)="sourceChanged($event)"
+    (focus)="editingChanged.emit(true)"
+    (blur)="editingChanged.emit(false)"
   ></textarea>
 }

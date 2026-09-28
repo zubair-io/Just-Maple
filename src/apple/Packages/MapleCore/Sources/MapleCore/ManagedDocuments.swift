@@ -97,6 +97,18 @@ extension SQLite {
             try execute("CREATE TABLE IF NOT EXISTS document_outbox (command_id TEXT PRIMARY KEY,event_json TEXT NOT NULL,delivered INTEGER NOT NULL DEFAULT 0)")
             try execute("CREATE TABLE IF NOT EXISTS document_legacy_imports (day TEXT PRIMARY KEY,document_id TEXT NOT NULL,snapshot_json TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1)")
             try migrateDocumentOperations()
+            try execute("CREATE TABLE IF NOT EXISTS document_auto_insertions (block_id TEXT PRIMARY KEY,document_id TEXT NOT NULL,day TEXT NOT NULL)")
+            try execute("CREATE INDEX IF NOT EXISTS document_auto_day ON document_auto_insertions(document_id)")
+            try execute("CREATE INDEX IF NOT EXISTS events_auto_recent ON events(received_at,occurred_at)")
+            try execute("CREATE INDEX IF NOT EXISTS events_auto_entity_latest ON events(connector,account,external_id,received_at)")
+            try execute("CREATE INDEX IF NOT EXISTS document_blocks_task ON document_block_index(json_extract(json,'$.taskID'))")
+            try execute("CREATE TABLE IF NOT EXISTS document_task_schedule (task_id TEXT PRIMARY KEY,boundary REAL)")
+            try execute("CREATE INDEX IF NOT EXISTS document_task_boundary ON document_task_schedule(boundary)")
+            for row in try rows("SELECT t.id,t.json FROM life_tasks t WHERE NOT EXISTS (SELECT 1 FROM document_task_schedule s WHERE s.task_id=t.id)") {
+                let task=try JSONCodec.decode(LifeTask.self,from:Data(row["json"]!.utf8))
+                let boundary=(task.scheduled ?? task.due).flatMap{try? $0.boundary()}
+                try execute("INSERT INTO document_task_schedule VALUES (?,?)",[task.id,boundary.map{String($0.timeIntervalSince1970)}])
+            }
         }
     }
 }

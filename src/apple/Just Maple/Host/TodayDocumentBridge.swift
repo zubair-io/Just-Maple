@@ -16,6 +16,13 @@ extension Bridge {
         let coordinator=try await todayCoordinator()
         guard let store=model.store else {throw MapleError.invalid("Your local workspace is not ready.")}
         switch action {
+        case "documentPresence", "documentAutoRefresh":
+            let id=try string(body,"documentID",limit:128)
+            guard try await store.managedDocument(id:id) != nil else {throw MapleError.invalid("Unknown daily document.")}
+            let editing=body["editing"] as? Bool ?? false
+            model.setTodayEditing(documentID:id,editing:editing)
+            if editing || action == "documentPresence" {return ["deferred":true]}
+            return ["document":try json(try await coordinator.refreshAutomatic(documentID:id))]
         case "todayOpen", "todayMigrate":
             let library=try await notebookLibrary()
             // Today has one app-owned iCloud destination. A remembered notebook or

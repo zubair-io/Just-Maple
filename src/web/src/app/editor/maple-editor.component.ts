@@ -181,11 +181,19 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   readonly documentID = input("");
   readonly readOnly = input(false);
   readonly showToolbar = input(true);
+  readonly documentToolsAvailable = input(false);
+  readonly dayTransfersAvailable = input(false);
   readonly changed = output<string>();
+  readonly editingChanged = output<boolean>();
   readonly inspected = output<string>();
   readonly submitted = output<{ blockID: string; text: string }>();
   readonly sourceRequested = output<void>();
   readonly clearRequested = output<string>();
+  readonly documentToolsRequested = output<void>();
+  readonly blockTransferRequested = output<{
+    blockID: string;
+    kind: "move" | "copy";
+  }>();
   readonly palette = signal(false);
   readonly toolbarPosition = signal({ x: -1000, y: -1000 });
   private readonly selectionRevision = signal(0);
@@ -750,6 +758,14 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
           onMaple: () => this.addRequest(),
           onAttachment: () => this.filePicker.nativeElement.click(),
           onClear: (id) => this.clearRequested.emit(id),
+          ...(this.dayTransfersAvailable()
+            ? {
+                onMoveToNextDay: (blockID: string) =>
+                  this.blockTransferRequested.emit({ blockID, kind: "move" }),
+                onCopyToNextDay: (blockID: string) =>
+                  this.blockTransferRequested.emit({ blockID, kind: "copy" }),
+              }
+            : {}),
           onError: (message) => this.notice.set(message),
         }),
         Reference,
@@ -793,6 +809,8 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
           return false;
         },
       },
+      onFocus: () => this.editingChanged.emit(true),
+      onBlur: () => this.editingChanged.emit(false),
       onUpdate: () => {
         this.raw = encodeDaily(this.prefix, this.editor!.getJSON());
         this.changed.emit(this.raw);
@@ -879,6 +897,7 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
     });
   }
   ngOnDestroy() {
+    this.editingChanged.emit(false);
     this.attachmentSupport?.destroy();
     this.resizeObserver?.disconnect();
     window.removeEventListener("resize", this.positionToolbar);
