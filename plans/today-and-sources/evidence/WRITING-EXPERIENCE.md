@@ -58,3 +58,5 @@ Validation: 355 core, 30 transport, 219 Angular and 69 Mac tests pass, plus CLI 
 Processing is now directly accessible beside Sources in the sidebar and through View processing in the Sources header. The existing live native snapshot drives queue counts; the page leads with enabled/paused state, provider status, the Jev hold reason, and waiting/processing/blocked/completed counts. Recent classification records link to their source inspector. Viewing the page does not resume processing or clear a provider hold.
 
 Validation: 221 Angular, 355 core, 30 transport and 69 Mac tests pass, along with the CLI build. Regressions cover the visible route link/active state and changing queue counts with a provider hold without triggering processing.
+
+`node scripts/processing-smoke.mjs` verifies both entry points against the real Angular router. The rebuilt Mac app was opened to Processing and visually verified against the local workspace: the queue and account/quota hold are visible. A provider hold takes precedence over the enabled-loop flag in the page heading. No processing was resumed.

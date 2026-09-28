@@ -293,11 +293,12 @@
     <h1>Processing</h1>
     <p>Queue status updates automatically while the app is open.</p>
     <section class="panel" aria-label="Processing status" aria-live="polite">
-      <h2>{{ s().running ? "Processing is enabled" : "Processing is paused" }}</h2>
-      <p>{{ s().classificationStatus }}</p>
+      <h2>{{ s().classificationProvider === 'jev' && s().jevPause
+        ? "Jev processing is paused"
+        : s().running ? "Processing is enabled" : "Processing is paused" }}</h2>
+      @if (!s().jevPause) { <p>{{ s().classificationStatus }}</p> }
       @if (s().jevPause; as pause) {
         <p>Jev requests are paused: {{ pause.reason }}</p>
-        <p>Queued sources are retained. They will not process through Jev until this hold is resolved.</p>
         <mui-button variant="ghost" (pressed)="go('/connections')"
           >Open connection settings</mui-button>
       }

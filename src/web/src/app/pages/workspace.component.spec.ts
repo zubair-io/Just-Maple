@@ -23,7 +23,7 @@ describe("Angular workspace state", () => {
   it("shows a provider hold and live queue counts without starting processing", async () => {
     const { bridge, fixture } = await setup("Activity");
     const act = vi.spyOn(bridge, "act");
-    bridge.state.update(state => ({ ...state, running: false,
+    bridge.state.update(state => ({ ...state, running: true, classificationProvider: "jev",
       jevPause: { provider: "typesafe", reason: "Resolve the account quota issue." },
       processingQueueCounts: { pending: 42, leased: 0, blocked: 3, succeeded: 9 },
       queue: [{ eventID: "synthetic-event", status: "pending", attempts: 0 }],
@@ -31,6 +31,8 @@ describe("Angular workspace state", () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector("h1").textContent).toBe("Processing");
     expect(fixture.nativeElement.textContent).toContain("Jev requests are paused: Resolve the account quota issue.");
+    expect(fixture.nativeElement.textContent).toContain("Jev processing is paused");
+    expect(fixture.nativeElement.textContent).not.toContain("Processing is enabled");
     expect(fixture.nativeElement.textContent).toContain("42 waiting");
     expect(fixture.nativeElement.textContent).toContain("Inspect source");
     bridge.state.update(state => ({ ...state, processingQueueCounts: { pending: 41, leased: 1 } }));
