@@ -22,6 +22,7 @@
           <button type="button" (click)="navigate('notebooks')">All notebooks</button>
         </div>
         <button class="secondary-nav" type="button" [attr.aria-current]="active()==='sources'?'page':null" (click)="navigate('sources')">Sources</button>
+        <a class="secondary-nav processing-link" routerLink="/processing" [attr.aria-current]="active()==='processing'?'page':null">Processing</a>
         <details class="workspace-tools"><summary>Workspace tools</summary><mui-sidebar role="tree" aria-label="Additional workspace tools" [sections]="sections" [activeId]="active()" (activeIdChange)="navigate($event)" /></details>
         <button class="secondary-nav" type="button" (click)="navigate('connections')">Connections & settings</button>
       </div>

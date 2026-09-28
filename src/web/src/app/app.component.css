@@ -5,3 +5,5 @@
 .daily-navigation .secondary-nav[aria-current=page]{background:var(--color-primary-light);color:var(--color-link,var(--color-primary))}
 
 .day-rail a { text-decoration: none; box-sizing: border-box; }
+
+.processing-link { text-decoration: none; box-sizing: border-box; }

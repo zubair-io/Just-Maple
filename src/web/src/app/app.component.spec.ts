@@ -55,6 +55,7 @@ function shell(flush = vi.fn().mockResolvedValue(true)) {
     providers: [
       provideRouter([
         { path: "sources", component: SourcesStub },
+        { path: "processing", component: SourcesStub },
         { path: "", pathMatch: "full", redirectTo: todayRedirect },
         ...dailyRoutes.map((route) =>
           route.component ? { ...route, component: DatedStub } : route,
@@ -87,6 +88,21 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("Today sidebar navigation", () => {
+  it("exposes Processing directly in the sidebar with route-based active styling", async () => {
+    const { fixture, router } = shell();
+    await router.navigateByUrl("/sources");
+    fixture.detectChanges();
+    const link = fixture.nativeElement.querySelector(".processing-link") as HTMLAnchorElement;
+    expect(link.textContent?.trim()).toBe("Processing");
+    expect(link.getAttribute("href")).toBe("/processing");
+    expect(link.closest("details")).toBeNull();
+    link.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(router.url).toBe("/processing");
+    expect(link.getAttribute("aria-current")).toBe("page");
+  });
+
   it("renders stable relative links and derives active styling from the dated URL", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 8, 27, 12));

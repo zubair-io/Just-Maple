@@ -37,6 +37,8 @@ import { TodayDocumentService } from "../today/today-document.service";
           Every observation, with the evidence behind its state.
         </p>
       </div>
+      <mui-button variant="ghost" (pressed)="router.navigate(['/processing'])"
+        >View processing</mui-button>
       <mui-button variant="ghost" [disabled]="loading()" (pressed)="refresh()"
         >Refresh</mui-button
       >

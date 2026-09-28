@@ -52,3 +52,9 @@ A successful user commit advances the baseline of a newer retained draft only wh
 The shared web document service coalesces identical open requests, keeps loading state correct when a prerequisite save fails, and rejects late open/reply snapshots after newer writing or saves. Reopen waits for an in-flight save acknowledgment. Retry save retries a failed durable draft write instead of awaiting the same rejected promise indefinitely. Today and notebook editors temporarily prevent edits while switching documents. Opening errors have their own message and retry action, preserving the previous document rather than pretending a save failed.
 
 Validation: 355 core, 30 transport, 219 Angular and 69 Mac tests pass, plus CLI build and both real-editor synthetic browser journeys (midnight routing; writing/source insertion/notebook persistence). Native regressions include 20 concurrent day opens with one durable identity, 24 overlapping reads/save replays, cancellation/error cleanup, retained-draft rebasing and external-revision protection. Browser writing remained intact with email, iMessage and HA blocks after reopening; near-limit input-to-frame p95 was 27.3 ms at 248,005 bytes. Fixtures do not call paid providers or modify production notes.
+
+## Processing visibility
+
+Processing is now directly accessible beside Sources in the sidebar and through View processing in the Sources header. The existing live native snapshot drives queue counts; the page leads with enabled/paused state, provider status, the Jev hold reason, and waiting/processing/blocked/completed counts. Recent classification records link to their source inspector. Viewing the page does not resume processing or clear a provider hold.
+
+Validation: 221 Angular, 355 core, 30 transport and 69 Mac tests pass, along with the CLI build. Regressions cover the visible route link/active state and changing queue counts with a provider hold without triggering processing.

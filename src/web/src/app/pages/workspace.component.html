@@ -290,7 +290,43 @@
     }
   }
   @case ("Activity") {
-    <h1>The loop, in the open.</h1>
+    <h1>Processing</h1>
+    <p>Queue status updates automatically while the app is open.</p>
+    <section class="panel" aria-label="Processing status" aria-live="polite">
+      <h2>{{ s().running ? "Processing is enabled" : "Processing is paused" }}</h2>
+      <p>{{ s().classificationStatus }}</p>
+      @if (s().jevPause; as pause) {
+        <p>Jev requests are paused: {{ pause.reason }}</p>
+        <p>Queued sources are retained. They will not process through Jev until this hold is resolved.</p>
+        <mui-button variant="ghost" (pressed)="go('/connections')"
+          >Open connection settings</mui-button>
+      }
+    </section>
+    <h2>Processing queue</h2>
+    <p>
+      {{ s().processingQueueCounts?.["pending"] ?? 0 }} waiting ·
+      {{ s().processingQueueCounts?.["leased"] ?? 0 }} processing ·
+      {{ s().processingQueueCounts?.["blocked"] ?? 0 }} need retry ·
+      {{ s().processingQueueCounts?.["succeeded"] ?? 0 }} processed
+    </p>
+    <p>
+      Showing up to 100 recent classification records. Counts cover the whole queue.
+      Open a source to inspect its stages, attempts and responses.
+    </p>
+    @for (q of s().queue; track q.eventID) {
+      <div class="item">
+        <strong>{{
+          q.status === "outside_window"
+            ? "Older than 30 days · local index only"
+            : q.status
+        }}</strong>
+        · {{ q.attempts }} attempts
+        <p>{{ q.error }}</p>
+        <mui-button variant="ghost" (pressed)="router.navigate(['/sources', q.eventID])"
+          >Inspect source</mui-button>
+      </div>
+    }
+
     <section class="panel">
       <h2>Connector audit</h2>
       <p>
@@ -346,28 +382,6 @@
       </article>
     } @empty {
       <p>No decisions yet. Add context and start the loop.</p>
-    }
-    <h2>Processing queue</h2>
-    <p>
-      {{ s().processingQueueCounts?.["pending"] ?? 0 }} waiting ·
-      {{ s().processingQueueCounts?.["leased"] ?? 0 }} processing ·
-      {{ s().processingQueueCounts?.["blocked"] ?? 0 }} need retry ·
-      {{ s().processingQueueCounts?.["succeeded"] ?? 0 }} processed
-    </p>
-    <p>
-      Showing up to 100 recent records. Open History to browse source
-      observations.
-    </p>
-    @for (q of s().queue; track q.eventID) {
-      <div class="item">
-        <strong>{{
-          q.status === "outside_window"
-            ? "Older than 30 days · local index only"
-            : q.status
-        }}</strong>
-        · {{ q.attempts }} attempts
-        <p>{{ q.error }}</p>
-      </div>
     }
     <h2>Task extraction</h2>
     @for (q of s().taskExtractionQueue ?? []; track q.eventID) {
