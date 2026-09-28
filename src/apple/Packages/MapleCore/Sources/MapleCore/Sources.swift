@@ -79,17 +79,18 @@ extension KnowledgeStore {
     """
     private static let sourceSelect="""
     SELECT e.id,e.connector,e.account,e.external_id,e.revision,e.occurred_at,e.received_at,json_extract(e.json,'$.type') AS type,substr(json_extract(e.json,'$.content'),1,768) AS excerpt,
-    \(sourceStateSQL) AS aggregate_state,(SELECT COALESCE(MAX(sequence),0) FROM source_transitions WHERE event_id=e.id) AS state_version,p.status AS classification_status,f.status AS facts_status,t.status AS tasks_status,s.status AS state_status
-    FROM events e LEFT JOIN processing_jobs p ON p.event_id=e.id LEFT JOIN fact_jobs f ON f.event_id=e.id LEFT JOIN task_extraction_jobs t ON t.event_id=e.id LEFT JOIN state_jobs s ON s.event_id=e.id
+    \(sourceStateSQL) AS aggregate_state,(SELECT COALESCE(MAX(sequence),0) FROM source_transitions WHERE event_id IN (e.id,h.batch_id)) AS state_version,CASE WHEN h.batch_id IS NOT NULL THEN 'batched' ELSE p.status END AS classification_status,f.status AS facts_status,t.status AS tasks_status,s.status AS state_status
+    FROM events e LEFT JOIN home_batch_members h ON h.event_id=e.id LEFT JOIN processing_jobs p ON p.event_id=COALESCE(h.batch_id,e.id) LEFT JOIN fact_jobs f ON f.event_id=COALESCE(h.batch_id,e.id) LEFT JOIN task_extraction_jobs t ON t.event_id=COALESCE(h.batch_id,e.id) LEFT JOIN state_jobs s ON s.event_id=COALESCE(h.batch_id,e.id)
     """
     private func sourceRow(_ row:[String:String])->SourceRow {
         let lines=(row["excerpt"] ?? "").components(separatedBy:"\n")
         func field(_ name:String)->String? {lines.prefix(20).first{$0.hasPrefix(name+": ")}.map{String($0.dropFirst(name.count+2))}}
         let body=lines.firstIndex(where:{$0=="Body:" || $0=="Body (snippet only):"}).map{lines.dropFirst($0+1).joined(separator:" ")} ?? lines.filter{!$0.hasPrefix("Sender:") && !$0.hasPrefix("Subject:")}.joined(separator:" ")
         let state=row["aggregate_state"] ?? "not_run"
-        let detail=["failed":"An applicable processing stage needs retry.","pending":"Processing is queued, running or retrying.","complete":"All scheduled processing stages completed.","skipped":"Classification was explicitly skipped; see stage history.","not_run":"No classification is scheduled."][state]!
+        let batched=row["classification_status"]=="batched"
+        let detail=batched ? ["failed":"The Home Assistant batch needs retry. Open this source’s classification stage, then its HA batch.","pending":"Processing together in one Home Assistant batch.","complete":"Processed together in one Home Assistant batch. Open the batch to inspect its response.","skipped":"The Home Assistant batch was skipped; open it for details.","not_run":"Retained in a Home Assistant batch; no classification is scheduled."][state]! : ["failed":"An applicable processing stage needs retry.","pending":"Processing is queued, running or retrying.","complete":"All scheduled processing stages completed.","skipped":"Classification was explicitly skipped; see stage history.","not_run":"No classification is scheduled."][state]!
         let deeper=[row["facts_status"],row["tasks_status"],row["state_status"]].compactMap{$0}
-        let analysis=deeper.contains(where:{["failed","blocked"].contains($0)}) ? "failed":deeper.contains(where:{["pending","leased","processing","running"].contains($0)}) ? "pending":deeper.isEmpty ? (row["classification_status"]=="succeeded" ? "not_needed":"not_scheduled"):deeper.allSatisfy({["outside_window","coalesced","superseded"].contains($0)}) ? "skipped":"complete"
+        let analysis=deeper.contains(where:{["failed","blocked"].contains($0)}) ? "failed":deeper.contains(where:{["pending","leased","processing","running"].contains($0)}) ? "pending":deeper.isEmpty ? ((row["classification_status"]=="succeeded" || (batched && state=="complete")) ? "not_needed":"not_scheduled"):deeper.allSatisfy({["outside_window","coalesced","superseded"].contains($0)}) ? "skipped":"complete"
         return SourceRow(id:row["id"]!,type:row["type"] ?? "unknown",connector:row["connector"]!,account:row["account"]!,externalID:row["external_id"]!,revision:row["revision"]!,sender:String((field("Sender") ?? field("From") ?? row["connector"]!).prefix(200)),subject:String((field("Subject") ?? field("Title") ?? row["type"] ?? "Source").prefix(240)),preview:String(body.prefix(280)),status:state,statusDetail:detail,occurredAt:Date(timeIntervalSince1970:Double(row["occurred_at"]!)!),receivedAt:Date(timeIntervalSince1970:Double(row["received_at"]!)!),stateVersion:Int64(row["state_version"]!)!,classificationState:row["classification_status"] ?? "not_scheduled",analysisState:analysis,observedState:row["connector"]=="home_assistant" ? field("State"):nil)
     }
     public func sourceList(query:SourceQuery=SourceQuery(),cursor:SourceCursor?=nil,limit:Int=60,windowID:String="main",now:Date=Date()) throws -> SourcePage {
@@ -143,6 +144,10 @@ extension KnowledgeStore {
         for (table,stage,token) in [("processing_jobs","classification","lease_token"),("fact_jobs","facts","lease_token"),("task_extraction_jobs","tasks","lease_token"),("state_jobs","state","token")] {
             let queue=try db.rows("SELECT status,\(token) AS token FROM \(table) WHERE event_id=?",[eventID]).first
             let last=try db.rows("SELECT * FROM source_transitions WHERE event_id=? AND stage=? ORDER BY sequence DESC LIMIT 1",[eventID,stage]).first
+            if stage=="classification",let batchID=try db.rows("SELECT batch_id FROM home_batch_members WHERE event_id=?",[eventID]).first?["batch_id"] {
+                stages.append(SourceStage(stage:stage,state:"batched",version:Int64(last?["sequence"] ?? "0")!,attemptID:nil,reason:"Classified together in one Home Assistant batch. Open the batch for its processing state, response and retry controls.",relatedEventID:batchID))
+                continue
+            }
             stages.append(SourceStage(stage:stage,state:queue?["status"] ?? (["facts","tasks"].contains(stage) && row["classification_status"]=="succeeded" ? "not_needed":"not_scheduled"),version:Int64(last?["sequence"] ?? "0")!,attemptID:queue?["token"] ?? last?["attempt_id"],reason:last?["reason"] ?? (queue==nil ? "No work was scheduled for this stage.":"legacy_latest_only"),relatedEventID:last?["related_event_id"]))
         }
         var artifacts=try db.rows("SELECT a.*,p.provider,p.model FROM source_artifacts a LEFT JOIN source_attempts p ON p.id=a.attempt_id WHERE a.event_id=? ORDER BY a.rowid DESC LIMIT 200",[eventID]).map{SourceArtifactSummary(id:$0["id"]!,stage:$0["stage"]!,kind:$0["kind"]!,availability:$0["availability"]!,mediaType:$0["media_type"]!,byteCount:Int($0["byte_count"]!)!,legacy:$0["legacy"]=="1",attemptID:$0["attempt_id"],provider:$0["provider"],model:$0["model"])}

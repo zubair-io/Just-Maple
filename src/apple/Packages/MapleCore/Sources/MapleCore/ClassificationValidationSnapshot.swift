@@ -7,6 +7,14 @@ extension KnowledgeStore {
     func classificationValidationSnapshot(for id: String, at: Date) throws -> (currentState: [Claim], sourceFacts: [SourceFact]) {
         guard let event = try event(id) else { throw MapleError.invalid("Unknown observation.") }
         try AIProcessingWindow.require(event, at: at)
+        if event.type == "home.batch", event.source.connector == "home_assistant" {
+            let claims = try state(subjects: homeBatchSubjects(id)).filter { claim in
+                guard AIProcessingWindow.includes(claim.observedAt, at: at),
+                      let source = try self.event(claim.evidenceEventID) else { return false }
+                return AIProcessingWindow.includes(source.occurredAt, at: at)
+            }
+            return (claims, [])
+        }
         let claims = try state(subjects: event.subjects).prefix(24).filter { claim in
             guard AIProcessingWindow.includes(claim.observedAt, at: at),
                   let source = try self.event(claim.evidenceEventID) else { return false }

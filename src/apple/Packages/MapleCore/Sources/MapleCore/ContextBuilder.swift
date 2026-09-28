@@ -3,6 +3,7 @@ import Foundation
 extension KnowledgeStore {
     public func context(for eventID: String) throws -> Context {
         guard let event = try event(eventID) else { throw MapleError.invalid("Unknown event \(eventID)") }
+        if event.type == "home.batch", event.source.connector == "home_assistant" { return try homeBatchContext(event) }
         let threads = event.subjects.filter { $0.hasPrefix("thread:imessage:") || $0.hasPrefix("thread:gmail:") }
         // Shared person:self must not mix unrelated conversations into a message's thread history.
         let historySubjects: [String]

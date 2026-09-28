@@ -35,7 +35,9 @@ extension KnowledgeStore {
                 VALUES (?,(SELECT COALESCE(MAX(last_turn),0)+1 FROM processing_schedule),1)
                 ON CONFLICT(connector) DO UPDATE SET last_turn=excluded.last_turn,dispatches=dispatches+1
                 """,[connector])
-            let lease = Lease(eventID: row["event_id"]!, token: UUID().uuidString)
+            let selectedID = row["event_id"]!
+            let batchID = eventIDs == nil && connector == "home_assistant" ? try batchLegacyHomeWork(startingAt: selectedID, now: now) : nil
+            let lease = Lease(eventID: batchID ?? selectedID, token: UUID().uuidString)
             try db.execute("UPDATE processing_jobs SET status='leased', attempts=attempts+1, lease_token=?, lease_until=?, error=NULL WHERE event_id=?",
                            [lease.token, String(now.addingTimeInterval(duration).timeIntervalSince1970), lease.eventID])
             return lease
@@ -50,7 +52,7 @@ extension KnowledgeStore {
             let freshContext = try classificationValidationSnapshot(for: lease.eventID, at: now)
             let fresh = freshContext.currentState
             // A correction/another event can arrive while the network request is in flight.
-            guard Array(fresh.prefix(24)) == decision.context.currentState else {
+            guard fresh == decision.context.currentState else {
                 try db.execute("UPDATE processing_jobs SET status='pending', next_attempt_at=?, lease_token=NULL, lease_until=NULL WHERE event_id=?",
                                [String(now.timeIntervalSince1970), lease.eventID])
                 return false

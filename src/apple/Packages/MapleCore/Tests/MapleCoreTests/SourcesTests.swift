@@ -178,3 +178,36 @@ private extension KnowledgeStore {
         try db.execute("UPDATE processing_jobs SET status='coalesced',error=? WHERE event_id=?",["Indexed locally; cumulative energy increment superseded by observation "+representative,id])
     }
 }
+
+extension SourcesTests {
+    @Test func homeBatchMembersTrackParentWithoutClaimingSeparateClassification()async throws {
+        let store=try KnowledgeStore(path:":memory:")
+        try await store.ingest(source("fixture-home-member",connector:"home_assistant",type:"home.state",content:"State: open\nSynthetic home fixture"))
+        try await store.ingest(source("fixture-home-batch",connector:"home_assistant",type:"home.batch"))
+        try await store.sourceHomeBatchFixture(member:"fixture-home-member",parent:"fixture-home-batch")
+        for (processing,aggregate,inbox) in [("pending","pending","indexed"),("failed","failed","failed"),("succeeded","complete","processed")] {
+            try await store.sourceFixtureStatus("fixture-home-batch",stage:"classification",status:processing)
+            let page=try await store.sourceList(query:SourceQuery(types:["home.state"],states:[aggregate]))
+            #expect(page.items.count==1 && page.items[0].classificationState=="batched")
+            let detail=try await store.sourceDetail(eventID:"fixture-home-member")
+            #expect(detail.row.status==aggregate && detail.row.observedState=="open")
+            let stage=try #require(detail.stages.first{$0.stage=="classification"})
+            #expect(stage.state=="batched" && stage.relatedEventID=="fixture-home-batch" && stage.attemptID==nil)
+            #expect(detail.attempts.isEmpty && detail.artifacts.allSatisfy{$0.stage=="source"})
+            let history=try #require(await store.historyInboxPage().items.first{$0.id=="fixture-home-member"})
+            #expect(history.status==inbox && history.statusDetail.contains("batch"))
+            await #expect(throws:Error.self) {try await store.sourceRetry(commandID:"member-retry-"+processing,eventID:"fixture-home-member",stage:"classification",expectedVersion:detail.row.stateVersion)}
+        }
+        try await store.sourceFixtureStatus("fixture-home-batch",stage:"state",status:"failed")
+        #expect(try await store.sourceDetail(eventID:"fixture-home-member").row.status=="failed")
+        #expect(try await store.sourceDetail(eventID:"fixture-home-member").row.analysisState=="failed")
+        #expect(try await store.sourceList(query:SourceQuery(types:["home.state"],states:["failed"])).total==1)
+    }
+}
+private extension KnowledgeStore {
+    func sourceHomeBatchFixture(member:String,parent:String)throws {
+        try db.execute("INSERT INTO home_batch_members(event_id,batch_id) VALUES (?,?)",[member,parent])
+        try db.execute("UPDATE processing_jobs SET status='batched',error=NULL WHERE event_id=?",[member])
+        try db.execute("UPDATE source_transitions SET related_event_id=?,reason='Classified together in one Home Assistant batch.' WHERE event_id=? AND to_state='batched'",[parent,member])
+    }
+}

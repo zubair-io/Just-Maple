@@ -19,6 +19,7 @@ public actor KnowledgeStore {
         try db.migrateSources()
         try db.migrateManagedDocuments()
         try db.migrateQueryPerformance()
+        try db.migrateHomeBatches()
     }
 
     /// Event and queue insertion are atomic. Returns the canonical ID on duplicate delivery.

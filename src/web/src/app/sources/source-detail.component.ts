@@ -113,7 +113,11 @@ import {
                   <mui-button
                     variant="ghost"
                     (pressed)="openRelated(stage.relatedEventID)"
-                    >Open representative source ↗</mui-button
+                    >{{
+                      stage.state === "batched"
+                        ? "Open HA batch"
+                        : "Open representative source"
+                    }} ↗</mui-button
                   >
                 }
                 @if (["failed", "blocked"].includes(stage.state)) {
@@ -172,7 +176,11 @@ import {
                     <mui-button
                       variant="ghost"
                       (pressed)="openRelated(item.relatedEventID)"
-                      >Open representative source ↗</mui-button
+                      >{{
+                        item.toState === "batched"
+                          ? "Open HA batch"
+                          : "Open representative source"
+                      }} ↗</mui-button
                     >
                   }
                   @for (artifact of item.artifacts || []; track artifact.id) {

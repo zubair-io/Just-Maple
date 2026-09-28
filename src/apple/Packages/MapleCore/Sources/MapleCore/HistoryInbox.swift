@@ -50,10 +50,11 @@ extension KnowledgeStore {
         let rows=try db.rows("""
         SELECT e.id,e.connector,e.occurred_at,substr(json_extract(e.json,'$.content'),1,4096) AS excerpt,
           json_extract(e.json,'$.type') AS type,p.status AS processing,f.status AS fact,t.status AS extraction,
-          s.status AS state,json_extract(d.json,'$.route') AS route
-        FROM events e LEFT JOIN processing_jobs p ON p.event_id=e.id
-        LEFT JOIN fact_jobs f ON f.event_id=e.id LEFT JOIN task_extraction_jobs t ON t.event_id=e.id
-        LEFT JOIN state_jobs s ON s.event_id=e.id LEFT JOIN decisions d ON d.event_id=e.id
+          s.status AS state,json_extract(d.json,'$.route') AS route,h.batch_id AS batch_id
+        FROM events e LEFT JOIN home_batch_members h ON h.event_id=e.id
+        LEFT JOIN processing_jobs p ON p.event_id=COALESCE(h.batch_id,e.id)
+        LEFT JOIN fact_jobs f ON f.event_id=COALESCE(h.batch_id,e.id) LEFT JOIN task_extraction_jobs t ON t.event_id=COALESCE(h.batch_id,e.id)
+        LEFT JOIN state_jobs s ON s.event_id=COALESCE(h.batch_id,e.id) LEFT JOIN decisions d ON d.event_id=e.id
         WHERE \(condition) ORDER BY e.occurred_at DESC,e.id DESC LIMIT ?
         """,arguments)
         let visible=Array(rows.prefix(limit)),ids=visible.compactMap{$0["id"]}
@@ -93,6 +94,11 @@ extension KnowledgeStore {
             let status:String,detail:String
             if !taskStates.isDisjoint(with:["open","in_progress"]) {status="flagged";detail="An open action is linked to this source."}
             else if taskStates.contains("waiting") {status="waiting";detail="A linked action is waiting on someone or something."}
+            else if row["batch_id"] != nil {
+                if ["failed","blocked"].contains(processing) || analysis=="failed" {status="failed";detail="Home Assistant batch processing needs retry. Open this source’s classification stage, then its HA batch."}
+                else if processing=="succeeded" {status="processed";detail=analysis=="waiting" ? "Classified in a Home Assistant batch; deeper analysis is waiting. Open the HA batch from this source’s classification stage.":"Processed in a Home Assistant batch. Open the HA batch from this source’s classification stage to inspect its response."}
+                else {status="indexed";detail="Retained locally in a Home Assistant batch. Open the HA batch from this source’s classification stage for processing progress."}
+            }
             else if ["failed","blocked"].contains(processing) {status="failed";detail="Source processing needs retry. The source is preserved."}
             else if ["ask_user","notify"].contains(row["route"] ?? "") {status="flagged";detail="Source processing flagged this for your attention."}
             else if processing=="coalesced" {status="indexed";detail="Retained locally; a newer cumulative energy reading is queued instead. This observation was not classified."}
