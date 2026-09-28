@@ -148,7 +148,6 @@ export class TodayDocumentService {
   async open(
     day = localDay(),
     ignoreDraft = false,
-    notebookID = this.selectedNotebook() || undefined,
   ): Promise<boolean> {
     if (this.actionBusy()) return false;
     if (!validDay(day)) {
@@ -164,7 +163,6 @@ export class TodayDocumentService {
         day,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         ignoreDraft,
-        notebookID,
       });
       if (generation !== this.openGeneration) return false;
       this.document.set(doc);
@@ -588,7 +586,6 @@ export class TodayDocumentService {
     this.actionBusy.set(true);
     try {
       const doc = await this.bridge.notebook<TodayDocument>("todayMigrate", {
-        notebookID: this.selectedNotebook() || undefined,
         day: this.day(),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         recoveryCopy,

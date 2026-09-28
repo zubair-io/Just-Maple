@@ -16,18 +16,27 @@ public actor TodayDocumentCoordinator {
         guard busy.insert(key).inserted else {throw MapleError.invalid("This day is already opening. Try again.")};defer{busy.remove(key)}
         if let document=try await store.managedDailyDocument(notebookID:notebookID,day:day) {return try await open(documentID:document.documentID)}
         let legacy=try await store.dailyNote(day:day,timeZone:timeZone)
-        let hasLegacy = !legacy.blocks.isEmpty || !legacy.cleared.isEmpty
+        let priorImport=try await store.legacyDailyImportDocument(day:day)
+        let hasLegacy = priorImport==nil && (!legacy.blocks.isEmpty || !legacy.cleared.isEmpty)
         let id=UUID().uuidString.lowercased()
-        let path="Daily/"+day+(recoveryCopy ? "-recovered-"+String(id.prefix(8)):"")+".md"
-        try await library.prepareDailyDirectory(notebookID:notebookID)
-        if let existing=try await library.readIfPresent(notebookID:notebookID,path:path) {
+        let directory=try await library.prepareDailyDirectory(notebookID:notebookID,day:day)
+        let path=directory+"/"+day+(recoveryCopy ? "-recovered-"+String(id.prefix(8)):"")+".md"
+        var existing=try await library.readIfPresent(notebookID:notebookID,path:path)
+        var existingPath=path
+        if existing==nil && !recoveryCopy {
+            // Adopt an older same-notebook date file in place, preserving bytes and identity.
+            // A user-owned legacy file remains a visible collision, never a silent duplicate.
+            let oldPath="Daily/"+day+".md"
+            if let old=try await library.readIfPresent(notebookID:notebookID,path:oldPath) {existing=old;existingPath=oldPath}
+        }
+        if let existing {
             if let embedded=ManagedMarkdown.documentID(existing.content) {
                 try ManagedMarkdown.validate(existing.content,documentID:embedded)
-                let record=ManagedDocumentRecord(documentID:embedded,notebookID:notebookID,path:path,day:day,timeZone:timeZone,revision:existing.revision)
+                let record=ManagedDocumentRecord(documentID:embedded,notebookID:notebookID,path:existingPath,day:day,timeZone:timeZone,revision:existing.revision)
                 try await store.registerManagedDocument(record,initialContent:existing.content,initialBefore:existing.content)
                 return try await commit(documentID:embedded,expectedRevision:existing.revision,content:existing.content,commandID:"create:"+embedded)
             }
-            return TodayDocumentSnapshot(documentID:"",notebookID:notebookID,path:path,day:day,timeZone:timeZone,content:existing.content,revision:existing.revision,readOnly:true,warning:"This date already contains a user-owned file. It has not been overwritten. Open it in Notebooks, or explicitly recover legacy blocks to a separate note.",indexingPending:false,legacyMigrationAvailable:hasLegacy)
+            return TodayDocumentSnapshot(documentID:"",notebookID:notebookID,path:existingPath,day:day,timeZone:timeZone,content:existing.content,revision:existing.revision,readOnly:true,warning:"This date already contains a user-owned file. It has not been overwritten. Open it in Notebooks, or explicitly recover legacy blocks to a separate note.",indexingPending:false,legacyMigrationAvailable:hasLegacy)
         }
         let content=try hasLegacy ? Self.export(legacy,documentID:id):ManagedMarkdown.header(documentID:id,day:day,timeZone:timeZone)+"\n"
         if hasLegacy && !migrateLegacy {
@@ -35,8 +44,11 @@ public actor TodayDocumentCoordinator {
         }
         let record=ManagedDocumentRecord(documentID:id,notebookID:notebookID,path:path,day:day,timeZone:timeZone,revision:nil)
         try await store.registerManagedDocument(record,initialContent:content,legacySnapshot:hasLegacy ? legacy:nil)
-        let result=try await commit(documentID:id,expectedRevision:nil,content:content,commandID:"create:"+id)
+        var result=try await commit(documentID:id,expectedRevision:nil,content:content,commandID:"create:"+id)
         if hasLegacy {try await store.recordDailyDocumentImport(legacy,documentID:id)}
+        if let priorImport,priorImport.notebookID != notebookID {
+            result.warning="This day's earlier note remains at "+priorImport.path+" in its original notebook. Open it in Notebooks; its imported blocks have not been duplicated into this iCloud note."
+        }
         return result
     }
     public func open(documentID:String) async throws -> TodayDocumentSnapshot {
@@ -111,7 +123,11 @@ public actor TodayDocumentCoordinator {
         let name=URL(fileURLWithPath:record.path).deletingPathExtension().lastPathComponent+"-recovery-"+String(UUID().uuidString.prefix(8))
         // A recovery file is deliberately unmanaged: retain exact bytes for inspection, but do not
         // register its copied identity or permit canonical mutations against it.
-        return try await library.save(notebookID:record.notebookID,path:"Daily/"+name+".md",content:content,expectedRevision:nil)
+        let directory:String
+        if let day=record.day {directory=try await library.prepareDailyDirectory(notebookID:record.notebookID,day:day)}
+        else {directory=(record.path as NSString).deletingLastPathComponent}
+        let path=(directory.isEmpty ? "":directory+"/")+name+".md"
+        return try await library.save(notebookID:record.notebookID,path:path,content:content,expectedRevision:nil)
     }
     public func insertSource(documentID:String,expectedRevision:String,commandID:String,eventID:String) async throws -> TodayDocumentSnapshot {
         if let prior=try await store.documentMutation(commandID) {

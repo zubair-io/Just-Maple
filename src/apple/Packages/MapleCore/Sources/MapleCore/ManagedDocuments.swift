@@ -198,6 +198,11 @@ extension KnowledgeStore {
     public func documentIndexingPending(documentID:String) throws -> Bool {
         try !db.rows("SELECT 1 FROM document_outbox o JOIN document_mutations m ON m.command_id=o.command_id WHERE m.document_id=? AND o.delivered=0 LIMIT 1",[documentID]).isEmpty
     }
+    public func legacyDailyImportDocument(day:String) throws -> ManagedDocumentRecord? {
+        guard let id=try db.rows("SELECT document_id FROM document_legacy_imports WHERE day=?",[day]).first?["document_id"] else{return nil}
+        guard let record=try managedDocument(id:id) else {throw MapleError.invalid("This day's legacy import record needs recovery. The original import will not be duplicated.")}
+        return record
+    }
     public func recordDailyDocumentImport(_ snapshot:DailyNoteSnapshot,documentID:String) throws {
         try db.execute("INSERT OR IGNORE INTO document_legacy_imports(day,document_id,snapshot_json) VALUES (?,?,?)",[snapshot.day,documentID,try JSONCodec.string(snapshot)])
     }

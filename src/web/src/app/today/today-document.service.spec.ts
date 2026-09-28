@@ -10,7 +10,7 @@ const document: TodayDocument = {
   schemaVersion: 1,
   documentID: "doc",
   notebookID: "book",
-  path: "Daily/2026-09-27.md",
+  path: "2026/09/2026-09-27.md",
   day: "2026-09-27",
   timeZone: "America/New_York",
   content: "Original",
@@ -30,6 +30,21 @@ function setup(handler: (action: string, data: any) => Promise<any>) {
 }
 afterEach(() => TestBed.resetTestingModule());
 describe("Today document coordination", () => {
+  it("lets the Mac choose app iCloud storage rather than reusing an open notebook", async () => {
+    const requests: any[] = [];
+    const service = setup(async (action, data) => {
+      if (action === "todayOpen" || action === "todayMigrate") {
+        requests.push(data);
+        return document;
+      }
+      return [];
+    });
+    service.selectedNotebook.set("previous-user-notebook");
+    await service.open(document.day);
+    await service.migrate();
+    expect(requests).toHaveLength(2);
+    expect(requests.every((request) => !("notebookID" in request))).toBe(true);
+  });
   it("validates calendar dates without converting the local day to UTC", () => {
     expect(validDay("2026-02-29")).toBe(false);
     expect(validDay("2028-02-29")).toBe(true);

@@ -14,7 +14,7 @@ This is a plan for production behavior. Names, messages, responses and dates in 
 
 ## Product decisions
 
-1. `/today` is the default app route. It resolves the current local calendar day and opens or creates `Daily/YYYY-MM-DD.md` in the configured daily notebook. The example `2026-10-30.md` is a filename pattern, not a fixed date.
+1. `/today` is the default app route. It resolves the current local calendar day and opens or creates `Just Maple/YYYY/MM/YYYY-MM-DD.md` in the app’s iCloud Documents container. The example `2026-10-30.md` is a filename pattern, not a fixed date.
 2. The Markdown file owns the document's writing and ordering. SQLite separately owns source evidence, canonical tasks, processing, block identity/history, and recoverable mutation records. An incoming email is an event, not a new Markdown file.
 3. Both pages use the JustMaple design system for light and dark appearance. The polished Today concept guides layout and density. `_Maple` supplies selected components, not a second theme.
 4. Sources represents immutable received observations, one row per event revision. A source entity may have multiple revisions; the detail view groups those revisions without hiding them from the table.
@@ -43,7 +43,7 @@ This proposal replaces the daily-prose ownership and default-route portions of [
 ### Open and navigate
 
 - The primary sidebar contains Yesterday, Today, Tomorrow, notebooks, Sources, and existing Connections/settings access. Preserve onboarding and workspace tools.
-- Use the current daily-notebook setting; if absent, choose the existing writable local notebook. If none exists, create a local Daily notebook through the existing notebook library. Store the selection explicitly; an unavailable selected notebook offers reconnect/change location and never silently creates a second copy elsewhere.
+- Use the app iCloud Documents container’s `Just Maple` folder for daily notes, with numeric `YYYY/MM` subfolders. Ignore old daily-notebook selections. When iCloud is unavailable, show a recoverable error and retain drafts; never fall back to a local or arbitrary notebook. Previously registered notes remain accessible at their original locations through Notebooks and document links; do not silently move or duplicate them.
 - Historical and future dates open through a date route. Only the selected day is created; a visit to tomorrow does not perform today's processing or carry-forward.
 - The header identifies the date, notebook-relative filename, save/sync state, and “View Markdown.” In an empty note, “Today, a little clearer.” is interface copy/placeholder, not compulsory saved content.
 - At midnight or a time-zone change, retain the open document and show “A new day is ready.” Opening Today resolves the new local date; typing never moves to a different file underneath the user.

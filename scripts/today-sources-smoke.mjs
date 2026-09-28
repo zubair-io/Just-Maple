@@ -122,7 +122,7 @@ function syntheticBridge() {
     schemaVersion: 1,
     documentID: "synthetic-document",
     notebookID: "synthetic-book",
-    path: "Daily/" + day + ".md",
+    path: day.slice(0, 4) + "/" + day.slice(5, 7) + "/" + day + ".md",
     day,
     timeZone: "America/New_York",
     content: store.content,

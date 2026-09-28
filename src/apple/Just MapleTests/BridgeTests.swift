@@ -7,14 +7,38 @@ import MapleNotebooks
 
 @MainActor
 struct BridgeTests {
+    @Test func todayUsesAppCloudYearMonthDespiteStaleNotebookSelection() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        try FileManager.default.createDirectory(at:root.appendingPathComponent("Cloud/Other Notebook"),withIntermediateDirectories:true)
+        let library=try NotebookLibrary(registryURL:root.appendingPathComponent("registry.json"),cloudRoot:root.appendingPathComponent("Cloud"))
+        let otherID=try #require(await library.catalog().notebooks.first?.id)
+        let previous=UserDefaults.standard.string(forKey:"todayNotebookID")
+        UserDefaults.standard.set(otherID,forKey:"todayNotebookID")
+        defer {UserDefaults.standard.set(previous,forKey:"todayNotebookID")}
+        let model=AppModel();model.notebooks=library;model.store=try KnowledgeStore(path:":memory:")
+        let bridge=Bridge(model:model)
+        let result=try #require(try await bridge.todayDocumentCommand("todayOpen",["notebookID":otherID,"day":"2026-09-27","timeZone":"America/New_York"]) as? [String:Any])
+        #expect(result["path"] as? String == "2026/09/2026-09-27.md")
+        #expect(result["notebookID"] as? String != otherID)
+        #expect(FileManager.default.fileExists(atPath:root.appendingPathComponent("Cloud/Just Maple/2026/09/2026-09-27.md").path))
+        #expect(!FileManager.default.fileExists(atPath:root.appendingPathComponent("Cloud/Other Notebook/2026").path))
+    }
+
+    @Test func todayRequiresAppCloudWithoutLocalFallback() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        let library=try NotebookLibrary(registryURL:root.appendingPathComponent("registry.json"),cloudRoot:nil)
+        let model=AppModel();model.notebooks=library;model.store=try KnowledgeStore(path:":memory:")
+        let bridge=Bridge(model:model)
+        await #expect(throws:NotebookError.self) {try await bridge.todayDocumentCommand("todayOpen",["day":"2026-09-27"])}
+    }
+
     @Test func bundledAngularBootsAndReceivesNativeSnapshot() async throws {
         let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at:root.appendingPathComponent("Cloud/Fixture"),withIntermediateDirectories:true)
         let library=try NotebookLibrary(registryURL:root.appendingPathComponent("registry.json"),cloudRoot:root.appendingPathComponent("Cloud"))
-        let notebookID=try #require(await library.catalog().notebooks.first?.id)
-        let previousNotebook=UserDefaults.standard.string(forKey:"todayNotebookID")
-        UserDefaults.standard.set(notebookID,forKey:"todayNotebookID")
-        defer { UserDefaults.standard.set(previousNotebook,forKey:"todayNotebookID");try? FileManager.default.removeItem(at:root) }
+        defer {try? FileManager.default.removeItem(at:root)}
         let model = AppModel()
         model.notebooks=library
         model.store = try KnowledgeStore(path: ":memory:")

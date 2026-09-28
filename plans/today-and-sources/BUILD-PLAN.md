@@ -54,7 +54,7 @@ The complete product requirements and engineering contracts live in the linked d
 
 **Reuse:** current `app.component.*`, router, daily date navigation, notebook save guards, shared UI and source-mode editor behavior.
 
-**Work:** introduce `TodayComponent` and `TodayDocumentService`; extract shared editor lifecycle and document session; add `/today` and `/today/:date` behind capability gating. Implement empty/opening/saving/recovered/conflict/unavailable states, local date resolution, midnight banner and notebook selection. Adapt suggestion/carry-forward reads to offer commands without changing files. Keep `/daily` compatibility and onboard-first behavior.
+**Work:** introduce `TodayComponent` and `TodayDocumentService`; extract shared editor lifecycle and document session; add `/today` and `/today/:date` behind capability gating. Implement empty/opening/saving/recovered/conflict/unavailable states, local date resolution, midnight banner and the app iCloud `Just Maple/YYYY/MM` location. Adapt suggestion/carry-forward reads to offer commands without changing files. Keep `/daily` compatibility and onboard-first behavior.
 
 **Exit:** opening Today creates exactly one correctly dated file; writing survives navigation, relaunch, IME and conflict recovery. JustMaple light/dark shells match the hierarchy of the polished concept. No whole-document refresh overwrites typing.
 

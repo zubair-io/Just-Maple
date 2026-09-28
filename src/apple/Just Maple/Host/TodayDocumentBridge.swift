@@ -18,19 +18,9 @@ extension Bridge {
         switch action {
         case "todayOpen", "todayMigrate":
             let library=try await notebookLibrary()
-            var catalog=try await library.catalog()
-            var preferred=body["notebookID"] as? String ?? UserDefaults.standard.string(forKey:"todayNotebookID")
-            if let selected=preferred {
-                guard catalog.notebooks.contains(where:{$0.id==selected && $0.available}) else {throw MapleError.invalid("Your selected daily notebook is unavailable. Reconnect it in Notebooks or explicitly choose another notebook; Today will not write to a different folder.")}
-            } else {preferred=catalog.notebooks.first(where:{$0.available})?.id}
-            if preferred == nil {
-                let root=FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("Just Maple",isDirectory:true)
-                try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
-                catalog=try await library.connect(root)
-                preferred=catalog.notebooks.first(where:{$0.available})?.id
-            }
-            guard let notebookID=preferred else{throw MapleError.invalid("Connect a notebook folder to start Today.")}
-            UserDefaults.standard.set(notebookID,forKey:"todayNotebookID")
+            // Today has one app-owned iCloud destination. A remembered notebook or
+            // stale web request must never redirect daily writing to another folder.
+            let notebookID=try await library.ensureJustMapleDailyNotebook()
             var result=try await coordinator.open(notebookID:notebookID,day:body["day"] as? String,timeZone:body["timeZone"] as? String ?? TimeZone.current.identifier,migrateLegacy:action=="todayMigrate",recoveryCopy:body["recoveryCopy"] as? Bool ?? false)
             if body["ignoreDraft"] as? Bool == true {result.draft=nil}
             return try json(result)

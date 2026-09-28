@@ -22,7 +22,7 @@ struct ManagedDocumentTests {
     @Test func createSaveReplayAndDurableOutbox() async throws {
         let (root,library,store,coordinator,id)=try await fixture();defer{try? FileManager.default.removeItem(at:root)}
         let first=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"America/New_York")
-        #expect(first.path=="Daily/2026-10-30.md");#expect(!first.readOnly)
+        #expect(first.path=="2026/10/2026-10-30.md");#expect(!first.readOnly)
         #expect(ManagedMarkdown.documentID(first.content)==first.documentID)
         let content=first.content+"Hello 👋\n"
         let saved=try await coordinator.commit(documentID:first.documentID,expectedRevision:first.revision,content:content,commandID:"edit1")
@@ -353,5 +353,129 @@ extension CommittedDocumentReplayTests {
         let mutation=try #require(await store.documentMutation("changed-before-ack"))
         #expect(mutation.state=="committed");#expect(mutation.after==submitted)
         #expect(mutation.targetRevision != current.revision)
+    }
+}
+
+struct ManagedDailyLocationTests {
+    @Test func cloudHomeIsFixedAndDailyPathsFollowCalendarYearAndMonth() async throws {
+        let (root,library,store,coordinator,otherID)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let dailyID=try await library.ensureJustMapleDailyNotebook()
+        #expect(dailyID != otherID)
+        let catalog=try await library.catalog()
+        let daily=try #require(catalog.notebooks.first(where:{$0.id==dailyID}))
+        #expect(daily.cloud);#expect(daily.name=="Just Maple")
+        #expect(daily.location==root.appendingPathComponent("Cloud/Just Maple").path)
+        let december=try await coordinator.open(notebookID:dailyID,day:"2026-12-31",timeZone:"America/New_York")
+        let january=try await coordinator.open(notebookID:dailyID,day:"2027-01-01",timeZone:"America/New_York")
+        let nextJanuary=try await coordinator.open(notebookID:dailyID,day:"2027-01-02",timeZone:"America/New_York")
+        #expect(nextJanuary.path=="2027/01/2027-01-02.md")
+        #expect(december.path=="2026/12/2026-12-31.md")
+        #expect(january.path=="2027/01/2027-01-01.md")
+        #expect(december.documentID != january.documentID)
+        #expect(try await library.ensureJustMapleDailyNotebook()==dailyID)
+        #expect(try await store.managedDailyDocument(notebookID:dailyID,day:"2027-01-01")?.documentID==january.documentID)
+        let recovery=try await coordinator.recoveryCopy(documentID:december.documentID,content:december.content+"Retained draft\n")
+        #expect(recovery.path.hasPrefix("2026/12/2026-12-31-recovery-"));#expect(recovery.path.hasSuffix(".md"))
+        #expect(!FileManager.default.fileExists(atPath:root.appendingPathComponent("Cloud/Everyday/2026").path))
+    }
+    @Test func missingCloudNeverChoosesConnectedLocalNotebook() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer{try? FileManager.default.removeItem(at:root)}
+        let local=root.appendingPathComponent("Local")
+        try FileManager.default.createDirectory(at:local,withIntermediateDirectories:true)
+        let library=try NotebookLibrary(registryURL:root.appendingPathComponent("registry.json"),cloudRoot:nil)
+        _ = try await library.connect(local)
+        await #expect(throws:NotebookError.self){try await library.ensureJustMapleDailyNotebook()}
+        #expect(try FileManager.default.contentsOfDirectory(atPath:local.path).isEmpty)
+        let unavailable=try NotebookLibrary(registryURL:root.appendingPathComponent("other.json"),cloudRoot:root.appendingPathComponent("MissingCloud"))
+        await #expect(throws:NotebookError.self){try await unavailable.ensureJustMapleDailyNotebook()}
+        #expect(!FileManager.default.fileExists(atPath:root.appendingPathComponent("MissingCloud").path))
+    }
+    @Test func fixedCloudHomeRejectsFileSymlinkAndUndownloadedFolderCollisions() async throws {
+        let (root,library,_,_,_)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let destination=root.appendingPathComponent("Cloud/Just Maple")
+        try Data("User-owned collision".utf8).write(to:destination)
+        await #expect(throws:NotebookError.self){try await library.ensureJustMapleDailyNotebook()}
+        #expect(try String(contentsOf:destination,encoding:.utf8)=="User-owned collision")
+        try FileManager.default.removeItem(at:destination)
+        let outside=root.appendingPathComponent("Outside");try FileManager.default.createDirectory(at:outside,withIntermediateDirectories:false)
+        try FileManager.default.createSymbolicLink(at:destination,withDestinationURL:outside)
+        await #expect(throws:NotebookError.self){try await library.ensureJustMapleDailyNotebook()}
+        #expect(try FileManager.default.contentsOfDirectory(atPath:outside.path).isEmpty)
+        try FileManager.default.removeItem(at:destination)
+        let placeholder=root.appendingPathComponent("Cloud/.Just Maple.icloud");try Data().write(to:placeholder)
+        await #expect(throws:NotebookError.self){try await library.ensureJustMapleDailyNotebook()}
+        #expect(!FileManager.default.fileExists(atPath:destination.path))
+    }
+    @Test func newDateCollisionAndExplicitRecoveryNeverOverwriteExistingFile() async throws {
+        let (root,library,_,coordinator,_)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let id=try await library.ensureJustMapleDailyNotebook()
+        _ = try await library.prepareDailyDirectory(notebookID:id,day:"2026-10-30")
+        let path="2026/10/2026-10-30.md"
+        _ = try await library.save(notebookID:id,path:path,content:"User note already here\n",expectedRevision:nil)
+        let collision=try await coordinator.open(notebookID:id,day:"2026-10-30")
+        #expect(collision.readOnly);#expect(collision.path==path)
+        let recovered=try await coordinator.open(notebookID:id,day:"2026-10-30",recoveryCopy:true)
+        #expect(recovered.path.hasPrefix("2026/10/2026-10-30-recovered-"));#expect(!recovered.readOnly)
+        #expect(try await library.read(notebookID:id,path:path).content=="User note already here\n")
+    }
+    @Test func registeredLegacyPathReopensInPlaceWithoutCreatingAnotherDailyDocument() async throws {
+        let (root,library,store,coordinator,_)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let id=try await library.ensureJustMapleDailyNotebook(),day="2026-10-30",documentID=UUID().uuidString.lowercased()
+        try await library.prepareDailyDirectory(notebookID:id)
+        let content=ManagedMarkdown.header(documentID:documentID,day:day,timeZone:"America/New_York")+"Legacy registered content\n"
+        try await store.registerManagedDocument(.init(documentID:documentID,notebookID:id,path:"Daily/"+day+".md",day:day,timeZone:"America/New_York",revision:nil),initialContent:content)
+        let old=try await coordinator.open(documentID:documentID)
+        let reopened=try await coordinator.open(notebookID:id,day:day)
+        #expect(reopened.documentID==documentID);#expect(reopened.path==old.path);#expect(reopened.revision==old.revision)
+        #expect(!FileManager.default.fileExists(atPath:root.appendingPathComponent("Cloud/Just Maple/2026").path))
+        let recovery=try await coordinator.recoveryCopy(documentID:documentID,content:content)
+        #expect(recovery.path.hasPrefix("2026/10/"))
+        #expect(try await coordinator.open(notebookID:id,day:day).path=="Daily/"+day+".md")
+    }
+    @Test func unregisteredLegacyManagedFileIsAdoptedInPlaceAndUserOwnedFileStaysVisible() async throws {
+        let (root,library,_,coordinator,_)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let id=try await library.ensureJustMapleDailyNotebook(),day="2026-10-30",documentID=UUID().uuidString.lowercased()
+        try await library.prepareDailyDirectory(notebookID:id)
+        let content=ManagedMarkdown.header(documentID:documentID,day:day,timeZone:"America/New_York")+"Unregistered legacy file\n"
+        let original=try await library.save(notebookID:id,path:"Daily/"+day+".md",content:content,expectedRevision:nil)
+        let adopted=try await coordinator.open(notebookID:id,day:day)
+        #expect(adopted.documentID==documentID);#expect(adopted.path==original.path);#expect(adopted.revision==original.revision)
+        #expect(!FileManager.default.fileExists(atPath:root.appendingPathComponent("Cloud/Just Maple/2026/10/2026-10-30.md").path))
+        _ = try await library.save(notebookID:id,path:"Daily/2026-10-31.md",content:"Unmanaged old note\n",expectedRevision:nil)
+        let userOwned=try await coordinator.open(notebookID:id,day:"2026-10-31")
+        #expect(userOwned.readOnly);#expect(userOwned.path=="Daily/2026-10-31.md")
+        #expect(!FileManager.default.fileExists(atPath:root.appendingPathComponent("Cloud/Just Maple/2026/10/2026-10-31.md").path))
+    }
+    @Test func datedDirectoryRejectsInvalidDatesAndLinkedYearFolders() async throws {
+        let (root,library,_,_,_)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let id=try await library.ensureJustMapleDailyNotebook()
+        for date in ["../../bad","2026-02-30","0000-01-01","2026-13-01"] {
+            await #expect(throws:NotebookError.self){try await library.prepareDailyDirectory(notebookID:id,day:date)}
+        }
+        let outside=root.appendingPathComponent("Outside");try FileManager.default.createDirectory(at:outside,withIntermediateDirectories:false)
+        try FileManager.default.createSymbolicLink(at:root.appendingPathComponent("Cloud/Just Maple/2026"),withDestinationURL:outside)
+        await #expect(throws:NotebookError.self){try await library.prepareDailyDirectory(notebookID:id,day:"2026-10-30")}
+        #expect(try FileManager.default.contentsOfDirectory(atPath:outside.path).isEmpty)
+    }
+}
+
+extension ManagedDailyLocationTests {
+    @Test func switchingToFixedCloudHomeDoesNotReimportLegacyBlocksFromAnotherNotebook() async throws {
+        let (root,library,store,coordinator,oldNotebookID)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let day="2026-10-30",zone="America/New_York"
+        _ = try await store.mutateDailyBlock(.init(kind:.create,blockID:"import-once",expectedVersion:0,requestID:"seed-old",day:day,timeZone:zone,content:"Original legacy writing",blockKind:.text))
+        let original=try await coordinator.open(notebookID:oldNotebookID,day:day,timeZone:zone,migrateLegacy:true)
+        #expect(original.blocks.first?.blockID=="import-once")
+        let fixedNotebookID=try await library.ensureJustMapleDailyNotebook()
+        let fresh=try await coordinator.open(notebookID:fixedNotebookID,day:day,timeZone:zone)
+        #expect(!fresh.readOnly);#expect(!fresh.legacyMigrationAvailable);#expect(fresh.blocks.isEmpty)
+        #expect(fresh.warning?.contains("original notebook")==true)
+        #expect(fresh.path=="2026/10/2026-10-30.md")
+        #expect(try await store.legacyDailyImportDocument(day:day)?.documentID==original.documentID)
+        #expect(try await store.documentBlock(id:"import-once")?.documentID==original.documentID)
+        let stillOriginal=try await coordinator.open(documentID:original.documentID)
+        #expect(stillOriginal.revision==original.revision);#expect(stillOriginal.content==original.content)
+        #expect(try await store.documentHistory(documentID:original.documentID).count==1)
     }
 }

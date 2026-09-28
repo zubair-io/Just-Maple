@@ -8,7 +8,7 @@ Existing PRs #5 and #6 were tested, merged in dependency order, and the build br
 
 ## Implemented contracts
 
-- `/today` is the default after onboarding. Daily filenames resolve using a local calendar date, and the chosen notebook stays explicit. Previous/next day and midnight navigation preserve the open draft.
+- `/today` is the default after onboarding. New daily filenames resolve using a local calendar date at app iCloud `Just Maple/YYYY/MM/YYYY-MM-DD.md`. The Mac ignores stale client notebook selections and refuses a local fallback if iCloud is unavailable. Existing registered files retain their original location and history. Sidebar date navigation and midnight handling preserve the open draft.
 - Markdown owns content and order. The Angular/Tiptap codec preserves stable block IDs, source references, linked tasks and agent request/reply metadata. Unsupported syntax remains in exact source mode. User frontmatter is preserved when opting an ordinary notebook into managed editing.
 - SQLite journals expected revisions before file writes. Durable drafts, before/after revisions, indexing outbox, identity reservations and compensating operations cover restart, external edits and cross-day moves. Startup resumes pending registered documents; unavailable folders leave a visible conflict and retain task reservations.
 - Clear, restore, copy, move, completion and reopening are separate actions. Linked task actions use canonical task versions; SQL reservations protect every writer until file effects are reconciled. Suggested tasks and carry-forward offers require explicit insertion.
@@ -28,7 +28,7 @@ Undo uses explicit versioned compensating commands: restore a cleared block, reo
 
 ## Validation
 
-The final storage suite reported 276 core tests and 30 transport tests passing (the opt-in performance test is skipped in the normal run and was run separately). The CLI build passed. Angular reported 115 tests across 19 suites passing. Provider contract tests passed all 16 tests. The existing Mac Xcode scheme passed 50 tests; the iPhone scheme passed all 28 tests on the iOS 27 iPhone 18 Pro simulator. `npm run build` produced the signed development app in `.build/xcode/Build/Products/Debug/Just Maple.app`.
+The final storage suite reported 284 core tests and 30 transport tests passing (the opt-in performance test is skipped in the normal run and was run separately). The CLI build passed. Angular reported 119 tests across 20 suites passing. Provider contract tests passed all 16 tests. The existing Mac Xcode scheme passed 52 tests; the iPhone scheme passed all 28 tests on the iOS 27 iPhone 18 Pro simulator. `npm run build` produced the signed development app in `.build/xcode/Build/Products/Debug/Just Maple.app`.
 
 Sources: file-backed 10,000-event warm first-page p95 62.263 ms, target <200 ms. Editor: a 248,167-byte Markdown fixture, 37 inputs, beforeinput-to-frame p95 18.1 ms on the final browser run, target <50 ms; the [UI validation record](UI-VALIDATION.md) and latest sample JSON are authoritative for subsequent visual-only reruns.
 
@@ -55,3 +55,9 @@ No benchmark uses private notes or email. Sources benchmark details are in [SOUR
 - Provider history starts with this audit schema. Earlier retained latest responses are available, but missing historical attempts cannot be reconstructed.
 
 For rollback, retain the database, Markdown files, registry and journals. Disable new UI entry points if necessary; do not re-enable legacy daily writers for migrated dates. Recover conflicts through retained before/after revisions or a recovery copy, and reconcile pending task reservations before resuming those actions. Do not delete the new tables or downgrade a copied managed document into an independent legacy writer.
+
+## September 27 — app iCloud daily location
+
+New Today documents use the app iCloud Documents container at `Just Maple/YYYY/MM/YYYY-MM-DD.md`. Stale client notebook IDs and the previous native daily-notebook preference cannot redirect creation. Missing iCloud fails visibly; there is no arbitrary notebook or local Documents fallback. Repeated directory creation is idempotent, and files, symlinks and unresolved cloud placeholders are not overwritten. Recovery copies use the dated folder. Previously registered documents and same-notebook legacy files retain their original locations; already imported legacy blocks are not imported again into the new default notebook.
+
+Regression coverage includes fixed native routing, no-cloud failures, month/year boundaries, repeated opens, collision handling, old registered paths and cross-notebook prior imports. Existing notes are not bulk relocated by this change.
