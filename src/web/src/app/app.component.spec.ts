@@ -52,8 +52,44 @@ function shell(flush = vi.fn().mockResolvedValue(true)) {
     notebooks,
   };
 }
-afterEach(() => TestBed.resetTestingModule());
+afterEach(() => {
+  TestBed.resetTestingModule();
+  vi.useRealTimers();
+});
 describe("Today sidebar navigation", () => {
+  it("updates all three day links and selection at midnight without a native snapshot", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 27, 23, 59, 59));
+    const { fixture, component } = shell();
+    const current = () =>
+      fixture.nativeElement
+        .querySelector('.day-rail [aria-current="page"]')
+        ?.textContent.trim();
+    expect(current()).toBe("Today");
+    vi.advanceTimersByTime(1000);
+    fixture.detectChanges();
+    expect(component.days().map((day) => day.day)).toEqual([
+      "2026-09-27",
+      "2026-09-28",
+      "2026-09-29",
+    ]);
+    expect(current()).toBe("Yesterday");
+  });
+  it("resolves a relative day after saving, even if midnight passed during the save", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 27, 23, 59, 59));
+    let finish!: (value: boolean) => void;
+    const { component, router } = shell(
+      vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve))),
+    );
+    const navigate = vi.spyOn(router, "navigateByUrl").mockResolvedValue(true);
+    const opening = component.openDay(1);
+    vi.setSystemTime(new Date(2026, 8, 28, 0, 1));
+    finish(true);
+    await opening;
+    expect(navigate).toHaveBeenCalledWith("/today/2026-09-29");
+    expect(component.calendar.today()).toBe("2026-09-28");
+  });
   it("flushes the current daily document before routing to a dated file", async () => {
     const daily = { flush: vi.fn().mockResolvedValue(true) };
     const router = { navigateByUrl: vi.fn().mockResolvedValue(true) };

@@ -32,3 +32,9 @@ The final near-limit test used 248,005 bytes, a heading every ten blocks and 40 
 Screenshots and machine-readable reports are in [writing-experience](writing-experience/): [Today light](writing-experience/today-light.png), [Today dark](writing-experience/today-dark.png), [narrow](writing-experience/today-narrow.png), [notebook light](writing-experience/notebook-light.png), [notebook dark](writing-experience/notebook-dark.png), [acceptance](writing-experience/report.json) and [performance](writing-experience/performance.json).
 
 Fresh production Angular/Mac build and strict app signature verification passed. App: `.build/xcode/Build/Products/Debug/Just Maple.app`. Save and reopen this build to use the changes; no active user editing session was terminated.
+
+## Live calendar navigation
+
+Yesterday/Today/Tomorrow and the date chip now share one reactive local calendar. Links update at local midnight and on focus, visibility or page restoration; a bounded timer also catches clock/time-zone changes. Day-button destinations are resolved after pending saves complete, so crossing midnight while saving cannot open a stale relative day. The existing document remains on its original date while being edited, with its relative label and the open-today action updated.
+
+Six additional regressions cover idle midnight selection changes, a delayed save across midnight, wake/visibility catch-up and timer disposal, year/leap-day/DST calendar arithmetic, and preserving open writing while its chip becomes Yesterday. Validation: 211 Angular, 350 core, 30 transport and 69 Mac tests passed; CLI and fresh signed Mac builds passed.

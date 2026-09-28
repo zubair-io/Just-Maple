@@ -110,6 +110,19 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("Today document tools", () => {
+  it("updates the relative chip after midnight while preserving the open dated writing", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 27, 23, 59, 59));
+    const { fixture, notes } = setup();
+    expect(fixture.componentInstance.relativeDay()).toBe("Today");
+    vi.advanceTimersByTime(1000);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.relativeDay()).toBe("Yesterday");
+    expect(notes.day()).toBe("2026-09-27");
+    expect(notes.open).toHaveBeenCalledTimes(1);
+    expect(notes.initial()).toBe("User writing remains here");
+    expect(fixture.nativeElement.textContent).toContain("Open today’s note");
+  });
   it("forwards editing presence and stops automatic refresh polling on leaving Today", () => {
     vi.useFakeTimers();
     const { fixture, notes, editor } = setup();

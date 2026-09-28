@@ -15,7 +15,7 @@
     } @else {
       <div class="daily-navigation">
         <p class="nav-caption">Your days</p><div class="day-rail">
-          @for(day of days(); track day.day){<button type="button" [attr.aria-current]="active() === 'today' && daily.day() === day.day ? 'page' : null" (click)="openDay(day.day)"><span class="nav-station"></span>{{day.label}}</button>}
+          @for(day of days(); track day.day){<button type="button" [attr.aria-current]="active() === 'today' && daily.day() === day.day ? 'page' : null" [attr.title]="day.day" (click)="openDay(day.offset)"><span class="nav-station"></span>{{day.label}}</button>}
         </div>
         <p class="nav-caption">Notebook routes</p><div class="notebook-routes">
           @for(book of notebooks.catalog().notebooks; track book.id){<button type="button" (click)="openNotebook(book.id)"><span class="notebook-station"></span>{{book.name}}</button>}

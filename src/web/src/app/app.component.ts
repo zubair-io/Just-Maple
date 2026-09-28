@@ -26,7 +26,8 @@ import {
 import { NativeBridge } from "./core/native-bridge.service";
 import { TodayDocumentService } from "./today/today-document.service";
 import { NotebookService } from "./notebooks/notebook.service";
-import { localDay, offsetDay } from "./daily-note/daily-note.models";
+import { LocalCalendar } from "./core/local-calendar.service";
+import { offsetDay } from "./daily-note/daily-note.models";
 import { OnboardingComponent } from "./pages/onboarding.component";
 @Component({
   selector: "maple-root",
@@ -47,11 +48,16 @@ export class AppComponent {
   readonly companion = isCompanion();
   readonly daily = inject(TodayDocumentService);
   readonly notebooks = inject(NotebookService);
-  readonly days = () => [
-    { label: "Yesterday", day: offsetDay(localDay(), -1) },
-    { label: "Today", day: localDay() },
-    { label: "Tomorrow", day: offsetDay(localDay(), 1) },
-  ];
+  readonly calendar = inject(LocalCalendar);
+  readonly days = computed(() => [
+    {
+      label: "Yesterday",
+      offset: -1,
+      day: offsetDay(this.calendar.today(), -1),
+    },
+    { label: "Today", offset: 0, day: this.calendar.today() },
+    { label: "Tomorrow", offset: 1, day: offsetDay(this.calendar.today(), 1) },
+  ]);
   readonly bridge = inject(NativeBridge);
   readonly s = this.bridge.state;
   readonly router = inject(Router);
@@ -125,10 +131,12 @@ export class AppComponent {
       void this.notebooks.refresh();
     }
   }
-  async openDay(day: string) {
+  async openDay(day: string | number) {
     const intent = ++this.navigationIntent;
     if (!(await this.daily.flush()) || intent !== this.navigationIntent) return;
-    await this.router.navigateByUrl("/today/" + day);
+    const target =
+      typeof day === "number" ? offsetDay(this.calendar.refresh(), day) : day;
+    await this.router.navigateByUrl("/today/" + target);
   }
   async openNotebook(id: string) {
     const intent = ++this.navigationIntent;

@@ -1,3 +1,4 @@
+import { LocalCalendar } from "../core/local-calendar.service";
 import { sourceReferenceKind } from "../sources/source-reference-kind";
 import {
   Component,
@@ -634,7 +635,8 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
 })
 export class TodayComponent implements OnInit, OnDestroy {
   readonly notes = inject(TodayDocumentService);
-  readonly currentDay = signal(localDay());
+  readonly calendar = inject(LocalCalendar);
+  readonly currentDay = this.calendar.today;
   readonly openedOnDay = signal(localDay());
   readonly route = inject(ActivatedRoute);
   readonly router = inject(Router);
@@ -695,7 +697,6 @@ export class TodayComponent implements OnInit, OnDestroy {
       else void this.notes.open(params.get("date") ?? localDay());
     });
     this.timer = setInterval(() => {
-      this.currentDay.set(localDay());
       void this.notes.pollRun();
       void this.notes.pollAutomatic();
     }, 2000);
