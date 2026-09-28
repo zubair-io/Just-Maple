@@ -295,3 +295,155 @@
     margin: 0 2px;
   }
 }
+
+/* The writing rail is an outline: each station is a heading's disclosure. */
+.maple-editor-surface .tiptap {
+  --maple-rail-inset: 28px;
+  overflow-wrap: anywhere;
+  caret-color: var(--color-writing, var(--color-primary));
+}
+.maple-editor-surface .tiptap :is(h1, h2, h3, h4, h5, h6) {
+  position: relative;
+  line-height: 1.35;
+  scroll-margin-top: 40px;
+  text-wrap: pretty;
+}
+.maple-editor-surface .tiptap h1 {
+  font-size: 2em;
+}
+.maple-editor-surface .tiptap h3 {
+  font-size: 1.25em;
+}
+.maple-editor-surface .tiptap h2:before {
+  content: none;
+}
+.maple-editor-surface .tiptap .maple-section-hidden {
+  display: none !important;
+}
+.maple-section-toggle {
+  position: absolute;
+  left: calc(-1 * var(--maple-rail-inset) - 17.5px);
+  top: calc(0.675em - 16px);
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-writing, var(--color-primary));
+  user-select: none;
+}
+.maple-station-dot {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  background: var(--color-bg);
+  transition:
+    background 0.12s,
+    box-shadow 0.12s;
+}
+.maple-section-toggle:hover .maple-station-dot {
+  box-shadow: 0 0 0 4px var(--color-primary-light);
+}
+.maple-section-toggle:focus-visible {
+  outline: 2px solid var(--color-focus, var(--color-primary));
+  outline-offset: 1px;
+}
+.maple-section-toggle[aria-expanded="false"] .maple-station-dot {
+  background: currentColor;
+}
+.maple-station-dot:after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 2px;
+  left: 3px;
+  top: 5px;
+  background: currentColor;
+}
+.maple-section-toggle[aria-expanded="false"] .maple-station-dot:after {
+  background: var(--color-bg);
+}
+.maple-section-toggle[aria-expanded="false"] .maple-station-dot:before {
+  content: "";
+  position: absolute;
+  width: 2px;
+  height: 6px;
+  top: 3px;
+  left: 5px;
+  background: var(--color-bg);
+}
+.maple-editor-surface .tiptap .is-folded {
+  margin-bottom: 20px;
+}
+.maple-editor-surface .tiptap ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.maple-editor-surface .tiptap ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;
+  margin-top: 6px;
+}
+.maple-editor-surface .tiptap ul[data-type="taskList"] li > div {
+  flex: 1;
+  min-width: 0;
+}
+.maple-editor-surface
+  .tiptap
+  ul[data-type="taskList"]
+  li[data-checked="true"]
+  > div
+  > .maple-paragraph
+  > p {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+.maple-editor-surface .tiptap blockquote {
+  margin-left: 0;
+  border-left: 3px solid var(--color-border);
+  padding-left: 20px;
+  color: var(--color-text-muted);
+}
+.maple-editor-surface .tiptap pre {
+  overflow-wrap: normal;
+}
+@media (max-width: 700px) {
+  .maple-editor-surface .tiptap {
+    --maple-rail-inset: 18px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .maple-station-dot {
+    transition: none;
+  }
+}
+
+.maple-editor-surface .tiptap ul:not([data-type="taskList"]) {
+  list-style: disc;
+  padding-left: 1.4em;
+}
+.maple-editor-surface .tiptap ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+}
+.maple-editor-surface .tiptap :is(ul, ol) :is(ul, ol) {
+  margin: 0.25em 0;
+}
+.maple-editor-surface .tiptap li::marker {
+  color: var(--color-text-muted);
+}
+.maple-editor-surface .tiptap :not(pre) > code {
+  font: 0.85em var(--font-mono);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 0.1em 0.25em;
+}

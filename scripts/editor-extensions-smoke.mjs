@@ -41,29 +41,37 @@ try {
   await dock.getByRole('button',{name:'Bold · ⌘B',exact:true}).click();
   await expect(editor.locator('strong')).toContainText('Selected emphasis');
   await expect(page.getByRole('toolbar',{name:'Selection formatting',exact:true})).toBeVisible();
+  // Rapid caret collapse + Enter must not replace the prior formatted selection.
   await editor.press('ArrowRight');await editor.press('Enter');
+  await expect(editor).toContainText('Selected emphasis');
   await dock.getByRole('button',{name:'Insert a block',exact:true}).click();
   await page.getByRole('button',{name:'Warning callout',exact:true}).click();
   await editor.pressSequentially('Synthetic warning');
   await expect(editor.locator('aside[data-kind="warning"]')).toContainText('Synthetic warning');
+  await expect(editor).toContainText('Selected emphasis');
   // Escape the container using the built-in end-of-document click/keyboard path.
   await endOfNote();await editor.press('ArrowDown');await editor.press('Enter');
-  await dock.getByRole('button',{name:'Insert a block',exact:true}).click();
-  await page.getByRole('button',{name:'Collapsible section',exact:true}).click();
-  await page.getByRole('textbox',{name:'Section title',exact:true}).fill('Synthetic details');
-  await page.getByRole('textbox',{name:'Section title',exact:true}).press('Tab');
+  const station=page.getByRole('button',{name:'Collapse section: Synthetic editor heading',exact:true});
+  await station.click();
+  await expect(editor.locator('aside[data-kind="warning"]')).toBeHidden();
+  await page.getByRole('button',{name:'Expand section: Synthetic editor heading',exact:true}).click();
+  await expect(editor.locator('aside[data-kind="warning"]')).toBeVisible();
+  await expect(editor).toContainText('Selected emphasis');
+  await endOfNote();await editor.press('ArrowRight');
   await page.locator('input[type="file"]').setInputFiles({name:'synthetic-evidence.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic attachment bytes')});
   await expect(editor).toContainText('synthetic-evidence.txt');
+  await expect(editor).toContainText('Selected emphasis');
   await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('maple.today.sources.smoke.v1')).content)).toContain('maple-attachment');
   await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('maple.today.sources.smoke.v1')).content)).toContain('Attachments/');
   await page.reload();await expect(editor).toContainText('Synthetic editor heading');await expect(editor).toContainText('Selected emphasis');
   await expect(editor.locator('strong')).toContainText('Selected emphasis');
-  await expect(editor).toContainText('Synthetic warning');await expect(page.getByRole('textbox',{name:'Section title',exact:true})).toHaveValue('Synthetic details');
+  await expect(editor).toContainText('Synthetic warning');await expect(page.getByRole('button',{name:'Collapse section: Synthetic editor heading',exact:true})).toBeVisible();
   await expect(editor).toContainText('synthetic-evidence.txt');
+  await expect(editor).toContainText('Selected emphasis');
   await page.screenshot({path:output+'/editor-light.png',fullPage:true});
   await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:output+'/editor-dark.png',fullPage:true});
   await page.setViewportSize({width:620,height:900});await expect(dock).toBeVisible();
   await expect.poll(async()=>{const b=await dock.boundingBox();return b.x>=0&&b.x+b.width<=620&&b.y+b.height<=900;}).toBe(true);
   await page.screenshot({path:output+'/editor-narrow.png',fullPage:true});
-  assert.deepEqual(errors,[]);console.log('Editor synthetic acceptance passed: slash, formatting, callout, details, attachment, reopen, light/dark/narrow dock.');
+  assert.deepEqual(errors,[]);console.log('Editor synthetic acceptance passed: slash, formatting, callout, heading section folding, attachment, reopen, light/dark/narrow dock.');
 } finally {await context.close();await browser.close();}

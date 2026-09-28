@@ -108,24 +108,53 @@
             >
           </div>
           <div class="paper-heading">
-            <small>{{ doc.path }} · Markdown</small>
-            <div class="actions">
-              <small role="status">{{
-                managedMode() ? managed.status() : notes.status()
-              }}</small
-              ><mui-button
-                [disabled]="
-                  managedMode()
-                    ? managed.saving() || !managed.dirty()
-                    : notes.saving() || !notes.dirty()
-                "
-                (pressed)="flush()"
-                >Save</mui-button
-              ><mui-button variant="ghost" (pressed)="show('copy')"
-                >Save a copy</mui-button
-              >
-            </div>
+            <span class="note-name">{{
+              doc.path.split("/").pop()?.replace(".md", "")
+            }}</span>
+            <button
+              type="button"
+              class="note-tools-toggle"
+              aria-label="Document tools"
+              [attr.aria-expanded]="documentTools()"
+              (click)="documentTools.set(!documentTools())"
+            >
+              ⋯
+            </button>
           </div>
+          @if (documentTools()) {
+            <section class="note-document-tools" aria-label="Document tools">
+              <div class="row">
+                <small role="status">{{
+                  managedMode() ? managed.status() : notes.status()
+                }}</small>
+                <mui-button variant="ghost" (pressed)="documentTools.set(false)"
+                  >Close</mui-button
+                >
+              </div>
+              <div class="actions">
+                <mui-button
+                  [disabled]="
+                    managedMode()
+                      ? managed.saving() || !managed.dirty()
+                      : notes.saving() || !notes.dirty()
+                  "
+                  (pressed)="flush()"
+                  >Save now</mui-button
+                >
+                <mui-button variant="ghost" (pressed)="show('copy')"
+                  >Save a copy</mui-button
+                >
+                @if (!managedMode() && !companion && !doc.readOnly) {
+                  <mui-button variant="ghost" (pressed)="enableManaged()"
+                    >Enable source blocks & inline Maple</mui-button
+                  >
+                }
+              </div>
+            </section>
+          }
+          @if (!managedMode() && notes.status().startsWith("Recovered")) {
+            <p class="indexing-warning" role="status">{{ notes.status() }}</p>
+          }
           @if (doc.indexingWarning) {
             <p class="indexing-warning" role="status">
               {{ doc.indexingWarning }}
@@ -140,8 +169,12 @@
                 <maple-editor
                   [initial]="managed.initial()"
                   [documentID]="managedDoc.documentID"
+                  editorLabel="Note editor"
+                  [documentToolsAvailable]="true"
+                  (documentToolsRequested)="documentTools.set(!documentTools())"
                   [readOnly]="managedDoc.readOnly || managed.actionBusy()"
                   (changed)="managed.change($event)"
+                  (editingChanged)="managed.setEditing($event)"
                   (inspected)="selected.set($event)"
                   (submitted)="managed.submit($event.blockID, $event.text)"
                   (sourceRequested)="openPicker()"
@@ -183,25 +216,23 @@
               </section>
             }
           } @else {
-            @if (!companion) {
-              <mui-button variant="ghost" (pressed)="enableManaged()"
-                >Enable source blocks & inline Maple</mui-button
-              >
-            } @else if (doc.documentID) {
+            @if (companion && doc.documentID) {
               <p role="status">
                 This managed document is read only on iPhone. Open it on your
                 Mac to edit.
               </p>
             }
-            @if (!doc.readOnly && !(companion && doc.documentID)) {
-              @for (key of [notes.generation()]; track key) {
-                <maple-markdown-editor
-                  [initial]="notes.initial()"
-                  (changed)="notes.change($event)"
-                />
-              }
-            } @else {
-              <pre class="managed-readonly">{{ doc.content }}</pre>
+            @for (key of [notes.generation()]; track key) {
+              <maple-editor
+                [initial]="notes.initial()"
+                [storageMode]="doc.documentID ? 'managed' : 'markdown'"
+                editorLabel="Note editor"
+                [readOnly]="!!doc.readOnly || (companion && !!doc.documentID)"
+                [documentToolsAvailable]="true"
+                (documentToolsRequested)="documentTools.set(!documentTools())"
+                (changed)="notes.change($event)"
+                (inspected)="selected.set($event)"
+              />
             }
           }
         } @else {

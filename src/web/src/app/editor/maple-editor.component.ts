@@ -16,6 +16,10 @@ import {
   output,
   signal,
 } from "@angular/core";
+import { syncCollapsedDOMSelection } from "./selection-sync";
+import { normalizeLegacySections } from "./legacy-sections";
+import { HeadingSections } from "./heading-sections";
+import { docToMarkdown } from "../notebooks/sugar-editor/document-to-markdown";
 import { FormsModule } from "@angular/forms";
 import { Editor, Extension, Node, JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
@@ -179,6 +183,8 @@ export const StableBlockIdentity = Extension.create({
 export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   readonly initial = input.required<string>();
   readonly documentID = input("");
+  readonly storageMode = input<"managed" | "markdown">("managed");
+  readonly editorLabel = input("Daily note editor");
   readonly readOnly = input(false);
   readonly showToolbar = input(true);
   readonly documentToolsAvailable = input(false);
@@ -221,7 +227,6 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
     { id: "tip", label: "Tip callout" },
     { id: "warning", label: "Warning callout" },
     { id: "danger", label: "Danger callout" },
-    { id: "details", label: "Collapsible section" },
     { id: "attachment", label: "Image or file" },
     { id: "divider", label: "Divider" },
     { id: "markdown", label: "View Markdown" },
@@ -252,16 +257,26 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   private elementInjector = inject(Injector);
   constructor() {
     effect(() => {
-      this.editor?.setEditable(!this.readOnly());
+      const editable = !this.readOnly();
+      this.editor?.setEditable(editable);
     });
   }
   ngAfterViewInit() {
     this.raw = this.initial();
     const parsed = decodeDaily(this.raw);
     this.prefix = parsed.prefix;
-    this.source.set(parsed.sourceOnly);
-    this.notice.set(parsed.reason);
-    this.mount(parsed.doc);
+    this.source.set(
+      parsed.sourceOnly ||
+        (this.storageMode() === "markdown" &&
+          containsManagedContent(parsed.doc)),
+    );
+    this.notice.set(
+      parsed.reason ||
+        (this.source()
+          ? "This note contains managed content. Markdown mode preserves it exactly."
+          : ""),
+    );
+    this.mount(normalizeLegacySections(parsed.doc));
     this.changeDetector.detectChanges();
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.positionToolbar());
@@ -384,6 +399,11 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   }
   insert(id: string) {
     if (!this.editor || this.readOnly()) return;
+    if (
+      this.storageMode() === "markdown" &&
+      ["source", "maple", "attachment"].includes(id)
+    )
+      return;
     this.palette.set(false);
     const chain = this.editor.chain().focus();
     switch (id) {
@@ -419,15 +439,6 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
           .insertContent({
             type: "callout",
             attrs: { kind: id },
-            content: [{ type: "paragraph" }],
-          })
-          .run();
-        break;
-      case "details":
-        chain
-          .insertContent({
-            type: "details",
-            attrs: { title: "Details", open: true },
             content: [{ type: "paragraph" }],
           })
           .run();
@@ -674,7 +685,11 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
             const nested =
               typeof pos === "number" &&
               editor.state.doc.resolve(pos).depth > 0;
-            button.hidden = !request || owner.readOnly() || nested;
+            button.hidden =
+              !request ||
+              owner.readOnly() ||
+              nested ||
+              owner.storageMode() === "markdown";
             dom.classList.toggle(
               "maple-request",
               request || meta?.kind === "maple-request",
@@ -742,11 +757,19 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         CodeBlockWithLanguage,
         ...getTableExtensions(),
         StableBlockIdentity,
+        HeadingSections,
         MarkdownPaste.configure({
           parseMarkdown: (text: string) => {
             const decoded = decodeDaily(text);
             if (decoded.sourceOnly) throw new Error(decoded.reason);
-            return decoded.doc.content ?? [];
+            if (
+              this.storageMode() === "markdown" &&
+              containsManagedContent(decoded.doc)
+            )
+              throw new Error(
+                "Enable source blocks before pasting managed content.",
+              );
+            return normalizeLegacySections(decoded.doc).content ?? [];
           },
         }),
         MapleCallout,
@@ -754,10 +777,15 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         SingleTildeStrike,
         this.attachmentSupport.node,
         ...createDailyInteractionExtensions({
+          managed: this.storageMode() === "managed",
           onSource: () => this.sourceRequested.emit(),
           onMaple: () => this.addRequest(),
-          onAttachment: () => this.filePicker.nativeElement.click(),
-          onClear: (id) => this.clearRequested.emit(id),
+          ...(this.storageMode() === "managed"
+            ? {
+                onAttachment: () => this.filePicker.nativeElement.click(),
+                onClear: (id: string) => this.clearRequested.emit(id),
+              }
+            : {}),
           ...(this.dayTransfersAvailable()
             ? {
                 onMoveToNextDay: (blockID: string) =>
@@ -775,17 +803,50 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         ? { type: "doc", content: [{ type: "paragraph" }] }
         : doc,
       editorProps: {
-        handlePaste: (view, event) =>
-          this.attachmentSupport?.handlePaste(view, event) ?? false,
-        handleDrop: (view, event, slice, moved) =>
-          this.attachmentSupport?.handleDrop(view, event, slice, moved) ??
-          false,
+        handlePaste: (view, event, slice) => {
+          if (this.storageMode() === "managed")
+            return this.attachmentSupport?.handlePaste(view, event) ?? false;
+          if (
+            event.clipboardData?.files.length ||
+            slice.content.content.some((node) =>
+              containsManagedContent(node.toJSON()),
+            )
+          ) {
+            this.notice.set(
+              "Enable source blocks in Document tools to add files or source cards.",
+            );
+            return true;
+          }
+          return false;
+        },
+        handleDrop: (view, event, slice, moved) => {
+          if (this.storageMode() === "managed")
+            return (
+              this.attachmentSupport?.handleDrop(view, event, slice, moved) ??
+              false
+            );
+          if (
+            event.dataTransfer?.files.length ||
+            slice.content.content.some((node) =>
+              containsManagedContent(node.toJSON()),
+            )
+          ) {
+            this.notice.set(
+              "Enable source blocks in Document tools to add files or source cards.",
+            );
+            return true;
+          }
+          return false;
+        },
         attributes: {
           role: "textbox",
-          "aria-label": "Daily note editor",
+          "aria-label": this.editorLabel(),
+          spellcheck: "true",
+          autocapitalize: "sentences",
           "aria-multiline": "true",
         },
-        handleKeyDown: (_, event) => {
+        handleKeyDown: (view, event) => {
+          syncCollapsedDOMSelection(view, event);
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             const selected = this.editor?.state.selection.$from;
             if (selected) {
@@ -812,7 +873,10 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
       onFocus: () => this.editingChanged.emit(true),
       onBlur: () => this.editingChanged.emit(false),
       onUpdate: () => {
-        this.raw = encodeDaily(this.prefix, this.editor!.getJSON());
+        this.raw =
+          this.storageMode() === "managed"
+            ? encodeDaily(this.prefix, this.editor!.getJSON())
+            : this.prefix + docToMarkdown(this.editor!.getJSON());
         this.changed.emit(this.raw);
       },
       onTransaction: () => {
@@ -823,7 +887,7 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   }
   submitAt(pos: number) {
     const editor = this.editor;
-    if (!editor || this.readOnly()) return;
+    if (!editor || this.readOnly() || this.storageMode() === "markdown") return;
     if (editor.state.doc.resolve(pos).depth > 0) {
       this.notice.set(
         "Move this Maple request outside its container to ask it inline.",
@@ -854,6 +918,7 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
     this.changed.emit(raw);
   }
   filesSelected(event: Event) {
+    if (this.storageMode() === "markdown") return;
     const input = event.target as HTMLInputElement;
     this.attachmentSupport?.addFiles(Array.from(input.files ?? []));
     input.value = "";
@@ -861,14 +926,22 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   toggleSource() {
     if (this.source()) {
       const parsed = decodeDaily(this.raw);
-      if (parsed.sourceOnly) {
-        this.notice.set(parsed.reason + " Nothing has been removed.");
+      if (
+        parsed.sourceOnly ||
+        (this.storageMode() === "markdown" &&
+          containsManagedContent(parsed.doc))
+      ) {
+        this.notice.set(
+          (parsed.reason ||
+            "Enable source blocks to edit this managed content.") +
+            " Nothing has been removed.",
+        );
         return;
       }
       this.prefix = parsed.prefix;
       this.source.set(false);
       this.notice.set("");
-      this.mount(parsed.doc);
+      this.mount(normalizeLegacySections(parsed.doc));
     } else this.source.set(true);
   }
   addRequest() {
@@ -879,7 +952,13 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   }
   private insertManagedBlock(node: JSONContent, trailing = true) {
     const editor = this.editor;
-    if (!editor || this.readOnly() || this.source()) return false;
+    if (
+      !editor ||
+      this.readOnly() ||
+      this.source() ||
+      this.storageMode() === "markdown"
+    )
+      return false;
     const selected = editor.state.selection.$from;
     const chain = editor.chain().focus();
     const content = trailing ? [node, { type: "paragraph" }] : [node];
@@ -905,4 +984,11 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
     if (this.positionFrame) cancelAnimationFrame(this.positionFrame);
     this.editor?.destroy();
   }
+}
+
+function containsManagedContent(node: JSONContent): boolean {
+  return (
+    ["sourceReference", "linkedTask", "attachment"].includes(node.type ?? "") ||
+    !!node.content?.some(containsManagedContent)
+  );
 }

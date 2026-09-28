@@ -1,6 +1,7 @@
 import { TestBed, ComponentFixture } from "@angular/core/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MapleEditorComponent } from "./maple-editor.component";
+import { Slice, Fragment } from "@tiptap/pm/model";
 import { decodeDaily } from "./daily-markdown-codec";
 let fixture: ComponentFixture<MapleEditorComponent> | undefined;
 function mount(
@@ -138,6 +139,55 @@ describe("Daily editor floating toolbar", () => {
     expect(blocks[1].attrs?.["maple"]).not.toHaveProperty("kind");
     expect(blocks[1].attrs?.["maple"]).not.toHaveProperty("requestID");
     expect(blocks[1].attrs?.["maple"]).not.toHaveProperty("id", "request");
+  });
+  it("retains formatted words when Enter immediately follows a native selection collapse", () => {
+    const component = mount("Selected emphasis"),
+      editor = component.editor!;
+    editor.view.focus();
+    editor.commands.setTextSelection({ from: 1, to: 18 });
+    component.format("bold");
+    const text = editor.view.dom.querySelector("strong")!.firstChild!;
+    const selection = document.getSelection()!;
+    selection.collapse(text, text.textContent!.length);
+    expect(editor.state.selection.empty).toBe(false);
+    editor.view.dom.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    expect(editor.state.doc.textContent).toBe("Selected emphasis");
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.doc.childCount).toBe(2);
+    expect(
+      decodeDaily(component.raw).doc.content?.[0].content?.[0].marks,
+    ).toContainEqual({ type: "bold" });
+  });
+  it("keeps managed clipboard cards out of plain Markdown instead of silently dropping their evidence", () => {
+    fixture = TestBed.createComponent(MapleEditorComponent);
+    fixture.componentRef.setInput("initial", "Plain writing");
+    fixture.componentRef.setInput("storageMode", "markdown");
+    fixture.detectChanges();
+    const component = fixture.componentInstance,
+      editor = component.editor!;
+    const before = editor.getJSON();
+    const node = editor.schema.nodes["sourceReference"].create({
+      reference: { v: 1, kind: "email", eventID: "fixture-email" },
+    });
+    const handled = editor.view.someProp("handlePaste", (handler) =>
+      handler(
+        editor.view,
+        new Event("paste") as ClipboardEvent,
+        new Slice(Fragment.from(node), 0, 0),
+      ),
+    );
+    expect(handled).toBe(true);
+    expect(editor.getJSON()).toEqual(before);
+    expect(component.notice()).toContain("Enable source blocks");
+    expect(component.insertTools.some((tool) => tool.id === "details")).toBe(
+      false,
+    );
   });
   it("hides the floating controls and prevents toolbar edits for read-only documents", () => {
     const component = mount();

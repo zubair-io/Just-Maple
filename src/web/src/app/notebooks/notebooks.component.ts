@@ -1,3 +1,4 @@
+import { sourceReferenceKind } from "../sources/source-reference-kind";
 import { isCompanion } from "../core/companion-host";
 import {
   Component,
@@ -14,7 +15,6 @@ import { DatePipe } from "@angular/common";
 import { ActivatedRoute } from "@angular/router";
 import { MuiButtonComponent, MuiInputComponent } from "@maple/ui";
 import { NotebookService } from "./notebook.service";
-import { MarkdownEditorComponent } from "./markdown-editor.component";
 import {
   TodayDocumentService,
   TodayDocument,
@@ -35,7 +35,6 @@ import {
     DatePipe,
     MuiButtonComponent,
     MuiInputComponent,
-    MarkdownEditorComponent,
     MapleEditorComponent,
     SourceDetailComponent,
   ],
@@ -53,6 +52,7 @@ export class NotebooksComponent implements OnDestroy {
   );
   readonly selected = signal<string | null>(null);
   readonly picker = signal(false);
+  readonly documentTools = signal(false);
   readonly matches = signal<SourceRow[]>([]);
   readonly pickerError = signal("");
   readonly pickerLoading = signal(false);
@@ -74,19 +74,28 @@ export class NotebooksComponent implements OnDestroy {
     void this.notes.refresh();
     effect(() => {
       this.notes.generation();
-      const doc = untracked(() => this.notes.document());
-      if (doc?.documentID && !this.companion)
-        void this.managed.openDocument(doc.documentID).then((opened) => {
-          if (opened && this.notes.document()?.documentID === doc.documentID)
-            this.notes.dirty.set(false);
-        });
+      // Only a newly loaded notebook file may replace the editor. openDocument
+      // reads managed save state before its first await; tracking those reads
+      // would reopen and remount this editor after every autosave.
+      untracked(() => {
+        const doc = this.notes.document();
+        if (doc?.documentID && !this.companion)
+          void this.managed.openDocument(doc.documentID).then((opened) => {
+            if (opened && this.notes.document()?.documentID === doc.documentID)
+              this.notes.dirty.set(false);
+          });
+      });
     });
   }
   async flush() {
     return (await this.managed.flush()) && (await this.notes.flush());
   }
   async open(path: string) {
-    if (await this.flush()) await this.notes.open(path);
+    if (await this.flush()) {
+      this.documentTools.set(false);
+      this.picker.set(false);
+      await this.notes.open(path);
+    }
   }
   async selectBook(id: string) {
     if (await this.flush()) await this.notes.selectBook(id);
@@ -180,13 +189,7 @@ export class NotebooksComponent implements OnDestroy {
     }
   }
   insertSource(row: SourceRow) {
-    const kind = row.type.includes("email")
-      ? "email"
-      : row.type.includes("message")
-        ? "message"
-        : row.type.includes("record")
-          ? "recording"
-          : "source";
+    const kind = sourceReferenceKind(row);
     if (
       this.editor?.insertReference({
         v: 1,
@@ -202,6 +205,7 @@ export class NotebooksComponent implements OnDestroy {
       );
   }
   ngOnDestroy() {
+    this.managed.cancelPendingReads();
     this.notes.managedFlusher = undefined;
     clearInterval(this.timer);
     this.routeSubscription?.unsubscribe();

@@ -83,8 +83,7 @@ extension KnowledgeStore {
             let headers=event.content.components(separatedBy:"\n").prefix(16)
             let title=headers.first(where:{$0.hasPrefix("Subject: ") || $0.hasPrefix("Title: ")}).map{String($0.dropFirst($0.hasPrefix("Subject:") ? 9:7))}
             let label=String((title ?? decision?.explanation.first ?? event.content).prefix(180))
-            let connector=event.source.connector.lowercased()
-            let kind=connector.contains("mail") ? "email":connector.contains("message") ? "message":connector.contains("calendar") ? "calendar":connector.contains("home") ? "home":"source"
+            let kind=ManagedMarkdown.referenceKind(connector:event.source.connector)
             let data:[String:Any]=["v":1,"kind":kind,"eventID":event.id,"label":label]
             let reference=String(decoding:try JSONSerialization.data(withJSONObject:data,options:.sortedKeys),as:UTF8.self)
             result.append(AutomaticTodayCandidate(blockID:id,markdown:(try ManagedMarkdown.marker(["id":id]))+"```maple-ref\n"+reference+"\n```\n",task:false));sources+=1

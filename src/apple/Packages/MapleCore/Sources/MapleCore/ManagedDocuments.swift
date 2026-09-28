@@ -43,6 +43,11 @@ public struct TodayDocumentSnapshot: Codable, Sendable {
 
 /// Minimal reserved grammar validation. This never rewrites user Markdown or frontmatter.
 public enum ManagedMarkdown {
+    /// Use the connector, not the event type: Gmail and Messages both emit message.received.
+    static func referenceKind(connector:String) -> String {
+        let connector=connector.lowercased()
+        return connector.contains("mail") ? "email":connector.contains("message") ? "message":connector.contains("calendar") ? "calendar":connector.contains("home") ? "home":"source"
+    }
     public static func hash(_ text: String) -> String { SHA256.hash(data: Data(text.utf8)).map { String(format:"%02x",$0) }.joined() }
     public static func day(at date: Date = Date(), timeZone: String = TimeZone.current.identifier) throws -> String {
         guard let zone=TimeZone(identifier:timeZone) else { throw MapleError.invalid("Choose a valid time zone.") }

@@ -138,7 +138,7 @@ public actor TodayDocumentCoordinator {
         guard let event=try await store.event(eventID) else {throw MapleError.invalid("This source is unavailable.")}
         let current=try await open(documentID:documentID)
         guard current.revision==expectedRevision else {throw MapleError.invalid("The note changed. Reload before inserting this source.")}
-        let kind=event.source.connector.lowercased().contains("mail") ? "email":"source"
+        let kind=ManagedMarkdown.referenceKind(connector:event.source.connector)
         let value:[String:Any] = ["v":1,"kind":kind,"eventID":eventID,"label":String(event.content.prefix(120))]
         let reference=String(decoding:try JSONSerialization.data(withJSONObject:value,options:.sortedKeys),as:UTF8.self)
         let marker=try ManagedMarkdown.marker(["id":"source-"+ManagedMarkdown.hash(commandID)])

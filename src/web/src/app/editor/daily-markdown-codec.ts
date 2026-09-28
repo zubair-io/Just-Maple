@@ -8,7 +8,7 @@ import {
   docToMarkdown,
   structuredMarkdown,
 } from "../notebooks/sugar-editor/document-to-markdown";
-import { splitMarkdown } from "../notebooks/markdown-editor.component";
+import { splitMarkdown } from "../notebooks/markdown-format";
 export interface BlockMetadata {
   v: 1;
   id: string;

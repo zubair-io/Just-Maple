@@ -197,6 +197,61 @@ struct ManagedDocumentOperationTests {
 }
 
 struct ManagedNotebookTests {
+    @Test func mixedSourceReferencesSurviveNotebookSaveAndFullStoreReopen() async throws {
+        let (root,library,store,coordinator,id)=try await ManagedDocumentTests().fixture()
+        defer {try? FileManager.default.removeItem(at:root)}
+        let prose="# Fixture writing session\n\n## Follow ups\n\nKeep this **user-written** paragraph and its [link](https://example.test).\n\n### Home context\n\nThese are labeled synthetic source fixtures.\n"
+        let file=try await library.save(notebookID:id,path:"Mixed sources.md",content:prose,expectedRevision:nil)
+        var document=try await coordinator.register(notebookID:id,path:file.path,expectedRevision:file.revision)
+        let fixtures:[(String,String,String,String)] = [
+            ("gmail","message.received","email","Subject: Fixture proposal\nBody: Please review the synthetic proposal."),
+            ("imessage","message.received","message","Title: Fixture message\nSynthetic message about tomorrow's meeting."),
+            ("home_assistant","home.state","home","Title: Fixture door sensor\nState: open\nPrevious state: closed")
+        ]
+        var events:[Event]=[]
+        for (connector,type,_,content) in fixtures {
+            let event=Event(type:type,source:Source(connector:connector,account:"synthetic-editor-test",externalID:connector+"-fixture",revision:"1"),occurredAt:Date(),subjects:["person:self"],content:content)
+            _ = try await store.ingest(event)
+            document=try await coordinator.insertSource(documentID:document.documentID,expectedRevision:document.revision,commandID:"insert-fixture-"+connector,eventID:event.id)
+            events.append(event)
+        }
+        let originalBlockIDs=document.blocks.compactMap{ $0.eventID == nil ? nil:$0.blockID }
+        #expect(Set(originalBlockIDs).count==3)
+        #expect(document.content.contains(prose))
+        #expect(try await library.read(notebookID:id,path:file.path).content==document.content)
+
+        // Open fresh store/library/coordinator objects against real persisted files.
+        let reopenedStore=try KnowledgeStore(path:root.appendingPathComponent("store.db").path)
+        let reopenedLibrary=try NotebookLibrary(registryURL:root.appendingPathComponent("registry.json"),cloudRoot:root.appendingPathComponent("Cloud"))
+        _ = try await reopenedLibrary.catalog()
+        let reopened=try await TodayDocumentCoordinator(store:reopenedStore,library:reopenedLibrary).open(documentID:document.documentID)
+        #expect(!reopened.readOnly)
+        #expect(reopened.content==document.content)
+        #expect(reopened.revision==document.revision)
+        #expect(reopened.blocks.compactMap{$0.eventID}==events.map(\.id))
+        #expect(reopened.blocks.filter{$0.eventID != nil}.map(\.blockID)==originalBlockIDs)
+        for (index,event) in events.enumerated() {
+            let block=try #require(reopened.blocks.first{$0.eventID==event.id})
+            let referenceLine=try #require(block.content.components(separatedBy:"\n").first{$0.hasPrefix("{")})
+            let reference=try #require(JSONSerialization.jsonObject(with:Data(referenceLine.utf8)) as? [String:Any])
+            #expect(reference["kind"] as? String==fixtures[index].2)
+            #expect(reference["eventID"] as? String==event.id)
+            #expect(try await reopenedStore.event(event.id)?.content==event.content)
+            let detail=try await reopenedStore.sourceDetail(eventID:event.id)
+            #expect(detail.backlinks.count==1)
+            #expect(detail.backlinks.first?.documentID==reopened.documentID)
+            #expect(detail.backlinks.first?.blockID==block.blockID)
+            #expect(detail.backlinks.first?.path=="Mixed sources.md")
+            #expect(detail.backlinks.first?.revision==reopened.revision)
+        }
+    }
+    @Test func sourceReferenceKindUsesConnectorConsistently() {
+        #expect(ManagedMarkdown.referenceKind(connector:"gmail")=="email")
+        #expect(ManagedMarkdown.referenceKind(connector:"imessage")=="message")
+        #expect(ManagedMarkdown.referenceKind(connector:"HOME_ASSISTANT")=="home")
+        #expect(ManagedMarkdown.referenceKind(connector:"apple_calendar")=="calendar")
+        #expect(ManagedMarkdown.referenceKind(connector:"other")=="source")
+    }
     @Test func ordinaryRegistrationPreservesOtherFrontmatterAndIndexesReferenceBacklinks() async throws {
         let (root,library,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
         let original="---\ntitle: My work\ntags: [a, b]\n---\n\nA user paragraph.\n"

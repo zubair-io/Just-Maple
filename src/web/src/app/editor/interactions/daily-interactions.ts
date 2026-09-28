@@ -37,7 +37,7 @@ export function dailySlashItems(
     ["blockquote", "Quote", "citation"],
     ["codeBlock", "Code block", "snippet"],
   ];
-  return [
+  const items: SlashItem[] = [
     ...conversions.map(([id, label, keywords]) => ({
       id,
       label,
@@ -97,20 +97,11 @@ export function dailySlashItems(
           });
       },
     })),
-    {
-      id: "details",
-      label: "Collapsible section",
-      keywords: "details disclosure toggle",
-      run: (editor) => {
-        if (editor.schema.nodes["details"])
-          editor.commands.insertContent({
-            type: "details",
-            attrs: { title: "Details", open: true },
-            content: [{ type: "paragraph" }],
-          });
-      },
-    },
   ];
+  return items.filter(
+    (item) =>
+      callbacks.managed !== false || !["source", "maple"].includes(item.id),
+  );
 }
 export function filterSlashItems(items: SlashItem[], query: string) {
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -140,16 +131,11 @@ export function createSlashExtension(callbacks: DailyInteractionCallbacks) {
             state.doc.resolve(range.from).parent.type.name === "paragraph",
           items: ({ query }) =>
             filterSlashItems(
-              dailySlashItems(callbacks)
-                .filter(
-                  (item) =>
-                    item.id !== "details" || !!editor.schema.nodes["details"],
-                )
-                .filter(
-                  (item) =>
-                    !item.id.startsWith("callout-") ||
-                    !!editor.schema.nodes["callout"],
-                ),
+              dailySlashItems(callbacks).filter(
+                (item) =>
+                  !item.id.startsWith("callout-") ||
+                  !!editor.schema.nodes["callout"],
+              ),
               query,
             ),
           command: ({ editor, range, props }) => {
@@ -428,8 +414,15 @@ export function createBlockActionsExtension(
                 return;
               }
               const rect = element.getBoundingClientRect();
-              grip.hidden = rect.bottom < 0 || rect.top > win.innerHeight;
-              grip.style.left = Math.max(4, rect.left - 30) + "px";
+              grip.hidden =
+                !!element.closest(".maple-section-hidden") ||
+                rect.bottom < 0 ||
+                rect.top > win.innerHeight;
+              grip.style.left =
+                Math.max(
+                  4,
+                  rect.left - (block.node.type.name === "heading" ? 64 : 30),
+                ) + "px";
               grip.style.top = Math.max(4, rect.top) + "px";
             };
             const perform = (action: () => boolean) => {

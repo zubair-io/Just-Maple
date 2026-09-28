@@ -28,7 +28,7 @@ public enum InlineMarkdown {
         if let coverage=run.coverage {reply += plain(coverage)+"\n\n"}
         for (index,event) in events.enumerated() {
             let title=event.content.components(separatedBy:"\n").first(where:{$0.hasPrefix("Subject: ") || $0.hasPrefix("Title: ")}) ?? "Source"
-            let kind=event.source.connector=="gmail" ? "email":event.source.connector=="imessage" ? "message":"source"
+            let kind=ManagedMarkdown.referenceKind(connector:event.source.connector)
             let reference:[String:Any]=["v":1,"kind":kind,"eventID":event.id,"label":String(title.prefix(200))]
             let json=String(decoding:try JSONSerialization.data(withJSONObject:reference,options:.sortedKeys),as:UTF8.self)
             reply += try ManagedMarkdown.marker(["id":run.replyBlockID+"-source-"+String(index)])

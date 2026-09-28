@@ -7,6 +7,7 @@ import {
   output,
   signal,
 } from "@angular/core";
+import { sourceReferenceKind } from "../sources/source-reference-kind";
 import { SourceReference } from "./daily-markdown-codec";
 import { SourcesService, SourceRow } from "../sources/sources.service";
 @Component({
@@ -18,7 +19,9 @@ import { SourcesService, SourceRow } from "../sources/sources.service";
     [attr.aria-label]="reference().kind + ' reference'"
   >
     <div class="source-card-meta">
-      <span>{{ row()?.sender || reference().kind }}</span
+      <span class="source-origin"
+        ><span class="source-kind">{{ kindLabel() }}</span
+        >{{ row()?.sender }}</span
       ><span>{{ row()?.connector || "Source reference" }}</span>
     </div>
     <button
@@ -30,6 +33,11 @@ import { SourcesService, SourceRow } from "../sources/sources.service";
     </button>
     @if (row(); as source) {
       <p>{{ source.preview }}</p>
+      @if (kindLabel() === "Home event" && source.observedState) {
+        <p class="source-observed-state">
+          Observed state · {{ source.observedState }}
+        </p>
+      }
       <div class="source-card-footer">
         <span>{{ source.type }} · {{ source.status }}</span
         ><button type="button" (click)="inspected.emit(source.id)">
@@ -63,6 +71,25 @@ import { SourcesService, SourceRow } from "../sources/sources.service";
         border-radius: 6px;
         background: var(--color-bg-secondary);
         font-family: var(--font-sans);
+      }
+      .source-origin {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .source-kind {
+        white-space: nowrap;
+        border: 1px solid var(--color-border);
+        border-radius: 5px;
+        padding: 2px 6px;
+        font-size: 11px;
+        color: var(--color-text-main);
+      }
+      .source-observed-state {
+        font-family: var(--font-mono);
+        font-size: 12px;
       }
       .source-card-meta,
       .source-card-footer {
@@ -116,6 +143,23 @@ export class SourceReferenceComponent {
   readonly inspected = output<string>();
   readonly row = signal<SourceRow | null>(null);
   readonly unavailable = signal(false);
+  kindLabel() {
+    const row = this.row();
+    const kind = row ? sourceReferenceKind(row) : this.reference().kind;
+    return (
+      (
+        {
+          email: "Email",
+          message: "Message",
+          imessage: "Message",
+          home: "Home event",
+          ha: "Home event",
+          calendar: "Calendar",
+          recording: "Recording",
+        } as Record<string, string>
+      )[kind] ?? "Source"
+    );
+  }
   private service = inject(SourcesService);
   private generation = 0;
   constructor() {

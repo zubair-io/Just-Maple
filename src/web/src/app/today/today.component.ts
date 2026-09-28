@@ -1,3 +1,4 @@
+import { sourceReferenceKind } from "../sources/source-reference-kind";
 import {
   Component,
   ChangeDetectionStrategy,
@@ -566,6 +567,7 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
         font: 12px/1.8 var(--font-sans);
         color: var(--color-text-muted);
         margin: 40px 0 20px;
+        padding-bottom: 100px;
       }
       .legend {
         display: inline-flex;
@@ -754,13 +756,7 @@ export class TodayComponent implements OnInit, OnDestroy {
     }
   }
   insertSource(row: SourceRow) {
-    const kind = row.type.includes("email")
-      ? "email"
-      : row.type.includes("message")
-        ? "message"
-        : row.type.includes("record")
-          ? "recording"
-          : "source";
+    const kind = sourceReferenceKind(row);
     if (
       this.editorInstance?.insertReference({
         v: 1,

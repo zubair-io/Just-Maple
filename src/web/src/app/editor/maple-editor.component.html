@@ -73,9 +73,14 @@
     @if (palette()) {
       <div class="maple-toolbar-palette" aria-label="Insert a block">
         @for (item of insertTools; track item.id) {
-          <button type="button" (click)="insert(item.id)">
-            {{ item.label }}
-          </button>
+          @if (
+            storageMode() === "managed" ||
+            !["source", "maple", "attachment"].includes(item.id)
+          ) {
+            <button type="button" (click)="insert(item.id)">
+              {{ item.label }}
+            </button>
+          }
         }
       </div>
     }
@@ -122,7 +127,7 @@
   </button>
   <textarea
     class="maple-editor-source"
-    aria-label="Daily note Markdown source"
+    [attr.aria-label]="editorLabel() + ' Markdown source'"
     spellcheck="false"
     [readOnly]="readOnly()"
     [ngModel]="raw"

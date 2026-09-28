@@ -145,7 +145,7 @@ describe('iPhone companion',()=>{
     expect(fixture.nativeElement.querySelector('maple-notebooks')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Fixture notebook');
     await component.notes.selectBook('book');await component.notes.open('note.md');fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('maple-markdown-editor')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('maple-editor')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('This large note was not queued for the Mac.');
     expect(fixture.nativeElement.querySelector('.notebook-layout.editor-open')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Notes in this notebook');

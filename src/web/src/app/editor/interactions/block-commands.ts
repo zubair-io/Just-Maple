@@ -4,6 +4,7 @@ import { Selection } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
 
 export interface DailyInteractionCallbacks {
+  managed?: boolean;
   onSource: () => void;
   onMaple: () => void;
   onAttachment?: () => void;
