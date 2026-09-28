@@ -13,7 +13,7 @@ import {
 import { DatePipe } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ActivatedRoute, Router } from "@angular/router";
-import { Subscription, combineLatest } from "rxjs";
+import { Subscription, distinctUntilChanged, map } from "rxjs";
 import { MuiButtonComponent } from "@maple/ui";
 import { TodayDocumentService } from "./today-document.service";
 import { relativeDayLabel } from "./relative-day";
@@ -50,9 +50,7 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
       <p class="document-notice">
         It is now {{ currentDay() }}. This note stays on {{ notes.day() }} while
         you write.
-        <mui-button
-          variant="ghost"
-          (pressed)="router.navigate(['/today', currentDay()])"
+        <mui-button variant="ghost" (pressed)="router.navigate(['/today'])"
           >Open today’s note</mui-button
         >
       </p>
@@ -688,14 +686,14 @@ export class TodayComponent implements OnInit, OnDestroy {
   }
   protected editorInstance?: MapleEditorComponent;
   ngOnInit() {
-    this.subscription = combineLatest([
-      this.route.paramMap,
-      this.route.queryParamMap,
-    ]).subscribe(([params, query]) => {
-      const documentID = query.get("document");
-      if (documentID) void this.notes.openDocument(documentID);
-      else void this.notes.open(params.get("date") ?? localDay());
-    });
+    this.subscription = this.route.paramMap
+      .pipe(
+        map((params) => params.get("date")),
+        distinctUntilChanged(),
+      )
+      .subscribe((date) => {
+        if (date) void this.notes.open(date);
+      });
     this.timer = setInterval(() => {
       void this.notes.pollRun();
       void this.notes.pollAutomatic();

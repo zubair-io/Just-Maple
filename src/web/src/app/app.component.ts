@@ -12,6 +12,7 @@ import {
 import {
   Router,
   RouterOutlet,
+  RouterLink,
   NavigationEnd,
   NavigationStart,
 } from "@angular/router";
@@ -35,6 +36,7 @@ import { OnboardingComponent } from "./pages/onboarding.component";
   imports: [
     CompanionComponent,
     RouterOutlet,
+    RouterLink,
     MuiAppShellComponent,
     MuiSidebarComponent,
     MuiButtonComponent,
@@ -52,25 +54,27 @@ export class AppComponent {
   readonly days = computed(() => [
     {
       label: "Yesterday",
-      offset: -1,
+      route: "/yesterday",
       day: offsetDay(this.calendar.today(), -1),
     },
-    { label: "Today", offset: 0, day: this.calendar.today() },
-    { label: "Tomorrow", offset: 1, day: offsetDay(this.calendar.today(), 1) },
+    { label: "Today", route: "/today", day: this.calendar.today() },
+    {
+      label: "Tomorrow",
+      route: "/tomorrow",
+      day: offsetDay(this.calendar.today(), 1),
+    },
   ]);
   readonly bridge = inject(NativeBridge);
   readonly s = this.bridge.state;
   readonly router = inject(Router);
-  readonly active = toSignal(
+  readonly activePath = toSignal(
     this.router.events.pipe(
       filter((e) => e instanceof NavigationEnd),
-      map(
-        (e) =>
-          (e as NavigationEnd).urlAfterRedirects.split("?")[0].split("/")[1],
-      ),
+      map((e) => (e as NavigationEnd).urlAfterRedirects.split(/[?#]/)[0]),
     ),
-    { initialValue: "today" },
+    { initialValue: this.router.url.split(/[?#]/)[0] },
   );
+  readonly active = computed(() => this.activePath().split("/")[1]);
   readonly sections: MuiSidebarSection[] = [
     {
       id: "primary",
@@ -130,13 +134,6 @@ export class AppComponent {
       this.bridge.start();
       void this.notebooks.refresh();
     }
-  }
-  async openDay(day: string | number) {
-    const intent = ++this.navigationIntent;
-    if (!(await this.daily.flush()) || intent !== this.navigationIntent) return;
-    const target =
-      typeof day === "number" ? offsetDay(this.calendar.refresh(), day) : day;
-    await this.router.navigateByUrl("/today/" + target);
   }
   async openNotebook(id: string) {
     const intent = ++this.navigationIntent;

@@ -204,7 +204,7 @@ try {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.screenshot({ path: output + '/notebook-dark.png', fullPage: true });
   // Near-limit synthetic writing with frequent headings also exercises outline decorations.
-  await page.getByRole('button', { name: 'Today', exact: true }).click();
+  await page.getByRole('link', { name: 'Today', exact: true }).click();
   const largeBytes = await page.evaluate(() => {
     const key = 'maple.today.sources.smoke.v1', value = JSON.parse(localStorage.getItem(key));
     let content = '---\nmaple:\n  format: 1\n  document: "synthetic-document"\n---\n\n';

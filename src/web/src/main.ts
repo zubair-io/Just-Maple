@@ -1,6 +1,6 @@
 import { bootstrapApplication } from "@angular/platform-browser";
 import { provideRouter, withHashLocation } from "@angular/router";
-import { TodayComponent } from "./app/today/today.component";
+import { dailyRoutes, todayRedirect } from "./app/today/daily.routes";
 import { SourcesComponent } from "./app/sources/sources.component";
 import { DailyNoteComponent } from "./app/daily-note/daily-note.component";
 import { AppComponent } from "./app/app.component";
@@ -17,20 +17,7 @@ bootstrapApplication(AppComponent, {
   providers: [
     provideRouter(
       [
-        {
-          path: "today",
-          component: TodayComponent,
-          canDeactivate: [
-            (component: TodayComponent) => component.notes.flush(),
-          ],
-        },
-        {
-          path: "today/:date",
-          component: TodayComponent,
-          canDeactivate: [
-            (component: TodayComponent) => component.notes.flush(),
-          ],
-        },
+        ...dailyRoutes,
         {
           matcher: (segments) =>
             segments[0]?.path === "sources" && segments.length <= 2
@@ -43,7 +30,6 @@ bootstrapApplication(AppComponent, {
               : null,
           component: SourcesComponent,
         },
-        { path: "daily", redirectTo: "today", pathMatch: "full" },
         {
           path: "daily-legacy",
           component: DailyNoteComponent,
@@ -86,8 +72,8 @@ bootstrapApplication(AppComponent, {
         { path: "notes", redirectTo: "notebooks", pathMatch: "full" },
         { path: "calendar", redirectTo: "schedule", pathMatch: "full" },
         { path: "activity", redirectTo: "sources", pathMatch: "full" },
-        { path: "", redirectTo: "today", pathMatch: "full" },
-        { path: "**", redirectTo: "today" },
+        { path: "", redirectTo: todayRedirect, pathMatch: "full" },
+        { path: "**", redirectTo: todayRedirect },
       ],
       withHashLocation(),
     ),

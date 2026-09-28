@@ -455,9 +455,7 @@ export class SourceDetailComponent {
   }
   openBacklink(link: { documentID: string; day?: string }) {
     if (link.day)
-      void this.router.navigate(["/today", link.day], {
-        queryParams: { document: link.documentID },
-      });
+      void this.router.navigate(["/daily", link.day]);
     else
       void this.router.navigate(["/notebooks"], {
         queryParams: { document: link.documentID },

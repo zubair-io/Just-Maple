@@ -1,6 +1,13 @@
-import { Component, signal } from "@angular/core";
+import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
+import { dailyRoutes, todayRedirect } from "./today/daily.routes";
+import { Component, inject, signal, DestroyRef } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
-import { NavigationStart, provideRouter, Router } from "@angular/router";
+import {
+  ActivatedRoute,
+  NavigationStart,
+  provideRouter,
+  Router,
+} from "@angular/router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppComponent } from "./app.component";
 import { NativeBridge } from "./core/native-bridge.service";
@@ -9,6 +16,22 @@ import { NotebookService } from "./notebooks/notebook.service";
 
 @Component({ standalone: true, template: "Sources remains open" })
 class SourcesStub {}
+@Component({
+  standalone: true,
+  template:
+    '<textarea aria-label="Test dated writing">Keep this draft</textarea>',
+})
+class DatedStub {
+  readonly notes = inject(TodayDocumentService);
+  constructor() {
+    inject(ActivatedRoute)
+      .paramMap.pipe(takeUntilDestroyed(inject(DestroyRef)))
+      .subscribe((params) => {
+        this.notes.day.set(params.get("date")!);
+        void this.notes.open(params.get("date")!);
+      });
+  }
+}
 function shell(flush = vi.fn().mockResolvedValue(true)) {
   const bridge = {
     state: signal<any>({
@@ -32,12 +55,19 @@ function shell(flush = vi.fn().mockResolvedValue(true)) {
     providers: [
       provideRouter([
         { path: "sources", component: SourcesStub },
-        { path: "today/:day", component: SourcesStub },
+        { path: "", pathMatch: "full", redirectTo: todayRedirect },
+        ...dailyRoutes.map((route) =>
+          route.component ? { ...route, component: DatedStub } : route,
+        ),
       ]),
       { provide: NativeBridge, useValue: bridge },
       {
         provide: TodayDocumentService,
-        useValue: { flush, day: signal("2026-09-27") },
+        useValue: {
+          flush,
+          day: signal("1999-01-01"),
+          open: vi.fn().mockResolvedValue(true),
+        },
       },
       { provide: NotebookService, useValue: notebooks },
     ],
@@ -57,66 +87,100 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("Today sidebar navigation", () => {
-  it("updates all three day links and selection at midnight without a native snapshot", () => {
+  it("renders stable relative links and derives active styling from the dated URL", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 8, 27, 23, 59, 59));
-    const { fixture, component } = shell();
-    const current = () =>
+    vi.setSystemTime(new Date(2026, 8, 27, 12));
+    const { fixture, component, router } = shell();
+    await router.navigateByUrl("/today");
+    fixture.detectChanges();
+    expect(router.url).toBe("/daily/2026-09-27");
+    expect(
+      Array.from(
+        fixture.nativeElement.querySelectorAll(
+          ".day-rail a",
+        ) as NodeListOf<HTMLAnchorElement>,
+      ).map((a) => a.getAttribute("href")),
+    ).toEqual(["/yesterday", "/today", "/tomorrow"]);
+    component.daily.day.set("1999-01-01");
+    fixture.detectChanges();
+    expect(
       fixture.nativeElement
         .querySelector('.day-rail [aria-current="page"]')
-        ?.textContent.trim();
-    expect(current()).toBe("Today");
-    vi.advanceTimersByTime(1000);
-    fixture.detectChanges();
-    expect(component.days().map((day) => day.day)).toEqual([
-      "2026-09-27",
-      "2026-09-28",
-      "2026-09-29",
-    ]);
-    expect(current()).toBe("Yesterday");
+        ?.textContent.trim(),
+    ).toBe("Today");
   });
-  it("resolves a relative day after saving, even if midnight passed during the save", async () => {
+  it("changes only the highlight at midnight and resolves Today again when clicked", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 8, 27, 23, 59, 59));
+    const { fixture, component, router } = shell();
+    await router.navigateByUrl("/today");
+    fixture.detectChanges();
+    const field = fixture.nativeElement.querySelector(
+      "textarea",
+    ) as HTMLTextAreaElement;
+    field.value = "Unsaved dated writing";
+    field.focus();
+    field.setSelectionRange(4, 4);
+    vi.advanceTimersByTime(1000);
+    fixture.detectChanges();
+    expect(router.url).toBe("/daily/2026-09-27");
+    expect(fixture.nativeElement.querySelector("textarea")).toBe(field);
+    expect(field.value).toBe("Unsaved dated writing");
+    expect(field.selectionStart).toBe(4);
+    expect(component.daily.open).toHaveBeenCalledTimes(1);
+    expect(
+      fixture.nativeElement
+        .querySelector('.day-rail [aria-current="page"]')
+        ?.textContent.trim(),
+    ).toBe("Yesterday");
+    await router.navigateByUrl("/today");
+    fixture.detectChanges();
+    expect(router.url).toBe("/daily/2026-09-28");
+    expect(component.daily.open).toHaveBeenLastCalledWith("2026-09-28");
+    await router.navigateByUrl("/today");
+    fixture.detectChanges();
+    expect(component.daily.open).toHaveBeenCalledTimes(2);
+  });
+  it("redirects relative, legacy and invalid day links to canonical dated routes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2027, 0, 1, 12));
+    const { router } = shell();
+    for (const [path, target] of [
+      ["/", "2027-01-01"],
+      ["/daily", "2027-01-01"],
+      ["/yesterday", "2026-12-31"],
+      ["/tomorrow", "2027-01-02"],
+      ["/today/2026-10-03", "2026-10-03"],
+      ["/daily/2026-02-30", "2027-01-01"],
+    ]) {
+      await router.navigateByUrl(path);
+      expect(router.url).toBe("/daily/" + target);
+    }
+  });
+  it("keeps the dated URL and draft when the navigation save guard fails", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 27, 12));
+    const flush = vi.fn().mockResolvedValue(false),
+      { router, component } = shell(flush);
+    await router.navigateByUrl("/today");
+    expect(await router.navigateByUrl("/tomorrow")).toBe(false);
+    expect(flush).toHaveBeenCalledOnce();
+    expect(router.url).toBe("/daily/2026-09-27");
+    expect(component.daily.open).toHaveBeenCalledOnce();
+  });
+  it("does not allow a delayed day navigation to override a newer Sources navigation", async () => {
     let finish!: (value: boolean) => void;
-    const { component, router } = shell(
-      vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve))),
-    );
-    const navigate = vi.spyOn(router, "navigateByUrl").mockResolvedValue(true);
-    const opening = component.openDay(1);
-    vi.setSystemTime(new Date(2026, 8, 28, 0, 1));
-    finish(true);
-    await opening;
-    expect(navigate).toHaveBeenCalledWith("/today/2026-09-29");
-    expect(component.calendar.today()).toBe("2026-09-28");
-  });
-  it("flushes the current daily document before routing to a dated file", async () => {
-    const daily = { flush: vi.fn().mockResolvedValue(true) };
-    const router = { navigateByUrl: vi.fn().mockResolvedValue(true) };
-    await AppComponent.prototype.openDay.call(
-      { daily, router, navigationIntent: 0 } as any,
-      "2026-10-01",
-    );
-    expect(daily.flush).toHaveBeenCalled();
-    expect(router.navigateByUrl).toHaveBeenCalledWith("/today/2026-10-01");
-  });
-  it("keeps a conflicting draft open", async () => {
-    const daily = { flush: vi.fn().mockResolvedValue(false) };
-    const router = { navigateByUrl: vi.fn() };
-    await AppComponent.prototype.openDay.call(
-      { daily, router, navigationIntent: 0 } as any,
-      "2026-10-01",
-    );
-    expect(router.navigateByUrl).not.toHaveBeenCalled();
-  });
-  it("ignores a delayed day click after the user selects Sources", async () => {
-    let finish!: (value: boolean) => void;
-    const { component, router } = shell(
-      vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve))),
-    );
-    const opening = component.openDay("2026-10-01");
-    component.navigate("sources");
-    await vi.waitFor(() => expect(router.url).toBe("/sources"));
+    const flush = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise<boolean>((resolve) => (finish = resolve)),
+      )
+      .mockResolvedValue(true);
+    const { router } = shell(flush);
+    await router.navigateByUrl("/daily/2026-09-27");
+    const opening = router.navigateByUrl("/tomorrow");
+    await vi.waitFor(() => expect(flush).toHaveBeenCalledTimes(1));
+    await router.navigateByUrl("/sources");
     finish(true);
     await opening;
     expect(router.url).toBe("/sources");

@@ -153,7 +153,7 @@ try {
   });
   await page.emulateMedia({ colorScheme: "dark" });
   await page.screenshot({ path: output + "/sources-dark.png", fullPage: true });
-  await page.getByRole("button", { name: "Today", exact: true }).click();
+  await page.getByRole("link", { name: "Today", exact: true }).click();
   await expect(editor).toBeVisible();
   await page.screenshot({ path: output + "/today-dark.png", fullPage: true });
   await page.setViewportSize({ width: 760, height: 1000 });
@@ -201,7 +201,7 @@ try {
   await page.locator(".memo-cover").first().click();
   await page.locator(".note-list button").first().click();
   await expect(page.locator(".note-paper .source-card")).toBeVisible();
-  await page.getByRole("button", { name: "Today", exact: true }).click();
+  await page.getByRole("link", { name: "Today", exact: true }).click();
   await expect(editor).toBeVisible();
   // Measure a labeled synthetic near-limit note. beforeinput -> first animation frame
   // approximates input-to-paint scheduling; it is not a native model-quality benchmark.

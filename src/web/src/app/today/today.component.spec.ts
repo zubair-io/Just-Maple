@@ -123,6 +123,20 @@ describe("Today document tools", () => {
     expect(notes.initial()).toBe("User writing remains here");
     expect(fixture.nativeElement.textContent).toContain("Open today’s note");
   });
+  it("opens only the date in the route and ignores stale document query parameters", () => {
+    const { fixture, notes } = setup();
+    const route = TestBed.inject(ActivatedRoute);
+    (route.queryParamMap as BehaviorSubject<any>).next(
+      convertToParamMap({ document: "wrong-yesterday-doc" }),
+    );
+    fixture.detectChanges();
+    expect(notes.openDocument).not.toHaveBeenCalled();
+    expect(notes.open).toHaveBeenCalledExactlyOnceWith("2026-09-27");
+    (route.paramMap as BehaviorSubject<any>).next(
+      convertToParamMap({ date: "2026-09-28" }),
+    );
+    expect(notes.open).toHaveBeenLastCalledWith("2026-09-28");
+  });
   it("forwards editing presence and stops automatic refresh polling on leaving Today", () => {
     vi.useFakeTimers();
     const { fixture, notes, editor } = setup();
