@@ -18,7 +18,8 @@ public struct URLSessionTransport: HTTPTransport {
     }
 }
 
-public struct TypeSafeClassifier: Classifier {
+public struct TypeSafeClassifier: FactCheckingClassifier {
+    public let providerID = "typesafe"
     private let apiKey: String
     private let model: String
     private let transport: any HTTPTransport

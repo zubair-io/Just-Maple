@@ -32,17 +32,17 @@ extension Classifier {
 }
 
 extension KnowledgeStore {
-    /// Manual Jev checks use the same audit boundary as queued classification.
-    public func checkSourceFacts(eventID:String,classifier:TypeSafeClassifier)async throws -> (probability:Double,model:String,rawResponse:Data) {
+    /// Manual classifier checks use the same audit boundary as queued classification.
+    public func checkSourceFacts(eventID:String,classifier:any FactCheckingClassifier)async throws -> (probability:Double,model:String,rawResponse:Data) {
         let context=try modelContext(for:eventID),attempt=UUID().uuidString
         try db.transaction {
-            try db.execute("INSERT INTO source_attempts(id,event_id,stage,started_at,provider) VALUES (?,?,'fact_check',?,'typesafe')",[attempt,eventID,String(Date().timeIntervalSince1970)])
+            try db.execute("INSERT INTO source_attempts(id,event_id,stage,started_at,provider) VALUES (?,?,'fact_check',?,?)",[attempt,eventID,String(Date().timeIntervalSince1970),classifier.providerID])
             try db.execute("INSERT INTO source_transitions(event_id,stage,to_state,attempt_id,reason,at) VALUES (?,'fact_check','running',?,'user_requested_check',?)",[eventID,attempt,String(Date().timeIntervalSince1970)])
         }
         do {
             let result=try await classifier.checkFacts(context) { audit in try await self.recordProviderAudit(audit,eventID:eventID,leaseID:attempt,stage:"fact_check") }
             try db.transaction {
-                try insertFactCheck(eventID:eventID,probability:result.probability,provider:"typesafe",model:result.model,now:Date(),context:context,rawResponse:String(decoding:result.rawResponse,as:UTF8.self))
+                try insertFactCheck(eventID:eventID,probability:result.probability,provider:classifier.providerID,model:result.model,now:Date(),context:context,rawResponse:String(decoding:result.rawResponse,as:UTF8.self))
                 try db.execute("UPDATE source_attempts SET ended_at=?,commit_outcome='committed' WHERE id=? OR parent_id=?",[String(Date().timeIntervalSince1970),attempt,attempt])
                 try db.execute("INSERT INTO source_transitions(event_id,stage,from_state,to_state,attempt_id,reason,at) VALUES (?,'fact_check','running','succeeded',?,'assessment_recorded',?)",[eventID,attempt,String(Date().timeIntervalSince1970)])
             }

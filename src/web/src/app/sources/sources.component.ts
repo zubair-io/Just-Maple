@@ -171,7 +171,7 @@ import { TodayDocumentService } from "../today/today-document.service";
                 }}</span
                 ><small>{{ row.statusDetail }}</small>
                 @if (row.classificationState) {
-                  <small>Jev: {{ row.classificationState }}</small>
+                  <small>Classification: {{ row.classificationState }}</small>
                 }
                 @if (row.analysisState) {
                   <small>Downstream AI: {{ row.analysisState }}</small>

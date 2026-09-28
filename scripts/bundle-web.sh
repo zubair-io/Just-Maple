@@ -26,3 +26,5 @@ fi
 PROVIDER_DEST="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Providers"
 mkdir -p "$PROVIDER_DEST"
 /usr/bin/rsync -a --delete --exclude='test' "$PROVIDER_SOURCE/" "$PROVIDER_DEST/"
+
+bash "$REPO_ROOT/scripts/bundle-laya.sh"

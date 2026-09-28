@@ -14,10 +14,11 @@ This is an early development build. See [the daily-note direction](docs/product/
 
 ## Development
 
-Use macOS with Xcode and the Swift 6 toolchain, plus Node.js/npm.
+Use macOS with Xcode and the Swift 6 toolchain, plus Node.js/npm and Python 3.8+ for fetching build assets.
 
 ```sh
 npm run setup
+npm run setup:laya # one-time ~805 MiB pinned model download
 npm test
 npm run test:core
 npm run test:providers
@@ -25,7 +26,7 @@ swift build --package-path src/apple/Packages/MapleCore
 npm run test:apple
 ```
 
-Open `src/apple/Just Maple.xcodeproj` in Xcode and select the Mac or iPhone scheme. The build bundles Angular. Device installation requires appropriate Apple signing access; contributors must use their own development credentials. Existing application identity is intentional.
+Open `src/apple/Just Maple.xcodeproj` in Xcode and select the Mac or iPhone scheme. The Mac build bundles Angular and the native Laya model, tokenizer and calibration assets; subsequent builds verify the local cache without downloading. Laya remains an experimental provider behind a model/adapter quality gate; Jev stays the default until validation passes. See [the measured Laya evaluation](docs/evaluations/LAYA-COREML.md). Device installation requires appropriate Apple signing access; contributors must use their own development credentials. Existing application identity is intentional.
 
 ## Credentials and data
 

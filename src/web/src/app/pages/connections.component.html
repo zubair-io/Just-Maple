@@ -2,9 +2,16 @@
   <div class="grid">
     <section class="panel">
       <h3>iPhone companion</h3>
-      <p>Capture on your phone. See your tasks and current state from this Mac.</p>
+      <p>
+        Capture on your phone. See your tasks and current state from this Mac.
+      </p>
       <p>{{ s().companionStatus }}</p>
-      <p class="muted">With the same iCloud account and Keychain sync enabled, your iPhone connects automatically. Your iPhone can sync over any internet connection. Keep Maple running on this Mac to process new captures and publish updates.</p>
+      <p class="muted">
+        With the same iCloud account and Keychain sync enabled, your iPhone
+        connects automatically. Your iPhone can sync over any internet
+        connection. Keep Maple running on this Mac to process new captures and
+        publish updates.
+      </p>
     </section>
     <section class="panel">
       <h3>Messages</h3>
@@ -301,44 +308,137 @@
 }
 @if (scope() !== "calendar") {
   <h2>Intelligence</h2>
-  @for (p of [{id:'codex',name:'ChatGPT · Codex',login:'codex login'}, {id:'claude',name:'Claude',login:'claude auth login'}]; track p.id) {
+  <section class="panel">
+    <h3>Laya · experimental local classification</h3>
+    <p>
+      The bundled Core ML model classifies observations locally, without an API
+      key or a network request. The current model has not passed quality validation;
+      automatic processing stays disabled when it is selected.
+    </p>
+    <p role="status">
+      {{
+        (s().classificationProvider || "jev") === "laya"
+          ? s().classificationStatus || "Preparing bundled Laya…"
+          : "Jev remains the rollout default until Laya passes quality validation."
+      }}
+    </p>
+    <div class="actions">
+      <mui-button
+        [disabled]="
+          s().busy ||
+          (s().auditRunning === true) ||
+          ((s().classificationProvider || 'jev') === 'laya' &&
+            s().classificationState === 'loading')
+        "
+        (pressed)="classification('laya')"
+        >{{
+          (s().classificationProvider || "jev") === "laya"
+            ? "Reload Laya"
+            : "Select experimental Laya"
+        }}</mui-button
+      >
+    </div>
+  </section>
+  <details class="panel">
+    <summary>Remote classifier · Jev</summary>
+    <p>
+      Choosing Jev sends relevant source text and historical context to Jev for
+      classification. An explicit Laya selection never falls back to Jev automatically.
+    </p>
+    @if (s().classificationProvider === "jev") {
+      <p role="status">{{ s().classificationStatus }}</p>
+    }
+    <div class="actions">
+      <mui-button
+        [disabled]="s().busy || (s().auditRunning === true)"
+        (pressed)="classification('jev')"
+        >Use Jev with saved credentials</mui-button
+      >
+      <mui-button
+        [disabled]="s().busy || (s().auditRunning === true)"
+        (pressed)="act('unlockKey')"
+        >Unlock saved key &amp; use Jev</mui-button
+      >
+      @if (s().classificationProvider === "jev" && s().connected) {
+        <mui-button (pressed)="act('disconnect')"
+          >Disconnect Jev &amp; remove key</mui-button
+        >
+      }
+    </div>
+    <div class="field">
+      <mui-input
+        ariaLabel="Optional Jev API key"
+        [masked]="true"
+        autocomplete="off"
+        [(value)]="key"
+      />
+    </div>
+    <mui-button
+      [disabled]="!key || s().busy || (s().auditRunning === true)"
+      (pressed)="connectJev()"
+      >Save key &amp; use Jev</mui-button
+    >
+  </details>
+  <h2>Fact and task extraction</h2>
+  <p>
+    Extraction is selected separately from classification. Local Laya
+    classification does not change your extraction provider.
+  </p>
+
+  @for (
+    p of [
+      { id: "codex", name: "ChatGPT · Codex", login: "codex login" },
+      { id: "claude", name: "Claude", login: "claude auth login" },
+    ];
+    track p.id
+  ) {
     <section class="panel">
       <h3>{{ p.name }}</h3>
-      <p>Uses your existing local subscription login. Sign in with <code>{{ p.login }}</code> if needed.</p>
-      <p>{{ s().providerStatus?.[p.id] || 'Not tested in this session' }}</p>
-      <p>When selected, source text is sent to this provider to extract facts and suggest tasks. Jev still classifies events. Tests send only a connection-check prompt.</p>
+      <p>
+        Uses your existing subscription login. Sign in with
+        <code>{{ p.login }}</code> if needed.
+      </p>
+      <p>{{ s().providerStatus?.[p.id] || "Not tested in this session" }}</p>
+      <p>
+        When selected, source text is sent to this provider to extract facts and
+        suggest tasks. Classification uses the provider selected above. Tests
+        send only a connection-check prompt.
+      </p>
       <div class="actions">
-        <mui-button [disabled]="s().providerTesting === true" (pressed)="provider('providerTest',p.id)">Connect &amp; test</mui-button>
-        <mui-button [disabled]="!s().testedProviders?.includes(p.id) || s().busy || s().running" (pressed)="provider('providerSelect',p.id)">{{ s().extractionProvider === p.id ? 'Selected for extraction' : 'Use for extraction' }}</mui-button>
+        <mui-button
+          [disabled]="s().providerTesting === true"
+          (pressed)="provider('providerTest', p.id)"
+          >Connect &amp; test</mui-button
+        >
+        <mui-button
+          [disabled]="
+            !s().testedProviders?.includes(p.id) || s().busy || s().running
+          "
+          (pressed)="provider('providerSelect', p.id)"
+          >{{
+            s().extractionProvider === p.id
+              ? "Selected for extraction"
+              : "Use for extraction"
+          }}</mui-button
+        >
       </div>
     </section>
   }
   <section class="panel">
-    <h3>Jev · understand what matters</h3>
-    <p>
-      Classifies events with historical context. Running the loop sends relevant
-      context to Jev.
-    </p>
-    @if (s().connected) {
-      <mui-button (pressed)="act('disconnect')">Disconnect Jev</mui-button>
-    } @else {
-      <mui-button (pressed)="act('unlockKey')">Unlock saved key</mui-button>
-      <div class="field">
-        <mui-input
-          ariaLabel="Jev development API key"
-          [masked]="true"
-          autocomplete="off"
-          [(value)]="key"
-        />
-      </div>
-      <mui-button variant="primary" [disabled]="!key" (pressed)="connectJev()"
-        >Save in Keychain</mui-button
-      >
-    }
-  </section>
-  <section class="panel">
     <h3>Apple · extract facts locally</h3>
     <p>{{ s().extractor }}</p>
-    <mui-button [disabled]="s().busy || s().running" (pressed)="provider('providerSelect','apple')">{{ (s().extractionProvider || 'apple') === 'apple' ? 'Selected for extraction' : 'Use Apple for extraction' }}</mui-button>
+    <p>
+      Apple extraction runs on this Mac when supported. ChatGPT and Claude
+      extraction can send source text to their providers.
+    </p>
+    <mui-button
+      [disabled]="s().busy || s().running"
+      (pressed)="provider('providerSelect', 'apple')"
+      >{{
+        (s().extractionProvider || "apple") === "apple"
+          ? "Selected for extraction"
+          : "Use Apple for extraction"
+      }}</mui-button
+    >
   </section>
 }

@@ -33,7 +33,7 @@ final class AppModel {
     var key = ""
     var connected = false {
         didSet {
-            if connected != oldValue { running = connected }
+            if !connected { running = false }
         }
     }
     var running = false
@@ -94,9 +94,29 @@ final class AppModel {
     var messagesError: String?
     private var lastMessagesPoll = Date.distantPast
     let directory: URL
-    var classifier: TypeSafeClassifier?
+    var classifier: (any FactCheckingClassifier)?
+    var classificationProvider: String
+    var classificationState = "not_loaded"
+    var classificationStatus = "Preparing selected classifier…"
+    var classificationCanRun = false
+    var classificationLabel: String { classificationProvider == "laya" ? "Laya" : "Jev" }
+    private let classificationDefaults: UserDefaults
+    private let layaDirectory: URL
+    private let layaLoader: @Sendable (URL) async throws -> any FactCheckingClassifier
+    private var classifierLoad: Task<Void, Never>?
+    private var classifierGeneration = 0
+    private var processingStartupReady = false
 
-    init(directory override: URL? = nil) {
+    init(directory override: URL? = nil, classificationDefaults: UserDefaults = .standard,
+         layaDirectory: URL? = nil,
+         layaLoader: @escaping @Sendable (URL) async throws -> any FactCheckingClassifier = { try await LayaClassifier.load(directory: $0) }) {
+        self.classificationDefaults = classificationDefaults
+        let modelDirectory = layaDirectory ?? (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("Laya", isDirectory: true)
+        let selected = classificationDefaults.string(forKey: "classificationProvider")
+        self.classificationProvider = ["laya", "jev"].contains(selected ?? "")
+            ? selected! : Self.layaValidationApproved(directory: modelDirectory) ? "laya" : "jev"
+        self.layaDirectory = modelDirectory
+        self.layaLoader = layaLoader
         let args = ProcessInfo.processInfo.arguments
         if let override { directory = override }
         else if let index = args.firstIndex(of: "--data-directory"), args.indices.contains(index + 1) {
@@ -134,6 +154,7 @@ final class AppModel {
         defer {starting=false}
         do {
             try await openWorkspace()
+            beginClassifierLoad()
             // Recover journaled file/task operations before processing resumes. Unavailable
             // notebooks retain their reservations and an actionable recovery notice.
             do {
@@ -145,14 +166,11 @@ final class AppModel {
             } catch {
                 self.error="Notebook recovery is unavailable. Reconnect your notebook folders before retrying pending note actions."
             }
+            processingStartupReady = true
             if NSClassFromString("XCTestCase")==nil {await companion.restore(model:self)}
             await refresh()
             await loadHomeSettings()
             await loadGoogleSettings()
-            if let saved = try await Task.detached { try KeyStore.read(allowAuthentication: false) }.value ?? ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"] {
-                classifier = try TypeSafeClassifier(apiKey: saved)
-                connected = true
-            }
         } catch {
             if loaded {
                 startupError=nil
@@ -200,34 +218,130 @@ final class AppModel {
         } catch { self.error = error.localizedDescription }
     }
 
-    func unlockSavedKey() async {
+    static func layaValidationApproved(directory: URL) -> Bool {
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("validation.json")),
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              value["approved"] as? Bool == true,
+              value["modelRevision"] as? String == LayaClassifier.modelRevision,
+              value["adapter"] as? String == LayaClassifier.adapterVersion else { return false }
+        return true
+    }
+
+    static func layaValidationReason(directory: URL) -> String? {
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent("validation.json")),
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let reason = value["reason"] as? String else { return nil }
+        let text = String(reason.prefix(512)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+
+    func selectClassificationProvider(_ provider: String) throws {
+        guard ["laya", "jev"].contains(provider) else { throw MapleError.invalid("Unknown classification provider.") }
+        guard !busy, !auditRunning else { throw MapleError.invalid("Wait for the current classification or audit to finish before changing providers.") }
+        classificationProvider = provider
+        classificationDefaults.set(provider, forKey: "classificationProvider")
+        beginClassifierLoad()
+    }
+
+    /// Loading the local model never waits on cloud restore, Google or the Keychain.
+    func beginClassifierLoad() {
+        classifierGeneration += 1
+        let generation = classifierGeneration, provider = classificationProvider
+        classifierLoad?.cancel()
+        classifier = nil; connected = false; running = false; classificationCanRun = false
+        classificationState = "loading"
+        classificationStatus = provider == "laya" ? "Loading bundled Laya on this Mac…" : "Opening the explicitly selected Jev connection…"
+        classifierLoad = Task { await self.loadClassifier(provider: provider, generation: generation) }
+    }
+
+    private func loadClassifier(provider: String, generation: Int) async {
         do {
-            if let saved = try await Task.detached { try KeyStore.read(allowAuthentication: true) }.value {
-                classifier = try TypeSafeClassifier(apiKey: saved)
-                connected = true
-                error = nil
+            let adapter: any FactCheckingClassifier
+            if provider == "laya" {
+                guard FileManager.default.fileExists(atPath: layaDirectory.path) else {
+                    if generation == classifierGeneration {
+                        classificationState = "model_missing"
+                        classificationStatus = "The bundled Laya model is missing. Rebuild or reinstall Just Maple with its model resources. Queued events are retained."
+                    }
+                    return
+                }
+                adapter = try await layaLoader(layaDirectory)
+            } else {
+                let saved = try await Task.detached { try KeyStore.read(allowAuthentication: false) }.value ?? ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"]
+                guard let saved, !saved.isEmpty else {
+                    if generation == classifierGeneration {
+                        classificationState = "credentials_required"
+                        classificationStatus = "Jev needs an API key. Enter a key or unlock a saved key to use remote classification."
+                    }
+                    return
+                }
+                adapter = try TypeSafeClassifier(apiKey: saved)
             }
-        } catch { self.error = error.localizedDescription }
+            guard generation == classifierGeneration, classificationProvider == provider, !Task.isCancelled else { return }
+            classifier = adapter
+            classificationCanRun = provider == "jev" || Self.layaValidationApproved(directory: layaDirectory)
+            connected = true
+            running = classificationCanRun
+            classificationState = classificationCanRun ? "ready" : "validation_required"
+            classificationStatus = provider == "jev" ? "Jev is selected. Classification sends relevant source context to Jev." : classificationCanRun ? "Laya is ready. Classification runs locally on this Mac." : "Experimental Laya loaded. \(Self.layaValidationReason(directory: layaDirectory) ?? "This model has not passed quality validation.") Automatic processing is disabled and queued events are retained."
+        } catch {
+            guard generation == classifierGeneration else { return }
+            classifier = nil; connected = false; running = false; classificationCanRun = false
+            classificationState = "load_failed"
+            classificationStatus = provider == "laya" ? "Laya could not load. Rebuild or reinstall its bundled model, then retry. Queued events are retained." : error.localizedDescription
+        }
+    }
+
+    func unlockSavedKey() async {
+        guard !busy, !auditRunning else { error = "Wait for current classification to finish before changing providers."; return }
+        classifierGeneration += 1
+        let generation = classifierGeneration
+        classifierLoad?.cancel()
+        classificationProvider = "jev"; classificationDefaults.set("jev", forKey: "classificationProvider")
+        classifier = nil; connected = false; running = false; classificationCanRun = false
+        classificationState = "loading"
+        classificationStatus = "Unlocking the explicitly selected Jev connection…"
+        do {
+            let saved = try await Task.detached { try KeyStore.read(allowAuthentication: true) }.value
+            guard generation == classifierGeneration else { return }
+            guard let saved else { classificationState = "credentials_required"; classificationStatus = "No saved Jev key was found. Enter a key to use remote classification."; return }
+            activateJev(try TypeSafeClassifier(apiKey: saved))
+        } catch {
+            guard generation == classifierGeneration else { return }
+            classificationState = "load_failed"; classificationStatus = error.localizedDescription
+        }
+    }
+
+    private func activateJev(_ adapter: TypeSafeClassifier) {
+        classifier = adapter; classificationProvider = "jev"
+        classificationDefaults.set("jev", forKey: "classificationProvider")
+        classificationCanRun = true; connected = true; running = true
+        classificationState = "ready"
+        classificationStatus = "Jev is selected. Classification sends relevant source context to Jev."
+        error = nil
     }
 
     func connect() {
+        guard !busy, !auditRunning else { error = "Wait for current classification to finish before changing providers."; return }
         do {
             let value = key.trimmingCharacters(in: .whitespacesAndNewlines)
             let adapter = try TypeSafeClassifier(apiKey: value)
             try KeyStore.save(value)
-            classifier = adapter
-            connected = true
+            classifierGeneration += 1; classifierLoad?.cancel()
+            activateJev(adapter)
             key = ""
-            message = "Jev connected. Queued events will be processed automatically."
+            message = "Jev selected explicitly. Queued events will use remote classification."
         } catch { self.error = error.localizedDescription }
     }
 
     func disconnect() {
         do {
             try KeyStore.remove()
-            classifier = nil
-            connected = false
-            running = false
+            if classificationProvider == "jev" {
+                classifierGeneration += 1; classifierLoad?.cancel()
+                classifier = nil; connected = false; running = false; classificationCanRun = false
+                classificationState = "credentials_required"; classificationStatus = "Jev disconnected. Choose Laya or provide a Jev key to resume classification."
+            }
         } catch { self.error = error.localizedDescription }
     }
 
@@ -284,7 +398,7 @@ final class AppModel {
     }
 
     func tick(classifier override: (any Classifier)? = nil) async {
-        guard !starting,running, !busy, let classifier = override ?? classifier, let store else { return }
+        guard (!starting || processingStartupReady),running, (override != nil || classificationCanRun), !busy, let classifier = override ?? classifier, let store else { return }
         busy = true
         defer { busy = false }
         do {
@@ -299,14 +413,14 @@ final class AppModel {
                 return total
             }
             guard result.completed > 0 || result.deferred > 0 else {return}
-            if result.completed > 0 { message = "Jev classified \(result.completed) events. Decisions and evidence are in History." }
-            if result.deferred > 0 { message = "Jev could not complete a request. The event is saved for retry." }
+            if result.completed > 0 { message = "\(classificationLabel) classified \(result.completed) events. Decisions and evidence are in History." }
+            if result.deferred > 0 { message = "\(classificationLabel) could not complete a request. The event is saved for retry." }
             await refresh()
         } catch { self.error = error.localizedDescription }
     }
 
     func extractionTick() async {
-        guard !starting,running, !downstreamBusy, let store else {return}
+        guard (!starting || processingStartupReady),running, !downstreamBusy, let store else {return}
         downstreamBusy = true
         defer {downstreamBusy = false}
         do {
@@ -321,12 +435,12 @@ final class AppModel {
     }
 
     func checkFacts(for eventID: String) async {
-        guard !busy, let store, let classifier else { return }
+        guard classificationCanRun, !busy, let store, let classifier else { return }
         busy = true
         defer { busy = false }
         do {
             let result = try await store.checkSourceFacts(eventID:eventID,classifier:classifier)
-            message = result.probability >= 0.85 ? "Facts worth extracting. Extraction is queued for the selected provider." : "Jev did not find enough new factual content to schedule extraction."
+            message = result.probability >= 0.85 ? "Facts worth extracting. Extraction is queued for the selected provider." : "\(classificationLabel) did not find enough new factual content to schedule extraction."
             await refresh()
         } catch { self.error = error.localizedDescription }
     }
@@ -369,7 +483,7 @@ final class AppModel {
     func capture(_ text: String) async -> Bool {
         do {
             try await ingest(content: text, subjects: ["person:self"])
-            message = "Observation saved. \(running ? "The loop will process it next." : "Processing will resume when Jev is connected and the loop is not paused.")"
+            message = "Observation saved. \(running ? "The loop will process it next." : "Processing will resume when the selected classifier is ready and the loop is not paused.")"
             return true
         } catch { self.error = error.localizedDescription; return false }
     }

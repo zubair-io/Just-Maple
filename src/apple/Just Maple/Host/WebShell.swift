@@ -61,7 +61,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
     /// live credentials/settings could otherwise be overwritten by a late restoration result.
     static func validateStartupAction(_ action:String,starting:Bool) throws {
         let connectionActions:Set<String>=[
-            "connect","disconnect","unlockKey","loop",
+            "connect","disconnect","unlockKey",
             "googleConfigure","googleConnect","googleCancel","googleUnlock","googleDisconnect",
             "googlePoll","googleCalendarList","googleContactsPause","googleContactsResume",
             "googleMailPause","googleMailResume","googleCalendarPause","googleCalendarResume","googleCalendarSelection",
@@ -111,13 +111,15 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
             try JSONEncoder().encode(value).write(to: setupURL, options: .atomic)
             step = value
         case "introduce": model.name = try string(body, "name", limit: 1024); await model.introduce()
+        case "classificationSelect": try model.selectClassificationProvider(string(body, "provider", limit: 32))
+        case "classificationReload": try model.selectClassificationProvider(model.classificationProvider)
         case "connect": model.key = try string(body, "key", limit: 4096); model.connect()
         case "disconnect": model.disconnect()
         case "unlockKey": await model.unlockSavedKey()
         case "loop":
             if model.running {model.running=false}
             else {
-                guard model.connected,!model.busy,!model.auditRunning else {throw MapleError.invalid("Connect Jev and finish current work before starting loops.")}
+                guard model.connected,model.classificationCanRun,!model.busy,!model.auditRunning else {throw MapleError.invalid("The selected classifier must be ready and validated, with current work finished, before starting loops.")}
                 model.running=true
             }
         case "resume": await model.importFile(resume: true)
@@ -173,7 +175,9 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
         case "poll": await model.pollMessages(force: true)
         case "retry": await model.retry()
         case "retryFacts": await model.retryFactExtraction()
-        case "checkFacts": await model.checkFacts(for: try string(body, "id", limit: 256))
+        case "checkFacts":
+            guard model.classificationCanRun else { throw MapleError.invalid(model.classificationStatus) }
+            await model.checkFacts(for: try string(body, "id", limit: 256))
         case "answer":
             let id = try string(body, "id", limit: 256)
             guard let item = model.work.first(where: { $0.id == id }) else { throw MapleError.invalid("Unknown item.") }
@@ -217,7 +221,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
             step = (try? JSONDecoder().decode(Int.self, from: Data(contentsOf: setupURL))) ?? (model.ready ? -1 : 0)
         }
         return ["companionCloudEnabled":model.companion.cloudEnabled,"companionStatus":model.companion.status,"companionPaired":model.companion.paired,"localIndex":try json(model.localIndex),"localIntelligenceStatus":model.localIntelligenceStatus,"auditRunning":model.auditRunning,"auditStatus":model.auditStatus,"world": try json(model.world), "taskExtractionQueue": try json(model.taskExtractionQueue), "loaded": model.loaded, "startupError": model.startupError ?? "", "step": step ?? 0, "name": model.name,
-                "connected": model.connected, "running": model.running, "busy": model.busy,
+                "connected": model.connected, "classificationProvider": model.classificationProvider, "classificationState": model.classificationState, "classificationStatus": model.classificationStatus, "classificationCanRun": model.classificationCanRun, "running": model.running, "busy": model.busy,
                 "message": model.message, "error": model.error ?? "", "count": model.count,
                 "importantPeople": try json(model.importantPeople), "claims": try json(model.claims), "facts": try json(model.sourceFacts),
                 "prompts": Dictionary(model.decisions.map { ($0.eventID, $0.userPrompt) }, uniquingKeysWith: { _, last in last }), "decisions": try json(model.decisions), "work": try json(model.work), "queue": try json(model.queue), "processingQueueCounts": model.processingQueueCounts,

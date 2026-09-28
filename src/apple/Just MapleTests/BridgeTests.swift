@@ -224,10 +224,11 @@ struct BridgeTests {
 
     @Test func loopsRequireConnectionAndCannotOverlapAuditButCanPause() async throws {
         let model=AppModel(); let bridge=Bridge(model:model)
-        do {_ = try await bridge.perform("loop",[:]);Issue.record("Started without Jev")} catch {}
+        do {_ = try await bridge.perform("loop",[:]);Issue.record("Started without a ready classifier")} catch {}
         #expect(!model.running)
-        model.connected=true
-        #expect(model.running)
+        model.connected=true;model.classificationCanRun=true
+        #expect(!model.running)
+        _ = try await bridge.perform("loop",[:]);#expect(model.running)
         _ = try await bridge.perform("loop",[:]);#expect(!model.running)
         model.auditRunning=true
         do {_ = try await bridge.perform("loop",[:]);Issue.record("Started during audit")} catch {}
@@ -237,7 +238,7 @@ struct BridgeTests {
         model.busy=true
         _ = try await bridge.perform("loop",[:]);#expect(!model.running)
         model.connected=false;#expect(!model.running)
-        model.connected=true;#expect(model.running)
+        model.connected=true;#expect(!model.running)
     }
 
 }

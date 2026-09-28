@@ -46,7 +46,7 @@ public enum MessageEvaluation {
             EvaluationCheck(name: "Plan update is retained as useful work", passed: [.notify, .summarize, .reason].contains(route("update") ?? .retain), detail: route("update")?.rawValue ?? "missing"),
             EvaluationCheck(name: "User response closes loop without another reply prompt", passed: answered && feedbackDecision != nil && feedbackDecision?.route != .askUser && replayCompleted == 0, detail: "answered=\(answered); feedback=\(feedbackDecision?.route.rawValue ?? "missing"); replay=\(replayCompleted)")
         ]
-        let report = EvaluationReport(mode: "live-typesafe-synthetic-imessage", checks: checks, decisions: decisions)
+        let report = EvaluationReport(mode: "live-classifier-synthetic-imessage", checks: checks, decisions: decisions)
         try JSONCodec.encode(report).write(to: directory.appendingPathComponent("evaluation.json"), options: .atomic)
         return report
     }

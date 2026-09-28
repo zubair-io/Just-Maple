@@ -93,8 +93,11 @@ export class ConnectionsComponent {
     if (await this.bridge.act({ action: "connect", key: this.key }))
       this.key = "";
   }
-  provider(action: "providerTest" | "providerSelect", provider:string) {
-    void this.bridge.act({action,provider});
+  classification(provider: "laya" | "jev") {
+    void this.bridge.act({ action: "classificationSelect", provider });
+  }
+  provider(action: "providerTest" | "providerSelect", provider: string) {
+    void this.bridge.act({ action, provider });
   }
   exposure(enabled: boolean) {
     void this.bridge.act({ action: "homeExposure", enabled });

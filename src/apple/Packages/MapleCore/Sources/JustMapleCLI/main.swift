@@ -31,7 +31,8 @@ struct JustMapleCommand {
             let value = args[index + 1]; args.removeSubrange(index...index + 1); return value
         }
         let suppliedDB = try take("--db")
-        let live = args.contains("--live")
+        let layaDirectory = try take("--laya-model")
+        let live = args.contains("--live") || layaDirectory != nil
         args.removeAll { $0 == "--live" }
         let replay = args.contains("--replay")
         args.removeAll { $0 == "--replay" }
@@ -41,9 +42,12 @@ struct JustMapleCommand {
             throw MapleError.invalid("Select --live (TypeSafe) or --replay (synthetic demo fixtures).")
         }
         // Validate credentials before changing the database for a requested live run.
-        let classifier: (any Classifier)? = live ? try TypeSafeClassifier(
-            apiKey: ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"] ?? "",
-            model: ProcessInfo.processInfo.environment["TYPESAFE_MODEL"] ?? "jev-latest") : (replay ? DemoReplayClassifier() : nil)
+        let classifier: (any Classifier)?
+        if let layaDirectory {
+            classifier = try await LayaClassifier.load(directory: URL(fileURLWithPath: layaDirectory))
+        } else if live {
+            classifier = try TypeSafeClassifier(apiKey: ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"] ?? "", model: ProcessInfo.processInfo.environment["TYPESAFE_MODEL"] ?? "jev-latest")
+        } else { classifier = replay ? DemoReplayClassifier() : nil }
         if command == "evaluate-message-screening" {
             let output = try take("--output") ?? ".maple/screening-evaluations/\(UUID().uuidString)"
             guard live, !replay, args.isEmpty, suppliedDB == nil, let classifier else { throw MapleError.invalid("Usage: evaluate-message-screening --live [--output NEW_DIRECTORY]") }
@@ -68,7 +72,7 @@ struct JustMapleCommand {
                 throw MapleError.invalid("Usage: evaluate --live|--replay [--output NEW_DIRECTORY]")
             }
             let report = try await CoreEvaluation.run(classifier: classifier, directory: URL(fileURLWithPath: output),
-                                                       mode: live ? "live-typesafe" : "synthetic-replay")
+                                                       mode: layaDirectory != nil ? "live-laya-coreml" : live ? "live-typesafe" : "synthetic-replay")
             try printJSON(report)
             if !report.passed { exit(2) }
             return
@@ -205,7 +209,7 @@ struct JustMapleCommand {
             guard args.count==1 else {throw MapleError.invalid("Usage: semantic-search QUERY [--db PATH]")}
             try printJSON(await store.semanticSearch(args[0]))
         case "check-facts":
-            guard live, args.count == 1, let classifier = classifier as? TypeSafeClassifier else {
+            guard live, args.count == 1, let classifier = classifier as? any FactCheckingClassifier else {
                 throw MapleError.invalid("Usage: check-facts EVENT_ID --live [--db PATH]")
             }
             _ = try await store.checkSourceFacts(eventID:args[0],classifier:classifier)
@@ -235,7 +239,7 @@ struct JustMapleCommand {
                 let state: [Claim]; let decisions: [Decision]; let workItems: [WorkItem]; let queue: [QueueItem]
                 let evaluation: String
             }
-            try printJSON(Output(mode: live ? "live-typesafe" : "synthetic-replay", database: dbPath, report: report,
+            try printJSON(Output(mode: layaDirectory != nil ? "live-laya-coreml" : live ? "live-typesafe" : "synthetic-replay", database: dbPath, report: report,
                                  state: try await store.state(), decisions: decisions, workItems: try await store.workItems(),
                                  queue: try await store.queue(), evaluation: "Not evaluated here. Use evaluate --live for the bounded scenario rubric."))
             // Completion alone is not proof of classifier quality. Evaluate outputs against the scenario rubric.
@@ -315,6 +319,7 @@ struct JustMapleCommand {
     ingest events.json            Durably enqueue normalized events
     note file.md --subject ID     Import a note as one source event
     run --live                    Classify due events using TYPESAFE_API_KEY
+    --laya-model DIRECTORY       Use bundled native Laya assets instead of the Jev API
     check-facts EVENT_ID --live    Ask Jev whether an existing source needs fact extraction
     extract-facts                 Parse one due fact job using Apple's on-device model
     inspect                       Show state, evidence, decisions, queue and inbox/proposals

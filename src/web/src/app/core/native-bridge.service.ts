@@ -76,6 +76,10 @@ export interface Job {
 }
 export interface Snapshot {
   startupError?: string;
+  classificationProvider?: "laya" | "jev";
+  classificationState?: string;
+  classificationStatus?: string;
+  classificationCanRun?: boolean;
   companionCloudEnabled: boolean;
   companionStatus: string;
   companionPaired: boolean;
@@ -145,6 +149,7 @@ export interface Snapshot {
 }
 export type SimpleAction =
   | "retryStartup"
+  | "classificationReload"
   | "snapshot"
   | "disconnect"
   | "unlockKey"
@@ -186,6 +191,7 @@ export type SimpleAction =
   | "diskAccess"
   | "showApp";
 export type Command =
+  | { action: "classificationSelect"; provider: "laya" | "jev" }
   | { action: "applyTaskAction"; id:string; change:{kind:string;issuedAt:number;resurfaceAt?:number;reviewAt?:number;waitingOn?:string;targetMutationID?:string}; expectedVersion:number; requestID:string }
   | { action: "correctTaskInference"; id: string; status?: import("../world/world.models").TaskStatus; separate?: boolean; expectedVersion: number; requestID: string }
   | { action: "regroupActivity"; id: string; record: Activity; ids: string[]; merge: boolean; expectedVersion: number; requestID: string }
