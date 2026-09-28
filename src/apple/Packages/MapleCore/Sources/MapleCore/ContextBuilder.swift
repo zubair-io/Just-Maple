@@ -5,6 +5,8 @@ extension KnowledgeStore {
         guard let event = try event(eventID) else { throw MapleError.invalid("Unknown event \(eventID)") }
         if event.type == "home.batch", event.source.connector == "home_assistant" { return try homeBatchContext(event) }
         let threads = event.subjects.filter { $0.hasPrefix("thread:imessage:") || $0.hasPrefix("thread:gmail:") }
+        let sourceScoped = threads.isEmpty && event.source.connector != "home_assistant" &&
+            event.subjects.allSatisfy { ["person:self", "home:self"].contains($0) }
         // Shared person:self must not mix unrelated conversations into a message's thread history.
         let historySubjects: [String]
         if event.source.connector == "home_assistant" {
@@ -14,12 +16,21 @@ extension KnowledgeStore {
             historySubjects = threads.isEmpty ? event.subjects : threads
         }
         let marks = Array(repeating: "?", count: historySubjects.count).joined(separator: ",")
-        let recent = try db.rows("""
+        let recentRows: [[String: String]]
+        if sourceScoped {
+            recentRows = try db.rows("""
+                SELECT json FROM events WHERE connector=? AND account=? AND external_id=?
+                AND id<>? AND occurred_at<=? ORDER BY occurred_at DESC, id LIMIT 6
+                """, [event.source.connector, event.source.account, event.source.externalID,
+                       event.id, String(event.occurredAt.timeIntervalSince1970)])
+        } else {
+            recentRows = try db.rows("""
             SELECT DISTINCT e.json FROM events e JOIN event_subjects s ON e.id=s.event_id
             WHERE s.subject IN (\(marks)) AND e.id<>? AND e.occurred_at<=?
             ORDER BY e.occurred_at DESC, e.id LIMIT 6
             """, historySubjects + [event.id, String(event.occurredAt.timeIntervalSince1970)])
-            .map { try JSONCodec.decode(Event.self, from: Data($0["json"]!.utf8)) }
+        }
+        let recent = try recentRows.map { try JSONCodec.decode(Event.self, from: Data($0["json"]!.utf8)) }
         let state = try state(subjects: event.subjects)
         // Direct provenance joins ensure key state evidence survives a lexical miss.
         var evidence: [Event] = []
@@ -28,8 +39,12 @@ extension KnowledgeStore {
                 evidence.append(source)
             }
         }
-        var matches = try search(event.content, limit: 4, subjects: historySubjects)
-        if try indexStatus().chunks > 0 {
+        var matches = try search(event.content, limit: 4, subjects: sourceScoped ? nil : historySubjects,
+                                 source: sourceScoped ? event.source : nil, before: event.occurredAt)
+        // Without a specific subject, source revisions plus source-scoped lexical
+        // evidence suffice. Broad semantic self retrieval would reintroduce every
+        // unrelated personal source into this otherwise bounded first pass.
+        if !sourceScoped, try indexStatus().chunks > 0 {
             matches += try semanticSearch(event.content, limit: 4, before: event.occurredAt, subjects: historySubjects)
         }
         for match in matches where match.id != event.id && match.occurredAt <= event.occurredAt && !evidence.contains(where: { $0.id == match.id }) {
@@ -47,7 +62,7 @@ extension KnowledgeStore {
                          states: try worldStates().filter{["person:self","home:self"].contains($0.subject) || event.subjects.contains($0.subject)}))
     }
 
-    public func search(_ query: String, limit: Int = 10, subjects: [String]? = nil) throws -> [Event] {
+    public func search(_ query: String, limit: Int = 10, subjects: [String]? = nil, source: Source? = nil, before: Date? = nil) throws -> [Event] {
         // Quote token literals: arbitrary incoming text cannot become an FTS query program.
         let terms = query.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
             .filter { $0.count > 2 }.prefix(12)
@@ -59,6 +74,14 @@ extension KnowledgeStore {
             guard !subjects.isEmpty else { return [] }
             filter = " AND e.id IN (SELECT event_id FROM event_subjects WHERE subject IN (\(Array(repeating: "?", count: subjects.count).joined(separator: ","))))"
             args += subjects
+        }
+        if let source {
+            filter += " AND e.connector=? AND e.account=? AND e.external_id=?"
+            args += [source.connector, source.account, source.externalID]
+        }
+        if let before {
+            filter += " AND e.occurred_at<=?"
+            args.append(String(before.timeIntervalSince1970))
         }
         args.append(String(max(1, min(limit, 100))))
         return try db.rows("""

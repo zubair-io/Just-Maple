@@ -108,6 +108,8 @@ struct CoreTests {
         #expect(try await store.decisions().isEmpty)
         #expect(try await store.workItems().isEmpty)
         #expect(try await store.queue().first?.status == "pending")
+        #expect(try await IntelligenceEngine(store: store, classifier: DemoReplayClassifier()).run().completed == 0)
+        try await store.retryFailures()
         _ = try await IntelligenceEngine(store: store, classifier: DemoReplayClassifier()).run()
         #expect(try await store.decisions().first?.route == .summarize)
     }

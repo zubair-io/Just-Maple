@@ -34,6 +34,7 @@ extension Classifier {
 extension KnowledgeStore {
     /// Manual classifier checks use the same audit boundary as queued classification.
     public func checkSourceFacts(eventID:String,classifier:any FactCheckingClassifier)async throws -> (probability:Double,model:String,rawResponse:Data) {
+        if classifier.providerID == "typesafe", let pause = try providerPause("typesafe") { throw MapleError.provider(pause.reason) }
         let context=try modelContext(for:eventID),attempt=UUID().uuidString
         try db.transaction {
             try db.execute("INSERT INTO source_attempts(id,event_id,stage,started_at,provider) VALUES (?,?,'fact_check',?,?)",[attempt,eventID,String(Date().timeIntervalSince1970),classifier.providerID])
@@ -48,6 +49,7 @@ extension KnowledgeStore {
             }
             return result
         } catch {
+            if let failure = error as? JevProviderError { try pauseJev(after: failure) }
             try db.transaction {
                 try db.execute("UPDATE source_attempts SET ended_at=?,commit_outcome='failed' WHERE id=? OR parent_id=?",[String(Date().timeIntervalSince1970),attempt,attempt])
                 try db.execute("INSERT INTO source_transitions(event_id,stage,from_state,to_state,attempt_id,reason,at) VALUES (?,'fact_check','running','failed',?,'provider_or_validation_failed',?)",[eventID,attempt,String(Date().timeIntervalSince1970)])

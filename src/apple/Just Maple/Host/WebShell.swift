@@ -61,7 +61,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
     /// live credentials/settings could otherwise be overwritten by a late restoration result.
     static func validateStartupAction(_ action:String,starting:Bool) throws {
         let connectionActions:Set<String>=[
-            "connect","disconnect","unlockKey",
+            "connect","disconnect","unlockKey","resumeJevRequests",
             "googleConfigure","googleConnect","googleCancel","googleUnlock","googleDisconnect",
             "googlePoll","googleCalendarList","googleContactsPause","googleContactsResume",
             "googleMailPause","googleMailResume","googleCalendarPause","googleCalendarResume","googleCalendarSelection",
@@ -173,6 +173,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
         case "messages": await model.enableMessages()
         case "pauseMessages": model.messagesEnabled = false
         case "poll": await model.pollMessages(force: true)
+        case "resumeJevRequests": try await model.resumeJevRequests()
         case "retry": await model.retry()
         case "retryFacts": await model.retryFactExtraction()
         case "checkFacts":
@@ -221,7 +222,7 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
             step = (try? JSONDecoder().decode(Int.self, from: Data(contentsOf: setupURL))) ?? (model.ready ? -1 : 0)
         }
         return ["companionCloudEnabled":model.companion.cloudEnabled,"companionStatus":model.companion.status,"companionPaired":model.companion.paired,"localIndex":try json(model.localIndex),"localIntelligenceStatus":model.localIntelligenceStatus,"auditRunning":model.auditRunning,"auditStatus":model.auditStatus,"world": try json(model.world), "taskExtractionQueue": try json(model.taskExtractionQueue), "loaded": model.loaded, "startupError": model.startupError ?? "", "step": step ?? 0, "name": model.name,
-                "connected": model.connected, "classificationProvider": model.classificationProvider, "classificationState": model.classificationState, "classificationStatus": model.classificationStatus, "classificationCanRun": model.classificationCanRun, "running": model.running, "busy": model.busy,
+                "connected": model.connected, "classificationProvider": model.classificationProvider, "classificationState": model.classificationState, "classificationStatus": model.classificationStatus, "classificationCanRun": model.classificationCanRun, "jevPause": try json(model.jevPause), "running": model.running, "busy": model.busy,
                 "message": model.message, "error": model.error ?? "", "count": model.count,
                 "importantPeople": try json(model.importantPeople), "claims": try json(model.claims), "facts": try json(model.sourceFacts),
                 "prompts": Dictionary(model.decisions.map { ($0.eventID, $0.userPrompt) }, uniquingKeysWith: { _, last in last }), "decisions": try json(model.decisions), "work": try json(model.work), "queue": try json(model.queue), "processingQueueCounts": model.processingQueueCounts,

@@ -14,6 +14,9 @@ public struct URLSessionTransport: HTTPTransport {
         defer { session.invalidateAndCancel() }
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else { throw MapleError.provider("TypeSafe returned a non-HTTP response.") }
+        if response.statusCode == 429 || response.statusCode == 503 {
+            throw JevProviderError(status: response.statusCode, retryAfter: JevProviderError.retryDelay(response.value(forHTTPHeaderField: "Retry-After")))
+        }
         return (data, response.statusCode)
     }
 }
@@ -42,15 +45,16 @@ public struct TypeSafeClassifier: FactCheckingClassifier {
         let isMessage = ["imessage", "gmail"].contains(context.event.source.connector) || (context.event.source.connector == "feedback" && context.event.subjects.contains { $0.hasPrefix("thread:imessage:") || $0.hasPrefix("thread:gmail:") })
         let isHome = context.event.source.connector == "home_assistant"
         if isMessage { context = try MessageScreeningContext.filtered(context) }
+        else if !isHome { context = try SourceScreeningContext.filtered(context) }
         var questions = isHome ? Self.homeQuestions : (isMessage ? Self.messageQuestions : Self.questions)
         if !isHome { questions["contains_facts"] = Self.factQuestion }
         questions = questions.mapValues { Question(type: $0.type, instructions: $0.instructions + " sourceFacts are unverified source assertions; explicit currentState entries with origin=user take precedence over conflicting source assertions.", criteria: $0.criteria) }
         request.httpBody = try JSONCodec.encode(Request(state: context, model: model, questions: questions))
         let invocation=UUID().uuidString
         try await audit(.init(invocationID:invocation,provider:"typesafe",model:model,kind:"context",payload:String(decoding:request.httpBody!,as:UTF8.self)))
-        let (data, status) = try await transport.send(request)
+        let (data, status) = try await send(request, invocation: invocation, audit: audit)
         guard status == 200 else {
-            throw MapleError.provider("TypeSafe HTTP \(status). Classification remains queued; check authentication, quota or service availability.")
+            throw JevProviderError(status: status)
         }
         guard data.count <= 2_000_000 else { throw MapleError.provider("TypeSafe response exceeded the size limit.") }
         try await audit(.init(invocationID:invocation,provider:"typesafe",model:model,kind:"response",payload:String(decoding:data,as:UTF8.self)))
@@ -112,6 +116,21 @@ public struct TypeSafeClassifier: FactCheckingClassifier {
         catch { throw MapleError.provider("TypeSafe response did not match the required answer schema.") }
     }
 
+    private func send(_ request: URLRequest, invocation: String, audit: @escaping ProviderAuditSink) async throws -> (Data, Int) {
+        let result: (Data, Int)
+        do { result = try await transport.send(request) }
+        catch {
+            let failure = (error as? JevProviderError) ?? JevProviderError(status: nil)
+            let payload = failure.status.map { "{\"http_status\":\($0)}" } ?? #"{"outcome":"network_failure"}"#
+            try await audit(.init(invocationID: invocation, provider: "typesafe", model: model, kind: "transport_status", payload: payload))
+            throw failure
+        }
+        if result.1 != 200 {
+            try await audit(.init(invocationID: invocation, provider: "typesafe", model: model, kind: "transport_status", payload: "{\"http_status\":\(result.1)}"))
+        }
+        return result
+    }
+
     struct Question: Encodable, Sendable {
         let type: String
         let instructions: String
@@ -138,7 +157,12 @@ public struct TypeSafeClassifier: FactCheckingClassifier {
 
     /// Reassess existing sources without replacing their original routing decision.
     public func checkFacts(_ context: Context,audit:@escaping ProviderAuditSink = { _ in }) async throws -> (probability: Double, model: String, rawResponse: Data) {
-        let context=try AIProcessingWindow.filtered(context)
+        var context=try AIProcessingWindow.filtered(context)
+        if ["imessage", "gmail"].contains(context.event.source.connector) || (context.event.source.connector == "feedback" && context.event.subjects.contains { $0.hasPrefix("thread:imessage:") || $0.hasPrefix("thread:gmail:") }) {
+            context = try MessageScreeningContext.filtered(context)
+        } else if context.event.source.connector != "home_assistant" {
+            context = try SourceScreeningContext.filtered(context)
+        }
         var request = URLRequest(url: URL(string: "https://api.typesafe.ai/v1/systemone")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -146,8 +170,9 @@ public struct TypeSafeClassifier: FactCheckingClassifier {
         request.httpBody = try JSONCodec.encode(Request(state: context, model: model, questions: ["contains_facts": Self.factQuestion]))
         let invocation=UUID().uuidString
         try await audit(.init(invocationID:invocation,provider:"typesafe",model:model,kind:"context",payload:String(decoding:request.httpBody!,as:UTF8.self)))
-        let (data, status) = try await transport.send(request)
-        guard status == 200, data.count <= 2_000_000 else { throw MapleError.provider("Jev fact check failed (HTTP \(status)).") }
+        let (data, status) = try await send(request, invocation: invocation, audit: audit)
+        guard status == 200 else { throw JevProviderError(status: status) }
+        guard data.count <= 2_000_000 else { throw MapleError.provider("Jev fact check response exceeded the size limit.") }
         try await audit(.init(invocationID:invocation,provider:"typesafe",model:model,kind:"response",payload:String(decoding:data,as:UTF8.self)))
         guard let response = try? JSONCodec.decode(Response.self, from: data), !response.model.isEmpty,
               let answer = response.answers["contains_facts"], answer.type == "noul", let probability = answer.noul,

@@ -348,6 +348,14 @@
     @if (s().classificationProvider === "jev") {
       <p role="status">{{ s().classificationStatus }}</p>
     }
+    @if (s().jevPause; as pause) {
+      <p role="status">Jev requests are paused: {{ pause.reason }} Queued events are retained.</p>
+      <mui-button
+        [disabled]="s().busy || (s().auditRunning === true) || s().classificationProvider !== 'jev' || !s().connected || !s().classificationCanRun"
+        (pressed)="act('resumeJevRequests')"
+        >Retry Jev after resolving the issue</mui-button
+      >
+    }
     <div class="actions">
       <mui-button
         [disabled]="s().busy || (s().auditRunning === true)"

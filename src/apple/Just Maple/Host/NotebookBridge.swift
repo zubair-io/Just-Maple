@@ -59,7 +59,7 @@ extension Bridge {
             if let store=model.store {
                 // Notes use the same event ingestion boundary as every other connector.
                 let event=Event(type:"note.updated",source:Source(connector:"notes",account:id,externalID:document.path,revision:document.revision),occurredAt:Date(),subjects:["person:self"],content:document.content)
-                do {_ = try await store.ingest(event)} catch {model.error="Note saved, but indexing needs a retry. Reopen the note to retry."}
+                do {_ = try await store.ingestNotebookObservation(event)} catch {model.error="Note saved, but indexing needs a retry. Reopen the note to retry."}
             }
             return try json(document)
         }

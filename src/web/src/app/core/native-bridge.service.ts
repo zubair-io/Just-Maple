@@ -80,6 +80,7 @@ export interface Snapshot {
   classificationState?: string;
   classificationStatus?: string;
   classificationCanRun?: boolean;
+  jevPause?: { provider: string; reason: string; retryAt?: number | null } | null;
   companionCloudEnabled: boolean;
   companionStatus: string;
   companionPaired: boolean;
@@ -150,6 +151,7 @@ export interface Snapshot {
 export type SimpleAction =
   | "retryStartup"
   | "classificationReload"
+  | "resumeJevRequests"
   | "snapshot"
   | "disconnect"
   | "unlockKey"

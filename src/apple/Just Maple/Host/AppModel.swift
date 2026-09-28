@@ -97,7 +97,17 @@ final class AppModel {
     var classifier: (any FactCheckingClassifier)?
     var classificationProvider: String
     var classificationState = "not_loaded"
-    var classificationStatus = "Preparing selected classifier…"
+    var jevPause: ProviderPause?
+    private var classificationMessage = "Preparing selected classifier…"
+    var classificationStatus: String {
+        get {
+            if classificationProvider == "jev", connected, let pause = jevPause {
+                return "Jev requests are paused. \(pause.reason) Queued events are retained."
+            }
+            return classificationMessage
+        }
+        set { classificationMessage = newValue }
+    }
     var classificationCanRun = false
     var classificationLabel: String { classificationProvider == "laya" ? "Laya" : "Jev" }
     private let classificationDefaults: UserDefaults
@@ -185,6 +195,7 @@ final class AppModel {
         guard let store else {return}
         await refreshCoordinator.run {
             do {
+                jevPause = try await store.providerPause("typesafe")
                 localIndex = try await store.indexStatus()
                 try await store.materializeOccurrences()
                 world = try await store.worldSnapshot()
@@ -277,7 +288,9 @@ final class AppModel {
                 }
                 adapter = try TypeSafeClassifier(apiKey: saved)
             }
+            let pause = try await store?.providerPause("typesafe")
             guard generation == classifierGeneration, classificationProvider == provider, !Task.isCancelled else { return }
+            jevPause = pause
             classifier = adapter
             classificationCanRun = provider == "jev" || Self.layaValidationApproved(directory: layaDirectory)
             connected = true
@@ -319,6 +332,21 @@ final class AppModel {
         classificationState = "ready"
         classificationStatus = "Jev is selected. Classification sends relevant source context to Jev."
         error = nil
+        Task { await refreshJevPause() }
+    }
+
+    func refreshJevPause() async {
+        do { jevPause = try await store?.providerPause("typesafe") }
+        catch { self.error = error.localizedDescription }
+    }
+
+    func resumeJevRequests() async throws {
+        guard !busy, !auditRunning, classificationProvider == "jev", connected, classificationCanRun, let store else {
+            throw MapleError.invalid("Select a ready Jev connection and wait for current processing to finish before retrying Jev requests.")
+        }
+        try await store.clearProviderPause("typesafe")
+        await refreshJevPause()
+        message = "Jev requests may retry. Queued events are retained. Your processing-loop setting is unchanged."
     }
 
     func connect() {
@@ -412,11 +440,12 @@ final class AppModel {
                 }
                 return total
             }
+            await refreshJevPause()
             guard result.completed > 0 || result.deferred > 0 else {return}
             if result.completed > 0 { message = "\(classificationLabel) classified \(result.completed) events. Decisions and evidence are in History." }
             if result.deferred > 0 { message = "\(classificationLabel) could not complete a request. The event is saved for retry." }
             await refresh()
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = error.localizedDescription; await refreshJevPause() }
     }
 
     func extractionTick() async {
@@ -442,7 +471,7 @@ final class AppModel {
             let result = try await store.checkSourceFacts(eventID:eventID,classifier:classifier)
             message = result.probability >= 0.85 ? "Facts worth extracting. Extraction is queued for the selected provider." : "\(classificationLabel) did not find enough new factual content to schedule extraction."
             await refresh()
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = error.localizedDescription; await refreshJevPause() }
     }
 
     func retryFactExtraction() async {

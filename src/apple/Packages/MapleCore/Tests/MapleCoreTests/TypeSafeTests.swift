@@ -86,8 +86,9 @@ extension TypeSafeTests {
         let failed=ProviderAuditRecorder()
         let denied=try TypeSafeClassifier(apiKey:"fixture-secret-key",transport:CapturingTransport(data:Data("private HTTP error body".utf8),status:401))
         await #expect(throws:Error.self){try await denied.classifyAudited(context){event in await failed.append(event)}}
-        #expect(await failed.events.count==1)
-        #expect(await failed.events.allSatisfy{$0.kind=="context" && !$0.payload.contains("private HTTP error body")})
+        #expect(await failed.events.count==2)
+        #expect(await failed.events.contains { $0.kind == "transport_status" && $0.payload == #"{"http_status":401}"# })
+        #expect(await failed.events.allSatisfy { !$0.payload.contains("private HTTP error body") && !$0.payload.contains("fixture-secret-key") })
     }
     @Test func successfulTransportInvalidSchemaRetainsActualOutputForReview()async throws {
         let recorder=ProviderAuditRecorder(),classifier=try TypeSafeClassifier(apiKey:"fixture",transport:CapturingTransport(data:Data("not valid JSON".utf8)))

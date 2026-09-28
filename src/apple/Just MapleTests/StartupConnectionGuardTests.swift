@@ -7,7 +7,7 @@ import MapleCore
     @Test func connectionChangesWaitForRestoreBeforeAnyProviderOrSettingsMutation() throws {
         // This pure pre-dispatch check cannot touch live Keychain credentials, connectors,
         // OAuth state or preferences. All affected command families must fail while restoring.
-        let actions=["connect","disconnect","unlockKey",
+        let actions=["connect","disconnect","unlockKey","resumeJevRequests",
                      "googleConfigure","googleConnect","googleCancel","googleUnlock","googleDisconnect",
                      "googlePoll","googleCalendarList","googleContactsPause","googleContactsResume",
                      "googleMailPause","googleMailResume","googleCalendarPause","googleCalendarResume","googleCalendarSelection",

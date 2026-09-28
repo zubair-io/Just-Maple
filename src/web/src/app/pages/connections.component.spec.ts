@@ -64,3 +64,26 @@ describe("Local classification settings", () => {
     expect(bridge.state().classificationProvider).toBe("laya");
   });
 });
+
+describe("Jev request pause", () => {
+  it("requires an explicit retry and preserves the local-provider gate", () => {
+    const { fixture, bridge, act } = setup();
+    bridge.state.update(value => ({ ...value, jevPause: { provider: "typesafe", reason: "Jev rejected the API key." } }));
+    fixture.detectChanges();
+    const retry = () => Array.from(fixture.nativeElement.querySelectorAll("button")).find((button: any) => button.textContent.includes("Retry Jev after resolving")) as HTMLButtonElement;
+    expect(fixture.nativeElement.textContent).toContain("Jev rejected the API key");
+    expect(retry().disabled).toBe(true);
+    expect(act).not.toHaveBeenCalled();
+    bridge.state.update(value => ({ ...value, classificationProvider: "jev", classificationCanRun: true, connected: true }));
+    fixture.detectChanges();
+    expect(retry().disabled).toBe(false);
+    retry().click();
+    expect(act).toHaveBeenLastCalledWith({ action: "resumeJevRequests" });
+    bridge.state.update(value => ({ ...value, auditRunning: true }));
+    fixture.detectChanges();
+    expect(retry().disabled).toBe(true);
+    bridge.state.update(value => ({ ...value, auditRunning: false, busy: true }));
+    fixture.detectChanges();
+    expect(retry().disabled).toBe(true);
+  });
+});

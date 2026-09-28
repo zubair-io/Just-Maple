@@ -24,31 +24,31 @@ extension KnowledgeStore {
                           externalID: "home-batch:" + key, revision: "1"),
                           occurredAt: events.map(\.occurredAt).max()!, receivedAt: events.map(\.receivedAt).max()!,
                           subjects: ["home:self"],
-                          content: "Title: Home update · \(members.count) changed entities\nA single Home Assistant snapshot batch. Individual observations and their previous states are linked as evidence; classification applies to the batch as a whole.")
+                          content: "Title: Home update · \(Set(events.map { $0.source.externalID }).count) changed entities\nA Home Assistant observation batch. Individual observations and their previous states are linked as evidence; classification applies to the batch as a whole.")
         try batch.validate()
         let batchID = try insert(batch, enqueue: true)
         for member in members {
             try db.execute("INSERT INTO home_batch_members(event_id,batch_id,previous_event_id) VALUES (?,?,?)", [member.id, batchID, member.previousID])
-            try db.execute("UPDATE processing_jobs SET status='batched',error=NULL,lease_token=NULL,lease_until=NULL WHERE event_id=?", [member.id])
+            try db.execute("UPDATE processing_jobs SET status='batched',lease_token=NULL,lease_until=NULL WHERE event_id=?", [member.id])
             try db.execute("UPDATE source_transitions SET reason='Classified together in one Home Assistant batch.',related_event_id=? WHERE sequence=(SELECT MAX(sequence) FROM source_transitions WHERE event_id=? AND stage='classification')", [batchID, member.id])
         }
         return batchID
     }
 
-    /// Preserve unattempted work from older builds, grouping the selected ten-minute
-    /// window. Failed or in-flight attempts keep their existing retry/audit contracts.
+    /// Group eligible pending work from older builds into its ten-minute window.
+    /// Prior attempts remain inspectable; blocked and in-flight work is untouched.
     func batchLegacyHomeWork(startingAt id: String, now: Date) throws -> String? {
         guard let seed = try event(id), seed.source.connector == "home_assistant", seed.type != "home.batch",
-              try db.rows("SELECT event_id FROM processing_jobs WHERE event_id=? AND status='pending' AND attempts=0 AND error IS NULL", [id]).count == 1 else { return nil }
+              try db.rows("SELECT event_id FROM processing_jobs WHERE event_id=? AND status='pending' AND attempts<5 AND next_attempt_at<=?", [id, String(now.timeIntervalSince1970)]).count == 1 else { return nil }
         let start = floor(seed.receivedAt.timeIntervalSince1970 / 600) * 600
         let rows = try db.rows("""
             SELECT e.id FROM events e JOIN processing_jobs p ON p.event_id=e.id
             WHERE e.connector='home_assistant' AND e.account=? AND e.received_at>=? AND e.received_at<?
               AND e.occurred_at>=? AND json_extract(e.json,'$.type')<>'home.batch'
-              AND p.status='pending' AND p.attempts=0 AND p.error IS NULL
+              AND p.status='pending' AND p.attempts<5 AND p.next_attempt_at<=?
               AND NOT EXISTS(SELECT 1 FROM home_batch_members m WHERE m.event_id=e.id)
             ORDER BY e.received_at,e.id
-            """, [seed.source.account, String(start), String(start + 600), String(now.addingTimeInterval(-AIProcessingWindow.duration).timeIntervalSince1970)])
+            """, [seed.source.account, String(start), String(start + 600), String(now.addingTimeInterval(-AIProcessingWindow.duration).timeIntervalSince1970), String(now.timeIntervalSince1970)])
         return try createHomeBatch(rows.map { ($0["id"]!, nil) })
     }
 

@@ -10,6 +10,13 @@ extension KnowledgeStore {
         try excludeExpiredAIWork(at:now)
         return try db.transaction {
             if let eventIDs,eventIDs.isEmpty {return nil}
+            // A crash or repeated context invalidation must not bypass the retry ceiling.
+            // An unexpired fifth lease can still commit; only abandoned/queued work is blocked.
+            try db.execute("""
+                UPDATE processing_jobs SET status='blocked',lease_token=NULL,lease_until=NULL,
+                    error='Classification attempt limit reached. Evidence is saved; retry explicitly when ready.'
+                WHERE attempts>=5 AND (status='pending' OR (status='leased' AND lease_until<=?))
+                """, [String(now.timeIntervalSince1970)])
             let filter=eventIDs.map{" AND p.event_id IN ("+Array(repeating:"?",count:$0.count).joined(separator:",")+")"} ?? ""
             let parameters = [String(now.timeIntervalSince1970), String(now.timeIntervalSince1970)] + (eventIDs ?? [])
             let eligible = "((p.status='pending' AND p.next_attempt_at<=?) OR (p.status='leased' AND p.lease_until<=?))\(filter)"
@@ -53,13 +60,12 @@ extension KnowledgeStore {
             let fresh = freshContext.currentState
             // A correction/another event can arrive while the network request is in flight.
             guard fresh == decision.context.currentState else {
-                try db.execute("UPDATE processing_jobs SET status='pending', next_attempt_at=?, lease_token=NULL, lease_until=NULL WHERE event_id=?",
-                               [String(now.timeIntervalSince1970), lease.eventID])
+                try scheduleClassificationRetry(lease, error: "Classification context changed during the request. The response is saved; a fresh assessment is pending or needs explicit retry.", now: now)
                 return false
             }
             let freshFacts = freshContext.sourceFacts
             guard freshFacts == (decision.context.sourceFacts ?? []) else {
-                try db.execute("UPDATE processing_jobs SET status='pending', next_attempt_at=?, lease_token=NULL, lease_until=NULL WHERE event_id=?", [String(now.timeIntervalSince1970), lease.eventID])
+                try scheduleClassificationRetry(lease, error: "Classification facts changed during the request. The response is saved; a fresh assessment is pending or needs explicit retry.", now: now)
                 return false
             }
             // Quiet historical retention does not imply an explicit request is resolved.
@@ -96,15 +102,27 @@ extension KnowledgeStore {
         }
     }
 
+    func blockClassification(_ lease: Lease, reason: String, now: Date) throws {
+        try db.transaction {
+            guard try owns(lease, now: now) else { return }
+            try db.execute("UPDATE processing_jobs SET status='blocked',error=?,lease_token=NULL,lease_until=NULL WHERE event_id=?", [reason, lease.eventID])
+        }
+    }
+
     func fail(_ lease: Lease, error: String, now: Date) throws {
         try db.transaction {
             guard try owns(lease, now: now) else { return }
-            let attempts = Int(try db.rows("SELECT attempts FROM processing_jobs WHERE event_id=?", [lease.eventID]).first?["attempts"] ?? "1") ?? 1
-            let delay = min(3600.0, 5 * pow(2, Double(min(attempts - 1, 10))))
-            try db.execute("UPDATE processing_jobs SET status=?, next_attempt_at=?, error=?, lease_token=NULL, lease_until=NULL WHERE event_id=?",
-                           [attempts >= 5 ? "blocked" : "pending", String(now.addingTimeInterval(delay).timeIntervalSince1970),
-                            String(error.prefix(500)), lease.eventID])
+            try scheduleClassificationRetry(lease, error: error, now: now)
         }
+    }
+
+    /// Called only within a transaction after confirming current lease ownership.
+    private func scheduleClassificationRetry(_ lease: Lease, error: String, now: Date) throws {
+        let attempts = Int(try db.rows("SELECT attempts FROM processing_jobs WHERE event_id=?", [lease.eventID]).first?["attempts"] ?? "1") ?? 1
+        let delay = min(3600.0, 5 * pow(2, Double(min(attempts - 1, 10))))
+        try db.execute("UPDATE processing_jobs SET status=?, next_attempt_at=?, error=?, lease_token=NULL, lease_until=NULL WHERE event_id=?",
+                       [attempts >= 5 ? "blocked" : "pending", String(now.addingTimeInterval(delay).timeIntervalSince1970),
+                        String(error.prefix(500)), lease.eventID])
     }
 
     private func owns(_ lease: Lease, now: Date) throws -> Bool {

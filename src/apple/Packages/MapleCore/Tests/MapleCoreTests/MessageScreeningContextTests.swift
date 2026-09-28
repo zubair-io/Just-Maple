@@ -23,7 +23,7 @@ struct MessageScreeningContextTests {
                             world: ReasoningWorldContext(asOf: now, activities: [activity, LifeActivity()], tasks: unrelatedTasks + [resolved, dismissed], states: []))
         let result = try MessageScreeningContext.filtered(input, at: now)
         #expect(result.recentEvents.map(\.id) == [prior.id])
-        #expect(result.relatedEvidence.map(\.id) == [prior.id])
+        #expect(result.relatedEvidence.isEmpty)
         #expect(result.world?.tasks.map(\.id) == [resolved.id, dismissed.id])
         #expect(result.world?.tasks.map(\.status) == [.completed, .cancelled])
         #expect(result.world?.activities.map(\.id) == [activity.id])

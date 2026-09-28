@@ -12,6 +12,11 @@ private struct SyntheticLocalClassifier: FactCheckingClassifier {
         throw MapleError.invalid("This host-selection fixture does not perform inference.")
     }
 }
+private struct SyntheticRejectedJev: FactCheckingClassifier {
+    let providerID = "typesafe"
+    func classify(_ context: Context) async throws -> ClassifierResult { throw JevProviderError(status: 402) }
+    func checkFacts(_ context: Context, audit: @escaping ProviderAuditSink) async throws -> (probability: Double, model: String, rawResponse: Data) { throw JevProviderError(status: 402) }
+}
 private actor DelayedLocalLoader {
     private var continuations: [CheckedContinuation<any FactCheckingClassifier, Error>] = []
     func load() async throws -> any FactCheckingClassifier {
@@ -124,4 +129,35 @@ private actor DelayedLocalLoader {
         await loader.fail(0);await Task.yield()
         #expect(model.classificationState=="ready");#expect(model.running)
     }
+    @Test func jevPauseStatusDoesNotChangeClassifierReadinessOrUnlockLocalValidation() async throws {
+        let model = AppModel(classificationDefaults: preferences(selection: "jev"))
+        let store = try KnowledgeStore(path: ":memory:")
+        model.store = store
+        try await store.ingest(Event(type: "note.created", source: .init(connector: "fixture", account: "test", externalID: "pause", revision: "1"), occurredAt: Date(), subjects: ["person:self"], content: "Synthetic provider pause fixture"))
+        _ = try await IntelligenceEngine(store: store, classifier: SyntheticRejectedJev()).run(limit: 1)
+        await model.refreshJevPause()
+        model.classificationState = "ready"; model.classificationCanRun = true; model.connected = true
+        model.classificationStatus = "Synthetic Jev ready"
+        #expect(model.classificationStatus.contains("HTTP 402"))
+        #expect(model.classificationState == "ready"); #expect(model.classificationCanRun)
+        let snapshot = try #require(Bridge(model: model).snapshot() as? [String: Any])
+        #expect((snapshot["jevPause"] as? [String: Any])?["provider"] as? String == "typesafe")
+        model.classificationProvider = "laya"; model.classificationCanRun = false
+        model.classificationStatus = "Synthetic local validation required"
+        do { try await model.resumeJevRequests(); Issue.record("Jev retry bypassed local selection") } catch {}
+        #expect(model.classificationStatus == "Synthetic local validation required")
+        #expect(model.jevPause != nil); #expect(!model.classificationCanRun)
+        model.classificationProvider = "jev"; model.classificationCanRun = true
+        model.auditRunning = true
+        do { try await model.resumeJevRequests(); Issue.record("Jev retry raced audit") } catch {}
+        #expect(model.jevPause != nil)
+        model.auditRunning = false; model.busy = true
+        do { try await model.resumeJevRequests(); Issue.record("Jev retry raced processing") } catch {}
+        #expect(model.jevPause != nil)
+        model.busy = false; model.running = false
+        try await model.resumeJevRequests()
+        #expect(model.jevPause == nil); #expect(!model.running)
+        #expect(try await store.providerPause("typesafe") == nil)
+    }
+
 }

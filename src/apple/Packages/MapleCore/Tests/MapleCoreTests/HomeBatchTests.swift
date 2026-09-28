@@ -91,6 +91,7 @@ struct HomeBatchTests {
         #expect(await transport.requests.count == 1)
         #expect(try await store.queue().filter { $0.status == "batched" }.count == 2)
         try await store.retryFailures()
+        try await store.clearProviderPause("typesafe")
         await transport.setStatus(200)
         #expect(try await engine.run().completed == 1)
         #expect(await transport.requests.count == 2)
@@ -139,6 +140,23 @@ struct HomeBatchTests {
         #expect(contexts.allSatisfy { $0.relatedEvidence.count == 2 })
         #expect(contexts.allSatisfy { Set($0.relatedEvidence.map { $0.source.account }).count == 1 })
     }
+    @Test func dueLegacyRetriesJoinBatchAndKeepEarlierAttemptsInspectable() async throws {
+        let store = try KnowledgeStore(path: ":memory:"), transport = BatchTransport()
+        let baseline = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970 / 600) * 600 - 590)
+        _ = try await store.ingestSourceSnapshot(records(["on", "off"]), connector: "home_assistant", now: baseline, batchHomeClassification: false)
+        let id = try #require(await store.queue().first?.eventID)
+        let lease = try #require(await store.acquire(now: baseline.addingTimeInterval(10), eventIDs: [id]))
+        try await store.fail(lease, error: "Synthetic temporary provider failure", now: baseline.addingTimeInterval(11))
+        #expect(try await engine(store, transport).run().completed == 1)
+        #expect(await transport.requests.count == 1)
+        #expect(try await transport.contexts().first?.relatedEvidence.count == 2)
+        let member = try #require(await store.queue().first { $0.eventID == id })
+        #expect(member.status == "batched" && member.attempts == 1)
+        let detail = try await store.sourceDetail(eventID: id)
+        #expect(detail.attempts.contains { $0.commitOutcome == "failed" })
+        #expect(detail.stages.first { $0.stage == "classification" }?.relatedEventID != nil)
+    }
+
     @Test func userCorrectionDuringRequestDiscardsBatchDecision() async throws {
         let store = try KnowledgeStore(path: ":memory:"), snapshot = try records(["on", "off"])
         _ = try await store.ingestSourceSnapshot(snapshot, connector: "home_assistant")
