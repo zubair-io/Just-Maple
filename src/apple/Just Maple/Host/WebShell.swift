@@ -75,6 +75,8 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
         try Self.validateStartupAction(action,starting:model.starting)
         if action != "snapshot" { model.error = nil }
         switch action {
+        case "attachmentImport", "attachmentRead", "attachmentExport":
+            return try await attachmentCommand(action, body)
         case "todayOpen", "todayMigrate", "documentOpen", "documentCommit", "documentDraft", "documentHistory", "documentRecoveryCopy", "sourceInsert", "documentBlockMutate", "documentRegister", "documentOperationHistory", "documentOperationResolve":
             return try await todayDocumentCommand(action, body)
         case "documentSuggestions", "taskInsert":

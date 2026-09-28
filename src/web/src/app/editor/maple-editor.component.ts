@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   ApplicationRef,
   Component,
+  ChangeDetectorRef,
   ElementRef,
   EnvironmentInjector,
   Injector,
@@ -19,14 +20,29 @@ import { FormsModule } from "@angular/forms";
 import { Editor, Extension, Node, JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Paragraph from "@tiptap/extension-paragraph";
+import Document from "@tiptap/extension-document";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { Plugin } from "@tiptap/pm/state";
 import { Fragment, Slice } from "@tiptap/pm/model";
-import { MuiButtonComponent } from "@maple/ui";
+import { computePosition, shift } from "@floating-ui/dom";
 import { CodeBlockWithLanguage } from "../notebooks/sugar-editor/code-block-with-language";
 import { getTableExtensions } from "../notebooks/sugar-editor/table-extension";
+import { MarkdownPaste } from "../notebooks/sugar-editor/markdown-paste";
+import {
+  MapleCallout,
+  MapleDetails,
+  SingleTildeStrike,
+} from "./structured-content";
+import {
+  createDailyInteractionExtensions,
+  convertBlock,
+  selectedBlockID,
+  openBlockActions,
+} from "./interactions/daily-interactions";
+import { AttachmentService } from "./attachment.service";
+import { createAttachmentSupport, AttachmentSupport } from "./attachment-node";
 import {
   decodeDaily,
   encodeDaily,
@@ -49,6 +65,9 @@ const identityTypes = [
   "table",
   "sourceReference",
   "linkedTask",
+  "callout",
+  "details",
+  "attachment",
 ];
 export const StableBlockIdentity = Extension.create({
   name: "stableBlockIdentity",
@@ -81,11 +100,23 @@ export const StableBlockIdentity = Extension.create({
               return;
             const meta = node.attrs["maple"] as BlockMetadata | null;
             if (!meta?.id || seen.has(meta.id)) {
+              // Enter after an inline request starts ordinary writing. Do not
+              // inherit the request's execution identity on the split paragraph.
+              const inherited = { ...(meta ?? {}) };
+              if (
+                inherited.kind === "maple-request" &&
+                (node.type.name !== "paragraph" ||
+                  !/^@maple\b/i.test(node.textContent))
+              ) {
+                delete inherited.kind;
+                delete inherited.requestID;
+                delete inherited.runID;
+              }
               const identity = {
-                ...(meta ?? {}),
+                ...inherited,
                 v: 1,
                 id: crypto.randomUUID(),
-                ...(meta?.requestID
+                ...(inherited.requestID
                   ? { requestID: crypto.randomUUID(), runID: undefined }
                   : {}),
                 ...(node.type.name === "linkedTask"
@@ -115,6 +146,7 @@ export const StableBlockIdentity = Extension.create({
                         ? crypto.randomUUID()
                         : undefined,
                       runID: undefined,
+                      taskCommandID: undefined,
                     };
                   return node.isText
                     ? node
@@ -139,277 +171,71 @@ export const StableBlockIdentity = Extension.create({
 @Component({
   selector: "maple-editor",
   standalone: true,
-  imports: [FormsModule, MuiButtonComponent],
+  imports: [FormsModule],
   encapsulation: ViewEncapsulation.None,
-  template: `
-    @if (showToolbar()) {
-    <div class="maple-editor-tools" aria-label="Note formatting">
-      <mui-button variant="ghost" (pressed)="toggleSource()">{{
-        source() ? "Formatted view" : "View Markdown"
-      }}</mui-button>
-      @if (!source() && !readOnly()) {
-        <mui-button
-          variant="ghost"
-          (pressed)="
-            editor?.chain()?.focus()?.toggleHeading({ level: 2 })?.run()
-          "
-          >Heading</mui-button
-        ><mui-button
-          variant="ghost"
-          (pressed)="editor?.chain()?.focus()?.toggleBold()?.run()"
-          >Bold</mui-button
-        ><mui-button
-          variant="ghost"
-          (pressed)="editor?.chain()?.focus()?.toggleTaskList()?.run()"
-          >Task</mui-button
-        ><mui-button variant="ghost" (pressed)="addRequest()"
-          >Ask @maple</mui-button
-        ><mui-button variant="ghost" (pressed)="sourceRequested.emit()"
-          >Add source</mui-button
-        >
-      }
-    </div>
-    }
-    @if (insertionMenu() && !source() && !readOnly()) {
-      <div
-        class="maple-insertion-menu"
-        role="group"
-        aria-label="Insert a block"
-      >
-        @for (label of insertionChoices; track label; let index = $index) {
-          <button
-            type="button"
-            [class.active]="insertionIndex() === index"
-            (click)="chooseInsertion(index)"
-          >
-            {{ label }}
-          </button>
-        }
-        <small>↑ ↓ to choose · Enter to insert · Esc to close</small>
-      </div>
-    }
-    @if (notice()) {
-      <p class="maple-editor-notice" role="status">{{ notice() }}</p>
-    }
-    <div #surface class="maple-editor-surface" [hidden]="source()"></div>
-    @if (source()) {
-      <textarea
-        class="maple-editor-source"
-        aria-label="Daily note Markdown source"
-        spellcheck="false"
-        [readOnly]="readOnly()"
-        [ngModel]="raw"
-        (ngModelChange)="sourceChanged($event)"
-      ></textarea>
-    }
-  `,
-  styles: [
-    `
-      .maple-editor-tools {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-        margin-bottom: 28px;
-        font-family: var(--font-sans);
-      }
-      .maple-insertion-menu {
-        padding: 12px;
-        border: 1px solid var(--color-border);
-        border-radius: 8px;
-        box-shadow: 0 8px 24px var(--color-border);
-        background: var(--color-bg-secondary);
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 16px;
-        font: 13px var(--font-sans);
-      }
-      .maple-insertion-menu button {
-        padding: 9px 12px;
-        border: 0;
-        background: transparent;
-        color: var(--color-text-main);
-        border-radius: 5px;
-        cursor: pointer;
-      }
-      .maple-insertion-menu button.active {
-        background: var(--color-primary-light);
-        color: var(--color-link, var(--color-primary));
-      }
-      .maple-insertion-menu small {
-        align-self: center;
-        color: var(--color-text-muted);
-      }
-      .maple-editor-notice {
-        font: 13px/1.6 var(--font-sans);
-        padding: 12px;
-        border: 1px solid var(--color-border);
-        border-radius: 6px;
-        color: var(--color-text-muted);
-      }
-      .maple-editor-surface .tiptap {
-        outline: none;
-        min-height: 400px;
-        padding: 0 0 80px 28px;
-        border-left: 3px solid var(--color-writing, var(--color-primary));
-        font: 20px/1.8 var(--font-serif);
-        color: var(--color-text-main);
-      }
-      .maple-editor-surface .tiptap > * {
-        margin: 18px 0 24px;
-      }
-      .maple-editor-surface .tiptap h1,
-      .maple-editor-surface .tiptap h2,
-      .maple-editor-surface .tiptap h3 {
-        font-family: var(--font-serif);
-        font-weight: 400;
-        position: relative;
-      }
-      .maple-editor-surface .tiptap h2 {
-        font-size: 30px;
-      }
-      .maple-editor-surface .tiptap h2:before {
-        content: "";
-        position: absolute;
-        left: -37px;
-        top: 18px;
-        width: 14px;
-        height: 14px;
-        border: 2px solid var(--color-writing, var(--color-primary));
-        border-radius: 50%;
-        background: var(--color-bg);
-      }
-      .maple-editor-surface .tiptap p {
-        margin: 0;
-        color: var(--color-text-main);
-      }
-      .maple-editor-surface .tiptap .maple-paragraph {
-        position: relative;
-      }
-      .maple-editor-surface .tiptap .maple-request {
-        border-left: 3px solid var(--color-agent, var(--color-primary));
-        padding: 14px 18px;
-        background: var(--color-bg-secondary);
-        border-radius: 6px;
-        font-family: var(--font-sans);
-        font-size: 16px;
-      }
-      .maple-editor-surface .tiptap .maple-reply p,
-      .maple-editor-surface .tiptap .maple-reply {
-        color: var(--color-agent, var(--color-primary));
-      }
-      .maple-run-button {
-        font: 13px var(--font-sans);
-        border: 1px solid var(--color-border);
-        color: var(--color-link, var(--color-primary));
-        background: var(--color-bg);
-        border-radius: 6px;
-        padding: 9px 13px;
-        cursor: pointer;
-        margin-top: 14px;
-      }
-      .maple-run-button:focus-visible {
-        outline: 2px solid var(--color-focus, var(--color-primary));
-      }
-      .maple-editor-surface .tiptap .ProseMirror-selectednode {
-        outline: 2px solid var(--color-focus, var(--color-primary));
-        outline-offset: 4px;
-        border-radius: 6px;
-      }
-      .maple-editor-surface .tiptap ul[data-type="taskList"] {
-        list-style: none;
-        padding-left: 0;
-      }
-      .maple-editor-surface .tiptap li[data-type="taskItem"] {
-        display: flex;
-        gap: 12px;
-        align-items: start;
-      }
-      .maple-editor-surface .tiptap li[data-type="taskItem"] > label {
-        flex: 0 0 auto;
-        margin-top: 6px;
-      }
-      .maple-editor-surface .tiptap li[data-type="taskItem"] > div {
-        flex: 1;
-      }
-      .maple-editor-surface .tiptap input[type="checkbox"] {
-        width: 18px;
-        height: 18px;
-        accent-color: var(--color-link, var(--color-primary));
-      }
-      .maple-editor-surface .tiptap pre {
-        font: 13px/1.6 var(--font-mono);
-        padding: 18px;
-        background: var(--color-bg-secondary);
-        overflow: auto;
-        border-radius: 6px;
-      }
-      .maple-editor-surface .tiptap table {
-        border-collapse: collapse;
-        width: 100%;
-        font-size: 16px;
-      }
-      .maple-editor-surface .tiptap td,
-      .maple-editor-surface .tiptap th {
-        border: 1px solid var(--color-border);
-        padding: 8px;
-      }
-      .maple-editor-surface .tiptap .is-editor-empty:before {
-        content: attr(data-placeholder);
-        float: left;
-        color: var(--color-text-muted);
-        pointer-events: none;
-        height: 0;
-      }
-      .maple-editor-source {
-        width: 100%;
-        min-height: 600px;
-        box-sizing: border-box;
-        resize: vertical;
-        background: var(--color-bg-secondary);
-        border: 1px solid var(--color-border);
-        border-radius: 6px;
-        color: var(--color-text-main);
-        padding: 20px;
-        font: 14px/1.7 var(--font-mono);
-      }
-      .maple-editor-surface a {
-        color: var(--color-link, var(--color-primary));
-      }
-      @media (max-width: 700px) {
-        .maple-editor-surface .tiptap {
-          font-size: 17px;
-          padding-left: 18px;
-        }
-        .maple-editor-surface .tiptap h2 {
-          font-size: 25px;
-        }
-        .maple-editor-surface .tiptap h2:before {
-          left: -27px;
-        }
-      }
-    `,
-  ],
+  templateUrl: "./maple-editor.component.html",
+  styleUrls: ["./maple-editor.component.css", "./structured-content.css"],
 })
 export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   readonly initial = input.required<string>();
+  readonly documentID = input("");
   readonly readOnly = input(false);
   readonly showToolbar = input(true);
   readonly changed = output<string>();
   readonly inspected = output<string>();
   readonly submitted = output<{ blockID: string; text: string }>();
   readonly sourceRequested = output<void>();
-  readonly insertionMenu = signal(false);
-  readonly insertionIndex = signal(0);
-  readonly insertionChoices = [
-    "Heading",
-    "Task",
-    "Source reference",
-    "Ask @maple",
+  readonly clearRequested = output<string>();
+  readonly palette = signal(false);
+  readonly toolbarPosition = signal({ x: -1000, y: -1000 });
+  private readonly selectionRevision = signal(0);
+  readonly formatTools = [
+    { id: "paragraph", label: "Paragraph", icon: "¶" },
+    { id: "h1", label: "Heading 1", icon: "H1" },
+    { id: "h2", label: "Heading 2", icon: "H2" },
+    { id: "h3", label: "Heading 3", icon: "H3" },
+    { id: "bold", label: "Bold · ⌘B", icon: "B" },
+    { id: "italic", label: "Italic · ⌘I", icon: "I" },
+    { id: "underline", label: "Underline · ⌘U", icon: "U" },
+    { id: "strike", label: "Strikethrough", icon: "S" },
+    { id: "code", label: "Inline code", icon: "</>" },
+  ];
+  readonly insertTools = [
+    { id: "bullet", label: "Bullet list" },
+    { id: "ordered", label: "Numbered list" },
+    { id: "task", label: "Checklist" },
+    { id: "quote", label: "Quote" },
+    { id: "codeBlock", label: "Code block" },
+    { id: "table", label: "Table · 3 × 3" },
+    { id: "source", label: "Source reference" },
+    { id: "maple", label: "Ask @maple" },
+    { id: "info", label: "Info callout" },
+    { id: "tip", label: "Tip callout" },
+    { id: "warning", label: "Warning callout" },
+    { id: "danger", label: "Danger callout" },
+    { id: "details", label: "Collapsible section" },
+    { id: "attachment", label: "Image or file" },
+    { id: "divider", label: "Divider" },
+    { id: "markdown", label: "View Markdown" },
+    { id: "block", label: "Block actions" },
   ];
   readonly source = signal(false);
   readonly notice = signal("");
   @ViewChild("surface", { static: true }) surface!: ElementRef<HTMLElement>;
+  @ViewChild("filePicker", { static: true })
+  filePicker!: ElementRef<HTMLInputElement>;
+  private attachmentSupport?: AttachmentSupport;
+  private attachments = inject(AttachmentService);
+  private changeDetector = inject(ChangeDetectorRef);
+  private toolbarElement?: HTMLElement;
+  private resizeObserver?: ResizeObserver;
+  private positionFrame?: number;
+  @ViewChild("toolbar") set toolbar(
+    value: ElementRef<HTMLElement> | undefined,
+  ) {
+    this.toolbarElement = value?.nativeElement;
+    this.positionToolbar();
+  }
   editor?: Editor;
   raw = "";
   private prefix = "";
@@ -428,13 +254,228 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
     this.source.set(parsed.sourceOnly);
     this.notice.set(parsed.reason);
     this.mount(parsed.doc);
+    this.changeDetector.detectChanges();
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => this.positionToolbar());
+      this.resizeObserver.observe(this.surface.nativeElement);
+    }
+    window.addEventListener("resize", this.positionToolbar);
+    window.visualViewport?.addEventListener("resize", this.positionToolbar);
+  }
+  positionToolbar = () => {
+    if (this.positionFrame) cancelAnimationFrame(this.positionFrame);
+    this.positionFrame = requestAnimationFrame(() => {
+      const floating = this.toolbarElement;
+      if (!floating) return;
+      const rect = this.surface.nativeElement.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const bottom =
+        (viewport?.height ?? window.innerHeight) +
+        (viewport?.offsetTop ?? 0) -
+        20;
+      const x = rect.left + rect.width / 2;
+      void computePosition(
+        {
+          getBoundingClientRect: () => ({
+            x,
+            y: bottom,
+            top: bottom,
+            bottom,
+            left: x,
+            right: x,
+            width: 0,
+            height: 0,
+          }),
+        },
+        floating,
+        {
+          strategy: "fixed",
+          placement: "top",
+          middleware: [shift({ padding: 12 })],
+        },
+      ).then(({ x, y }) => {
+        if (this.toolbarElement === floating)
+          this.toolbarPosition.set({ x, y });
+      });
+    });
+  };
+  preserveSelection(event: PointerEvent) {
+    if (event.target instanceof HTMLElement && event.target.closest("button"))
+      event.preventDefault();
+  }
+  toolbarKey(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      this.palette.set(false);
+      this.editor?.commands.focus();
+      return;
+    }
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const buttons = Array.from(
+      this.toolbarElement?.querySelectorAll<HTMLButtonElement>(
+        "button:not(:disabled)",
+      ) ?? [],
+    );
+    const current = buttons.indexOf(event.target as HTMLButtonElement);
+    if (current < 0) return;
+    event.preventDefault();
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? buttons.length - 1
+          : (current + (event.key === "ArrowRight" ? 1 : buttons.length - 1)) %
+            buttons.length;
+    buttons[next]?.focus();
+  }
+  active(id: string): boolean {
+    this.selectionRevision();
+    return id.startsWith("h") && /^h[123]$/.test(id)
+      ? !!this.editor?.isActive("heading", { level: Number(id[1]) })
+      : !!this.editor?.isActive(id);
+  }
+  canUndo() {
+    this.selectionRevision();
+    return !!this.editor?.can().undo();
+  }
+  canRedo() {
+    this.selectionRevision();
+    return !!this.editor?.can().redo();
+  }
+  inTable() {
+    this.selectionRevision();
+    return !!this.editor?.isActive("table");
+  }
+  format(id: string) {
+    if (!this.editor || this.readOnly()) return;
+    const chain = this.editor.chain().focus();
+    switch (id) {
+      case "paragraph":
+        chain.setParagraph().run();
+        break;
+      case "h1":
+      case "h2":
+      case "h3":
+        chain.toggleHeading({ level: Number(id[1]) as 1 | 2 | 3 }).run();
+        break;
+      case "bold":
+        chain.toggleBold().run();
+        break;
+      case "italic":
+        chain.toggleItalic().run();
+        break;
+      case "underline":
+        chain.toggleUnderline().run();
+        break;
+      case "strike":
+        chain.toggleStrike().run();
+        break;
+      case "code":
+        chain.toggleCode().run();
+        break;
+    }
+  }
+  insert(id: string) {
+    if (!this.editor || this.readOnly()) return;
+    this.palette.set(false);
+    const chain = this.editor.chain().focus();
+    switch (id) {
+      case "bullet":
+        convertBlock(this.editor, selectedBlockID(this.editor), "bulletList");
+        break;
+      case "ordered":
+        convertBlock(this.editor, selectedBlockID(this.editor), "orderedList");
+        break;
+      case "task":
+        convertBlock(this.editor, selectedBlockID(this.editor), "taskList");
+        break;
+      case "quote":
+        convertBlock(this.editor, selectedBlockID(this.editor), "blockquote");
+        break;
+      case "codeBlock":
+        chain.toggleCodeBlock().run();
+        break;
+      case "table":
+        chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+        break;
+      case "source":
+        this.sourceRequested.emit();
+        break;
+      case "maple":
+        this.addRequest();
+        break;
+      case "info":
+      case "tip":
+      case "warning":
+      case "danger":
+        chain
+          .insertContent({
+            type: "callout",
+            attrs: { kind: id },
+            content: [{ type: "paragraph" }],
+          })
+          .run();
+        break;
+      case "details":
+        chain
+          .insertContent({
+            type: "details",
+            attrs: { title: "Details", open: true },
+            content: [{ type: "paragraph" }],
+          })
+          .run();
+        break;
+      case "divider":
+        chain.setHorizontalRule().run();
+        break;
+      case "markdown":
+        this.toggleSource();
+        break;
+      case "block":
+        openBlockActions(this.editor);
+        break;
+      case "attachment":
+        this.filePicker.nativeElement.click();
+        break;
+    }
+    this.positionToolbar();
+  }
+  tableAction(action: string) {
+    if (!this.editor || this.readOnly()) return;
+    const chain = this.editor.chain().focus();
+    switch (action) {
+      case "rowBefore":
+        chain.addRowBefore().run();
+        break;
+      case "rowAfter":
+        chain.addRowAfter().run();
+        break;
+      case "columnBefore":
+        chain.addColumnBefore().run();
+        break;
+      case "columnAfter":
+        chain.addColumnAfter().run();
+        break;
+      case "deleteRow":
+        chain.deleteRow().run();
+        break;
+      case "deleteColumn":
+        chain.deleteColumn().run();
+        break;
+    }
   }
   private mount(doc: JSONContent) {
+    this.attachmentSupport?.destroy();
     this.editor?.destroy();
+    this.attachmentSupport = createAttachmentSupport(
+      this.attachments,
+      () => this.editor,
+      () => this.documentID(),
+      (message) => this.notice.set(message),
+    );
     const owner = this;
     const Reference = Node.create({
       name: "sourceReference",
-      group: "block",
+      group: "managedBlock",
       atom: true,
       draggable: true,
       addAttributes() {
@@ -527,7 +568,7 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
     });
     const LinkedTask = Node.create({
       name: "linkedTask",
-      group: "block",
+      group: "managedBlock",
       atom: true,
       draggable: true,
       addAttributes() {
@@ -621,7 +662,11 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
           const refresh = () => {
             const meta = current.attrs["maple"] as BlockMetadata | undefined;
             const request = /^@maple\b/i.test(current.textContent);
-            button.hidden = !request || owner.readOnly();
+            const pos = getPos();
+            const nested =
+              typeof pos === "number" &&
+              editor.state.doc.resolve(pos).depth > 0;
+            button.hidden = !request || owner.readOnly() || nested;
             dom.classList.toggle(
               "maple-request",
               request || meta?.kind === "maple-request",
@@ -673,10 +718,12 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
       editable: !this.readOnly(),
       extensions: [
         StarterKit.configure({
+          document: false,
           paragraph: false,
           codeBlock: false,
           link: { openOnClick: false, protocols: ["https", "http", "mailto"] },
         }),
+        Document.extend({ content: "(block | managedBlock)+" }),
         MapleParagraph,
         Placeholder.configure({
           placeholder:
@@ -687,6 +734,24 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         CodeBlockWithLanguage,
         ...getTableExtensions(),
         StableBlockIdentity,
+        MarkdownPaste.configure({
+          parseMarkdown: (text: string) => {
+            const decoded = decodeDaily(text);
+            if (decoded.sourceOnly) throw new Error(decoded.reason);
+            return decoded.doc.content ?? [];
+          },
+        }),
+        MapleCallout,
+        MapleDetails,
+        SingleTildeStrike,
+        this.attachmentSupport.node,
+        ...createDailyInteractionExtensions({
+          onSource: () => this.sourceRequested.emit(),
+          onMaple: () => this.addRequest(),
+          onAttachment: () => this.filePicker.nativeElement.click(),
+          onClear: (id) => this.clearRequested.emit(id),
+          onError: (message) => this.notice.set(message),
+        }),
         Reference,
         LinkedTask,
       ],
@@ -694,30 +759,17 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         ? { type: "doc", content: [{ type: "paragraph" }] }
         : doc,
       editorProps: {
+        handlePaste: (view, event) =>
+          this.attachmentSupport?.handlePaste(view, event) ?? false,
+        handleDrop: (view, event, slice, moved) =>
+          this.attachmentSupport?.handleDrop(view, event, slice, moved) ??
+          false,
         attributes: {
           role: "textbox",
           "aria-label": "Daily note editor",
           "aria-multiline": "true",
         },
         handleKeyDown: (_, event) => {
-          if (this.insertionMenu()) {
-            if (event.key === "Escape") {
-              this.insertionMenu.set(false);
-              return true;
-            }
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
-              this.insertionIndex.update(
-                (value) => (value + (event.key === "ArrowDown" ? 1 : 3)) % 4,
-              );
-              return true;
-            }
-            if (event.key === "Enter") {
-              event.preventDefault();
-              this.chooseInsertion(this.insertionIndex());
-              return true;
-            }
-          }
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             const selected = this.editor?.state.selection.$from;
             if (selected) {
@@ -742,18 +794,24 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         },
       },
       onUpdate: () => {
-        const parent = this.editor!.state.selection.$from.parent;
-        this.insertionMenu.set(
-          parent.type.name === "paragraph" && parent.textContent === "/",
-        );
         this.raw = encodeDaily(this.prefix, this.editor!.getJSON());
         this.changed.emit(this.raw);
+      },
+      onTransaction: () => {
+        this.selectionRevision.update((value) => value + 1);
+        this.positionToolbar();
       },
     });
   }
   submitAt(pos: number) {
     const editor = this.editor;
     if (!editor || this.readOnly()) return;
+    if (editor.state.doc.resolve(pos).depth > 0) {
+      this.notice.set(
+        "Move this Maple request outside its container to ask it inline.",
+      );
+      return;
+    }
     const node = editor.state.doc.nodeAt(pos);
     if (!node) return;
     const text = node.textContent.replace(/^@maple\s*/i, "").trim();
@@ -773,24 +831,14 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
     );
     this.submitted.emit({ blockID: meta.id, text });
   }
-  chooseInsertion(index: number) {
-    const editor = this.editor;
-    if (!editor) return;
-    const selected = editor.state.selection.$from;
-    if (selected.parent.textContent === "/")
-      editor.commands.deleteRange({
-        from: selected.start(),
-        to: selected.end(),
-      });
-    this.insertionMenu.set(false);
-    if (index === 0) editor.chain().focus().toggleHeading({ level: 2 }).run();
-    else if (index === 1) editor.chain().focus().toggleTaskList().run();
-    else if (index === 2) this.sourceRequested.emit();
-    else this.addRequest();
-  }
   sourceChanged(raw: string) {
     this.raw = raw;
     this.changed.emit(raw);
+  }
+  filesSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.attachmentSupport?.addFiles(Array.from(input.files ?? []));
+    input.value = "";
   }
   toggleSource() {
     if (this.source()) {
@@ -806,28 +854,36 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
     } else this.source.set(true);
   }
   addRequest() {
-    this.editor
-      ?.chain()
-      .focus()
-      .insertContent([
-        { type: "paragraph", content: [{ type: "text", text: "@maple " }] },
-      ])
-      .run();
+    this.insertManagedBlock(
+      { type: "paragraph", content: [{ type: "text", text: "@maple " }] },
+      false,
+    );
+  }
+  private insertManagedBlock(node: JSONContent, trailing = true) {
+    const editor = this.editor;
+    if (!editor || this.readOnly() || this.source()) return false;
+    const selected = editor.state.selection.$from;
+    const chain = editor.chain().focus();
+    const content = trailing ? [node, { type: "paragraph" }] : [node];
+    // Canonical source/request identities are indexed as top-level blocks.
+    // Keep them outside list/callout/details containers until nested indexing exists.
+    return selected.depth > 1
+      ? chain.insertContentAt(selected.after(1), content).run()
+      : chain.insertContent(content).run();
   }
   insertReference(reference: SourceReference) {
     if (this.source() || this.readOnly()) return false;
-    return (
-      this.editor
-        ?.chain()
-        .focus()
-        .insertContent([
-          { type: "sourceReference", attrs: { reference } },
-          { type: "paragraph" },
-        ])
-        .run() ?? false
-    );
+    return this.insertManagedBlock({
+      type: "sourceReference",
+      attrs: { reference },
+    });
   }
   ngOnDestroy() {
+    this.attachmentSupport?.destroy();
+    this.resizeObserver?.disconnect();
+    window.removeEventListener("resize", this.positionToolbar);
+    window.visualViewport?.removeEventListener("resize", this.positionToolbar);
+    if (this.positionFrame) cancelAnimationFrame(this.positionFrame);
     this.editor?.destroy();
   }
 }

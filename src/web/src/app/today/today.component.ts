@@ -99,12 +99,14 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
         <maple-editor
           #editor
           [initial]="notes.initial()"
-          [showToolbar]="false"
+          [documentID]="doc.documentID"
+          [showToolbar]="true"
           [readOnly]="doc.readOnly || notes.actionBusy()"
           (changed)="notes.change($event)"
           (inspected)="selected.set($event)"
           (submitted)="notes.submit($event.blockID, $event.text)"
           (sourceRequested)="openPicker()"
+          (clearRequested)="notes.blockAction($event, 'clear')"
         />
       }
       <details class="document-organizer">

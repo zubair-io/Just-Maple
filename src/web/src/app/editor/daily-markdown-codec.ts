@@ -1,10 +1,13 @@
-import MarkdownIt from "markdown-it";
+import { createMarkdownParser } from "../notebooks/sugar-editor/markdown-parser";
 import { parseDocument } from "yaml";
 import {
   markdownBodyToDoc,
   ProseMirrorNode,
 } from "../notebooks/sugar-editor/markdown-to-document";
-import { docToMarkdown } from "../notebooks/sugar-editor/document-to-markdown";
+import {
+  docToMarkdown,
+  structuredMarkdown,
+} from "../notebooks/sugar-editor/document-to-markdown";
 import { splitMarkdown } from "../notebooks/markdown-editor.component";
 export interface BlockMetadata {
   v: 1;
@@ -28,7 +31,7 @@ export interface DecodedDaily {
   sourceOnly: boolean;
   reason: string;
 }
-const parser = new MarkdownIt({ html: true });
+const parser = createMarkdownParser();
 const kinds = new Set([
   "email",
   "message",
@@ -158,6 +161,8 @@ export function decodeDaily(raw: string): DecodedDaily {
             },
           },
         ];
+      } else if (token.type === "fence" && token.info === "maple-attachment") {
+        parsed = [parseAttachment(token.content)];
       } else if (token.type === "fence" && token.info === "maple-ref") {
         const ref = JSON.parse(token.content) as SourceReference;
         if (
@@ -177,31 +182,51 @@ export function decodeDaily(raw: string): DecodedDaily {
         const code = ["fence", "code_block"].includes(token.type);
         const stripped = code
           ? segment
-          : segment.replace(
-              /<!-- maple:item (\{[^\n]*?\}) -->\s?/g,
-              (_, json) => {
-                items.push(metadata(json));
-                return "";
-              },
+          : outsideCode(segment, (text) =>
+              text.replace(
+                /<!-- maple:item (\{[^\n]*?\}) -->\s?/g,
+                (_, json) => {
+                  items.push(metadata(json));
+                  return "";
+                },
+              ),
             );
         // These constructs cannot be faithfully represented by our current extension set.
         if (
           !code &&
           /<\/?[a-z!]|!\[|\[\[|```maple:|\{(?:id|priority|due|color)[:=]|^\[\^[^\]]+\]:|^\$\$/im.test(
-            stripped,
+            outsideCode(stripped, (text) => text.replace(/<\/?u>/g, ""), true),
           )
         )
           throw Error("Extended Markdown is preserved in source mode");
-        if (token.type === "fence" && token.info.startsWith("maple"))
+        if (
+          token.type === "fence" &&
+          token.info.startsWith("maple") &&
+          token.info !== "maple-table"
+        )
           throw Error("Unknown Maple extension");
         parsed = markdownBodyToDoc(stripped).content ?? [];
         let itemIndex = 0;
         const visit = (node: ProseMirrorNode) => {
+          if (
+            node.type === "codeBlock" &&
+            node.attrs?.["language"] === "maple-attachment"
+          ) {
+            const attachment = parseAttachment(
+              node.content?.map((n) => n.text ?? "").join("") ?? "",
+            );
+            node.type = attachment.type;
+            node.attrs = attachment.attrs;
+            delete node.content;
+          }
           if (["listItem", "taskItem"].includes(node.type)) {
-            const identity = items[itemIndex++] ?? {
-              v: 1,
-              id: crypto.randomUUID(),
-            };
+            const identity = items[itemIndex++] ??
+              (node.attrs?.["maple"]
+                ? metadata(JSON.stringify(node.attrs["maple"]))
+                : undefined) ?? {
+                v: 1,
+                id: crypto.randomUUID(),
+              };
             if (seen.has(identity.id))
               throw Error("Duplicate block identities require reconciliation");
             seen.add(identity.id);
@@ -268,16 +293,30 @@ function listMarkdown(node: ProseMirrorNode, depth = 0): string {
         bullet +
         marker +
         children
-          .map((child, i) =>
-            ["bulletList", "orderedList", "taskList"].includes(child.type)
-              ? "\n" +
-                listMarkdown(child, depth + 1)
-                  .split("\n")
-                  .map((line) => "  " + line)
-                  .join("\n")
-              : (i ? "\n\n  " : "") +
-                docToMarkdown({ type: "doc", content: [child] }),
-          )
+          .map((child, i) => {
+            const nestedList = [
+              "bulletList",
+              "orderedList",
+              "taskList",
+            ].includes(child.type);
+            const body = nestedList
+              ? listMarkdown(child, depth + 1)
+              : child.type === "attachment"
+                ? attachmentMarkdown(child)
+                : ["callout", "details"].includes(child.type)
+                  ? structuredMarkdown(child, structuredBody(child))
+                  : docToMarkdown({ type: "doc", content: [child] });
+            const indent = " ".repeat(
+              node.type === "orderedList" ? bullet.length : 2,
+            );
+            const lines = body.split("\n");
+            return (
+              (i ? (nestedList ? "\n" : "\n\n") : "") +
+              lines
+                .map((line, index) => (i || index ? indent : "") + line)
+                .join("\n")
+            );
+          })
           .join("")
       );
     })
@@ -294,6 +333,7 @@ export function encodeDaily(prefix: string, doc: ProseMirrorNode): string {
         let body: string;
         if (node.type === "linkedTask")
           body = String(node.attrs?.["markdown"] ?? "");
+        else if (node.type === "attachment") body = attachmentMarkdown(node);
         else if (node.type === "sourceReference")
           body =
             "```maple-ref\n" +
@@ -301,10 +341,112 @@ export function encodeDaily(prefix: string, doc: ProseMirrorNode): string {
             "\n```";
         else if (["bulletList", "orderedList", "taskList"].includes(node.type))
           body = listMarkdown(node);
+        else if (["callout", "details"].includes(node.type))
+          body = structuredMarkdown(node, structuredBody(node));
         else body = docToMarkdown({ type: "doc", content: [node] });
         return header + (body || "<!-- maple:empty -->");
       })
       .join("\n\n") +
     "\n"
   );
+}
+
+function structuredBody(node: ProseMirrorNode): string {
+  return (node.content ?? [])
+    .map((child) => {
+      if (child.type === "attachment") return attachmentMarkdown(child);
+      if (["callout", "details"].includes(child.type))
+        return structuredMarkdown(child, structuredBody(child));
+      if (["bulletList", "orderedList", "taskList"].includes(child.type))
+        return listMarkdown(child);
+      return docToMarkdown({ type: "doc", content: [child] });
+    })
+    .join("\n\n");
+}
+
+function attachmentMarkdown(node: ProseMirrorNode): string {
+  const attrs = node.attrs ?? {};
+  return (
+    "```maple-attachment\n" +
+    JSON.stringify({
+      v: 1,
+      ref: attrs["ref"] ?? null,
+      name: attrs["name"] ?? "",
+      mimeType: attrs["mimeType"] ?? "",
+      byteCount: attrs["byteCount"] ?? 0,
+      kind: attrs["kind"] ?? "file",
+      uploadID: attrs["uploadID"] ?? null,
+    }) +
+    "\n```"
+  );
+}
+
+function parseAttachment(raw: string): ProseMirrorNode {
+  const attachment = JSON.parse(raw);
+  if (
+    attachment.v !== 1 ||
+    !["image", "file"].includes(attachment.kind) ||
+    typeof attachment.name !== "string" ||
+    typeof attachment.mimeType !== "string" ||
+    !Number.isSafeInteger(attachment.byteCount) ||
+    attachment.byteCount < 0 ||
+    (attachment.uploadID != null && typeof attachment.uploadID !== "string") ||
+    (attachment.ref != null &&
+      !/^Attachments\/[0-9a-f]{64}\.(png|jpg|gif|webp|pdf|txt|m4a|mp3|wav|bin)$/.test(
+        attachment.ref,
+      )) ||
+    Object.keys(attachment).some(
+      (key) =>
+        ![
+          "v",
+          "ref",
+          "name",
+          "mimeType",
+          "byteCount",
+          "kind",
+          "uploadID",
+        ].includes(key),
+    )
+  )
+    throw Error("Unsupported attachment reference");
+  return {
+    type: "attachment",
+    attrs: {
+      ref: attachment.ref ?? null,
+      name: attachment.name,
+      mimeType: attachment.mimeType,
+      byteCount: attachment.byteCount,
+      kind: attachment.kind,
+      uploadID: attachment.uploadID ?? null,
+    },
+  };
+}
+
+function outsideCode(
+  value: string,
+  transform: (text: string) => string,
+  maskCode = false,
+): string {
+  let fence = "";
+  return value
+    .split("\n")
+    .map((line) => {
+      const match = /^\s*(`{3,}|~{3,})/.exec(line);
+      if (match) {
+        if (!fence) {
+          fence = match[1];
+          return maskCode ? "" : line;
+        }
+        if (
+          match[1][0] === fence[0] &&
+          match[1].length >= fence.length &&
+          line.trim() === match[1]
+        ) {
+          fence = "";
+          return maskCode ? "" : line;
+        }
+      }
+      return fence ? (maskCode ? "" : line) : transform(line);
+    })
+    .join("\n");
 }

@@ -1,108 +1,117 @@
-import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
-import { marked } from 'marked';
-import { markdownBodyToDoc } from './markdown-to-document';
+import { Extension } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { markdownBodyToDoc, ProseMirrorNode } from "./markdown-to-document";
+import { createMarkdownParser } from "./markdown-parser";
 
-/**
- * Markdown Paste Extension
- * Detects markdown content when pasting and converts it to rich text
- */
-
-// Patterns that indicate markdown content
-const MARKDOWN_PATTERNS = [
-  /^#{1,6}\s+.+$/m, // Headers: # Header
-  /^\*\*[^*]+\*\*/, // Bold: **text**
-  /^__[^_]+__/, // Bold: __text__
-  /^\*[^*]+\*/, // Italic: *text*
-  /^_[^_]+_/, // Italic: _text_
-  /^~~[^~]+~~/, // Strikethrough: ~~text~~
-  /^`[^`]+`/, // Inline code: `code`
-  /^```[\s\S]*?```/m, // Code block: ```code```
-  /^\s*[-*+]\s+.+$/m, // Unordered list: - item
-  /^\s*\d+\.\s+.+$/m, // Ordered list: 1. item
-  /^\s*>\s+.+$/m, // Blockquote: > quote
-  /^\s*\[.+\]\(.+\)/, // Link: [text](url)
-  /^\s*!\[.*\]\(.+\)/, // Image: ![alt](url)
-  /^\s*-{3,}$/m, // Horizontal rule: ---
-  /^\s*\*{3,}$/m, // Horizontal rule: ***
-  /^\s*_{3,}$/m, // Horizontal rule: ___
-  /^\s*\|.+\|$/m, // Table: | cell |
-  /^\s*\[[ x]\]/im, // Task list: [ ] or [x]
-];
-
-/**
- * Checks if text content appears to be markdown
- * @exported for testing
- */
 export function isMarkdownContent(text: string): boolean {
-  // Ignore very short strings
-  if (text.length < 3) {
-    return false;
-  }
-
-  // Check if any markdown pattern matches
-  return MARKDOWN_PATTERNS.some((pattern) => pattern.test(text));
+  return /<!-- maple:block |(^|\n)(?:#{1,6} |\s*[-*+] |\s*\d+\. |>|`{3}|~{3}|:{3}(?:callout|details)|\|)|\*\*[^*]+\*\*|\*[^*\n]+\*|~[^~\n]+~|`[^`]+`|\[[^\]]+\]\([^)]+\)/.test(
+    text,
+  );
 }
 
-/**
- * Convert markdown to HTML using marked
- * @exported for testing
- */
-export async function markdownToHtml(markdown: string): Promise<string> {
-  // Configure marked for safe HTML output
-  const html = await marked.parse(markdown, {
-    gfm: true, // GitHub Flavored Markdown
-    breaks: true, // Convert line breaks to <br>
+/** External rich text brings structure, never styles, handlers or active URLs. */
+export function sanitizePastedHTML(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc
+    .querySelectorAll(
+      "script,style,iframe,object,embed,link,meta,base,form,input,button,textarea,select,svg,math",
+    )
+    .forEach((el) => el.remove());
+  doc.querySelectorAll("*").forEach((el) => {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      const structural = [
+        "colspan",
+        "rowspan",
+        "start",
+        "open",
+        "data-type",
+        "data-checked",
+        "data-kind",
+        "data-maple-callout",
+        "data-maple-details",
+        "data-details-content",
+        "data-language",
+        "data-maple-reference",
+        "data-task-id",
+        "data-label",
+        "data-markdown",
+      ];
+      if (name === "href") {
+        if (!/^(https?:|mailto:|tel:|#)/i.test(attr.value.trim()))
+          el.removeAttribute(attr.name);
+      } else if (!structural.includes(name)) el.removeAttribute(attr.name);
+    }
   });
-
-  return html;
+  doc.querySelectorAll("details").forEach((details) => {
+    if (details.querySelector(":scope > [data-details-content]")) return;
+    const content = doc.createElement("div");
+    content.setAttribute("data-details-content", "");
+    Array.from(details.childNodes)
+      .filter(
+        (node) => !(node instanceof Element && node.tagName === "SUMMARY"),
+      )
+      .forEach((node) => content.append(node));
+    details.append(content);
+  });
+  return doc.body.innerHTML;
+}
+export async function markdownToHtml(markdown: string): Promise<string> {
+  return sanitizePastedHTML(createMarkdownParser().render(markdown));
 }
 
+/** Clipboard copies are new blocks, never replays of an agent request or task command. */
+export function remapPastedIdentities(
+  nodes: ProseMirrorNode[],
+): ProseMirrorNode[] {
+  return nodes.map((node) => {
+    const attrs = { ...node.attrs };
+    const meta = attrs["maple"] as Record<string, unknown> | undefined;
+    if (meta)
+      attrs["maple"] = {
+        v: 1,
+        id: crypto.randomUUID(),
+        ...(meta["taskID"] ? { taskID: meta["taskID"] } : {}),
+      };
+    return {
+      ...node,
+      ...(node.attrs ? { attrs } : {}),
+      ...(node.content ? { content: remapPastedIdentities(node.content) } : {}),
+    };
+  });
+}
 export const MarkdownPaste = Extension.create({
-  name: 'markdownPaste',
-
+  name: "markdownPaste",
+  addOptions() {
+    return {
+      parseMarkdown: (text: string) => markdownBodyToDoc(text).content ?? [],
+    };
+  },
   addProseMirrorPlugins() {
     const editor = this.editor;
-
+    const parse = this.options.parseMarkdown;
     return [
       new Plugin({
-        key: new PluginKey('markdownPaste'),
+        key: new PluginKey("markdownPaste"),
         props: {
-          handlePaste(view, event, slice) {
-            const clipboardData = event.clipboardData;
-            if (!clipboardData) {
+          transformPastedHTML: sanitizePastedHTML,
+          handlePaste(view, event) {
+            const data = event.clipboardData;
+            if (!data || view.state.selection.$from.parent.type.spec.code)
               return false;
-            }
-
-            // Check if HTML content is available - if so, let default handler process it
-            // This prevents double-processing of rich content (e.g., from web pages)
-            const htmlContent = clipboardData.getData('text/html');
-            if (htmlContent && htmlContent.trim()) {
-              // HTML content exists, let TipTap's default handler process it
-              return false;
-            }
-
-            // Get plain text content
-            const textContent = clipboardData.getData('text/plain');
-            if (!textContent || !textContent.trim()) {
-              return false;
-            }
-
-            // Check if the text looks like markdown
-            if (!isMarkdownContent(textContent)) {
-              // Not markdown, let default handler process it
-              return false;
-            }
-
-            // Prevent default paste handling
+            const html = data.getData("text/html");
+            if (html.trim()) return false; // sanitized above; schema and identity plugin process the slice.
+            const text = data.getData("text/plain");
+            if (!text.trim() || !isMarkdownContent(text)) return false;
             event.preventDefault();
-
-            // Use the copied parser directly: preserve checkboxes and avoid an
-            // asynchronous HTML paste applying at a subsequently moved cursor.
-            try {editor.commands.insertContent(markdownBodyToDoc(textContent).content || []);}
-            catch {view.dispatch(view.state.tr.insertText(textContent));}
-
-            // Return true to indicate we handled the paste
+            try {
+              // Reserved metadata in plain text is not authority. Keep the visible text and
+              // strip only actual comment markers outside code via the parsed node tree.
+              const parsed = remapPastedIdentities(parse(text));
+              editor.commands.insertContent(parsed);
+            } catch {
+              view.dispatch(view.state.tr.insertText(text));
+            }
             return true;
           },
         },

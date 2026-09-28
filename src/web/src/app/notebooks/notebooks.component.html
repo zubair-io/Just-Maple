@@ -139,11 +139,13 @@
               @for (key of [managed.generation()]; track key) {
                 <maple-editor
                   [initial]="managed.initial()"
+                  [documentID]="managedDoc.documentID"
                   [readOnly]="managedDoc.readOnly || managed.actionBusy()"
                   (changed)="managed.change($event)"
                   (inspected)="selected.set($event)"
                   (submitted)="managed.submit($event.blockID, $event.text)"
                   (sourceRequested)="openPicker()"
+                  (clearRequested)="managed.blockAction($event, 'clear')"
                 />
               }
             }
