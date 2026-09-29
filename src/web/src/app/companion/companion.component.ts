@@ -1,6 +1,4 @@
-import { localDay } from "../daily-note/daily-note.models";
-import { DailyNoteComponent } from "../daily-note/daily-note.component";
-import { DailyNoteService } from "../daily-note/daily-note.service";
+import { CompanionTodayComponent, CompanionTodayService } from "./companion-today.component";
 import { CompanionGroupsComponent, ReviewedGroup, GroupAction, GroupReceipt } from './companion-groups.component';
 import { SourceInspectorComponent } from '../sources/source-inspector.component';
 import { SourceEvidence } from '../sources/source.models';
@@ -21,20 +19,20 @@ export interface CompanionCapture { id: string; text: string; createdAt: string 
 export interface CompanionSnapshot {groupActions?:GroupAction[];groupActionReceipts?:GroupReceipt[]; deviceID: string; captures: CompanionCapture[]; taskActions?:CompanionTaskAction[];taskActionReceipts?:{id:string;outcome:string;resultingVersion?:number}[]; receivedIDs?:string[]; uploadedIDs?:string[]; cloudEnabled?:boolean; paired?:boolean; connectionStatus?:string;
   mac?:{reviewedGroups?:ReviewedGroup[];reviewedGroupTotal?:number;supportedGroupIntents?:string[];asOf:string;needsYouTotal?:number;waitingTotal?:number;laterTotal?:number;supportedTaskIntents?:string[];displayName?:string;activities?:{id:string;name:string;kind:string;lifecycle:string;openTaskCount:number}[];people?:{id:string;name:string;pinned:boolean;relationship:string}[];tasks:CompanionTask[];states:{property:string;status:string;value?:string}[]} }
 @Component({
-  selector: 'maple-companion', standalone: true, imports: [DailyNoteComponent, CompanionGroupsComponent, SourceInspectorComponent, TaskActionsComponent, NgTemplateOutlet, FormsModule, MuiButtonComponent, NotebooksComponent, OverviewSurfaceComponent],
+  selector: 'maple-companion', standalone: true, imports: [CompanionTodayComponent, CompanionGroupsComponent, SourceInspectorComponent, TaskActionsComponent, NgTemplateOutlet, FormsModule, MuiButtonComponent, NotebooksComponent, OverviewSurfaceComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="companion">
       <header><img src="maple-leaf.svg" alt="Just Maple leaf"/><span>Just Maple</span></header>
       <nav class="companion-nav" aria-label="Companion sections">
         @for (tab of tabs.slice(0, 2); track tab.id) {<mui-button variant="ghost" [fullWidth]="true" [attr.aria-current]="view() === tab.id ? 'page' : null" (pressed)="selectView(tab.id)">{{ tab.label }}</mui-button>}
-        <details class="companion-tools"><summary>More</summary><div>@for(tab of tabs.slice(2);track tab.id){<mui-button variant="ghost" [fullWidth]="true" (pressed)="selectView(tab.id)">{{tab.label}}</mui-button>}</div></details>
+        <div class="companion-tools"><button type="button" [attr.aria-expanded]="moreOpen()" aria-controls="companion-more" (click)="moreOpen.set(!moreOpen())">More</button>@if(moreOpen()){<div id="companion-more">@for(tab of tabs.slice(2);track tab.id){<mui-button variant="ghost" [fullWidth]="true" (pressed)="selectView(tab.id)">{{tab.label}}</mui-button>}</div>}</div>
       </nav>
       <p class="sync-status" role="status">{{ state().connectionStatus || 'Connecting to iCloud…' }}</p>
       @if (state().mac; as mac) {<p class="muted sync-time">Last synced {{ date(mac.asOf) }} · Available offline</p>
       @if(partialSnapshot()){<p class="muted">Showing a limited set from your Mac. More tasks are available there.</p>}}
       @if (error()) {<p class="error notice" role="alert">{{ error() }}</p>}
-      @if (view() === 'daily') {<maple-daily-note />}
+      @if (view() === 'daily') {<maple-companion-today />}
       @else if (view() === 'notebooks') {<main class="notebooks-page"><maple-notebooks /></main>}
       @else if (view() === 'overview') {<main>
         @if (state().mac; as mac) {
@@ -101,7 +99,7 @@ export interface CompanionSnapshot {groupActions?:GroupAction[];groupActionRecei
       </section>}
     </div>`,
   styles: [`
-    .companion-tools{position:relative}.companion-tools summary{text-align:center;font-size:14px;padding:10px;min-height:40px}.companion-tools[open]>div{position:absolute;z-index:25;right:0;width:180px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:8px;box-shadow:var(--shadow-soft)}
+    .companion-tools{position:relative}.companion-tools>button{width:100%;text-align:center;font-size:14px;padding:10px;min-height:40px}.companion-tools>div{position:absolute;z-index:25;right:0;width:180px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:8px;box-shadow:var(--shadow-soft)}
     .task-detail{position:fixed;z-index:20;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));max-height:75dvh;overflow:auto;max-width:640px;margin:auto;padding:20px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:16px;box-shadow:0 10px 40px #0003}.task-detail p{white-space:pre-wrap;overflow-wrap:anywhere}.task-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.companion-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:-16px 0 28px;padding:5px;border:1px solid var(--color-border);border-radius:12px}.companion-nav button{flex:1;border:0;border-radius:8px;padding:12px;background:transparent;color:var(--color-text-muted);font:inherit;font-size:14px;min-height:44px}.companion-nav button[aria-current="page"]{background:var(--color-bg-secondary);color:var(--color-text-main);font-weight:600}.companion-nav button:focus-visible{outline:2px solid var(--color-primary)}.notebooks-page{min-width:0}
     .tags{display:flex;gap:6px;flex-wrap:wrap}.tags span{border:1px solid color-mix(in srgb,currentColor 20%,transparent);border-radius:20px;padding:3px 9px;font-size:12px}
     :host{display:block;min-height:100dvh;color:var(--color-text-main);background:var(--color-bg)}
@@ -115,7 +113,8 @@ export class CompanionComponent implements OnDestroy {
   private timer = setInterval(()=>{if(!this.busy())void this.load();},3000);
   ngOnDestroy(){clearInterval(this.timer);}
   readonly notes=inject(NotebookService);
-  readonly daily=inject(DailyNoteService);
+  readonly daily=inject(CompanionTodayService);
+  readonly moreOpen=signal(false);
   readonly tabs=[{id:'daily',label:'Today'},{id:'notebooks',label:'Notebooks'},{id:'overview',label:'Overview'},{id:'tasks',label:'Tasks'},{id:'people',label:'People'},{id:'capture',label:'Capture'}] as const;
   readonly view=signal<'daily'|'overview'|'tasks'|'activities'|'people'|'notebooks'|'capture'>('daily');
   readonly activityFilter=signal('');
@@ -165,7 +164,7 @@ export class CompanionComponent implements OnDestroy {
   showTasks(){this.clearTaskFilters();void this.selectView('tasks');}
   filterTasks(name:string){this.clearTaskFilters();this.activityFilter.set(name);void this.selectView('tasks');}
   showActivity(id:string){const a=this.state().mac?.activities?.find(a=>a.id===id);if(a){this.clearTaskFilters();this.activityFilterID.set(id);void this.selectView('tasks');}}
-  async selectView(view:'daily'|'overview'|'tasks'|'activities'|'people'|'notebooks'|'capture'){if(view==='daily' && this.daily.day() !== localDay()){if(!await this.daily.open(localDay()))return;}if(this.view()===view)return;if(this.view()==='daily' && !await this.daily.flush())return;if(this.view()==='notebooks' && !await this.notes.flush())return;this.view.set(view);}
+  async selectView(view:'daily'|'overview'|'tasks'|'activities'|'people'|'notebooks'|'capture'){if(this.view()==='notebooks' && !await this.notes.flush())return;this.moreOpen.set(false);if(view==='daily')void this.daily.openToday();if(this.view()!==view)this.view.set(view);}
   readonly state=signal<CompanionSnapshot>({deviceID:'',captures:[]});
   readonly busy=signal(false); readonly loaded=signal(false); readonly error=signal(''); readonly saved=signal(false);
   draft=''; requestID='';

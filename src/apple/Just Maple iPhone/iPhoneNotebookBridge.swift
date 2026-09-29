@@ -21,12 +21,27 @@ import UniformTypeIdentifiers
         self.directory = directory; self.library = library; self.cloudRootProvider = cloudRootProvider
     }
 
-    static let actions: Set<String> = ["notebookCatalog", "notebookConnect", "notebookDisconnect", "notebookCreate", "noteDraft", "noteReadDraft", "noteCreate", "noteRead", "noteSave"]
+    static let actions: Set<String> = ["todayRead", "notebookCatalog", "notebookConnect", "notebookDisconnect", "notebookCreate", "noteDraft", "noteReadDraft", "noteCreate", "noteRead", "noteSave"]
 
     func command(_ action: String, body: [String: Any], presenting: UIViewController? = nil, store: CompanionStore) async throws -> Any {
         guard Self.actions.contains(action) else { throw NotebookError.invalid("Unsupported notebook action.") }
         let library = try await notebookLibrary()
         switch action {
+        case "todayRead":
+            let day = try string(body, "day", limit: 10)
+            let id = try await library.ensureJustMapleDailyNotebook()
+            let folder = try await library.prepareDailyDirectory(notebookID: id, day: day)
+            // Resolve the same app-owned file as the Mac, never the legacy block cache.
+            // Absence is not permission to create a competing document on the phone.
+            let current = try await library.readIfPresent(notebookID: id, path: folder + "/" + day + ".md")
+            let document: NotebookDocument?
+            if let current { document = current }
+            else { document = try await library.readIfPresent(notebookID: id, path: "Daily/" + day + ".md") }
+            guard let document else { throw NotebookError.invalid("This day's note has not arrived in iCloud Drive yet. Open this day on your Mac, then retry here.") }
+            var result = try json(document) as! [String: Any]
+            result["day"] = day
+            result["readOnly"] = true
+            return result
         case "notebookCatalog": return try json(try await library.catalog())
         case "notebookConnect":
             guard let presenting else { throw NotebookError.invalid("Open Maple to choose a notebook folder.") }

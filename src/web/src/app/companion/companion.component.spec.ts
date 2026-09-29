@@ -7,12 +7,12 @@ describe('iPhone companion',()=>{
   it('opens the shared daily note by default and keeps phone sync state visible',async()=>{
     (window as any).mapleHost='iphone';
     const now=new Date();const day=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-    const send=vi.fn(async(body:any)=>body.action==='dailyNote'?{day,timeZone:'UTC',blocks:[],cleared:[],revision:1,sync:{status:'cached',pending:[],conflicts:[],asOf:1}}:{deviceID:'fixture',captures:[],connectionStatus:'Waiting for your Mac'});
+    const send=vi.fn(async(body:any)=>body.action==='todayRead'?{day,path:'2026/09/'+day+'.md',content:'Shared iCloud writing from the Mac',revision:'fixture-revision',readOnly:true}:{deviceID:'fixture',captures:[],connectionStatus:'Waiting for your Mac'});
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
     const fixture=TestBed.createComponent(CompanionComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
-    expect(fixture.componentInstance.view()).toBe('daily');expect(fixture.nativeElement.querySelector('maple-daily-note')).not.toBeNull();
-    expect(fixture.nativeElement.textContent).toContain('Waiting for your Mac');expect(fixture.nativeElement.textContent).toContain('Cached from your Mac');
-    expect(fixture.nativeElement.textContent).toContain('A little breathing room.');expect(send.mock.calls.map(c=>c[0].action)).toContain('dailyNote');
+    expect(fixture.componentInstance.view()).toBe('daily');expect(fixture.nativeElement.querySelector('maple-companion-today')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Waiting for your Mac');expect(fixture.nativeElement.textContent).toContain('Same iCloud document as your Mac');
+    expect(fixture.nativeElement.textContent).toContain('Shared iCloud writing from the Mac');expect(send.mock.calls.map(c=>c[0].action)).toContain('todayRead');
   });
   it('keeps a failed capture draft and reuses its request ID for a safe retry',async()=>{
     const send=vi.fn().mockResolvedValueOnce({deviceID:'fixture',captures:[]}).mockRejectedValueOnce(new Error('write failed')).mockResolvedValueOnce({deviceID:'fixture',captures:[{id:'fixture',text:'Keep this thought',createdAt:new Date().toISOString()}]});
