@@ -1,3 +1,4 @@
+import { DatePipe } from "@angular/common";
 import {
   Component,
   ChangeDetectionStrategy,
@@ -13,6 +14,7 @@ import { SourcesService, SourceRow } from "../sources/sources.service";
 @Component({
   selector: "maple-source-reference",
   standalone: true,
+  imports: [DatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: ` <article
     class="source-card"
@@ -32,7 +34,11 @@ import { SourcesService, SourceRow } from "../sources/sources.service";
       {{ row()?.subject || reference().label || "Open captured source" }}
     </button>
     @if (row(); as source) {
+      @if (source.attentionReason) {
+        <p class="source-attention">{{ source.attentionReason }}</p>
+      }
       <p>{{ source.preview }}</p>
+      <time [attr.datetime]="observedDate() | date: 'yyyy-MM-ddTHH:mm:ssZZZZZ'">{{ observedDate() | date: 'MMM d, h:mm a' }}</time>
       @if (kindLabel() === "Home event" && source.observedState) {
         <p class="source-observed-state">
           Observed state · {{ source.observedState }}
@@ -131,6 +137,8 @@ import { SourcesService, SourceRow } from "../sources/sources.service";
         outline: 2px solid var(--color-focus, var(--color-primary));
         outline-offset: 4px;
       }
+      .source-attention { color: var(--color-text-main); font-weight: 700; margin-bottom: 4px; }
+      time { display: block; font-size: 12px; color: var(--color-text-muted); margin-bottom: 10px; }
       small {
         font-size: 12px;
         color: var(--color-text-muted);
@@ -143,6 +151,10 @@ export class SourceReferenceComponent {
   readonly inspected = output<string>();
   readonly row = signal<SourceRow | null>(null);
   readonly unavailable = signal(false);
+  observedDate() {
+    const value = this.row()?.occurredAt;
+    return typeof value === "number" ? value * 1000 : value;
+  }
   kindLabel() {
     const row = this.row();
     const kind = row ? sourceReferenceKind(row) : this.reference().kind;

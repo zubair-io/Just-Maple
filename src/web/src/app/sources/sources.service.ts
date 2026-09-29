@@ -32,6 +32,7 @@ export interface SourceRow {
   classificationState?: string;
   analysisState?: string;
   observedState?: string;
+  attentionReason?: string;
 }
 export interface SourcePage {
   schemaVersion: number;

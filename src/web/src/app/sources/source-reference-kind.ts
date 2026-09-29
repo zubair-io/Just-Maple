@@ -15,8 +15,8 @@ export function sourceReferenceKind(
     type.startsWith("home.")
   )
     return "home";
+  if (connector.includes("recording") || type.includes("record")) return "recording";
   if (connector === "imessage" || type.includes("message")) return "message";
-  if (type.includes("record")) return "recording";
   if (connector.includes("calendar") || type.includes("calendar"))
     return "calendar";
   return "source";

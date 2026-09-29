@@ -3,7 +3,7 @@ import Foundation
 struct AutomaticTodayCandidate:Sendable {
     let blockID:String
     let markdown:String
-    let task:Bool
+    let actionItem:Bool
 }
 
 extension KnowledgeStore {
@@ -53,7 +53,7 @@ extension KnowledgeStore {
             guard try automaticIdentityUnused(id) else{continue}
             let title=task.title.replacingOccurrences(of:"\r",with:" ").replacingOccurrences(of:"\n",with:" ").map {c in "\\`*_{}[]<>()#+-.!|~".contains(c) ? "\\"+String(c):String(c)}.joined()
             taskEvidenceIDs.formUnion(task.evidenceIDs)
-            result.append(AutomaticTodayCandidate(blockID:id,markdown:(try ManagedMarkdown.marker(["id":id,"taskID":"task:"+task.id]))+"- [ ] "+title+"\n",task:true))
+            result.append(AutomaticTodayCandidate(blockID:id,markdown:(try ManagedMarkdown.marker(["id":id,"taskID":"task:"+task.id]))+"- [ ] "+title+"\n",actionItem:true))
             if result.count>=min(32,remaining) {break}
         }
         guard result.count<remaining else{return result}
@@ -66,13 +66,13 @@ extension KnowledgeStore {
           JOIN processing_jobs p ON p.event_id=e.id AND p.status='succeeded'
           JOIN decisions d ON d.event_id=e.id
           WHERE e.received_at>=? AND e.received_at<=? AND e.occurred_at>=? AND e.occurred_at<=?
-          AND json_extract(d.json,'$.route') IN ('notify','ask_user')
-          AND EXISTS (SELECT 1 FROM work_items w WHERE w.event_id=e.id AND w.status='unread' AND w.kind IN ('notify','ask_user'))
+          AND json_extract(d.json,'$.route') IN ('notify','ask_user','summarize')
+          AND EXISTS (SELECT 1 FROM work_items w WHERE w.event_id=e.id AND ((w.status='unread' AND w.kind IN ('notify','ask_user')) OR (w.status='proposed' AND w.kind='summarize')) AND w.kind=json_extract(d.json,'$.route'))
           AND e.connector NOT LIKE 'notes%' AND e.connector != 'user' AND \(latest) AND \(active)
           AND NOT EXISTS (SELECT 1 FROM document_block_index b JOIN events old ON old.id=b.event_id WHERE old.connector=e.connector AND old.account=e.account AND old.external_id=e.external_id)
           AND NOT EXISTS (SELECT 1 FROM document_block_index b JOIN life_tasks t ON json_extract(b.json,'$.taskID')='task:'||t.id JOIN json_each(t.json,'$.evidenceIDs') evidence JOIN events linked ON linked.id=evidence.value WHERE linked.connector=e.connector AND linked.account=e.account AND linked.external_id=e.external_id)
           AND \(selectedEvidenceClause)
-          ORDER BY e.received_at DESC,e.rowid DESC LIMIT 64
+          ORDER BY CASE WHEN json_extract(d.json,'$.route')='summarize' THEN 1 ELSE 0 END,e.received_at DESC,e.rowid DESC LIMIT 64
           """,[cutoff,now,cutoff,now]+evidenceParameters)
         var sources=0
         for row in sourceRows {
@@ -82,11 +82,11 @@ extension KnowledgeStore {
             let decision=try self.decision(eventID:event.id)
             let headers=event.content.components(separatedBy:"\n").prefix(16)
             let title=headers.first(where:{$0.hasPrefix("Subject: ") || $0.hasPrefix("Title: ")}).map{String($0.dropFirst($0.hasPrefix("Subject:") ? 9:7))}
-            let label=String((title ?? decision?.explanation.first ?? event.content).prefix(180))
+            let label=String((title ?? headers.first(where: { !$0.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty }) ?? "Captured source").prefix(180))
             let kind=ManagedMarkdown.referenceKind(connector:event.source.connector)
             let data:[String:Any]=["v":1,"kind":kind,"eventID":event.id,"label":label]
             let reference=String(decoding:try JSONSerialization.data(withJSONObject:data,options:.sortedKeys),as:UTF8.self)
-            result.append(AutomaticTodayCandidate(blockID:id,markdown:(try ManagedMarkdown.marker(["id":id]))+"```maple-ref\n"+reference+"\n```\n",task:false));sources+=1
+            result.append(AutomaticTodayCandidate(blockID:id,markdown:(try ManagedMarkdown.marker(["id":id]))+"```maple-ref\n"+reference+"\n```\n",actionItem:decision?.route == .notify || decision?.route == .askUser));sources+=1
             if sources>=32 || result.count>=remaining {break}
         }
         return result
@@ -108,8 +108,8 @@ extension TodayDocumentCoordinator {
             var pending=current;pending.warning="New action items or FYIs are waiting. They will be added after your draft is saved.";return pending
         }
         var content=current.content
-        for (task,title) in [(true,"Action items"),(false,"FYI")] {
-            let group=candidates.filter{$0.task==task};guard !group.isEmpty else{continue}
+        for (actionItem,title) in [(true,"Action items"),(false,"FYI")] {
+            let group=candidates.filter{$0.actionItem==actionItem};guard !group.isEmpty else{continue}
             let heading="auto-heading:"+ManagedMarkdown.hash(documentID+title)
             let addition=group.map(\.markdown).joined(separator:"\n")
             let segments=try ManagedMarkdown.segments(content)

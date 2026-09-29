@@ -46,7 +46,7 @@ public enum ManagedMarkdown {
     /// Use the connector, not the event type: Gmail and Messages both emit message.received.
     static func referenceKind(connector:String) -> String {
         let connector=connector.lowercased()
-        return connector.contains("mail") ? "email":connector.contains("message") ? "message":connector.contains("calendar") ? "calendar":connector.contains("home") ? "home":"source"
+        return connector.contains("mail") ? "email":connector.contains("message") ? "message":connector.contains("calendar") ? "calendar":connector.contains("home") ? "home":connector.contains("recording") ? "recording":"source"
     }
     public static func hash(_ text: String) -> String { SHA256.hash(data: Data(text.utf8)).map { String(format:"%02x",$0) }.joined() }
     public static func day(at date: Date = Date(), timeZone: String = TimeZone.current.identifier) throws -> String {

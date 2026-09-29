@@ -107,13 +107,13 @@ struct AutomaticTodayTests {
         let (root,_,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
         var current=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
         for number in 0..<2 {
-            let source=event("section-\(number)");_ = try await store.ingest(source);try await store.automaticFixtureDecision(source.id,route:.notify,at:now)
+            let source=event("section-\(number)");_ = try await store.ingest(source);try await store.automaticFixtureDecision(source.id,route:.summarize,at:now)
             current=try await coordinator.refreshAutomatic(documentID:current.documentID,at:now)
         }
         #expect(current.content.components(separatedBy:"## FYI").count==2)
         let heading=try #require(current.blocks.first(where:{$0.blockID.hasPrefix("auto-heading:")}))
         current=try await coordinator.commit(documentID:current.documentID,expectedRevision:current.revision,content:current.content.replacingOccurrences(of:heading.content,with:""),commandID:"remove-heading")
-        let source=event("after-removed-heading");_ = try await store.ingest(source);try await store.automaticFixtureDecision(source.id,route:.notify,at:now)
+        let source=event("after-removed-heading");_ = try await store.ingest(source);try await store.automaticFixtureDecision(source.id,route:.summarize,at:now)
         current=try await coordinator.refreshAutomatic(documentID:current.documentID,at:now)
         #expect(!current.content.contains("## FYI"));#expect(current.blocks.contains{$0.eventID==source.id})
     }
@@ -146,8 +146,60 @@ extension KnowledgeStore {
         let decision=Decision(eventID:eventID,route:route,assessment:assessment,context:context,explanation:["Explicit synthetic test fixture"],policyVersion:"test-fixture",createdAt:at)
         try db.execute("INSERT OR REPLACE INTO decisions VALUES (?,?,?)",[eventID,try JSONCodec.string(decision),"test-fixture"])
         try db.execute("UPDATE processing_jobs SET status=? WHERE event_id=?",[success ? "succeeded":"failed",eventID])
-        if [.notify,.askUser].contains(route) {try db.execute("INSERT OR REPLACE INTO work_items VALUES (?,?,?,'unread')",["auto-fixture:"+eventID,eventID,route.rawValue])}
+        if [.notify,.askUser,.summarize].contains(route) {try db.execute("INSERT OR REPLACE INTO work_items VALUES (?,?,?,?)",["auto-fixture:"+eventID,eventID,route.rawValue,route == .summarize ? "proposed":"unread"])}
     }
     fileprivate func automaticFixtureDeactivate(_ event:Event) throws {try db.execute("INSERT OR REPLACE INTO connector_source_records VALUES (?,?,?,?,0)",[event.source.connector,event.source.externalID,"{}",event.id])}
     fileprivate func automaticFixtureCount(_ documentID:String) throws -> Int {Int(try db.rows("SELECT COUNT(*) AS n FROM document_auto_insertions WHERE document_id=?",[documentID]).first?["n"] ?? "0") ?? 0}
+}
+
+extension AutomaticTodayTests {
+    @Test func emailMessageHomeAndRecordingFlowIntoTheRealDocumentAndSurviveReopen() async throws {
+        let (root,library,store,coordinator,id)=try await ManagedDocumentTests().fixture()
+        defer {try? FileManager.default.removeItem(at:root)}
+        let initial=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
+        let email=event("reply",connector:"gmail"),message=event("update",connector:"imessage"),recording=event("transcript",connector:"recording")
+        for (source,route) in [(email,Route.askUser),(message,.summarize),(recording,.summarize)] {
+            _ = try await store.ingest(source)
+            try await store.automaticFixtureDecision(source.id,route:route,at:now)
+        }
+        let home=ConnectorSourceRecord(id:"light.fixture",name:"Fixture lamp",content:"Home Assistant entity: light.fixture\nName: Fixture lamp\nState: on")
+        _ = try await store.ingestSourceSnapshot([home],connector:"home_assistant",now:now)
+        let batchID=try #require(await store.sourceList(query:SourceQuery(types:["home.batch"]),now:now).items.first?.id)
+        try await store.automaticFixtureDecision(batchID,route:.summarize,at:now)
+        let written=try await coordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:initial.content+"My own writing stays here.\n",commandID:"fixture-writing")
+        let result=try await coordinator.refreshAutomatic(documentID:written.documentID,at:now)
+        #expect(result.content.contains("My own writing stays here."))
+        #expect(Set(result.blocks.compactMap(\.eventID)) == Set([email.id,message.id,recording.id,batchID]))
+        let action=try #require(result.content.range(of:"## Action items")),fyi=try #require(result.content.range(of:"## FYI")),emailPosition=try #require(result.content.range(of:email.id))
+        #expect(action.lowerBound < emailPosition.lowerBound && emailPosition.lowerBound < fyi.lowerBound)
+        for source in [message,recording] {#expect(try #require(result.content.range(of:source.id)).lowerBound > fyi.lowerBound)}
+        #expect(result.blocks.compactMap(\.taskID).isEmpty)
+        #expect(result.content.contains("\"kind\":\"recording\""))
+        let reopened=try await TodayDocumentCoordinator(store:store,library:library).refreshAutomatic(documentID:result.documentID,at:now)
+        #expect(reopened.revision == result.revision)
+        #expect(reopened.blocks.compactMap(\.eventID) == result.blocks.compactMap(\.eventID))
+    }
+
+    @Test func summaryRequiresSuccessfulProposedRecentSourceAndClearingDoesNotResurrectIt() async throws {
+        let (root,_,store,coordinator,id)=try await ManagedDocumentTests().fixture()
+        defer {try? FileManager.default.removeItem(at:root)}
+        var current=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
+        for (key,route,success,connector) in [("eligible",Route.summarize,true,"gmail"),("dismissed",.summarize,true,"gmail"),("failed",.summarize,false,"imessage"),("reason",.reason,true,"gmail"),("own-note",.summarize,true,"notes")] {
+            let source=event(key,connector:connector);_ = try await store.ingest(source)
+            try await store.automaticFixtureDecision(source.id,route:route,success:success,at:now)
+            if key == "dismissed" {try await store.automaticFixtureDismiss(source.id)}
+        }
+        current=try await coordinator.refreshAutomatic(documentID:current.documentID,at:now)
+        let block=try #require(current.blocks.first { $0.eventID != nil })
+        #expect(current.blocks.filter { $0.eventID != nil }.count == 1)
+        #expect(block.content.contains("Fixture eligible"))
+        current=try await coordinator.mutateBlock(.init(commandID:"clear-fyi",documentID:current.documentID,expectedRevision:current.revision,blockID:block.blockID,expectedBlockVersion:block.version,kind:"clear"))
+        #expect(try await coordinator.refreshAutomatic(documentID:current.documentID,at:now).revision == current.revision)
+        let next=try await coordinator.open(notebookID:id,day:"2026-10-31",timeZone:"UTC")
+        #expect(try await coordinator.refreshAutomatic(documentID:next.documentID,at:now.addingTimeInterval(13*3600)).blocks.filter { $0.eventID != nil }.isEmpty)
+    }
+}
+
+private extension KnowledgeStore {
+    func automaticFixtureDismiss(_ id:String) throws {try db.execute("UPDATE work_items SET status='dismissed' WHERE event_id=?",[id])}
 }
