@@ -6,3 +6,5 @@ export * from './lib/ui/checkbox/mui-checkbox.component';
 export * from './lib/ui/badge/mui-badge.component';
 export * from './lib/ui/text/mui-text.component';
 export * from './lib/ui/empty-state/mui-empty-state.component';
+
+export * from './lib/icons/maple-icon.component';

@@ -17,6 +17,36 @@ import MapleNotebooks
         let notebooks = try #require(catalog["notebooks"] as? [[String: Any]])
         return try #require(notebooks.first?["id"] as? String)
     }
+    @Test func todayReadsExactMacFileAndNeverCreatesCompetingNote() async throws {
+        let(root,store,bridge)=try fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let folder=root.appendingPathComponent("Cloud/Just Maple/2026/09")
+        try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+        let file=folder.appendingPathComponent("2026-09-29.md")
+        let original="---\nmaple:\n  format: 1\n  document: \"shared-mac-id\"\n---\nExact Mac writing.\n"
+        try Data(original.utf8).write(to:file)
+        let result=try #require(try await bridge.command("todayRead",body:["day":"2026-09-29","id":"ignore-stale-notebook"],store:store) as? [String:Any])
+        #expect(result["content"] as? String == original)
+        #expect(result["path"] as? String == "2026/09/2026-09-29.md")
+        #expect(result["readOnly"] as? Bool == true)
+        #expect(store.snapshot.captures.isEmpty)
+        try Data((original+"Updated on Mac.\n").utf8).write(to:file)
+        let refreshed=try #require(try await bridge.command("todayRead",body:["day":"2026-09-29"],store:store) as? [String:Any])
+        #expect(refreshed["content"] as? String == original+"Updated on Mac.\n")
+        #expect(refreshed["revision"] as? String != result["revision"] as? String)
+        do {_ = try await bridge.command("todayRead",body:["day":"2026-09-30"],store:store);Issue.record("Missing day should wait for iCloud")}catch{}
+        #expect(!FileManager.default.fileExists(atPath:folder.appendingPathComponent("2026-09-30.md").path))
+        do {_ = try await bridge.command("todayRead",body:["day":"2026-02-30"],store:store);Issue.record("Invalid day accepted")}catch{}
+        #expect(store.snapshot.captures.isEmpty)
+    }
+    @Test func todayUsesLegacyFileOnlyWhenCanonicalFileIsAbsent() async throws {
+        let(root,store,bridge)=try fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let folder=root.appendingPathComponent("Cloud/Just Maple/Daily")
+        try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+        try Data("Legacy Mac document".utf8).write(to:folder.appendingPathComponent("2026-09-29.md"))
+        let result=try #require(try await bridge.command("todayRead",body:["day":"2026-09-29"],store:store) as? [String:Any])
+        #expect(result["content"] as? String == "Legacy Mac document")
+        #expect(result["path"] as? String == "Daily/2026-09-29.md")
+    }
     @Test func realFilesCreateReadSaveAndOnlyEditsQueueOncePerRevision() async throws {
         let (root,store,bridge) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }
         let id = try await notebook(bridge, store)
@@ -54,6 +84,22 @@ import MapleNotebooks
         let reopened = iPhoneNotebookBridge(directory: root.appendingPathComponent("Library"), cloudRootProvider: { root.appendingPathComponent("Cloud") })
         let savedDraft = try #require(try await reopened.command("noteReadDraft", body: ["id": id, "path": "Conflict.md"], store: store) as? [String: Any])
         #expect(savedDraft["content"] as? String == "Fixture unsaved draft")
+    }
+    @Test func managedNotebookRefusesDirectPhoneSaveAndKeepsDraft() async throws {
+        let(root,store,bridge)=try fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let id=try await notebook(bridge,store)
+        let file=root.appendingPathComponent("Cloud/Fixture notebook/Managed.md")
+        let original="---\nmaple:\n  format: 1\n  document: \"fixture\"\n---\nMac-owned note.\n"
+        try Data(original.utf8).write(to:file)
+        var draft=try #require(try await bridge.command("noteRead",body:["id":id,"path":"Managed.md"],store:store) as? [String:Any])
+        #expect(draft["readOnly"] as? Bool == true)
+        draft["content"]="Local pending draft"
+        _ = try await bridge.command("noteDraft",body:["record":draft],store:store)
+        do {_ = try await bridge.command("noteSave",body:["id":id,"path":"Managed.md","revision":draft["revision"]!,"content":"Local pending draft"],store:store);Issue.record("Managed note changed directly on phone")}catch{}
+        #expect(try String(contentsOf:file,encoding:.utf8)==original)
+        #expect(store.snapshot.captures.isEmpty)
+        let retained=try #require(try await bridge.command("noteReadDraft",body:["id":id,"path":"Managed.md"],store:store) as? [String:Any])
+        #expect(retained["content"] as? String == "Local pending draft")
     }
     @Test func largeNotesRemainIntactWithExplicitIndexingNoticeAndOldReadsNeverQueue() async throws {
         let (root,store,bridge) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }

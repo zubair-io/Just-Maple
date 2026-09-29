@@ -122,6 +122,13 @@ public struct ClassifierResult: Sendable {
 
 public protocol Classifier: Sendable {
     func classify(_ context: Context) async throws -> ClassifierResult
+    func classifyAudited(_ context:Context,audit:@escaping ProviderAuditSink) async throws -> ClassifierResult
+}
+
+/// Classifiers that also support an explicit source-fact screening pass.
+public protocol FactCheckingClassifier: Classifier {
+    var providerID: String { get }
+    func checkFacts(_ context: Context, audit: @escaping ProviderAuditSink) async throws -> (probability: Double, model: String, rawResponse: Data)
 }
 
 public enum Route: String, Codable, Sendable {

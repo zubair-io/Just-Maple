@@ -1,0 +1,111 @@
+.maple-editor-surface .maple-callout {
+  --callout-accent: var(--color-link, var(--color-primary));
+  position: relative;
+  padding: 12px 16px 12px 44px;
+  border: 1px solid
+    color-mix(in srgb, var(--callout-accent) 28%, var(--color-border));
+  border-radius: 10px;
+  border-left: 3px solid var(--callout-accent);
+  background: color-mix(in srgb, var(--callout-accent) 7%, var(--color-bg));
+}
+.maple-editor-surface .maple-callout::before {
+  content: "ⓘ";
+  position: absolute;
+  left: 15px;
+  top: 12px;
+  color: var(--callout-accent);
+  font-family: var(--font-sans);
+}
+.maple-editor-surface .maple-callout[data-kind="warning"] {
+  --callout-accent: var(--color-status-warning-text, var(--color-primary));
+}
+.maple-editor-surface .maple-callout[data-kind="warning"]::before {
+  content: "⚠";
+}
+.maple-editor-surface .maple-callout[data-kind="tip"] {
+  --callout-accent: var(--color-agent, var(--color-success));
+}
+.maple-editor-surface .maple-callout[data-kind="tip"]::before {
+  content: "◇";
+}
+.maple-editor-surface .maple-callout[data-kind="danger"] {
+  --callout-accent: var(--color-error);
+}
+.maple-editor-surface .maple-callout[data-kind="danger"]::before {
+  content: "!";
+  font-weight: 700;
+}
+.maple-editor-surface .maple-details {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg);
+}
+.maple-details-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+}
+.maple-details-header button,
+.maple-details-header input {
+  font: inherit;
+  color: var(--color-text-main);
+  background: transparent;
+  border: 0;
+}
+.maple-details-header button {
+  min-width: 30px;
+  min-height: 30px;
+  cursor: pointer;
+}
+.maple-details-header input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+.maple-details-header :focus-visible {
+  outline: 2px solid var(--color-focus, var(--color-primary));
+  border-radius: 4px;
+}
+.maple-details-content {
+  padding: 0 16px 12px 48px;
+}
+.maple-details-content[hidden] {
+  display: none;
+}
+.code-block-container {
+  position: relative;
+  padding-top: 42px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+.maple-editor-surface .code-block-container pre {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  background: transparent;
+}
+.code-block-language,
+.code-block-copy {
+  position: absolute;
+  top: 8px;
+  font: 12px var(--font-sans);
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  padding: 3px 6px;
+}
+.code-block-language {
+  left: 10px;
+  max-width: 60%;
+}
+.code-block-copy {
+  right: 10px;
+  cursor: pointer;
+}
+.code-block-copy:focus-visible,
+.code-block-language:focus-visible {
+  outline: 2px solid var(--color-focus, var(--color-primary));
+}

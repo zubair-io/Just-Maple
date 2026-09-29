@@ -3,10 +3,10 @@ import MapleCore
 
 extension AppModel {
     func runConnectorAudit(query:String,local:Bool = false) async {
-        guard !auditRunning,!busy,let store,let classifier else {auditStatus="Pause or finish current work and connect Jev before running the audit.";return}
+        guard classificationCanRun,!auditRunning,!busy,let store,let classifier else {auditStatus="The selected classifier must be ready and validated before running an audit. Queued events remain saved.";return}
         let resumeLoop=running
         auditRunning=true;busy=true;running=false
-        defer {auditRunning=false;busy=false;running=resumeLoop && connected}
+        defer {auditRunning=false;busy=false;running=resumeLoop && connected && classificationCanRun}
         var messages=0,mail=0,completed=0,deferred=0
         do {
             auditStatus="Importing 30 days of Messages history…"
@@ -22,7 +22,7 @@ extension AppModel {
             await refresh()
             for (index,id) in ids.enumerated() {
                 if Task.isCancelled {break}
-                auditStatus="Classifying email \(index+1)/\(ids.count) with Jev, then extracting supported facts/tasks with the selected provider…"
+                auditStatus="Classifying email \(index+1)/\(ids.count) with \(classificationLabel), then extracting supported facts/tasks with the selected provider…"
                 let report=try await IntelligenceEngine(store:store,classifier:classifier).run(limit:1,eventIDs:[id]);completed+=report.completed;deferred+=report.deferred
                 _ = try await FactExtractionEngine(store:store,extractor:factExtractor).runOne(eventIDs:[id])
                 // Explicit audit requests task review even for a previously processed source.
@@ -30,7 +30,7 @@ extension AppModel {
                 _ = try await TaskExtractionEngine(store:store,extractor:taskExtractor).runOne(eventIDs:[id])
                 await refresh()
             }
-            auditStatus="Audit finished: \(messages) new Messages, \(mail) new emails; \(completed) Jev classifications, \(deferred) deferred. Review source facts and suggested tasks; no replies were sent."
+            auditStatus="Audit finished: \(messages) new Messages, \(mail) new emails; \(completed) \(classificationLabel) classifications, \(deferred) deferred. Review source facts and suggested tasks; no replies were sent."
         } catch {auditStatus="Audit stopped: \(error.localizedDescription). Imported observations are retained."}
         await refresh()
     }

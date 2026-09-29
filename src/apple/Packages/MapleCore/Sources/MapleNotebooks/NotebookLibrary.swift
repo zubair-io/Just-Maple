@@ -10,6 +10,7 @@ public struct NotebookNote: Codable, Sendable {
 }
 public struct NotebookDocument: Codable, Sendable {
     public var notebookID:String; public var path:String; public var content:String; public var revision:String
+    public init(notebookID:String,path:String,content:String,revision:String) {self.notebookID=notebookID;self.path=path;self.content=content;self.revision=revision}
 }
 public struct NotebookCatalog: Codable, Sendable {
     public var notebooks:[Notebook]; public var cloudAvailable:Bool
@@ -182,6 +183,17 @@ extension NotebookLibrary {
         try FileManager.default.createDirectory(at:url.deletingLastPathComponent(),withIntermediateDirectories:true)
         try NotebookCodec.encode(document).write(to:url,options:.atomic)
     }
+    /// Advance only a retained draft from the exact baseline of an acknowledged user
+    /// save. Generated writes and external revisions never rebase somebody's writing.
+    public func rebaseDraftAfterCommit(notebookID:String,path:String,expectedRevision:String?,targetRevision:String) async throws {
+        guard let expectedRevision,
+              let draft=try readDraft(notebookID:notebookID,path:path),draft.revision==expectedRevision,
+              let disk=try await readIfPresent(notebookID:notebookID,path:path),disk.revision==targetRevision else{return}
+        // readIfPresent may suspend for iCloud. Re-read the draft after that await so a
+        // newer baseline or newer text is never replaced by our earlier snapshot.
+        guard let latest=try readDraft(notebookID:notebookID,path:path),latest.revision==expectedRevision else{return}
+        try saveDraft(NotebookDocument(notebookID:notebookID,path:path,content:latest.content,revision:targetRevision))
+    }
     public func readDraft(notebookID:String,path:String) throws -> NotebookDocument? {
         _ = try file(notebookID,path)
         let url=draftURL(notebookID,path)
@@ -202,5 +214,86 @@ private enum NotebookCodec {
     static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .secondsSince1970
         return try decoder.decode(type, from: data)
+    }
+}
+
+extension NotebookLibrary {
+    /// Today has one fixed home in this app's iCloud Documents container. A missing cloud
+    /// grant is an error, never permission to choose another notebook or a local directory.
+    public func ensureJustMapleDailyNotebook() throws -> String {
+        guard let cloudRoot else {throw NotebookError.invalid("iCloud Drive is unavailable. Sign in to iCloud and enable iCloud Drive for Just Maple to open Today.")}
+        let keys:Set<URLResourceKey>=[.isDirectoryKey,.isSymbolicLinkKey]
+        guard let values=try? cloudRoot.resourceValues(forKeys:keys),values.isDirectory==true,values.isSymbolicLink != true else {throw NotebookError.invalid("The Just Maple iCloud Documents folder is unavailable. Reconnect iCloud Drive; Today will not use another folder.")}
+        let destination=cloudRoot.appendingPathComponent("Just Maple",isDirectory:true)
+        let placeholder=cloudRoot.appendingPathComponent(".Just Maple.icloud")
+        guard !FileManager.default.fileExists(atPath:placeholder.path) || FileManager.default.fileExists(atPath:destination.path) else {throw NotebookError.invalid("The Just Maple iCloud folder is still downloading. Wait for iCloud Drive; its placeholder will not be replaced.")}
+        if let existing=try? destination.resourceValues(forKeys:keys) {
+            guard existing.isDirectory==true,existing.isSymbolicLink != true else {throw NotebookError.invalid("iCloud already contains a file or linked folder named Just Maple. Resolve it before creating daily notes.")}
+        }
+        do {try createDailyDirectoryIfAbsent(destination)}
+        catch {throw NotebookError.invalid("The Just Maple folder could not be opened in iCloud Drive. Check for a file or linked folder with that name, then try again.")}
+        let current=try destination.resourceValues(forKeys:keys)
+        guard current.isDirectory==true,current.isSymbolicLink != true else {throw NotebookError.invalid("The Just Maple iCloud folder changed. Reopen Today after checking iCloud Drive.")}
+        let result=try catalog(),id=Self.key(destination)
+        guard result.notebooks.contains(where:{$0.id==id && $0.cloud && $0.available}) else {throw NotebookError.invalid("The Just Maple iCloud notebook is unavailable. Today will not use another notebook.")}
+        return id
+    }
+    /// Creates only validated year/month folders inside a granted notebook.
+    /// Returns the relative YYYY/MM directory used for a local calendar day.
+    @discardableResult
+    public func prepareDailyDirectory(notebookID:String,day:String) throws -> String {
+        guard day.range(of:#"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"#,options:.regularExpression) != nil,!day.hasPrefix("0000") else {throw NotebookError.invalid("Choose a valid YYYY-MM-DD calendar date.")}
+        let formatter=DateFormatter();formatter.locale=Locale(identifier:"en_US_POSIX");formatter.calendar=Calendar(identifier:.gregorian);formatter.timeZone=TimeZone(secondsFromGMT:0);formatter.dateFormat="yyyy-MM-dd";formatter.isLenient=false
+        guard let date=formatter.date(from:day),formatter.string(from:date)==day else {throw NotebookError.invalid("Choose a valid calendar date for the daily folder.")}
+        let year=String(day.prefix(4)),month=String(day.dropFirst(5).prefix(2))
+        for relative in [year,year+"/"+month] {
+            let probe=relative+"/placeholder.md"
+            let destination=try file(notebookID,probe).deletingLastPathComponent()
+            try createDailyDirectoryIfAbsent(destination)
+            _ = try file(notebookID,probe)
+        }
+        return year+"/"+month
+    }
+    private func createDailyDirectoryIfAbsent(_ destination:URL) throws {
+        let keys:Set<URLResourceKey>=[.isDirectoryKey,.isSymbolicLinkKey]
+        func validatedExistingDirectory() throws -> Bool {
+            do {
+                let values=try URL(fileURLWithPath:destination.path).resourceValues(forKeys:keys)
+                guard values.isDirectory==true,values.isSymbolicLink != true else {throw NotebookError.invalid("A daily-note folder is occupied by a file or symbolic link. Resolve the collision before continuing.")}
+                return true
+            } catch let error as NSError where error.domain==NSCocoaErrorDomain && error.code==NSFileReadNoSuchFileError {return false}
+        }
+        if try validatedExistingDirectory() {return}
+        do {try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:false)}
+        catch {
+            // Another opener may have created this exact directory. Only accept a verified
+            // real directory; a racing file or symlink remains a visible conflict.
+            guard try validatedExistingDirectory() else {throw error}
+        }
+        guard try validatedExistingDirectory() else {throw NotebookError.invalid("The daily-note directory is unavailable. Try again after checking iCloud Drive.")}
+    }
+    /// Compatibility helper for reading/testing the previous layout; new daily writes use
+    /// the calendar-validated overload above.
+    public func prepareDailyDirectory(notebookID:String) throws {
+        let destination=try file(notebookID,"Daily/placeholder.md").deletingLastPathComponent()
+        try FileManager.default.createDirectory(at:destination,withIntermediateDirectories:true)
+    }
+    public func readIfPresent(notebookID:String,path:String) async throws -> NotebookDocument? {
+        let url=try file(notebookID,path)
+        let placeholder=url.deletingLastPathComponent().appendingPathComponent("."+url.lastPathComponent+".icloud")
+        if FileManager.default.fileExists(atPath:placeholder.path) {return try await read(notebookID:notebookID,path:path)}
+        // Do not classify permission, download or malformed-data failures as absence.
+        do {_ = try url.resourceValues(forKeys:[.isRegularFileKey])}
+        catch let error as NSError where error.domain==NSCocoaErrorDomain && error.code==NSFileReadNoSuchFileError {return nil}
+        return try await read(notebookID:notebookID,path:path)
+    }
+}
+
+extension NotebookLibrary {
+    /// A save command can arrive after the next keystroke's durable draft. Never replace that
+    /// newer/different draft with captured command bytes; the coordinator journals those bytes.
+    public func preserveCommitDraft(_ document:NotebookDocument) throws {
+        if let existing=try readDraft(notebookID:document.notebookID,path:document.path),existing.content != document.content {return}
+        try saveDraft(document)
     }
 }

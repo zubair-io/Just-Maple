@@ -1,0 +1,43 @@
+{
+  "repository": "FluidInference/laya-english-coreml",
+  "revision": "78c0b0e5054eb5804c72080016227d4f3b0bd08d",
+  "upstreamRevision": "1c5edc17a7acd8701df6fc341c0d179f1c62c982",
+  "license": "Apache-2.0",
+  "files": [
+    {
+      "path": "LICENSE",
+      "size": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "laya_english_fp16_L512_options32.mlpackage/Data/com.apple.CoreML/model.mlmodel",
+      "size": 422648,
+      "sha256": "4055d91cecd14b3388e13c566741ed1d713f94c7ddd61b2a58931b5f2c823e76"
+    },
+    {
+      "path": "laya_english_fp16_L512_options32.mlpackage/Data/com.apple.CoreML/weights/weight.bin",
+      "size": 843930688,
+      "sha256": "4959f06e8d4eea68234975b8ea59afad69b0890484630966ef3b3c92470a4e1c"
+    },
+    {
+      "path": "laya_english_fp16_L512_options32.mlpackage/Manifest.json",
+      "size": 617,
+      "sha256": "c3b08c478cb9ec1968afc860853b37679646e4765f4279dd76a2e10c99d5fe8c"
+    },
+    {
+      "path": "rl_agent_config.json",
+      "size": 745,
+      "sha256": "ae287b56bbcf5f8c4f4541ae9dfd00c914c4c48b940b8398c3058af37ba92bbd"
+    },
+    {
+      "path": "tokenizer/tokenizer.json",
+      "size": 3583228,
+      "sha256": "6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30"
+    },
+    {
+      "path": "tokenizer/tokenizer_config.json",
+      "size": 308,
+      "sha256": "50044de60daaa73df97d262e15a40d4faf0160e7d742df64b377877a1320dd12"
+    }
+  ]
+}

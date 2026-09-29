@@ -3,6 +3,29 @@ import Testing
 @testable import MapleCore
 
 struct ContextRetrievalTests {
+    @Test func personalOnlySourcesRetrieveTheirOwnRevisionsBeforeGlobalRecentTraffic() async throws {
+        let store = try KnowledgeStore(path: ":memory:")
+        let now = Date()
+        func note(_ revision: String, connector: String = "notes", account: String = "fixture", path: String = "selected.md", offset: TimeInterval = -10) -> Event {
+            Event(type: "note.updated", source: Source(connector: connector, account: account, externalID: path, revision: revision),
+                  occurredAt: now.addingTimeInterval(offset), subjects: ["person:self"], content: "Synthetic planning evidence \(revision)")
+        }
+        let prior = note("prior", offset: -100), current = note("current", offset: 0)
+        let excluded = (0..<10).map { note("other-\($0)", path: "other-\($0).md") } +
+            [note("other-account", account: "other"), note("other-connector", connector: "contacts"), note("future", offset: 1)]
+        let vector = try LocalEmbedding.vector(current.content)
+        for event in [prior, current] + excluded {
+            _ = try await store.ingest(event)
+            try await store.saveVectors(eventID: event.id, vectors: [vector], model: LocalEmbedding.model)
+        }
+        let context = try await store.context(for: current.id)
+        #expect(context.recentEvents.map(\.id) == [prior.id])
+        #expect(context.relatedEvidence.map(\.id) == [prior.id])
+        let projected = try SourceScreeningContext.filtered(context, at: now)
+        #expect(projected.recentEvents.map(\.id) == [prior.id])
+        #expect(projected.relatedEvidence.isEmpty)
+    }
+
     @Test(arguments: ["gmail", "imessage"])
     func semanticEvidenceStaysWithinMessageThread(connector: String) async throws {
         let store = try KnowledgeStore(path: ":memory:")

@@ -75,6 +75,12 @@ export interface Job {
   error?: string;
 }
 export interface Snapshot {
+  startupError?: string;
+  classificationProvider?: "laya" | "jev";
+  classificationState?: string;
+  classificationStatus?: string;
+  classificationCanRun?: boolean;
+  jevPause?: { provider: string; reason: string; retryAt?: number | null } | null;
   companionCloudEnabled: boolean;
   companionStatus: string;
   companionPaired: boolean;
@@ -143,6 +149,9 @@ export interface Snapshot {
   extractor: string;
 }
 export type SimpleAction =
+  | "retryStartup"
+  | "classificationReload"
+  | "resumeJevRequests"
   | "snapshot"
   | "disconnect"
   | "unlockKey"
@@ -184,6 +193,7 @@ export type SimpleAction =
   | "diskAccess"
   | "showApp";
 export type Command =
+  | { action: "classificationSelect"; provider: "laya" | "jev" }
   | { action: "applyTaskAction"; id:string; change:{kind:string;issuedAt:number;resurfaceAt?:number;reviewAt?:number;waitingOn?:string;targetMutationID?:string}; expectedVersion:number; requestID:string }
   | { action: "correctTaskInference"; id: string; status?: import("../world/world.models").TaskStatus; separate?: boolean; expectedVersion: number; requestID: string }
   | { action: "regroupActivity"; id: string; record: Activity; ids: string[]; merge: boolean; expectedVersion: number; requestID: string }
@@ -318,7 +328,11 @@ export class NativeBridge implements OnDestroy {
   readonly pending = signal(false);
   private timer?: ReturnType<typeof setTimeout>;
   private destroyed = false;
-  // One queue for reads and writes prevents an older poll overwriting a command result.
+  // Cached snapshots bypass filesystem queries; writes retain their ordered lane.
+  private mutationEpoch = 0;
+  private mutationsInFlight = 0;
+  private snapshotSequence = 0;
+  private acceptedSnapshotSequence = 0;
   private tail: Promise<unknown> = Promise.resolve();
   private started = false;
   start(): void {
@@ -332,29 +346,41 @@ export class NativeBridge implements OnDestroy {
     } catch {}
     if (!this.destroyed) this.timer = setTimeout(() => void this.poll(), 2000);
   }
-  private request<T>(body: unknown): Promise<T> {
-    const run = this.tail.then(async () => {
+  private request<T>(body: unknown, independent = false): Promise<T> {
+    const send = async () => {
       const handler = (window as NativeWindow).webkit?.messageHandlers?.maple;
       if (!handler)
         throw new Error(
           "Open Just Maple from Xcode to connect this UI to your local workspace.",
         );
       return (await handler.postMessage(body)) as T;
-    });
+    };
+    if (independent) return send();
+    const run = this.tail.then(send);
     this.tail = run.catch(() => undefined);
     return run;
   }
   async command(command: Command): Promise<Snapshot> {
+    const snapshot = command.action === "snapshot";
+    const sequence = snapshot ? ++this.snapshotSequence : 0;
+    if (!snapshot) { this.mutationEpoch++; this.mutationsInFlight++; }
+    const epoch = this.mutationEpoch;
+    const current = () => !snapshot || (epoch === this.mutationEpoch && this.mutationsInFlight === 0 && sequence >= this.acceptedSnapshotSequence);
     try {
-      const next = await this.request<Snapshot>(command);
+      const next = await this.request<Snapshot>(command, snapshot);
       if (!next || typeof next.loaded !== "boolean")
         throw new Error("Invalid native snapshot.");
-      this.state.set(next);
-      this.error.set("");
+      if (current()) {
+        if (snapshot) this.acceptedSnapshotSequence = sequence;
+        this.state.set(next);
+        this.error.set("");
+      }
       return next;
     } catch (e) {
-      this.error.set(e instanceof Error ? e.message : String(e));
+      if (current()) this.error.set(e instanceof Error ? e.message : String(e));
       throw e;
+    } finally {
+      if (!snapshot) { this.mutationsInFlight--; this.mutationEpoch++; }
     }
   }
   async act(command: Command): Promise<boolean> {

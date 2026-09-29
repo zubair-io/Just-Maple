@@ -4,6 +4,7 @@ import LocalAuthentication
 import MapleCore
 
 struct HomeSettings: Codable {
+    static let importInterval: TimeInterval = 10 * 60
     var url = ""; var enabled = false; var selected: [String] = []
     var exposedOnly: Bool? = true
     var usesExposed: Bool { exposedOnly ?? true }
@@ -74,9 +75,12 @@ extension AppModel {
         await pollHome(force: true)
     }
     func pauseHome() throws { homeSettings.enabled = false; try saveHomeSettings(); homeStatus = "Paused · imported context retained" }
+    func shouldPollHome(at now: Date = Date(), force: Bool = false) -> Bool {
+        !homeImporting && homeSettings.enabled && homeToken != nil && store != nil &&
+            (force || now.timeIntervalSince(lastHomePoll) >= HomeSettings.importInterval)
+    }
     func pollHome(force: Bool = false) async {
-        guard !homeImporting, homeSettings.enabled, let token = homeToken, let store,
-              force || Date().timeIntervalSince(lastHomePoll) >= 60 else { return }
+        guard shouldPollHome(force: force), let token = homeToken, let store else { return }
         homeImporting = true; defer { homeImporting = false; lastHomePoll = Date() }
         let selected = Set(homeSettings.selected), url = homeSettings.url, exposedOnly = homeSettings.usesExposed
         do {

@@ -22,7 +22,7 @@ public enum MessageScreeningContext {
         let provenanceIDs = Set(context.currentState.map(\.evidenceEventID) + (context.sourceFacts ?? []).map(\.eventID))
         var seen = Set<String>()
         let recent = context.recentEvents.filter { sameThread($0) && $0.id != context.event.id && seen.insert($0.id).inserted }
-        seen = []
+        // History observations are already serialized in recentEvents.
         let evidence = context.relatedEvidence.filter {
             $0.id != context.event.id && (sameThread($0) || provenanceIDs.contains($0.id)) && seen.insert($0.id).inserted
         }

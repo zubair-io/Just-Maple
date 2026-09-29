@@ -35,13 +35,31 @@ extension Bridge {
             let id=try string(body,"id",limit:256)
             let document:NotebookDocument
             if action=="noteCreate" {document=try await library.createNote(notebookID:id,name:string(body,"name",limit:180))}
-            else if action=="noteRead" {document=try await library.read(notebookID:id,path:string(body,"path",limit:4096))}
-            else if action=="noteSave" {document=try await library.save(notebookID:id,path:string(body,"path",limit:4096),content:string(body,"content",limit:256000),expectedRevision:string(body,"revision",limit:128))}
+            else if action=="noteRead" {
+                let path=try string(body,"path",limit:4096)
+                if let store=model.store,let managed=try await store.managedDocument(notebookID:id,path:path) {
+                    let opened=try await todayCoordinator().open(documentID:managed.documentID)
+                    var value=try json(NotebookDocument(notebookID:id,path:path,content:opened.content,revision:opened.revision)) as! [String:Any]
+                    value["documentID"]=opened.documentID;value["readOnly"]=opened.readOnly;value["day"]=opened.day
+                    return value
+                }
+                document=try await library.read(notebookID:id,path:path)
+            }
+            else if action=="noteSave" {
+                let path=try string(body,"path",limit:4096),content=try string(body,"content",limit:256000),revision=try string(body,"revision",limit:128)
+                if let store=model.store,let managed=try await store.managedDocument(notebookID:id,path:path) {
+                    let saved=try await todayCoordinator().commit(documentID:managed.documentID,expectedRevision:revision,content:content,commandID:(body["commandID"] as? String) ?? "notebook:"+UUID().uuidString)
+                    return try json(NotebookDocument(notebookID:id,path:path,content:saved.content,revision:saved.revision))
+                }
+                let disk=try await library.read(notebookID:id,path:path)
+                guard ManagedMarkdown.documentID(disk.content)==nil else {throw MapleError.invalid("This copied managed document needs identity reconciliation. Open its original in Today.")}
+                document=try await library.save(notebookID:id,path:path,content:content,expectedRevision:revision)
+            }
             else {throw MapleError.invalid("Unsupported notebook action.")}
             if let store=model.store {
                 // Notes use the same event ingestion boundary as every other connector.
                 let event=Event(type:"note.updated",source:Source(connector:"notes",account:id,externalID:document.path,revision:document.revision),occurredAt:Date(),subjects:["person:self"],content:document.content)
-                do {_ = try await store.ingest(event)} catch {model.error="Note saved, but indexing needs a retry. Reopen the note to retry."}
+                do {_ = try await store.ingestNotebookObservation(event)} catch {model.error="Note saved, but indexing needs a retry. Reopen the note to retry."}
             }
             return try json(document)
         }

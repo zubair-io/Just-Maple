@@ -229,3 +229,39 @@ private enum FixtureFailure:Error {case unavailable,accountChanged}
     }
 
 }
+
+@MainActor struct DailyMailboxTests {
+    @Test func dailyEditsAreEncryptedRetriedAndReceiptedSeparately()async throws {
+        let store=FixtureMailboxStore(),config=try PairingConfiguration.create(),device=UUID()
+        func mailbox()->CloudCompanionMailbox {.init(configuration:config,accountID:String(repeating:"a",count:64),store:store,accountCheck:{})}
+        let phone=mailbox(),mac=mailbox()
+        let mutation=SyncDailyMutation(kind:"create",blockID:UUID().uuidString,expectedVersion:0,requestID:UUID().uuidString,day:"2026-09-27",timeZone:"America/New_York",content:"Private daily block",blockKind:"text")
+        let action=SyncDailyAction(mutation:mutation)
+        store.failAfterWrite=true
+        await #expect(throws:FixtureFailure.self){try await phone.uploadDailyActions(deviceID:device,actions:[action])}
+        try await phone.uploadDailyActions(deviceID:device,actions:[action])
+        #expect(store.records.count==1)
+        #expect(!String(decoding:try #require(store.records.values.first).payload,as:UTF8.self).contains("Private daily block"))
+        #expect(try await mac.pendingDailyActions()==[.init(deviceID:device,action:action)])
+        #expect(try await mac.pendingActions().isEmpty)
+        #expect(try await mac.pending().isEmpty)
+        let receipt=SyncDailyReceipt(id:action.id,outcome:"applied",resultingRevision:12)
+        try await mac.acknowledgeDailyAction(deviceID:device,receipt:receipt)
+        try await mac.acknowledgeDailyAction(deviceID:device,receipt:receipt)
+        #expect(try await phone.dailyReceipts(deviceID:device,ids:[action.id])==[receipt])
+        #expect(try await phone.dailyReceipts(deviceID:UUID(),ids:[action.id]).isEmpty)
+        #expect(try await mailbox().pendingDailyActions().isEmpty)
+        var changed=action;changed.mutation.content="Changed under old identity"
+        await #expect(throws:CloudMailboxError.self){try await phone.uploadDailyActions(deviceID:device,actions:[changed])}
+    }
+    @Test func rejectsMalformedDailyCommandsAndAcceptsOldSnapshotShape()throws {
+        var mutation=SyncDailyMutation(kind:"create",blockID:UUID().uuidString,expectedVersion:0,requestID:UUID().uuidString,day:"2026-02-30",timeZone:"UTC",content:"fixture",blockKind:"text")
+        #expect(!mutation.valid)
+        mutation.day="2026-02-28";#expect(mutation.valid)
+        mutation.content=String(repeating:"x",count:65_537);#expect(!mutation.valid)
+        mutation.content="fixture";mutation.position = -1;#expect(!mutation.valid)
+        let response=SyncResponse(deviceID:UUID(),receivedIDs:[])
+        let old=try SyncCodec.decode(SyncResponse.self,from:SyncCodec.encode(response))
+        #expect(old.dailyNotes==nil && old.dailyReceipts==nil && old.validDaily)
+    }
+}

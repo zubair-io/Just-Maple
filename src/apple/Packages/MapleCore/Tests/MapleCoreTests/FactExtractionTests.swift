@@ -65,6 +65,11 @@ struct FactExtractionTests {
         let assessment = Assessment(notify: 0, askUser: 0, reason: 0, summarize: 0, jobStage: .unchanged, stageConfidence: 1, model: "fixture", provider: "test")
         #expect(try await !store.finish(lease, decision: Policy.decide(context: context, assessment: assessment), raw: Data(), now: Date()))
         #expect(try await store.state().first?.value == "User correction")
+        let pending = try #require(await store.queue().first)
+        #expect(pending.status == "pending")
+        #expect(pending.error?.contains("facts changed") == true)
+        #expect(pending.nextAttemptAt > Date())
+        #expect(try await store.acquire(now: Date()) == nil)
     }
 
     @Test func chunkingKeepsEveryCharacterAndBoundsSize() throws {

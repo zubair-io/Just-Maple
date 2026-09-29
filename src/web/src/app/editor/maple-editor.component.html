@@ -1,0 +1,138 @@
+<input
+  #filePicker
+  type="file"
+  hidden
+  multiple
+  aria-label="Choose images or files"
+  (change)="filesSelected($event)"
+/>
+@if (showToolbar() && !source() && !readOnly()) {
+  <div
+    #toolbar
+    class="maple-floating-tools"
+    role="toolbar"
+    aria-label="Note formatting"
+    [style.left.px]="toolbarPosition().x"
+    [style.top.px]="toolbarPosition().y"
+    (pointerdown)="preserveSelection($event)"
+    (keydown)="toolbarKey($event)"
+  >
+    <div class="maple-floating-actions">
+      @for (tool of formatTools; track tool.id) {
+        <button
+          type="button"
+          [attr.aria-label]="tool.label"
+          [attr.title]="tool.label"
+          [attr.aria-pressed]="active(tool.id)"
+          [class.active]="active(tool.id)"
+          (click)="format(tool.id)"
+        >
+          <span [class]="'format-icon format-' + tool.id">{{ tool.icon }}</span>
+        </button>
+      }
+      <span class="tool-divider" aria-hidden="true"></span>
+      <button
+        type="button"
+        aria-label="Insert a block"
+        title="Insert a block · /"
+        [attr.aria-expanded]="palette()"
+        [class.active]="palette()"
+        (click)="palette.set(!palette()); positionToolbar()"
+      >
+        ＋
+      </button>
+      <button
+        type="button"
+        aria-label="Undo"
+        title="Undo · ⌘Z"
+        [disabled]="!canUndo()"
+        (click)="editor?.chain()?.focus()?.undo()?.run()"
+      >
+        ↶
+      </button>
+      <button
+        type="button"
+        aria-label="Redo"
+        title="Redo · ⇧⌘Z"
+        [disabled]="!canRedo()"
+        (click)="editor?.chain()?.focus()?.redo()?.run()"
+      >
+        ↷
+      </button>
+      @if (documentToolsAvailable()) {
+        <button
+          type="button"
+          aria-label="Document tools"
+          title="Document history and recovery"
+          (click)="documentToolsRequested.emit()"
+        >
+          ⋯
+        </button>
+      }
+    </div>
+    @if (palette()) {
+      <div class="maple-toolbar-palette" aria-label="Insert a block">
+        @for (item of insertTools; track item.id) {
+          @if (
+            storageMode() === "managed" ||
+            !["source", "maple", "attachment"].includes(item.id)
+          ) {
+            <button type="button" (click)="insert(item.id)">
+              {{ item.label }}
+            </button>
+          }
+        }
+      </div>
+    }
+    @if (inTable()) {
+      <div class="maple-table-actions" aria-label="Table actions">
+        <button type="button" (click)="tableAction('rowBefore')">
+          Row above
+        </button>
+        <button type="button" (click)="tableAction('rowAfter')">
+          Row below
+        </button>
+        <button type="button" (click)="tableAction('columnBefore')">
+          Column left
+        </button>
+        <button type="button" (click)="tableAction('columnAfter')">
+          Column right
+        </button>
+        <button type="button" (click)="tableAction('deleteRow')">
+          Delete row
+        </button>
+        <button type="button" (click)="tableAction('deleteColumn')">
+          Delete column
+        </button>
+      </div>
+    }
+  </div>
+}
+@if (documentToolsAvailable() && (source() || readOnly())) {
+  <button
+    type="button"
+    class="maple-run-button"
+    (click)="documentToolsRequested.emit()"
+  >
+    Document tools
+  </button>
+}
+@if (notice()) {
+  <p class="maple-editor-notice" role="status">{{ notice() }}</p>
+}
+<div #surface class="maple-editor-surface" [hidden]="source()"></div>
+@if (source()) {
+  <button type="button" class="maple-run-button" (click)="toggleSource()">
+    Return to editor
+  </button>
+  <textarea
+    class="maple-editor-source"
+    [attr.aria-label]="editorLabel() + ' Markdown source'"
+    spellcheck="false"
+    [readOnly]="readOnly()"
+    [ngModel]="raw"
+    (ngModelChange)="sourceChanged($event)"
+    (focus)="editingChanged.emit(true)"
+    (blur)="editingChanged.emit(false)"
+  ></textarea>
+}

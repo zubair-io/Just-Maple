@@ -147,11 +147,11 @@ export class MuiButtonComponent {
    * exclusive with the plain per-variant colors, for the same
    * one-utility-set-at-a-time reason as `paddingClasses`/`layoutClasses`. */
   readonly colorClasses = computed(() => {
-    if (this.active()) return 'bg-primary-dim text-primary border-primary';
+    if (this.active()) return 'bg-primary-dim text-link border-primary';
     if (this.toggled()) return 'bg-[rgba(255,255,255,0.04)] border-border text-text-main';
     switch (this.variant()) {
       case 'primary':
-        return 'bg-primary text-text-main border-primary enabled:hover:brightness-110 enabled:hover:-translate-y-0.5';
+        return 'bg-primary text-on-primary border-primary enabled:hover:brightness-110 enabled:hover:-translate-y-0.5';
       case 'ghost':
         return 'bg-transparent text-text-muted border-transparent enabled:hover:bg-surface-hover enabled:hover:text-text-main';
       case 'destructive':

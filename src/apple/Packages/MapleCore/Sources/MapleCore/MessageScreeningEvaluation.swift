@@ -23,7 +23,7 @@ public enum MessageScreeningEvaluation {
             ("success", "Your scheduled backup completed successfully. All files were backed up.", false),
             ("acknowledgment", "Thanks, I received your reply and we are all set.", false)
         ]
-        var report = ["mode": "live-jev-synthetic-screening", "passed": "true", "total": String(cases.count)]
+        var report = ["mode": "live-classifier-synthetic-screening", "passed": "true", "total": String(cases.count)]
         for (name, body, expected) in cases {
             let store = try KnowledgeStore(path: directory.appendingPathComponent(name + ".sqlite").path)
             let event = Event(id: "synthetic-" + name, type: "message.received", source: Source(connector: "gmail", account: "synthetic", externalID: name, revision: "1"), occurredAt: Date(), subjects: ["person:self", "person:synthetic:sender", "thread:gmail:synthetic-" + name], content: "From: Synthetic Sender\nDirection: incoming\nSubject: Synthetic evaluation\nBody:\n" + body)

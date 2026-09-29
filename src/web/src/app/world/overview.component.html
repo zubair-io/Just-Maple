@@ -16,25 +16,25 @@
   >
 </div>
 
-<details class="processing-details"><summary>{{ s().running ? 'Learning automatically' : 'Learning paused or waiting for connection' }} · Processing details</summary>
+<details class="processing-details"><summary>{{ s().running ? 'Learning automatically' : 'Learning paused or waiting for classifier' }} · Processing details</summary>
 @if (world.data().reconciliationFailures) {<p>Task matching or progress checks need attention.</p><mui-button (pressed)="world.bridge.act({action:'retry'})">Retry task checks</mui-button>}
 @if (world.data().discoveryFailures) {<p>Activity discovery needs attention for {{ world.data().discoveryFailures }} batches.</p><mui-button (pressed)="world.bridge.act({action:'retry'})">Retry discovery</mui-button>}
 <section class="panel" aria-label="Intelligence loops">
   <div class="row">
     <h2>Loops</h2>
-    <span role="status">{{ s().running ? 'Running automatically' : s().connected ? 'Paused' : 'Waiting for Jev' }}</span>
+    <span role="status">{{ s().running ? 'Running automatically' : s().classificationCanRun ? 'Paused' : (s().classificationStatus || 'Preparing selected classifier') }}</span>
   </div>
-  <p>Process events from the last 30 days with Jev, then extract supported facts and suggest tasks with your selected AI provider. Older sources stay indexed locally and are excluded from AI prompts. Suggestions need review; no replies are sent.</p>
+  <p>Classify events from the last 30 days with your selected classifier, then extract supported facts and suggest tasks with your separately selected extraction provider. Older sources stay indexed locally and are excluded from AI prompts. Suggestions need review; no replies are sent.</p>
   <div class="actions">
     <mui-button variant="primary"
-      [disabled]="!s().connected || (!s().running && (s().busy || s().auditRunning === true))"
+      [disabled]="!s().running && (!s().classificationCanRun || s().busy || s().auditRunning === true)"
       (pressed)="world.bridge.act({ action: 'loop' })">{{ s().running ? 'Pause loops' : 'Resume loops' }}</mui-button>
     <mui-button variant="ghost" (pressed)="world.go('processing')">View processing &amp; decisions</mui-button>
-    @if (!s().connected) {
-      <mui-button (pressed)="world.go('connections')">Connect or unlock Jev</mui-button>
+    @if (!s().classificationCanRun) {
+      <mui-button (pressed)="world.go('connections')">Classifier settings</mui-button>
     }
   </div>
-  <p>{{ s().running ? 'New imported events and queued work will be processed. Pausing lets the current request finish.' : 'Processing starts automatically when Jev connects, including when you reopen Maple. You can pause it for this session.' }}</p>
+  <p>{{ s().running ? 'New imported events and queued work will be processed. Pausing lets the current request finish.' : 'Processing starts when the selected classifier is ready and validated. Experimental Laya remains disabled until quality validation passes. Your selected classification provider is preserved.' }}</p>
 </section>
 @if (s().localIndex; as index) {
   <section class="panel" aria-label="Local intelligence status">

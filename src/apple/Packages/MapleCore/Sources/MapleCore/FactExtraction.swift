@@ -46,6 +46,7 @@ public struct FactExtractionResult: Sendable {
 
 public protocol FactExtractor: Sendable {
     func extract(_ event: Event) async throws -> FactExtractionResult
+    func extractAudited(_ event:Event,audit:@escaping ProviderAuditSink) async throws -> FactExtractionResult
 }
 
 public enum FactRules {
@@ -126,6 +127,7 @@ extension KnowledgeStore {
             }
             try db.execute("UPDATE fact_jobs SET status='succeeded', lease_token=NULL, lease_until=NULL,error=NULL WHERE event_id=?", [lease.eventID])
             try db.execute("UPDATE work_items SET status=? WHERE event_id=? AND kind='extract_facts'", [result.candidates.isEmpty ? "no_facts" : "completed", lease.eventID])
+            try enqueueStateIfNeeded(eventID:lease.eventID)
             return true
         }
     }
@@ -170,12 +172,13 @@ public struct FactExtractionEngine: Sendable {
             let result: FactExtractionResult
             if event.type == "facts.structured" {
                 // Only this explicit canonical schema bypasses generative parsing.
+                try await store.recordProviderSkip(eventID:event.id,attemptID:lease.token,stage:"facts",reason:"structured_source_no_model_required")
                 let candidates = try JSONCodec.decode([FactCandidate].self, from: Data(event.content.utf8))
                 result = FactExtractionResult(candidates: candidates, provider: "structured-source", model: "canonical-facts-v1")
-            } else { result = try await extractor.extract(event) }
+            } else { result = try await extractor.extractAudited(event) { audit in try await store.recordProviderAudit(audit,eventID:event.id,leaseID:lease.token,stage:"facts") } }
             return try await store.finishFacts(lease, result: result, now: Date())
         } catch {
-            let reason = (error as? MapleError)?.errorDescription ?? "Local model failed (\(String(reflecting: type(of: error)))); retry after checking Apple Intelligence."
+            let reason = "Fact extraction unavailable or output invalid. Check the provider and retry."
             try await store.failFacts(lease, now: Date(), reason: reason)
             return false
         }

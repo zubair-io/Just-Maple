@@ -1,0 +1,34 @@
+{
+  "ok": true,
+  "fixture": "Explicitly synthetic writing/source evidence; no native persistence or live model validation",
+  "sources": [
+    {
+      "id": "synthetic-email",
+      "type": "email"
+    },
+    {
+      "id": "synthetic-message",
+      "type": "imessage"
+    },
+    {
+      "id": "synthetic-home",
+      "type": "ha"
+    }
+  ],
+  "checks": [
+    "Markdown heading and bold input rules",
+    "Interactive checklist save/reopen",
+    "Searchable slash heading",
+    "Undo/redo",
+    "Email/iMessage/HA picker insertion",
+    "Original evidence, provider response and history inspector",
+    "Stable unique block IDs after reopen",
+    "Heading rail station click and keyboard expansion",
+    "Fold does not change Markdown",
+    "No standalone collapsible insert block",
+    "Shared notebook editor and source save/reopen",
+    "Smart Markdown paste keeps bold and list structure",
+    "Light/dark and narrow layout"
+  ],
+  "errors": []
+}

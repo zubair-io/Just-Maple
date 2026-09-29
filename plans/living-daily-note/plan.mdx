@@ -1,0 +1,82 @@
+---
+title: "Just Maple — One living daily note"
+status: complete
+kind: plan
+localOnly: true
+---
+
+# Outcome
+
+Just Maple opens to an editable note for today. A user writes a paragraph, adds a task, sees an incoming source block, clears the source with Undo, and moves the same task to tomorrow. An empty day means there are no visible blocks needing attention; history and notebook files remain available. The desktop and iPhone share the daily-note UI and truthful persistence/sync state.
+
+The visual reference is the ten-screen Sketch concept at `/Users/riabuz/Projects/_SugarMaple/design/daily-note/Just Maple — One Living Note.sketch`. This implementation updates the existing app in `/Users/riabuz/Projects/_Just Maple`, on branch `codex/living-daily-note`.
+
+<Callout id="authorization" tone="decision">
+The user authorized planning followed by an agent-managed build. Work proceeds after publishing this plan. Existing personal data, notebook Markdown, app identity, signing, connectors, and credentials are preserved.
+</Callout>
+
+# Keep and replace
+
+Reuse the Angular application, `@maple/ui` components and theme tokens, the existing Xcode hosts, `NativeBridge.notebook<T>()`, `KnowledgeStore`, SQLite transactions, command idempotency, source inspection, task identity, and encrypted companion transport. Keep the Markdown notebook editor and its conflict-safe draft handling for lasting notes.
+
+Replace the primary Overview/Tasks/Activities navigation with daily notes and contextual notebook routes. Keep existing routes available as secondary tools during this migration. Add durable daily blocks instead of writing incoming messages into individual Markdown files. Existing user records are not bulk reclassified, rewritten, or deleted.
+
+# Durable model and decisions
+
+`DailyBlock` has a stable ID, local calendar day, kind (text, heading, task, email, message, code), content, order, version, creation/update timestamps, actor, user-edit flag, optional clear/completion timestamps, source provenance, and optional canonical task ID/version. `DailyNoteSnapshot` contains day, named time zone, active and cleared blocks, and diagnostic revision. The source event remains immutable evidence; block text is editable. Once a user edits content, automatic source refresh updates provenance without replacing their words.
+
+Add `daily_notes` and `daily_blocks` with an additive migration called from `KnowledgeStore.init`. Reuse `WorldStore.command` for atomic idempotent commands and `world_history` for before/after snapshots. Source keys deduplicate repeated imports, including cleared tombstones. A move updates placement of the same block, never creates a copy. Clear hides a block without completing a linked task or sending anything. Explicit task completion clears the daily block and, when linked, updates its canonical task atomically. A daily-created task is a standalone block; completing it does not invent a canonical LifeTask. Restoring a completed block does not silently reopen the canonical task.
+
+All user mutations require a request ID and expected block version. A reused ID with a different payload fails. Conflicts preserve the draft and expose a retry/reload choice. Actor identity comes from the trusted host, not arbitrary browser input. Dates use validated `YYYY-MM-DD` plus an IANA time zone and calendar arithmetic; reads of future days do not trigger rollover. Carry-forward occurs when entering the actual current day, moves only unfinished task blocks from older days, and retains block identity. Cleared/completed items and ordinary writing remain in history.
+
+Incoming projection selects accepted open canonical tasks and actionable notify/ask-user source events already persisted through `KnowledgeStore.ingest`. It does not dump all imported mail into Today. Source updates use stable identity and do not resurrect cleared blocks. No email sending, external deletion, new backend, or invented live model answers are added.
+
+<AnnotatedCode id="core-map" filename="src/apple/Packages/MapleCore/Sources/MapleCore/DailyNotes.swift" language="swift" code={"extension KnowledgeStore {\n    func dailyNote(day: String, timeZone: String, at: Date) throws -> DailyNoteSnapshot\n    func mutateDailyBlock(_ input: DailyBlockMutation, actor: DailyBlockActor, at: Date) throws -> DailyNoteSnapshot\n    func carryForwardDailyBlocks(to day: String, timeZone: String, requestID: String, at: Date) throws -> DailyNoteSnapshot\n    func upsertDailySource(eventID: String, day: String, timeZone: String, kind: DailyBlockKind, requestID: String, at: Date) throws -> DailyBlock\n    func upsertDailyTask(taskID: String, day: String, timeZone: String, requestID: String, at: Date) throws -> DailyBlock\n}"} annotations={[{lines:"2-4",note:"Local day view and versioned mutations share the existing SQLite transaction/history boundary."},{lines:"5-6",note:"Projection references existing sources/tasks; it does not reimport or duplicate them."}]} />
+
+# Native and mobile contract
+
+Mac bridge commands: `dailyNote {day,timeZone}`, `dailyBlockMutate {record}`, `dailyBlockHistory {id}`, and `dailyCarryForward {day,timeZone,requestID}`. `DailyBlockMutation` carries kind, blockID, expectedVersion, requestID, day, timeZone, optional content/blockKind/targetDay/position. Mutation kinds are create, edit, clear, restore, move, complete.
+
+The iPhone uses its existing encrypted durable outbox and Mac acknowledgments. Daily snapshots include optional `sync {status, pending, conflicts, asOf, partial?}` metadata. Cached and pending states remain visible; queuing a command does not claim the Mac accepted it. A day absent from the device cache reports unavailable rather than an empty day. Initial phone cache covers the Mac's recent/current/next-day projections; arbitrary historical reads remain Mac-owned until synchronized. Payload bounds preserve whole editable blocks and report partial snapshots. Missing block history on the phone reports unavailable. An empty cached day never claims that all underlying obligations are resolved. Existing pairing and offline controls remain available.
+
+# Work breakdown and ownership
+
+1. **Core agent (`audit_core`)**: new daily models/store/additive migration and MapleCore regression tests. Own `Sources/MapleCore/Daily*`, the migration call in `KnowledgeStore.swift`, and daily core test files. Reuse `WorldStore.command/history` and `applyTaskActionInTransaction`.
+2. **UI agent (`audit_ui`)**: `src/web/src/app/daily-note/`, default routing in `main.ts`, primary shell in `app.component.*`, and companion daily UI integration. Reuse Maple controls/tokens, source inspector, existing onboarding/connections/notebooks, and host-aware native transport. Own Angular daily/service/component/route tests. Build text/heading/task/email/message/code editing, stable insertion order, clear/restore/history, move, completion, autosave/conflict feedback, responsive layout and transit markers.
+3. **Native agent (`native_bridge`)**: `Host/DailyNoteBridge.swift`, dispatch in `WebShell.swift`, eligible source/task projection, companion transport extensions, native iPhone outbox/cache integration and corresponding tests. Keep payload bounds, encryption, revision conflicts, request receipts, and signing unchanged.
+4. **Coordinator**: this plan and API alignment, migration/integration review, end-to-end smoke, cross-agent fixes, builds and final evidence. Inspect work as it lands and resolve ownership conflicts before editing shared files.
+
+These implementation tracks start after this plan is written. Each agent runs focused tests first. The coordinator then runs the integrated checks and reviews real UI states.
+
+# Acceptance and validation
+
+<Checklist id="acceptance" items={[{id:"durable",checked:true,label:"Create and edit every block kind; restart the store and recover the same IDs and content."},{id:"clear",checked:true,label:"Clear and restore a block; clearing a linked task must not mark its canonical task done."},{id:"move",checked:true,label:"Move to Tomorrow; Today no longer contains the block and Tomorrow contains the same ID exactly once."},{id:"history",checked:true,label:"Inspect before/after history; replayed commands are idempotent and conflicting edits preserve user text."},{id:"source",checked:true,label:"Replay and revise a source; do not duplicate, overwrite user edits, or resurrect a cleared block."},{id:"rollover",checked:true,label:"Exercise local midnight/DST rollover and future-day reads; only eligible unfinished tasks carry forward."},{id:"mobile",checked:true,label:"Phone cached/pending/conflict states are truthful; queued mutations survive restart and apply once on the Mac."},{id:"ui",checked:true,label:"Use the real Angular daily view at desktop and mobile sizes: create, edit, clear, Undo, move, history, empty and error states."},{id:"build",checked:true,label:"Run npm test, npm run build:web, npm run test:core, swift build for MapleCore, and Mac/iPhone Xcode tests/builds appropriate to changed hosts."}]} />
+
+Use temporary databases and labeled synthetic source events for automated validation. Run browser smoke with a test-only bridge adapter into the actual Angular app; assert persistence and reload behavior at the store boundary independently. Never use private production data as screenshots or fixtures. Keep any pre-existing failures separate from regressions and report remaining limitations explicitly.
+
+# Delivery boundaries
+
+This build proves the daily-note product loop with durable local storage and existing connector/companion infrastructure. Sending a block as an email or message, external provider edits, a new graph engine, and broad migration of legacy notes are future work; blocks retain provenance and stable IDs so these can be added safely. The current implementation does not promise an autonomous model editor for arbitrary prose: trusted source/task updates maintain bot-owned fields while user edits remain protected.
+
+Manual block reordering is deferred from this first cut; insertion order is stable. No unresolved product choices block implementation. Checkpoint status, test evidence, and any contract changes will be recorded here as work proceeds.
+
+
+# Delivered and verified
+
+Implemented in the existing app on `codex/living-daily-note`. Three agents owned core persistence, shared UI, and native/phone transport; the coordinator aligned contracts, reviewed behavior, tested the browser flow, corrected typography, and built both native bundles. Changes are available in the working tree for review; no remote publication was performed.
+
+| Check | Result |
+|---|---|
+| Angular tests | 88 passed across 16 files |
+| MapleCore and companion transport | 262 passed across 59 suites, including 14 daily-note regressions |
+| Mac Xcode | 49 passed across 13 suites, including bundled Angular boot |
+| iPhone Xcode | 26 passed on iOS 27 simulator, including native UI capture/restart/notebook flow |
+| Actual Angular browser flow | Passed desktop and iPhone-host flows with an isolated synthetic bridge; no page errors |
+| Production web, Swift package, Mac and iPhone simulator builds | All passed |
+| Whitespace/error checks | `git diff --check` clean |
+
+The browser flow verifies all six block kinds, edited-content reload, clear/Undo, same-ID move, explicit completion, block history and the empty day. Native tests separately verify SQLite persistence and source/task semantics. Review fixes cover orphaned drafts, same-route day navigation, queued creation acknowledgments, receipt pruning, midnight moves, explicit scheduling with future deadlines, and no-op rollover polling. Merriweather Regular is bundled under the existing OFL license so body writing uses the actual Maple type family without bold substitution.
+
+Mac build: `.build/xcode/Build/Products/Debug/Just Maple.app`. iPhone simulator build: `.build/xcode-phone/Build/Products/Debug-iphonesimulator/Just Maple iPhone.app`. Synthetic screenshots: `.build/daily-note-smoke/desktop.png`, `mobile.png`, `tomorrow.png`, and `empty.png`. Reproduce the browser check by running the dev server on port 4319, then `node scripts/daily-note-smoke.mjs`.
+
+Physical-device deployment and live iCloud round trips were not exercised. Detailed phone block history and uncached dates explicitly report their availability limits. Existing personal data and Markdown were not used as test fixtures or rewritten. Sending blocks externally and manual reordering remain outside this delivery.

@@ -28,7 +28,7 @@ extension KnowledgeStore {
     /// Reconcile only a successfully fetched, complete snapshot. Events, queue and source state commit together.
     /// Missing calendar occurrences mean unavailable in the queried window, never presumed cancellation.
     public func ingestSourceSnapshot(_ records: [AppleSourceRecord], connector: String,
-                                    windowStart: Date? = nil, windowEnd: Date? = nil, scopeIDs: Set<String>? = nil, now: Date = Date(), account: String = "local") throws -> Int {
+                                    windowStart: Date? = nil, windowEnd: Date? = nil, scopeIDs: Set<String>? = nil, now: Date = Date(), account: String = "local", batchHomeClassification: Bool = true) throws -> Int {
         guard ["apple_contacts", "google_contacts", "apple_calendar", "google_calendar", "home_assistant"].contains(connector), records.count <= 10000,
               Set(records.map(\.id)).count == records.count else { throw MapleError.invalid("Invalid connector source snapshot.") }
         if connector == "google_contacts" {
@@ -49,6 +49,7 @@ extension KnowledgeStore {
             let byID = Dictionary(uniqueKeysWithValues: previous.map { ($0["id"]!, $0) })
             let ids = Set(records.map(\.id))
             var changes = 0
+            var homeMembers: [(id: String, previousID: String?)] = []
             func write(_ record: AppleSourceRecord, active: Bool) throws {
                 let json = try JSONCodec.string(record)
                 let prior = byID[record.id]
@@ -62,7 +63,7 @@ extension KnowledgeStore {
                     content: active ? record.content : "This source is no longer available to the connector in its current access scope or calendar window. This does not prove deletion or cancellation. Previous source:\n" + record.content)
                 try event.validate()
                 let eventID = try insert(event, enqueue: true)
-                if connector == "home_assistant", active, prior?["active"] == "1",
+                if connector == "home_assistant", !batchHomeClassification, active, prior?["active"] == "1",
                    let previousJSON = prior?["json"], let previousID = prior?["event_id"] {
                     let previousRecord = try JSONCodec.decode(ConnectorSourceRecord.self, from: Data(previousJSON.utf8))
                     try coalesceHomeTelemetry(previous: previousRecord, current: record,
@@ -70,6 +71,9 @@ extension KnowledgeStore {
                 }
                 try db.execute("INSERT INTO connector_source_records VALUES (?,?,?,?,?) ON CONFLICT(connector,id) DO UPDATE SET json=excluded.json,event_id=excluded.event_id,active=excluded.active",
                                [connector, record.id, json, eventID, active ? "1" : "0"])
+                if connector == "home_assistant", batchHomeClassification {
+                    homeMembers.append((eventID, prior?["event_id"]))
+                }
                 changes += 1
             }
             for record in records {
@@ -84,6 +88,7 @@ extension KnowledgeStore {
                    let windowStart, let windowEnd, !(start < windowEnd && end >= windowStart) { continue }
                 try write(record, active: false)
             }
+            try createHomeBatch(homeMembers)
             return changes
         }
     }

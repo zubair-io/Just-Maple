@@ -17,6 +17,9 @@ extension KnowledgeStore {
         AND (e.id IN (SELECT event_id FROM source_facts) OR e.id IN (SELECT event_id FROM task_extraction_jobs WHERE status='succeeded'))
         """)
     }
+    func enqueueStateIfNeeded(eventID:String)throws {
+        try db.execute("INSERT OR IGNORE INTO state_jobs(event_id) SELECT e.id FROM events e WHERE e.id=? AND e.connector IN ('gmail','imessage','resume','notes','profile') AND (EXISTS(SELECT 1 FROM source_facts f WHERE f.event_id=e.id) OR EXISTS(SELECT 1 FROM task_extraction_jobs t WHERE t.event_id=e.id AND t.status='succeeded'))",[eventID])
+    }
     public func requestStateExtraction(eventID:String) throws {
         guard let event=try event(eventID),["gmail","imessage","resume","notes","profile"].contains(event.source.connector) else {throw MapleError.invalid("Unsupported state source.")}
         try db.execute("INSERT INTO state_jobs(event_id) VALUES (?) ON CONFLICT(event_id) DO UPDATE SET status='pending',token=NULL,error=NULL",[eventID])
@@ -89,7 +92,9 @@ public struct StateExtractionEngine:Sendable {
             SOURCE occurred \(event.occurredAt.ISO8601Format()), connector \(event.source.connector), source subjects \(event.subjects):
             \(String(event.content.prefix(24000)))
             """
+            try await store.recordSourceArtifact(eventID:event.id,attemptID:token,stage:"state",kind:"context",payload:prompt,provider:"acp/\(client.provider)")
             let response=try await client.request(prompt)
+            try await store.recordSourceArtifact(eventID:event.id,attemptID:token,stage:"state",kind:"response",payload:response,provider:"acp/\(client.provider)")
             try await store.finishStateJob(eventID:event.id,token:token,response:response,provider:"acp/\(client.provider)/state-v1")
         } catch {
             try await store.failStateJob(eventID:event.id,token:token)

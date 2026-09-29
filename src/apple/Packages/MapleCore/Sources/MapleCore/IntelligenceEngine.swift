@@ -17,19 +17,28 @@ public struct IntelligenceEngine: Sendable {
     public func run(limit: Int = 100, eventIDs:[String]? = nil) async throws -> RunReport {
         var report = RunReport()
         for _ in 0..<max(0, min(limit, 1000)) {
+            let provider = (classifier as? any FactCheckingClassifier)?.providerID
+            if provider == "typesafe", try await store.providerPause("typesafe") != nil { break }
             guard let lease = try await store.acquire(now: Date(), eventIDs:eventIDs) else { break }
             do {
                 let context = try await store.modelContext(for: lease.eventID)
-                let result = try await classifier.classify(context)
+                let result = try await classifier.classifyAudited(context) { audit in try await store.recordProviderAudit(audit,eventID:lease.eventID,leaseID:lease.token,stage:"classification") }
                 try result.assessment.validate()
                 let decision = Policy.decide(context: result.inputContext ?? context, assessment: result.assessment)
                 if try await store.finish(lease, decision: decision, raw: result.rawResponse, now: Date()) {
                     report.completed += 1
                 } else { report.stale += 1 }
             } catch {
+                if let failure = error as? JevProviderError { try await store.pauseJev(after: failure) }
                 // Never persist request/response bodies or credentials in queue errors.
-                let message = (error as? MapleError)?.errorDescription ?? "Classification failed; retry required."
-                try await store.fail(lease, error: message, now: Date())
+                let message = (error as? JevProviderError)?.localizedDescription ?? "Classification failed or output was invalid. Check provider availability and retry."
+                if error is JevInputTooLarge {
+                    try await store.blockClassification(lease, reason: JevInputTooLarge().localizedDescription, now: Date())
+                } else if classifier is TypeSafeClassifier, error is MapleError {
+                    try await store.blockClassification(lease, reason: "Jev input or response validation failed. Inspect the attempt before retrying; no automatic repeat will be sent.", now: Date())
+                } else {
+                    try await store.fail(lease, error: message, now: Date())
+                }
                 report.deferred += 1
             }
         }

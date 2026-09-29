@@ -14,6 +14,8 @@ import Foundation
     private let scope:String
     private var groupCursor:Data?
     private var waitingGroups:[String:SyncDeviceGroupAction]=[:]
+    private var dailyCursor:Data?
+    private var waitingDaily:[String:SyncDeviceDailyAction]=[:]
     private var actionCursor:Data?
     private var waitingActions:[String:SyncDeviceTaskAction]=[:]
     private var cursor:Data?
@@ -171,6 +173,57 @@ import Foundation
         }
         return waitingActions.sorted{$0.key<$1.key}.prefix(32).map(\.value)
     }
+    public func uploadDailyActions(deviceID:UUID,actions:[SyncDailyAction])async throws {
+        guard actions.count<=8,Set(actions.map(\.id)).count==actions.count,actions.allSatisfy(\.valid) else {throw CloudMailboxError.invalidPayload}
+        for action in actions {
+            let id="d-"+captureID(deviceID,action.id), envelope=SyncDeviceDailyAction(deviceID:deviceID,action:action)
+            if let existing=try await fetch([id]).first {
+                guard try open(SyncDeviceDailyAction.self,record:existing)==envelope else {throw CloudMailboxError.conflictingCapture};continue
+            }
+            do {try await save(.init(id:id,payload:seal(envelope,id:id)))} catch CloudMailboxError.conflict {
+                guard let existing=try await fetch([id]).first,try open(SyncDeviceDailyAction.self,record:existing)==envelope else {throw CloudMailboxError.conflictingCapture}
+            }
+        }
+    }
+    public func dailyReceipts(deviceID:UUID,ids:[UUID])async throws->[SyncDailyReceipt] {
+        guard ids.count<=32 else{throw CloudMailboxError.invalidPayload}
+        return try await fetch(ids.map{"dr-"+captureID(deviceID,$0)}).map {record in
+            let receipt=try open(SyncDailyReceipt.self,record:record)
+            guard ids.contains(receipt.id),record.id=="dr-"+captureID(deviceID,receipt.id),receipt.valid else{throw CloudMailboxError.invalidPayload}
+            return receipt
+        }
+    }
+    public func acknowledgeDailyAction(deviceID:UUID,receipt:SyncDailyReceipt)async throws {
+        guard receipt.valid else{throw CloudMailboxError.invalidPayload}
+        let id="dr-"+captureID(deviceID,receipt.id)
+        do {try await save(.init(id:id,payload:seal(receipt,id:id)))} catch CloudMailboxError.conflict {
+            guard try await dailyReceipts(deviceID:deviceID,ids:[receipt.id])==[receipt] else{throw CloudMailboxError.conflict}
+        }
+        waitingDaily["d-"+captureID(deviceID,receipt.id)]=nil
+    }
+    public func pendingDailyActions()async throws->[SyncDeviceDailyAction] {
+        try await check()
+        if waitingDaily.count<32 {
+            let page:CloudMailboxPage
+            do {page=try await store.changes(after:dailyCursor,limit:100)} catch CloudMailboxError.invalidCursor {dailyCursor=nil;throw CloudMailboxError.invalidCursor}
+            try await check()
+            guard page.records.count<=100 else{throw CloudMailboxError.invalidPayload}
+            var additions:[String:SyncDeviceDailyAction]=[:]
+            for record in page.records where record.id.hasPrefix("d-") {
+                let value=try open(SyncDeviceDailyAction.self,record:record)
+                guard value.action.valid,record.id=="d-"+captureID(value.deviceID,value.action.id) else{throw CloudMailboxError.invalidPayload}
+                additions[record.id]=value
+            }
+            waitingDaily.merge(additions){_,new in new};dailyCursor=page.cursor
+        }
+        for (device,entries) in Dictionary(grouping:Array(waitingDaily.values),by:{ $0.deviceID }) {
+            let ids=entries.map{ $0.action.id }
+            for offset in stride(from:0,to:ids.count,by:32) {
+                for receipt in try await dailyReceipts(deviceID:device,ids:Array(ids[offset..<min(offset+32,ids.count)])) {waitingDaily["d-"+captureID(device,receipt.id)]=nil}
+            }
+        }
+        return waitingDaily.sorted{$0.key<$1.key}.prefix(32).map(\.value)
+    }
     public func uploadGroupActions(deviceID:UUID,actions:[SyncGroupAction])async throws {
         guard actions.count<=4,Set(actions.map(\.id)).count==actions.count,actions.allSatisfy(\.valid) else{throw CloudMailboxError.invalidPayload}
         for action in actions {
@@ -220,7 +273,7 @@ import Foundation
         return waitingGroups.sorted{$0.key<$1.key}.prefix(16).map(\.value)
     }
     public func publishSnapshot(_ response:SyncResponse)async throws {
-        guard response.validGroups,response.version==1,response.tasks.count<=50,response.states.count<=32,response.activities.count<=32,response.people.count<=12,response.asOf.timeIntervalSince1970.isFinite,response.asOf<=Date().addingTimeInterval(300) else{throw CloudMailboxError.invalidPayload}
+        guard response.validDaily,response.validGroups,response.version==1,response.tasks.count<=50,response.states.count<=32,response.activities.count<=32,response.people.count<=12,response.asOf.timeIntervalSince1970.isFinite,response.asOf<=Date().addingTimeInterval(300) else{throw CloudMailboxError.invalidPayload}
         var value=response;value.deviceID=configuration.id;value.receivedIDs=[]
         for _ in 0..<3 {
             let existing=try await fetch(["snapshot"]).first
@@ -232,7 +285,7 @@ import Foundation
     public func snapshot(deviceID:UUID)async throws->SyncResponse? {
         guard let record=try await fetch(["snapshot"]).first else{return nil}
         var value=try open(SyncResponse.self,record:record)
-        guard value.validGroups,value.version==1,value.tasks.count<=50,value.states.count<=32,value.activities.count<=32,value.people.count<=12,value.asOf.timeIntervalSince1970.isFinite,value.asOf<=Date().addingTimeInterval(300) else{throw CloudMailboxError.invalidPayload}
+        guard value.validDaily,value.validGroups,value.version==1,value.tasks.count<=50,value.states.count<=32,value.activities.count<=32,value.people.count<=12,value.asOf.timeIntervalSince1970.isFinite,value.asOf<=Date().addingTimeInterval(300) else{throw CloudMailboxError.invalidPayload}
         value.deviceID=deviceID;value.receivedIDs=[]
         for index in value.tasks.indices {
             if let state=value.tasks[index].actionState {

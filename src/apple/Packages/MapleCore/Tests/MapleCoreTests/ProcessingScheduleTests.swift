@@ -17,8 +17,12 @@ struct ProcessingScheduleTests {
         let mail=try await seed(store,"gmail",8,now:now)
         var seen:[String]=[]
         for _ in 0..<8 {seen.append(try #require(await store.acquire(now:now)).eventID)}
-        #expect(Set(seen.prefix(2))==Set([telemetry.last!,mail.last!]))
-        #expect(seen.contains(telemetry.first!))
+        let batchID = try #require(seen.first { $0 != mail.last! })
+        let batch = try await store.modelContext(for: batchID)
+        #expect(batch.event.type == "home.batch")
+        #expect(Set(seen.prefix(2)) == Set([batchID, mail.last!]))
+        #expect(Set(batch.relatedEvidence.map(\.id)) == Set(telemetry))
+        #expect(batch.relatedEvidence.contains { $0.id == telemetry.first! })
         #expect(seen.contains(mail.first!))
         #expect(Set(seen).count==8)
     }
