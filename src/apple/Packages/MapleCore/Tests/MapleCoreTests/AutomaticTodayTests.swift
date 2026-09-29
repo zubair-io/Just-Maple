@@ -203,3 +203,45 @@ extension AutomaticTodayTests {
 private extension KnowledgeStore {
     func automaticFixtureDismiss(_ id:String) throws {try db.execute("UPDATE work_items SET status='dismissed' WHERE event_id=?",[id])}
 }
+
+extension AutomaticTodayTests {
+    func calendarFixture(_ key:String,start:String,end:String,allDay:Bool=false,zone:String="UTC") -> Event {
+        Event(type:"calendar.snapshot",source:.init(connector:"google_calendar",account:"fixture",externalID:key,revision:"1"),occurredAt:now,receivedAt:now,subjects:["calendar:fixture"],content:"Google Calendar source record\nTitle: Fixture \(key)\nCalendar: Work\nStart: \(start)\nEnd: \(end)\nAll day: \(allDay)\nTime zone: \(zone)\nLocation: Studio\nNotes: Bring sketches")
+    }
+    @Test func calendarUsesScheduledDayRatherThanImportDateAndRepairsOnlyUntouchedAutoCards() async throws {
+        let (root,_,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        var current=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"America/New_York")
+        let today=calendarFixture("today",start:"2026-10-30T18:00:00Z",end:"2026-10-30T19:00:00Z")
+        let future=calendarFixture("future",start:"2026-11-30T18:00:00Z",end:"2026-11-30T19:00:00Z")
+        let edited=calendarFixture("edited",start:"2026-11-30T18:00:00Z",end:"2026-11-30T19:00:00Z")
+        for event in [today,future,edited] {_ = try await store.ingest(event);try await store.automaticFixtureDecision(event.id,route:.summarize,at:now)}
+        let eligible=try await store.automaticTodayCandidates(documentID:current.documentID,content:current.content,at:now)
+        #expect(eligible.count == 1 && eligible[0].markdown.contains(today.id))
+        let wrong=try await store.automaticSourceMarkdown(future,id:"auto-source:fixture-wrong")
+        let userEdited=try await store.automaticSourceMarkdown(edited,id:"auto-source:fixture-edited")
+        current=try await coordinator.commit(documentID:current.documentID,expectedRevision:current.revision,content:current.content+wrong+"\n"+userEdited+"My annotation about this event.\n",commandID:"fixture-old-insertion")
+        try await coordinator.draft(documentID:current.documentID,revision:current.revision,content:current.content+"Unsaved thought")
+        #expect(try await coordinator.refreshAutomatic(documentID:current.documentID,at:now).revision == current.revision)
+        current=try await coordinator.commit(documentID:current.documentID,expectedRevision:current.revision,content:current.content+"Unsaved thought",commandID:"fixture-save")
+        let repaired=try await coordinator.refreshAutomatic(documentID:current.documentID,at:now)
+        #expect(!repaired.blocks.contains {$0.eventID == future.id})
+        #expect(repaired.blocks.contains {$0.eventID == edited.id})
+        #expect(repaired.blocks.contains {$0.eventID == today.id})
+        #expect(repaired.content.contains("My annotation about this event."))
+        #expect(repaired.content.contains("Unsaved thought"))
+        #expect(try await store.documentBlock(id:"auto-source:fixture-wrong")?.state == "removed")
+        #expect(try await coordinator.refreshAutomatic(documentID:current.documentID,at:now).revision == repaired.revision)
+    }
+    @Test func calendarOverlapHandlesExclusiveEndsAllDayZonesAndMissingDates() throws {
+        let allDay=calendarFixture("all-day",start:"2026-10-30T00:00:00Z",end:"2026-10-31T00:00:00Z",allDay:true)
+        let value=try #require(CalendarSourcePresentation(allDay))
+        #expect(try value.overlaps(day:"2026-10-30",timeZone:"America/Los_Angeles"))
+        #expect(try !value.overlaps(day:"2026-10-29",timeZone:"America/Los_Angeles"))
+        #expect(try !value.overlaps(day:"2026-10-31",timeZone:"America/Los_Angeles"))
+        let overnight=try #require(CalendarSourcePresentation(calendarFixture("overnight",start:"2026-10-29T23:30:00Z",end:"2026-10-30T01:00:00Z")))
+        #expect(try overnight.overlaps(day:"2026-10-30",timeZone:"UTC"))
+        let ended=try #require(CalendarSourcePresentation(calendarFixture("ended",start:"2026-10-29T23:00:00Z",end:"2026-10-30T00:00:00Z")))
+        #expect(try !ended.overlaps(day:"2026-10-30",timeZone:"UTC"))
+        #expect(CalendarSourcePresentation(event("missing",connector:"google_calendar")) == nil)
+    }
+}

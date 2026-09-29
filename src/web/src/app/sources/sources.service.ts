@@ -33,6 +33,8 @@ export interface SourceRow {
   analysisState?: string;
   observedState?: string;
   attentionReason?: string;
+  direction?: string;
+  calendar?: {start: string | number; end: string | number; allDay: boolean; timeZone?: string; name: string; location: string; notes: string};
 }
 export interface SourcePage {
   schemaVersion: number;

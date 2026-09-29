@@ -80,16 +80,18 @@ extension KnowledgeStore {
             let key=try automaticSourceKey(event.source),id="auto-source:"+ManagedMarkdown.hash(key)
             guard !visibleSourceKeys.contains(key),try automaticIdentityUnused(id) else{continue}
             let decision=try self.decision(eventID:event.id)
-            let headers=event.content.components(separatedBy:"\n").prefix(16)
-            let title=headers.first(where:{$0.hasPrefix("Subject: ") || $0.hasPrefix("Title: ")}).map{String($0.dropFirst($0.hasPrefix("Subject:") ? 9:7))}
-            let label=String((title ?? headers.first(where: { !$0.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty }) ?? "Captured source").prefix(180))
-            let kind=ManagedMarkdown.referenceKind(connector:event.source.connector)
-            let data:[String:Any]=["v":1,"kind":kind,"eventID":event.id,"label":label]
-            let reference=String(decoding:try JSONSerialization.data(withJSONObject:data,options:.sortedKeys),as:UTF8.self)
-            result.append(AutomaticTodayCandidate(blockID:id,markdown:(try ManagedMarkdown.marker(["id":id]))+"```maple-ref\n"+reference+"\n```\n",actionItem:decision?.route == .notify || decision?.route == .askUser));sources+=1
+            guard try calendarBelongsInToday(event,day:day,timeZone:document.timeZone) else {continue}
+            result.append(AutomaticTodayCandidate(blockID:id,markdown:try automaticSourceMarkdown(event,id:id),actionItem:decision?.route == .notify || decision?.route == .askUser));sources+=1
             if sources>=32 || result.count>=remaining {break}
         }
         return result
+    }
+    func automaticSourceMarkdown(_ event:Event,id:String) throws -> String {
+        let headers=event.content.components(separatedBy:"\n").prefix(16)
+        let title=headers.first(where:{$0.hasPrefix("Subject: ") || $0.hasPrefix("Title: ")}).map{String($0.dropFirst($0.hasPrefix("Subject:") ? 9:7))}
+        let label=String((title ?? headers.first(where:{!$0.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty}) ?? "Captured source").prefix(180))
+        let data:[String:Any]=["v":1,"kind":ManagedMarkdown.referenceKind(connector:event.source.connector),"eventID":event.id,"label":label]
+        return (try ManagedMarkdown.marker(["id":id]))+"```maple-ref\n"+String(decoding:try JSONSerialization.data(withJSONObject:data,options:.sortedKeys),as:UTF8.self)+"\n```\n"
     }
     private func automaticIdentityUnused(_ id:String) throws -> Bool {
         try documentBlock(id:id)==nil && db.rows("SELECT block_id FROM document_auto_insertions WHERE block_id=?",[id]).isEmpty && db.rows("SELECT block_id FROM document_identities WHERE block_id=?",[id]).isEmpty
@@ -103,11 +105,13 @@ extension TodayDocumentCoordinator {
         let current=try await open(documentID:documentID)
         guard !current.readOnly,current.day == (try ManagedMarkdown.day(at:at,timeZone:current.timeZone)) else{return current}
         let candidates=try await store.automaticTodayCandidates(documentID:documentID,content:current.content,at:at)
-        guard !candidates.isEmpty else{return current}
+        let removals=try await store.misplacedAutomaticCalendarBlocks(documentID:documentID,content:current.content,day:current.day,timeZone:current.timeZone)
+        guard !candidates.isEmpty || !removals.isEmpty else{return current}
         if let draft=current.draft,draft.content != current.content {
             var pending=current;pending.warning="New action items or FYIs are waiting. They will be added after your draft is saved.";return pending
         }
         var content=current.content
+        for segment in try ManagedMarkdown.segments(content).filter({removals.contains($0.id)}).reversed() {content=(content as NSString).replacingCharacters(in:segment.range,with:"")}
         for (actionItem,title) in [(true,"Action items"),(false,"FYI")] {
             let group=candidates.filter{$0.actionItem==actionItem};guard !group.isEmpty else{continue}
             let heading="auto-heading:"+ManagedMarkdown.hash(documentID+title)
@@ -125,7 +129,7 @@ extension TodayDocumentCoordinator {
             } else {content += "\n\n"+addition}
 
         }
-        let command="auto-today:"+ManagedMarkdown.hash(documentID+current.revision+candidates.map(\.blockID).joined(separator:"|"))
+        let command="auto-today:"+ManagedMarkdown.hash(documentID+current.revision+candidates.map(\.blockID).joined(separator:"|")+removals.joined(separator:"|"))
         return try await commit(documentID:documentID,expectedRevision:current.revision,content:content,commandID:command,preserveDraft:true)
     }
 }

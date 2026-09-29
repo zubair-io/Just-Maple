@@ -39,3 +39,13 @@ The existing background refresh is already wired to the native indexing tick and
 Implemented on September 29, 2026. Passed 360 core tests, 30 companion transport tests, 223 Angular tests and 69 Mac tests. CLI build, Mac build and strict code-signature verification succeeded. Synthetic integration coverage writes email, iMessage, HA-batch and recording references into one actual Markdown document, reopens it, and checks source identities, section placement and unchanged user prose. Dedicated tests cover summary dismissal/clear suppression and factual HA before/after previews.
 
 After loading the new build, the live September 29 note gained exactly five automatic references: two Gmail and three Google Calendar sources. The UI displayed the FYI section, source reasons and shared history controls without an opening, recovery or source-unavailable error. Routine retained HA readings were not inserted. No synthetic sources were added to the user's workspace.
+
+## Calendar date correction and compact source design
+
+Calendar import/observation time is not the appointment time. Automatic calendar references now additionally require the captured Start/End interval to overlap the note's local day. All-day dates use the calendar's time zone and exclusive end date; timed and overnight events use actual instants against the note's day boundaries. Missing/invalid calendar dates are ineligible. This remains a recent-update projection, not a full calendar agenda/backfill.
+
+On the current day, refresh removes only unchanged auto-inserted out-of-day calendar cards using the same expected-revision commit and recoverable document history. Source evidence, manual insertions, annotations and drafts are retained. Removed identities stay suppressed. Historical notes are not rewritten.
+
+The shared source card follows the supplied mockup: outlined icon, sender/calendar name, compact date/type, subject/title and excerpt, a slim source rail, and theme-token background/border/text. Calendar cards use captured occurrence times, calendar name, location and notes instead of connector serialization. Email direction comes from captured mailbox metadata. Clicking the title opens the shared source/history inspector; technical processing labels remain there.
+
+Calendar correction validation: 362 core + 30 transport + 225 Angular + 69 Mac tests passed (686 total). The live September 29 note now retains two email references and records all three out-of-day calendar references as removed; their immutable source events remain available. A visual check of the native editor verified the compact email layout and identified/fixed a global paragraph-style override so source previews retain muted text and spacing.
