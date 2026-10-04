@@ -98,3 +98,28 @@ struct InlineMapleTests {
         #expect(try await store.inlineMapleRun(canceled.runID).status=="canceled")
     }
 }
+
+
+extension InlineMapleTests {
+    @Test func replyParagraphsHaveStableIdentitiesAndCannotInjectFormatting() async throws {
+        let store=try KnowledgeStore(path:":memory:")
+        let queued=try await store.queueInlineMaple(request(),provider:"synthetic-test-fixture")
+        _ = try await store.startInlineMaple(queued.runID)
+        let run=try await store.completeInlineMaple(queued.runID,text:"First paragraph.\r\n \t\r\n    Indented literal &amp; text.\nSecond line.\n\n# Literal heading",eventIDs:[],total:0,coverage:"Coverage paragraph.\n\nMore coverage.")
+        let original=try ManagedMarkdown.marker(["id":"block"])+"@maple Find emails from Dominick\n\n"
+        let first=try InlineMarkdown.applying(run,to:original,events:[])
+        let second=try InlineMarkdown.applying(run,to:original,events:[])
+        #expect(first == second)
+        let parts=try ManagedMarkdown.segments(first).filter{$0.id != "block"}
+        #expect(parts.count == 5)
+        #expect(parts[0].id == run.replyBlockID)
+        #expect(parts[1].id == run.replyBlockID+"-paragraph-1")
+        #expect(parts[1].content.contains("&#32;&#32;&#32;&#32;Indented literal &amp;amp; text\\.  \nSecond line\\."))
+        #expect(parts[2].content.contains("\\# Literal heading"))
+        for part in parts {
+            #expect(part.metadata["kind"] as? String == "maple-reply")
+            #expect(part.metadata["runID"] as? String == run.runID)
+            #expect(!part.content.trimmingCharacters(in:.whitespacesAndNewlines).contains("\n\n"))
+        }
+    }
+}

@@ -9,7 +9,7 @@ extension Bridge {
             guard let n=value as? Int,range.contains(n) else{throw MapleError.invalid("Invalid \(key).")};return n
         }
         switch action {
-        case "sourceList":
+        case "sourceList", "sourceChanges":
             var data=body["query"] as? [String:Any] ?? [:]
             for key in ["receivedAfter","receivedBefore"] {
                 if let date=data[key] as? String {
@@ -23,6 +23,10 @@ extension Bridge {
             }
             let query=try decode(SourceQuery.self,["query":data],"query",limit:8000)
             let cursor:SourceCursor? = body["cursor"] == nil || body["cursor"] is NSNull ? nil:try decode(SourceCursor.self,body,"cursor",limit:2048)
+            if action=="sourceChanges" {
+                guard let cursor else {throw MapleError.invalid("Refresh Sources to check new entries.")}
+                return try json(try await store.sourceChanges(query:query,cursor:cursor))
+            }
             return try json(try await store.sourceList(query:query,cursor:cursor,limit:integer("limit",60,1...100)))
         case "sourceDetail":return try json(try await store.sourceDetail(eventID:string(body,"eventID",limit:1024)))
         case "sourceHistory":

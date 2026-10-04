@@ -20,7 +20,7 @@ Source cards retain an immutable event ID and a readable fallback label. Show se
 - Keep latest active source revisions only. Exclude sources already represented by a linked task or another document block.
 - Preserve global stable source/task identities and the insertion ledger, including cleared, removed and moved blocks. Repeated ticks/restarts do not duplicate or resurrect them.
 - Append under stable Action items / FYI heading blocks. Never rewrite existing prose or re-create a heading the user removed.
-- Existing six-second editing leases, unsaved drafts, expected revisions, file mutation journal and conflict recovery govern every write. Retry when editing finishes; never replace a draft.
+- The open shared editor claims and renews a 30-second native session lease. While it owns the note, automatic context is proposed to the live Tiptap/Yjs document and saved with the user's edits; normal typing or autosave does not defer insertion. Native background writes resume only outside that ownership and remain protected by expected revisions, drafts, delivery receipts and the mutation journal. Raw Markdown mode, composition or unresolved conflicts defer proposals safely. See [local collaboration](TODAY-AND-SOURCES.md#local-user-and-maple-collaboration-september-29-implementation).
 - Keep the existing maximum of 64 automatic blocks per day and 32 source cards per refresh. Prioritize attention over FYIs; the remainder stays in Sources. No extra model requests and no outbound messages.
 
 ## Implementation sequence

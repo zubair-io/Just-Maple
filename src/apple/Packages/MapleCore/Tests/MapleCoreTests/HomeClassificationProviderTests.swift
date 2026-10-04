@@ -38,7 +38,8 @@ struct HomeClassificationProviderTests {
     @Test func homeBatchUsesOneRequestWithFourFocusedQuestionsAndInspectableResponse() async throws {
         let response = try payload(answers()), transport = HomeProviderTransport(data: response), audit = HomeProviderAudit()
         let classifier = try TypeSafeClassifier(apiKey: "fixture-secret", model: "jev-fixture", transport: transport)
-        let result = try await classifier.classifyAudited(context()) { await audit.append($0) }
+        let input=context()
+        let result = try await classifier.classifyAudited(input) { await audit.append($0) }
         let requests = await transport.requests
         #expect(requests.count == 1)
         let request = try #require(requests.first)
@@ -64,7 +65,12 @@ struct HomeClassificationProviderTests {
         #expect(result.rawResponse == response)
         #expect(result.inputContext?.event.id == "fixture-home-batch")
         let entries = await audit.entries
-        #expect(entries.count == 2)
+        #expect(entries.map(\.kind) == ["context", "dispatch", "response"])
+        #expect(Set(entries.map(\.invocationID)).count == 1)
+        let dispatch=try #require(entries.first{$0.kind=="dispatch"})
+        #expect(dispatch.payload.isEmpty)
+        #expect(dispatch.dispatch?.coverage == .complete)
+        #expect(dispatch.dispatch?.evidence == [ProviderInputEvidence(eventID:input.event.id,occurredAt:input.event.occurredAt)])
         #expect(entries.first?.payload == String(decoding: request.httpBody!, as: UTF8.self))
         #expect(entries.last?.payload == String(decoding: response, as: UTF8.self))
         #expect(!entries.contains { $0.payload.contains("fixture-secret") })

@@ -18,12 +18,12 @@ public struct MessageAssessment: Codable, Sendable {
     public let questionVersion: String
 
     public init(kind: MessageKind, confidence: Double, replyNeeded: Double, timeSensitive: Double,
-                commitmentChanged: Double, contextConflict: Double, meaningfulUpdate: Double, needsReasoning: Double, actionNeeded: Double? = nil, taskReviewNeeded: Double? = nil) {
+                commitmentChanged: Double, contextConflict: Double, meaningfulUpdate: Double, needsReasoning: Double, actionNeeded: Double? = nil, taskReviewNeeded: Double? = nil, questionVersion: String = "message-actions-v4-current-conversation") {
         self.actionNeeded=actionNeeded; self.taskReviewNeeded=taskReviewNeeded
         self.kind = kind; self.confidence = confidence; self.replyNeeded = replyNeeded
         self.timeSensitive = timeSensitive; self.commitmentChanged = commitmentChanged
         self.contextConflict = contextConflict; self.meaningfulUpdate = meaningfulUpdate
-        self.needsReasoning = needsReasoning; questionVersion = "message-actions-v3"
+        self.needsReasoning = needsReasoning; self.questionVersion = questionVersion
     }
 
     func validate() throws {

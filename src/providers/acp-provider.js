@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import * as acp from "@agentclientprotocol/sdk";
 import { subscriptionEnvironment } from "./environment.js";
 import { findExecutable, run } from "./process.js";
+import { MODEL_UNAVAILABLE, typedSessionFailure } from "./provider-errors.js";
 
 export class ACPProvider {
   constructor(configuration) {
@@ -63,6 +64,7 @@ export class ACPProvider {
       ...providerEnvironment,
       ...options.environment
     });
+    if (this.id === "codex" && cliPath) environment.CODEX_PATH = cliPath;
     this.process = spawn(process.execPath, [this.adapterPath], {
       cwd: options.cwd ?? process.cwd(),
       env: environment,
@@ -101,7 +103,9 @@ export class ACPProvider {
       this.initialization = await Promise.race([
         this.connection.agent.request(acp.methods.agent.initialize, {
           protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {}
+          clientCapabilities: this.id === "codex" ? {
+            _meta: { jetbrains: { air: { version: 1, capabilities: ["sessionFailure", "recommendedValue"] } } }
+          } : {}
         }),
         exited,
         timeoutAfter(20_000, `${this.displayName} ACP initialization timed out.`)
@@ -117,6 +121,7 @@ export class ACPProvider {
         await this.connection.agent.request(acp.methods.agent.session.setMode, {
           sessionId: this.session.sessionId, modeId: "read-only"
         });
+        await this.configureModel(options.model);
       }
       return this;
     } catch (error) {
@@ -125,6 +130,28 @@ export class ACPProvider {
       await this.close();
       throw error;
     }
+  }
+
+  async configureModel(requested) {
+    const option = this.session.newSessionResponse.configOptions?.find(item => item.id === "model" && item.type === "select");
+    // Pinned codex-acp 1.12 inserts an unsupported inherited current model into
+    // this list with description:null. Real model/list entries have descriptions.
+    // Do not mistake that display-only entry for advertised model availability.
+    const available = option?.options?.filter(item => typeof item.value === "string" && typeof item.description === "string") ?? [];
+    const supported = value => typeof value === "string" && available.some(item => item.value === value);
+    const recommended = option?._meta?.jetbrains?.air?.recommendedValue;
+    const selected = requested ?? (supported(option?.currentValue) ? option.currentValue : recommended);
+    if (!supported(selected)) {
+      const error = new Error(MODEL_UNAVAILABLE);
+      error.code = "PROVIDER_MODEL_UNAVAILABLE";
+      throw error;
+    }
+    if (requested !== undefined || selected !== option.currentValue) {
+      await this.connection.agent.request(acp.methods.agent.session.setConfigOption, {
+        sessionId: this.session.sessionId, configId: "model", value: selected
+      });
+    }
+    this.model = selected;
   }
 
   async send(prompt, options = {}) {
@@ -144,10 +171,14 @@ export class ACPProvider {
       for (;;) {
         const message = await this.session.nextUpdate();
         if (message.kind === "stop") {
+          const failure = typedSessionFailure(message.response);
+          if (failure) throw failure;
           stopReason = message.stopReason;
           break;
         }
         const event = message.update;
+        const failure = typedSessionFailure(event);
+        if (failure) throw failure;
         events.push(event);
         options.onEvent?.(event);
         if (event.sessionUpdate === "agent_message_chunk" && event.content?.type === "text") {

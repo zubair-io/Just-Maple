@@ -3,7 +3,8 @@ import Foundation
 /// A provider invocation's actual input/output, never an inferred reconstruction.
 public struct ProviderAuditEvent:Sendable {
     public let invocationID:String,parentInvocationID:String?,provider:String,model:String,kind:String,payload:String
-    public init(invocationID:String,parentInvocationID:String?=nil,provider:String,model:String,kind:String,payload:String) {self.invocationID=invocationID;self.parentInvocationID=parentInvocationID;self.provider=provider;self.model=model;self.kind=kind;self.payload=payload}
+    public let dispatch:ProviderDispatchCapture?
+    public init(invocationID:String,parentInvocationID:String?=nil,provider:String,model:String,kind:String,payload:String,dispatch:ProviderDispatchCapture?=nil) {self.invocationID=invocationID;self.parentInvocationID=parentInvocationID;self.provider=provider;self.model=model;self.kind=kind;self.payload=payload;self.dispatch=dispatch}
 }
 public typealias ProviderAuditSink = @Sendable (ProviderAuditEvent) async throws -> Void
 
@@ -19,9 +20,11 @@ extension KnowledgeStore {
     }
     func recordProviderAudit(_ event:ProviderAuditEvent,eventID:String,leaseID:String,stage:String)throws {
         try db.transaction {
+            try appendProviderInvocation(event,jobID:eventID,attemptID:leaseID,stage:stage,eventID:eventID)
             let child=leaseID+":"+event.invocationID
             try db.execute("INSERT OR IGNORE INTO source_attempts(id,event_id,stage,started_at,provider,model,parent_id) VALUES (?,?,?,?,?,?,?)",[child,eventID,stage,String(Date().timeIntervalSince1970),event.provider,event.model,event.parentInvocationID.map{leaseID+":"+$0} ?? leaseID])
-            try recordSourceArtifact(eventID:eventID,attemptID:child,stage:stage,kind:event.kind,payload:event.payload,provider:event.provider,model:event.model)
+            let payload=event.kind == "dispatch" ? (try db.rows("SELECT dispatch_json FROM provider_invocations WHERE id=?",[child]).first?["dispatch_json"] ?? event.payload):event.payload
+            try recordSourceArtifact(eventID:eventID,attemptID:child,stage:stage,kind:event.kind,payload:payload,provider:event.provider,model:event.model)
             if event.kind=="validation" {try db.execute("UPDATE source_attempts SET ended_at=?,commit_outcome=? WHERE id=?",[String(Date().timeIntervalSince1970),event.payload,child])}
         }
     }

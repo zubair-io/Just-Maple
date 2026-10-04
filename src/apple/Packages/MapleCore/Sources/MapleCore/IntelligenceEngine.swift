@@ -34,6 +34,8 @@ public struct IntelligenceEngine: Sendable {
                 let message = (error as? JevProviderError)?.localizedDescription ?? "Classification failed or output was invalid. Check provider availability and retry."
                 if error is JevInputTooLarge {
                     try await store.blockClassification(lease, reason: JevInputTooLarge().localizedDescription, now: Date())
+                } else if classifier is ClefClassifier, error is MapleError {
+                    try await store.blockClassification(lease, reason: "Clef input or response validation failed. Full evidence is retained; inspect the attempt before retrying.", now: Date())
                 } else if classifier is TypeSafeClassifier, error is MapleError {
                     try await store.blockClassification(lease, reason: "Jev input or response validation failed. Inspect the attempt before retrying; no automatic repeat will be sent.", now: Date())
                 } else {

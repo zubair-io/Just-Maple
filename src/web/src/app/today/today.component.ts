@@ -1,4 +1,8 @@
+import { TodayFeedbackComponent, TodayFeedback } from './today-feedback.component';
+import { SourcePickerFocusDirective } from "../sources/source-picker-focus.directive";
 import { LocalCalendar } from "../core/local-calendar.service";
+import { InlineSearchResultsComponent } from "./inline-search-results.component";
+import { SourceReference } from "../editor/daily-markdown-codec";
 import { sourceReferenceKind } from "../sources/source-reference-kind";
 import {
   Component,
@@ -6,7 +10,6 @@ import {
   OnInit,
   OnDestroy,
   ViewChild,
-  ElementRef,
   inject,
   signal,
 } from "@angular/core";
@@ -14,7 +17,7 @@ import { DatePipe } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ActivatedRoute, Router } from "@angular/router";
 import { Subscription, distinctUntilChanged, map } from "rxjs";
-import { MuiButtonComponent } from "@maple/ui";
+import { MuiButtonComponent, MuiDialogFocusDirective } from "@maple/ui";
 import { TodayDocumentService } from "./today-document.service";
 import { relativeDayLabel } from "./relative-day";
 import { localDay, offsetDay } from "../daily-note/daily-note.models";
@@ -29,23 +32,19 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
   selector: "maple-today",
   standalone: true,
   imports: [
+    TodayFeedbackComponent,
     DatePipe,
     FormsModule,
     MuiButtonComponent,
+    MuiDialogFocusDirective,
     MapleEditorComponent,
     SourceDetailComponent,
+    SourcePickerFocusDirective,
+    InlineSearchResultsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: ` <section class="today-page">
-    <header class="note-date">
-      <time
-        class="date-chip"
-        [attr.datetime]="notes.day()"
-        [attr.title]="formattedDay()"
-        [attr.aria-label]="formattedDay()"
-        >{{ relativeDay() }}</time
-      >
-    </header>
+  template: ` <section class="today-page" [class.today-canvas]="editorInstance?.canvas?.active() && !editorInstance?.source()">
+    <aside class="document-attention" aria-label="Document status">
     @if (currentDay() !== openedOnDay() && notes.day() !== currentDay()) {
       <p class="document-notice">
         It is now {{ currentDay() }}. This note stays on {{ notes.day() }} while
@@ -70,6 +69,7 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
     }
     @if (notes.error()) {
       <div class="document-error" role="alert">
+        <h2>Your note hasn’t been saved</h2>
         <p>{{ notes.error() }}</p>
         <mui-button variant="ghost" (pressed)="notes.flush()"
           >Retry save</mui-button
@@ -79,8 +79,7 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
           >Reopen current file · retain draft</mui-button
         >
         <p class="small">
-          Your Markdown stays available in the editor below. Copy it before
-          closing if saving remains unavailable.
+          Your writing is still available on the canvas. Save a recovery copy before closing if saving remains unavailable.
         </p>
       </div>
     }
@@ -104,20 +103,29 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
       </section>
     }
     @if (notes.document(); as doc) {
+      <maple-today-feedback [run]="notes.run()" [pending]="notes.automaticStatus()" [suggestions]="notes.suggestions()" [busy]="doc.readOnly || notes.actionBusy() || notes.loading()" (action)="feedbackAction($event)" (taskRequested)="notes.insertTask($event)" (carryRequested)="notes.carryForward($event)" />
       @if (doc.readOnly) {
         <p class="document-notice">
           Read-only workspace. Edits have not been acknowledged by the Mac.
         </p>
       }
+    }
+    </aside>
+    @if (notes.document(); as doc) {
       @for (generation of [notes.generation()]; track generation) {
         <maple-editor
           #editor
           [initial]="notes.initial()"
+          [supportsCanvas]="true"
+          [dayLabel]="relativeDay()"
+          [dayTitle]="formattedDay()"
+          [dayDate]="notes.day()"
           [documentID]="doc.documentID"
           [showToolbar]="true"
           [documentToolsAvailable]="true"
           [dayTransfersAvailable]="true"
           [readOnly]="doc.readOnly || notes.actionBusy() || notes.loading()"
+          (boardAction)="notes.boardAction($event)"
           (changed)="notes.change($event)"
           (editingChanged)="notes.setEditing($event)"
           (inspected)="selected.set($event)"
@@ -130,10 +138,11 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
       }
       @if (toolsOpen()) {
         <dialog
-          #documentTools
+          muiDialogFocus
+          [dialogReturnFocus]="writingFocusTarget"
           class="document-tools-drawer"
           aria-labelledby="document-tools-title"
-          (cancel)="$event.preventDefault(); closeDocumentTools()"
+          (dialogClosed)="closeDocumentTools()"
         >
           <header>
             <h2 id="document-tools-title">Document tools</h2>
@@ -244,12 +253,10 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
           @if (run.coverage) {
             <p>{{ run.coverage }}</p>
           }
-          @if (run.hasMore) {
-            <mui-button
-              variant="ghost"
-              (pressed)="router.navigate(['/sources'])"
-              >View all in Sources</mui-button
-            >
+          @if (run.status !== 'queued' && run.status !== 'running') {
+            <maple-inline-search-results [runID]="run.runID"
+              [canInsert]="!!editorInstance && !notes.document()?.readOnly && !notes.actionBusy() && !notes.loading() && !editorInstance.source()"
+              (inspected)="selected.set($event)" (insertRequested)="insertSearchReference($event)" />
           }
           @if (run.status === "queued" || run.status === "running") {
             <mui-button variant="ghost" (pressed)="notes.cancelRun()"
@@ -272,12 +279,6 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
           @if (run.text) {
             <p>{{ run.text }}</p>
           }
-          @if (run.status === "succeeded" && notes.dirty()) {
-            <p>
-              Your reply was saved on the Mac while you were editing. Your draft
-              is retained; save or resolve this revision before reopening.
-            </p>
-          }
           @if (run.status === "unapplied") {
             <p>
               The request anchor changed. The response is retained and was not
@@ -299,6 +300,7 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
           <mui-button variant="ghost" (pressed)="notes.loadAttempts()"
             >Inspect Maple’s inputs & responses</mui-button
           >
+          @if (notes.attemptsError()) {<p role="alert">Could not inspect this request: {{ notes.attemptsError() }} Your note is unchanged. Try inspecting again.</p>}
           @for (attempt of notes.attempts(); track attempt.attemptID) {
             <details class="revision">
               <summary>
@@ -331,7 +333,7 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
       }
     }
     @if (picker()) {
-      <section class="source-picker" aria-label="Add source reference">
+      <dialog mapleSourcePicker [pickerReturnFocus]="editorInstance?.editor?.view?.dom" (pickerClosed)="picker.set(false)" class="source-picker" aria-label="Add source reference">
         <header>
           <h2>Add source material</h2>
           <mui-button variant="ghost" (pressed)="picker.set(false)"
@@ -370,7 +372,7 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
           Showing up to 60 matches. Use Sources for filters and complete
           history.
         </p>
-      </section>
+      </dialog>
     }
     @if (selected(); as id) {
       <maple-source-detail [eventID]="id" (closed)="selected.set(null)" />
@@ -391,6 +393,7 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
         max-width: 940px;
         margin: auto;
       }
+      .today-page.today-canvas { max-width: none; }
       .document-tools-drawer {
         position: fixed;
         inset: 0 0 0 auto;
@@ -507,12 +510,21 @@ import { SourceDetailComponent } from "../sources/source-detail.component";
         overflow: auto;
       }
       .source-picker {
+        position: fixed;
+        inset: 0;
+        box-sizing: border-box;
+        width: min(720px, calc(100vw - 32px));
+        max-height: calc(100dvh - 32px);
+        overflow: auto;
+        color: var(--color-text-main);
         padding: 24px;
         background: var(--color-bg-secondary);
         border: 1px solid var(--color-border);
         border-radius: 8px;
         margin: 20px 0;
       }
+      dialog.source-picker { margin: auto; }
+      .source-picker::backdrop { background: var(--color-overlay, #0005); }
       .source-picker header {
         display: flex;
         justify-content: space-between;
@@ -655,27 +667,11 @@ export class TodayComponent implements OnInit, OnDestroy {
   readonly selected = signal<string | null>(null);
   readonly picker = signal(false);
   readonly toolsOpen = signal(false);
-  private toolsDialog?: HTMLDialogElement;
-  @ViewChild("documentTools") set documentTools(
-    value: ElementRef<HTMLDialogElement> | undefined,
-  ) {
-    this.toolsDialog = value?.nativeElement;
-    if (this.toolsDialog) {
-      const dialog = this.toolsDialog;
-      queueMicrotask(() => {
-        if (!this.toolsOpen() || !dialog.isConnected) return;
-        if (typeof dialog.showModal === "function") dialog.showModal();
-        else dialog.setAttribute("open", "");
-      });
-    }
-  }
   openDocumentTools() {
     this.toolsOpen.set(true);
     void this.notes.loadHistory();
   }
   closeDocumentTools() {
-    if (this.toolsDialog?.open && typeof this.toolsDialog.close === "function")
-      this.toolsDialog.close();
     this.toolsOpen.set(false);
   }
   transferBlock(event: { blockID: string; kind: "move" | "copy" }) {
@@ -692,6 +688,7 @@ export class TodayComponent implements OnInit, OnDestroy {
   private destroyed = false;
   @ViewChild("editor") set editor(value: MapleEditorComponent | undefined) {
     this.editorInstance = value;
+    this.notes.setCollaborativeEditor(value);
     if (value && this.notes.pendingSource()) {
       const id = this.notes.pendingSource()!;
       queueMicrotask(() => void this.insertPending(id));
@@ -712,12 +709,25 @@ export class TodayComponent implements OnInit, OnDestroy {
       void this.notes.pollAutomatic();
     }, 2000);
   }
+  feedbackAction(action: TodayFeedback['action']) {
+    if(action==='cancel') void this.notes.cancelRun();
+    else if(action==='retry') void this.notes.retryRun();
+    else if(action==='configure') void this.router.navigate(['/connections']);
+    else if(action==='refresh') void this.notes.pollAutomatic();
+    else if(action==='insert') { document.querySelector('.maple-run')?.scrollIntoView({block:'center',behavior:'smooth'}); }
+  }
   relativeDay() {
     return relativeDayLabel(this.notes.day(), this.currentDay());
   }
   toggleMarkdown() {
     this.editorInstance?.toggleSource();
   }
+  readonly writingFocusTarget = () => {
+    const editor = this.editorInstance;
+    return editor?.source()
+      ? editor.surface.nativeElement.parentElement?.querySelector<HTMLElement>('.maple-editor-source') ?? undefined
+      : editor?.editor?.view.dom;
+  };
   ngOnDestroy() {
     this.destroyed = true;
     this.editorInstance = undefined;
@@ -783,6 +793,12 @@ export class TodayComponent implements OnInit, OnDestroy {
       this.pickerError.set(
         "Switch to formatted view before inserting a source. Extended Markdown must remain in source mode.",
       );
+  }
+  insertSearchReference(reference: SourceReference) {
+    if (!this.editorInstance?.insertReference(reference)) {
+      this.picker.set(true);
+      this.pickerError.set("Switch to formatted view before inserting a source.");
+    }
   }
   private async insertPending(id: string) {
     if (this.destroyed) return;

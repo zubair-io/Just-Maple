@@ -75,15 +75,16 @@ final class Bridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDeleg
         try Self.validateStartupAction(action,starting:model.starting)
         if action != "snapshot" { model.error = nil }
         switch action {
+        case "qualityCapture": return try await qualityCaptureCommand(body)
         case "attachmentImport", "attachmentRead", "attachmentExport":
             return try await attachmentCommand(action, body)
-        case "documentPresence", "documentAutoRefresh", "todayOpen", "todayMigrate", "documentOpen", "documentCommit", "documentDraft", "documentHistory", "documentRecoveryCopy", "sourceInsert", "documentBlockMutate", "documentRegister", "documentOperationHistory", "documentOperationResolve":
+        case "boardExclusions", "boardExcludeSource", "boardRemoveExclusion", "documentPresence", "documentAutoRefresh", "documentAutomaticProposal", "todayOpen", "todayMigrate", "documentOpen", "documentCommit", "documentDraft", "documentHistory", "documentRecoveryCopy", "sourceInsert", "documentBlockMutate", "documentRegister", "documentOperationHistory", "documentOperationResolve":
             return try await todayDocumentCommand(action, body)
         case "documentSuggestions", "taskInsert":
             return try await documentSuggestionsCommand(action,body)
-        case "mapleSubmit", "mapleRuns", "mapleRun", "mapleCancel", "mapleAttempts", "mapleInsertResponse":
+        case "mapleSubmit", "mapleRuns", "mapleRun", "mapleCancel", "mapleAttempts", "mapleInsertResponse", "mapleResponseProposal", "mapleSearchPage":
             return try await inlineMapleCommand(action, body)
-        case "sourceList", "sourceDetail", "sourceHistory", "sourceArtifact", "sourceRetry":
+        case "sourceList", "sourceChanges", "sourceDetail", "sourceHistory", "sourceArtifact", "sourceRetry":
             return try await sourcesCommand(action, body)
         case "dailyNote", "dailyBlockMutate", "dailyBlockHistory", "dailyCarryForward":
             return try await dailyCommand(action,body)

@@ -19,6 +19,8 @@ public struct DocumentMutationRecord: Codable, Sendable {
     public var after: String
     public var state: String
     public var createdAt: Date
+    public var acceptedAutomaticBlockIDs:[String]? = nil
+    public var acceptedReplyRunIDs:[String]? = nil
 }
 public struct TodayDocumentSnapshot: Codable, Sendable {
     public var schemaVersion = 1
@@ -76,6 +78,18 @@ public enum ManagedMarkdown {
         let json=String(decoding:data,as:UTF8.self).replacingOccurrences(of:"<",with:"\\u003c").replacingOccurrences(of:">",with:"\\u003e")
         return "<!-- maple:block \(json) -->\n"
     }
+    public static func automaticReceiptIDs(_ ids:[String]) throws -> [String] {
+        guard ids.count<=256,ids.allSatisfy({$0.range(of:#"^auto-(source|task|heading):[a-f0-9]{64}$"#,options:.regularExpression) != nil}) else {
+            throw MapleError.invalid("Automatic insertion receipts must contain bounded generated identities.")
+        }
+        return Set(ids).sorted()
+    }
+    public static func replyReceiptIDs(_ ids:[String]) throws -> [String] {
+        guard ids.count<=128,ids.allSatisfy({UUID(uuidString:$0) != nil}) else {
+            throw MapleError.invalid("Maple reply receipts must contain bounded run identities.")
+        }
+        return Set(ids).sorted()
+    }
     public static func validate(_ content:String,documentID:String) throws {
         guard content.utf8.count<=256000 else {throw MapleError.invalid("Notes are limited to 256 KB. Your draft is kept.")}
         guard self.documentID(content)==documentID else {throw MapleError.invalid("Managed document metadata changed or is unsupported. Preserve the original metadata in source mode.")}
@@ -101,6 +115,7 @@ extension SQLite {
             try execute("CREATE TABLE IF NOT EXISTS document_revisions (document_id TEXT NOT NULL,revision TEXT NOT NULL,command_id TEXT NOT NULL,content TEXT NOT NULL,created_at REAL NOT NULL,PRIMARY KEY(document_id,revision))")
             try execute("CREATE TABLE IF NOT EXISTS document_outbox (command_id TEXT PRIMARY KEY,event_json TEXT NOT NULL,delivered INTEGER NOT NULL DEFAULT 0)")
             try execute("CREATE TABLE IF NOT EXISTS document_legacy_imports (day TEXT PRIMARY KEY,document_id TEXT NOT NULL,snapshot_json TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1)")
+            try execute("CREATE TABLE IF NOT EXISTS board_exclusions (id TEXT PRIMARY KEY,json TEXT NOT NULL)")
             try migrateDocumentOperations()
             try execute("CREATE TABLE IF NOT EXISTS document_auto_insertions (block_id TEXT PRIMARY KEY,document_id TEXT NOT NULL,day TEXT NOT NULL)")
             try execute("CREATE INDEX IF NOT EXISTS document_auto_day ON document_auto_insertions(document_id)")
@@ -169,7 +184,12 @@ extension KnowledgeStore {
     }
     public func prepareDocumentMutation(_ mutation:DocumentMutationRecord) throws -> DocumentMutationRecord {
         guard !mutation.commandID.isEmpty,mutation.commandID.utf8.count<=256 else {throw MapleError.invalid("A bounded command identity is required.")}
-        let payload=ManagedMarkdown.hash(try JSONCodec.string([mutation.documentID,mutation.expectedRevision ?? "",mutation.after]))
+        let receipts=try ManagedMarkdown.automaticReceiptIDs(mutation.acceptedAutomaticBlockIDs ?? [])
+        let replies=try ManagedMarkdown.replyReceiptIDs(mutation.acceptedReplyRunIDs ?? [])
+        var fields=[mutation.documentID,mutation.expectedRevision ?? "",mutation.after]
+        if !receipts.isEmpty || !replies.isEmpty {fields.append(try JSONCodec.string(receipts))}
+        if !replies.isEmpty {fields.append(try JSONCodec.string(replies))}
+        let payload=ManagedMarkdown.hash(try JSONCodec.string(fields))
         return try db.transaction {
             if let row=try db.rows("SELECT payload_hash,json FROM document_mutations WHERE command_id=?",[mutation.commandID]).first {
                 guard row["payload_hash"]==payload else {throw MapleError.invalid("This command identity was already used for different content.")}
@@ -178,6 +198,19 @@ extension KnowledgeStore {
             guard try db.rows("SELECT command_id FROM document_mutations WHERE document_id=? AND state IN ('prepared','operationPrepared')",[mutation.documentID]).isEmpty else {throw MapleError.invalid("This document has an interrupted save. Reopen it to recover before saving.")}
             try validateManagedBlockOwnership(documentID:mutation.documentID,content:mutation.after)
             try reserveDocumentIdentities(documentID:mutation.documentID,content:mutation.after,commandID:mutation.commandID)
+            var receiptIdentities=receipts
+            for runID in replies {
+                let run=try inlineMapleRun(runID)
+                guard run.request.documentID == mutation.documentID,["unapplied","succeeded"].contains(run.status),run.text != nil else {
+                    throw MapleError.invalid("A reply receipt must identify a completed Maple response for this note.")
+                }
+                receiptIdentities.append(run.replyBlockID)
+            }
+            for id in receiptIdentities {
+                let owner=try db.rows("SELECT document_id FROM document_identities WHERE block_id=? UNION SELECT document_id FROM document_identity_reservations WHERE block_id=?",[id,id])
+                guard owner.allSatisfy({$0["document_id"] == mutation.documentID}) else {throw MapleError.invalid("An automatic insertion identity belongs to another note.")}
+                try db.execute("INSERT OR IGNORE INTO document_identity_reservations VALUES (?,?,?)",[id,mutation.documentID,mutation.commandID])
+            }
             try db.execute("INSERT INTO document_mutations VALUES (?,?,?,?,?)",[mutation.commandID,mutation.documentID,payload,mutation.state,try JSONCodec.string(mutation)])
             return mutation
         }
@@ -201,6 +234,18 @@ extension KnowledgeStore {
             let event=Event(id:"document:"+ManagedMarkdown.hash(document.documentID+mutation.targetRevision),type:"note.updated",source:Source(connector:"notes",account:document.notebookID,externalID:document.documentID,revision:mutation.targetRevision,timeZone:document.timeZone),occurredAt:mutation.createdAt,receivedAt:mutation.createdAt,subjects:["person:self"],content:mutation.after)
             try db.execute("INSERT OR IGNORE INTO document_outbox(command_id,event_json) VALUES (?,?)",[mutation.commandID,try JSONCodec.string(event)])
             try indexManagedBlocks(documentID:mutation.documentID,content:mutation.after)
+            try acknowledgeInlineReplies(documentID:mutation.documentID,content:mutation.after,revision:mutation.targetRevision)
+            for id in current.acceptedAutomaticBlockIDs ?? [] {
+                try db.execute("INSERT OR IGNORE INTO document_identities VALUES (?,?)",[id,mutation.documentID])
+                if id.hasPrefix("auto-source:") || id.hasPrefix("auto-task:") {
+                    try db.execute("INSERT OR IGNORE INTO document_auto_insertions(block_id,document_id,day) SELECT ?,id,day FROM managed_documents WHERE id=? AND day IS NOT NULL",[id,mutation.documentID])
+                }
+            }
+            for runID in current.acceptedReplyRunIDs ?? [] {
+                let run=try inlineMapleRun(runID)
+                try db.execute("INSERT OR IGNORE INTO document_identities VALUES (?,?)",[run.replyBlockID,mutation.documentID])
+                if run.status == "unapplied" {_ = try markInlineMapleApplied(runID,revision:mutation.targetRevision)}
+            }
             try db.execute("DELETE FROM document_identity_reservations WHERE command_id=?",[mutation.commandID])
     }
     public func drainDocumentOutbox() throws {

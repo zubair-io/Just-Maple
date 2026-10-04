@@ -1,3 +1,4 @@
+import { readCanvas } from "../canvas/canvas-layout";
 import { createMarkdownParser } from "../notebooks/sugar-editor/markdown-parser";
 import { parseDocument } from "yaml";
 import {
@@ -17,6 +18,7 @@ export interface BlockMetadata {
   runID?: string;
   taskID?: string;
   taskCommandID?: string;
+  contextBlockIDs?: string[];
 }
 export interface SourceReference {
   v: 1;
@@ -71,12 +73,14 @@ function metadata(raw: string): BlockMetadata {
           "runID",
           "taskID",
           "taskCommandID",
+          "contextBlockIDs",
         ].includes(key),
     )
   )
     throw Error("Unknown block metadata");
   if (data.kind && !["maple-request", "maple-reply"].includes(data.kind))
     throw Error("Unknown block kind");
+  if (data.contextBlockIDs !== undefined && (!Array.isArray(data.contextBlockIDs) || data.contextBlockIDs.length > 32 || data.contextBlockIDs.some((id: unknown) => typeof id !== "string" || !id || id.length > 128) || new Set(data.contextBlockIDs).size !== data.contextBlockIDs.length)) throw Error("Invalid Maple context selection");
   if (data.taskID && typeof data.taskID !== "string")
     throw Error("Invalid linked task identity");
   return data;
@@ -117,6 +121,7 @@ export function decodeDaily(raw: string): DecodedDaily {
     )
       return failure(prefix, "This document uses an unsupported Maple format.");
   }
+  try { readCanvas(prefix); } catch (error) { return failure(prefix, error instanceof Error ? error.message : "Unsupported canvas layout"); }
   const nodes: ProseMirrorNode[] = [];
   const seen = new Set<string>();
   let pending: BlockMetadata | undefined;

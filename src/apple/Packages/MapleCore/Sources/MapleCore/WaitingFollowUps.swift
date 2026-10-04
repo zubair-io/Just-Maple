@@ -97,8 +97,12 @@ extension KnowledgeStore {
         // review, but must never complete it or overwrite an edited/corrected review.
         for taskID in Set(mappings.compactMap{$0["task_id"]}) {
             guard var task=try record("life_tasks",id:taskID,as:LifeTask.self),let link=task.waitingFollowUp,task.version==link.lastAutomaticVersion,!task.status.terminal,
-                  let parent=nodes[root(link.parentNodeID)],parent.status != .waiting || occurrence(parent) != (link.reviewKey ?? "initial") || existing[key(root(link.parentNodeID),link.reviewKey ?? "initial")] != taskID,
                   try db.rows("SELECT id FROM task_inference_corrections WHERE id=? AND kind='status'",["task:"+taskID]).isEmpty else {continue}
+            let parentID=root(link.parentNodeID),parent=nodes[parentID]
+            // This transaction read the complete local parent set. Rejected,
+            // superseded or removed source parents are absent from active nodes;
+            // absence must retire their untouched review, not leave an orphan action.
+            guard parent == nil || parent?.status != .waiting || parent.map({occurrence($0) != (link.reviewKey ?? "initial")}) == true || existing[key(parentID,link.reviewKey ?? "initial")] != taskID else {continue}
             let before=task;task.status = .cancelled;task.version+=1;task.updatedAt=at
             task.description += invalidatedSuffix
             task.waitingFollowUp=WaitingFollowUp(parentNodeID:link.parentNodeID,triggerAt:link.triggerAt,reviewKey:link.reviewKey,reason:link.reason,lastAutomaticVersion:task.version,automaticallyInvalidated:true)

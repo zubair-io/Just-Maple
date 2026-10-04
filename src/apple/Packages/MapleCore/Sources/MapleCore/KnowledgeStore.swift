@@ -17,6 +17,7 @@ public actor KnowledgeStore {
         try db.migrateProcessingSchedule()
         try db.migrateDailyNotes()
         try db.migrateSources()
+        try db.migrateProviderInvocations()
         try db.migrateManagedDocuments()
         try db.migrateQueryPerformance()
         try db.migrateHomeBatches()
@@ -54,6 +55,7 @@ public actor KnowledgeStore {
         if enqueue {
             try db.execute("INSERT INTO processing_jobs(event_id,next_attempt_at) VALUES (?,?)",
                            [event.id, String(event.receivedAt.timeIntervalSince1970)])
+            try invalidateConversationAttention(after: event)
         }
         try history(subjects:[event.id]+event.subjects,type:"source.\(event.source.connector).\(event.type)",before:Optional<String>.none,after:event.id,command:"event:"+event.id,at:event.receivedAt,actor:event.source.connector,effectiveAt:event.occurredAt)
         return event.id

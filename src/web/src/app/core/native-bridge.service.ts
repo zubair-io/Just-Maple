@@ -1,3 +1,4 @@
+import type { QualityCaptureRequest, QualityCaptureResponse } from './quality-capture.models';
 import { SourceEvidence } from '../sources/source.models';
 import type {
   WorldSnapshot,
@@ -76,7 +77,7 @@ export interface Job {
 }
 export interface Snapshot {
   startupError?: string;
-  classificationProvider?: "laya" | "jev";
+  classificationProvider?: "laya" | "jev" | "clef";
   classificationState?: string;
   classificationStatus?: string;
   classificationCanRun?: boolean;
@@ -193,7 +194,7 @@ export type SimpleAction =
   | "diskAccess"
   | "showApp";
 export type Command =
-  | { action: "classificationSelect"; provider: "laya" | "jev" }
+  | { action: "classificationSelect"; provider: "laya" | "jev" | "clef" }
   | { action: "applyTaskAction"; id:string; change:{kind:string;issuedAt:number;resurfaceAt?:number;reviewAt?:number;waitingOn?:string;targetMutationID?:string}; expectedVersion:number; requestID:string }
   | { action: "correctTaskInference"; id: string; status?: import("../world/world.models").TaskStatus; separate?: boolean; expectedVersion: number; requestID: string }
   | { action: "regroupActivity"; id: string; record: Activity; ids: string[]; merge: boolean; expectedVersion: number; requestID: string }
@@ -394,6 +395,9 @@ export class NativeBridge implements OnDestroy {
       this.pending.set(false);
     }
   }
+  async captureQualitySnapshot(request: QualityCaptureRequest): Promise<QualityCaptureResponse> {
+    return this.query({ action: 'qualityCapture', ...request });
+  }
   async historyInbox<T>(cursor?: unknown,connector?:string): Promise<T> { return this.query<T>({action:"historyInbox",cursor,connector}); }
   async history(before?: number, subjects: string[] = []): Promise<History[]> {
     return this.query({ action: "worldHistory", before, subjects });
@@ -410,10 +414,15 @@ export class NativeBridge implements OnDestroy {
     return this.query({ action: "evidence", id });
   }
   async group<T>(body: Record<string, unknown>): Promise<T> { return this.query<T>(body); }
-  async notebook<T>(action: string, data: Record<string, unknown> = {}): Promise<T> { return this.query({action, ...data}); }
-  private async query<T>(body: unknown): Promise<T> {
+  async notebook<T>(action: string, data: Record<string, unknown> = {}): Promise<T> {
+    // Local collaboration reads and heartbeats must not wait behind the web
+    // mutation queue. The native coordinator still serializes file access.
+    const independent = ["documentPresence", "documentAutomaticProposal", "mapleRun", "mapleResponseProposal"].includes(action);
+    return this.query({action, ...data}, independent);
+  }
+  private async query<T>(body: unknown, independent = false): Promise<T> {
     try {
-      return await this.request<T>(body);
+      return await this.request<T>(body, independent);
     } catch (e) {
       this.error.set(e instanceof Error ? e.message : String(e));
       throw e;

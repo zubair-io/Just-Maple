@@ -51,50 +51,19 @@ import { TodayDocumentService } from "../today/today-document.service";
           [(ngModel)]="search"
           placeholder="Sender, subject or captured text"
       /></label>
-      <label
-        >Type<select aria-label="Type" name="type" [(ngModel)]="type">
-          <option value="">All types</option>
-          @for (value of facets().types; track value) {
-            <option [value]="value">{{ value }}</option>
-          }
-        </select></label
-      >
-      <label
-        >Source<select
-          aria-label="Source"
-          name="connector"
-          [(ngModel)]="connector"
-        >
-          <option value="">All sources</option>
-          @for (value of facets().connectors; track value) {
-            <option [value]="value">{{ value }}</option>
-          }
-        </select></label
-      >
-      <label
-        >Account<select
-          aria-label="Account"
-          name="account"
-          [(ngModel)]="account"
-        >
-          <option value="">All accounts</option>
-          @for (value of facets().accounts; track value) {
-            <option [value]="value">{{ value }}</option>
-          }
-        </select></label
-      >
-      <label
-        >Processing<select
-          aria-label="Processing"
-          name="state"
-          [(ngModel)]="state"
-        >
-          <option value="">All states</option>
-          @for (value of facets().states; track value) {
-            <option [value]="value">{{ value }}</option>
-          }
-        </select></label
-      >
+      @for (dimension of dimensions; track dimension.key) {
+        <details class="filter-options">
+          <summary>{{ dimension.label }} · {{ this[dimension.key].length || 'All' }}</summary>
+          <fieldset>
+            <legend class="sr-only">{{ dimension.label }} — select any matching values</legend>
+            @for (value of facets()[dimension.facet]; track value) {
+              <label class="filter-choice"><input type="checkbox"
+                [checked]="this[dimension.key].includes(value)"
+                (change)="toggleFilter(dimension.key, value)" />{{ value }}</label>
+            } @empty { <span>No available values</span> }
+          </fieldset>
+        </details>
+      }
       <label
         >Received from<input
           aria-label="Received from"
@@ -112,8 +81,16 @@ import { TodayDocumentService } from "../today/today-document.service";
           [min]="receivedFrom || '0001-01-01'"
       /></label>
       <button class="apply" type="submit">Apply filters</button
-      ><mui-button variant="ghost" (pressed)="reset()">Reset</mui-button>
+      ><mui-button variant="ghost" (pressed)="reset()">Clear filters</mui-button>
     </form>
+    @if (activeFilters().length) {
+      <div class="filter-chips" aria-label="Active filters">
+        @for (filter of activeFilters(); track filter.key + ':' + filter.value) {
+          <button type="button" (click)="removeFilter(filter.key, filter.value)"
+            [attr.aria-label]="'Remove ' + filter.label + ' filter: ' + filter.value">{{ filter.label }}: {{ filter.value }} <span aria-hidden="true">×</span></button>
+        }
+      </div>
+    }
     @if (filterError()) {
       <p class="error" role="alert">{{ filterError() }}</p>
     }
@@ -129,13 +106,19 @@ import { TodayDocumentService } from "../today/today-document.service";
     @if (error()) {
       <p class="error" role="alert">{{ error() }}</p>
     }
+    @if (newEntries()) {
+      <div class="arrival-notice" role="status">New entries available. Your current rows have not moved.
+        <mui-button variant="ghost" [disabled]="loading()" (pressed)="refresh()">Show new entries</mui-button>
+      </div>
+    }
+    @if (arrivalError()) { <p role="status">{{ arrivalError() }}</p> }
     @if (capped()) {
       <p role="status">
         This query reached the result limit. Narrow your filters to see more
         matches.
       </p>
     }
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0" role="region" aria-label="Source observations — scroll horizontally for all columns">
       <table>
         <caption class="sr-only">
           Ingested source observations and their current processing state
@@ -147,6 +130,9 @@ import { TodayDocumentService } from "../today/today-document.service";
             <th scope="col">Source / account</th>
             <th scope="col">Observed state</th>
             <th scope="col">Processing state</th>
+            <th scope="col">Classification</th>
+            <th scope="col">Further analysis</th>
+            <th scope="col">In notes</th>
             <th scope="col">Received</th>
           </tr>
         </thead>
@@ -172,18 +158,31 @@ import { TodayDocumentService } from "../today/today-document.service";
                   row.status
                 }}</span
                 ><small>{{ row.statusDetail }}</small>
-                @if (row.classificationState) {
-                  <small>Classification: {{ row.classificationState }}</small>
+              </td>
+              <td>{{ row.classificationState || 'Not requested' }}
+                <small>{{ row.classificationProvider ? 'Last recorded: ' + row.classificationProvider : 'Provider not recorded' }}</small>
+                @if (row.classificationModel) { <small>{{ row.classificationModel }}</small> }
+              </td>
+              <td>{{ row.analysisState || 'Not requested' }}
+                @if (row.analysisBranches?.length) {
+                  <details><summary>Inspect branches</summary>
+                    @for (branch of row.analysisBranches; track branch.stage) {
+                      <small>{{ branch.stage }}: {{ branch.state }} · {{ branch.provider ? 'Last recorded: ' + branch.provider : 'Provider not recorded' }}</small>
+                    }
+                  </details>
                 }
-                @if (row.analysisState) {
-                  <small>Downstream AI: {{ row.analysisState }}</small>
-                }
+              </td>
+              <td>
+                <button class="table-action" type="button" (click)="inspect(row.id)"
+                  [attr.aria-label]="'Inspect linked notes for ' + (row.subject || row.sender)">{{ row.noteCount === undefined ? 'Inspect links' : row.noteCount + (row.noteCount === 1 ? ' note' : ' notes') }}</button>
+                <button class="table-action" type="button" (click)="addToToday(row.id)"
+                  [attr.aria-label]="'Add to Today: ' + (row.subject || row.sender)">Add to Today</button>
               </td>
               <td>{{ sourceDate(row.receivedAt) | date: "MMM d, h:mm a" }}</td>
             </tr>
           } @empty {
             <tr>
-              <td colspan="6">
+              <td colspan="9">
                 {{
                   loading()
                     ? "Loading sources…"
@@ -291,7 +290,7 @@ import { TodayDocumentService } from "../today/today-document.service";
         border-collapse: collapse;
         text-align: left;
         font-size: 13px;
-        min-width: 760px;
+        min-width: 1360px;
       }
       th {
         font-weight: 500;
@@ -305,7 +304,8 @@ import { TodayDocumentService } from "../today/today-document.service";
         vertical-align: top;
       }
       td:first-child {
-        width: 36%;
+        width: 24%;
+        min-width:240px;
       }
       small {
         display: block;
@@ -352,12 +352,29 @@ import { TodayDocumentService } from "../today/today-document.service";
       tr.selected {
         background: var(--color-bg-secondary);
       }
+      .table-wrap:focus-visible,
       button:focus-visible,
       input:focus-visible,
       select:focus-visible {
         outline: 2px solid var(--color-focus, var(--color-primary));
         outline-offset: 2px;
       }
+      .arrival-notice { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px; border:1px solid var(--color-border); border-radius:8px; margin-bottom:16px; }
+      td:nth-child(3) { min-width:120px; }
+      td:nth-child(6),td:nth-child(7) { min-width:145px; }
+      td:nth-child(8) { min-width:105px; }
+      td:nth-child(9) { min-width:110px; }
+      .table-action { display:block; border:0; background:transparent; color:var(--color-link,var(--color-primary)); text-decoration:underline; font:inherit; padding:4px 0; cursor:pointer; text-align:left; }
+      thead th { position:sticky; top:0; z-index:1; }
+      .table-wrap { max-height:70dvh; }
+      .filter-options { position:relative; min-width:140px; align-self:start; border:1px solid var(--color-border); border-radius:6px; background:var(--color-bg); }
+      .filter-options summary { padding:10px; cursor:pointer; font-size:13px; }
+      .filter-options fieldset { border:0; padding:8px 10px; margin:0; max-height:200px; overflow:auto; }
+      .filters .filter-choice { display:flex; align-items:center; gap:8px; padding:5px 0; flex-direction:row; }
+      .filter-choice input { min-width:0; min-height:0; width:16px; height:16px; padding:0; accent-color:var(--color-primary); }
+      .filter-chips { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0; }
+      .filter-chips button { font:inherit; font-size:12px; border:1px solid var(--color-border); border-radius:16px; padding:5px 10px; color:var(--color-text-main); background:var(--color-bg-secondary); cursor:pointer; }
+      summary:focus-visible { outline:2px solid var(--color-focus); outline-offset:2px; }
       .error {
         color: var(--color-danger);
       }
@@ -384,6 +401,11 @@ export class SourcesComponent implements OnInit, OnDestroy {
   readonly error = signal("");
   readonly next = signal<SourceCursor | undefined>(undefined);
   readonly capped = signal(false);
+  readonly newEntries = signal(false);
+  readonly arrivalError = signal('');
+  private snapshotCursor?: SourceCursor;
+  private arrivalTimer?: ReturnType<typeof setInterval>;
+  private checkingArrivals = false;
   readonly selected = signal<string | null>(null);
   readonly facets = signal<SourcePage["facets"]>({
     types: [],
@@ -392,10 +414,18 @@ export class SourcesComponent implements OnInit, OnDestroy {
     states: [],
   });
   search = "";
-  type = "";
-  connector = "";
-  account = "";
-  state = "";
+  type: string[] = [];
+  connector: string[] = [];
+  account: string[] = [];
+  state: string[] = [];
+  readonly dimensions = [
+    { key: 'type', facet: 'types', label: 'Type' },
+    { key: 'connector', facet: 'connectors', label: 'Source' },
+    { key: 'account', facet: 'accounts', label: 'Account' },
+    { key: 'state', facet: 'states', label: 'Processing' },
+  ] as const;
+  readonly activeFilters = signal<{key: string; label: string; value: string}[]>([]);
+  private queryKey = '';
   receivedFrom = "";
   receivedTo = "";
   readonly filterError = signal("");
@@ -403,6 +433,7 @@ export class SourcesComponent implements OnInit, OnDestroy {
   private generation = 0;
   private subscriptions = new Subscription();
   ngOnInit() {
+    this.arrivalTimer = setInterval(() => { if (!document.hidden) void this.checkArrivals(); }, 15_000);
     this.subscriptions.add(
       this.route.paramMap.subscribe((params) =>
         this.selected.set(params.get("eventID")),
@@ -411,13 +442,14 @@ export class SourcesComponent implements OnInit, OnDestroy {
     this.subscriptions.add(
       this.route.queryParamMap.subscribe((params) => {
         this.search = this.service.searchText;
-        this.type = params.get("type") ?? "";
-        this.connector = params.get("source") ?? params.get("connector") ?? "";
-        this.account = params.get("account") ?? "";
-        this.state = params.get("state") ?? "";
+        this.type = params.getAll("type");
+        this.connector = params.has("source") ? params.getAll("source") : params.getAll("connector");
+        this.account = params.getAll("account");
+        this.state = params.getAll("state");
         this.receivedFrom = params.get("receivedFrom") ?? "";
         this.receivedTo = params.get("receivedTo") ?? "";
-        if (!this.updateQuery()) return;
+        const previous = this.queryKey;
+        if (!this.updateQuery() || previous === this.queryKey) return;
         void this.refresh();
       }),
     );
@@ -425,6 +457,8 @@ export class SourcesComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     this.generation++;
     this.subscriptions.unsubscribe();
+    clearInterval(this.arrivalTimer);
+    this.snapshotCursor = undefined;
   }
   apply() {
     this.service.searchText = this.search;
@@ -432,29 +466,45 @@ export class SourcesComponent implements OnInit, OnDestroy {
     void this.refresh();
     void this.router.navigate(["/sources"], {
       queryParams: {
-        type: this.type || undefined,
-        source: this.connector || undefined,
-        account: this.account || undefined,
-        state: this.state || undefined,
+        type: this.type.length ? this.type : undefined,
+        source: this.connector.length ? this.connector : undefined,
+        account: this.account.length ? this.account : undefined,
+        state: this.state.length ? this.state : undefined,
         receivedFrom: this.receivedFrom || undefined,
         receivedTo: this.receivedTo || undefined,
       },
     });
   }
+  toggleFilter(key: 'type' | 'connector' | 'account' | 'state', value: string) {
+    this[key] = this[key].includes(value) ? this[key].filter(item => item !== value) : [...this[key], value];
+  }
+  removeFilter(key: string, value: string) {
+    // Start from the applied query, so removing a chip does not apply unrelated draft controls.
+    this.type = [...this.query.types]; this.connector = [...this.query.connectors];
+    this.account = [...this.query.accounts]; this.state = [...this.query.states];
+    const chips = this.activeFilters();
+    this.search = this.query.text ?? '';
+    this.receivedFrom = chips.find(chip => chip.key === 'receivedFrom')?.value ?? '';
+    this.receivedTo = chips.find(chip => chip.key === 'receivedTo')?.value ?? '';
+    if (key === 'type' || key === 'connector' || key === 'account' || key === 'state') this[key] = this[key].filter(item => item !== value);
+    else if (key === 'search' || key === 'receivedFrom' || key === 'receivedTo') this[key] = '';
+    this.apply();
+  }
   reset() {
-    this.search =
-      this.type =
-      this.connector =
-      this.account =
-      this.state =
-      this.receivedFrom =
-      this.receivedTo =
-        "";
+    this.type = []; this.connector = []; this.account = []; this.state = [];
+    this.search = this.receivedFrom = this.receivedTo = '';
     this.apply();
   }
   private updateQuery(): boolean {
     try {
       this.query = buildSourceQuery(this);
+      this.queryKey = JSON.stringify(this.query);
+      this.activeFilters.set([
+        ...this.dimensions.flatMap(dimension => this.query[dimension.facet].map(value => ({ key: dimension.key, label: dimension.label, value }))),
+        ...([{ key: 'search', label: 'Search', value: this.query.text ?? '' },
+          { key: 'receivedFrom', label: 'From', value: this.receivedFrom },
+          { key: 'receivedTo', label: 'To', value: this.receivedTo }].filter(chip => chip.value)),
+      ]);
       this.filterError.set("");
       return true;
     } catch (error) {
@@ -474,7 +524,20 @@ export class SourcesComponent implements OnInit, OnDestroy {
     this.generation++;
     this.rows.set([]);
     this.next.set(undefined);
+    this.snapshotCursor = undefined; this.newEntries.set(false); this.arrivalError.set('');
     await this.page(true);
+  }
+  async checkArrivals() {
+    const cursor = this.snapshotCursor, generation = this.generation;
+    if (!cursor || this.loading() || this.filterError() || this.newEntries() || this.checkingArrivals) return;
+    this.checkingArrivals = true;
+    try {
+      const result = await this.service.changes(this.query, cursor);
+      if (generation !== this.generation) return;
+      this.newEntries.set(result.hasNewEntries); this.arrivalError.set('');
+    } catch {
+      if (generation === this.generation) this.arrivalError.set('New-entry check unavailable. Refresh to start a new snapshot; current rows remain available.');
+    } finally { this.checkingArrivals = false; }
   }
   more() {
     return this.page(false);
@@ -496,6 +559,7 @@ export class SourcesComponent implements OnInit, OnDestroy {
       this.facets.set(page.facets);
       this.next.set(page.nextCursor);
       this.capped.set(page.hasMoreMatches);
+      this.snapshotCursor = page.snapshotCursor;
     } catch (e) {
       if (generation === this.generation)
         this.error.set(

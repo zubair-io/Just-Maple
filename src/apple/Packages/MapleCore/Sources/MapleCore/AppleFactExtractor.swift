@@ -53,6 +53,7 @@ public struct AppleFactExtractor: FactExtractor {
             let prompt = "Allowed subjects (return the numeric index):\n\(subjects)\nSource type: \(event.type)\nSOURCE:\n\(chunk)"
             let invocation=UUID().uuidString
             try await audit(.init(invocationID:invocation,provider:"apple-foundation-models",model:"system-default/facts-v1",kind:"context",payload:try JSONCodec.string(["instructions":instructions,"prompt":prompt])))
+            try await audit(.init(invocationID:invocation,provider:"apple-foundation-models",model:"system-default/facts-v1",kind:"dispatch",payload:"",dispatch:ProviderDispatchEvidence(event:event).capture()))
             let response = try await session.respond(to: prompt,
                                                      generating: GeneratedFacts.self,
                                                      options: GenerationOptions(temperature: 0, maximumResponseTokens: 1500))

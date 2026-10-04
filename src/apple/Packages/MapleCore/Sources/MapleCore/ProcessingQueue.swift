@@ -56,6 +56,10 @@ extension KnowledgeStore {
             try recordSourceArtifact(eventID:lease.eventID,attemptID:lease.token,stage:"classification",kind:"response",payload:String(decoding:raw,as:UTF8.self),provider:decision.assessment.provider,model:decision.assessment.model)
             try recordSourceArtifact(eventID:lease.eventID,attemptID:lease.token,stage:"classification",kind:"decision_context",payload:try JSONCodec.string(decision.context))
             guard try owns(lease, now: now) else { return false }
+            guard try classificationMessageReviewIsCurrent(decision.context,at:now) else {
+                try scheduleClassificationRetry(lease,error:"The conversation changed during classification. The response is saved; a fresh assessment is pending or needs explicit retry.",now:now)
+                return false
+            }
             let freshContext = try classificationValidationSnapshot(for: lease.eventID, at: now)
             let fresh = freshContext.currentState
             // A correction/another event can arrive while the network request is in flight.
@@ -85,8 +89,10 @@ extension KnowledgeStore {
                                       observedAt: decision.context.event.occurredAt, confidence: assessment.stageConfidence,
                                       origin: "inference"))
             }
-            try db.execute("INSERT INTO decisions VALUES (?,?,?)",
+            try reviewPriorTaskProposalsIfNeeded(decision)
+            try db.execute("INSERT INTO decisions VALUES (?,?,?) ON CONFLICT(event_id) DO UPDATE SET json=excluded.json,raw_response=excluded.raw_response",
                            [lease.eventID, try JSONCodec.string(decision), String(decoding: raw, as: UTF8.self)])
+            try commitConversationAttention(decision)
             if decision.route != .retain {
                 let status = [.notify, .askUser].contains(decision.route) ? "unread" : "proposed"
                 try db.execute("INSERT OR IGNORE INTO work_items VALUES (?,?,?,?)",

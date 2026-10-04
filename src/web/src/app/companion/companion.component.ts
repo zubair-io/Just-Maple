@@ -29,7 +29,7 @@ export interface CompanionSnapshot {groupActions?:GroupAction[];groupActionRecei
         <div class="companion-tools"><button type="button" [attr.aria-expanded]="moreOpen()" aria-controls="companion-more" (click)="moreOpen.set(!moreOpen())">More</button>@if(moreOpen()){<div id="companion-more">@for(tab of tabs.slice(2);track tab.id){<mui-button variant="ghost" [fullWidth]="true" (pressed)="selectView(tab.id)">{{tab.label}}</mui-button>}</div>}</div>
       </nav>
       <p class="sync-status" role="status">{{ state().connectionStatus || 'Connecting to iCloud…' }}</p>
-      @if (state().mac; as mac) {<p class="muted sync-time">Last synced {{ date(mac.asOf) }} · Available offline</p>
+      @if (state().mac; as mac) {<p class="muted sync-time">Mac processing snapshot: {{ date(mac.asOf) }} · Available offline</p>
       @if(partialSnapshot()){<p class="muted">Showing a limited set from your Mac. More tasks are available there.</p>}}
       @if (error()) {<p class="error notice" role="alert">{{ error() }}</p>}
       @if (view() === 'daily') {<maple-companion-today />}
@@ -84,7 +84,7 @@ export interface CompanionSnapshot {groupActions?:GroupAction[];groupActionRecei
         @if (task.assignee) {<p>{{ task.status === 'waiting' ? 'Waiting on' : 'Assigned to' }} {{ task.assignee }}</p>}
         @if (task.due) {<p>Due {{ task.due }}</p>}
         <div class="tags">@for(tag of task.activities; track tag){<span>{{ tag }}</span>}</div>
-        @if(typedActionsAvailable()) {<maple-task-actions [identity]="task.id" [deadline]="taskDeadline(task)" [version]="task.version || 0" [disabled]="busy() || !task.version || taskPending(task.id) || taskApplied(task)" [waiting]="task.status==='waiting'" [terminal]="task.status==='completed'||task.status==='cancelled'" [undoID]="task.actionState?.canUndo ? task.actionState?.lastMutationID || '' : ''" (submitAction)="applyTask(task,$event)" />}
+        @if(typedActionsAvailable()) {<maple-task-actions [identity]="task.id" [deadline]="taskDeadline(task)" [version]="task.version || 0" [disabled]="busy() || !task.version || taskPending(task.id) || taskApplied(task)" [waiting]="task.status==='waiting'" [terminal]="task.status==='completed'||task.status==='cancelled'" [undoID]="task.actionState?.canUndo ? task.actionState?.lastMutationID || '' : ''" (submitAction)="applyTask($event)" />}
         @else {<mui-button [disabled]="busy() || !task.version || taskPending(task.id) || taskApplied(task)" (pressed)="completeTask(task)">Mark complete</mui-button>}
         @if(task.actionState?.resurfaceAt; as at){<p>Deferred until {{date(at)}}.</p>}
         @if(task.actionState?.reviewAt; as at){<p>Waiting review: {{date(at)}}.</p>}
@@ -198,8 +198,8 @@ export class CompanionComponent implements OnDestroy {
     if(this.typedActionsAvailable()){
       const key=task.id+':'+task.version;
       let request=this.completionRequests.get(key);
-      if(!request){request={requestID:crypto.randomUUID(),intent:'done',issuedAt:new Date().toISOString(),payload:{}};this.completionRequests.set(key,request);}
-      await this.applyTask(task,request);return;
+      if(!request){request={identity:task.id,expectedVersion:task.version||0,requestID:crypto.randomUUID(),intent:'done',issuedAt:new Date().toISOString(),payload:{}};this.completionRequests.set(key,request);}
+      await this.applyTask(request);return;
     }
     if(this.busy() || !task.version || this.taskPending(task.id) || this.taskApplied(task))return;
     this.busy.set(true);this.error.set('');
@@ -212,18 +212,18 @@ export class CompanionComponent implements OnDestroy {
   readonly typedActionsAvailable=computed(()=>['done','later','waiting','notNeeded','undo'].every(i=>this.state().mac?.supportedTaskIntents?.includes(i)));
   readonly undoableChanges=computed(()=> (this.state().taskActions||[]).filter(a=>a.intent && a.intent!=='undo' && this.latestAction(a.taskID)?.id===a.id && this.state().taskActionReceipts?.some(r=>r.id.toLowerCase()===a.id.toLowerCase()&&r.outcome==='applied'&&!!r.resultingVersion)).slice(-3));
   intentLabel(intent?:string){return ({done:'completion',later:'deferral',waiting:'waiting change',notNeeded:'dismissal'} as Record<string,string>)[intent||'']||'change';}
-  async applyTask(task:CompanionTask,request:TaskActionRequest){
-    if(this.busy()||!task.version||this.taskPending(task.id))return;
+  async applyTask(request:TaskActionRequest){
+    if(this.busy()||!request.identity||!request.expectedVersion||this.taskPending(request.identity))return;
     this.busy.set(true);this.error.set('');
-    try{this.state.set(await this.command({action:'taskAction',id:request.requestID,taskID:task.id,expectedVersion:task.version,intent:request.intent,issuedAt:request.issuedAt,payload:request.payload}));}
+    try{this.state.set(await this.command({action:'taskAction',id:request.requestID,taskID:request.identity,expectedVersion:request.expectedVersion,intent:request.intent,issuedAt:request.issuedAt,payload:request.payload}));}
     catch{this.error.set('Could not confirm the task change. Please retry; the same change will not be applied twice.');}
     finally{this.busy.set(false);}
   }
   async undoChange(change:CompanionTaskAction){
     const receipt=this.state().taskActionReceipts?.find(r=>r.id.toLowerCase()===change.id.toLowerCase());if(!receipt?.resultingVersion)return;
     const key='undo:'+change.id;
-    let request=this.undoRequests.get(key);if(!request){request={requestID:crypto.randomUUID(),intent:'undo',issuedAt:new Date().toISOString(),payload:{targetMutationID:change.id}};this.undoRequests.set(key,request);}
-    await this.applyTask({id:change.taskID,title:'',status:'completed',activities:[],version:receipt.resultingVersion},request);
+    let request=this.undoRequests.get(key);if(!request){request={identity:change.taskID,expectedVersion:receipt.resultingVersion,requestID:crypto.randomUUID(),intent:'undo',issuedAt:new Date().toISOString(),payload:{targetMutationID:change.id}};this.undoRequests.set(key,request);}
+    await this.applyTask(request);
   }
   readonly groupsAvailable=computed(()=>['done','notNeeded','undo'].every(i=>this.state().mac?.supportedGroupIntents?.includes(i)));
   async applyGroup(action:GroupAction){if(this.busy()||!this.groupsAvailable())return;this.busy.set(true);this.error.set('');try{this.state.set(await this.command({action:'groupAction',...action}));}catch{this.error.set('Could not confirm the group change. Retry with the same reviewed members; no partial change will be applied.');}finally{this.busy.set(false);}}

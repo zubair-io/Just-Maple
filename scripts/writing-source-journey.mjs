@@ -33,7 +33,7 @@ function nativeSourceTypes() {
     return result;
   };
 }
-await context.addInitScript({ content: '(' + seedJourney.toString() + ')();(' + syntheticBridge.toString() + ')();(' + nativeSourceTypes.toString() + ')();' });
+await context.addInitScript({ content: '(' + seedJourney.toString() + ')();(' + syntheticBridge.toString() + ')({compactContentAudit:true});(' + nativeSourceTypes.toString() + ')();' });
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
@@ -55,7 +55,7 @@ const insertSource = async (editor, label, notebook = false) => {
   await page.getByRole('button', { name: 'Source reference', exact: true }).click();
   const picker = page.locator(notebook ? '.notebook-source-picker' : '.source-picker');
   await picker.getByRole('button', { name: new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).click();
-  await expect(editor.getByRole('button', { name: label, exact: true })).toBeVisible();
+  await expect(editor.getByRole('button', { name: 'Open ' + label + ' — source and processing history', exact: true })).toBeVisible();
 };
 const assertSourceReferences = markdown => {
   const references = [...markdown.matchAll(/```maple-ref\n(.*?)\n```/gs)].map(match => JSON.parse(match[1]));
@@ -98,9 +98,9 @@ try {
   // The source cards are local document references; the original captured source and
   // provider response remain inspectable through the same source inspector.
   for (const [label] of sourceSpecs) {
-    const card = editor.locator('.source-card').filter({ has: page.getByRole('button', { name: label, exact: true }) });
-    await card.getByRole('button', { name: 'State & history ↗', exact: true }).click();
-    const details = page.getByRole('region', { name: 'Source details', exact: true });
+    const card = editor.locator('.source-card').filter({ has: page.getByRole('button', { name: 'Open ' + label + ' — source and processing history', exact: true }) });
+    await card.getByRole('button', { name: 'Open ' + label + ' — source and processing history', exact: true }).click();
+    const details = page.getByRole('dialog', { name: 'Source details', exact: true });
     await expect(details).toContainText('Synthetic captured original');
     await details.getByRole('button', { name: 'Responses', exact: true }).click();
     await details.getByRole('button', { name: /classification · response/ }).click();
@@ -111,16 +111,32 @@ try {
   }
   await end(editor); await editor.press('Enter'); await editor.pressSequentially('Synthetic undo checkpoint');
   await persist('Synthetic undo checkpoint');
+  await page.evaluate(() => {
+    const component = window.ng?.getComponent(document.querySelector('maple-editor'));
+    if (!component?.editor) return;
+    const editor = component.editor;
+    window.__undoTrace = { events: [], snapshots: [] };
+    window.__captureUndo = label => {
+      const plugin = editor.state.plugins.find(plugin => plugin.key.startsWith('y-undo'));
+      const state = plugin?.getState(editor.state);
+      window.__undoTrace.snapshots.push({ label, canUndo: editor.can().undo(), canRedo: editor.can().redo(), undoStack: state?.undoManager?.undoStack?.length, redoStack: state?.undoManager?.redoStack?.length, document: editor.getJSON() });
+    };
+    editor.on('transaction', ({ transaction }) => window.__undoTrace.events.push({ steps: transaction.steps.map(step => step.toJSON()), meta: Object.fromEntries(Object.entries(transaction.meta).map(([key, value]) => [key, value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).filter(([, item]) => item === null || ['string', 'number', 'boolean'].includes(typeof item))) : value])) }));
+    window.__captureUndo('before');
+  });
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await page.evaluate(() => window.__captureUndo?.('after undo'));
   await expect(editor).not.toContainText('Synthetic undo checkpoint');
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await page.evaluate(() => window.__captureUndo?.('after redo'));
+  await fs.writeFile(output + '/undo-trace.json', JSON.stringify(await page.evaluate(() => window.__undoTrace ?? { unavailable: 'Angular debugging disabled in this build' }), null, 2));
   await expect(editor).toContainText('Synthetic undo checkpoint');
   await persist('Synthetic undo checkpoint');
   const beforeReload = (await store()).content;
   const ids = uniqueIDs(beforeReload);
   assertSourceReferences(beforeReload);
   await page.reload(); await expect(editor).toContainText('Synthetic undo checkpoint');
-  for (const [label] of sourceSpecs) await expect(editor.getByRole('button', { name: label, exact: true })).toBeVisible();
+  for (const [label] of sourceSpecs) await expect(editor.getByRole('button', { name: 'Open ' + label + ' — source and processing history', exact: true })).toBeVisible();
   await expect(editor.locator('strong')).toHaveText('synthetic emphasis');
   await expect(editor.getByRole('checkbox')).toBeChecked();
   assert.deepEqual(uniqueIDs((await store()).content), ids, 'Reopening must preserve block identities');
@@ -132,11 +148,11 @@ try {
   await station.click();
   const expandedStation = page.getByRole('button', { name: 'Expand section: Synthetic source material', exact: true });
   await expect(expandedStation).toHaveAttribute('aria-expanded', 'false');
-  for (const [label] of sourceSpecs) await expect(editor.getByRole('button', { name: label, exact: true })).toBeHidden();
+  for (const [label] of sourceSpecs) await expect(editor.getByRole('button', { name: 'Open ' + label + ' — source and processing history', exact: true })).toBeHidden();
   assert.equal((await store()).content, beforeFold, 'Folding must not rewrite the document');
   await expandedStation.focus(); await expandedStation.press('Enter');
   await expect(station).toHaveAttribute('aria-expanded', 'true');
-  for (const [label] of sourceSpecs) await expect(editor.getByRole('button', { name: label, exact: true })).toBeVisible();
+  for (const [label] of sourceSpecs) await expect(editor.getByRole('button', { name: 'Open ' + label + ' — source and processing history', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Insert a block', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Collapsible section', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Insert a block', exact: true }).click();
@@ -148,17 +164,20 @@ try {
   await page.screenshot({ path: output + '/today-dark.png', fullPage: true });
   await page.setViewportSize({ width: 620, height: 900 });
   await expect(dock).toBeVisible();
-  const bounds = await dock.boundingBox();
-  assert(bounds.x >= 0 && bounds.x + bounds.width <= 621 && bounds.y + bounds.height <= 901, 'Dock must fit narrow screens');
+  // ResizeObserver and visualViewport position the floating dock on the next frame.
+  await expect.poll(async () => {
+    const bounds = await dock.boundingBox();
+    return bounds !== null && bounds.x >= 0 && bounds.x + bounds.width <= 621 && bounds.y + bounds.height <= 901;
+  }, { message: 'Dock must fit narrow screens after viewport positioning' }).toBe(true);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Document must not overflow narrow screens');
   await page.screenshot({ path: output + '/today-narrow.png', fullPage: true });
 
   // An ordinary notebook uses the identical shared editing surface and toolbar.
   await page.setViewportSize({ width: 1440, height: 1400 });
   await page.emulateMedia({ colorScheme: 'light' });
-  await page.getByRole('button', { name: 'All notebooks', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage notebooks', exact: true }).click();
   await page.locator('.memo-cover').first().click();
-  await page.locator('.note-list button').first().click();
+  await page.locator('.notebook-folder-notes button').first().click();
   editor = page.locator('.note-paper .tiptap');
   await expect(editor).toBeVisible();
   await expect(page.locator('.note-paper maple-editor')).toHaveCount(1);
@@ -189,15 +208,15 @@ try {
   uniqueIDs(notebookBefore);
   assertSourceReferences(notebookBefore);
   await page.getByRole('button', { name: 'Collapse section: Synthetic notebook sources', exact: true }).click();
-  await expect(editor.getByRole('button', { name: 'Synthetic message', exact: true })).toBeHidden();
+  await expect(editor.getByRole('button', { name: 'Open Synthetic message — source and processing history', exact: true })).toBeHidden();
   await page.getByRole('button', { name: 'Expand section: Synthetic notebook sources', exact: true }).click();
   await page.screenshot({ path: output + '/notebook-light.png', fullPage: true });
   await page.reload();
   await page.locator('.memo-cover').first().click();
-  await page.locator('.note-list button').first().click();
+  await page.locator('.notebook-folder-notes button').first().click();
   await expect(editor).toContainText('Shared editor writing stays in this notebook.');
   for (const [label, id] of sourceSpecs) {
-    await expect(editor.getByRole('button', { name: label, exact: true })).toBeVisible();
+    await expect(editor.getByRole('button', { name: 'Open ' + label + ' — source and processing history', exact: true })).toBeVisible();
     assert((await store()).generic.content.includes(id));
   }
   assert.equal((await store()).generic.content, notebookBefore, 'Notebook reopen preserves source references and authored Markdown');
@@ -229,13 +248,19 @@ try {
       requestAnimationFrame(() => window.__writingLatency.push(performance.now() - start));
     });
   });
-  await editor.pressSequentially('Synthetic large-note typing measurement.', { delay: 60 });
+  const typingSample = 'Synthetic large-note typing measurement. '.repeat(4);
+  await editor.pressSequentially(typingSample, { delay: 60 });
+  await expect.poll(() => page.evaluate(() => window.__writingLatency.length)).toBe(typingSample.length);
   const samples = await page.evaluate(() => window.__writingLatency);
   samples.sort((a, b) => a - b);
   const p95 = samples[Math.max(0, Math.ceil(samples.length * 0.95) - 1)];
-  assert(samples.length > 20, 'Writing latency measurement should collect real input samples');
-  await fs.writeFile(output + '/performance.json', JSON.stringify({ fixture: 'Synthetic near-limit managed Markdown with a heading every ten blocks', bytes: largeBytes, samples: samples.length, p95Milliseconds: p95, targetMilliseconds: 50, method: 'beforeinput to next requestAnimationFrame; browser integration estimate, not native latency' }, null, 2));
+  assert(samples.length >= 120, 'Writing latency measurement must collect at least 120 real input samples');
+  await fs.writeFile(output + '/performance.json', JSON.stringify({ fixture: 'Synthetic near-limit managed Markdown with a heading every ten blocks; bounded content-free command audit; full current draft/content persisted', transport: 'Synchronous browser localStorage simulation, not native SQLite/filesystem or WKWebView', bytes: largeBytes, samples: samples.length, minimumSamples: 120, accepted: samples.length >= 120 && Number.isFinite(p95) && p95 < 50, p95Milliseconds: p95, targetMilliseconds: 50, method: 'beforeinput to next requestAnimationFrame; browser integration estimate, not native latency' }, null, 2));
   console.log('Near-limit input-to-frame p95: ' + p95.toFixed(1) + ' ms (' + largeBytes + ' bytes)');
+  assert(Number.isFinite(p95) && p95 < 50, 'Near-limit editor input-to-frame p95 must stay below the PRD 50 ms target');
+  await expect.poll(async () => (await store()).drafts?.['synthetic-document']?.content).toContain(typingSample.trimEnd());
+  await expect.poll(async () => (await store()).content).toContain(typingSample.trimEnd());
+  await expect(page.locator('.document-error')).toHaveCount(0);
   assert.deepEqual(errors, []);
   const calls = (await store()).calls.map(c => c.action);
   assert(!calls.includes('mapleSubmit'), 'Acceptance must not request live classification or agent execution');

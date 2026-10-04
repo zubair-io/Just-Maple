@@ -47,7 +47,16 @@ extension TaskEvidenceRules {
     public static func promptContext(_ input:Context,maxBytes:Int=24_000)throws->String {
         var context=try AIProcessingWindow.filtered(input)
         guard context.event.content.utf8.count<=12_000 else {throw MapleError.provider("Task source exceeds the supported context size.")}
-        func encoded()throws->String {try JSONCodec.string(context)}
+        let originalReview=context.messageReview
+        func encoded()throws->String {
+            if let review=originalReview {
+                let visible=Set(context.recentEvents.map(\.id)).union([context.event.id])
+                context.messageReview=MessageConversationReview(asOf:review.asOf,snapshotHash:review.snapshotHash,totalObservations:review.totalObservations,
+                    selectedEventIDs:context.recentEvents.map(\.id),omittedCount:review.omittedCount+max(0,review.selectedEventIDs.count-context.recentEvents.count),
+                    truncatedEventIDs:review.truncatedEventIDs.filter{visible.contains($0)},assessmentScope:review.assessmentScope)
+            }
+            return try JSONCodec.string(context)
+        }
         while try encoded().utf8.count>maxBytes {
             if var world=context.world,!world.tasks.isEmpty {world.tasks.removeLast();context.world=world}
             else if var world=context.world,!world.states.isEmpty {world.states.removeLast();context.world=world}

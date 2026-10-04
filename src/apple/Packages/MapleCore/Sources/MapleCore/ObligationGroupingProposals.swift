@@ -37,12 +37,37 @@ public struct ObligationGroupingStatus: Codable, Sendable {
 public protocol ObligationGroupingProvider: Sendable {
     var identifier:String { get }
     func propose(_ input:ObligationGroupingInput) async throws -> String
+    func proposeAudited(_ input:ObligationGroupingInput,audit:@escaping ProviderAuditSink) async throws -> String
+}
+extension ObligationGroupingProvider {
+    // Fixture/unsupported providers do not imply dispatch coverage merely by returning a result.
+    public func proposeAudited(_ input:ObligationGroupingInput,audit:@escaping ProviderAuditSink) async throws -> String {try await propose(input)}
 }
 public struct ACPObligationGroupingProvider: ObligationGroupingProvider {
     public let client:ACPClient
     public init(client:ACPClient) {self.client=client}
     public var identifier:String {"acp/"+client.provider}
-    public func propose(_ input:ObligationGroupingInput) async throws -> String {try await client.request(ObligationGroupingEngine.prompt(input))}
+    public func propose(_ input:ObligationGroupingInput) async throws -> String {try await proposeAudited(input){_ in}}
+    public func proposeAudited(_ input:ObligationGroupingInput,audit:@escaping ProviderAuditSink) async throws -> String {
+        let invocation=UUID().uuidString,prompt=try ObligationGroupingEngine.prompt(input)
+        let model="subscription-default/obligation-grouping-v1"
+        let dates=Dictionary(input.sources.map{($0.id,$0.occurredAt)},uniquingKeysWith:{first,_ in first})
+        let ids=Set(input.sources.map(\.id)+input.nodes.flatMap(\.sourceIDs)).sorted()
+        let evidence=ids.map{ProviderInputEvidence(eventID:$0,occurredAt:dates[$0])}
+        try await audit(.init(invocationID:invocation,provider:identifier,model:model,kind:"context",payload:prompt))
+        let response:String
+        do {
+            response=try await client.request(prompt,beforeDispatch:{
+                // Derived task prose may refer to context beyond these bounded source excerpts.
+                try await audit(.init(invocationID:invocation,provider:identifier,model:model,kind:"dispatch",payload:"",dispatch:.init(evidence:evidence,coverage:.partial)))
+            })
+        } catch {
+            try await audit(.init(invocationID:invocation,provider:identifier,model:model,kind:"failure",payload:"provider_request_failed"))
+            throw error
+        }
+        try await audit(.init(invocationID:invocation,provider:identifier,model:model,kind:"response",payload:response))
+        return response
+    }
 }
 public struct ObligationGroupingEngine: Sendable {
     public let store:KnowledgeStore
@@ -52,7 +77,9 @@ public struct ObligationGroupingEngine: Sendable {
         guard let job=try await store.acquireObligationGrouping(provider:provider.identifier,at:at) else {return}
         do {
             try await store.validateObligationGroupingJob(job)
-            let response=try await provider.propose(job.input)
+            let response=try await provider.proposeAudited(job.input) { event in
+                try await store.recordPipelineProviderAudit(event,jobID:job.id,attemptID:job.token,stage:"obligation_grouping")
+            }
             try await store.finishObligationGrouping(job,response:response)
         } catch {try await store.failObligationGrouping(job);throw error}
     }

@@ -35,6 +35,7 @@ export function button(
 }
 export function menuKeyboard(menu: HTMLElement, onClose: () => void) {
   menu.addEventListener("keydown", (event) => {
+    if (event.isComposing) return;
     if (event.key === "Escape") {
       event.preventDefault();
       onClose();
@@ -42,7 +43,7 @@ export function menuKeyboard(menu: HTMLElement, onClose: () => void) {
     }
     if ((event.target as HTMLElement).matches("input,textarea")) return;
     const buttons = Array.from(
-      menu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
+      menu.querySelectorAll<HTMLButtonElement>("button:not(:disabled):not([hidden])"),
     );
     const current = buttons.indexOf(
       menu.ownerDocument.activeElement as HTMLButtonElement,

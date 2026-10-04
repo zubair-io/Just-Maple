@@ -171,12 +171,15 @@ extension KnowledgeStore {
         }
     }
     public func markDocumentOperationConflict(_ operation:DocumentOperation) throws {
-        var current=operation;current.state="conflict"
+        guard var current=try documentOperation(commandID:operation.input.commandID),["prepared","conflict"].contains(current.state) else {throw MapleError.invalid("Only pending document actions can enter conflict recovery.")}
+        current.state="conflict"
         try db.execute("UPDATE document_operations SET state='conflict',json=? WHERE command_id=?",[try JSONCodec.string(current),operation.input.commandID])
     }
     public func finalizeDocumentOperation(_ operation:DocumentOperation) throws {
         try db.transaction {
-            guard var current=try documentOperation(commandID:operation.input.commandID),current.state != "committed" else{return}
+            guard var current=try documentOperation(commandID:operation.input.commandID) else {throw MapleError.invalid("This document action is unavailable.")}
+            if current.state == "committed" {return}
+            guard ["prepared","conflict"].contains(current.state) else {throw MapleError.invalid("This document action was abandoned and cannot be applied.")}
             if let task=operation.taskID,let expected=operation.input.expectedTaskVersion {
                 guard try db.rows("SELECT command_id FROM task_mutation_reservations WHERE task_id=?",[task]).first?["command_id"]==operation.input.commandID else{throw MapleError.invalid("This task action lost its reservation and needs recovery.")}
                 let undoTarget=operation.input.kind=="reopen" ? try taskNode(task)?.actionState?.lastMutationID:nil

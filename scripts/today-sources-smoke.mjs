@@ -1,5 +1,5 @@
 /** Synthetic browser contract test only. No fixture transport is shipped in the app.
- * npm start --prefix src/web -- --port 4320; node scripts/today-sources-smoke.mjs
+ * npm start --prefix src/web -- --port 4323; node scripts/today-sources-smoke.mjs
  */
 import {
   chromium,
@@ -15,19 +15,19 @@ const context = await browser.newContext({
   viewport: { width: 1440, height: 1080 },
   timezoneId: "America/New_York",
 });
-await context.addInitScript(syntheticBridge);
+await context.addInitScript(syntheticBridge, { compactContentAudit: true });
 const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 try {
   await page.goto(
-    (process.env.MAPLE_SMOKE_URL || "http://127.0.0.1:4320") + "/#/today",
+    (process.env.MAPLE_SMOKE_URL || "http://127.0.0.1:4323") + "/#/today",
   );
   await expect(
     page.locator("maple-today .date-chip"),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Synthetic proposal", exact: true }),
+    page.getByRole("button", { name: "Open Synthetic proposal — source and processing history", exact: true }),
   ).toBeVisible();
   await page.screenshot({ path: output + "/today-light.png", fullPage: true });
   const editor = page.getByRole("textbox", {
@@ -58,7 +58,7 @@ try {
     .getByRole("button", { name: "View Markdown", exact: true })
     .click();
   const raw = page.getByRole("textbox", {
-    name: "Daily note Markdown source",
+    name: "Daily note editor Markdown source",
     exact: true,
   });
   await expect(raw).toHaveValue(/maple-ref/);
@@ -67,7 +67,7 @@ try {
     .getByRole("button", { name: "Formatted view", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Synthetic proposal", exact: true }),
+    page.getByRole("button", { name: "Open Synthetic proposal — source and processing history", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Document tools", exact: true })).toHaveCount(0);
   await expect(page.getByText("Suggested follow ups", { exact: true })).toHaveCount(0);
@@ -77,10 +77,10 @@ try {
   });
   await expect(editor).toContainText("Synthetic Maple reply");
   await page
-    .getByRole("button", { name: "State & history ↗", exact: true })
+    .getByRole("button", { name: "Open Synthetic proposal — source and processing history", exact: true })
     .click();
   await expect(
-    page.getByRole("region", { name: "Source details", exact: true }),
+    page.getByRole("dialog", { name: "Source details", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Responses", exact: true }).click();
   await page.getByRole("button", { name: /classification · response/ }).click();
@@ -96,8 +96,12 @@ try {
     page.getByRole("heading", { name: "Sources", exact: true }),
   ).toBeVisible();
   await expect(page.locator("tbody tr")).toHaveCount(3);
-  await page.getByLabel("Type", { exact: true }).selectOption("email");
-  await page.getByLabel("Account", { exact: true }).selectOption("work");
+  const typeFilter = page.locator("details.filter-options").filter({ has: page.locator("summary", { hasText: /^Type ·/ }) });
+  await typeFilter.locator("summary").click();
+  await typeFilter.getByRole("checkbox", { name: "email", exact: true }).check();
+  const accountFilter = page.locator("details.filter-options").filter({ has: page.locator("summary", { hasText: /^Account ·/ }) });
+  await accountFilter.locator("summary").click();
+  await accountFilter.getByRole("checkbox", { name: "work", exact: true }).check();
   const todayRange = await page.evaluate(() => {
     const now = new Date();
     const day = new Intl.DateTimeFormat("en-CA").format(now);
@@ -130,7 +134,7 @@ try {
     path: output + "/sources-light.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: /Synthetic proposal/ }).click();
+  await page.locator("tbody").getByRole("button", { name: /^Synthetic proposal/ }).click();
   await page.getByRole("button", { name: "Processing", exact: true }).click();
   await page
     .getByRole("button", { name: "Open representative source ↗", exact: true })
@@ -139,12 +143,16 @@ try {
   await expect(page.locator("maple-source-detail h2")).toContainText(
     "Synthetic message",
   );
-  await page.getByRole("button", { name: /Synthetic proposal/ }).click();
+  await page.getByRole("dialog", { name: "Source details", exact: true }).getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Source details", exact: true })).not.toBeVisible();
+  await page.locator("tbody").getByRole("button", { name: /^Synthetic proposal/ }).click();
   await page
     .getByRole("button", { name: "Open related revision 1 ↗", exact: true })
     .click();
   await expect(page).toHaveURL(/sources\/synthetic-message/);
-  await page.getByRole("button", { name: /Synthetic proposal/ }).click();
+  await page.getByRole("dialog", { name: "Source details", exact: true }).getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Source details", exact: true })).not.toBeVisible();
+  await page.locator("tbody").getByRole("button", { name: /^Synthetic proposal/ }).click();
   await page.getByRole("button", { name: "History", exact: true }).click();
   await expect(page.locator(".audit")).toContainText("running → succeeded");
   await page.screenshot({
@@ -153,6 +161,7 @@ try {
   });
   await page.emulateMedia({ colorScheme: "dark" });
   await page.screenshot({ path: output + "/sources-dark.png", fullPage: true });
+  await page.getByRole("dialog", { name: "Source details", exact: true }).getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("link", { name: "Today", exact: true }).click();
   await expect(editor).toBeVisible();
   await page.screenshot({ path: output + "/today-dark.png", fullPage: true });
@@ -168,10 +177,11 @@ try {
   // Shared source rendering in an explicitly registered ordinary notebook.
   await page.setViewportSize({ width: 1440, height: 1080 });
   await page
-    .getByRole("button", { name: "All notebooks", exact: true })
+    .getByRole("button", { name: "Manage notebooks", exact: true })
     .click();
   await page.locator(".memo-cover").first().click();
-  await page.locator(".note-list button").first().click();
+  await page.locator(".notebook-folder-notes button").first().click();
+  await page.locator(".paper-heading").getByRole("button", { name: "Document tools", exact: true }).click();
   await page
     .getByRole("button", {
       name: "Enable source blocks & inline Maple",
@@ -179,6 +189,7 @@ try {
     })
     .click();
   await expect(page.locator(".note-paper .tiptap")).toBeVisible();
+  await page.locator(".note-document-tools").getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Insert a block", exact: true }).click();
   await page.getByRole("button", { name: "Source reference", exact: true }).click();
   await page.locator(".notebook-source-picker .source-choice").first().click();
@@ -199,7 +210,7 @@ try {
   await page.reload();
   await expect(page.locator(".note-paper .source-card")).toHaveCount(0);
   await page.locator(".memo-cover").first().click();
-  await page.locator(".note-list button").first().click();
+  await page.locator(".notebook-folder-notes button").first().click();
   await expect(page.locator(".note-paper .source-card")).toBeVisible();
   await page.getByRole("link", { name: "Today", exact: true }).click();
   await expect(editor).toBeVisible();
@@ -236,9 +247,20 @@ try {
       );
     });
   });
-  await editor.pressSequentially("Synthetic typing latency measurement.", {
-    delay: 60,
-  });
+  const typingSample = "Synthetic typing latency measurement. ".repeat(4);
+  const minimumSamples = 120;
+  await editor.pressSequentially(typingSample, { delay: 60 });
+  await expect.poll(() => page.evaluate(() => window.__mapleLatency.length)).toBe(typingSample.length);
+  await expect(editor).toContainText(typingSample.trim());
+  // The bounded audit omits historic prose copies, while the latest complete
+  // draft still crosses the bridge and is persisted before acknowledgement.
+  await expect.poll(() => page.evaluate(() =>
+    JSON.parse(localStorage.getItem("maple.today.sources.smoke.v1")).drafts?.["synthetic-document"]?.content,
+  )).toContain(typingSample.trim());
+  await expect.poll(() => page.evaluate(() =>
+    JSON.parse(localStorage.getItem("maple.today.sources.smoke.v1")).content,
+  )).toContain(typingSample.trim());
+  await expect(page.locator("maple-today .document-error")).toHaveCount(0);
   const samples = await page.evaluate(() => window.__mapleLatency);
   samples.sort((a, b) => a - b);
   const p95 = samples[Math.max(0, Math.ceil(samples.length * 0.95) - 1)];
@@ -246,9 +268,12 @@ try {
     output + "/editor-performance.json",
     JSON.stringify(
       {
-        fixture: "synthetic near-limit managed Markdown",
+        fixture: "synthetic near-limit managed Markdown; bounded content-free command audit; full current draft/content persisted",
+        transport: "Synchronous browser localStorage simulation, not native SQLite/filesystem or WKWebView",
         bytes: largeBytes,
         samples: samples.length,
+        minimumSamples,
+        accepted: samples.length >= minimumSamples && Number.isFinite(p95) && p95 < 50,
         p95Milliseconds: p95,
         targetMilliseconds: 50,
         method:
@@ -265,6 +290,9 @@ try {
       largeBytes +
       " bytes)",
   );
+  assert.ok(samples.length >= minimumSamples, "Latency acceptance requires at least " + minimumSamples + " actual beforeinput samples");
+  assert.ok(samples.every(sample => Number.isFinite(sample) && sample >= 0), "All latency samples must be finite nonnegative measurements");
+  assert.ok(Number.isFinite(p95) && p95 < 50, "Near-limit editor p95 must be under 50 ms; measured " + p95 + " ms");
   assert.deepEqual(errors, []);
   console.log("Today/Sources synthetic smoke passed; artifacts: " + output);
 } finally {

@@ -1,8 +1,8 @@
 # Just Maple — Product Requirements
 
-Version 0.2 · September 23, 2026 · **Earlier product baseline**
+Version 0.3 · September 30, 2026 · **Notes-first product direction**
 
-The September 27 [living daily-note direction](LIVING-DAILY-NOTE.md) supersedes this document’s primary navigation and release surface. Retain the underlying source, evidence, task-correctness and privacy requirements.
+This revision adopts Notes as the main surface and Today as the default entry point. The [Notes, Today and Sources PRD](PRD-TODAY-AND-SOURCES.md) defines the detailed interaction and acceptance contract. Earlier Overview-first layouts are superseded; source, evidence, task-correctness and privacy requirements remain in force.
 
 This document describes the product we are building, the current baseline, and the proposed next releases. Existing user decisions are identified separately from proposals. It does not claim that proposed capabilities are implemented or that implementation alone proves product quality.
 
@@ -12,7 +12,7 @@ This document describes the product we are building, the current baseline, and t
 
 Information arrives through messages, email, calendars, notes and connected services. Maple brings that information together, understands it in context, and maintains an evolving picture of your life. It surfaces concrete actions and meaningful changes while preserving the evidence behind its conclusions.
 
-The intelligent core is the product. Notes are one source and a useful everyday workspace. The Mac is the processing hub; the iPhone provides access, capture and actions wherever the user is.
+**Notes is where the user works; the intelligent core brings relevant context into that work.** Today combines the user's writing with actionable tasks, useful information, source references and inline Maple replies in one dated Markdown document. Other notebooks use the same editor. Sources provides evidence and processing inspection when needed. The Mac is the processing and editing hub; iPhone receives daily-note files through iCloud, with managed daily notes currently read-only.
 
 Success means less time reconstructing context and checking for missed obligations. More imported records, tasks or model calls do not by themselves mean success.
 
@@ -24,7 +24,7 @@ Initial validation is single-user daily use on Mac and iPhone. Broader onboardin
 
 Core jobs:
 
-1. Tell me what needs my attention and what I can do about it.
+1. Give me one place to write, see what needs my attention and work with Maple without leaving the note.
 2. Keep track of what I am waiting for without making it look like unfinished work I can act on now.
 3. Connect related people, messages, notes and events without requiring me to organize everything.
 4. Explain what you believe, where it came from, and let me correct it.
@@ -39,7 +39,9 @@ Core jobs:
 | Activity | An ongoing area or temporary pursuit | Connect people, state, documents, events and tasks |
 | Task | A concrete obligation or next step | Identify the action, responsibility, timing and progress |
 | Person | Someone relevant to the user's world | Join identities conservatively; prioritize pins and meaningful interaction |
-| Notebook | A folder containing Markdown notes | Provide a clean editor and contribute observations to the same intelligence system |
+| Daily note | The user's dated Markdown workspace | Own writing and block order; receive bounded context for that day without disrupting edits |
+| Notebook | A folder containing Markdown notes | Use the same editor as Today and contribute observations to the same intelligence system |
+| Source reference | A block pointing to immutable evidence | Render compactly in the note and open the shared Sources inspector; removing it does not delete evidence |
 | History | What changed and why | Preserve prior evidence and decisions without confusing them with current state |
 
 Tasks can have several Activity tags. Completing a task once completes that same task wherever it appears. An Activity can exist without tasks. A person's current behavior, such as working, is distinct from an Activity such as a long-running pursuit.
@@ -52,11 +54,15 @@ Examples throughout this PRD illustrate behavior; they are not seeded categories
 - Maple **never automatically sends a reply**. Marking a task complete, opening its source or generating a future draft does not send anything.
 - New and historical observations remain eligible for local indexing. Jev and other AI providers receive only evidence within the existing rolling 30-day policy. Importing an old message does not make it new.
 - Activity labels must emerge from evidence or explicit user input. Do not hardcode the user's example companies or life categories.
-- Detected tasks appear directly in the ranked task list; no separate Suggested task category is required.
+- Eligible detected tasks appear as canonical linked tasks in the note's Action items; existing task views remain supporting tools. No separate Suggested task category or acceptance panel is required.
 - User corrections take priority and must survive retries, source revisions and subsequent inference.
 - Local SQLite belongs to the Mac. iCloud connects the companion automatically and retries without an enable/pair/reconnect workflow in normal use.
 - Use the existing Apple app identity, proper Xcode projects, hybrid WebViews, Angular UI and shared Maple components with automatic light/dark themes.
-- Notes remain ordinary Markdown in the app's iCloud folders or manually connected folders. Preserve the reused Sugar Maple editor and file ownership.
+- Today resolves to `Just Maple/YYYY/MM/YYYY-MM-DD.md` in the app's iCloud Documents container. Other notebooks retain their connected folders and file ownership. Markdown owns writing and order; SQLite owns immutable evidence, canonical tasks, identities/history and recoverable mutation records.
+- Today, Yesterday and Tomorrow are route shortcuts resolved from the real local date when selected. Midnight updates their labels and active styling without navigating or changing the file being edited.
+- Today and notebooks share the Angular/Tiptap editor, JustMaple light/dark design system and bottom floating toolbar. Use focused JustMaple/SugarMaple interaction patterns, not a second editor implementation.
+- The human and Maple edit together locally on the Mac through Tiptap + Yjs. Incoming blocks and replies preserve cursor, selection, human undo and recovery. Saved Markdown remains the only durable prose authority; no network collaboration service is required.
+- Relevant successful results enter the actual note as Action items or FYI. A future calendar event must not appear in Today merely because it was just imported. Note refresh and rendering do not make new model requests.
 - Failures, uncertainty and incomplete coverage must be distinguishable from successful processing with nothing found.
 
 ## 5. Current baseline
@@ -69,18 +75,20 @@ These capabilities are implemented to varying degrees. They are not a claim of c
 | Intelligence | Jev classification; selected-provider extraction; automatic state/activity/task work | Broad quality evaluation remains incomplete |
 | Memory | Local keyword and semantic indexing with persistent jobs | Apple English embeddings, exact vector comparison; not a general resolved knowledge graph |
 | Tasks | Ranked detected/manual tasks, evidence, editing, tags, recurrence, duplicate/progress reconciliation | Outstanding obligations and waiting work can be poorly prioritized |
-| Activities | Discovery, many-to-many links, rename/move/merge/remove controls | Too many activities can overwhelm the landing page |
+| Activities | Discovery, many-to-many links, rename/move/merge/remove controls | Relevance and concise grouping still need quality evaluation; these are supporting views |
 | People and state | Important-person ranking, conservative identity grouping, evidence-backed state and corrections | Identity is not propagated consistently into every contextual consumer |
-| Mac/iPhone | Shared Overview, automatic iCloud snapshots, phone capture and notebooks | Phone receives a bounded subset and has fewer correction controls |
-| Latest phone changes | Task detail/completion and waiting for notebook downloads are built and tested | Physical-device deployment and verification of these changes remain outstanding at this baseline |
+| Notes main surface | Today plus shared notebook editor, relative-date navigation, compact source cards, inline Maple and automatic Action items/FYI | Not every ingested event is eligible; source mode and unresolved conflicts can defer live insertions |
+| Local editing | Human/Maple Tiptap + Yjs transactions; atomic local session state, bounded draft writes, owner-safe handoff, separate undo and durable delivery recovery | Same Mac only; this is not CRDT merging of independent iCloud file edits |
+| Mac/iPhone | Daily Markdown saved by Mac and read from the same app iCloud path on phone; existing companion task actions remain separate | Managed daily notes are read-only on phone; full provider evidence stays Mac-only |
+| Latest validation | September 30 source-inspection/editor delivery: 357 Angular, 427 Core, 30 transport and 76 Mac tests; 10,000-event Sources query p95 64.62 ms; synthetic browser acceptance and signed Mac build | See the [completion audit](../../plans/today-and-sources/evidence/COMPLETION-AUDIT-2026-09-30.md) for earlier iPhone/provider checks and scope; live model quality, real-world sync latency and physical-device validation remain separate gates |
 
-The product audit observed 115 open tasks, 27 activity cards and 48 tasks grouped under one screen-time activity. These counts identify usability and evaluation priorities; they do not establish that each task is wrong. The live Overview also placed a waiting-on-someone-else item among its first three attention rows.
+The September 23 product audit observed 115 open tasks, 27 activity cards and 48 tasks grouped under one screen-time activity. The old Overview placed waiting work among its first three attention rows. These historical observations motivate relevance and attribution evaluation; they are not current counts or a scored benchmark.
 
-## 6. Next release: a trustworthy daily action list
+## 6. Release focus: a trustworthy living note
 
-**Outcome:** The user can open Maple, identify what genuinely needs them, understand the source, and resolve or defer it in a few interactions.
+**Outcome:** The user opens Today, writes freely, receives useful context in place, and can understand, act on or clear it without leaving the document.
 
-This release finishes the daily action experience using the existing connectors and intelligence foundation. Overview work is limited to bounded lists, waiting isolation and transport-event suppression. Dynamic activity curation and complex change summarization are Milestone 2. See [shared contracts and delivery slices](DAILY-ACTIONS-CONTRACT.md).
+The Notes main surface is built. Remaining work hardens its reliability and the usefulness of what enters it, using the existing connectors and intelligence foundation. The [Notes, Today and Sources contract](PRD-TODAY-AND-SOURCES.md) governs presentation; [shared task contracts](DAILY-ACTIONS-CONTRACT.md) retain lifecycle and correction semantics. Dynamic activity curation and broad change summarization remain later work.
 
 ### R1. Identify outstanding obligations
 
@@ -98,11 +106,13 @@ Source-supported expiry may remove an item from the actionable surface with an e
 
 ### R2. Separate attention from waiting
 
-Tasks should offer **Needs you**, **Waiting**, and completed/history access, with Activity filters applying consistently.
+The note's Action items should distinguish actions the user can take from waiting work. Supporting task views offer **Needs you**, **Waiting**, and completed/history access, with Activity filters applying consistently. Do not force those views or their management controls into a panel below the document.
 
 Needs you ranks actionable obligations using supported urgency, explicit priority and relevant context. Each item provides a brief reason for its position. Waiting items retain their deadlines and evidence in the Waiting view; a due date alone does not turn blocked work into a user action. If a supported or user-chosen follow-up becomes due, surface that follow-up explicitly.
 
 Do not translate an activity milestone or future start date into a deadline for every associated task. Show uncertain timing as uncertain.
+
+An automatic follow-up whose originating obligation is rejected, superseded or removed must leave active attention if the follow-up is still untouched. Preserve user-edited or explicitly resolved follow-ups. Retiring a review is not completion of its original obligation; undoing dismissal may restore the same review identity.
 
 ### R3. Make task details useful before editable
 
@@ -115,6 +125,8 @@ The default task detail contains:
 
 Detected and manual tasks use the same primary experience. Detected items do not require an “Add task” step before they can be resolved. Internal review/provenance distinctions can remain in storage and secondary inspection.
 
+Unrelated edits preserve supported timing exactly: date-only values, exact instants and independent due/scheduled time zones. Applying a draft uses the task, suggestion and recurrence versions loaded with that draft. A newer live revision must produce a recoverable conflict or require explicit reload, never silently receive an older draft under its new version.
+
 | User action | Required meaning |
 |---|---|
 | Open source | Open the exact source or an inspectable fallback; never mark complete |
@@ -126,19 +138,17 @@ Detected and manual tasks use the same primary experience. Detected items do not
 
 Supported source navigation must work appropriately on each platform. When direct navigation is unavailable, show the source details and a clear explanation rather than a dead button. Provider names, uncalibrated confidence values and extraction forms belong in secondary inspection.
 
-### R4. Deliver a focused Overview
+### R4. Deliver a focused Notes surface
 
-Proposed initial layout:
+- **Today:** a continuous document containing the user's writing, tasks and compact evidence cards. Use a relative-date chip and bottom floating toolbar; remove decorative file/date/title headers and permanent management panels from the writing area.
+- **Action items / FYI:** eligible core results arrive as real document blocks. Preserve user edits, stable IDs and cleared/deleted suppression. Calendar timing uses the actual event interval; Home Assistant contributes a factual batch reference rather than an entity-by-entity flood.
+- **Inline Maple:** explicit submission runs a request anchored to its block. Insert the result beside that request while the user continues typing; edited or missing anchors retain an unapplied result in history.
+- **Notebooks:** the same editor, formatting, source cards, heading-rail folding and recovery behavior as Today. Notes need no mandatory title or scaffold text.
+- **Sources:** a supporting table with type/account filters, observed state, queued/running/paused processing and actual retained responses. A card in a note opens the same inspector.
 
-- **Right now:** concise supported context; make uncertainty or a conflict understandable.
-- **Needs you:** up to five relevant actions, with View all and an accurate count.
-- **Waiting:** a compact summary with any follow-ups due.
-- **Recent changes:** retain existing non-transport history. Suppress polling/transport noise; new semantic summaries and since-last-visit aggregation are deferred.
-- **Activities:** up to six active activities in existing stable order, with View all. Dynamic relevance curation is deferred.
+An open document stays pinned through midnight and time-zone changes. Relative labels and sidebar styling update independently; selecting a day shortcut resolves and opens the correct date. Live content changes preserve selection, caret and human Undo/Redo, including during autosave. Raw Markdown mode and conflicts defer proposals safely.
 
-The item limits are proposed review defaults. A limited phone snapshot must disclose its scope rather than present its local count as the total world. Stable item identity should preserve expansion and interaction state while data refreshes.
-
-“Nothing needs you” is appropriate only when coverage and processing are sufficiently current. Otherwise show what is still being checked or which source is unavailable. Technical diagnostics remain accessible without dominating Overview.
+Automatic additions are bounded; excess and ineligible evidence stays in Sources. A quiet note does not mean all processing has finished or no obligations exist. Coverage, processing freshness and failures must remain inspectable without turning the note into a diagnostics dashboard.
 
 ### R5. Make correction and sync trustworthy
 
@@ -152,7 +162,7 @@ Automatic iCloud operation remains the default. Show last Mac processing freshne
 
 Verify the latest download handling on the physical iPhone. Opening a listed note must either load its contents or show a clear recoverable download state. It must never replace an unavailable note with a blank file. Editing must preserve Markdown, recovery drafts and concurrent-change protection.
 
-This release validates notebook basics; full folder observation and phone-edit-to-intelligence coverage belong to the later memory milestone.
+Use one shared editor implementation for Today and notebooks. Validate Markdown shortcuts, paste, source/attachment controls, heading folding, drag/reorder, local human/Maple edits and save/reopen. Managed daily notes remain read-only on phone and read the Mac-owned Markdown through iCloud; file arrival is not acknowledgment of a phone command. Full folder observation and phone-edit-to-intelligence coverage belong to the later memory milestone.
 
 ## 7. Acceptance scenarios
 
@@ -169,6 +179,11 @@ This release validates notebook basics; full folder observation and phone-edit-t
 | Task action made while Mac is unavailable | Show pending, retain across restart, apply once after reconnect |
 | Phone has stale or partial data | Explain freshness/scope; do not imply all sources are current |
 | iCloud note contents are not downloaded | Wait or show retry; preserve original contents |
+| Midnight while writing yesterday's Today | Keep the file and draft open; update relative labels and active styling; Today shortcut resolves the new date |
+| Eligible source or Maple reply arrives while typing | Merge once in place; preserve caret, user text and human Undo/Redo through save/restart |
+| A next-month calendar event is imported today | Keep it inspectable in Sources; do not automatically insert it into Today |
+| User deletes an incoming block before autosave | Preserve suppression through retries and recovery; do not resurrect it |
+| User checks queued processing | Distinguish queued, running, paused and failed work with stage/provider; inspection causes no new model calls |
 
 Use diverse held-out examples. The user's recruiting, renewal and household examples are acceptance categories, not the whole evaluation set.
 
@@ -183,19 +198,19 @@ Proposed quality targets for review:
 - No unsupported automatic completions in the evaluated sample.
 - No duplicate effects or lost acknowledged commands in reconnect/restart tests.
 - Corrected test obligations stay corrected through reprocessing and source revisions.
-- Existing iCloud notes open and save safely on the physical phone; concurrent edits preserve recovery.
+- Existing editable notebook files open and save safely on the physical phone; concurrent edits preserve recovery. Managed daily notes load safely in read-only mode, including missing/downloading-file states.
 - No automatic messages, bookings or external task execution.
 
 These are proposed targets, not measured results. Report denominators, ambiguous cases and failure examples. Passing a small sample does not establish universal accuracy. Run the existing storage, provider, Angular and native regression suites for the affected behavior.
 
-Track time to first useful result, missed obligations, unnecessary attention items, correction rate, source-to-surface delay and pending-sync age. Evaluate whether the user can find and act on their next obligation without visiting diagnostics.
+Track time to first useful result, missed obligations, unnecessary note insertions, correction rate, source-to-note delay and pending-sync age. Measure editor responsiveness and lost/duplicate edits separately from model quality. Evaluate whether the user can write and act on the next obligation directly in the note without visiting diagnostics. Keep private note/message content out of telemetry.
 
 ## 9. What follows
 
 | Milestone | Product outcome | Main scope |
 |---|---|---|
-| Next: Daily actions | A manageable, actionable view of obligations | R1–R6 above |
-| Overview refinement | Relevant activity curation and meaningful change summaries | Build on the bounded Release 1 layout; no transport events in user summaries |
+| Current: Notes reliability and relevance | A dependable living daily note with useful incoming context | R1–R6 above; complete remaining persistence, performance and live-quality gates |
+| Context refinement | Relevant activity curation and meaningful change summaries | Improve what reaches notes and supporting views; no transport noise in user summaries |
 | Connected context | Maple understands relationships and changes across sources | Propagate identity into tasks/activities/retrieval; identity correction UI; distinguish current state from future transitions; carefully attributed calendar/HA signals |
 | First-session value | A new user gets help before configuring everything | Name → one source → useful results → first correction/action; optional résumé; understandable provider/data explanation |
 | Dependable memory | Useful information can be found and updated reliably | Folder observation, phone-note ingestion, retrieval evaluation, source navigation, retention/export/forget behavior and derived-data invalidation |
@@ -209,15 +224,18 @@ Activities remain automatically discovered and editable throughout. Subsequent c
 - A general chat assistant, graph visualization or new vector backend.
 - Automatic replies, purchases, bookings or Home Assistant control.
 - New push notifications or a scheduled digest before their interruption policy is reviewed.
-- A notebook editor rewrite or project-management hierarchy.
+- A second notebook editor implementation or project-management hierarchy.
+- Network collaboration, simultaneous multi-Mac writers or editable phone Today as part of the local Mac collaboration delivery.
 - Claims of continuous phone processing when the Mac is unavailable.
 
-## 11. Review decisions
+## 11. Decisions and remaining review
 
-| Decision | Proposed default | Why it needs review |
+| Decision | Direction | Status / remaining review |
 |---|---|---|
-| Primary daily habit | Open Overview and review Needs you | Determines whether a digest or notifications should follow |
-| Overview size | Five actions, six activities, compact waiting summary | Balances scanning cost and useful breadth |
+| Primary daily habit | Open Today, write and act in the note | Established; supersedes Overview-first navigation |
+| Incoming context | Bounded Action items and FYI in the document | Established; evaluate relevance and noise with real use |
+| Editing model | Shared Angular/Tiptap editor with local human/Maple Yjs collaboration | Built; retain recovery and concurrency regression gates |
+| Phone scope | Read managed daily Markdown through iCloud | Read-only in this release; editable phone Today is a separate scope |
 | Detected task handling | Directly actionable, same detail as manual tasks; no mandatory acceptance step | Removes the current inconsistency between the list and review form |
 | Ambiguous stale requests | Keep inspectable and ask for correction; expire only with supporting evidence | Avoids both an endless backlog and silently lost obligations |
 | Reply assistance | Source navigation now; optional user-requested drafts later | Preserves the absolute no-auto-send requirement |
@@ -229,13 +247,16 @@ Approval of this PRD sets product direction; it does not approve deleting existi
 ## 12. Related documents
 
 - [Product audit and observed gaps](PRODUCT-AUDIT-2026-09-23.md)
+- [Notes, Today and Sources requirements](PRD-TODAY-AND-SOURCES.md)
+- [Today and Sources engineering design](../engineering/TODAY-AND-SOURCES.md)
+- [Automatic context connector and validation](../engineering/TODAY-CONTEXT-CONNECTOR.md)
 - [Architecture and implementation boundaries](../ARCHITECTURE.md)
 - [Local intelligence and model-processing policy](../ARCHITECTURE.md)
 - [Task reconciliation](../ARCHITECTURE.md)
 - [Activity discovery](../ARCHITECTURE.md)
 - [iPhone companion and validation status](../ARCHITECTURE.md)
 
-Once approved, this PRD supersedes conflicting review-first task presentation in the earlier specification. Until then, it is a proposal; established user decisions in section 4 continue to govern implementation.
+The established Notes-first decisions in this revision supersede conflicting Overview-first and review-first presentation in older specifications. Proposed quality targets and future milestones remain explicitly subject to validation; they are not claims of implementation or measured accuracy.
 
 ## Approved specification refinements
 

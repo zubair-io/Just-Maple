@@ -2,10 +2,10 @@ import { SourceQuery } from "./sources.service";
 
 export interface SourceFilters {
   search: string;
-  type: string;
-  connector: string;
-  account: string;
-  state: string;
+  type: string | string[];
+  connector: string | string[];
+  account: string | string[];
+  state: string | string[];
   receivedFrom: string;
   receivedTo: string;
 }
@@ -47,12 +47,16 @@ export function sourceDateRange(
   };
 }
 
+export function sourceFilterValues(value: string | string[]): string[] {
+  return [...new Set((Array.isArray(value) ? value : [value]).filter(Boolean))].sort();
+}
+
 export function buildSourceQuery(filters: SourceFilters): SourceQuery {
   return {
-    types: filters.type ? [filters.type] : [],
-    connectors: filters.connector ? [filters.connector] : [],
-    accounts: filters.account ? [filters.account] : [],
-    states: filters.state ? [filters.state] : [],
+    types: sourceFilterValues(filters.type),
+    connectors: sourceFilterValues(filters.connector),
+    accounts: sourceFilterValues(filters.account),
+    states: sourceFilterValues(filters.state),
     text: filters.search.trim() || undefined,
     ...sourceDateRange(filters.receivedFrom, filters.receivedTo),
   };

@@ -18,13 +18,19 @@ public struct SourceRow:Codable,Sendable {
     public var attentionReason:String? = nil
     public var calendar:CalendarSourcePresentation? = nil
     public var direction:String? = nil
+    public var classificationProvider:String? = nil
+    public var classificationModel:String? = nil
+    public var analysisBranches:[SourceProcessingBranch]? = nil
+    public var noteCount:Int? = nil
 }
+public struct SourceProcessingBranch:Codable,Sendable {public let stage:String,state:String;public let provider:String?,model:String?}
 public struct SourceFacets:Codable,Sendable {public let types:[String],connectors:[String],accounts:[String],states:[String]}
-public struct SourcePage:Codable,Sendable {public let schemaVersion:Int;public let items:[SourceRow];public let nextCursor:SourceCursor?;public let total:Int;public let asOf:Date;public let hasMoreMatches:Bool;public let facets:SourceFacets}
+public struct SourcePage:Codable,Sendable {public let schemaVersion:Int;public let items:[SourceRow];public let nextCursor:SourceCursor?;public let total:Int;public let asOf:Date;public let hasMoreMatches:Bool;public let facets:SourceFacets;public var snapshotCursor:SourceCursor?=nil}
+public struct SourceChanges:Codable,Sendable {public let hasNewEntries:Bool}
 public struct SourceStage:Codable,Sendable {public let stage:String,state:String;public let version:Int64;public let attemptID:String?,reason:String?;public var relatedEventID:String?=nil}
 public struct SourceArtifactSummary:Codable,Sendable {public let id:String,stage:String,kind:String,availability:String,mediaType:String;public let byteCount:Int;public let legacy:Bool;public var attemptID:String?=nil;public var provider:String?=nil;public var model:String?=nil}
 public struct SourceAttempt:Codable,Sendable {public let id:String,stage:String;public let parentAttemptID:String?,provider:String?,model:String?;public let startedAt:Date,endedAt:Date?;public let transportOutcome:String,commitOutcome:String}
-public struct SourceDetail:Codable,Sendable {public let schemaVersion:Int;public let row:SourceRow;public let content:String;public let truncated:Bool;public let subjects:[String];public let stages:[SourceStage];public let attempts:[SourceAttempt];public let artifacts:[SourceArtifactSummary];public let relatedRevisions:[String];public let backlinks:[ManagedSourceBacklink];public let historyAvailability:String;public let asOf:Date}
+public struct SourceDetail:Codable,Sendable {public let schemaVersion:Int;public let row:SourceRow;public let content:String;public let truncated:Bool;public let subjects:[String];public let stages:[SourceStage];public let attempts:[SourceAttempt];public let artifacts:[SourceArtifactSummary];public let relatedRevisions:[String];public let backlinks:[ManagedSourceBacklink];public let historyAvailability:String;public let asOf:Date;public var conversation:SourceConversation? = nil}
 public struct SourceTransition:Codable,Sendable {public let sequence:Int64;public let eventID:String,stage:String;public let fromState:String?;public let toState:String;public let attemptID:String?,reason:String?;public let at:Date;public var relatedEventID:String?=nil;public var artifacts:[SourceArtifactSummary]=[]}
 public struct SourceHistoryPage:Codable,Sendable {public let items:[SourceTransition];public let nextSequence:Int64?}
 public struct SourceArtifactPage:Codable,Sendable {public let id:String,availability:String,content:String;public let offset:Int,totalBytes:Int;public let complete:Bool;public let nextOffset:Int?}
@@ -40,6 +46,7 @@ extension SQLite {
             try execute("CREATE INDEX IF NOT EXISTS source_transitions_event ON source_transitions(event_id,sequence DESC)")
             try execute("CREATE TABLE IF NOT EXISTS source_attempts(id TEXT PRIMARY KEY,event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,stage TEXT NOT NULL,started_at REAL NOT NULL,ended_at REAL,transport_outcome TEXT NOT NULL DEFAULT 'unknown',commit_outcome TEXT NOT NULL DEFAULT 'pending',provider TEXT,model TEXT,parent_id TEXT)")
             if !((try rows("PRAGMA table_info(source_attempts)")).contains{$0["name"]=="parent_id"}) {try execute("ALTER TABLE source_attempts ADD COLUMN parent_id TEXT")}
+            try execute("CREATE INDEX IF NOT EXISTS source_attempts_provider_lookup ON source_attempts(event_id,stage,started_at DESC,id DESC) WHERE provider IS NOT NULL")
             try execute("CREATE TABLE IF NOT EXISTS source_artifacts(id TEXT PRIMARY KEY,event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,attempt_id TEXT,stage TEXT NOT NULL,kind TEXT NOT NULL,media_type TEXT NOT NULL,payload TEXT,byte_count INTEGER NOT NULL,availability TEXT NOT NULL,legacy INTEGER NOT NULL DEFAULT 0,UNIQUE(event_id,attempt_id,kind))")
             try execute("CREATE TABLE IF NOT EXISTS source_retry_commands(id TEXT PRIMARY KEY,payload TEXT NOT NULL,result TEXT NOT NULL)")
             try execute("CREATE INDEX IF NOT EXISTS sources_received_order ON events(received_at DESC,id DESC)")
@@ -66,8 +73,8 @@ extension SQLite {
                 """)
             }
             // Sessions are ephemeral, window-bounded and never persist a second copy of source bodies.
-            try execute("CREATE TEMP TABLE IF NOT EXISTS source_query_sessions(id TEXT PRIMARY KEY,window_id TEXT,fingerprint TEXT,created_at REAL,total INTEGER,capped INTEGER,facets TEXT)")
-            try execute("CREATE TEMP TABLE IF NOT EXISTS source_query_rows(session_id TEXT,position INTEGER,id TEXT,connector TEXT,account TEXT,external_id TEXT,revision TEXT,occurred_at REAL,received_at REAL,type TEXT,excerpt TEXT,aggregate_state TEXT,state_version INTEGER,classification_status TEXT,facts_status TEXT,tasks_status TEXT,state_status TEXT,PRIMARY KEY(session_id,position))")
+            try execute("CREATE TEMP TABLE IF NOT EXISTS source_query_sessions(id TEXT PRIMARY KEY,window_id TEXT,fingerprint TEXT,created_at REAL,total INTEGER,capped INTEGER,facets TEXT,watermark INTEGER)")
+            try execute("CREATE TEMP TABLE IF NOT EXISTS source_query_rows(session_id TEXT,position INTEGER,id TEXT,connector TEXT,account TEXT,external_id TEXT,revision TEXT,occurred_at REAL,received_at REAL,type TEXT,excerpt TEXT,aggregate_state TEXT,state_version INTEGER,classification_status TEXT,facts_status TEXT,tasks_status TEXT,state_status TEXT,classification_info TEXT,facts_info TEXT,tasks_info TEXT,state_info TEXT,note_count INTEGER,PRIMARY KEY(session_id,position))")
             try execute("CREATE TEMP TABLE IF NOT EXISTS source_query_facets(id INTEGER PRIMARY KEY,watermark INTEGER,event_count INTEGER,json TEXT)")
         }
     }
@@ -80,10 +87,18 @@ extension KnowledgeStore {
     WHEN p.status IN ('coalesced','outside_window') THEN 'skipped'
     WHEN p.status='succeeded' THEN 'complete' ELSE 'not_run' END
     """
+    private static let sourceFrom="""
+    FROM events e LEFT JOIN home_batch_members h ON h.event_id=e.id LEFT JOIN processing_jobs p ON p.event_id=COALESCE(h.batch_id,e.id) LEFT JOIN fact_jobs f ON f.event_id=COALESCE(h.batch_id,e.id) LEFT JOIN task_extraction_jobs t ON t.event_id=COALESCE(h.batch_id,e.id) LEFT JOIN state_jobs s ON s.event_id=COALESCE(h.batch_id,e.id)
+    """
+    private static func providerInfoSQL(_ stage:String)->String {
+        "(SELECT json_object('provider',a.provider,'model',a.model) FROM source_attempts a WHERE a.event_id=COALESCE(h.batch_id,e.id) AND a.stage='\(stage)' AND a.provider IS NOT NULL ORDER BY a.started_at DESC,a.id DESC LIMIT 1) AS \(stage)_info"
+    }
     private static let sourceSelect="""
     SELECT e.id,e.connector,e.account,e.external_id,e.revision,e.occurred_at,e.received_at,json_extract(e.json,'$.type') AS type,substr(json_extract(e.json,'$.content'),1,768) AS excerpt,
-    \(sourceStateSQL) AS aggregate_state,(SELECT COALESCE(MAX(sequence),0) FROM source_transitions WHERE event_id IN (e.id,h.batch_id)) AS state_version,CASE WHEN h.batch_id IS NOT NULL THEN 'batched' ELSE p.status END AS classification_status,f.status AS facts_status,t.status AS tasks_status,s.status AS state_status
-    FROM events e LEFT JOIN home_batch_members h ON h.event_id=e.id LEFT JOIN processing_jobs p ON p.event_id=COALESCE(h.batch_id,e.id) LEFT JOIN fact_jobs f ON f.event_id=COALESCE(h.batch_id,e.id) LEFT JOIN task_extraction_jobs t ON t.event_id=COALESCE(h.batch_id,e.id) LEFT JOIN state_jobs s ON s.event_id=COALESCE(h.batch_id,e.id)
+    \(sourceStateSQL) AS aggregate_state,(SELECT COALESCE(MAX(sequence),0) FROM source_transitions WHERE event_id IN (e.id,h.batch_id)) AS state_version,CASE WHEN h.batch_id IS NOT NULL THEN 'batched' ELSE p.status END AS classification_status,f.status AS facts_status,t.status AS tasks_status,s.status AS state_status,
+    \(["classification","facts","tasks","state"].map{providerInfoSQL($0)}.joined(separator:",")),
+    (SELECT COUNT(DISTINCT b.document_id) FROM document_block_index b JOIN managed_documents d ON d.id=b.document_id WHERE b.event_id=e.id AND b.state='active') AS note_count
+    \(sourceFrom)
     """
     private func sourceRow(_ row:[String:String],preview:String?=nil,attentionReason:String?=nil,calendar:CalendarSourcePresentation?=nil)->SourceRow {
         let lines=(row["excerpt"] ?? "").components(separatedBy:"\n")
@@ -94,15 +109,48 @@ extension KnowledgeStore {
         let detail=batched ? ["failed":"The Home Assistant batch needs retry. Open this source’s classification stage, then its HA batch.","pending":"Processing together in one Home Assistant batch.","complete":"Processed together in one Home Assistant batch. Open the batch to inspect its response.","skipped":"The Home Assistant batch was skipped; open it for details.","not_run":"Retained in a Home Assistant batch; no classification is scheduled."][state]! : ["failed":"An applicable processing stage needs retry.","pending":"Processing is queued, running or retrying.","complete":"All scheduled processing stages completed.","skipped":"Classification was explicitly skipped; see stage history.","not_run":"No classification is scheduled."][state]!
         let deeper=[row["facts_status"],row["tasks_status"],row["state_status"]].compactMap{$0}
         let analysis=deeper.contains(where:{["failed","blocked"].contains($0)}) ? "failed":deeper.contains(where:{["pending","leased","processing","running"].contains($0)}) ? "pending":deeper.isEmpty ? ((row["classification_status"]=="succeeded" || (batched && state=="complete")) ? "not_needed":"not_scheduled"):deeper.allSatisfy({["outside_window","coalesced","superseded"].contains($0)}) ? "skipped":"complete"
-        return SourceRow(id:row["id"]!,type:row["type"] ?? "unknown",connector:row["connector"]!,account:row["account"]!,externalID:row["external_id"]!,revision:row["revision"]!,sender:String((field("Sender") ?? field("From") ?? row["connector"]!).prefix(200)),subject:String((field("Subject") ?? field("Title") ?? row["type"] ?? "Source").prefix(240)),preview:preview ?? String(body.prefix(280)),status:state,statusDetail:detail,occurredAt:Date(timeIntervalSince1970:Double(row["occurred_at"]!)!),receivedAt:Date(timeIntervalSince1970:Double(row["received_at"]!)!),stateVersion:Int64(row["state_version"]!)!,classificationState:row["classification_status"] ?? "not_scheduled",analysisState:analysis,observedState:row["connector"]=="home_assistant" ? field("State"):nil,attentionReason:attentionReason,calendar:calendar,direction:field("Direction"))
+        func provider(_ stage:String)->[String:String] {
+            guard let raw=row[stage+"_info"],let value=try? JSONSerialization.jsonObject(with:Data(raw.utf8)) as? [String:Any] else{return [:]}
+            return value.compactMapValues{$0 as? String}
+        }
+        var result=SourceRow(id:row["id"]!,type:row["type"] ?? "unknown",connector:row["connector"]!,account:row["account"]!,externalID:row["external_id"]!,revision:row["revision"]!,sender:String((field("Sender") ?? field("From") ?? row["connector"]!).prefix(200)),subject:String((field("Subject") ?? field("Title") ?? row["type"] ?? "Source").prefix(240)),preview:preview ?? String(body.prefix(280)),status:state,statusDetail:detail,occurredAt:Date(timeIntervalSince1970:Double(row["occurred_at"]!)!),receivedAt:Date(timeIntervalSince1970:Double(row["received_at"]!)!),stateVersion:Int64(row["state_version"]!)!,classificationState:row["classification_status"] ?? "not_scheduled",analysisState:analysis,observedState:row["connector"]=="home_assistant" ? field("State"):nil,attentionReason:attentionReason,calendar:calendar,direction:field("Direction"))
+        result.classificationProvider=provider("classification")["provider"];result.classificationModel=provider("classification")["model"]
+        result.analysisBranches=["facts","tasks","state"].map {stage in
+            let fallback=["facts","tasks"].contains(stage) && (row["classification_status"]=="succeeded" || (batched && state=="complete")) ? "not_needed":"not_scheduled"
+            return SourceProcessingBranch(stage:stage,state:row[stage+"_status"] ?? fallback,provider:provider(stage)["provider"],model:provider(stage)["model"])
+        }
+        result.noteCount=Int(row["note_count"] ?? "0") ?? 0
+        return result
     }
-    public func sourceList(query:SourceQuery=SourceQuery(),cursor:SourceCursor?=nil,limit:Int=60,windowID:String="main",now:Date=Date()) throws -> SourcePage {
-        guard (1...100).contains(limit),windowID.utf8.count<=128,now.timeIntervalSince1970.isFinite else {throw MapleError.invalid("Invalid source query.")}
+    private func normalizedSourceQuery(_ query:SourceQuery)throws -> (SourceQuery,String) {
         for values in [query.types,query.connectors,query.accounts,query.states] {guard values.count<=32,values.allSatisfy({!$0.isEmpty && $0.utf8.count<=256}) else {throw MapleError.invalid("Invalid source filters.")}}
         guard Set(query.states).isSubset(of:["failed","pending","complete","skipped","not_run"]),(query.text?.utf8.count ?? 0)<=512,query.receivedAfter?.timeIntervalSince1970.isFinite ?? true,query.receivedBefore?.timeIntervalSince1970.isFinite ?? true else {throw MapleError.invalid("Invalid source filters.")}
         if let a=query.receivedAfter,let b=query.receivedBefore,a>b {throw MapleError.invalid("Invalid source date interval.")}
         var normalized=query;normalized.types=Array(Set(query.types)).sorted();normalized.connectors=Array(Set(query.connectors)).sorted();normalized.accounts=Array(Set(query.accounts)).sorted();normalized.states=Array(Set(query.states)).sorted();normalized.text=query.text?.trimmingCharacters(in:.whitespacesAndNewlines)
         let fingerprint=SHA256.hash(data:try JSONCodec.encode(normalized)).map{String(format:"%02x",$0)}.joined()
+        return (normalized,fingerprint)
+    }
+    private func sourcePredicate(_ query:SourceQuery)->(String,[String?]) {
+        var sql="1=1",args=[String?]()
+        for (column,values) in [("json_extract(e.json,'$.type')",query.types),("e.connector",query.connectors),("e.account",query.accounts),(Self.sourceStateSQL,query.states)] where !values.isEmpty {sql += " AND \(column) IN ("+Array(repeating:"?",count:values.count).joined(separator:",")+")";args += values}
+        if let date=query.receivedAfter {sql += " AND e.received_at>=?";args.append(String(date.timeIntervalSince1970))}
+        if let date=query.receivedBefore {sql += " AND e.received_at<=?";args.append(String(date.timeIntervalSince1970))}
+        if let text=query.text,!text.isEmpty {sql += " AND e.id IN (SELECT event_id FROM events_fts WHERE events_fts MATCH ?)";args.append("\""+text.replacingOccurrences(of:"\"",with:"\"\"")+"\"")}
+        return (sql,args)
+    }
+    public func sourceChanges(query:SourceQuery=SourceQuery(),cursor:SourceCursor,windowID:String="main",now:Date=Date())throws -> SourceChanges {
+        guard windowID.utf8.count<=128,now.timeIntervalSince1970.isFinite,cursor.offset>=0,cursor.offset<=50000 else{throw MapleError.invalid("Invalid source query.")}
+        let (normalized,fingerprint)=try normalizedSourceQuery(query)
+        guard cursor.fingerprint==fingerprint,let session=try db.rows("SELECT watermark FROM source_query_sessions WHERE id=? AND fingerprint=? AND window_id=? AND created_at>=?",[cursor.sessionID,fingerprint,windowID,String(now.addingTimeInterval(-600).timeIntervalSince1970)]).first else {
+            throw MapleError.invalid("queryExpired: refresh Sources to check for new entries.")
+        }
+        let (predicate,args)=sourcePredicate(normalized)
+        let matches=try db.rows("SELECT 1 AS found "+Self.sourceFrom+" WHERE e.rowid>? AND "+predicate+" LIMIT 1",[session["watermark"]]+args)
+        return SourceChanges(hasNewEntries:!matches.isEmpty)
+    }
+    public func sourceList(query:SourceQuery=SourceQuery(),cursor:SourceCursor?=nil,limit:Int=60,windowID:String="main",now:Date=Date()) throws -> SourcePage {
+        guard (1...100).contains(limit),windowID.utf8.count<=128,now.timeIntervalSince1970.isFinite else {throw MapleError.invalid("Invalid source query.")}
+        let (normalized,fingerprint)=try normalizedSourceQuery(query)
         try db.execute("DELETE FROM source_query_rows WHERE session_id IN (SELECT id FROM source_query_sessions WHERE created_at<?)",[String(now.addingTimeInterval(-600).timeIntervalSince1970)])
         try db.execute("DELETE FROM source_query_sessions WHERE created_at<?",[String(now.addingTimeInterval(-600).timeIntervalSince1970)])
         let id:String,offset:Int
@@ -112,11 +160,7 @@ extension KnowledgeStore {
         } else {
             id=UUID().uuidString;offset=0
             try db.transaction {
-                var whereSQL="1=1",args=[String?]()
-                for (column,values) in [("json_extract(e.json,'$.type')",normalized.types),("e.connector",normalized.connectors),("e.account",normalized.accounts),(Self.sourceStateSQL,normalized.states)] where !values.isEmpty {whereSQL += " AND \(column) IN ("+Array(repeating:"?",count:values.count).joined(separator:",")+")";args += values}
-                if let date=query.receivedAfter {whereSQL += " AND e.received_at>=?";args.append(String(date.timeIntervalSince1970))}
-                if let date=query.receivedBefore {whereSQL += " AND e.received_at<=?";args.append(String(date.timeIntervalSince1970))}
-                if let text=normalized.text,!text.isEmpty {whereSQL += " AND e.id IN (SELECT event_id FROM events_fts WHERE events_fts MATCH ?)";args.append("\""+text.replacingOccurrences(of:"\"",with:"\"\"")+"\"")}
+                let (whereSQL,args)=sourcePredicate(normalized)
                 // Materialize entirely inside SQLite: only the requested page enters Swift memory.
                 try db.execute("INSERT INTO source_query_rows SELECT ?,ROW_NUMBER() OVER (ORDER BY received_at DESC,id DESC)-1,snapshot.* FROM ("+Self.sourceSelect+" WHERE "+whereSQL+" ORDER BY e.received_at DESC,e.id DESC LIMIT 50001) snapshot",[id]+args)
                 let count=Int(try db.rows("SELECT COUNT(*) AS n FROM source_query_rows WHERE session_id=?",[id]).first!["n"]!)!
@@ -131,7 +175,7 @@ extension KnowledgeStore {
                     facets=SourceFacets(types:try facet("json_extract(json,'$.type')"),connectors:try facet("connector"),accounts:try facet("account"),states:["pending","complete","failed","skipped","not_run"])
                     try db.execute("INSERT OR REPLACE INTO source_query_facets VALUES (1,?,?,?)",[watermark["watermark"],watermark["n"],try JSONCodec.string(facets)])
                 }
-                try db.execute("INSERT INTO source_query_sessions VALUES (?,?,?,?,?,?,?)",[id,windowID,fingerprint,String(now.timeIntervalSince1970),String(min(count,50000)),count>50000 ? "1":"0",try JSONCodec.string(facets)])
+                try db.execute("INSERT INTO source_query_sessions VALUES (?,?,?,?,?,?,?,?)",[id,windowID,fingerprint,String(now.timeIntervalSince1970),String(min(count,50000)),count>50000 ? "1":"0",try JSONCodec.string(facets),watermark["watermark"]])
                 let expired=try db.rows("SELECT id FROM source_query_sessions WHERE window_id=? ORDER BY rowid DESC LIMIT -1 OFFSET 4",[windowID])
                 for row in expired {try db.execute("DELETE FROM source_query_rows WHERE session_id=?",[row["id"]]);try db.execute("DELETE FROM source_query_sessions WHERE id=?",[row["id"]])}
             }
@@ -139,7 +183,7 @@ extension KnowledgeStore {
         guard let session=try db.rows("SELECT * FROM source_query_sessions WHERE id=?",[id]).first else {throw MapleError.invalid("queryExpired: refresh Sources to continue.")}
         let rows=try db.rows("SELECT * FROM source_query_rows WHERE session_id=? AND position>=? ORDER BY position LIMIT ?",[id,String(offset),String(limit)]).map{sourceRow($0)}
         let total=Int(session["total"]!)!,next=offset+rows.count
-        return SourcePage(schemaVersion:1,items:rows,nextCursor:next<total ? SourceCursor(sessionID:id,offset:next,fingerprint:fingerprint):nil,total:total,asOf:Date(timeIntervalSince1970:Double(session["created_at"]!)!),hasMoreMatches:session["capped"]=="1",facets:try JSONCodec.decode(SourceFacets.self,from:Data(session["facets"]!.utf8)))
+        return SourcePage(schemaVersion:1,items:rows,nextCursor:next<total ? SourceCursor(sessionID:id,offset:next,fingerprint:fingerprint):nil,total:total,asOf:Date(timeIntervalSince1970:Double(session["created_at"]!)!),hasMoreMatches:session["capped"]=="1",facets:try JSONCodec.decode(SourceFacets.self,from:Data(session["facets"]!.utf8)),snapshotCursor:SourceCursor(sessionID:id,offset:0,fingerprint:fingerprint))
     }
     public func sourceDetail(eventID:String,now:Date=Date()) throws -> SourceDetail {
         guard let event=try event(eventID),var row=try db.rows(Self.sourceSelect+" WHERE e.id=?",[eventID]).first else {throw MapleError.invalid("Source not found.")}
@@ -159,7 +203,7 @@ extension KnowledgeStore {
         let revisions=try db.rows("SELECT id FROM events WHERE connector=? AND account=? AND external_id=? ORDER BY received_at DESC,id DESC LIMIT 100",[event.source.connector,event.source.account,event.source.externalID]).compactMap{$0["id"]}
         let attempts=try db.rows("SELECT * FROM source_attempts WHERE event_id=? ORDER BY started_at DESC,id DESC LIMIT 100",[eventID]).map{SourceAttempt(id:$0["id"]!,stage:$0["stage"]!,parentAttemptID:$0["parent_id"],provider:$0["provider"],model:$0["model"],startedAt:Date(timeIntervalSince1970:Double($0["started_at"]!)!),endedAt:$0["ended_at"].flatMap(Double.init).map{Date(timeIntervalSince1970:$0)},transportOutcome:$0["transport_outcome"]!,commitOutcome:$0["commit_outcome"]!)}
         let ingestedWithAudit = !(try db.rows("SELECT sequence FROM source_transitions WHERE event_id=? AND stage='classification' AND from_state IS NULL AND reason='scheduled' LIMIT 1",[eventID])).isEmpty
-        return SourceDetail(schemaVersion:1,row:sourceRow(row,preview:try homeBatchPreview(event),attentionReason:try sourceAttentionReason(eventID),calendar:CalendarSourcePresentation(event)),content:String(event.content.prefix(64000)),truncated:event.content.count>64000,subjects:event.subjects,stages:stages,attempts:attempts,artifacts:artifacts,relatedRevisions:revisions,backlinks:try managedSourceBacklinks(eventID:eventID),historyAvailability:ingestedWithAudit ? "recorded_since_ingestion":"legacy_latest_only_before_audit",asOf:now)
+        return SourceDetail(schemaVersion:1,row:sourceRow(row,preview:try homeBatchPreview(event),attentionReason:try sourceAttentionReason(eventID),calendar:CalendarSourcePresentation(event)),content:String(event.content.prefix(64000)),truncated:event.content.count>64000,subjects:event.subjects,stages:stages,attempts:attempts,artifacts:artifacts,relatedRevisions:revisions,backlinks:try managedSourceBacklinks(eventID:eventID),historyAvailability:ingestedWithAudit ? "recorded_since_ingestion":"legacy_latest_only_before_audit",asOf:now,conversation:try sourceConversation(event,at:now))
     }
     public func sourceHistory(eventID:String,beforeSequence:Int64?=nil,limit:Int=60)throws -> SourceHistoryPage {
         guard (1...100).contains(limit),try event(eventID) != nil,beforeSequence.map({$0>0}) ?? true else {throw MapleError.invalid("Invalid source history request.")}

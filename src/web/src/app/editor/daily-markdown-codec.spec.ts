@@ -5,6 +5,14 @@ const prefix =
 const marker = (id: string, extra = {}) =>
   "<!-- maple:block " + JSON.stringify({ v: 1, id, ...extra }) + " -->\n";
 describe("Daily Markdown codec", () => {
+  it("preserves a recording's authorized attachment reference and evidence identity through reopening", () => {
+    const reference = { v: 1, kind: "recording", eventID: "immutable-recording", label: "Morning thoughts", attachmentID: "Attachments/" + "a".repeat(64) + ".wav" };
+    const raw = prefix + "\n" + marker("recording-block") + "```maple-ref\n" + JSON.stringify(reference) + "\n```\n";
+    const decoded = decodeDaily(raw);
+    expect(decoded.sourceOnly).toBe(false);
+    const reopened = decodeDaily(encodeDaily(decoded.prefix, decoded.doc));
+    expect(reopened.doc.content?.[0].attrs?.["reference"]).toEqual(reference);
+  });
   it("round trips identity, source revision references, prose and user frontmatter", () => {
     const raw =
       prefix +

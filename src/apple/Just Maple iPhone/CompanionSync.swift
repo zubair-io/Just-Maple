@@ -40,18 +40,27 @@ extension PhoneCloudMailbox {
     private var configuration:PairingConfiguration?
     private let dependencies:PhoneSyncDependencies
     private let preferences:UserDefaults
+    private let uiTestMode:Bool
+    static let uiTestPreferencesSuite="com.just.maple.companion.ui-tests"
     private var cloudAccount:String?
     private var accountObserver:NSObjectProtocol?
     private var activeObserver:NSObjectProtocol?
-    var cloudEnabled:Bool {!preferences.bool(forKey:"companionCloudPaused") && !preferences.bool(forKey:"companionManualMode")}
+    var cloudEnabled:Bool {!uiTestMode && !preferences.bool(forKey:"companionCloudPaused") && !preferences.bool(forKey:"companionManualMode")}
     private var active=false
     private var generation=0
     private var loop:Task<Void,Never>?
     var status="Connecting to iCloud…"
     var paired:Bool {configuration != nil}
-    init(store:CompanionStore, dependencies:PhoneSyncDependencies?=nil, preferences:UserDefaults = .standard){self.store=store;self.dependencies=dependencies ?? .live();self.preferences=preferences;preferences.removeObject(forKey:"companionCloudPaused");preferences.removeObject(forKey:"companionManualMode")}
+    init(store:CompanionStore, dependencies:PhoneSyncDependencies?=nil, preferences:UserDefaults?=nil,
+         uiTestMode:Bool=ProcessInfo.processInfo.arguments.contains("--companion-ui-test")) {
+        self.store=store;self.dependencies=dependencies ?? .live();self.uiTestMode=uiTestMode
+        // Test launches must not migrate production preferences, even before start() is called.
+        self.preferences=uiTestMode ? UserDefaults(suiteName:Self.uiTestPreferencesSuite)! : (preferences ?? .standard)
+        if uiTestMode {status="UI test · sync disabled"}
+        else {self.preferences.removeObject(forKey:"companionCloudPaused");self.preferences.removeObject(forKey:"companionManualMode")}
+    }
     func start() {
-        guard !ProcessInfo.processInfo.arguments.contains("--companion-ui-test"), NSClassFromString("XCTestCase")==nil else{return}
+        guard !uiTestMode, NSClassFromString("XCTestCase")==nil else{return}
         status=cloudEnabled ? "Checking iCloud…" : "Connection paused"
         do {
             if preferences.bool(forKey:"companionManualMode"),let data=try PairingKeychain.load(service:service,account:"mac") {configuration=try SyncCodec.decode(PairingConfiguration.self,from:data);status="Waiting for your Mac"}
@@ -75,6 +84,7 @@ extension PhoneCloudMailbox {
     }
     func stop(){generation+=1;loop?.cancel();loop=nil;if let accountObserver {NotificationCenter.default.removeObserver(accountObserver)};accountObserver=nil;if let activeObserver {NotificationCenter.default.removeObserver(activeObserver)};activeObserver=nil}
     func pair(presenter:UIViewController)async throws {
+        guard !uiTestMode else{return}
         guard !active else{return}
         preferences.set(true,forKey:"companionManualMode")
         generation+=1;configuration=nil;cloudAccount=nil
@@ -105,6 +115,8 @@ extension PhoneCloudMailbox {
         // Background loop handles any pending captures after this pairing command returns.
     }
     func sync()async {
+        // Includes explicit bridge actions, not only the background loop disabled in start().
+        guard !uiTestMode else{return}
         guard !active,cloudEnabled || preferences.bool(forKey:"companionManualMode") else{return}
         active=true;defer{active=false}
         if cloudEnabled {await refreshCloud()}
@@ -149,6 +161,7 @@ extension PhoneCloudMailbox {
         }
     }
     private func syncCloud(configuration:PairingConfiguration,account:String,request:SyncRequest,started:Int) async throws {
+        guard !uiTestMode else{throw CompanionError.storageUnavailable}
         let check: @MainActor () async throws -> Void = { [weak self] in
             try Task.checkCancellation()
             guard let self,self.generation==started,self.cloudEnabled else { throw CompanionError.accountChanged }
@@ -197,12 +210,14 @@ extension PhoneCloudMailbox {
                 ? "Saved in iCloud. Waiting for your Mac to process captures." : "Uploading saved captures to iCloud…")
     }
     func enableCloud()async {
+        guard !uiTestMode else{return}
         preferences.set(false,forKey:"companionCloudPaused")
         preferences.set(false,forKey:"companionManualMode")
         generation+=1;configuration=nil;cloudAccount=nil
         await sync()
     }
     private func refreshCloud()async {
+        guard !uiTestMode else{return}
         let started=generation
         do {
             let account=try await dependencies.accountID()
@@ -231,6 +246,7 @@ extension PhoneCloudMailbox {
         }
     }
     func disconnect()throws {
+        guard !uiTestMode else{return}
         preferences.set(true,forKey:"companionCloudPaused")
         preferences.set(false,forKey:"companionManualMode")
         cloudAccount=nil

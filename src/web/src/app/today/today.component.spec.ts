@@ -16,11 +16,16 @@ import { SourcesService } from "../sources/sources.service";
 })
 class EditorStub {
   initial = input("");
+  supportsCanvas = input(false);
+  dayLabel = input("");
+  dayTitle = input("");
+  dayDate = input("");
   documentID = input("");
   showToolbar = input(true);
   readOnly = input(false);
   documentToolsAvailable = input(false);
   dayTransfersAvailable = input(false);
+  boardAction = output<any>();
   changed = output<string>();
   editingChanged = output<boolean>();
   inspected = output<string>();
@@ -55,6 +60,9 @@ function setup() {
     loading: signal(false),
     retryOpen: vi.fn(),
     automaticStatus: signal(""),
+    suggestions: signal({tasks:[],carryForward:[],hasMore:false}),
+    insertTask: vi.fn(),
+    carryForward: vi.fn(),
     actionBusy: signal(false),
     run: signal(null),
     runs: signal([]),
@@ -73,6 +81,7 @@ function setup() {
     pollRun: vi.fn(),
     pollAutomatic: vi.fn(),
     setEditing: vi.fn(),
+    setCollaborativeEditor: vi.fn(),
     cancelPendingReads: vi.fn(),
     loadHistory: vi.fn(),
     blockAction: vi.fn(),
@@ -113,6 +122,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("Today document tools", () => {
+  it("registers the mounted editor for local Maple collaboration", () => {
+    const { fixture, notes, editor } = setup();
+    expect(notes.setCollaborativeEditor).toHaveBeenCalledWith(editor);
+    fixture.destroy();
+    expect(notes.cancelPendingReads).toHaveBeenCalled();
+  });
   it("offers an opening retry instead of save recovery when loading a note fails", () => {
     const { fixture, notes, editor } = setup();
     notes.openError.set("iCloud temporarily unavailable");

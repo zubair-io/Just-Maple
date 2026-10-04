@@ -75,6 +75,7 @@ export class AppComponent {
     { initialValue: this.router.url.split(/[?#]/)[0] },
   );
   readonly active = computed(() => this.activePath().split("/")[1]);
+  readonly dailyWorkspace = computed(() => this.s().loaded && this.s().step < 0 && ["today", "yesterday", "tomorrow", "daily", "notebooks"].includes(this.active() ?? ""));
   readonly sections: MuiSidebarSection[] = [
     {
       id: "primary",
@@ -135,11 +136,16 @@ export class AppComponent {
       void this.notebooks.refresh();
     }
   }
-  async openNotebook(id: string) {
+  async openNotebook(id: string, path?: string) {
     const intent = ++this.navigationIntent;
     if (!(await this.daily.flush()) || intent !== this.navigationIntent) return;
-    await this.notebooks.selectBook(id);
+    if (!path || this.notebooks.bookID() !== id) await this.notebooks.selectBook(id);
     if (intent !== this.navigationIntent) return;
+    if (path) {
+      if (this.notebooks.bookID() !== id) return;
+      await this.notebooks.open(path);
+      if (intent !== this.navigationIntent || this.notebooks.document()?.notebookID !== id || this.notebooks.document()?.path !== path) return;
+    }
     await this.router.navigateByUrl("/notebooks");
   }
   navigate(id: string | null) {

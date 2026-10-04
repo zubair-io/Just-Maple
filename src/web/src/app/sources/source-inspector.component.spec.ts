@@ -6,6 +6,8 @@ import { TaskEvidenceComponent } from '../world/task-evidence.component';
 import { WorldService } from '../world/world.service';
 import { signal } from '@angular/core';
 import { emptyWorld, newTask } from '../world/world.models';
+import { SourcesService } from './sources.service';
+import { Router } from '@angular/router';
 
 describe('Read-only source inspection',()=>{
  afterEach(()=>{delete (window as any).webkit;TestBed.resetTestingModule();});
@@ -27,13 +29,20 @@ describe('Read-only source inspection',()=>{
   vi.spyOn(bridge,'copySource').mockRejectedValue(new Error('Clipboard unavailable'));
   await fixture.componentInstance.copy();fixture.detectChanges();expect(fixture.nativeElement.textContent).toContain('Could not copy.');
  });
- it('surfaces source read failures and opening never invokes a mutation',async()=>{
+ it('uses the shared full Mac source drawer with retry and never invokes a task mutation',async()=>{
   const task={...newTask(),id:'fixture',evidenceIDs:['source-fixture']};
-  const inspectSource=vi.fn().mockRejectedValueOnce(new Error('read failure')).mockResolvedValueOnce({id:'source-fixture',connector:'imessage',sender:'Fixture Sender',occurredAt:1,content:'Fixture message',available:true,truncated:false});
+  const detail=vi.fn().mockRejectedValueOnce(new Error('Fixture read failure')).mockResolvedValueOnce({schemaVersion:1,row:{id:'source-fixture',type:'imessage',connector:'imessage',sender:'Fixture Sender',occurredAt:1,receivedAt:1,status:'complete',revision:'1'},content:'Fixture message',stages:[],artifacts:[],relatedRevisions:[],historyAvailability:'Synthetic fixture',asOf:1});
   const act=vi.fn();
-  TestBed.configureTestingModule({providers:[{provide:WorldService,useValue:{data:signal({...emptyWorld,tasks:[task]}),bridge:{inspectSource,act,pending:signal(false)}}}]});
+  TestBed.configureTestingModule({providers:[{provide:WorldService,useValue:{data:signal({...emptyWorld,tasks:[task]}),bridge:{act,pending:signal(false)}}},
+    {provide:SourcesService,useValue:{detail,history:vi.fn(async()=>({items:[]}))}}, {provide:Router,useValue:{navigate:vi.fn()}}]});
   const fixture=TestBed.createComponent(TaskEvidenceComponent);fixture.componentRef.setInput('nodeID','task:fixture');fixture.detectChanges();
-  await fixture.componentInstance.inspect('source-fixture');fixture.detectChanges();expect(fixture.nativeElement.textContent).toContain('could not be opened');
-  await fixture.componentInstance.inspect('source-fixture');fixture.detectChanges();expect(fixture.nativeElement.textContent).toContain('Fixture message');expect(act).not.toHaveBeenCalled();
+  const opener=[...fixture.nativeElement.querySelectorAll('button')].find((b:any)=>b.textContent.includes('Open source')) as HTMLButtonElement;
+  opener.focus();opener.click();fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+  const dialog=fixture.nativeElement.querySelector('dialog') as HTMLDialogElement;
+  expect(dialog.open).toBe(true);expect(dialog.textContent).toContain('Fixture read failure');
+  const retry=Array.from(dialog.querySelectorAll('button')).find(b=>b.textContent?.includes('Try again'))!;retry.click();await fixture.whenStable();fixture.detectChanges();
+  expect(dialog.textContent).toContain('Fixture message');expect(dialog.textContent).toContain('Processing');expect(detail).toHaveBeenNthCalledWith(2,'source-fixture',true);
+  dialog.dispatchEvent(new Event('cancel',{cancelable:true}));fixture.detectChanges();expect(document.activeElement).toBe(opener);
+  expect(fixture.nativeElement.querySelector('dialog')).toBeNull();expect(act).not.toHaveBeenCalled();
  });
 });

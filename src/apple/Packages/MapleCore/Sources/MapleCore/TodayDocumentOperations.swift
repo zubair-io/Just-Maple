@@ -1,7 +1,17 @@
 import Foundation
 import MapleNotebooks
 
+/// Internal observation only: synthetic tests may terminate their own helper at durable boundaries.
+/// No production environment flag or crash behavior is installed.
+enum DocumentOperationBoundary:String,Sendable {
+    case draftPersisted,prepared,fileApplied,finalized,outboxDrained
+}
+
 extension TodayDocumentCoordinator {
+    func observeOperation(_ observer:@escaping @Sendable(DocumentOperationBoundary,String,Int?)->Void) {
+        operationObserver=observer
+    }
+
     public func mutateBlock(_ input:DocumentBlockMutation) async throws -> TodayDocumentSnapshot {
         guard ["clear","restore","move","copy","complete","reopen"].contains(input.kind),!input.commandID.isEmpty,input.commandID.utf8.count<=240 else {throw MapleError.invalid("Choose a supported block action and command identity.")}
         if var prior=try await store.documentOperation(commandID:input.commandID) {
@@ -54,13 +64,18 @@ extension TodayDocumentCoordinator {
             files.append(DocumentMutationRecord(commandID:input.commandID+":1",documentID:target.documentID,expectedRevision:target.revision,targetRevision:ManagedMarkdown.hash(after),before:target.content,after:after,state:"operationPrepared",createdAt:now))
         }
         // Save all drafts before the transactional intent/reservation, then write files.
-        for file in files {
+        for (index,file) in files.enumerated() {
             let doc=try await record(file.documentID)
             try await library.preserveCommitDraft(NotebookDocument(notebookID:doc.notebookID,path:doc.path,content:file.after,revision:file.expectedRevision ?? ""))
+            operationObserver?(.draftPersisted,input.commandID,index)
         }
         let operation=try await store.prepareDocumentOperation(DocumentOperation(input:input,files:files,taskID:taskID,state:"prepared"))
+        operationObserver?(.prepared,input.commandID,nil)
         try await applyOperationFiles(operation)
-        try? await store.drainDocumentOutbox()
+        do {
+            try await store.drainDocumentOutbox()
+            operationObserver?(.outboxDrained,input.commandID,nil)
+        } catch { /* File action is committed; indexing retries on open. */ }
         let record=try await record(source.documentID)
         let disk=try await library.read(notebookID:record.notebookID,path:record.path)
         return try await snapshot(record,disk)
@@ -77,6 +92,9 @@ extension TodayDocumentCoordinator {
         try await applyOperationFiles(operation)
     }
     func applyOperationFiles(_ operation:DocumentOperation) async throws {
+        guard let current=try await store.documentOperation(commandID:operation.input.commandID) else {throw MapleError.invalid("This document action is unavailable.")}
+        if current.state == "committed" {return}
+        guard ["prepared","conflict"].contains(current.state) else {throw MapleError.invalid("This document action was abandoned and cannot be applied.")}
         // Preflight every participant before changing any file; still recheck inside coordination.
         for file in operation.files {
             let doc=try await record(file.documentID)
@@ -86,28 +104,35 @@ extension TodayDocumentCoordinator {
                 throw MapleError.invalid("An external edit conflicts with this pending block action. Its before/after versions and task reservation are preserved.")
             }
         }
-        for file in operation.files {
+        for (index,file) in operation.files.enumerated() {
             let doc=try await record(file.documentID)
             let disk=try await library.readIfPresent(notebookID:doc.notebookID,path:doc.path)
             if disk?.revision != file.targetRevision {_ = try await library.save(notebookID:doc.notebookID,path:doc.path,content:file.after,expectedRevision:file.expectedRevision)}
+            operationObserver?(.fileApplied,operation.input.commandID,index)
         }
         try await store.finalizeDocumentOperation(operation)
+        operationObserver?(.finalized,operation.input.commandID,nil)
     }
 }
 
 extension TodayDocumentCoordinator {
+    private func abandonOperation(_ operation:DocumentOperation) async throws {
+        let ids=operation.files.map(\.documentID).sorted()
+        try await acquire(ids);defer{release(ids)}
+        guard let current=try await store.documentOperation(commandID:operation.input.commandID),["prepared","conflict"].contains(current.state) else {throw MapleError.invalid("Only pending document actions can be abandoned.")}
+        if current.input.kind=="move" {
+            for file in current.files {
+                let record=try await record(file.documentID)
+                guard try await library.readIfPresent(notebookID:record.notebookID,path:record.path)?.revision==file.expectedRevision else {throw MapleError.invalid("A partially written move cannot be abandoned. Restore the preserved before versions or resolve external edits and retry so its identity stays unique.")}
+            }
+        }
+        try await store.abandonDocumentOperation(commandID:current.input.commandID)
+    }
     public func resolveOperation(documentID:String,commandID:String,resolution:String) async throws -> TodayDocumentSnapshot {
         guard let operation=try await store.documentOperation(commandID:commandID),operation.files.contains(where:{$0.documentID==documentID}) else{throw MapleError.invalid("Choose a pending action belonging to this document.")}
         switch resolution {
         case "retry":try await recoverOperation(operation)
-        case "abandon":
-            if operation.input.kind=="move" {
-                for file in operation.files {
-                    let record=try await record(file.documentID)
-                    guard try await library.readIfPresent(notebookID:record.notebookID,path:record.path)?.revision==file.expectedRevision else {throw MapleError.invalid("A partially written move cannot be abandoned. Restore the preserved before versions or resolve external edits and retry so its identity stays unique.")}
-                }
-            }
-            try await store.abandonDocumentOperation(commandID:commandID)
+        case "abandon":try await abandonOperation(operation)
         default:throw MapleError.invalid("Choose Retry or explicitly abandon the pending action.")
         }
         return try await open(documentID:documentID)

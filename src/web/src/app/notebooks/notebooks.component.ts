@@ -1,4 +1,6 @@
 import { sourceReferenceKind } from "../sources/source-reference-kind";
+import { InlineSearchResultsComponent } from "../today/inline-search-results.component";
+import { SourceReference } from "../editor/daily-markdown-codec";
 import { isCompanion } from "../core/companion-host";
 import {
   Component,
@@ -13,7 +15,7 @@ import {
 import { FormsModule } from "@angular/forms";
 import { DatePipe } from "@angular/common";
 import { ActivatedRoute } from "@angular/router";
-import { MuiButtonComponent, MuiInputComponent } from "@maple/ui";
+import { MuiButtonComponent, MuiInputComponent, MuiDialogFocusDirective } from "@maple/ui";
 import { NotebookService } from "./notebook.service";
 import {
   TodayDocumentService,
@@ -21,6 +23,7 @@ import {
 } from "../today/today-document.service";
 import { MapleEditorComponent } from "../editor/maple-editor.component";
 import { SourceDetailComponent } from "../sources/source-detail.component";
+import { SourcePickerFocusDirective } from "../sources/source-picker-focus.directive";
 import {
   SourcesService,
   SourceRow,
@@ -35,8 +38,11 @@ import {
     DatePipe,
     MuiButtonComponent,
     MuiInputComponent,
+    MuiDialogFocusDirective,
     MapleEditorComponent,
     SourceDetailComponent,
+    SourcePickerFocusDirective,
+    InlineSearchResultsComponent,
   ],
   templateUrl: "./notebooks.component.html",
   styleUrl: "./notebooks.component.css",
@@ -53,16 +59,25 @@ export class NotebooksComponent implements OnDestroy {
   readonly selected = signal<string | null>(null);
   readonly picker = signal(false);
   readonly documentTools = signal(false);
+  readonly expandedWidth = signal(false);
   readonly matches = signal<SourceRow[]>([]);
   readonly pickerError = signal("");
   readonly pickerLoading = signal(false);
   sourceSearch = "";
   name = "";
   dialog: "" | "book" | "note" | "copy" = "";
-  @ViewChild(MapleEditorComponent) editor?: MapleEditorComponent;
+  private editorInstance?: MapleEditorComponent;
+  @ViewChild(MapleEditorComponent) set editor(value: MapleEditorComponent | undefined) {
+    this.editorInstance = value;
+    this.managed.setCollaborativeEditor(this.managedMode() ? value : undefined);
+  }
+  get editor(): MapleEditorComponent | undefined { return this.editorInstance; }
   private timer = setInterval(() => {
     void this.notes.refresh();
-    if (this.managedMode()) void this.managed.pollRun();
+    if (this.managedMode()) {
+      void this.managed.pollRun();
+      void this.managed.pollAutomatic();
+    }
   }, 5000);
   private generation = 0;
   private routeSubscription = this.route?.queryParamMap.subscribe((params) => {
@@ -74,6 +89,7 @@ export class NotebooksComponent implements OnDestroy {
     void this.notes.refresh();
     effect(() => {
       this.notes.generation();
+      this.managedMode();
       // Only a newly loaded notebook file may replace the editor. openDocument
       // reads managed save state before its first await; tracking those reads
       // would reopen and remount this editor after every autosave.
@@ -84,6 +100,7 @@ export class NotebooksComponent implements OnDestroy {
             if (opened && this.notes.document()?.documentID === doc.documentID)
               this.notes.dirty.set(false);
           });
+        else this.managed.cancelPendingReads();
       });
     });
   }
@@ -107,13 +124,26 @@ export class NotebooksComponent implements OnDestroy {
     if (await this.flush()) await this.notes.disconnect();
   }
   async submit() {
-    if (!this.name.trim() || !(await this.flush())) return;
+    if (this.dialog === "copy" && this.managedMode()) {
+      this.dialog = "";
+      this.name = "";
+      await this.managed.recoveryCopy();
+      return;
+    }
+    if (!this.name.trim()) return;
+    // Copy is the escape hatch for a failed save, so it cannot require that
+    // save (or the local draft queue) to succeed first.
+    if (this.dialog === "copy") {
+      if (await this.notes.saveCopy(this.name)) {
+        this.dialog = "";
+        this.name = "";
+      }
+      return;
+    }
+    if (!(await this.flush())) return;
     this.notes.error.set("");
     if (this.dialog === "book") await this.notes.createBook(this.name);
-    else if (this.dialog === "copy") {
-      if (this.managedMode()) await this.managed.recoveryCopy();
-      else await this.notes.saveCopy(this.name);
-    } else await this.notes.createNote(this.name);
+    else await this.notes.createNote(this.name);
     if (!this.notes.error()) {
       this.dialog = "";
       this.name = "";
@@ -203,6 +233,12 @@ export class NotebooksComponent implements OnDestroy {
       this.pickerError.set(
         "Switch to formatted view before inserting a source.",
       );
+  }
+  insertSearchReference(reference: SourceReference) {
+    if (!this.editor?.insertReference(reference)) {
+      this.picker.set(true);
+      this.pickerError.set("Switch to formatted view before inserting a source.");
+    }
   }
   ngOnDestroy() {
     this.managed.cancelPendingReads();

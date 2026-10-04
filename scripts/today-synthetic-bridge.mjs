@@ -1,5 +1,5 @@
 /** Explicitly synthetic browser-test transport. Never shipped in the app. */
-export function syntheticBridge() {
+export function syntheticBridge(options = {}) {
   const day = new Intl.DateTimeFormat("en-CA").format(new Date());
   const key = "maple.today.sources.smoke.v1";
   const marker = (id, extra = {}) =>
@@ -149,7 +149,17 @@ export function syntheticBridge() {
     messageHandlers: {
       maple: {
         async postMessage(body) {
-          store.calls.push(body);
+          // The performance fixture must not serialize an ever-growing history
+          // of complete note bodies on every key. Retain command identity and
+          // content size in the bounded audit; current content and the latest
+          // full draft remain separately persisted below.
+          const audit = options.compactContentAudit && typeof body.content === "string"
+            ? Object.fromEntries([...Object.entries(body).filter(([key]) => key !== "content"),
+                ["contentBytes", new TextEncoder().encode(body.content).length]])
+            : body;
+          store.calls.push(audit);
+          if (options.compactContentAudit && store.calls.length > 512)
+            store.calls.splice(0, store.calls.length - 512);
           save();
           switch (body.action) {
             case "snapshot":
@@ -164,6 +174,7 @@ export function syntheticBridge() {
                     cloud: false,
                     available: true,
                     notes: [
+                      ...(store.recoveryCopies ?? []).map(copy => ({path:copy.path,name:copy.path.replace('.md',''),modifiedAt:Date.now()/1000})),
                       {
                         path: "Notes.md",
                         name: "Synthetic notebook note",
@@ -180,12 +191,20 @@ export function syntheticBridge() {
               return { deferred: true };
             case "documentAutoRefresh":
               return { document: doc() };
+            case "documentAutomaticProposal":
+              return { documentID: body.documentID, revision: body.documentID === "synthetic-generic" ? store.generic.revision : store.revision, groups: [], removals: [] };
             case "documentOpen":
               return body.documentID === "synthetic-generic"
                 ? genericDoc()
                 : doc();
+            case "documentRecoveryCopy": {
+              store.recoveryCopies ??= [];
+              let copy = body.recoveryKey ? store.recoveryCopies.find(copy => copy.key === body.recoveryKey && copy.content === body.content) : undefined;
+              if (!copy) { copy = { key: body.recoveryKey, notebookID: "synthetic-book", path: "Synthetic recovery " + (store.recoveryCopies.length + 1) + ".md", content: body.content, revision: "synthetic-recovery-1" }; store.recoveryCopies.push(copy); save(); }
+              return copy;
+            }
             case "noteRead":
-              return notebookDoc();
+              return store.recoveryCopies?.find(copy => copy.path === body.path) ?? notebookDoc();
             case "noteReadDraft":
               return null;
             case "noteDraft":
@@ -206,6 +225,11 @@ export function syntheticBridge() {
               save();
               return genericDoc();
             case "documentDraft":
+              if (options.compactContentAudit) {
+                store.drafts ??= {};
+                store.drafts[body.documentID] = body;
+                save();
+              }
               return {};
             case "documentCommit":
               if (body.documentID === "synthetic-generic") {
@@ -225,6 +249,13 @@ export function syntheticBridge() {
                 throw Error("Synthetic revision conflict");
               store.content = body.content;
               store.revision = "r" + (Number(store.revision.slice(1)) + 1);
+              const replySaved = [...body.content.matchAll(/<!-- maple:block (\{[^\n]+\}) -->/g)].some(match => {
+                const metadata = JSON.parse(match[1]);
+                return metadata.kind === "maple-reply" && metadata.runID === "synthetic-run";
+              });
+              if (store.run && replySaved) {
+                store.run = { ...store.run, status: "succeeded", appliedRevision: store.revision };
+              }
               save();
               return {
                 ...doc(),
@@ -233,6 +264,9 @@ export function syntheticBridge() {
               };
             case "documentSuggestions":
               return { tasks: [], carryForward: [], hasMore: false };
+            case "documentHistory":
+            case "documentOperationHistory":
+              return [];
             case "mapleRuns":
               return body.documentID === "synthetic-document" && store.run
                 ? [store.run]
@@ -242,30 +276,25 @@ export function syntheticBridge() {
                 runID: "synthetic-run",
                 status: "queued",
                 requestBlockID: body.requestBlockID,
+                request: { text: body.text },
               };
               save();
               return store.run;
             case "mapleRun":
               if (store.run.status === "queued") {
-                store.content +=
-                  "\n" +
-                  marker("reply", {
-                    kind: "maple-reply",
-                    runID: "synthetic-run",
-                  }) +
-                  "Synthetic Maple reply with captured evidence.\n";
-                store.revision = "r" + (Number(store.revision.slice(1)) + 1);
-                store.run = {
-                  ...store.run,
-                  status: "succeeded",
-                  text: "Synthetic Maple reply with captured evidence.",
-                  eventIDs: ["synthetic-email"],
-                  content: store.content,
-                  appliedRevision: store.revision,
-                };
+                store.run = { ...store.run, status: "unapplied", text: "Synthetic Maple reply with captured evidence.", eventIDs: ["synthetic-email"] };
                 save();
               }
               return store.run;
+            case "mapleResponseProposal":
+              return {
+                runID: "synthetic-run", documentID: "synthetic-document", revision: store.revision,
+                requestBlockID: store.run.requestBlockID,
+                blocks: store.run.appliedRevision ? [] : [{
+                  blockID: "reply",
+                  markdown: marker("reply", { kind: "maple-reply", runID: "synthetic-run", requestID: "synthetic-request" }) + "Synthetic Maple reply with captured evidence.\n",
+                }],
+              };
             case "sourceList": {
               const q = body.query;
               const filtered = rows.filter(

@@ -156,10 +156,12 @@ function decorations(
   });
   return DecorationSet.create(doc, items);
 }
-export const HeadingSections = Extension.create({
+export const HeadingSections = Extension.create<{ enabled: () => boolean }>({
   name: "headingSections",
+  addOptions() { return { enabled: () => true }; },
   addKeyboardShortcuts() {
     const set = (fold: boolean) => {
+      if (!this.options.enabled()) return false;
       const view = this.editor.view,
         state = headingSectionsKey.getState(view.state);
       const at = view.state.selection.from;
@@ -180,6 +182,7 @@ export const HeadingSections = Extension.create({
     };
   },
   addProseMirrorPlugins() {
+    const enabled = this.options.enabled;
     return [
       new Plugin<SectionState>({
         key: headingSectionsKey,
@@ -215,9 +218,10 @@ export const HeadingSections = Extension.create({
         },
         props: {
           decorations: (state) =>
-            headingSectionsKey.getState(state)?.decorations,
+            enabled() ? headingSectionsKey.getState(state)?.decorations : DecorationSet.empty,
         },
         appendTransaction(transactions, _, state) {
+          if (!enabled()) return null;
           if (!transactions.some((tr) => tr.selectionSet || tr.docChanged))
             return null;
           const value = headingSectionsKey.getState(state)!;

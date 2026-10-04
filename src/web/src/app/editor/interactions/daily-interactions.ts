@@ -256,11 +256,18 @@ export function createSelectionBubbleExtension() {
   linkInput.placeholder = "https://example.com";
   linkInput.setAttribute("aria-label", "Link URL");
   linkInput.hidden = true;
+  let linkComposing = false;
+  const closeLinkDraft = () => {
+    linkInput.hidden = true;
+    applyButton.hidden = true;
+    linkButton.setAttribute("aria-expanded", "false");
+  };
   const applyLink = () => {
+    if (linkInput.hidden || linkComposing || !activeEditor?.isEditable || activeEditor.isDestroyed) return;
     const value = linkInput.value.trim();
     if (!value) {
       activeEditor.chain().focus().unsetLink().run();
-      linkInput.hidden = true;
+      closeLinkDraft();
       return;
     }
     if (!/^(https?:\/\/|mailto:|tel:)/i.test(value)) {
@@ -270,32 +277,42 @@ export function createSelectionBubbleExtension() {
     }
     linkInput.setCustomValidity("");
     activeEditor.chain().focus().setLink({ href: value }).run();
-    linkInput.hidden = true;
+    closeLinkDraft();
   };
-  menu.append(
-    button(doc, "Link", () => {
-      linkInput.hidden = !linkInput.hidden;
-      if (!linkInput.hidden) {
-        linkInput.value = activeEditor.getAttributes("link")["href"] ?? "";
-        linkInput.focus();
-      }
-    }),
-    linkInput,
-  );
+  const applyButton = button(doc, "Apply link", applyLink);
+  applyButton.hidden = true;
+  const linkButton = button(doc, "Link", () => {
+    if (!activeEditor?.isEditable || activeEditor.isDestroyed || linkComposing) return;
+    if (!linkInput.hidden) { closeLinkDraft(); return; }
+    linkInput.hidden = false;
+    applyButton.hidden = false;
+    linkButton.setAttribute("aria-expanded", "true");
+    linkInput.value = activeEditor.getAttributes("link")["href"] ?? "";
+    linkInput.setCustomValidity("");
+    linkInput.focus();
+  });
+  linkButton.setAttribute("aria-expanded", "false");
+  menu.append(linkButton, linkInput, applyButton);
+  linkInput.addEventListener("compositionstart", () => { linkComposing = true; });
+  linkInput.addEventListener("compositionend", () => { linkComposing = false; });
   linkInput.addEventListener("keydown", (event) => {
+    if (event.isComposing || linkComposing) { event.stopPropagation(); return; }
     if (event.key === "Enter") {
       event.preventDefault();
       applyLink();
     }
     if (event.key === "Escape") {
       event.preventDefault();
-      linkInput.hidden = true;
-      activeEditor.commands.focus();
+      // Cancel just this URL draft. Do not bubble into the toolbar's Escape
+      // handler, which exits formatting and collapses the text selection.
+      event.stopPropagation();
+      closeLinkDraft();
+      linkButton.focus({ preventScroll: true });
     }
   });
-  menu.append(button(doc, "Apply link", applyLink));
   menuKeyboard(menu, () => {
-    linkInput.hidden = true;
+    if (linkComposing) return;
+    closeLinkDraft();
     activeEditor.commands.focus();
     activeEditor.commands.setTextSelection(activeEditor.state.selection.to);
   });

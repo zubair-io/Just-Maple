@@ -3,36 +3,25 @@
 >
 <div class="eyebrow">Task details</div>
 @if (suggestion(); as s) {
-  <h1>
-    {{
-      s.reviewStatus === "pending"
-        ? "Action from your source"
-        : s.reviewStatus === "accepted"
-          ? "Task added"
-          : s.reviewStatus === "rejected"
-            ? "Action dismissed"
-            : "Action no longer current"
-    }}
-  </h1>
+  <h1>{{ s.candidate.title }}</h1>
+  <p class="muted">{{ s.reviewStatus === 'pending' ? 'Action from your source' : s.reviewStatus === 'accepted' ? 'Task added' : s.reviewStatus === 'rejected' ? 'Action dismissed' : 'Action no longer current' }}</p>
   <p>
     Act on this task now, or inspect its evidence and correct the details. Nothing sends a reply.
   </p>
-  <h2>{{ s.candidate.title }}</h2>
   @if(s.reviewStatus === "pending") {<maple-desktop-task-actions [nodeID]="'source:' + s.id" />}
   <maple-task-evidence [nodeID]="'source:' + s.id" />
   @if (s.sourceSubject) {<p><strong>{{ s.sourceSubject }}</strong><br>{{ s.sourceSender }}</p>}
   <p>{{ s.candidate.description }}</p>
+  <maple-task-facts [task]="s.candidate" [nodeID]="'source:' + s.id" />
   <div class="tag-row">@for (id of s.candidate.activityIDs; track id) {
     <button class="activity-tag" (click)="world.go('activities/' + id)">{{ world.activity(id)?.name }}</button>
   }</div>
-  <mui-button (pressed)="evidence()">Show original message</mui-button>
-  @if (source(); as event) {<article class="panel"><p class="event">{{ event.content }}</p></article>}
   <section class="right-now">
     <p>“{{ s.quote }}”</p>
-    <small
-      >{{ s.provider }} · Confidence
-      {{ s.confidence === undefined ? "not calibrated" : s.confidence }}</small
-    >
+    <details><summary>Analysis details</summary>
+      <p>Provider: {{ s.provider }}</p>
+      <p>Model confidence: {{ s.confidence === undefined ? 'unavailable' : s.confidence }} · not calibrated</p>
+    </details>
     <p>{{ s.deadlineExplanation }}</p>
   </section>
   @if (s.linkedTaskID) {
@@ -71,16 +60,12 @@
         }
       </div>
     </fieldset>
-    <div class="form-grid">
-      <div class="field">
-        <label for="suggested-date">Due date · confirm interpretation</label
-        ><input id="suggested-date" type="date" [(ngModel)]="dueDate" />
-      </div>
-      <div class="field">
-        <label>Time zone</label
-        ><mui-input ariaLabel="Suggested due time zone" [(value)]="zone" />
-      </div>
-    </div>
+    <maple-task-timing [field]="dueTiming" prefix="suggested-due" label="Due" />
+    <maple-task-timing [field]="scheduledTiming" prefix="suggested-scheduled" label="Scheduled" />
+    @if (loadedVersion() !== s.version) {
+      <p role="status">This action changed after you opened these details. Your draft is retained; reload the latest details before applying an update.</p>
+    }
+    <mui-button variant="ghost" (pressed)="reload()">Reload latest details</mui-button>
     <div class="field">
       <label>Responsible person · private label</label
       ><mui-input
@@ -91,7 +76,7 @@
     <div class="actions">
       <mui-button
         variant="primary"
-        [disabled]="!draft.title.trim() || world.bridge.pending()"
+        [disabled]="!draft.title.trim() || world.bridge.pending() || loadedVersion() !== s.version"
         (pressed)="review('accept')"
         >{{ s.linkedTaskID ? "Apply reviewed update" : "Add task" }}</mui-button
       ><mui-button (pressed)="review('reject')">Not a task</mui-button>

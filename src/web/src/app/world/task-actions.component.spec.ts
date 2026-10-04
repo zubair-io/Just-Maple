@@ -25,6 +25,39 @@ function setup() {
 describe('shared daily task actions', () => {
   afterEach(() => { vi.restoreAllMocks(); TestBed.resetTestingModule(); });
 
+  it.each(['later', 'waiting'])('does not rebase an open %s draft onto a live task version or identity', (intent) => {
+    const {fixture,c,emitted}=setup();
+    button(fixture,intent==='later'?'Later':'Waiting').click();
+    c.when='2099-01-01T10:00';c.waitingOn='Fixture reviewer';
+    fixture.componentRef.setInput('version',5);fixture.detectChanges();
+    c.send(intent as 'later'|'waiting');
+    expect(emitted).toHaveLength(0);
+    expect(fixture.nativeElement.textContent).toContain('Task changed while these details were open');
+    c.cancel();fixture.detectChanges();
+    button(fixture,intent==='later'?'Later':'Waiting').click();
+    fixture.componentRef.setInput('identity','task:other');fixture.detectChanges();
+    c.send(intent as 'later'|'waiting');
+    expect(emitted).toHaveLength(0);
+    c.cancel();fixture.detectChanges();
+    button(fixture,intent==='later'?'Later':'Waiting').click();
+    expect(c.when).toBe('');expect(c.waitingOn).toBe('');
+    c.when='2099-02-01T10:00';c.waitingOn='New reviewer';fixture.detectChanges();
+    button(fixture,intent==='later'?'Save for later':'Save waiting status').click();
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({identity:'task:other',expectedVersion:5,intent});
+  });
+  it('pins desktop adapter requests even after a task changes before delivery', async () => {
+    const task:any={id:'fixture',title:'Fixture',status:'open',version:7,activityIDs:[],evidenceIDs:[]};
+    const data=signal({...emptyWorld,tasks:[task]}),act=vi.fn().mockResolvedValue(undefined);
+    TestBed.configureTestingModule({providers:[{provide:WorldService,useValue:{data,bridge:{pending:signal(false),act}}}]});
+    const fixture=TestBed.createComponent(DesktopTaskActionsComponent);
+    fixture.componentRef.setInput('nodeID','task:fixture');fixture.detectChanges();
+    const request:any={identity:'task:fixture',expectedVersion:7,requestID:'immutable',intent:'undo',issuedAt:'2030-01-01T09:00:00Z',payload:{targetMutationID:'original-mutation'}};
+    data.set({...emptyWorld,tasks:[{...task,version:8},{...task,id:'other',version:2}]});
+    fixture.componentRef.setInput('nodeID','task:other');fixture.detectChanges();
+    await fixture.componentInstance.apply(request);
+    expect(act).toHaveBeenCalledWith(expect.objectContaining({id:'task:fixture',expectedVersion:7,requestID:'immutable',change:expect.objectContaining({targetMutationID:'original-mutation'})}));
+  });
   it('reuses the entire immutable request on retry but creates a new command for a new task version', () => {
     const { fixture, emitted } = setup();
     button(fixture, 'Done').click();
@@ -66,6 +99,38 @@ describe('shared daily task actions', () => {
     expect(emitted).toHaveLength(2); // A new command cannot use a past choice.
   });
 
+  it('warns about Waiting review after its pinned deadline without changing the deadline', () => {
+    const {fixture,c,emitted}=setup();
+    const deadline=new Date(2099,0,1,12).getTime()/1000;
+    fixture.componentRef.setInput('deadline',deadline);fixture.detectChanges();
+    button(fixture,'Waiting').click();c.waitingOn='Reviewer';c.when='2099-01-02T12:00';fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('after the original deadline');
+    button(fixture,'Save waiting status').click();
+    expect(emitted[0].payload).toEqual({waitingOn:'Reviewer',reviewAt:new Date(c.when).toISOString()});
+    expect(c.deadline()).toBe(deadline);
+  });
+  it('keeps Undo request identity, target mutation and issue time stable across pending retries', () => {
+    const {fixture,c,emitted}=setup();
+    fixture.componentRef.setInput('undoID','original-mutation');fixture.detectChanges();
+    button(fixture,'Undo last change').click();
+    fixture.componentRef.setInput('disabled',true);fixture.detectChanges();
+    c.send('undo');expect(emitted).toHaveLength(1);
+    fixture.componentRef.setInput('disabled',false);fixture.detectChanges();
+    button(fixture,'Undo last change').click();
+    expect(emitted[1]).toEqual(emitted[0]);
+    expect(emitted[1]).toMatchObject({identity:'task:fixture',expectedVersion:4,payload:{targetMutationID:'original-mutation'}});
+    fixture.componentRef.setInput('version',5);fixture.componentRef.setInput('undoID','new-mutation');fixture.detectChanges();
+    button(fixture,'Undo last change').click();
+    expect(emitted[2].requestID).not.toBe(emitted[0].requestID);
+    expect(emitted[2]).toMatchObject({expectedVersion:5,payload:{targetMutationID:'new-mutation'}});
+  });
+  it('does not dispatch task shortcuts while action details are being edited or a key is composing', () => {
+    const {fixture,emitted}=setup();
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'e',isComposing:true,bubbles:true}));
+    button(fixture,'Later').click();
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'e',bubbles:true}));
+    expect(emitted).toEqual([]);
+  });
   it('requires a waiting actor, permits no review date, and rejects a past review date', async () => {
     const { fixture, c, emitted } = setup();
     button(fixture, 'Waiting').click(); c.waitingOn = '   '; fixture.detectChanges();

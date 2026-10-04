@@ -1,3 +1,4 @@
+import { BoardExclusionsComponent } from "../canvas/board-exclusions.component";
 import {
   ChangeDetectionStrategy,
   Component,
@@ -14,7 +15,7 @@ import { NativeBridge, SimpleAction } from "../core/native-bridge.service";
 @Component({
   selector: "maple-connections",
   standalone: true,
-  imports: [MuiButtonComponent, MuiCheckboxComponent, MuiInputComponent],
+  imports: [BoardExclusionsComponent, MuiButtonComponent, MuiCheckboxComponent, MuiInputComponent],
   templateUrl: "./connections.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -93,7 +94,7 @@ export class ConnectionsComponent {
     if (await this.bridge.act({ action: "connect", key: this.key }))
       this.key = "";
   }
-  classification(provider: "laya" | "jev") {
+  classification(provider: "laya" | "jev" | "clef") {
     void this.bridge.act({ action: "classificationSelect", provider });
   }
   provider(action: "providerTest" | "providerSelect", provider: string) {

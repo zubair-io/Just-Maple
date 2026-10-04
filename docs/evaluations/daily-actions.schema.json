@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://just-maple.invalid/evaluation/daily-actions-v1.schema.json",
+  "$id": "https://just-maple.invalid/evaluation/daily-actions-v2.schema.json",
   "title": "Daily actions local evaluation files",
   "oneOf": [
     {
@@ -58,6 +58,10 @@
           "type": "string",
           "minLength": 1,
           "format": "date-time"
+        },
+        "invocationID": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "required": [
@@ -480,6 +484,9 @@
             "minLength": 1
           },
           "uniqueItems": true
+        },
+        "coverage": {
+          "$ref": "#/$defs/SampleCoverage"
         }
       },
       "required": [
@@ -489,7 +496,36 @@
         "modelEvidence",
         "needsYouTaskIDs"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "coverage"
+            ],
+            "properties": {
+              "coverage": {
+                "properties": {
+                  "status": {
+                    "const": "complete"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "modelEvidence": {
+                "items": {
+                  "required": [
+                    "invocationID"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "TaskPrediction": {
       "type": "object",
@@ -515,6 +551,9 @@
           "items": {
             "$ref": "#/$defs/ModelEvidence"
           }
+        },
+        "coverage": {
+          "$ref": "#/$defs/SampleCoverage"
         }
       },
       "required": [
@@ -523,7 +562,36 @@
         "surface",
         "modelEvidence"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "coverage"
+            ],
+            "properties": {
+              "coverage": {
+                "properties": {
+                  "status": {
+                    "const": "complete"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "modelEvidence": {
+                "items": {
+                  "required": [
+                    "invocationID"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "Completion": {
       "type": "object",
@@ -567,7 +635,10 @@
       "type": "object",
       "properties": {
         "schemaVersion": {
-          "const": 1
+          "enum": [
+            1,
+            2
+          ]
         },
         "kind": {
           "const": "predictions"
@@ -593,7 +664,10 @@
               "format": "date-time"
             },
             "wholePipeline": {
-              "const": true
+              "type": "boolean"
+            },
+            "coverage": {
+              "$ref": "#/$defs/CaptureCoverage"
             }
           },
           "required": [
@@ -633,6 +707,127 @@
         "automaticCompletions"
       ],
       "additionalProperties": false
+    },
+    "CaptureCoverage": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "complete",
+            "incomplete",
+            "unknown"
+          ]
+        },
+        "captureID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startedAt": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date-time"
+        },
+        "throughAt": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date-time"
+        },
+        "projectionSnapshotIDs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "completionHistory": {
+          "enum": [
+            "complete",
+            "incomplete",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "complete"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "captureID",
+              "startedAt",
+              "throughAt",
+              "projectionSnapshotIDs",
+              "completionHistory"
+            ]
+          }
+        }
+      ]
+    },
+    "SampleCoverage": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "complete",
+            "incomplete",
+            "unknown"
+          ]
+        },
+        "captureID": {
+          "type": "string",
+          "minLength": 1
+        },
+        "originAt": {
+          "type": "string",
+          "minLength": 1,
+          "format": "date-time"
+        },
+        "modelCallCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "complete"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "captureID",
+              "originAt",
+              "modelCallCount"
+            ],
+            "properties": {
+              "modelCallCount": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

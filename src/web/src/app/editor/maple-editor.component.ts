@@ -1,3 +1,5 @@
+import { CanvasConnectionsComponent } from '../canvas/canvas-connections.component';
+import { CanvasNavigation } from '../canvas/canvas-navigation';
 import {
   AfterViewInit,
   ApplicationRef,
@@ -16,6 +18,9 @@ import {
   output,
   signal,
 } from "@angular/core";
+import { DailyCanvas } from "../canvas/daily-canvas";
+import { CanvasToolsComponent } from "../canvas/canvas-tools.component";
+import { CanvasLayout, readCanvas, writeCanvas } from "../canvas/canvas-layout";
 import { syncCollapsedDOMSelection } from "./selection-sync";
 import { normalizeLegacySections } from "./legacy-sections";
 import { HeadingSections } from "./heading-sections";
@@ -23,12 +28,19 @@ import { docToMarkdown } from "../notebooks/sugar-editor/document-to-markdown";
 import { FormsModule } from "@angular/forms";
 import { Editor, Extension, Node, JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import Collaboration from "@tiptap/extension-collaboration";
+import { prosemirrorJSONToYXmlFragment, yUndoPluginKey } from "@tiptap/y-tiptap";
+import { Doc } from "yjs";
+import {
+  AutomaticProposal, ReplyProposal, automaticTransaction, replyTransaction, rememberBlockIDs, relativeHistorySelections,
+} from "./local-collaboration";
 import Paragraph from "@tiptap/extension-paragraph";
 import Document from "@tiptap/extension-document";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { Plugin } from "@tiptap/pm/state";
+import type { Transaction } from "@tiptap/pm/state";
 import { Fragment, Slice } from "@tiptap/pm/model";
 import { computePosition, shift } from "@floating-ui/dom";
 import { CodeBlockWithLanguage } from "../notebooks/sugar-editor/code-block-with-language";
@@ -108,13 +120,14 @@ export const StableBlockIdentity = Extension.create({
               // inherit the request's execution identity on the split paragraph.
               const inherited = { ...(meta ?? {}) };
               if (
-                inherited.kind === "maple-request" &&
+                (inherited.kind === "maple-request" || inherited.contextBlockIDs) &&
                 (node.type.name !== "paragraph" ||
                   !/^@maple\b/i.test(node.textContent))
               ) {
                 delete inherited.kind;
                 delete inherited.requestID;
                 delete inherited.runID;
+                delete inherited.contextBlockIDs;
               }
               const identity = {
                 ...inherited,
@@ -175,13 +188,20 @@ export const StableBlockIdentity = Extension.create({
 @Component({
   selector: "maple-editor",
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, CanvasToolsComponent, CanvasNavigation, CanvasConnectionsComponent],
   encapsulation: ViewEncapsulation.None,
   templateUrl: "./maple-editor.component.html",
-  styleUrls: ["./maple-editor.component.css", "./structured-content.css"],
+  styleUrls: ["./maple-editor.component.css", "./structured-content.css", "../canvas/daily-canvas.css"],
 })
 export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   readonly initial = input.required<string>();
+  readonly boardAction = output<{blockID:string;kind:"done"|"hide"|"exclude";eventID?:string;scope?:string}>();
+  readonly supportsCanvas = input(false);
+  readonly dayLabel = input("");
+  readonly dayTitle = input("");
+  readonly dayDate = input("");
+  readonly canvas = new DailyCanvas(layout => this.persistCanvas(layout), () => !this.readOnly() && !this.source());
+  @ViewChild("canvasViewport") canvasViewport?: ElementRef<HTMLElement>;
   readonly documentID = input("");
   readonly storageMode = input<"managed" | "markdown">("managed");
   readonly editorLabel = input("Daily note editor");
@@ -250,6 +270,10 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
     this.positionToolbar();
   }
   editor?: Editor;
+  private collaborativeDocument?: Doc;
+  private stopHistorySelectionGuard?: () => void;
+  private readonly seenBlockIDs = new Set<string>();
+  private readonly acceptedReplyRunIDs = new Set<string>();
   raw = "";
   private prefix = "";
   private app = inject(ApplicationRef);
@@ -258,13 +282,17 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   constructor() {
     effect(() => {
       const editable = !this.readOnly();
-      this.editor?.setEditable(editable);
+      // Loading/actions change permissions, not the document. Tiptap otherwise
+      // emits an update here and makes navigation look like unsaved writing.
+      this.editor?.setEditable(editable, false);
     });
   }
   ngAfterViewInit() {
     this.raw = this.initial();
     const parsed = decodeDaily(this.raw);
     this.prefix = parsed.prefix;
+    if (!parsed.sourceOnly) this.canvas.load(readCanvas(parsed.prefix));
+    this.canvas.active.set(this.supportsCanvas());
     this.source.set(
       parsed.sourceOnly ||
         (this.storageMode() === "markdown" &&
@@ -484,7 +512,11 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
   }
   private mount(doc: JSONContent) {
     this.attachmentSupport?.destroy();
+    this.stopHistorySelectionGuard?.();
     this.editor?.destroy();
+    this.collaborativeDocument?.destroy();
+    const shared = new Doc();
+    this.collaborativeDocument = shared;
     this.attachmentSupport = createAttachmentSupport(
       this.attachments,
       () => this.editor,
@@ -551,33 +583,60 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         ];
       },
       addNodeView() {
-        return ({ node }) => {
+        return ({ node, getPos, editor }) => {
           const host = document.createElement("div");
           host.contentEditable = "false";
+          host.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape" || event.isComposing || editor.view.composing) return;
+            event.preventDefault(); event.stopPropagation();
+            // Keep the live selection, mapped through intervening Maple arrivals.
+            editor.commands.focus(undefined, { scrollIntoView: false });
+          });
           const component = createComponent(SourceReferenceComponent, {
             environmentInjector: owner.injector,
             elementInjector: owner.elementInjector,
             hostElement: host,
           });
           component.setInput("reference", node.attrs["reference"]);
+          component.setInput("documentID", owner.documentID());
+          component.setInput("readOnly", owner.readOnly());
+          const contextEffect = effect(() => {
+            component.setInput("documentID", owner.documentID());
+            component.setInput("readOnly", owner.readOnly());
+          }, { injector: owner.injector });
           owner.app.attachView(component.hostView);
           const subscription = component.instance.inspected.subscribe((id) =>
             owner.inspected.emit(id),
           );
+          const attachmentSubscription = component.instance.audioAttached.subscribe(change => {
+            const pos = getPos();
+            if (typeof pos !== "number" || owner.readOnly() || !editor.isEditable) return;
+            const current = editor.state.doc.nodeAt(pos);
+            const reference = current?.attrs["reference"] as SourceReference | undefined;
+            if (current?.type.name !== "sourceReference" || reference?.eventID !== change.eventID ||
+                reference.attachmentID !== change.previousAttachmentID) return;
+            editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, {
+              ...current.attrs, reference: { ...reference, attachmentID: change.attachmentID },
+            }));
+          });
           component.changeDetectorRef.detectChanges();
           return {
             dom: host,
             update(updated) {
               if (updated.type.name !== "sourceReference") return false;
               component.setInput("reference", updated.attrs["reference"]);
+              component.setInput("documentID", owner.documentID());
+              component.setInput("readOnly", owner.readOnly());
               return true;
             },
             stopEvent: (event) =>
               event.target instanceof HTMLElement &&
-              !!event.target.closest("button"),
+              !!event.target.closest("button,input,audio,summary,label,details"),
             ignoreMutation: () => true,
             destroy() {
+              contextEffect.destroy();
               subscription.unsubscribe();
+              attachmentSubscription.unsubscribe();
               owner.app.detachView(component.hostView);
               component.destroy();
             },
@@ -633,9 +692,14 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         return ["maple-linked-task", HTMLAttributes, node.attrs["label"]];
       },
       addNodeView() {
-        return ({ node }) => {
+        return ({ node, editor }) => {
           const host = document.createElement("div");
           host.contentEditable = "false";
+          host.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape" || event.isComposing || editor.view.composing) return;
+            event.preventDefault(); event.stopPropagation();
+            editor.commands.focus(undefined, { scrollIntoView: false });
+          });
           const component = createComponent(LinkedTaskComponent, {
             environmentInjector: owner.injector,
             elementInjector: owner.elementInjector,
@@ -643,6 +707,9 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
           });
           component.setInput("blockID", node.attrs["maple"]?.id);
           component.setInput("label", node.attrs["label"]);
+          component.setInput("taskID", node.attrs["taskID"]);
+          component.setInput("readOnly", owner.readOnly());
+          const readOnlyEffect = effect(() => component.setInput("readOnly", owner.readOnly()), { injector: owner.injector });
           owner.app.attachView(component.hostView);
           component.changeDetectorRef.detectChanges();
           return {
@@ -651,6 +718,7 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
               if (updated.type.name !== "linkedTask") return false;
               component.setInput("blockID", updated.attrs["maple"]?.id);
               component.setInput("label", updated.attrs["label"]);
+              component.setInput("taskID", updated.attrs["taskID"]);
               return true;
             },
             stopEvent: (event) =>
@@ -658,6 +726,7 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
               !!event.target.closest("button"),
             ignoreMutation: () => true,
             destroy() {
+              readOnlyEffect.destroy();
               owner.app.detachView(component.hostView);
               component.destroy();
             },
@@ -698,25 +767,11 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
           };
           refresh();
           button.addEventListener("click", () => {
+            // A click is outside ProseMirror's IME-aware key handler. Keep every
+            // submit path behind the same current-editor/composition checks.
+            if (editor !== owner.editor || editor.isDestroyed) return;
             const pos = getPos();
-            if (pos === undefined) return;
-            const text = current.textContent.replace(/^@maple\s*/i, "").trim();
-            if (!text) return;
-            const meta = {
-              ...(current.attrs["maple"] ?? {}),
-              v: 1,
-              id: current.attrs["maple"]?.id ?? crypto.randomUUID(),
-              kind: "maple-request",
-              requestID:
-                current.attrs["maple"]?.requestID ?? crypto.randomUUID(),
-            };
-            editor.view.dispatch(
-              editor.state.tr.setNodeMarkup(pos, undefined, {
-                ...current.attrs,
-                maple: meta,
-              }),
-            );
-            owner.submitted.emit({ blockID: meta.id, text });
+            if (typeof pos === "number") owner.submitAt(pos);
           });
           return {
             dom,
@@ -736,16 +791,20 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         };
       },
     });
+    let initializing = true;
     this.editor = new Editor({
       element: this.surface.nativeElement,
       editable: !this.readOnly(),
       extensions: [
         StarterKit.configure({
+          undoRedo: false,
           document: false,
           paragraph: false,
+          trailingNode: this.supportsCanvas() ? false : undefined,
           codeBlock: false,
           link: { openOnClick: false, protocols: ["https", "http", "mailto"] },
         }),
+        Collaboration.configure({ document: shared }),
         Document.extend({ content: "(block | managedBlock)+" }),
         MapleParagraph,
         Placeholder.configure({
@@ -757,7 +816,8 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         CodeBlockWithLanguage,
         ...getTableExtensions(),
         StableBlockIdentity,
-        HeadingSections,
+        HeadingSections.configure({ enabled: () => !this.supportsCanvas() || !this.canvas.active() }),
+        this.canvas.extension(),
         MarkdownPaste.configure({
           parseMarkdown: (text: string) => {
             const decoded = decodeDaily(text);
@@ -799,9 +859,13 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         Reference,
         LinkedTask,
       ],
-      content: this.source()
-        ? { type: "doc", content: [{ type: "paragraph" }] }
-        : doc,
+      // Markdown remains the durable authority. Seed an ephemeral shared document
+      // once at open; live Maple operations never replace its entire contents.
+      onBeforeCreate: ({ editor }) => {
+        prosemirrorJSONToYXmlFragment(editor.schema,
+          this.source() ? { type: "doc", content: [{ type: "paragraph" }] } : doc,
+          shared.getXmlFragment("default"));
+      },
       editorProps: {
         handlePaste: (view, event, slice) => {
           if (this.storageMode() === "managed")
@@ -846,6 +910,7 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
           "aria-multiline": "true",
         },
         handleKeyDown: (view, event) => {
+          if (event.isComposing || view.composing) return false;
           syncCollapsedDOMSelection(view, event);
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             const selected = this.editor?.state.selection.$from;
@@ -872,11 +937,16 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
       },
       onFocus: () => this.editingChanged.emit(true),
       onBlur: () => this.editingChanged.emit(false),
-      onUpdate: () => {
+      onUpdate: ({ editor }) => {
+        // Yjs' first render is hydration, not a user edit. In particular it
+        // must not normalize a legacy note or erase unsupported raw Markdown.
+        if (initializing || this.source()) return;
+        rememberBlockIDs(editor.state.doc, this.seenBlockIDs);
+        this.canvas.refresh(editor.state.doc);
         this.raw =
           this.storageMode() === "managed"
-            ? encodeDaily(this.prefix, this.editor!.getJSON())
-            : this.prefix + docToMarkdown(this.editor!.getJSON());
+            ? encodeDaily(this.prefix, editor.getJSON())
+            : this.prefix + docToMarkdown(editor.getJSON());
         this.changed.emit(this.raw);
       },
       onTransaction: () => {
@@ -884,10 +954,56 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         this.positionToolbar();
       },
     });
+    initializing = false;
+    this.canvas.attach(this.editor);
+    this.stopHistorySelectionGuard = relativeHistorySelections(this.editor);
+    rememberBlockIDs(this.editor.state.doc, this.seenBlockIDs);
+    yUndoPluginKey.getState(this.editor.state)?.undoManager.clear();
+  }
+  applyAutomaticProposal(proposal: AutomaticProposal): boolean {
+    if (!this.acceptsLiveChanges(proposal.documentID)) return false;
+    const transaction = automaticTransaction(this.editor!, proposal, this.seenBlockIDs);
+    this.dispatchMapleTransaction(transaction);
+    return true;
+  }
+  getAcceptedAutomaticBlockIDs(): string[] {
+    return [...this.seenBlockIDs].filter(id => /^auto-(source|task|heading):/.test(id)).sort();
+  }
+  restoreAutomaticBlockIDs(ids: string[]) {
+    for (const id of ids) this.seenBlockIDs.add(id);
+  }
+  getAcceptedReplyRunIDs(): string[] { return [...this.acceptedReplyRunIDs].sort(); }
+  restoreReplyRunIDs(ids: string[]) {
+    for (const id of ids) this.acceptedReplyRunIDs.add(id);
+  }
+  applyMapleResponse(proposal: ReplyProposal): boolean {
+    if (!this.acceptsLiveChanges(proposal.documentID)) return false;
+    if (this.acceptedReplyRunIDs.has(proposal.runID)) return true;
+    const transaction = replyTransaction(this.editor!, proposal, this.seenBlockIDs);
+    if (!transaction) return false;
+    this.dispatchMapleTransaction(transaction, () => this.acceptedReplyRunIDs.add(proposal.runID));
+    return true;
+  }
+  private dispatchMapleTransaction(transaction: Transaction, accept?: () => void) {
+    if (!transaction.docChanged) return;
+    const markdown = encodeDaily(this.prefix, transaction.doc.toJSON());
+    if (new TextEncoder().encode(markdown).length > 256000)
+      throw new Error("This note is at its size limit. New Maple items remain in Sources.");
+    accept?.();
+    this.collaborativeDocument!.transact(() => {
+      this.editor!.view.dispatch(transaction);
+    }, "maple");
+  }
+  private acceptsLiveChanges(documentID: string): boolean {
+    return !!this.editor && !this.editor.isDestroyed && !!this.collaborativeDocument &&
+      documentID === this.documentID() && this.storageMode() === "managed" &&
+      !this.source() && !this.readOnly() && !this.editor.view.composing;
   }
   submitAt(pos: number) {
     const editor = this.editor;
-    if (!editor || this.readOnly() || this.storageMode() === "markdown") return;
+    if (!editor || editor.isDestroyed || !editor.isEditable || editor.view.composing ||
+        this.readOnly() || this.source() || this.storageMode() === "markdown") return;
+    if (!Number.isInteger(pos) || pos < 0 || pos >= editor.state.doc.content.size) return;
     if (editor.state.doc.resolve(pos).depth > 0) {
       this.notice.set(
         "Move this Maple request outside its container to ask it inline.",
@@ -895,7 +1011,7 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
       return;
     }
     const node = editor.state.doc.nodeAt(pos);
-    if (!node) return;
+    if (node?.type.name !== "paragraph" || !/^@maple\b/i.test(node.textContent)) return;
     const text = node.textContent.replace(/^@maple\s*/i, "").trim();
     if (!text) return;
     const meta = {
@@ -939,12 +1055,14 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
         return;
       }
       this.prefix = parsed.prefix;
+      this.canvas.load(readCanvas(parsed.prefix));
       this.source.set(false);
       this.notice.set("");
       this.mount(normalizeLegacySections(parsed.doc));
     } else this.source.set(true);
   }
   addRequest() {
+    if (this.supportsCanvas() && this.canvas.active()) { this.canvas.add("maple"); return; }
     this.insertManagedBlock(
       { type: "paragraph", content: [{ type: "text", text: "@maple " }] },
       false,
@@ -961,6 +1079,7 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
       return false;
     const selected = editor.state.selection.$from;
     const chain = editor.chain().focus();
+    if (this.supportsCanvas() && this.canvas.active()) return chain.insertContentAt(editor.state.doc.content.size, node).run();
     const content = trailing ? [node, { type: "paragraph" }] : [node];
     // Canonical source/request identities are indexed as top-level blocks.
     // Keep them outside list/callout/details containers until nested indexing exists.
@@ -975,14 +1094,41 @@ export class MapleEditorComponent implements AfterViewInit, OnDestroy {
       attrs: { reference },
     });
   }
+  private persistCanvas(layout: CanvasLayout) {
+    if (!this.editor || this.readOnly() || this.source()) throw new Error("Canvas is read-only.");
+    const prefix = writeCanvas(this.prefix, layout);
+    const raw = encodeDaily(prefix, this.editor.getJSON());
+    if (new TextEncoder().encode(raw).length > 256000) throw new Error("This note is at its size limit. The current layout is kept.");
+    this.prefix = prefix;
+    this.raw = raw;
+    this.changed.emit(raw);
+  }
+  fitCanvas() {
+    const viewport = this.canvasViewport?.nativeElement;
+    if (!viewport) return;
+    this.canvas.zoom.set(Math.max(0.2, Math.min(1, (viewport.clientWidth - 300) / this.canvas.width(), (viewport.clientHeight - 150) / this.canvas.height())));
+    viewport.scrollTo?.({ left: 0, top: 0 });
+  }
+  askCanvasSelection() {
+    // This creates an editable request draft; only explicit Run submits it.
+    const selected = this.canvas.cards().filter(card => this.canvas.selected().includes(card.id));
+    if (!selected.length || !this.editor || this.readOnly() || this.source()) return;
+    if (selected.length > 32) { this.canvas.message.set("Select at most 32 cards for a Maple request."); return; }
+    const contextIDs = selected.map(card => card.id);
+    const node = { type: "paragraph", attrs: { maple: { v: 1, id: crypto.randomUUID(), contextBlockIDs: contextIDs } }, content: [{ type: "text", text: "@maple Summarize these cards and suggest next steps." }] };
+    this.insertManagedBlock(node, false);
+  }
   ngOnDestroy() {
+    this.canvas.destroy();
     this.editingChanged.emit(false);
     this.attachmentSupport?.destroy();
     this.resizeObserver?.disconnect();
     window.removeEventListener("resize", this.positionToolbar);
     window.visualViewport?.removeEventListener("resize", this.positionToolbar);
     if (this.positionFrame) cancelAnimationFrame(this.positionFrame);
+    this.stopHistorySelectionGuard?.();
     this.editor?.destroy();
+    this.collaborativeDocument?.destroy();
   }
 }
 

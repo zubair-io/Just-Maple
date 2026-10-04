@@ -229,18 +229,43 @@ public struct ActivityDiscoveryEngine:Sendable {
             INPUT:
             \(try JSONCodec.string(providerInput))
             """
-            let response=try await client.request(prompt)
+            let invocation=UUID().uuidString
+            let provider="acp/\(client.provider)",model="subscription-default/activity-discovery-v1"
+            let dates=Dictionary(job.input.evidence.map{($0.eventID,$0.occurredAt)},uniquingKeysWith:{first,_ in first})
+            let evidence=dates.keys.sorted().map{ProviderInputEvidence(eventID:$0,occurredAt:dates[$0])}
+            // Existing activity prose, corrections and extracted task titles have no
+            // complete source lineage.
+            // Preserve that uncertainty rather than claim source-only input coverage.
+            let coverage:ProviderEvidenceCoverage=providerInput.activities.isEmpty && providerInput.corrections.isEmpty && providerInput.evidence.allSatisfy({$0.kind=="observation"}) ? .complete:.partial
+            @Sendable func audit(_ id:String,parent:String?=nil,kind:String,payload:String,dispatch:ProviderDispatchCapture?=nil)async throws {
+                try await store.recordPipelineProviderAudit(.init(invocationID:id,parentInvocationID:parent,provider:provider,model:model,kind:kind,payload:payload,dispatch:dispatch),jobID:job.id,attemptID:job.token,stage:"activity_discovery")
+            }
+            func request(_ actualPrompt:String,id:String,parent:String?=nil)async throws->String {
+                try await audit(id,parent:parent,kind:"context",payload:actualPrompt)
+                let response:String
+                do {response=try await client.request(actualPrompt,beforeDispatch:{
+                    try await audit(id,parent:parent,kind:"dispatch",payload:"",dispatch:.init(evidence:evidence,coverage:coverage))
+                })}
+                catch {try await audit(id,parent:parent,kind:"failure",payload:"provider_request_failed");throw error}
+                try await audit(id,parent:parent,kind:"response",payload:response)
+                return response
+            }
+            let response=try await request(prompt,id:invocation)
             try await store.recordActivityProviderTrace(job,input:providerInput,response:response)
             do {try await store.finishActivityDiscovery(job,response:resolved(response))}
             catch {
+                try await audit(invocation,kind:"validation",payload:"not_applied")
                 let contractErrors:Set<String>=["Too many discovered activities.","Activities need independent, available evidence.","Unavailable activity reference."]
                 let repairable=(error is DecodingError) || ((error as? MapleError)?.errorDescription.map{contractErrors.contains($0)} ?? false)
                 guard repairable else {throw error}
                 // One real model repair; never manufacture a valid grouping locally.
                 guard job.input.evidence.allSatisfy({AIProcessingWindow.includes($0.occurredAt)}) else {throw MapleError.invalid("Activity evidence expired.")}
-                let repaired=try await client.request(prompt+"\nYour previous response violated the output contract. Return corrected JSON only. activityID must be JSON null for a new activity or EXACTLY an active id in INPUT.activities, never a name or invented ID. suggestionIDs must be copied exactly from INPUT.evidence. Every group needs at least two distinct sourceIdentity values and distinct quotes; omit groups that lack support. At most six groups. Previous response (untrusted):\n"+String(response.prefix(12000)))
+                let repairID=UUID().uuidString
+                let repaired=try await request(prompt+"\nYour previous response violated the output contract. Return corrected JSON only. activityID must be JSON null for a new activity or EXACTLY an active id in INPUT.activities, never a name or invented ID. suggestionIDs must be copied exactly from INPUT.evidence. Every group needs at least two distinct sourceIdentity values and distinct quotes; omit groups that lack support. At most six groups. Previous response (untrusted):\n"+String(response.prefix(12000)),id:repairID,parent:invocation)
                 try await store.recordActivityProviderTrace(job,input:providerInput,response:repaired)
-                try await store.finishActivityDiscovery(job,response:resolved(repaired))
+                do {try await store.finishActivityDiscovery(job,response:resolved(repaired))}
+                catch {try await audit(repairID,parent:invocation,kind:"validation",payload:"not_applied");throw error}
+                return
             }
         } catch {try await store.failActivityDiscovery(job,error:error);throw error}
     }

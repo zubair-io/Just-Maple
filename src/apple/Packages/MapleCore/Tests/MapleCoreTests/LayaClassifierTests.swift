@@ -31,6 +31,14 @@ struct LayaClassifierTests {
         let audits = await recorder.values
         #expect(audits.filter { $0.kind == "context" }.count == 10)
         #expect(audits.filter { $0.kind == "response" }.count == 10)
+        let dispatches=audits.filter{$0.kind=="dispatch"}
+        #expect(dispatches.count==10 && Set(dispatches.map(\.invocationID)).count==10)
+        for dispatch in dispatches {
+            let index=try #require(audits.firstIndex{$0.kind=="dispatch" && $0.invocationID==dispatch.invocationID})
+            #expect(audits[index-1].kind=="context" && audits[index-1].invocationID==dispatch.invocationID)
+            #expect(dispatch.dispatch?.evidence.contains{$0.eventID==input.event.id} == true)
+            #expect(dispatch.dispatch?.evidence.first{$0.eventID=="user-evidence"}?.occurredAt == nil)
+        }
         #expect(audits.contains { $0.payload.contains("already confirmed") })
         #expect(!String(decoding: result.rawResponse, as: UTF8.self).contains("typesafe"))
     }

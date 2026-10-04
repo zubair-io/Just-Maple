@@ -373,6 +373,45 @@ describe("Daily block interactions", () => {
     );
     expect(ids(e)).toEqual(["original"]);
   });
+  it("hides Apply link until a link draft is open", async () => {
+    const e = editor([p("a", "Selected linked words")], true);
+    e.commands.setTextSelection({ from: 1, to: 9 });
+    e.commands.setLink({ href: "https://example.com/original" });
+    await vi.waitFor(() => expect(document.querySelector(".maple-selection-menu")).toBeTruthy());
+    const apply = Array.from(document.querySelectorAll<HTMLButtonElement>(".maple-selection-menu button")).find(b => b.textContent === "Apply link")!;
+    expect(apply.hidden).toBe(true);
+    apply.click(); // A stale/synthetic activation must not erase the existing link.
+    expect(e.getAttributes("link")["href"]).toBe("https://example.com/original");
+  });
+  it("leaves link-field IME Enter and Escape alone and preserves selected text when cancelling the draft", async () => {
+    const e = editor([p("a", "Selected words")], true);
+    e.commands.setTextSelection({ from: 1, to: 9 });
+    await vi.waitFor(() => expect(document.querySelector(".maple-selection-menu")).toBeTruthy());
+    const link = Array.from(document.querySelectorAll<HTMLButtonElement>(".maple-selection-menu button")).find(b => b.textContent === "Link")!;
+    link.click();
+    const input = document.querySelector<HTMLInputElement>(".maple-selection-menu input")!;
+    input.value="https://example.com/partial";
+    for(const key of ["Enter","Escape"]){
+      const event=new KeyboardEvent("keydown",{key,isComposing:true,bubbles:true,cancelable:true});input.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(input.hidden).toBe(false);
+      expect(e.getAttributes("link")["href"]).toBeUndefined();
+    }
+    input.dispatchEvent(new CompositionEvent("compositionstart",{bubbles:true}));
+    const apply=Array.from(document.querySelectorAll<HTMLButtonElement>(".maple-selection-menu button")).find(b=>b.textContent==="Apply link")!;
+    apply.click();expect(e.getAttributes("link")["href"]).toBeUndefined();
+    const candidateEscape=new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true});input.dispatchEvent(candidateEscape);
+    expect(candidateEscape.defaultPrevented).toBe(false);expect(input.hidden).toBe(false);
+    input.dispatchEvent(new CompositionEvent("compositionend",{bubbles:true}));
+    input.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
+    expect(input.hidden).toBe(true);
+    expect(e.state.selection.from).toBe(1);expect(e.state.selection.to).toBe(9);
+    expect(document.activeElement).toBe(link);
+    link.dispatchEvent(new KeyboardEvent("keydown",{key:"End",bubbles:true,cancelable:true}));
+    expect(document.activeElement).toBe(link); // Hidden Apply link is not a keyboard destination.
+    link.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true,cancelable:true}));
+    expect(document.activeElement?.textContent).toBe("Bold");
+  });
   it("formats the text selection through the bubble menu", async () => {
     const e = editor([p("a", "Select these words")], true);
     e.commands.setTextSelection({ from: 1, to: 7 });

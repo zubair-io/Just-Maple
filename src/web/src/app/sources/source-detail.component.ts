@@ -1,5 +1,11 @@
+import { InteractivityChecker } from "@angular/cdk/a11y";
+import { retainModalTab } from "./modal-keyboard";
 import {
+  AfterViewInit,
   Component,
+  ElementRef,
+  OnDestroy,
+  ViewChild,
   ChangeDetectionStrategy,
   effect,
   inject,
@@ -23,8 +29,12 @@ import {
   standalone: true,
   imports: [DatePipe, MuiButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: ` <section
+  template: ` <dialog
+    #drawer
     class="source-detail"
+    aria-modal="true"
+    (cancel)="$event.preventDefault(); close()"
+    (keydown)="retainTab($event)"
     aria-label="Source details"
     tabindex="-1"
   >
@@ -33,7 +43,7 @@ import {
         <span class="eyebrow">Original · state · history</span>
         <h2>{{ detail()?.row?.subject || "Source details" }}</h2>
       </div>
-      <mui-button variant="ghost" (pressed)="closed.emit()">Close</mui-button>
+      <mui-button variant="ghost" (pressed)="close()">Close</mui-button>
     </header>
     @if (loading()) {
       <p role="status">Loading captured evidence…</p>
@@ -71,7 +81,7 @@ import {
         Original entity state and processing progress are separate.
       </p>
       <div class="tabs" role="group" aria-label="Source views">
-        @for (value of tabs; track value) {
+        @for (value of source.conversation ? conversationTabs : tabs; track value) {
           <button
             type="button"
             [attr.aria-pressed]="tab() === value"
@@ -98,6 +108,23 @@ import {
               <code>{{ source.row.id }}</code>
               <p>{{ source.row.externalID }}</p>
             </details>
+          }
+          @case ("Conversation") {
+            @if (source.conversation; as conversation) {
+              <p class="muted">{{ conversation.totalMessages }} messages in this captured conversation · {{ conversation.account }}.
+                Latest captured revisions as of {{ sourceDate(conversation.asOf) | date: "medium" }}. Separate requests may still need attention.</p>
+              @if (conversation.omittedMessages) {<p role="status">{{ conversation.omittedMessages }} earlier messages omitted. Showing up to 50 recent messages and the selected source.</p>}
+              @for (message of conversation.messages; track message.eventID) {
+                <article class="stage" [attr.aria-label]="message.selected ? 'Selected source message' : 'Conversation message'">
+                  <strong>{{ message.sender || 'Sender not recorded' }}</strong>
+                  <p>{{ message.direction === 'outgoing' ? 'Sent' : message.direction === 'incoming' ? 'Received' : 'Direction not recorded' }} · {{ sourceDate(message.occurredAt) | date: "medium" }}</p>
+                  @if (message.selected) {<p>Selected source{{ message.historicalRevision ? ' · original historical revision' : '' }}</p>}
+                  <pre>{{ message.content }}</pre>
+                  @if (message.truncated) {<p class="muted">Excerpt shortened. Open this message to inspect its captured source.</p>}
+                  <mui-button variant="ghost" (pressed)="openRelated(message.eventID)">Open this message</mui-button>
+                </article>
+              }
+            }
           }
           @case ("Processing") {
             @for (stage of source.stages; track stage.stage) {
@@ -146,8 +173,11 @@ import {
                   {{ attempt.commitOutcome }}
                 </p>
                 <small
-                  >{{ sourceDate(attempt.startedAt) | date: "medium" }} ·
-                  Attempt {{ attempt.id }}</small
+                  >Started {{ sourceDate(attempt.startedAt) | date: "medium" }}
+                  @if (attempt.endedAt !== undefined) { · Ended {{ sourceDate(attempt.endedAt) | date: "medium" }} }
+                  @else { · End time not recorded }
+                  · {{ attemptDuration(attempt.startedAt, attempt.endedAt) }}
+                  · Attempt {{ attempt.id }}</small
                 >
                 @if (attempt.parentAttemptID) {
                   <small>Repair of {{ attempt.parentAttemptID }}</small>
@@ -155,8 +185,7 @@ import {
               </article>
             }
             <p class="muted">
-              {{ source.historyAvailability }} · Historical attempts stay
-              visible after retries.
+              {{ historyCoverage(source.historyAvailability) }} Retained attempts stay visible after retries.
             </p>
             <ol class="audit">
               @for (item of history(); track item.sequence) {
@@ -200,8 +229,9 @@ import {
                 <li>No transitions were recorded for this source.</li>
               }
             </ol>
+            @if (historyLoading()) { <p role="status">Loading earlier history…</p> }
             @if (nextHistory() !== undefined) {
-              <mui-button variant="ghost" (pressed)="moreHistory()"
+              <mui-button variant="ghost" [disabled]="historyLoading()" (pressed)="moreHistory()"
                 >Earlier history</mui-button
               >
             }
@@ -287,7 +317,7 @@ import {
         >
       }
     }
-  </section>`,
+  </dialog>`,
   styles: [
     `
       :host {
@@ -298,7 +328,20 @@ import {
         border-radius: 12px;
         background: var(--color-bg-secondary);
         padding: 24px;
-        margin: 24px 0;
+        position: fixed;
+        inset: 0 0 0 auto;
+        margin: 0;
+        width: min(680px, 94vw);
+        max-width: none;
+        height: 100dvh;
+        max-height: none;
+        box-sizing: border-box;
+        overflow: auto;
+        color: var(--color-text-main);
+        box-shadow: var(--shadow-lg, 0 12px 40px #0003);
+      }
+      .source-detail::backdrop {
+        background: var(--color-overlay, #0005);
       }
       header,
       header > div,
@@ -408,6 +451,8 @@ import {
       @media (max-width: 600px) {
         .source-detail {
           padding: 14px;
+          width: 100vw;
+          border-radius: 0;
         }
         .tabs {
           gap: 0;
@@ -420,7 +465,57 @@ import {
     `,
   ],
 })
-export class SourceDetailComponent {
+export class SourceDetailComponent implements AfterViewInit, OnDestroy {
+  @ViewChild('drawer', { static: true }) private drawer!: ElementRef<HTMLDialogElement>;
+  private readonly checker = inject(InteractivityChecker);
+  retainTab(event: KeyboardEvent) { retainModalTab(this.drawer.nativeElement, event, this.checker); }
+  private opener: HTMLElement | null = null;
+  private disposed = false;
+  private restored = false;
+  private navigating = false;
+  ngAfterViewInit() {
+    const dialog = this.drawer.nativeElement;
+    const active = dialog.ownerDocument.activeElement;
+    this.opener = active instanceof HTMLElement && active !== dialog.ownerDocument.body && !dialog.contains(active) ? active : null;
+    // Only the explicit inspector mount acquires focus. Source loads/retries never do.
+    queueMicrotask(() => {
+      if (this.disposed || !dialog.isConnected) return;
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else dialog.setAttribute('open', '');
+      dialog.querySelector<HTMLButtonElement>('header button')?.focus({ preventScroll: true });
+    });
+  }
+  close() {
+    this.dismiss(true);
+    this.closed.emit();
+  }
+  private dismiss(restore: boolean) {
+    const dialog = this.drawer?.nativeElement;
+    if (dialog?.open) {
+      if (typeof dialog.close === 'function') dialog.close();
+      else dialog.removeAttribute('open');
+    }
+    if (restore && !this.restored) {
+      this.restored = true;
+      if (this.opener?.isConnected) this.opener.focus({ preventScroll: true });
+    }
+  }
+  ngOnDestroy() {
+    this.disposed = true;
+    this.generation++;
+    this.artifactGeneration++;
+    this.dismiss(!this.navigating);
+  }
+  private async navigate(commands: string[], extras?: { queryParamsHandling: 'preserve' } | { queryParams: { document: string } }) {
+    if (this.navigating) return;
+    this.navigating = true;
+    try {
+      const opened = await this.router.navigate(commands, extras);
+      if (!opened && !this.disposed) this.actionStatus.set('Your current note is still open. Resolve its save error before leaving.');
+    } catch {
+      if (!this.disposed) this.actionStatus.set('Could not open that destination. Your source remains available here.');
+    } finally { if (!this.disposed) this.navigating = false; }
+  }
   readonly router = inject(Router);
   readonly sourceDate = sourceDate;
   readonly eventID = input.required<string>();
@@ -430,6 +525,22 @@ export class SourceDetailComponent {
   readonly service = inject(SourcesService);
   readonly detail = signal<SourceDetail | null>(null);
   readonly history = signal<SourceTransition[]>([]);
+  readonly historyLoading = signal(false);
+  historyCoverage(value: string) {
+    if (value === 'recorded_since_ingestion') return 'History recorded since this source was ingested.';
+    if (value === 'legacy_latest_only_before_audit') return 'Historical attempt detail was not recorded before audit logging began.';
+    return 'Historical coverage is not recorded.';
+  }
+  attemptDuration(start: string | number, end?: string | number) {
+    if (end === undefined) return 'Duration unavailable';
+    const from = new Date(sourceDate(start)).getTime(), to = new Date(sourceDate(end)).getTime();
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return 'Duration unavailable';
+    const ms = Math.round(to - from);
+    if (ms < 1000) return `Duration ${ms} ms`;
+    if (ms < 60_000) return `Duration ${(ms / 1000).toFixed(1)} s`;
+    const seconds = Math.floor(ms / 1000);
+    return `Duration ${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+  }
   readonly nextHistory = signal<number | undefined>(undefined);
   readonly artifact = signal<SourceArtifactPage | null>(null);
   readonly artifactLoading = signal(false);
@@ -438,6 +549,7 @@ export class SourceDetailComponent {
   readonly actionStatus = signal("");
   readonly retrying = signal(false);
   readonly tabs = ["Original", "Processing", "History", "Responses"];
+  readonly conversationTabs = ["Original", "Conversation", "Processing", "History", "Responses"];
   readonly tab = signal("Original");
   private generation = 0;
   private artifactGeneration = 0;
@@ -449,15 +561,15 @@ export class SourceDetailComponent {
     });
   }
   openRelated(eventID: string) {
-    void this.router.navigate(["/sources", eventID], {
+    return this.navigate(["/sources", eventID], {
       queryParamsHandling: "preserve",
     });
   }
   openBacklink(link: { documentID: string; day?: string }) {
     if (link.day)
-      void this.router.navigate(["/daily", link.day]);
+      return this.navigate(["/daily", link.day]);
     else
-      void this.router.navigate(["/notebooks"], {
+      return this.navigate(["/notebooks"], {
         queryParams: { document: link.documentID },
       });
   }
@@ -467,6 +579,9 @@ export class SourceDetailComponent {
     this.artifactGeneration++;
     this.detail.set(null);
     this.history.set([]);
+    this.historyLoading.set(false);
+    this.nextHistory.set(undefined);
+    this.artifactLoading.set(false);
     this.artifact.set(null);
     this.loading.set(true);
     this.error.set("");
@@ -489,7 +604,10 @@ export class SourceDetailComponent {
     }
   }
   async moreHistory() {
+    if (this.disposed || this.loading() || this.historyLoading() || this.nextHistory() === undefined) return;
     const generation = this.generation;
+    this.historyLoading.set(true);
+    this.actionStatus.set('');
     try {
       const result = await this.service.history(
         this.eventID(),
@@ -503,7 +621,9 @@ export class SourceDetailComponent {
       ]);
       this.nextHistory.set(result.nextSequence);
     } catch {
-      this.actionStatus.set("Earlier history could not be loaded.");
+      if (generation === this.generation) this.actionStatus.set("Earlier history could not be loaded. Try Earlier history again.");
+    } finally {
+      if (generation === this.generation) this.historyLoading.set(false);
     }
   }
   async openArtifact(id: string, offset = 0) {
@@ -528,6 +648,8 @@ export class SourceDetailComponent {
       void this.openArtifact(item.id, item.nextOffset);
   }
   async retry(stage: SourceStage) {
+    if (this.retrying()) return;
+    const eventID = this.eventID(), generation = this.generation;
     this.retrying.set(true);
     const key = `${this.eventID()}:${stage.stage}:${stage.version}`;
     const commandID = this.retryCommands.get(key) ?? crypto.randomUUID();
@@ -539,10 +661,11 @@ export class SourceDetailComponent {
         stage.version,
         commandID,
       );
+      if (this.disposed || eventID !== this.eventID() || generation !== this.generation) return;
       await this.load();
-      this.actionStatus.set(result.status);
+      if (!this.disposed && eventID === this.eventID() && generation + 1 === this.generation) this.actionStatus.set(result.status);
     } catch (e) {
-      this.actionStatus.set(
+      if (!this.disposed && eventID === this.eventID() && generation === this.generation) this.actionStatus.set(
         e instanceof Error ? e.message : "Retry was not acknowledged.",
       );
     } finally {

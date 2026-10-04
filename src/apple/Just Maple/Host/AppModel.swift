@@ -88,7 +88,9 @@ final class AppModel {
     var appleContacts: [AppleSourceRecord] = []
     var appleCalendar: [AppleSourceRecord] = []
     var lastApplePoll = Date.distantPast
-    var messagesEnabled = false
+    var messagesEnabled = false {
+        didSet { classificationDefaults.set(messagesEnabled, forKey: "messagesEnabled") }
+    }
     var messagesImporting = false
     var messagesStatus = "Not connected"
     var messagesError: String?
@@ -109,9 +111,10 @@ final class AppModel {
         set { classificationMessage = newValue }
     }
     var classificationCanRun = false
-    var classificationLabel: String { classificationProvider == "laya" ? "Laya" : "Jev" }
+    var classificationLabel: String { classificationProvider == "clef" ? "Clef" : classificationProvider == "laya" ? "Laya" : "Jev" }
     private let classificationDefaults: UserDefaults
     private let layaDirectory: URL
+    private let clefLoader: @Sendable () async throws -> any FactCheckingClassifier
     private let layaLoader: @Sendable (URL) async throws -> any FactCheckingClassifier
     private var classifierLoad: Task<Void, Never>?
     private var classifierGeneration = 0
@@ -119,14 +122,16 @@ final class AppModel {
 
     init(directory override: URL? = nil, classificationDefaults: UserDefaults = .standard,
          layaDirectory: URL? = nil,
-         layaLoader: @escaping @Sendable (URL) async throws -> any FactCheckingClassifier = { try await LayaClassifier.load(directory: $0) }) {
+         layaLoader: @escaping @Sendable (URL) async throws -> any FactCheckingClassifier = { try await LayaClassifier.load(directory: $0) },
+         clefLoader: @escaping @Sendable () async throws -> any FactCheckingClassifier = { try await ClefClassifier.load() }) {
         self.classificationDefaults = classificationDefaults
         let modelDirectory = layaDirectory ?? (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("Laya", isDirectory: true)
         let selected = classificationDefaults.string(forKey: "classificationProvider")
-        self.classificationProvider = ["laya", "jev"].contains(selected ?? "")
+        self.classificationProvider = ["laya", "jev", "clef"].contains(selected ?? "")
             ? selected! : Self.layaValidationApproved(directory: modelDirectory) ? "laya" : "jev"
         self.layaDirectory = modelDirectory
         self.layaLoader = layaLoader
+        self.clefLoader = clefLoader
         let args = ProcessInfo.processInfo.arguments
         if let override { directory = override }
         else if let index = args.firstIndex(of: "--data-directory"), args.indices.contains(index + 1) {
@@ -135,6 +140,10 @@ final class AppModel {
             directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("Just Maple/Intelligence", isDirectory: true)
         }
+        // Retain an explicit connection/pause choice across relaunch. Existing
+        // imported history alone must not opt an unconfigured user into reading Messages.
+        messagesEnabled = classificationDefaults.bool(forKey: "messagesEnabled")
+        if messagesEnabled { messagesStatus = "Connected · waiting for the next import" }
     }
 
     /// Publish the small local shell before any folder download, companion restore,
@@ -247,7 +256,7 @@ final class AppModel {
     }
 
     func selectClassificationProvider(_ provider: String) throws {
-        guard ["laya", "jev"].contains(provider) else { throw MapleError.invalid("Unknown classification provider.") }
+        guard ["laya", "jev", "clef"].contains(provider) else { throw MapleError.invalid("Unknown classification provider.") }
         guard !busy, !auditRunning else { throw MapleError.invalid("Wait for the current classification or audit to finish before changing providers.") }
         classificationProvider = provider
         classificationDefaults.set(provider, forKey: "classificationProvider")
@@ -261,14 +270,16 @@ final class AppModel {
         classifierLoad?.cancel()
         classifier = nil; connected = false; running = false; classificationCanRun = false
         classificationState = "loading"
-        classificationStatus = provider == "laya" ? "Loading bundled Laya on this Mac…" : "Opening the explicitly selected Jev connection…"
+        classificationStatus = provider == "clef" ? "Preparing local Clef through Ollama…" : provider == "laya" ? "Loading bundled Laya on this Mac…" : "Opening the explicitly selected Jev connection…"
         classifierLoad = Task { await self.loadClassifier(provider: provider, generation: generation) }
     }
 
     private func loadClassifier(provider: String, generation: Int) async {
         do {
             let adapter: any FactCheckingClassifier
-            if provider == "laya" {
+            if provider == "clef" {
+                adapter = try await clefLoader()
+            } else if provider == "laya" {
                 guard FileManager.default.fileExists(atPath: layaDirectory.path) else {
                     if generation == classifierGeneration {
                         classificationState = "model_missing"
@@ -292,16 +303,16 @@ final class AppModel {
             guard generation == classifierGeneration, classificationProvider == provider, !Task.isCancelled else { return }
             jevPause = pause
             classifier = adapter
-            classificationCanRun = provider == "jev" || Self.layaValidationApproved(directory: layaDirectory)
+            classificationCanRun = provider == "clef" || provider == "jev" || Self.layaValidationApproved(directory: layaDirectory)
             connected = true
             running = classificationCanRun
             classificationState = classificationCanRun ? "ready" : "validation_required"
-            classificationStatus = provider == "jev" ? "Jev is selected. Classification sends relevant source context to Jev." : classificationCanRun ? "Laya is ready. Classification runs locally on this Mac." : "Experimental Laya loaded. \(Self.layaValidationReason(directory: layaDirectory) ?? "This model has not passed quality validation.") Automatic processing is disabled and queued events are retained."
+            classificationStatus = provider == "clef" ? "Clef is ready. Classification runs locally through Ollama; fact and task extraction use their separately selected provider." : provider == "jev" ? "Jev is selected. Classification sends relevant source context to Jev." : classificationCanRun ? "Laya is ready. Classification runs locally on this Mac." : "Experimental Laya loaded. \(Self.layaValidationReason(directory: layaDirectory) ?? "This model has not passed quality validation.") Automatic processing is disabled and queued events are retained."
         } catch {
             guard generation == classifierGeneration else { return }
             classifier = nil; connected = false; running = false; classificationCanRun = false
             classificationState = "load_failed"
-            classificationStatus = provider == "laya" ? "Laya could not load. Rebuild or reinstall its bundled model, then retry. Queued events are retained." : error.localizedDescription
+            classificationStatus = provider == "clef" ? "Clef could not connect to local Ollama. Start Ollama with clef installed, then reload Clef. Queued events are retained." : provider == "laya" ? "Laya could not load. Rebuild or reinstall its bundled model, then retry. Queued events are retained." : error.localizedDescription
         }
     }
 

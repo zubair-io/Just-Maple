@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { By } from '@angular/platform-browser';
+import { TaskActionsComponent, TaskActionRequest } from '../world/task-actions.component';
 import { CompanionComponent } from './companion.component';
 
 describe('iPhone companion',()=>{
@@ -29,7 +31,7 @@ describe('iPhone companion',()=>{
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
     const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();fixture.detectChanges();
     const text=fixture.nativeElement.textContent;
-    expect(text).not.toContain('Saved on this iPhone');expect(text).toContain('Confirm the appointment time');expect(text).toContain('House');expect(text).toContain('Last synced');
+    expect(text).not.toContain('Saved on this iPhone');expect(text).toContain('Confirm the appointment time');expect(text).toContain('House');expect(text).toContain('Mac processing snapshot:');
     expect(text).not.toContain('Waiting for Mac pairing');
     expect(text).toContain('Fixture area');await fixture.componentInstance.selectView('people');fixture.detectChanges();expect(fixture.nativeElement.textContent).toContain('Fixture person');expect(fixture.nativeElement.textContent).toContain('Pinned · Friend');
   });
@@ -183,6 +185,35 @@ describe('iPhone companion',()=>{
     const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();
     fixture.componentInstance.showActivity('two');fixture.detectChanges();
     expect(fixture.componentInstance.visibleTasks().map(t=>t.id)).toEqual(['b']);
+  });
+  it('blocks a live companion action draft and reopens against the latest task version', async()=>{
+    const task={id:'task:fixture',title:'Fixture action',status:'open',version:3,activities:[]};
+    const state:any={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],tasks:[task],supportedTaskIntents:['done','later','waiting','notNeeded','undo']}};
+    const send=vi.fn().mockResolvedValue(state);
+    (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();const c=fixture.componentInstance;
+    c.showTasks();c.openTask(task);fixture.detectChanges();
+    const child:TaskActionsComponent=fixture.debugElement.query(By.directive(TaskActionsComponent)).componentInstance;
+    child.open('waiting');child.waitingOn='Fixture reviewer';
+    c.state.set({...state,mac:{...state.mac,tasks:[{...task,version:4}]}});fixture.detectChanges();
+    child.send('waiting');expect(send.mock.calls.filter(([body])=>body.action==='taskAction')).toHaveLength(0);
+    expect(child.staleDraft()).toBe(true);
+    child.cancel();child.open('waiting');child.send('waiting');await fixture.whenStable();
+    expect(send.mock.calls.filter(([body])=>body.action==='taskAction')[0][0]).toMatchObject({taskID:task.id,expectedVersion:4,intent:'waiting'});
+  });
+  it('retries the same companion command without rebasing its target/version onto refreshed data', async()=>{
+    const state:any={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],tasks:[],supportedTaskIntents:['done','later','waiting','notNeeded','undo']}};
+    let fail=true;
+    const send=vi.fn(async(body:any)=>{if(body.action==='taskAction'&&fail){fail=false;throw Error('lost response');}return state;});
+    (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();const c=fixture.componentInstance;
+    const request:TaskActionRequest={identity:'task:original',expectedVersion:3,requestID:'same-request',intent:'undo',issuedAt:'2030-01-01T10:00:00Z',payload:{targetMutationID:'original-change'}};
+    await c.applyTask(request);
+    c.state.set({...state,mac:{...state.mac,tasks:[{id:'task:original',title:'Updated',version:4,status:'open',activities:[]}]}});
+    await c.applyTask(request);
+    const commands=send.mock.calls.map(([body])=>body).filter(body=>body.action==='taskAction');
+    expect(commands).toHaveLength(2);expect(commands[1]).toEqual(commands[0]);
+    expect(commands[1]).toMatchObject({taskID:'task:original',expectedVersion:3,id:'same-request',payload:{targetMutationID:'original-change'}});
   });
   it('uses typed row completion, preserves retries, and offers Undo after the task disappears',async()=>{
     const task={id:'task:fixture',title:'Fixture action',status:'open',version:3,activities:[]};

@@ -182,7 +182,13 @@ struct JustMapleCommand {
         case "preview-tasks":
             guard let runner=try take("--runner"),args.count==1,let event=try await store.event(args[0]) else {throw MapleError.invalid("Usage: preview-tasks EVENT_ID --runner PATH [--db PATH]")}
             let extractor=ACPExtractor(client:ACPClient(provider:"codex",runner:URL(fileURLWithPath:runner)))
-            try printJSON(await extractor.extract(store.taskModelContext(for:event.id),activities:store.activities()))
+            let previewID="task-preview:"+UUID().uuidString,attemptID=UUID().uuidString
+            let context=try await store.taskModelContext(for:event.id),activities=try await store.activities()
+            let suggestions=try await extractor.extractAudited(context,activities:activities) { audit in
+                try await store.recordPipelineProviderAudit(audit,jobID:previewID,attemptID:attemptID,stage:"task_preview")
+            }
+            // Preview output is never offered/applied to canonical tasks or the extraction queue.
+            try printJSON(suggestions)
         case "reprocess-tasks":
             guard let runner=try take("--runner"),!args.isEmpty else {throw MapleError.invalid("Usage: reprocess-tasks EVENT_IDS --runner PATH [--db PATH]")}
             for id in args {
@@ -190,6 +196,12 @@ struct JustMapleCommand {
                 _ = try await TaskExtractionEngine(store:store,extractor:ACPExtractor(client:ACPClient(provider:"codex",runner:URL(fileURLWithPath:runner)))).runOne(eventIDs:[id])
             }
             try printJSON(await store.taskExtractionQueue().filter{args.contains($0.eventID)})
+        case "review-conversation":
+            guard args.count == 1 else { throw MapleError.invalid("Usage: review-conversation EVENT_ID [--db PATH]") }
+            let ids = try await store.requestConversationAttentionReview(eventID: args[0])
+            if let classifier {
+                try printJSON(await IntelligenceEngine(store: store, classifier: classifier).run(limit: ids.count, eventIDs: ids))
+            } else { try printJSON(ids) }
         case "index":
             let batches=Int(try take("--batches") ?? "1") ?? 1
             guard args.isEmpty,(1...10000).contains(batches) else {throw MapleError.invalid("Usage: index [--batches 1...10000] [--db PATH]")}
@@ -322,6 +334,8 @@ struct JustMapleCommand {
     --laya-model DIRECTORY       Use bundled native Laya assets instead of the Jev API
     check-facts EVENT_ID --live    Ask Jev whether an existing source needs fact extraction
     extract-facts                 Parse one due fact job using Apple's on-device model
+    preview-tasks EVENT_ID --runner PATH  Audit a provider preview without applying tasks
+    review-conversation EVENT_ID [--live]  Refresh stale attention in one conversation
     inspect                       Show state, evidence, decisions, queue and inbox/proposals
     correct SUBJECT KEY VALUE     Record explicit user evidence with precedence over inference
     history SUBJECT KEY           Inspect all claims, including superseded claims

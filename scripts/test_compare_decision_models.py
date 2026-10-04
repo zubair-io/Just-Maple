@@ -5,6 +5,12 @@ spec=importlib.util.spec_from_file_location('comparison',Path(__file__).with_nam
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 
 class ComparisonTests(unittest.TestCase):
+    def test_clef_candidates_use_local_override_without_redirecting_jev(self):
+        definitions=m.provider_definitions('http://127.0.0.1:11434/')
+        self.assertEqual(definitions['clef-flash'],('http://127.0.0.1:11434/v1/systemone','clef-flash:9b'))
+        self.assertEqual(definitions['clef'],('http://127.0.0.1:11434/v1/systemone','clef:latest'))
+        self.assertEqual(definitions['jev'],('https://api.typesafe.ai/v1/systemone','jev-latest'))
+        self.assertEqual(m.provider_definitions('http://127.0.0.1:11435')['nimble'],('http://127.0.0.1:11435/v1/systemone','nimble:latest'))
     def test_missing_or_nonfinite_answers_are_failures(self):
         body={'questions':{'notify':{'type':'noul'}}}
         for answer in [{},{'type':'choice','noul':1},{'type':'noul','noul':float('nan')},{'type':'noul','noul':2}]:

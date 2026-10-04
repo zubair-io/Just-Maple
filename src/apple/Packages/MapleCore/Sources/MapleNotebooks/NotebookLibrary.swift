@@ -10,7 +10,9 @@ public struct NotebookNote: Codable, Sendable {
 }
 public struct NotebookDocument: Codable, Sendable {
     public var notebookID:String; public var path:String; public var content:String; public var revision:String
-    public init(notebookID:String,path:String,content:String,revision:String) {self.notebookID=notebookID;self.path=path;self.content=content;self.revision=revision}
+    public var acceptedAutomaticBlockIDs:[String]?
+    public var acceptedReplyRunIDs:[String]?
+    public init(notebookID:String,path:String,content:String,revision:String,acceptedAutomaticBlockIDs:[String]?=nil,acceptedReplyRunIDs:[String]?=nil) {self.notebookID=notebookID;self.path=path;self.content=content;self.revision=revision;self.acceptedAutomaticBlockIDs=acceptedAutomaticBlockIDs;self.acceptedReplyRunIDs=acceptedReplyRunIDs}
 }
 public struct NotebookCatalog: Codable, Sendable {
     public var notebooks:[Notebook]; public var cloudAvailable:Bool
@@ -19,7 +21,7 @@ public struct NotebookCatalog: Codable, Sendable {
 public actor NotebookLibrary {
     struct Connection:Codable { var id:String; var name:String; var bookmark:Data }
     let registryURL:URL
-    let cloudRoot:URL?
+    var cloudRoot:URL?
     private let prepareForRead: @Sendable (URL) async throws -> Void
     var connections:[Connection]
     var roots:[String:URL]=[:]
@@ -30,6 +32,14 @@ public actor NotebookLibrary {
         connections=FileManager.default.fileExists(atPath:registryURL.path) ? try JSONDecoder().decode([Connection].self,from:Data(contentsOf:registryURL)) : []
     }
     deinit { for url in scoped {url.stopAccessingSecurityScopedResource()} }
+    /// Restore an initially unavailable container without replacing this actor's
+    /// connected folders, active operations or local draft storage.
+    public func restoreCloudRootIfNeeded(_ root:URL) throws {
+        guard cloudRoot==nil else{return}
+        cloudRoot=root
+        do {_ = try catalog()}
+        catch {cloudRoot=nil;throw error}
+    }
     private static var bookmarkCreationOptions: URL.BookmarkCreationOptions {
         #if os(macOS)
         [.withSecurityScope]
@@ -70,7 +80,8 @@ public actor NotebookLibrary {
         guard let cloudRoot else {throw NotebookError.invalid("iCloud Drive is unavailable. Connect a folder to start a notebook.")}
         try validateName(name)
         let target=cloudRoot.appendingPathComponent(name,isDirectory:true)
-        guard !FileManager.default.fileExists(atPath:target.path) else {throw NotebookError.invalid("A notebook with this name already exists.")}
+        let placeholder=cloudRoot.appendingPathComponent("."+name+".icloud")
+        guard !FileManager.default.fileExists(atPath:target.path),!FileManager.default.fileExists(atPath:placeholder.path) else {throw NotebookError.invalid("A notebook with this name already exists, or is still downloading from iCloud.")}
         try FileManager.default.createDirectory(at:target,withIntermediateDirectories:false)
         return try catalog()
     }
@@ -157,13 +168,21 @@ public actor NotebookLibrary {
                 let exists=FileManager.default.fileExists(atPath:target.path)
                 if let expectedRevision {
                     guard exists,Self.revision(try boundedData(target))==expectedRevision else {throw NotebookError.invalid("This note changed in another app or iCloud. Your draft is kept. Reload the file or save a copy.")}
-                } else if exists {throw NotebookError.invalid("A note with this name already exists.")}
+                } else {
+                    let placeholder=target.deletingLastPathComponent().appendingPathComponent("."+target.lastPathComponent+".icloud")
+                    guard !exists && !FileManager.default.fileExists(atPath:placeholder.path) else {
+                        throw NotebookError.invalid("A note with this name already exists, or is still downloading from iCloud. Open it or choose another name.")
+                    }
+                }
                 try Data(content.utf8).write(to:target,options:.atomic)
             } catch {failure=error}
         }
         if let coordination {throw coordination};if let failure {throw failure}
         let draft=draftURL(notebookID,path)
-        if let data=try? Data(contentsOf:draft),let saved=try? NotebookCodec.decode(NotebookDocument.self,from:data),saved.content==content {try? FileManager.default.removeItem(at:draft)}
+        // Equal prose can carry newer delivery/deletion receipts than the save
+        // captured. Keep that sidecar until the coordinator can acknowledge its
+        // metadata against the durable journal; file replacement alone cannot.
+        if let data=try? Data(contentsOf:draft),let saved=try? NotebookCodec.decode(NotebookDocument.self,from:data),saved.content==content,(saved.acceptedAutomaticBlockIDs ?? []).isEmpty,(saved.acceptedReplyRunIDs ?? []).isEmpty {try? FileManager.default.removeItem(at:draft)}
         return NotebookDocument(notebookID:notebookID,path:path,content:content,revision:Self.revision(Data(content.utf8)))
     }
     public func createNote(notebookID:String,name:String) throws -> NotebookDocument {
@@ -192,7 +211,7 @@ extension NotebookLibrary {
         // readIfPresent may suspend for iCloud. Re-read the draft after that await so a
         // newer baseline or newer text is never replaced by our earlier snapshot.
         guard let latest=try readDraft(notebookID:notebookID,path:path),latest.revision==expectedRevision else{return}
-        try saveDraft(NotebookDocument(notebookID:notebookID,path:path,content:latest.content,revision:targetRevision))
+        try saveDraft(NotebookDocument(notebookID:notebookID,path:path,content:latest.content,revision:targetRevision,acceptedAutomaticBlockIDs:latest.acceptedAutomaticBlockIDs,acceptedReplyRunIDs:latest.acceptedReplyRunIDs))
     }
     public func readDraft(notebookID:String,path:String) throws -> NotebookDocument? {
         _ = try file(notebookID,path)
@@ -293,7 +312,14 @@ extension NotebookLibrary {
     /// A save command can arrive after the next keystroke's durable draft. Never replace that
     /// newer/different draft with captured command bytes; the coordinator journals those bytes.
     public func preserveCommitDraft(_ document:NotebookDocument) throws {
-        if let existing=try readDraft(notebookID:document.notebookID,path:document.path),existing.content != document.content {return}
-        try saveDraft(document)
+        var preserved=document
+        if let existing=try readDraft(notebookID:document.notebookID,path:document.path) {
+            guard existing.content == document.content else {return}
+            let receipts=Set((existing.acceptedAutomaticBlockIDs ?? [])+(document.acceptedAutomaticBlockIDs ?? [])).sorted()
+            preserved.acceptedAutomaticBlockIDs=receipts.isEmpty ? nil:receipts
+            let replies=Set((existing.acceptedReplyRunIDs ?? [])+(document.acceptedReplyRunIDs ?? [])).sorted()
+            preserved.acceptedReplyRunIDs=replies.isEmpty ? nil:replies
+        }
+        try saveDraft(preserved)
     }
 }

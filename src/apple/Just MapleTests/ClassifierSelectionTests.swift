@@ -27,6 +27,22 @@ private actor DelayedLocalLoader {
     func fail(_ index: Int) { continuations[index].resume(throwing: MapleError.invalid("Old synthetic load failed")) }
 }
 @MainActor struct ClassifierSelectionTests {
+    @Test func explicitClefSelectionIsPreservedAndExtractionIsIndependent() async throws {
+        let prefs = preferences(selection: "clef")
+        prefs.set("claude", forKey: "extractionProvider")
+        let model = AppModel(classificationDefaults: prefs, clefLoader: { SyntheticLocalClassifier() })
+        #expect(model.classificationProvider == "clef")
+        model.beginClassifierLoad(); await waitForLoad(model)
+        #expect(model.classificationState == "ready"); #expect(model.classificationCanRun)
+        #expect(model.classificationLabel == "Clef")
+        #expect(prefs.string(forKey: "extractionProvider") == "claude")
+        let failed = AppModel(classificationDefaults: prefs, clefLoader: { throw ClefProviderError(status: 404) })
+        failed.beginClassifierLoad(); await waitForLoad(failed)
+        #expect(failed.classificationState == "load_failed")
+        #expect(failed.classificationProvider == "clef"); #expect(failed.classifier == nil)
+        #expect(!failed.running); #expect(failed.classificationStatus.contains("Queued events are retained"))
+        #expect(prefs.string(forKey: "classificationProvider") == "clef")
+    }
     private func temporaryDirectory() throws -> URL {
         let path=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString,isDirectory:true)
         try FileManager.default.createDirectory(at:path,withIntermediateDirectories:true)

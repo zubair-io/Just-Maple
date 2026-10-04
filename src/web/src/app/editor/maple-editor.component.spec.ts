@@ -1,6 +1,8 @@
 import { TestBed, ComponentFixture } from "@angular/core/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MapleEditorComponent } from "./maple-editor.component";
+import { AttachmentService } from "./attachment.service";
+import { SourcesService } from "../sources/sources.service";
 import { Slice, Fragment } from "@tiptap/pm/model";
 import { decodeDaily } from "./daily-markdown-codec";
 let fixture: ComponentFixture<MapleEditorComponent> | undefined;
@@ -18,6 +20,44 @@ afterEach(() => {
   TestBed.resetTestingModule();
 });
 describe("Daily editor floating toolbar", () => {
+  it.each(["button", "submitAt"])("does not submit or mutate a request during composition via %s", (path) => {
+    const component = mount('@maple Find 東京'), editor = component.editor!;
+    const submitted = vi.fn();
+    component.submitted.subscribe(submitted);
+    const before = editor.getJSON();
+    const composing = vi.spyOn(editor.view, "composing", "get").mockReturnValue(true);
+    if (path === "button") fixture!.nativeElement.querySelector(".maple-run-button").click();
+    else component.submitAt(0);
+    expect(submitted).not.toHaveBeenCalled();
+    expect(editor.getJSON()).toEqual(before);
+    composing.mockReturnValue(false);
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    editor.commands.insertContent("のメール");
+    component.submitAt(0);
+    expect(submitted).toHaveBeenCalledOnce();
+    expect(submitted).toHaveBeenLastCalledWith({ blockID: expect.any(String), text: "Find 東京のメール" });
+  });
+  it("does not submit a raw-mode hidden request or an ordinary paragraph", () => {
+    const component = mount('@maple Find sources'), submitted = vi.fn();
+    component.submitted.subscribe(submitted);
+    component.toggleSource();
+    component.sourceChanged("@maple A different request");
+    component.submitAt(0);
+    expect(submitted).not.toHaveBeenCalled();
+    component.toggleSource();
+    component.editor!.commands.setContent("<p>Ordinary writing</p>");
+    component.submitAt(0);
+    expect(submitted).not.toHaveBeenCalled();
+  });
+  it.each(["Meta", "Control"])("leaves %s+Enter untouched when its event is composing", (modifier) => {
+    const component = mount('@maple Find sources'), editor = component.editor!, submitted = vi.fn();
+    component.submitted.subscribe(submitted);
+    editor.commands.setTextSelection(8);
+    const event = new KeyboardEvent("keydown", { key: "Enter", isComposing: true, metaKey: modifier === "Meta", ctrlKey: modifier === "Control", cancelable: true });
+    editor.options.editorProps.handleKeyDown!(editor.view, event);
+    expect(submitted).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
   it("reports formatted and Markdown editing presence and releases it on destruction", () => {
     const component = mount(),
       presence = vi.fn();
@@ -163,6 +203,42 @@ describe("Daily editor floating toolbar", () => {
     expect(
       decodeDaily(component.raw).doc.content?.[0].content?.[0].marks,
     ).toContainEqual({ type: "bold" });
+  });
+  it("propagates read-only into an existing recording NodeView before file copy can start", async () => {
+    const importFile = vi.fn();
+    TestBed.configureTestingModule({ providers: [
+      { provide: AttachmentService, useValue: { importFile, read: vi.fn() } },
+      { provide: SourcesService, useValue: { detail: vi.fn().mockResolvedValue({ row: { id: 'recording', type: 'recording', connector: 'recording' }, content: '', truncated: false }) } },
+    ] });
+    fixture = TestBed.createComponent(MapleEditorComponent);
+    fixture.componentRef.setInput('initial', '```maple-ref\n{"v":1,"kind":"recording","eventID":"recording"}\n```');
+    fixture.componentRef.setInput('documentID', 'document');
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const editor = fixture.componentInstance.editor!;
+    const input = fixture.nativeElement.querySelector('input[type=file][accept]') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    fixture.componentRef.setInput('readOnly', true); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.componentInstance.editor).toBe(editor);
+    expect(fixture.nativeElement.querySelector('input[type=file][accept]')).toBeNull();
+    // Even a stale file-picker callback from the old control must not copy bytes.
+    Object.defineProperty(input, 'files', { value: [new File(['fixture'], 'fixture.wav', { type: 'audio/wav' })] });
+    input.dispatchEvent(new Event('change', { bubbles: true })); await fixture.whenStable();
+    expect(importFile).not.toHaveBeenCalled();
+    fixture.componentRef.setInput('readOnly', false); fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('input[type=file][accept]')).not.toBeNull();
+  });
+  it("returns from source card controls to the mapped editor selection with Escape", async () => {
+    const component = mount('Writing before.\n\n```maple-ref\n{"v":1,"kind":"email","eventID":"fixture-source"}\n```\n\nWriting after.');
+    const editor = component.editor!;
+    editor.commands.setTextSelection(5);
+    const button = fixture!.nativeElement.querySelector('.source-card-title') as HTMLButtonElement;
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    const before = editor.state.selection.from;
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(editor.view.hasFocus()).toBe(true));
+    expect(editor.state.selection.from).toBe(before);
+    expect(editor.state.doc.textContent).toContain('Writing before.');
   });
   it("keeps managed clipboard cards out of plain Markdown instead of silently dropping their evidence", () => {
     fixture = TestBed.createComponent(MapleEditorComponent);

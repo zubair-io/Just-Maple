@@ -3,6 +3,36 @@ import Testing
 import MapleNotebooks
 @testable import Just_Maple_iPhone
 
+private actor NotebookDownloadGate {
+    var paths:[String]=[]
+    private var blocked=true
+    func prepare(_ url:URL)throws {
+        paths.append(url.path)
+        if blocked {throw NotebookError.invalid("Fixture note is still downloading")}
+    }
+    func allow(){blocked=false}
+}
+private actor NotebookCloudRootFixture {
+    var root:URL?
+    var lookups=0
+    func resolve()->URL? {lookups+=1;return root}
+    func restore(_ value:URL){root=value}
+}
+private actor NotebookCloudInitializationRace {
+    let root:URL
+    private var calls=0,paused=false
+    private var entered:CheckedContinuation<Void,Never>?,release:CheckedContinuation<Void,Never>?
+    init(root:URL){self.root=root}
+    func resolve()->URL? {calls+=1;return calls==1 ? root:nil}
+    func checkpoint(_ root:URL?)async {
+        guard root != nil else{return}
+        paused=true;entered?.resume();entered=nil
+        await withCheckedContinuation{release=$0}
+    }
+    func waitUntilPaused()async {if !paused {await withCheckedContinuation{entered=$0}}}
+    func resume(){release?.resume();release=nil}
+}
+
 @MainActor struct iPhoneNotebookBridgeTests {
     func fixture() throws -> (URL, CompanionStore, iPhoneNotebookBridge) {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -46,6 +76,88 @@ import MapleNotebooks
         let result=try #require(try await bridge.command("todayRead",body:["day":"2026-09-29"],store:store) as? [String:Any])
         #expect(result["content"] as? String == "Legacy Mac document")
         #expect(result["path"] as? String == "Daily/2026-09-29.md")
+    }
+    @Test func unavailableCanonicalDownloadNeverFallsBackOrDiscardsLocalDraft() async throws {
+        let(root,store,_)=try fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let cloud=root.appendingPathComponent("Cloud"),folder=cloud.appendingPathComponent("Just Maple/2026/09")
+        try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+        let canonical=folder.appendingPathComponent("2026-09-29.md")
+        let content="Exact cached Mac writing";try Data(content.utf8).write(to:canonical)
+        let legacy=cloud.appendingPathComponent("Just Maple/Daily")
+        try FileManager.default.createDirectory(at:legacy,withIntermediateDirectories:true)
+        try Data("Outdated legacy writing".utf8).write(to:legacy.appendingPathComponent("2026-09-29.md"))
+        let gate=NotebookDownloadGate()
+        let library=try NotebookLibrary(registryURL:root.appendingPathComponent("Library/notebooks.json"),cloudRoot:cloud,prepareForRead:{url in try await gate.prepare(url)})
+        let id=try await library.ensureJustMapleDailyNotebook()
+        let path="2026/09/2026-09-29.md"
+        try await library.saveDraft(NotebookDocument(notebookID:id,path:path,content:"Retained phone draft",revision:"prior"))
+        let bridge=iPhoneNotebookBridge(directory:root.appendingPathComponent("Library"),library:library)
+        do {_ = try await bridge.command("todayRead",body:["day":"2026-09-29"],store:store);Issue.record("Unavailable download appeared ready")}catch{}
+        #expect(await gate.paths==[canonical.path])
+        #expect(try String(contentsOf:canonical,encoding:.utf8)==content)
+        #expect(try await library.readDraft(notebookID:id,path:path)?.content=="Retained phone draft")
+        #expect(store.snapshot.captures.isEmpty)
+        await gate.allow()
+        let result=try #require(try await bridge.command("todayRead",body:["day":"2026-09-29"],store:store) as? [String:Any])
+        #expect(result["content"] as? String == content);#expect(result["readOnly"] as? Bool == true)
+        #expect(try await library.readDraft(notebookID:id,path:path)?.content=="Retained phone draft")
+        #expect(store.snapshot.captures.isEmpty)
+    }
+    @Test func retryDiscoversRestoredCloudContainerWithoutDroppingConnectedNotebookOrDraft() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer{try? FileManager.default.removeItem(at:root)}
+        let local=root.appendingPathComponent("User chosen folder")
+        try FileManager.default.createDirectory(at:local,withIntermediateDirectories:true)
+        let directory=root.appendingPathComponent("Library"),registry=directory.appendingPathComponent("notebooks.json")
+        let seed=try NotebookLibrary(registryURL:registry,cloudRoot:nil)
+        let catalog=try await seed.connect(local),id=try #require(catalog.notebooks.first?.id)
+        let note=try await seed.createNote(notebookID:id,name:"Kept")
+        try await seed.saveDraft(NotebookDocument(notebookID:id,path:note.path,content:"Unsaved local writing",revision:note.revision))
+        let resolver=NotebookCloudRootFixture()
+        let bridge=iPhoneNotebookBridge(directory:directory,cloudRootProvider:{await resolver.resolve()})
+        let store=try CompanionStore(directory:root.appendingPathComponent("Outbox"))
+        let unavailable=try #require(try await bridge.command("notebookCatalog",body:[:],store:store) as? [String:Any])
+        #expect(unavailable["cloudAvailable"] as? Bool == false)
+        let lookupCount=await resolver.lookups
+        _ = try await bridge.command("noteDraft",body:["record":["notebookID":id,"path":note.path,"revision":note.revision,"content":"Unsaved local writing"]],store:store)
+        #expect(await resolver.lookups==lookupCount)
+        do {_ = try await bridge.command("todayRead",body:["day":"2026-09-29"],store:store);Issue.record("Missing iCloud accepted")}catch{}
+        #expect(!FileManager.default.fileExists(atPath:local.appendingPathComponent("2026").path))
+        let cloud=root.appendingPathComponent("App container/Documents"),daily=cloud.appendingPathComponent("Just Maple/2026/09")
+        try FileManager.default.createDirectory(at:daily,withIntermediateDirectories:true)
+        try Data("Mac cloud note".utf8).write(to:daily.appendingPathComponent("2026-09-29.md"))
+        await resolver.restore(cloud)
+        let recovered=try #require(try await bridge.command("todayRead",body:["day":"2026-09-29"],store:store) as? [String:Any])
+        #expect(recovered["content"] as? String == "Mac cloud note")
+        #expect(recovered["path"] as? String == "2026/09/2026-09-29.md")
+        let draft=try #require(try await bridge.command("noteReadDraft",body:["id":id,"path":note.path],store:store) as? [String:Any])
+        #expect(draft["content"] as? String == "Unsaved local writing")
+        let restored=try #require(try await bridge.command("notebookCatalog",body:[:],store:store) as? [String:Any])
+        let books=try #require(restored["notebooks"] as? [[String:Any]])
+        #expect(books.contains{$0["id"] as? String == id})
+        #expect(restored["cloudAvailable"] as? Bool == true);#expect(store.snapshot.captures.isEmpty)
+    }
+    @Test func concurrentInitialLookupAdoptsAvailableRootOnAlreadyInstalledLocalLibrary()async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer{try? FileManager.default.removeItem(at:root)}
+        let cloud=root.appendingPathComponent("Container/Documents"),folder=cloud.appendingPathComponent("Just Maple/2026/09")
+        try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+        try Data("Exact cloud document".utf8).write(to:folder.appendingPathComponent("2026-09-29.md"))
+        let race=NotebookCloudInitializationRace(root:cloud)
+        let bridge=iPhoneNotebookBridge(directory:root.appendingPathComponent("Library"),cloudRootProvider:{await race.resolve()},afterInitialCatalog:{await race.checkpoint($0)})
+        let store=try CompanionStore(directory:root.appendingPathComponent("Outbox"))
+        let available=Task { @MainActor in
+            let catalog=try #require(try await bridge.command("notebookCatalog",body:[:],store:store) as? [String:Any])
+            return catalog["cloudAvailable"] as? Bool
+        }
+        await race.waitUntilPaused()
+        let local=try #require(try await bridge.command("notebookCatalog",body:[:],store:store) as? [String:Any])
+        #expect(local["cloudAvailable"] as? Bool == false)
+        await race.resume()
+        #expect(try await available.value == true)
+        let result=try #require(try await bridge.command("todayRead",body:["day":"2026-09-29"],store:store) as? [String:Any])
+        #expect(result["content"] as? String == "Exact cloud document")
+        #expect(store.snapshot.captures.isEmpty)
     }
     @Test func realFilesCreateReadSaveAndOnlyEditsQueueOncePerRevision() async throws {
         let (root,store,bridge) = try fixture(); defer { try? FileManager.default.removeItem(at: root) }

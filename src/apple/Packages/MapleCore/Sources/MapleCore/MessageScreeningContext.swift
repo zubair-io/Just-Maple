@@ -11,7 +11,8 @@ public enum MessageScreeningContext {
         func sameThread(_ event: Event) -> Bool {
             event.source.connector == context.event.source.connector &&
             event.source.account == context.event.source.account &&
-            event.occurredAt <= context.event.occurredAt &&
+            event.occurredAt <= (context.messageReview?.asOf ?? context.event.occurredAt) &&
+            (context.messageReview.map { event.receivedAt <= $0.asOf } ?? true) &&
             !threads.isDisjoint(with: event.subjects)
         }
         var observations: [String: Event] = [context.event.id: context.event]
@@ -43,7 +44,7 @@ public enum MessageScreeningContext {
         }
         let result = Context(event: context.event, currentState: context.currentState,
                              recentEvents: recent, relatedEvidence: evidence,
-                             version: "message-screening-v1", sourceFacts: context.sourceFacts, world: world)
+                             version: context.messageReview == nil ? "message-screening-v1":"message-screening-v2", sourceFacts: context.sourceFacts, world: world,messageReview:context.messageReview)
         guard maximumBytes > 0, try JSONCodec.encode(result).count <= maximumBytes else {
             throw MapleError.invalid("Message screening context exceeds the size limit; review remains queued.")
         }

@@ -4,11 +4,12 @@ import { MapleIconComponent } from "@maple/ui";
 import { sourceReferenceKind } from "../sources/source-reference-kind";
 import { SourceReference } from "./daily-markdown-codec";
 import { SourcesService, SourceRow } from "../sources/sources.service";
+import { RecordingPlaybackComponent } from "./recording-playback.component";
 
 @Component({
   selector: "maple-source-reference",
   standalone: true,
-  imports: [DatePipe, MapleIconComponent],
+  imports: [DatePipe, MapleIconComponent, RecordingPlaybackComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <article class="source-card" [attr.aria-label]="kindLabel() + ' reference'">
@@ -34,6 +35,15 @@ import { SourcesService, SourceRow } from "../sources/sources.service";
       } @else {
         <p class="source-preview">{{ unavailable() ? 'Source unavailable. This reference is preserved.' : 'Loading captured source…' }}</p>
       }
+      @if (kindLabel() === 'Recording') {
+        <maple-recording-playback [documentID]="documentID()" [eventID]="reference().eventID"
+          [attachmentID]="reference().attachmentID" [readOnly]="readOnly()" (attached)="audioAttached.emit($event)" />
+        @if (capturedText()) {
+          <details class="recording-text"><summary>Captured transcript / text</summary><pre>{{ capturedText() }}</pre>
+            @if (textTruncated()) { <p>Preview is truncated. Open the source for available evidence.</p> }
+          </details>
+        }
+      }
     </article>`,
   styles: [`
     :host { display: block; }
@@ -49,14 +59,21 @@ import { SourcesService, SourceRow } from "../sources/sources.service";
     .source-card p { margin: 6px 0 0; font-size: 15px; line-height: 1.55; color: var(--color-text-muted); overflow-wrap: anywhere; }
     .source-preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .calendar-time { font-variant-numeric: tabular-nums; }
+    .recording-text { margin-top:12px; font-size:14px; } summary { cursor:pointer; }
+    .recording-text pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; font:inherit; }
     @media (max-width: 600px) { .source-card { padding: 13px 14px; } .source-card-meta { flex-wrap: wrap; gap: 4px 12px; font-size: 12px; } .source-card-title { font-size: 16px; } p { font-size: 14px; } }
   `],
 })
 export class SourceReferenceComponent {
   readonly reference = input.required<SourceReference>();
+  readonly documentID = input("");
+  readonly readOnly = input(false);
+  readonly audioAttached = output<{ eventID: string; previousAttachmentID?: string; attachmentID: string }>();
   readonly inspected = output<string>();
   readonly row = signal<SourceRow | null>(null);
   readonly unavailable = signal(false);
+  readonly capturedText = signal("");
+  readonly textTruncated = signal(false);
   date(value?: string | number) { return typeof value === "number" ? value * 1000 : value ?? null; }
   observedDate() { return this.date(this.row()?.calendar?.start ?? this.row()?.occurredAt); }
   icon(): "calendar" | "mail" | "map-pin" | "history" {
@@ -89,9 +106,13 @@ export class SourceReferenceComponent {
   constructor() {
     effect(() => {
       const generation = ++this.generation;
-      this.row.set(null); this.unavailable.set(false);
+      this.row.set(null); this.unavailable.set(false); this.capturedText.set(""); this.textTruncated.set(false);
       void this.service.detail(this.reference().eventID).then(detail => {
-        if (generation === this.generation) this.row.set(detail.row);
+        if (generation === this.generation) {
+          this.row.set(detail.row);
+          this.capturedText.set(detail.content ?? "");
+          this.textTruncated.set(!!detail.truncated);
+        }
       }).catch(() => { if (generation === this.generation) this.unavailable.set(true); });
     });
   }

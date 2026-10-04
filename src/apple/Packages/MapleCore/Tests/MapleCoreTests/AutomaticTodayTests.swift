@@ -140,7 +140,7 @@ struct AutomaticTodayTests {
 
 // Explicit synthetic routing fixture tests storage policy, never live model quality.
 extension KnowledgeStore {
-    fileprivate func automaticFixtureDecision(_ eventID:String,route:Route,success:Bool=true,at:Date) throws {
+    func automaticFixtureDecision(_ eventID:String,route:Route,success:Bool=true,at:Date) throws {
         let context=try context(for:eventID)
         let assessment=Assessment(notify:0,askUser:0,reason:0,summarize:0,jobStage:.unchanged,stageConfidence:0,model:"automatic-today-test-fixture",provider:"test-fixture")
         let decision=Decision(eventID:eventID,route:route,assessment:assessment,context:context,explanation:["Explicit synthetic test fixture"],policyVersion:"test-fixture",createdAt:at)
@@ -243,5 +243,235 @@ extension AutomaticTodayTests {
         let ended=try #require(CalendarSourcePresentation(calendarFixture("ended",start:"2026-10-29T23:00:00Z",end:"2026-10-30T00:00:00Z")))
         #expect(try !ended.overlaps(day:"2026-10-30",timeZone:"UTC"))
         #expect(CalendarSourcePresentation(event("missing",connector:"google_calendar")) == nil)
+    }
+}
+
+extension AutomaticTodayTests {
+    @Test func liveProposalIsReadOnlyAndNormalCommitConsumesStableIdentities() async throws {
+        let (root,library,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let initial=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC",collaborative:true)
+        let source=event("live");_ = try await store.ingest(source);try await store.automaticFixtureDecision(source.id,route:.summarize,at:now)
+        let draft=initial.content+"I am still typing.\n"
+        try await coordinator.draft(documentID:initial.documentID,revision:initial.revision,content:draft)
+        let proposal=try await coordinator.automaticProposal(documentID:initial.documentID,at:now)
+        #expect(proposal.groups.count == 1 && proposal.groups[0].title == "FYI")
+        #expect(proposal.groups[0].createHeading)
+        #expect(try await library.read(notebookID:id,path:initial.path).content == initial.content)
+        #expect(try await library.readDraft(notebookID:id,path:initial.path)?.content == draft)
+        #expect(try await store.automaticFixtureCount(initial.documentID) == 0)
+        #expect(try await coordinator.automaticProposal(documentID:initial.documentID,at:now).groups[0].blocks[0].blockID == proposal.groups[0].blocks[0].blockID)
+        let group=proposal.groups[0]
+        let content=draft+"\n"+(try ManagedMarkdown.marker(["id":group.headingID]))+"## FYI\n\n"+group.blocks.map(\.markdown).joined(separator:"\n")
+        let saved=try await coordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:content,commandID:"fixture-live-save")
+        #expect(saved.content.contains("I am still typing."))
+        #expect(try await store.automaticFixtureCount(initial.documentID) == 1)
+        #expect(try await coordinator.automaticProposal(documentID:initial.documentID,at:now).groups.isEmpty)
+    }
+
+    @Test func activeSessionDefersBackgroundWritesUntilReleasedAndExpires() async throws {
+        let (root,_,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let initial=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC",collaborative:true)
+        #expect(await coordinator.hasEditorSession(documentID:initial.documentID))
+        let source=event("session");_ = try await store.ingest(source);try await store.automaticFixtureDecision(source.id,route:.notify,at:now)
+        #expect(try await coordinator.refreshAutomatic(documentID:initial.documentID,at:now).revision == initial.revision)
+        try await coordinator.setEditorSession(documentID:initial.documentID,active:false)
+        #expect(!((await coordinator.hasEditorSession(documentID:initial.documentID))))
+        let saved=try await coordinator.refreshAutomatic(documentID:initial.documentID,at:now)
+        #expect(saved.blocks.contains{$0.eventID == source.id})
+        try await coordinator.setEditorSession(documentID:initial.documentID,active:true,at:now)
+        #expect(await coordinator.hasEditorSession(documentID:initial.documentID,at:now.addingTimeInterval(29)))
+        #expect(!((await coordinator.hasEditorSession(documentID:initial.documentID,at:now.addingTimeInterval(31)))))
+    }
+
+    @Test func liveReplyProposalWaitsForDurableCommitAndPreservesWriting() async throws {
+        let (root,library,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        var initial=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC",collaborative:true)
+        let content=initial.content+(try ManagedMarkdown.marker(["id":"fixture-request"]))+"@maple Find emails\n\n"
+        initial=try await coordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:content,commandID:"fixture-request-save")
+        let request=InlineMapleRequest(commandID:"fixture-live-run",documentID:initial.documentID,requestBlockID:"fixture-request",expectedRevision:initial.revision,text:"Find emails")
+        let queued=try await store.queueInlineMaple(request,provider:"synthetic-test-fixture")
+        _ = try await store.startInlineMaple(queued.runID)
+        let run=try await store.completeInlineMaple(queued.runID,text:"Explicit fixture response.",eventIDs:[],total:0,coverage:"Fixture coverage")
+        let proposal=try await coordinator.inlineResponseProposal(runID:run.runID)
+        #expect(proposal.blocks.count == 2 && proposal.blocks[0].blockID == run.replyBlockID)
+        #expect(try await store.inlineMapleRun(run.runID).status == "unapplied")
+        #expect(try await library.read(notebookID:id,path:initial.path).content == initial.content)
+        let saved=try await coordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:initial.content+proposal.blocks.map(\.markdown).joined(separator:"\n")+"\n"+(try ManagedMarkdown.marker(["id":"my-later-writing"]))+"Typing while Maple responds.\n",commandID:"fixture-save-live-response")
+        #expect(saved.content.contains("Typing while Maple responds."))
+        #expect(try await store.inlineMapleRun(run.runID).status == "succeeded")
+        #expect(try await store.inlineMapleRun(run.runID).appliedRevision == saved.revision)
+        #expect(try await coordinator.inlineResponseProposal(runID:run.runID).blocks.isEmpty)
+    }
+}
+
+extension AutomaticTodayTests {
+    @Test func replyAcknowledgmentRecoversAtomicallyAndMissingReplyNeverAcknowledges() async throws {
+        let (root,library,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        var initial=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
+        initial=try await coordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:initial.content+(try ManagedMarkdown.marker(["id":"request"]))+"@maple Find messages\n",commandID:"reply-recovery-request")
+        let request=InlineMapleRequest(commandID:"reply-recovery-run",documentID:initial.documentID,requestBlockID:"request",expectedRevision:initial.revision,text:"Find messages")
+        let queued=try await store.queueInlineMaple(request,provider:"synthetic-test-fixture")
+        _ = try await store.startInlineMaple(queued.runID)
+        let run=try await store.completeInlineMaple(queued.runID,text:"Fixture response",eventIDs:[],total:0,coverage:"Fixture coverage")
+        let proposal=try await coordinator.inlineResponseProposal(runID:run.runID)
+        // A user deleting the first reply before its first save must not falsely
+        // acknowledge delivery merely because a coverage paragraph remains.
+        initial=try await coordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:initial.content+"\n"+proposal.blocks[1].markdown,commandID:"reply-missing-main")
+        #expect(try await store.inlineMapleRun(run.runID).status == "unapplied")
+        let content=initial.content+"\n"+proposal.blocks[0].markdown
+        let mutation=DocumentMutationRecord(commandID:"reply-crash-save",documentID:initial.documentID,expectedRevision:initial.revision,targetRevision:ManagedMarkdown.hash(content),before:initial.content,after:content,state:"prepared",createdAt:now)
+        _ = try await store.prepareDocumentMutation(mutation)
+        #expect(try await store.inlineMapleRun(run.runID).status == "unapplied")
+        _ = try await library.save(notebookID:id,path:initial.path,content:content,expectedRevision:initial.revision)
+        #expect(try await store.inlineMapleRun(run.runID).status == "unapplied")
+        let recoveredCoordinator=TodayDocumentCoordinator(store:store,library:library)
+        let recovered=try await recoveredCoordinator.open(documentID:initial.documentID)
+        #expect(recovered.revision == mutation.targetRevision)
+        #expect(try await store.inlineMapleRun(run.runID).status == "succeeded")
+        #expect(try await store.inlineMapleRun(run.runID).appliedRevision == recovered.revision)
+        let replay=try await recoveredCoordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:content,commandID:mutation.commandID)
+        #expect(replay.revision == recovered.revision)
+        #expect(try await store.inlineMapleRun(run.runID).appliedRevision == recovered.revision)
+    }
+}
+
+extension AutomaticTodayTests {
+    @Test func acceptedThenDeletedBlocksSurviveDraftRecoveryAndCommitWithoutResurrection() async throws {
+        let (root,library,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let initial=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
+        let source=event("deleted-before-save");_ = try await store.ingest(source);try await store.automaticFixtureDecision(source.id,route:.summarize,at:now)
+        let proposal=try await coordinator.automaticProposal(documentID:initial.documentID,at:now)
+        let group=try #require(proposal.groups.first),block=try #require(group.blocks.first)
+        let receipts=[group.headingID,block.blockID]
+        // Both were accepted into the live editor, then deleted before the first
+        // autosave. The prose now exactly matches disk, but receipts are pending.
+        try await coordinator.draft(documentID:initial.documentID,revision:initial.revision,content:initial.content,acceptedAutomaticBlockIDs:receipts)
+        let recoveredDraft=try await TodayDocumentCoordinator(store:store,library:library).open(documentID:initial.documentID)
+        #expect(Set(recoveredDraft.draft?.acceptedAutomaticBlockIDs ?? []) == Set(receipts))
+        #expect(try await store.automaticFixtureCount(initial.documentID) == 0)
+        let mutation=DocumentMutationRecord(commandID:"receipt-crash",documentID:initial.documentID,expectedRevision:initial.revision,targetRevision:initial.revision,before:initial.content,after:initial.content,state:"prepared",createdAt:now,acceptedAutomaticBlockIDs:receipts)
+        _ = try await store.prepareDocumentMutation(mutation)
+        #expect(try await store.automaticFixtureCount(initial.documentID) == 0)
+        let recovered=try await TodayDocumentCoordinator(store:store,library:library).open(documentID:initial.documentID)
+        #expect(recovered.content == initial.content)
+        #expect(recovered.draft?.acceptedAutomaticBlockIDs == nil)
+        #expect(try await store.automaticFixtureCount(initial.documentID) == 1)
+        #expect(try await coordinator.automaticProposal(documentID:initial.documentID,at:now).groups.isEmpty)
+        _ = try await coordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:initial.content,commandID:mutation.commandID,acceptedAutomaticBlockIDs:receipts)
+        await #expect(throws:Error.self) {try await coordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:initial.content,commandID:mutation.commandID,acceptedAutomaticBlockIDs:[])}
+        let next=event("new-after-deleted-heading");_ = try await store.ingest(next);try await store.automaticFixtureDecision(next.id,route:.summarize,at:now)
+        let later=try await coordinator.automaticProposal(documentID:initial.documentID,at:now)
+        #expect(later.groups.count == 1 && !later.groups[0].createHeading)
+    }
+}
+
+extension AutomaticTodayTests {
+    @Test func backgroundRefreshCannotReplayInterruptedSaveBehindAnActiveEditor() async throws {
+        let (root,library,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let initial=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC",collaborative:true)
+        let content=initial.content+"Prepared save before the next keystroke.\n"
+        let mutation=DocumentMutationRecord(commandID:"interrupted-while-editing",documentID:initial.documentID,expectedRevision:initial.revision,targetRevision:ManagedMarkdown.hash(content),before:initial.content,after:content,state:"prepared",createdAt:now)
+        _ = try await store.prepareDocumentMutation(mutation)
+        let current=try await coordinator.refreshAutomatic(documentID:initial.documentID,at:now)
+        #expect(current.revision == initial.revision)
+        #expect(try await library.read(notebookID:id,path:initial.path).content == initial.content)
+        #expect(try await store.documentMutation(mutation.commandID)?.state == "prepared")
+        try await coordinator.setEditorSession(documentID:initial.documentID,active:false)
+        let recovered=try await coordinator.open(documentID:initial.documentID)
+        #expect(recovered.content == content)
+        #expect(try await store.documentMutation(mutation.commandID)?.state == "committed")
+    }
+}
+
+extension AutomaticTodayTests {
+    @Test func acceptedReplyDeletedBeforeSaveStaysDeletedAfterDraftAndJournalRecovery() async throws {
+        let (root,library,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        var initial=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
+        initial=try await coordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:initial.content+(try ManagedMarkdown.marker(["id":"request"]))+"@maple Find messages\n",commandID:"deleted-reply-request")
+        let request=InlineMapleRequest(commandID:"deleted-reply-run",documentID:initial.documentID,requestBlockID:"request",expectedRevision:initial.revision,text:"Find messages")
+        let queued=try await store.queueInlineMaple(request,provider:"synthetic-test-fixture")
+        _ = try await store.startInlineMaple(queued.runID)
+        let run=try await store.completeInlineMaple(queued.runID,text:"Fixture response",eventIDs:[],total:0,coverage:"Fixture coverage")
+        #expect(try await coordinator.inlineResponseProposal(runID:run.runID).blocks.count == 2)
+        try await coordinator.draft(documentID:initial.documentID,revision:initial.revision,content:initial.content,acceptedReplyRunIDs:[run.runID])
+        let draft=try await coordinator.open(documentID:initial.documentID)
+        #expect(draft.draft?.acceptedReplyRunIDs == [run.runID])
+        #expect(try await store.inlineMapleRun(run.runID).status == "unapplied")
+        let other=try await coordinator.open(notebookID:id,day:"2026-10-31",timeZone:"UTC")
+        await #expect(throws:Error.self) {try await coordinator.commit(documentID:other.documentID,expectedRevision:other.revision,content:other.content,commandID:"wrong-reply-receipt",acceptedReplyRunIDs:[run.runID])}
+        let mutation=DocumentMutationRecord(commandID:"deleted-reply-crash",documentID:initial.documentID,expectedRevision:initial.revision,targetRevision:initial.revision,before:initial.content,after:initial.content,state:"prepared",createdAt:now,acceptedReplyRunIDs:[run.runID])
+        _ = try await store.prepareDocumentMutation(mutation)
+        #expect(try await store.inlineMapleRun(run.runID).status == "unapplied")
+        let reopenedCoordinator=TodayDocumentCoordinator(store:store,library:library)
+        let reopened=try await reopenedCoordinator.open(documentID:initial.documentID)
+        #expect(reopened.content == initial.content)
+        #expect(reopened.draft?.acceptedReplyRunIDs == nil)
+        #expect(try await store.inlineMapleRun(run.runID).status == "succeeded")
+        #expect(try await store.inlineMapleRun(run.runID).text == "Fixture response")
+        #expect(try await reopenedCoordinator.inlineResponseProposal(runID:run.runID).blocks.isEmpty)
+        _ = try await reopenedCoordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:initial.content,commandID:mutation.commandID,acceptedReplyRunIDs:[run.runID])
+        _ = try await reopenedCoordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:initial.content+"\nLater writing\n",commandID:"after-deleted-reply",acceptedReplyRunIDs:[run.runID])
+        #expect(try await store.inlineMapleRun(run.runID).appliedRevision == initial.revision)
+    }
+}
+
+extension AutomaticTodayTests {
+    @Test func receiptOnlyRecoveredDraftDefersBackgroundRefreshAndGeneratedCommit() async throws {
+        let (root,library,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let initial=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
+        let source=event("receipt-only-draft");_ = try await store.ingest(source);try await store.automaticFixtureDecision(source.id,route:.summarize,at:now)
+        let proposal=try await coordinator.automaticProposal(documentID:initial.documentID,at:now)
+        let group=try #require(proposal.groups.first),block=try #require(group.blocks.first)
+        let receipts=[group.headingID,block.blockID]
+        try await coordinator.draft(documentID:initial.documentID,revision:initial.revision,content:initial.content,acceptedAutomaticBlockIDs:receipts)
+        let restarted=TodayDocumentCoordinator(store:store,library:library)
+        let pending=try await restarted.refreshAutomatic(documentID:initial.documentID,at:now)
+        #expect(pending.revision == initial.revision)
+        #expect(pending.warning?.contains("waiting") == true)
+        #expect(try await library.read(notebookID:id,path:initial.path).content == initial.content)
+        #expect(try await store.automaticFixtureCount(initial.documentID) == 0)
+        // A proposal computed before the draft was noticed must also be stopped
+        // by the serialized final write, including its same-prose receipt state.
+        let generated=initial.content+"\n"+block.markdown
+        let skipped=try await restarted.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:generated,commandID:"stale-generated-proposal",preserveDraft:true,backgroundWrite:true)
+        #expect(skipped.revision == initial.revision)
+        #expect(try await store.documentMutation("stale-generated-proposal") == nil)
+        await #expect(throws:Error.self) {try await restarted.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:generated,commandID:"preserve-receipt-draft",preserveDraft:true)}
+        _ = try await restarted.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:initial.content,commandID:"ack-deletion-draft",acceptedAutomaticBlockIDs:receipts)
+        #expect(try await library.readDraft(notebookID:id,path:initial.path)?.acceptedAutomaticBlockIDs != nil)
+        let next=event("after-receipt-ack");_ = try await store.ingest(next);try await store.automaticFixtureDecision(next.id,route:.summarize,at:now)
+        let updated=try await restarted.refreshAutomatic(documentID:initial.documentID,at:now)
+        #expect(updated.blocks.contains{$0.eventID == next.id})
+        #expect(!updated.blocks.contains{$0.eventID == source.id})
+    }
+}
+
+extension AutomaticTodayTests {
+    @Test(arguments:[false,true]) func newerSameProseReceiptsSurviveCapturedCommitAndCrashRecovery(crash:Bool) async throws {
+        let (root,library,store,coordinator,id)=try await ManagedDocumentTests().fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let initial=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
+        let source=event("same-prose-receipts");_ = try await store.ingest(source);try await store.automaticFixtureDecision(source.id,route:.summarize,at:now)
+        let proposal=try await coordinator.automaticProposal(documentID:initial.documentID,at:now)
+        let group=try #require(proposal.groups.first),block=try #require(group.blocks.first)
+        let captured=initial.content+"Writing captured before another arrival was deleted.\n"
+        let oldReceipts=[group.headingID],newReceipts=[group.headingID,block.blockID]
+        try await coordinator.draft(documentID:initial.documentID,revision:initial.revision,content:captured,acceptedAutomaticBlockIDs:newReceipts)
+        if crash {
+            let mutation=DocumentMutationRecord(commandID:"old-captured-receipts",documentID:initial.documentID,expectedRevision:initial.revision,targetRevision:ManagedMarkdown.hash(captured),before:initial.content,after:captured,state:"prepared",createdAt:now,acceptedAutomaticBlockIDs:oldReceipts)
+            _ = try await store.prepareDocumentMutation(mutation)
+            _ = try await library.save(notebookID:id,path:initial.path,content:captured,expectedRevision:initial.revision)
+        } else {
+            _ = try await coordinator.commit(documentID:initial.documentID,expectedRevision:initial.revision,content:captured,commandID:"old-captured-receipts",acceptedAutomaticBlockIDs:oldReceipts)
+        }
+        let restarted=TodayDocumentCoordinator(store:store,library:library)
+        let recovered=try await restarted.open(documentID:initial.documentID)
+        #expect(recovered.content == captured)
+        #expect(recovered.draft?.content == captured)
+        #expect(recovered.draft?.revision == recovered.revision)
+        #expect(recovered.draft?.acceptedAutomaticBlockIDs == [block.blockID])
+        #expect(try await restarted.refreshAutomatic(documentID:initial.documentID,at:now).revision == recovered.revision)
+        _ = try await restarted.commit(documentID:initial.documentID,expectedRevision:recovered.revision,content:captured,commandID:"save-newer-receipt",acceptedAutomaticBlockIDs:[block.blockID])
+        #expect(try await restarted.automaticProposal(documentID:initial.documentID,at:now).groups.isEmpty)
+        #expect(try await store.automaticFixtureCount(initial.documentID) == 1)
     }
 }

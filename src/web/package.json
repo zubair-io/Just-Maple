@@ -19,6 +19,7 @@
     "@tiptap/core": "^3.31.3",
     "@tiptap/extension-bubble-menu": "^3.31.3",
     "@tiptap/extension-code-block-lowlight": "^3.31.3",
+    "@tiptap/extension-collaboration": "^3.31.3",
     "@tiptap/extension-placeholder": "^3.31.3",
     "@tiptap/extension-table": "^3.31.3",
     "@tiptap/extension-table-cell": "^3.31.3",
@@ -29,13 +30,15 @@
     "@tiptap/pm": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
     "@tiptap/suggestion": "^3.31.3",
+    "@tiptap/y-tiptap": "3.0.9",
     "@types/markdown-it": "^14.2.0",
     "lowlight": "^3.3.0",
     "markdown-it": "^14.1.1",
     "marked": "^17.0.1",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
-    "yaml": "^2.8.2"
+    "yaml": "^2.8.2",
+    "yjs": "^13.6.33"
   },
   "devDependencies": {
     "@angular/build": "^21.2.8",

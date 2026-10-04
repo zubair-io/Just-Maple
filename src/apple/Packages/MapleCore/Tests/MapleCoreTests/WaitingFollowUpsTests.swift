@@ -101,12 +101,12 @@ struct WaitingFollowUpsTests {
     }
     @Test func followupDoesNotCarryOldEvidenceIntoModelContext() async throws {
         let store=try KnowledgeStore(path:":memory:")
-        let old=Event(type:"message.received",source:Source(connector:"gmail",account:"fixture",externalID:"old",revision:"1"),occurredAt:now.addingTimeInterval(-40*86400),subjects:["person:self"],content:"Fixture old private content")
+        let old=Event(type:"message.received",source:Source(connector:"gmail",account:"fixture",externalID:"old",revision:"1"),occurredAt:now.addingTimeInterval(-40*86400),receivedAt:now,subjects:["person:self"],content:"Fixture old private content")
         try await store.ingest(old)
         var parent=try await seed(store,review:now)
         parent.evidenceIDs=[old.id];parent=try await store.saveTask(parent,expectedVersion:parent.version,requestID:"evidence",at:now)
         try await store.materializeWaitingFollowUps(at:now)
-        let current=Event(type:"message.received",source:Source(connector:"gmail",account:"fixture",externalID:"new",revision:"1"),occurredAt:now,subjects:["person:self"],content:"Fixture current message")
+        let current=Event(type:"message.received",source:Source(connector:"gmail",account:"fixture",externalID:"new",revision:"1"),occurredAt:now,receivedAt:now,subjects:["person:self"],content:"Fixture current message")
         try await store.ingest(current)
         let context=try await store.modelContext(for:current.id,at:now)
         #expect(context.world?.tasks.isEmpty==true)
@@ -144,6 +144,78 @@ struct WaitingFollowUpsTests {
         #expect(try await store.tasks().count==2)
     }
 
+    func waitingSource(_ store:KnowledgeStore)async throws->TaskSuggestion {
+        let helper=ObligationIdentityTests(),event=helper.event("waiting-parent")
+        try await store.ingest(event)
+        let source=try await store.offerTask(helper.suggestion(event))
+        _ = try await store.applyTaskAction(nodeID:"source:"+source.id,change:TaskActionChange(kind:"waiting",issuedAt:now.addingTimeInterval(-60),reviewAt:now,waitingOn:"Fixture reviewer"),expectedVersion:source.version,requestID:"wait-source",scope:"fixture",at:now)
+        return try #require(await store.worldSnapshot().suggestions.first{$0.id==source.id})
+    }
+
+    @Test func rejectedSourceRetiresUntouchedReviewAndUndoRestoresSameOccurrence()async throws {
+        let store=try KnowledgeStore(path:":memory:")
+        let source=try await waitingSource(store)
+        try await store.materializeWaitingFollowUps(at:now)
+        let original=try #require(await store.tasks().first{$0.waitingFollowUp != nil})
+        let rejected=try await store.reviewSuggestion(id:source.id,action:"reject",edited:nil,expectedVersion:source.version,requestID:"reject",at:now)
+        try await store.materializeWaitingFollowUps(at:now)
+        let retired=try #require(await store.tasks().first{$0.id==original.id})
+        #expect(retired.status == .cancelled && retired.completedAt==nil)
+        #expect(retired.waitingFollowUp?.automaticallyInvalidated==true)
+        #expect(try await store.attention(at:now).allSatisfy{$0.taskID != original.id})
+        _ = try await store.reviewSuggestion(id:rejected.id,action:"undoReject",edited:nil,expectedVersion:rejected.version,requestID:"undo-reject",at:now)
+        try await store.materializeWaitingFollowUps(at:now)
+        try await store.materializeWaitingFollowUps(at:now.addingTimeInterval(1))
+        let reviews=try await store.tasks().filter{$0.waitingFollowUp != nil}
+        #expect(reviews.count==1 && reviews[0].id==original.id && reviews[0].status == .open)
+        #expect(reviews[0].description==original.description)
+    }
+
+    @Test func supersededOrMissingSourceRetiresReviewWithoutInventingCompletion()async throws {
+        for removed in [false,true] {
+            let store=try KnowledgeStore(path:":memory:")
+            let source=try await waitingSource(store)
+            try await store.materializeWaitingFollowUps(at:now)
+            let review=try #require(await store.tasks().first{$0.waitingFollowUp != nil})
+            try await store.fixtureRetireWaitingSource(id:source.id,remove:removed)
+            try await store.materializeWaitingFollowUps(at:now)
+            try await store.materializeWaitingFollowUps(at:now.addingTimeInterval(1))
+            let retired=try #require(await store.tasks().first{$0.id==review.id})
+            #expect(retired.status == .cancelled && retired.completedAt==nil)
+            #expect(retired.waitingFollowUp?.automaticallyInvalidated==true)
+            #expect(retired.version==review.version+1)
+            #expect(try await store.worldHistory(subjects:[review.id]).filter{$0.type=="task.waiting_review_invalidated"}.count==1)
+        }
+    }
+
+    @Test func rejectedParentDoesNotOverwriteEditedOrExplicitlyResolvedReview()async throws {
+        for correction in ["edit","done","notNeeded","editAfterRetirement"] {
+            let store=try KnowledgeStore(path:":memory:")
+            let source=try await waitingSource(store)
+            try await store.materializeWaitingFollowUps(at:now)
+            var review=try #require(await store.tasks().first{$0.waitingFollowUp != nil})
+            if correction=="edit" {
+                review.title="User-owned follow-up"
+                review=try await store.saveTask(review,expectedVersion:review.version,requestID:"edit-review",at:now)
+            } else if correction=="done" || correction=="notNeeded" {
+                _ = try await store.applyTaskAction(nodeID:"task:"+review.id,change:TaskActionChange(kind:correction,issuedAt:now),expectedVersion:review.version,requestID:"review-action",scope:"fixture",at:now)
+            }
+            let rejected=try await store.reviewSuggestion(id:source.id,action:"reject",edited:nil,expectedVersion:source.version,requestID:"reject",at:now)
+            try await store.materializeWaitingFollowUps(at:now)
+            if correction=="editAfterRetirement" {
+                review=try #require(await store.tasks().first{$0.id==review.id})
+                review.title="User-edited retired follow-up"
+                _ = try await store.saveTask(review,expectedVersion:review.version,requestID:"edit-retired",at:now)
+            }
+            let protected=try #require(await store.tasks().first{$0.id==review.id})
+            _ = try await store.reviewSuggestion(id:rejected.id,action:"undoReject",edited:nil,expectedVersion:rejected.version,requestID:"undo-reject",at:now)
+            try await store.materializeWaitingFollowUps(at:now)
+            let after=try #require(await store.tasks().first{$0.id==review.id})
+            #expect(after==protected)
+            #expect(after.status == (correction=="edit" ? .open:correction=="done" ? .completed:.cancelled))
+        }
+    }
+
     @Test func parentUndoRestoresOnlyAutomaticallyInvalidatedUneditedReview() async throws {
         for correction in ["none","done","notNeeded","edit"] {
             let store=try KnowledgeStore(path:":memory:")
@@ -173,6 +245,14 @@ struct WaitingFollowUpsTests {
 
 
 private extension KnowledgeStore {
+    func fixtureRetireWaitingSource(id:String,remove:Bool)throws {
+        if remove {try db.execute("DELETE FROM task_suggestions WHERE id=?",[id])}
+        else {
+            var source=try record("task_suggestions",id:id,as:TaskSuggestion.self)!
+            source.reviewStatus="superseded";source.version+=1
+            try db.execute("UPDATE task_suggestions SET json=? WHERE id=?",[try JSONCodec.string(source),id])
+        }
+    }
     func fixtureFailWaitingHistory(_ enabled:Bool) throws {
         if enabled {try db.execute("CREATE TEMP TRIGGER fixture_waiting_failure BEFORE INSERT ON world_history WHEN NEW.json LIKE '%task.waiting_review_created%' BEGIN SELECT RAISE(ABORT,'fixture failure'); END")}
         else {try db.execute("DROP TRIGGER fixture_waiting_failure")}

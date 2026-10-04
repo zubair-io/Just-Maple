@@ -1,5 +1,6 @@
 import Foundation
 import MapleCore
+import MapleNotebooks
 
 extension Bridge {
     func inlineMapleCommand(_ action:String,_ body:[String:Any]) async throws -> Any {
@@ -12,7 +13,8 @@ extension Bridge {
             let doc=try await coordinator.open(documentID:request.documentID)
             guard !doc.readOnly,doc.revision==request.expectedRevision else{throw MapleError.invalid("Save the current request before running Maple.")}
             try InlineMarkdown.validateRequest(request,in:doc.content)
-            let run=try await store.queueInlineMaple(request,provider:model.extractionProvider)
+            let context=try InlineMarkdown.canvasContext(request,in:doc.content)
+            let run=try await store.queueInlineMaple(request,provider:model.extractionProvider,canvasContext:context)
             if run.status=="queued",model.inlineTasks[run.runID]==nil {
                 let provider=ConfiguredInlineMapleProvider(name:run.provider,runner:model.acpRunner)
                 model.inlineTasks[run.runID]=Task { @MainActor [weak self] in
@@ -28,6 +30,17 @@ extension Bridge {
                 }
             }
             return try json(run)
+        case "mapleResponseProposal":
+            let coordinator=try await inlineDocuments()
+            let runID=try string(body,"runID",limit:256)
+            if body["editorSessionID"] != nil {
+                let run=try await store.inlineMapleRun(runID)
+                try await coordinator.setEditorSession(documentID:run.request.documentID,active:true,editorSessionID:string(body,"editorSessionID",limit:128))
+            }
+            return try json(try await coordinator.inlineResponseProposal(runID:runID))
+        case "mapleSearchPage":
+            let cursor:InlineSearchCursor?=body["cursor"] == nil ? nil:try decode(InlineSearchCursor.self,body,"cursor",limit:2000)
+            return try json(try await store.inlineSearchPage(runID:string(body,"runID",limit:256),cursor:cursor))
         case "mapleRuns":return try json(try await store.inlineMapleRuns(documentID:string(body,"documentID",limit:256)))
         case "mapleAttempts":return try json(try await store.inlineMapleAttempts(runID:string(body,"runID",limit:256)))
         case "mapleCancel":return try json(try await store.cancelInlineMaple(string(body,"runID",limit:256)))
@@ -47,16 +60,21 @@ extension Bridge {
     private func applyInlineReply(_ run:InlineMapleRun) async throws -> InlineMapleRun {
         guard let store=model.store,run.status=="unapplied" else{return run}
         let coordinator=try await inlineDocuments()
+        if await coordinator.hasEditorSession(documentID:run.request.documentID) {return run}
         if let mutation=try await store.documentMutation("inline-reply:"+run.runID),mutation.state=="committed" {
             return try await store.markInlineMapleApplied(run.runID,revision:mutation.targetRevision)
         }
-        let document=try await coordinator.open(documentID:run.request.documentID)
+        let document=try await coordinator.open(documentID:run.request.documentID,backgroundRead:true)
         guard !document.readOnly else{throw MapleError.invalid("The note is read only. The reply remains in run history.")}
+        if let draft=document.draft,!(draft.acceptedAutomaticBlockIDs ?? []).isEmpty || !(draft.acceptedReplyRunIDs ?? []).isEmpty {return run}
         var events:[Event]=[]
         for id in run.eventIDs {if let event=try await store.event(id){events.append(event)}}
         let content=try InlineMarkdown.applying(run,to:document.content,events:events)
-        let saved=try await coordinator.commit(documentID:document.documentID,expectedRevision:document.revision,content:content,commandID:"inline-reply:"+run.runID,preserveDraft:true)
-        return try await store.markInlineMapleApplied(run.runID,revision:saved.revision)
+        _ = try await coordinator.commit(documentID:document.documentID,expectedRevision:document.revision,content:content,commandID:"inline-reply:"+run.runID,preserveDraft:true,backgroundWrite:true)
+        // A session may have claimed the document between read and commit. In
+        // that case no reply was written and it stays available for the editor.
+        let latest=try await store.inlineMapleRun(run.runID)
+        return latest.status == "succeeded" ? latest:run
     }
     private func inlineRunPayload(_ run:InlineMapleRun) async throws -> Any {
         var result=try json(run) as? [String:Any] ?? [:]

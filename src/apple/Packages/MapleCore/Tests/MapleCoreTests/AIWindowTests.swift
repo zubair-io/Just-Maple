@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import MapleCore
 struct AIWindowTests {
-    func event(_ id:String,at:Date)->Event {
-        Event(type:"message.received",source:Source(connector:"gmail",account:"fixture",externalID:id,revision:"1"),occurredAt:at,receivedAt:Date(),subjects:["person:self","thread:gmail:shared"],content:"Window fixture interview availability \(id)")
+    func event(_ id:String,at:Date,receivedAt:Date?=nil)->Event {
+        Event(type:"message.received",source:Source(connector:"gmail",account:"fixture",externalID:id,revision:"1"),occurredAt:at,receivedAt:receivedAt ?? Date(),subjects:["person:self","thread:gmail:shared"],content:"Window fixture interview availability \(id)")
     }
     @Test func boundaryUsesOriginalDateNotImportTime()throws {
         let now=Date(),cutoff=now.addingTimeInterval(-AIProcessingWindow.duration)
@@ -45,7 +45,8 @@ struct AIWindowTests {
         await #expect(throws:(any Error).self) {try await ai.extract(old,activities:[])}
     }
     @Test func recentEventDoesNotCarryOldEvidenceOrFreshlyExtractedOldFacts()async throws {
-        let store=try KnowledgeStore(path:":memory:"),now=Date(),old=event("old",at:Date().addingTimeInterval(-31*86400)),fresh=event("fresh",at:Date())
+        let store=try KnowledgeStore(path:":memory:"),now=Date(timeIntervalSince1970:floor(Date().timeIntervalSince1970))
+        let old=event("old",at:now.addingTimeInterval(-31*86400),receivedAt:now),fresh=event("fresh",at:now,receivedAt:now)
         try await store.ingest(old);try await store.ingest(fresh)
         try await store.seedWindowFact(old)
         let raw=try await store.context(for:fresh.id)

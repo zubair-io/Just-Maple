@@ -1,6 +1,29 @@
 # Today and Sources — build plan
 
-Status: Approved and implemented on `codex/today-and-sources`; integrated automated verification passed. September 27, 2026.
+Status: Original September 27 baseline implemented; September 30 completion goal active. The expanded PRD and main PRD are not yet declared complete.
+
+## Current goal and delivery order
+
+1. **Local-first note state and sync — first delivery verified.** Managed editor state now uses read-only Angular signal selectors; Today/notebooks share a bounded latest-draft outbox; owner-token handoffs, durable receipts and abandoned-operation recovery are protected. JustMaple/SugarMaple were read as references. See [state and sync design and evidence](../../docs/engineering/NOTE-STATE-AND-SYNC.md). This is a foundation, not a claim that all sync/PRD work is complete.
+2. **Finish Notes, Today and Sources.** Audit T1–T10, S1–S5, U1, C1–C2 and M1 against actual code and evidence. Close missing behavior before calling validation gates complete. Include source visibility, anchored responses, revision safety, accessibility and companion read-only boundaries.
+3. **Then finish main PRD R1–R6.** Retain the Notes-first surface while improving obligation/waiting correctness, correction durability, relevance and supported source navigation. Report live-quality and physical-device gates separately from deterministic implementation checks.
+4. **Deliver verified Mac builds throughout.** Preserve the running editing session. Record tests, limitations and the build path for each completed slice; do not treat passing transport tests as model-quality evidence.
+
+The [September 30 completion audit](evidence/COMPLETION-AUDIT-2026-09-30.md) records delivered workflows and remaining gates. Prospective invocation capture across production source-processing paths, inline Maple and task previews, explicit Mac UI/database snapshot capture, and offline sampled prediction export are implemented; see [capture design](../../docs/engineering/QUALITY-CAPTURE.md) and [export usage](../../docs/evaluations/daily-action-predictions.md). Remaining product validation includes human selection/adjudication and native/physical-device gates. Complete upstream lineage and historical coverage remain separate, unproven telemetry claims; honest observed final-output recall and usefulness can be reported without that certification. Existing attempt start times and retained prompts cannot establish exact send-time coverage retroactively. Old or incomplete history stays unknown. Companion fixture mode now isolates preferences/storage and blocks all live sync entry points; 31 iPhone unit tests passed on a fresh temporary simulator, which does not replace physical iCloud validation. The offline scorer's v2 coverage checks and exported diagnostic predictions do not establish exhaustive telemetry or replace human adjudication.
+
+The phases below preserve the original implementation plan and its baseline evidence. Their historical completion does not automatically satisfy requirements added on September 30.
+
+Latest reliability delivery: actual single-document process-death recovery, notebook save-copy/retry parity, modal source focus restoration, exact task timing preservation, stale suggestion/recurrence draft protection, and retirement of untouched orphan follow-ups are implemented. Verification and remaining gates are recorded in the completion audit; none of these checks substitutes for physical iCloud, native IME/VoiceOver or human quality evaluation.
+
+The next completed slice adds multi-file operation process-death coverage, composition-safe explicit submission, request-session fencing and separate inspection errors, full task-source inspection, and cloud-placeholder/download/root-recovery fixes. Angular, Core and isolated iPhone tests cover these paths; see the audit for precise counts and limits. Physical-device testing remains pending an idle, saved phone session.
+
+Latest slice: task Later/Waiting drafts now preserve loaded identity/version through desktop and companion commands; shared `@maple/ui` modal handling restores keyboard focus even when switching Markdown views. The isolated Mac WebKit test verifies trusted native marked-text events and exactly-once Markdown persistence, while real OS input methods and VoiceOver remain unverified. See the completion audit for the fresh signed build and 350 Angular/423 Core/30 transport/76 Mac test results.
+
+Sources completion slice adds multi-value filter controls/chips, stable new-arrival notification, separate recorded provider/branch/note-count columns and keyboard table scrolling. Bubble link editing now preserves selection on cancel and defers composition. The audit records 355 Angular/427 Core/30 transport/76 Mac tests, 10,000-event p95 64.62 ms and the fresh signed build.
+
+The source-inspector slice now exposes recorded start/end/duration, explicitly identifies missing historical coverage, and serializes earlier-history reads with retry preservation. The audit records 357 Angular/427 Core/30 transport/76 Mac tests and another signed build. Existing private blind review is ready for human labeling; no actual 50-task capture has been established.
+
+Latest verification closes the native UI-to-disk integration gap with an isolated real WKWebView source insertion/inspection/clear/restore/reload test. Both full synthetic browser journeys now enforce latency and pass at 15.1/15.6 ms p95 with bounded fixture audit logs and full draft/save checks. The audit records the initial fixture-induced failure, exact sample counts and native measurement limits. A fresh signed build passed; outstanding human and physical-device gates remain.
 
 See [implementation and verification record](evidence/IMPLEMENTATION.md) for the shipped contracts, measured results, and remaining environment-dependent checks.
 
@@ -121,8 +144,8 @@ P1 and P2 are independently testable foundations. Ship the smallest internal sli
 | Host integration | `npm run test:apple`; existing Xcode app/scheme, no signing changes |
 | Provider contract changes | `npm run test:providers`; raw-output/context envelopes and retry/repair behavior |
 | Companion | Existing iPhone/native delivery tests using a verified available simulator scheme/destination |
-| User journey | Extended `scripts/daily-note-smoke.mjs`; synthetic fixture label; saved Markdown + SQLite assertions |
+| User journey | `scripts/today-sources-smoke.mjs` and `scripts/writing-source-journey.mjs` for synthetic browser flows; native `WebKitEditorContractTests` for real bridge, saved Markdown and SQLite assertions in an isolated synthetic workspace |
 | Live model quality | Separately consented limited real Jev/downstream run; evidence and failures inspectable; no fixture fallback |
 | Performance | 256 KB editor and ≥10,000-event Sources fixture; record p95 input and query latency against PRD targets |
 
-The approved plan has been implemented. Storage, UI and provider-contract validation use temporary fixtures; live provider quality evaluation remains separate from deterministic integration checks.
+The original plan's implementation is recorded in the linked baseline evidence. The active completion goal above tracks the expanded requirements. Storage, UI and provider-contract validation use temporary fixtures; live provider quality evaluation remains separate from deterministic integration checks.

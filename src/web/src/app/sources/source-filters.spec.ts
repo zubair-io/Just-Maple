@@ -118,8 +118,8 @@ describe("Received-date source filters", () => {
     component.apply();
     expect(router.navigate).toHaveBeenLastCalledWith(["/sources"], {
       queryParams: {
-        type: "email",
-        account: "work",
+        type: ["email"],
+        account: ["work"],
         source: undefined,
         state: undefined,
         receivedFrom: "2026-09-02",
@@ -140,5 +140,65 @@ describe("Received-date source filters", () => {
     expect(service.list.mock.calls).toHaveLength(calls);
     expect(component.filterError()).toContain("on or before");
     component.ngOnDestroy();
+  });
+});
+
+describe('Sources snapshot controls', () => {
+  function setup() {
+    const params = new BehaviorSubject(convertToParamMap({ type: ['email', 'imessage'], source: ['gmail'], account: ['work'], state: ['pending', 'failed'] }));
+    const cursor = { sessionID: 'frozen', offset: 0, fingerprint: 'fixture' };
+    const item = { id: 'old', subject: 'Frozen observation' };
+    const page = { items: [item], total: 1, asOf: 1, snapshotCursor: cursor, hasMoreMatches: false, facets: { types: ['email', 'imessage'], connectors: ['gmail'], accounts: ['work'], states: ['pending', 'failed'] } };
+    const service = { searchText: '', list: vi.fn().mockResolvedValue(page), changes: vi.fn().mockResolvedValue({ hasNewEntries: false }) };
+    const router = { navigate: vi.fn().mockResolvedValue(true) };
+    TestBed.configureTestingModule({ providers: [
+      { provide: SourcesService, useValue: service }, { provide: Router, useValue: router },
+      { provide: ActivatedRoute, useValue: { paramMap: new BehaviorSubject(convertToParamMap({})), queryParamMap: params } },
+      { provide: TodayDocumentService, useValue: { pendingSource: signal(null) } },
+    ] });
+    const component = TestBed.runInInjectionContext(() => new SourcesComponent());
+    component.ngOnInit();
+    return { component, service, router, params, cursor, item };
+  }
+  it('preserves OR values, chips and local search through Back/Forward without reopening an identical snapshot', async () => {
+    const { component, service, router, params } = setup(); await Promise.resolve();
+    expect(service.list.mock.calls[0][0]).toMatchObject({ types: ['email', 'imessage'], connectors: ['gmail'], accounts: ['work'], states: ['failed', 'pending'] });
+    expect(component.activeFilters()).toHaveLength(6);
+    params.next(convertToParamMap({ type: ['imessage', 'email'], source: ['gmail'], account: ['work'], state: ['failed', 'pending'] }));
+    expect(service.list).toHaveBeenCalledTimes(1);
+    component.search = 'private body text'; component.apply(); await Promise.resolve();
+    expect(JSON.stringify(router.navigate.mock.calls.at(-1))).not.toContain('private body text');
+    expect(service.searchText).toBe('private body text');
+    component.type = ['unapplied draft']; component.removeFilter('type', 'email');
+    expect(service.list.mock.calls.at(-1)?.[0].types).toEqual(['imessage']);
+    params.next(convertToParamMap({ type: ['email', 'imessage'] }));
+    expect(service.list.mock.calls.at(-1)?.[0]).toMatchObject({ types: ['email', 'imessage'], text: 'private body text' });
+    component.reset(); expect(component.activeFilters()).toEqual([]); expect(service.searchText).toBe('');
+    component.ngOnDestroy();
+  });
+  it('announces arrivals without changing rows, selection or snapshot until explicit refresh', async () => {
+    const { component, service, cursor } = setup(); await Promise.resolve();
+    const rows = component.rows(); component.selected.set('old');
+    service.changes.mockResolvedValue({ hasNewEntries: true });
+    await component.checkArrivals();
+    expect(service.changes).toHaveBeenCalledWith(expect.objectContaining({ types: ['email', 'imessage'] }), cursor);
+    expect(component.newEntries()).toBe(true); expect(component.rows()).toBe(rows); expect(component.selected()).toBe('old');
+    expect(service.list).toHaveBeenCalledTimes(1);
+    await component.checkArrivals(); expect(service.changes).toHaveBeenCalledTimes(1);
+    await component.refresh(); expect(component.newEntries()).toBe(false); expect(service.list).toHaveBeenCalledTimes(2);
+    component.ngOnDestroy();
+  });
+  it('ignores stale checks and keeps frozen rows on unavailable or expired arrival checks', async () => {
+    const { component, service } = setup(); await Promise.resolve();
+    let finish!: (value: {hasNewEntries: boolean}) => void;
+    service.changes.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const pending = component.checkArrivals();
+    await component.refresh(); finish({ hasNewEntries: true }); await pending;
+    expect(component.newEntries()).toBe(false);
+    const rows = component.rows(); service.changes.mockRejectedValue(Error('Expired'));
+    await component.checkArrivals(); expect(component.rows()).toBe(rows); expect(component.arrivalError()).toContain('Refresh');
+    const calls = service.list.mock.calls.length;
+    component.ngOnDestroy(); await component.checkArrivals();
+    expect(service.list).toHaveBeenCalledTimes(calls);
   });
 });

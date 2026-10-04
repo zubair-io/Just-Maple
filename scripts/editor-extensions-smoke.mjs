@@ -25,7 +25,7 @@ try {
   await expect(editor).toBeVisible();
   const endOfNote=async()=>{await editor.evaluate(el=>{el.focus();const range=document.createRange();range.selectNodeContents(el);range.collapse(false);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);});};
   const dock=page.getByRole('toolbar',{name:'Note formatting',exact:true});await expect(dock).toBeVisible();
-  const dockBounds=await dock.boundingBox();assert.ok(dockBounds.y>800 && dockBounds.y+dockBounds.height<=1000);
+  await expect.poll(async()=>{const b=await dock.boundingBox();return b.y>800 && b.y+b.height<=1000;}).toBe(true);
   await editor.getByRole('heading',{name:'Follow ups',exact:true}).hover();
   const grip=page.getByRole('button',{name:'Block actions; drag to reorder',exact:true});
   await expect(grip).toBeVisible();

@@ -27,7 +27,7 @@ class DatedStub {
     inject(ActivatedRoute)
       .paramMap.pipe(takeUntilDestroyed(inject(DestroyRef)))
       .subscribe((params) => {
-        this.notes.day.set(params.get("date")!);
+
         void this.notes.open(params.get("date")!);
       });
   }
@@ -47,7 +47,10 @@ function shell(flush = vi.fn().mockResolvedValue(true)) {
     act: vi.fn().mockResolvedValue(true),
   };
   const notebooks = {
-    catalog: signal({ notebooks: [] }),
+    catalog: signal<any>({ notebooks: [] }),
+    bookID: signal(""),
+    document: signal<any>(null),
+    open: vi.fn(),
     refresh: vi.fn(),
     selectBook: vi.fn().mockResolvedValue(undefined),
   };
@@ -56,6 +59,7 @@ function shell(flush = vi.fn().mockResolvedValue(true)) {
       provideRouter([
         { path: "sources", component: SourcesStub },
         { path: "processing", component: SourcesStub },
+        { path: "notebooks", component: SourcesStub },
         { path: "", pathMatch: "full", redirectTo: todayRedirect },
         ...dailyRoutes.map((route) =>
           route.component ? { ...route, component: DatedStub } : route,
@@ -88,6 +92,35 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("Today sidebar navigation", () => {
+  it("opens a note from a collapsible notebook folder after preserving daily writing", async () => {
+    const {fixture, component, router, notebooks} = shell();
+    notebooks.catalog.set({notebooks:[{id:'book',name:'Ideas',notes:[{path:'idea.md',name:'A good idea'}]}]});
+    notebooks.selectBook.mockImplementation(async (id: string) => { notebooks.bookID.set(id); });
+    notebooks.open.mockImplementation(async (path: string) => { notebooks.document.set({notebookID:'book',path}); });
+    await router.navigateByUrl('/today'); fixture.detectChanges();
+    const folder=fixture.nativeElement.querySelector('.notebook-folder') as HTMLDetailsElement;
+    expect(folder.open).toBe(false);
+    expect(folder.querySelector('summary')?.textContent).toContain('Ideas');
+    await component.openNotebook('book','idea.md'); fixture.detectChanges();
+    expect(component.daily.flush).toHaveBeenCalled();
+    expect(notebooks.open).toHaveBeenCalledWith('idea.md');
+    expect(router.url).toBe('/notebooks');
+    expect(folder.querySelector('[aria-current="page"]')?.textContent).toBe('A good idea');
+  });
+  it("keeps the current route when daily saving or notebook opening fails", async () => {
+    const flush=vi.fn().mockResolvedValue(false);
+    const {component, router, notebooks}=shell(flush);
+    await router.navigateByUrl('/sources');
+    await component.openNotebook('book','idea.md');
+    expect(notebooks.selectBook).not.toHaveBeenCalled();
+    expect(router.url).toBe('/sources');
+    flush.mockResolvedValue(true);
+    notebooks.selectBook.mockImplementation(async (id: string)=>{notebooks.bookID.set(id);});
+    await component.openNotebook('book','idea.md');
+    expect(notebooks.open).toHaveBeenCalledWith('idea.md');
+    expect(router.url).toBe('/sources');
+  });
+
   it("exposes Processing directly in the sidebar with route-based active styling", async () => {
     const { fixture, router } = shell();
     await router.navigateByUrl("/sources");
@@ -117,7 +150,9 @@ describe("Today sidebar navigation", () => {
         ) as NodeListOf<HTMLAnchorElement>,
       ).map((a) => a.getAttribute("href")),
     ).toEqual(["/yesterday", "/today", "/tomorrow"]);
-    component.daily.day.set("1999-01-01");
+    // The mocked note date remains unrelated to the route; active styling must
+    // derive from the resolved URL, not mutable editor state.
+    expect(component.daily.day()).toBe("1999-01-01");
     fixture.detectChanges();
     expect(
       fixture.nativeElement

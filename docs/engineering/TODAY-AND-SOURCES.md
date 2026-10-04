@@ -87,7 +87,25 @@ Feature compositions remain in `src/web/src/app`; generic controls remain in `pr
 
 A `DocumentID` is an opaque UUID in a generic managed-document registry. A daily document additionally binds `(notebookID, localDate)` through a partial unique constraint. An ordinary notebook file joins this registry on its first managed source/task/request insertion and uses the same codec, coordinator and block/backlink contracts; it has no daily date. Register by granted notebook identity and coordinated relative path, then persist the document ID in reserved metadata. Existing unextended notebooks retain their ordinary save path until registered; all subsequent writes to a managed file must use the coordinator. New daily paths are `YYYY/MM/YYYY-MM-DD.md` relative to the app iCloud Documents/Just Maple notebook, resolved on the Mac independently of client notebook preferences. If iCloud is unavailable, creation fails visibly without a local fallback. Previously registered documents retain their path and identity; unregistered legacy `Daily/YYYY-MM-DD.md` files in that notebook are checked before creating a new dated file. All managed top-level blocks and individually actionable list items have globally unique `BlockID`s. Moves preserve IDs; copy/paste remaps IDs while keeping referenced event/task IDs. Container split retains the leading ID and allocates new IDs; merge retains the first and records the absorbed IDs in history. Duplicate IDs from external files trigger reconciliation rather than silently aliasing actions.
 
+### Local user and Maple collaboration (September 29 implementation)
+
+The shared `MapleEditorComponent` uses Tiptap Collaboration and a local Yjs document. The human and Maple edit the same in-memory document on the Mac; no network collaboration provider is involved. Saved Markdown remains the durable authority, and the existing iCloud file path remains the phone's synchronization boundary. Yjs is seeded once from the opened Markdown, with no initial normalization write or separate writable database copy of the prose.
+
+Managed Today and notebook sessions claim the document while opening, renew a 30-second native lease while mounted, and release it on navigation. Native background writers check that lease inside the serialized commit boundary. While a session owns the note, `documentAutomaticProposal` and `mapleResponseProposal` return read-only, identity-bearing block operations. The editor applies them to its live selection-aware document rather than replacing its content or waiting for typing to stop. Proposals do not make classifier/provider calls.
+
+Maple transactions use a distinct Yjs origin and are excluded from the human's Undo stack. Stable IDs suppress duplicate deliveries; removals require the live block to match the proposed original. A reply requires its request anchor and text still to match. Markdown mode, IME composition, unresolved recovery conflicts, and mismatched disk revisions defer proposals. A normal formatted-editor focus or pending autosave does not defer them.
+
+The Run button and keyboard shortcut share one submission guard: the current editor must be editable, formatted, non-composing and positioned at a live request paragraph. The document service fences the submit across its awaited save. Deferring proposals creates no acceptance receipts; replay after composition must recheck the final composed request before inserting a retained reply.
+
+The merged text uses the existing durable draft, expected-revision commit, mutation journal, and block-index path. Accepted automatic block IDs and reply run IDs travel with drafts and the mutation journal as delivery receipts. Commit finalization records them atomically so deleting a new arrival before its first autosave still suppresses it after reopening or crash recovery. Inline runs are acknowledged only after their reply or accepted delivery receipt is committed. These receipts retain no second prose authority. External file conflicts retain the draft and recovery actions. For documents without an active local editor, the native background projection continues to use serialized, draft-preserving commits.
+
 ### Readable Markdown extension
+
+September 30 follow-up contracts: [local-first state and sync](NOTE-STATE-AND-SYNC.md) and the [completion audit](../../plans/today-and-sources/evidence/COMPLETION-AUDIT-2026-09-30.md) track the expanded PRD and verification. Managed editor ownership now includes a caller-generated `editorSessionID`; stale releases and renewals cannot revoke a successor's claim.
+
+Inline source search captures the ordered immutable result IDs and validated intent before generating its answer. `mapleSearchPage(runID,cursor?)` returns bounded pages of 25 without another model call or search. Cursors bind to the run/snapshot; at most 5,000 matches are captured with a visible cap. Older runs without a snapshot report `not_recorded`, and deleted evidence retains an unavailable row. Paging does not change the answer, citations, provider attempt or run application acknowledgment. User-selected page items enter notes through ordinary explicit source insertion.
+
+Recording references can use the existing optional `attachmentID` for an authorized notebook `Attachments/<hash>.m4a|mp3|wav` resource. Reads/imports use the existing bounded attachment bridge and preserve the immutable event identity. Playback accepts only local audio data URLs, has no autoplay, and exposes missing/unsupported/retry states. Optional captured source text is escaped and expanded on demand. The app CSP permits `media-src data:` only; arbitrary remote/local filesystem URLs are not accepted. This adds playback/linking, not capture or transcription.
 
 Use a versioned, minimal codec layered over the existing Markdown converters. Ordinary prose stays ordinary Markdown; one reserved HTML comment before a managed block carries identity. Typed source atoms serialize as fenced `maple-ref` JSON, which remains inspectable in generic Markdown readers. Requests/replies use ordinary readable prose with reserved metadata comments. Illustrative grammar (IDs shortened for readability):
 
@@ -196,6 +214,11 @@ A row-ID watermark alone is insufficient for a mutable processing-state filter. 
 
 This initial query-session choice prioritizes correct paging under state changes; later optimization can derive temporal membership from history without changing the cursor abstraction.
 
+Implemented Sources controls support OR values within each filter and AND between dimensions. Repeated URL parameters preserve type/connector/account/state selection through Back/Forward; search text stays session-local. Applied chips are distinct from unsubmitted filter edits. An unchanged canonical query does not open another snapshot on route updates. Table columns include the last recorded classifier provider/model, independent downstream branches and distinct active managed-note backlinks. All these row fields are frozen with the page snapshot; missing provider evidence remains explicitly unrecorded.
+
+`sourceList` also returns `snapshotCursor` for a read-only `sourceChanges(query,cursor)` check. The query session captures the maximum event row ID inside the same transaction as materialization. Arrival checks validate the original fingerprint, window and ten-minute TTL, then test new event rows against the same filter predicates. They do not allocate sessions, mutate jobs, call providers, count old state changes as new arrivals, or replace visible rows. The visible Sources page checks every 15 seconds; it announces new matching observations and requires explicit refresh. Errors retain the frozen rows with a refresh message. Existing materialized paging remains necessary for mutable state filters; the arrival watermark does not replace it.
+
+
 ### Audit records
 
 Add append-only records atomically alongside existing queue transitions:
@@ -273,6 +296,8 @@ Use existing encrypted transport and request receipts. Advertise `dailyDocumentV
 
 For managed daily documents, the Mac is the sole commit coordinator during this release. Do not allow the ordinary iPhone notebook direct-file editor to bypass this path; route those files to managed Today or read-only view. Cached writing may be a pending local draft, visibly distinct from saved-on-Mac content. Ordinary unmanaged notebooks keep their existing iCloud behavior. Raw provider diagnostics are not included in companion snapshots. Keep existing payload caps, whole-block/partial flags and missing-day-unavailable semantics. Ship editable phone Today only after delivery ordering/conflict tests pass; otherwise expose honest read-only compatibility.
 
+Download preparation checks fresh metadata and requires actual local bytes before reading an evicted cloud item. Already downloaded/current files remain readable without first requesting another download. Missing cloud placeholders reserve their notebook/note names; create must not replace them with empty files. An explicit open/catalog retry can restore an initially unavailable cloud root on the existing notebook actor, preserving connections and drafts. Ordinary local draft/save operations must not wait on repeated cloud-account lookups.
+
 ### Rollout gates
 
 Add separate capability flags for document codec/journal, Sources audit capture, Today UI and phone editing. Enable audit capture first; complete data migration before routing a user's primary workspace to Today. Retain old routes as adapters and a recovery view through the rollout. Preserve bundle IDs, development team, Automatic signing, existing Xcode project and required Messages access.
@@ -293,3 +318,28 @@ Add separate capability flags for document codec/journal, Sources audit capture,
 Run the existing root commands: `npm run test:core`; `swift build --package-path src/apple/Packages/MapleCore --product just-maple`; `npm test`; `npm run build:web`; `npm run test:apple`; `npm run test:providers` when changing provider adapters. Extend `NotebookTests`, `DailyNotesTests`, `HistoryInboxTests`, extraction tests and native bridge/companion suites rather than replacing coverage. Run iPhone target tests on an available simulator identified from the existing Xcode project; record scheme/destination in build evidence instead of inventing a scheme here.
 
 Extend `scripts/daily-note-smoke.mjs` for the complete journey: temporary notebook + labeled synthetic events → Today write/save/relaunch → mixed email/iMessage/HA references → submitted Maple fixture run → Sources combined filters/history → same inspector from note → clear/restore/move → external-edit conflict. Assert bytes, event/block identities, task state, journal completion and attempt rows, not screenshots alone. Then perform a separately labeled, consented live Jev/downstream quality check; failure is recorded as failure and never masked by fixtures.
+
+### Board completion and ignored sources
+
+The canvas card menu exposes Done/Complete & hide, Hide without completing,
+Ignore GitHub notifications, Ignore messages from this sender, and Ignore all
+messages of this source type. Completion uses acknowledged, versioned task/block
+mutations before clearing attention. A failed completion leaves the card visible.
+Plain source/note completion clears attention without modifying canonical tasks.
+Hidden blocks retain their identities and recoverable history.
+
+SQLite `board_exclusions` stores idempotent board projection preferences. GitHub
+rules match captured email sender domains (`github.com` and
+`notifications.github.com`) across accounts, never a GitHub link in body text.
+Sender and source-type rules are scoped to the captured connector/account.
+Exclusions leave ingestion, immutable evidence, classification and canonical
+linked tasks intact. Automatic refresh retires only provably unedited automatic
+source blocks; user edits remain. Clearing a chosen card retains its tombstone.
+Removing a rule permits future automatic matches without resurrecting previously
+cleared cards. Connections & settings → Ignored messages lists saved rules and
+allows acknowledged removal.
+
+Verification: `BoardExclusionTests`, Today coordination and ignored-settings
+Angular regressions, and `scripts/board-actions-smoke.mjs`. The browser transport
+and screenshots are explicitly synthetic; core tests exercise real SQLite and
+managed Markdown persistence separately from model quality.

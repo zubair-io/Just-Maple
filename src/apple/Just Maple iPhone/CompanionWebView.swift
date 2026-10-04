@@ -32,12 +32,16 @@ struct CompanionWebView: UIViewRepresentable {
         super.init()
         let base=FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0]
         // UI test data is isolated from personal captures, never represented as Mac data.
-        let suffix=ProcessInfo.processInfo.arguments.contains("--companion-ui-test") ? "CompanionUITests" : "Companion"
+        let testHost=Self.isolatedTestHost(arguments:ProcessInfo.processInfo.arguments,hasXCTest:NSClassFromString("XCTestCase") != nil)
+        let suffix=testHost ? "CompanionUITests" : "Companion"
         let directory=base.appendingPathComponent(suffix)
         store=try? CompanionStore(directory:directory)
         if suffix=="CompanionUITests" {notebooks=iPhoneNotebookBridge(directory:directory,cloudRootProvider:{nil})}
         else {notebooks=iPhoneNotebookBridge(directory:directory)}
-        if let store {sync=CompanionSync(store:store);sync?.start()}
+        if let store {sync=CompanionSync(store:store,uiTestMode:testHost);sync?.start()}
+    }
+    static func isolatedTestHost(arguments:[String],hasXCTest:Bool)->Bool {
+        arguments.contains("--companion-ui-test") || hasXCTest
     }
     static func isBundledPage(_ url:URL?)->Bool {
         guard let url,var parts=URLComponents(url:url,resolvingAgainstBaseURL:false) else{return false}

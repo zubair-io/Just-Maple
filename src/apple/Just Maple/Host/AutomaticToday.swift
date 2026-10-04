@@ -27,6 +27,8 @@ extension AppModel {
             if let record = try await store.managedDailyDocument(notebookID: notebookID, day: day),
                isTodayEditing(documentID: record.documentID, at: at) { return }
             let coordinator = try await bridge.todayCoordinator()
+            if let record = try await store.managedDailyDocument(notebookID: notebookID, day: day),
+               await coordinator.hasEditorSession(documentID: record.documentID, at: at) { return }
             let document = try await coordinator.open(notebookID: notebookID, day: day)
             guard !document.readOnly, !isTodayEditing(documentID: document.documentID) else { return }
             _ = try await coordinator.refreshAutomatic(documentID: document.documentID, at: at)

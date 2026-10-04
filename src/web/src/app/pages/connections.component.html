@@ -1,4 +1,5 @@
 @if (scope() === "all") {
+  <maple-board-exclusions />
   <div class="grid">
     <section class="panel">
       <h3>iPhone companion</h3>
@@ -308,6 +309,19 @@
 }
 @if (scope() !== "calendar") {
   <h2>Intelligence</h2>
+  <section class="panel">
+    <h3>Clef · local Ollama classification</h3>
+    <p>Clef classifies messages and source observations on this Mac. Start Ollama with the Clef model installed. Classification can take several seconds; imported sources remain queued while it works.</p>
+    @if (s().classificationProvider === "clef") {
+      <p role="status">{{ s().classificationStatus }}</p>
+    }
+    <mui-button
+      [disabled]="s().busy || s().auditRunning === true || (s().classificationProvider === 'clef' && s().classificationState === 'loading')"
+      (pressed)="classification('clef')"
+      >{{ s().classificationProvider === "clef" ? "Reload Clef" : "Use local Clef" }}</mui-button
+    >
+    <small>Fact and task extraction still use your separately selected provider. A Clef failure retains queued work and never switches to Jev automatically.</small>
+  </section>
   <section class="panel">
     <h3>Laya · experimental local classification</h3>
     <p>

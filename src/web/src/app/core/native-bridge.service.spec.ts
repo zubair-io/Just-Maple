@@ -10,6 +10,21 @@ function host(postMessage: ReturnType<typeof vi.fn>) {
   return TestBed.inject(NativeBridge);
 }
 describe("WKWebView bridge ordering", () => {
+  it("delivers collaboration proposals and presence while a file commit is awaiting acknowledgement", async () => {
+    let finish!: (value: unknown) => void;
+    const postMessage = vi.fn((body: any) => body.action === "documentCommit"
+      ? new Promise(resolve => finish = resolve) : Promise.resolve({ action: body.action }));
+    const bridge = host(postMessage);
+    const saving = bridge.notebook("documentCommit", { documentID: "note" });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    const nextSave = bridge.notebook("documentDraft", { documentID: "note" });
+    for (const action of ["documentPresence", "documentAutomaticProposal", "mapleRun", "mapleResponseProposal"])
+      expect(await bridge.notebook(action)).toEqual({ action });
+    expect(postMessage.mock.calls.map(([body]) => body.action)).not.toContain("documentDraft");
+    finish({ state: "committed" });
+    await Promise.all([saving, nextSave]);
+    expect(postMessage.mock.calls.at(-1)?.[0].action).toBe("documentDraft");
+  });
   it("delivers a cached loaded snapshot while a notebook read is still waiting", async () => {
     let finish!: (v: unknown) => void;
     const postMessage = vi.fn((body: any) =>

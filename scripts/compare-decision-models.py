@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded synthetic Jev/Tev1/Nimble comparison; never opens production stores.
+"""Bounded synthetic Jev/local decision-model comparison; never opens production stores.
 Export with MAPLE_DECISION_EXPORT=NEW_DIR swift test --package-path
 src/apple/Packages/MapleCore --filter DecisionModelExportTests first.
 """
@@ -7,6 +7,14 @@ import argparse, json, math, os, platform, statistics, subprocess, time
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
+
+
+def provider_definitions(ollama_url):
+    local = ollama_url.rstrip('/')
+    return {'jev': ('https://api.typesafe.ai/v1/systemone', 'jev-latest'),
+            **{name: (local+'/v1/systemone', model) for name, model in
+               {'tev1': 'tev1:4b', 'nimble': 'nimble:latest',
+                'clef-flash': 'clef-flash:9b', 'clef': 'clef:latest'}.items()}}
 
 
 def request(url, body, key=None, timeout=120):
@@ -61,14 +69,16 @@ def main():
     parser.add_argument('--corpus',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--split-questions',action='store_true',help='Separate local-only adaptation experiment; one HTTP request per question, never truncates state')
-    parser.add_argument('--providers',nargs='+',choices=['jev','tev1','nimble'],default=['jev','tev1','nimble'])
+    parser.add_argument('--providers',nargs='+',choices=['jev','tev1','nimble','clef-flash','clef'],default=['jev','tev1','nimble'])
+    parser.add_argument('--ollama-url',default='http://127.0.0.1:11435',help='Local Ollama origin (previous benchmark used a separate server on 11435)')
     args=parser.parse_args()
     if args.split_questions and 'jev' in args.providers: parser.error('Question splitting is restricted to local candidates')
     if args.output.exists(): parser.error('Use a new output directory')
     args.output.mkdir(parents=True,mode=0o700)
     labels=json.loads((args.corpus/'labels.json').read_text())
     bodies={name:json.loads((args.corpus/'requests'/(name+'.json')).read_text()) for name in labels}
-    definitions={'jev':('https://api.typesafe.ai/v1/systemone','jev-latest'), 'tev1':('http://127.0.0.1:11435/v1/systemone','tev1:4b'), 'nimble':('http://127.0.0.1:11435/v1/systemone','nimble:latest')}
+    local=args.ollama_url.rstrip('/')
+    definitions=provider_definitions(local)
     key=None
     if 'jev' in args.providers:
         key=os.environ.get('TYPESAFE_API_KEY')
@@ -79,8 +89,8 @@ def main():
     (args.output/'labels.json').write_text(json.dumps(labels,indent=2))
     metadata={'synthetic':True,'machine':platform.platform(),'git':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'requests_per_provider':len(labels)+7,'retries':0,'split_questions':args.split_questions,'corpus':str(args.corpus.resolve()),'definitions':definitions}
     try:
-        metadata['ollama_version']=json.load(urlopen('http://127.0.0.1:11435/api/version',timeout=5))
-        metadata['ollama_models']=json.load(urlopen('http://127.0.0.1:11435/api/tags',timeout=5))
+        metadata['ollama_version']=json.load(urlopen(local+'/api/version',timeout=5))
+        metadata['ollama_models']=json.load(urlopen(local+'/api/tags',timeout=5))
     except URLError:pass
     (args.output/'metadata.json').write_text(json.dumps(metadata,indent=2))
     for provider in args.providers:
@@ -128,6 +138,6 @@ def main():
         (directory/'summary.json').write_text(json.dumps(summary,indent=2))
         print(provider,json.dumps(summary),flush=True)
         if provider!='jev':
-            request('http://127.0.0.1:11435/api/generate',{'model':model,'keep_alive':0,'stream':False})
+            request(local+'/api/generate',{'model':model,'keep_alive':0,'stream':False})
 
 if __name__=='__main__':main()

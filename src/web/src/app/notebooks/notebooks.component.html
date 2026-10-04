@@ -82,7 +82,8 @@
         }}…
       </p>
     }
-    <div class="notebook-layout" [class.editor-open]="notes.document()">
+    <div class="notebook-layout" [class.sidebar-notebooks]="!companion" [class.editor-open]="notes.document()">
+      @if (companion) {
       <aside class="note-list">
         <h2>{{ book.name }}</h2>
         <small
@@ -100,7 +101,8 @@
         }
         <p class="folder-location">{{ book.location }}</p>
       </aside>
-      <section class="note-paper">
+      }
+      <section class="note-paper" [class.note-expanded]="expandedWidth()">
         @if (notes.document(); as doc) {
           <div class="mobile-note-back">
             <mui-button variant="ghost" (pressed)="closeNote()"
@@ -111,6 +113,7 @@
             <span class="note-name">{{
               doc.path.split("/").pop()?.replace(".md", "")
             }}</span>
+            <button type="button" class="note-width-toggle" [attr.aria-pressed]="expandedWidth()" (click)="expandedWidth.set(!expandedWidth())">{{ expandedWidth() ? 'Readable width' : 'Expand width' }}</button>
             <button
               type="button"
               class="note-tools-toggle"
@@ -142,7 +145,7 @@
                   >Save now</mui-button
                 >
                 <mui-button variant="ghost" (pressed)="show('copy')"
-                  >Save a copy</mui-button
+                  >{{ managedMode() ? 'Save recovery copy' : 'Save a copy' }}</mui-button
                 >
                 @if (!managedMode() && !companion && !doc.readOnly) {
                   <mui-button variant="ghost" (pressed)="enableManaged()"
@@ -152,7 +155,7 @@
               </div>
             </section>
           }
-          @if (!managedMode() && notes.status().startsWith("Recovered")) {
+          @if (!managedMode() && (notes.status().startsWith("Recovered") || notes.status().startsWith("Copy saved"))) {
             <p class="indexing-warning" role="status">{{ notes.status() }}</p>
           }
           @if (doc.indexingWarning) {
@@ -188,18 +191,44 @@
                 >Retry opening note</mui-button>
             }
             @if (managed.error()) {
-              <p role="alert">{{ managed.error() }}</p>
-              <mui-button variant="ghost" (pressed)="managed.recoveryCopy()"
-                >Save recovery copy</mui-button
-              >
+              <section class="indexing-warning" role="alert">
+                <p>{{ managed.error() }}</p>
+                <div class="actions">
+                  <mui-button variant="ghost" [disabled]="managed.saving() || managed.actionBusy() || managed.loading()" (pressed)="managed.flush()"
+                    >Retry save</mui-button>
+                  <mui-button variant="ghost" (pressed)="managed.recoveryCopy()"
+                    >Save recovery copy</mui-button>
+                  <mui-button variant="ghost" [disabled]="managed.actionBusy() || managed.loading()" (pressed)="managed.reopen()"
+                    >Reopen current file · retain draft</mui-button>
+                </div>
+                <p>Your Markdown stays available in the editor. A recovery copy keeps this note and its unsaved draft open.</p>
+              </section>
+            }
+            @if (managed.status().startsWith("Recovery copy saved")) {
+              <p class="indexing-warning" role="status">{{ managed.status() }}</p>
             }
             @if (managed.run(); as run) {
               <section class="managed-run" aria-live="polite">
-                <strong>Maple · {{ run.status }}</strong>
+                <strong>Maple · {{ run.status.replaceAll('_', ' ') }}</strong>
                 <p>
                   {{ run.text || run.error || "Request retained on your Mac." }}
                 </p>
                 <p>{{ run.coverage }}</p>
+                @if (run.status === 'queued' || run.status === 'running') {
+                  <mui-button variant="ghost" (pressed)="managed.cancelRun()">Cancel request</mui-button>
+                }
+                @if ((run.status === 'failed' || run.status === 'canceled' || run.status === 'configuration_required') && run.request?.text) {
+                  <mui-button variant="ghost" (pressed)="managed.retryRun()">Retry request</mui-button>
+                }
+                @if (run.status === 'unapplied') {
+                  <p>The request anchor changed. The response is retained and was not inserted over your writing.</p>
+                  <mui-button variant="ghost" [disabled]="managed.actionBusy() || managed.loading() || !!managed.document()?.readOnly" (pressed)="managed.insertReply()">Retry anchored insertion</mui-button>
+                }
+                @if (run.status !== 'queued' && run.status !== 'running') {
+                  <maple-inline-search-results [runID]="run.runID"
+                    [canInsert]="!!editor && !managed.document()?.readOnly && !managed.actionBusy() && !managed.loading() && !editor.source()"
+                    (inspected)="selected.set($event)" (insertRequested)="insertSearchReference($event)" />
+                }
                 @for (id of run.eventIDs; track id) {
                   <mui-button variant="ghost" (pressed)="selected.set(id)"
                     >Inspect evidence</mui-button
@@ -208,6 +237,7 @@
                 <mui-button variant="ghost" (pressed)="managed.loadAttempts()"
                   >Inspect inputs & responses</mui-button
                 >
+                @if (managed.attemptsError()) {<p role="alert">Could not inspect this request: {{ managed.attemptsError() }} Your note is unchanged. Try inspecting again.</p>}
                 @for (attempt of managed.attempts(); track attempt.attemptID) {
                   <details>
                     <summary>
@@ -219,6 +249,14 @@
                   </details>
                 }
               </section>
+            }
+            @if (managed.runs().length > 1) {
+              <details>
+                <summary>Earlier Maple requests</summary>
+                @for (run of managed.runs(); track run.runID) {
+                  <mui-button variant="ghost" (pressed)="managed.selectRun(run)">{{ run.status.replaceAll('_', ' ') }} · {{ run.requestBlockID }}</mui-button>
+                }
+              </details>
             }
           } @else {
             @if (companion && doc.documentID) {
@@ -249,12 +287,21 @@
   }
 }
 @if (notes.error()) {
-  <div class="error notebook-error" role="alert">{{ notes.error() }}</div>
+  <div class="error notebook-error" role="alert">
+    <p>{{ notes.error() }}</p>
+    @if (!managedMode() && notes.document()) {
+      <mui-button variant="ghost" [disabled]="notes.saving() || notes.loading()" (pressed)="notes.flush()">Retry save</mui-button>
+      <mui-button variant="ghost" (pressed)="show('copy')">Save a copy</mui-button>
+      <p>Your unsaved writing remains in this note.</p>
+    }
+  </div>
 }
 @if (dialog) {
-  <section
+  <dialog
+    muiDialogFocus
+    [dialogReturnFocus]="editor?.editor?.view?.dom"
+    (dialogClosed)="dialog = ''"
     class="notebook-name panel"
-    role="dialog"
     aria-label="Name your notebook or note"
   >
     <h2>
@@ -275,11 +322,14 @@
         >{{ dialog === "copy" ? "Save copy" : "Create" }}</mui-button
       ><mui-button (pressed)="dialog = ''">Cancel</mui-button>
     </div>
-  </section>
+  </dialog>
 }
 
 @if (picker()) {
-  <section
+  <dialog
+    mapleSourcePicker
+    [pickerReturnFocus]="editor?.editor?.view?.dom"
+    (pickerClosed)="picker.set(false)"
     class="notebook-source-picker"
     aria-label="Add a source to this notebook"
   >
@@ -309,7 +359,7 @@
     } @empty {
       <p>{{ pickerLoading() ? "Loading sources…" : "No sources match." }}</p>
     }
-  </section>
+  </dialog>
 }
 @if (selected(); as eventID) {
   <maple-source-detail [eventID]="eventID" (closed)="selected.set(null)" />

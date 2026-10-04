@@ -21,6 +21,19 @@ function setup() {
   return { fixture, bridge, act };
 }
 describe("Local classification settings", () => {
+  it("selects local Clef explicitly and keeps unavailable work visible", () => {
+    const { fixture, bridge, act } = setup();
+    expect(fixture.nativeElement.textContent).toContain("Clef · local Ollama classification");
+    const select = Array.from(fixture.nativeElement.querySelectorAll("button")).find((button: any) => button.textContent.includes("Use local Clef")) as HTMLButtonElement;
+    select.click();
+    expect(act).toHaveBeenLastCalledWith({ action: "classificationSelect", provider: "clef" });
+    act.mockClear();
+    bridge.state.update(value => ({ ...value, classificationProvider: "clef", classificationState: "load_failed", classificationStatus: "Clef could not connect. Queued events are retained." }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain("Clef could not connect. Queued events are retained.");
+    expect(act).not.toHaveBeenCalled();
+    expect(bridge.state().classificationProvider).toBe("clef");
+  });
   it("shows the experimental local candidate and visible gate while retaining separate extraction choices", () => {
     const { fixture } = setup(),
       text = fixture.nativeElement.textContent;

@@ -1,5 +1,6 @@
 import { providerNamed } from './providers.js';
 import { providerWorkspace } from './workspace.js';
+import { safeProviderError } from './provider-errors.js';
 // One isolated source per session: unrelated people's data must never share context.
 let provider, directory;
 let input = '';
@@ -19,16 +20,16 @@ try {
   } else {
     if (typeof request.prompt !== 'string' || request.prompt.length > 80000) throw new Error('Invalid prompt');
     directory = await providerWorkspace();
-    const result = await provider.send(request.prompt, {cwd:directory, timeoutMs:150_000});
+    if (request.model !== undefined && (request.provider !== 'codex' || typeof request.model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(request.model))) throw new Error('Invalid model');
+    const result = await provider.send(request.prompt, {cwd:directory, timeoutMs:150_000, model:request.model});
     await provider.archiveSession();
     const text = result.text;
     if (!text || Buffer.byteLength(text)>64000 || result.raw.stopReason !== 'end_turn') throw new Error('Incomplete response');
-    process.stdout.write(JSON.stringify({ok:true,text,sessionID:result.raw.sessionId,durationMs:result.durationMs}));
+    process.stdout.write(JSON.stringify({ok:true,text,model:provider.model,sessionID:result.raw.sessionId,durationMs:result.durationMs}));
   }
 } catch (error) {
   // Never return raw provider diagnostics, which can contain prompts or credentials.
-  const limited = /usage limit|weekly limit|rate.?limit|hit your limit|resets|quota/i.test(String(error?.message));
-  process.stdout.write(JSON.stringify({ok:false,error:['PROVIDER_ISOLATION_UNSUPPORTED','PROVIDER_SUBSCRIPTION_DISABLED'].includes(error?.code) ? error.message : limited ? 'Provider subscription limit reached. Retry after your allowance resets.' : 'Provider could not complete this request. Check its login, subscription allowance and availability, then retry.'}));
+  process.stdout.write(JSON.stringify({ok:false,error:safeProviderError(error),model:provider?.model}));
 } finally {
   // Also retire interrupted/failed requests when the adapter is still reachable.
   try { await provider?.archiveSession(); } catch {}

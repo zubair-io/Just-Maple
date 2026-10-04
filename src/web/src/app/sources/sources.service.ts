@@ -30,7 +30,12 @@ export interface SourceRow {
   receivedAt: string | number;
   stateVersion: number;
   classificationState?: string;
+  /** Last provider actually recorded for this stage, not a guessed selection. */
+  classificationProvider?: string;
+  classificationModel?: string;
   analysisState?: string;
+  analysisBranches?: {stage: string; state: string; provider?: string; model?: string}[];
+  noteCount?: number;
   observedState?: string;
   attentionReason?: string;
   direction?: string;
@@ -40,6 +45,7 @@ export interface SourcePage {
   schemaVersion: number;
   items: SourceRow[];
   nextCursor?: SourceCursor;
+  snapshotCursor?: SourceCursor;
   total: number;
   asOf: string | number;
   hasMoreMatches: boolean;
@@ -70,7 +76,19 @@ export interface SourceArtifact {
   provider?: string;
   model?: string;
 }
+export interface SourceConversation {
+  threadID: string;
+  connector: string;
+  account: string;
+  totalMessages: number;
+  omittedMessages: number;
+  asOf: number | string;
+  messages: { eventID: string; occurredAt: number | string; receivedAt: number | string;
+    sender?: string; direction?: string; content: string; truncated: boolean;
+    selected: boolean; historicalRevision: boolean }[];
+}
 export interface SourceDetail {
+  conversation?: SourceConversation;
   schemaVersion: number;
   row: SourceRow;
   content: string;
@@ -144,6 +162,9 @@ export class SourcesService {
       cursor,
       limit: 60,
     });
+  }
+  changes(query: SourceQuery, cursor: SourceCursor) {
+    return this.bridge.notebook<{ hasNewEntries: boolean }>('sourceChanges', { query, cursor });
   }
   detail(eventID: string, fresh = false): Promise<SourceDetail> {
     if (fresh) this.cache.delete(eventID);

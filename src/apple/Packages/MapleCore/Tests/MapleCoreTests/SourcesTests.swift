@@ -115,6 +115,25 @@ extension SourcesTests {
         let sorted=samples.sorted(),p95=sorted[Int(ceil(Double(samples.count)*0.95))-1]
         print("SOURCES_PERFORMANCE fixture=file-backed_10000_events debug=true warmups=3 samples_ms=\(samples) p95_ms=\(p95)")
         #expect(p95<200,"Warm first-page p95 must remain below 200ms for 10k events.")
+
+        // Walk the same captured result set after the live corpus changes. A large
+        // table must neither repeat/lose rows nor mix new state into old pages.
+        var page=try await store.sourceList(now:now),ids=page.items.map(\.id),pageCount=1
+        let frozenAsOf=page.asOf
+        #expect(page.items.allSatisfy{$0.status=="pending"} && !page.hasMoreMatches)
+        try await store.sourceFixtureStatus("performance-fixture-75",stage:"classification",status:"succeeded")
+        try await store.ingest(source("performance-fixture-new"))
+        while let cursor=page.nextCursor {
+            page=try await store.sourceList(cursor:cursor,now:now)
+            #expect(page.total==10000 && page.asOf==frozenAsOf && !page.hasMoreMatches)
+            #expect(page.items.allSatisfy{$0.status=="pending"})
+            ids += page.items.map(\.id);pageCount += 1
+        }
+        #expect(ids == (0..<10000).map{"performance-fixture-\($0)"})
+        #expect(Set(ids).count==10000 && pageCount==167 && page.items.count==40)
+        #expect(try await store.sourceList(now:now).total==10001)
+        #expect(try await store.sourceDetail(eventID:"performance-fixture-75").row.status=="complete")
+        print("SOURCES_PAGING fixture=file-backed_10000_events rows=\(ids.count) unique_rows=\(Set(ids).count) pages=\(pageCount) final_page_rows=\(page.items.count) fresh_total=10001 frozen_state=pending live_changed_state=complete passed=true")
     }
     @Test func manualFactCheckCapturesActualAttemptAndFailureHistory()async throws {
         let store=try KnowledgeStore(path:":memory:");try await store.ingest(source("a",connector:"notes",type:"note.updated"))

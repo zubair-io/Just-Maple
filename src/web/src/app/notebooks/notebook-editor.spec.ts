@@ -209,6 +209,7 @@ describe("Shared notebook writing experience", () => {
       fixture.debugElement.query(By.directive(MapleEditorComponent))
         .componentInstance;
     const managed = fixture.componentInstance.managed;
+    expect(notebook).toHaveBeenCalledWith("documentOpen", { documentID: "managed-note", collaborative: true, editorSessionID: expect.any(String) });
     const insert = (eventID: string, kind: string) => {
       editor.editor!.commands.setTextSelection(
         editor.editor!.state.doc.content.size - 1,
@@ -249,7 +250,10 @@ describe("Shared notebook writing experience", () => {
       3,
     );
     expect(managed.dirty()).toBe(false);
+    await managed.pollAutomatic();
+    expect(notebook).toHaveBeenCalledWith("documentPresence", expect.objectContaining({ documentID: "managed-note", active: true }));
     fixture.destroy();
+    expect(notebook).toHaveBeenCalledWith("documentPresence", { documentID: "managed-note", active: false, editing: false, editorSessionID: expect.any(String) });
     expect(managed.editing()).toBe(false);
   });
 });

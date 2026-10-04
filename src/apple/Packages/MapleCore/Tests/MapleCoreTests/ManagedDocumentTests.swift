@@ -12,6 +12,22 @@ struct ManagedDocumentTests {
         let store=try KnowledgeStore(path:root.appendingPathComponent("store.db").path)
         return (root,library,store,TodayDocumentCoordinator(store:store,library:library),id)
     }
+    @Test func automaticRecoveryCopiesAreIdempotentAndNeverOverwriteAnEditedCopy() async throws {
+        let (root,library,_,coordinator,id)=try await fixture();defer{try? FileManager.default.removeItem(at:root)}
+        let doc=try await coordinator.open(notebookID:id,day:"2026-10-30",timeZone:"UTC")
+        let content=doc.content+"Recovered private writing\n"
+        let copies=try await withThrowingTaskGroup(of:NotebookDocument.self) {group in
+            for _ in 0..<8 {group.addTask {try await coordinator.recoveryCopy(documentID:doc.documentID,content:content,recoveryKey:"old-revision")}}
+            var result:[NotebookDocument]=[];for try await copy in group {result.append(copy)};return result
+        }
+        #expect(Set(copies.map(\.path)).count==1)
+        let copy=try #require(copies.first)
+        #expect(copy.content==content)
+        #expect(try await library.read(notebookID:id,path:doc.path).content==doc.content)
+        _ = try await library.save(notebookID:id,path:copy.path,content:"Edited recovery",expectedRevision:copy.revision)
+        await #expect(throws:MapleError.self) {try await coordinator.recoveryCopy(documentID:doc.documentID,content:content,recoveryKey:"old-revision")}
+        #expect(try await library.read(notebookID:id,path:copy.path).content=="Edited recovery")
+    }
     @Test func concurrentDayOpensShareOneDurableDocument() async throws {
         let (root,library,store,coordinator,id)=try await fixture();defer{try? FileManager.default.removeItem(at:root)}
         let documents=try await withThrowingTaskGroup(of:TodayDocumentSnapshot.self) { group in

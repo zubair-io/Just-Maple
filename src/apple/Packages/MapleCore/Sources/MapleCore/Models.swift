@@ -71,6 +71,7 @@ public struct Context: Codable, Sendable {
     public let version: String
     public var sourceFacts: [SourceFact]? = nil
     public var world: ReasoningWorldContext? = nil
+    public var messageReview: MessageConversationReview? = nil
 }
 
 public enum JobStage: String, Codable, Sendable, CaseIterable {

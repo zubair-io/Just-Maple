@@ -25,7 +25,7 @@ import MapleCore
     }
     @Test func cachedShellAndDailyWorkStayAvailableDuringRestore() throws {
         for action in ["snapshot","retryStartup","loop","todayOpen","documentOpen","documentCommit","documentDraft",
-                       "noteRead","noteSave","notebookCatalog","sourceList","sourceDetail","documentHistory",
+                       "noteRead","noteSave","notebookCatalog","sourceList","sourceChanges","sourceDetail","documentHistory",
                        "applyTaskAction","introduce","step","clearError","diskAccess","providerSelect","classificationSelect","classificationReload"] {
             try Bridge.validateStartupAction(action,starting:true)
             try Bridge.validateStartupAction(action,starting:false)

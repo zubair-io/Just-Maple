@@ -59,7 +59,7 @@ extension KnowledgeStore {
                   event.source.connector.hasSuffix("_calendar"),
                   !(try calendarBelongsInToday(event, day: day, timeZone: timeZone)),
                   !(try db.rows("SELECT block_id FROM document_auto_insertions WHERE block_id=? AND document_id=?", [segment.id, documentID])).isEmpty else { return false }
-            return segment.content.trimmingCharacters(in: .whitespacesAndNewlines) == (try automaticSourceMarkdown(event, id: segment.id)).trimmingCharacters(in: .whitespacesAndNewlines)
+            return try unchangedAutomaticSource(segment,event:event)
         }.map(\.id)
     }
 }

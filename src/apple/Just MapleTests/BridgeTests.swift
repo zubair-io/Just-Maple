@@ -27,6 +27,99 @@ struct BridgeTests {
         let refreshed=try #require(try await bridge.perform("documentAutoRefresh",["documentID":record.documentID,"editing":false]) as? [String:Any])
         #expect(refreshed["document"] != nil)
     }
+    @Test func collaborativeOpenClaimsIdleEditorUntilExplicitRelease() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        try FileManager.default.createDirectory(at:root.appendingPathComponent("Cloud"),withIntermediateDirectories:true)
+        let library=try NotebookLibrary(registryURL:root.appendingPathComponent("registry.json"),cloudRoot:root.appendingPathComponent("Cloud"))
+        let model=AppModel(directory:root);model.notebooks=library;model.store=try KnowledgeStore(path:":memory:")
+        let bridge=Bridge(model:model)
+        let opened=try #require(try await bridge.perform("todayOpen",["collaborative":true]) as? [String:Any])
+        let id=try #require(opened["documentID"] as? String)
+        let coordinator=try await bridge.todayCoordinator()
+        #expect(await coordinator.hasEditorSession(documentID:id))
+        _ = try await bridge.perform("documentPresence",["documentID":id,"editing":false])
+        #expect(await coordinator.hasEditorSession(documentID:id))
+        let refresh=try #require(try await bridge.perform("documentAutoRefresh",["documentID":id,"editing":false]) as? [String:Any])
+        #expect(refresh["deferred"] as? Bool == true)
+        let proposal=try #require(try await bridge.perform("documentAutomaticProposal",["documentID":id]) as? [String:Any])
+        #expect(proposal["documentID"] as? String == id)
+        #expect(proposal["revision"] as? String == opened["revision"] as? String)
+        _ = try await bridge.perform("documentPresence",["documentID":id,"active":false,"editing":false])
+        #expect(!((await coordinator.hasEditorSession(documentID:id))))
+    }
+
+    @Test func receiptOnlyRecoveryDraftPreventsInlineBackgroundInsertion() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        try FileManager.default.createDirectory(at:root.appendingPathComponent("Cloud"),withIntermediateDirectories:true)
+        let library=try NotebookLibrary(registryURL:root.appendingPathComponent("registry.json"),cloudRoot:root.appendingPathComponent("Cloud"))
+        let model=AppModel(directory:root);model.notebooks=library
+        let store=try KnowledgeStore(path:":memory:");model.store=store
+        let bridge=Bridge(model:model),coordinator=try await bridge.todayCoordinator()
+        let notebook=try await library.ensureJustMapleDailyNotebook()
+        var document=try await coordinator.open(notebookID:notebook)
+        document=try await coordinator.commit(documentID:document.documentID,expectedRevision:document.revision,content:document.content+(try ManagedMarkdown.marker(["id":"fixture-request"]))+"@maple Find email\n",commandID:"fixture-receipt-request")
+        let request=InlineMapleRequest(commandID:"fixture-receipt-run",documentID:document.documentID,requestBlockID:"fixture-request",expectedRevision:document.revision,text:"Find email")
+        let queued=try await store.queueInlineMaple(request,provider:"synthetic-test-fixture")
+        _ = try await store.startInlineMaple(queued.runID)
+        let run=try await store.completeInlineMaple(queued.runID,text:"Fixture response",eventIDs:[],total:0,coverage:"Fixture coverage")
+        _ = try await bridge.perform("documentDraft",["documentID":document.documentID,"revision":document.revision,"content":document.content,"acceptedReplyRunIDs":[run.runID]])
+        let result=try #require(try await bridge.perform("mapleInsertResponse",["runID":run.runID]) as? [String:Any])
+        #expect(result["status"] as? String == "unapplied")
+        #expect(try await library.read(notebookID:notebook,path:document.path).content == document.content)
+        #expect(try await store.documentMutation("inline-reply:"+run.runID) == nil)
+        let proposed=try await coordinator.inlineResponseProposal(runID:run.runID)
+        let skipped=try await coordinator.commit(documentID:document.documentID,expectedRevision:document.revision,content:document.content+proposed.blocks.map(\.markdown).joined(separator:"\n"),commandID:"stale-inline-insertion",preserveDraft:true,backgroundWrite:true)
+        #expect(skipped.revision == document.revision)
+        #expect(try await store.inlineMapleRun(run.runID).status == "unapplied")
+    }
+
+    @Test func editorOwnerTokenProtectsSameDocumentRouteHandoff() async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:root)}
+        try FileManager.default.createDirectory(at:root.appendingPathComponent("Cloud"),withIntermediateDirectories:true)
+        let library=try NotebookLibrary(registryURL:root.appendingPathComponent("registry.json"),cloudRoot:root.appendingPathComponent("Cloud"))
+        let model=AppModel(directory:root);model.notebooks=library;model.store=try KnowledgeStore(path:":memory:")
+        let bridge=Bridge(model:model)
+        let opened=try #require(try await bridge.perform("todayOpen",["collaborative":true,"editorSessionID":"today-owner"]) as? [String:Any])
+        let id=try #require(opened["documentID"] as? String)
+        _ = try await bridge.perform("documentOpen",["documentID":id,"collaborative":true,"editorSessionID":"notebook-owner"])
+        _ = try await bridge.perform("documentPresence",["documentID":id,"active":false,"editorSessionID":"today-owner"])
+        let coordinator=try await bridge.todayCoordinator()
+        #expect(await coordinator.hasEditorSession(documentID:id))
+        await #expect(throws:Error.self) {try await bridge.perform("documentAutomaticProposal",["documentID":id,"editorSessionID":"today-owner"])}
+        _ = try await bridge.perform("documentPresence",["documentID":id,"active":false])
+        #expect(await coordinator.hasEditorSession(documentID:id))
+        let proposal=try #require(try await bridge.perform("documentAutomaticProposal",["documentID":id,"editorSessionID":"notebook-owner"]) as? [String:Any])
+        #expect(proposal["documentID"] as? String == id)
+        _ = try await bridge.perform("documentPresence",["documentID":id,"active":false,"editorSessionID":"notebook-owner"])
+        await #expect(throws:Error.self) {try await bridge.perform("documentAutomaticProposal",["documentID":id,"editorSessionID":"notebook-owner"])}
+        #expect(!((await coordinator.hasEditorSession(documentID:id))))
+    }
+
+    @Test func inlineSearchPageBridgeReturnsBoundedSnapshotWithoutProviderCalls() async throws {
+        let model=AppModel(),store=try KnowledgeStore(path:":memory:");model.store=store
+        let bridge=Bridge(model:model)
+        for index in 0..<26 {
+            let event=Event(id:"page-fixture-\(index)",type:"message.received",source:.init(connector:"gmail",account:"fixture",externalID:"page-fixture-\(index)",revision:"1"),occurredAt:Date(),subjects:["person:self"],content:"Sender: fixture@example.invalid\nSubject: Pagination fixture\nBody:\nExplicit synthetic source.")
+            _ = try await store.ingest(event)
+        }
+        let request=InlineMapleRequest(commandID:"page-fixture-request",documentID:"fixture-document",requestBlockID:"fixture-block",expectedRevision:"fixture-revision",text:"Find fixture email")
+        let run=try await store.queueInlineMaple(request,provider:"synthetic-never-called")
+        _ = try await store.startInlineMaple(run.runID)
+        _ = try await store.inlineSourceSearch(.init(type:"email",sender:"fixture@example.invalid",query:""),runID:run.runID)
+        let first=try #require(try await bridge.perform("mapleSearchPage",["runID":run.runID]) as? [String:Any])
+        #expect(first["schemaVersion"] as? Int == 1 && first["total"] as? Int == 26)
+        #expect((first["items"] as? [[String:Any]])?.count == 25)
+        let cursor=try #require(first["nextCursor"] as? [String:Any])
+        let second=try #require(try await bridge.perform("mapleSearchPage",["runID":run.runID,"cursor":cursor]) as? [String:Any])
+        #expect((second["items"] as? [[String:Any]])?.count == 1)
+        #expect(second["nextCursor"] == nil)
+        #expect(try await store.inlineMapleAttempts(runID:run.runID).isEmpty)
+        #expect(try await store.inlineMapleRun(run.runID).status == "running")
+    }
+
     @Test func editorPresenceExpiresAndCanBeReleased() {
         let model=AppModel(),now=Date(timeIntervalSince1970:1000)
         model.setTodayEditing(documentID:"doc",editing:true,at:now)
@@ -170,6 +263,11 @@ struct BridgeTests {
         #expect(model.inlineTasks.isEmpty)
         let page=try #require(try await bridge.perform("sourceList",["query":["types":[],"connectors":[],"accounts":[],"states":[],"receivedAfter":"2000-01-01T00:00:00.000Z","receivedBefore":"2099-12-31T23:59:59.999Z"]]) as? [String:Any])
         #expect((page["total"] as? Int ?? 0)>0)
+        let cursor=try #require(page["snapshotCursor"] as? [String:Any])
+        let changes=try #require(try await bridge.perform("sourceChanges",["query":["types":[],"connectors":[],"accounts":[],"states":[],"receivedAfter":"2000-01-01T00:00:00.000Z","receivedBefore":"2099-12-31T23:59:59.999Z"],"cursor":cursor]) as? [String:Any])
+        #expect(changes["hasNewEntries"] as? Bool == false)
+        await #expect(throws:(any Error).self){_ = try await bridge.perform("sourceChanges",["query":[:]])}
+
     }
     @Test func routerFragmentsStayWithinBundledDocument() {
         let bridge = Bridge(model: AppModel())
