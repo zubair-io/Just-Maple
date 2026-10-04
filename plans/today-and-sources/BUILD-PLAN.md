@@ -1,0 +1,151 @@
+# Today and Sources — build plan
+
+Status: Original September 27 baseline implemented; September 30 completion goal active. The expanded PRD and main PRD are not yet declared complete.
+
+## Current goal and delivery order
+
+1. **Local-first note state and sync — first delivery verified.** Managed editor state now uses read-only Angular signal selectors; Today/notebooks share a bounded latest-draft outbox; owner-token handoffs, durable receipts and abandoned-operation recovery are protected. JustMaple/SugarMaple were read as references. See [state and sync design and evidence](../../docs/engineering/NOTE-STATE-AND-SYNC.md). This is a foundation, not a claim that all sync/PRD work is complete.
+2. **Finish Notes, Today and Sources.** Audit T1–T10, S1–S5, U1, C1–C2 and M1 against actual code and evidence. Close missing behavior before calling validation gates complete. Include source visibility, anchored responses, revision safety, accessibility and companion read-only boundaries.
+3. **Then finish main PRD R1–R6.** Retain the Notes-first surface while improving obligation/waiting correctness, correction durability, relevance and supported source navigation. Report live-quality and physical-device gates separately from deterministic implementation checks.
+4. **Deliver verified Mac builds throughout.** Preserve the running editing session. Record tests, limitations and the build path for each completed slice; do not treat passing transport tests as model-quality evidence.
+
+The [September 30 completion audit](evidence/COMPLETION-AUDIT-2026-09-30.md) records delivered workflows and remaining gates. Prospective invocation capture across production source-processing paths, inline Maple and task previews, explicit Mac UI/database snapshot capture, and offline sampled prediction export are implemented; see [capture design](../../docs/engineering/QUALITY-CAPTURE.md) and [export usage](../../docs/evaluations/daily-action-predictions.md). Remaining product validation includes human selection/adjudication and native/physical-device gates. Complete upstream lineage and historical coverage remain separate, unproven telemetry claims; honest observed final-output recall and usefulness can be reported without that certification. Existing attempt start times and retained prompts cannot establish exact send-time coverage retroactively. Old or incomplete history stays unknown. Companion fixture mode now isolates preferences/storage and blocks all live sync entry points; 31 iPhone unit tests passed on a fresh temporary simulator, which does not replace physical iCloud validation. The offline scorer's v2 coverage checks and exported diagnostic predictions do not establish exhaustive telemetry or replace human adjudication.
+
+The phases below preserve the original implementation plan and its baseline evidence. Their historical completion does not automatically satisfy requirements added on September 30.
+
+Latest reliability delivery: actual single-document process-death recovery, notebook save-copy/retry parity, modal source focus restoration, exact task timing preservation, stale suggestion/recurrence draft protection, and retirement of untouched orphan follow-ups are implemented. Verification and remaining gates are recorded in the completion audit; none of these checks substitutes for physical iCloud, native IME/VoiceOver or human quality evaluation.
+
+The next completed slice adds multi-file operation process-death coverage, composition-safe explicit submission, request-session fencing and separate inspection errors, full task-source inspection, and cloud-placeholder/download/root-recovery fixes. Angular, Core and isolated iPhone tests cover these paths; see the audit for precise counts and limits. Physical-device testing remains pending an idle, saved phone session.
+
+Latest slice: task Later/Waiting drafts now preserve loaded identity/version through desktop and companion commands; shared `@maple/ui` modal handling restores keyboard focus even when switching Markdown views. The isolated Mac WebKit test verifies trusted native marked-text events and exactly-once Markdown persistence, while real OS input methods and VoiceOver remain unverified. See the completion audit for the fresh signed build and 350 Angular/423 Core/30 transport/76 Mac test results.
+
+Sources completion slice adds multi-value filter controls/chips, stable new-arrival notification, separate recorded provider/branch/note-count columns and keyboard table scrolling. Bubble link editing now preserves selection on cancel and defers composition. The audit records 355 Angular/427 Core/30 transport/76 Mac tests, 10,000-event p95 64.62 ms and the fresh signed build.
+
+The source-inspector slice now exposes recorded start/end/duration, explicitly identifies missing historical coverage, and serializes earlier-history reads with retry preservation. The audit records 357 Angular/427 Core/30 transport/76 Mac tests and another signed build. Existing private blind review is ready for human labeling; no actual 50-task capture has been established.
+
+Latest verification closes the native UI-to-disk integration gap with an isolated real WKWebView source insertion/inspection/clear/restore/reload test. Both full synthetic browser journeys now enforce latency and pass at 15.1/15.6 ms p95 with bounded fixture audit logs and full draft/save checks. The audit records the initial fixture-induced failure, exact sample counts and native measurement limits. A fresh signed build passed; outstanding human and physical-device gates remain.
+
+See [implementation and verification record](evidence/IMPLEMENTATION.md) for the shipped contracts, measured results, and remaining environment-dependent checks.
+
+[PRD](../../docs/product/PRD-TODAY-AND-SOURCES.md) · [Engineering design](../../docs/engineering/TODAY-AND-SOURCES.md) · [Visual plan source](plan.mdx)
+
+## Deliverable and boundaries
+
+Build `/today` as a dated Markdown workspace in the existing Angular/Tiptap app, and `/sources` as the inspection table for ingested observations and their processing history. Source cards in notes and table rows share one evidence inspector. Use JustMaple light/dark tokens and selectively extracted `_Maple` controls. Keep Xcode identity/signing, local SQLite ownership and source repositories unchanged.
+
+The complete product requirements and engineering contracts live in the linked documents. This plan owns ordering and release gates. New filenames below are proposed; existing file paths identify reuse or adaptation. Split a phase into multiple PRs when needed; do not merge an untestable broad “editor rewrite.”
+
+## Hard decisions before implementation
+
+- A local-date Markdown file owns content/order; Tiptap JSON is a disposable cache. SQLite owns source/task truth and durable recovery/history.
+- Freeze v1 document/block IDs and Markdown grammar before migration. Moves retain identity; copies allocate identity; clear is separate from completion.
+- Use an expected-hash file/SQLite journal, not a false cross-resource atomic-save promise. No acknowledged operation can rely only on browser memory.
+- Record append-only processing attempts before promising full history. Legacy missing traces remain explicitly unavailable.
+- Use materialized bounded query sessions for stable Sources paging with mutable processing filters.
+- Mac coordinates managed daily-file writes. Phone editing is capability-gated, visibly pending until acknowledged; raw diagnostics remain on Mac.
+- Today follows the polished editorial mockup; actual colors/fonts/controls come from the verified Just-Maple design system, including its own dark tokens.
+
+## P0 — Baseline and shared theme contract
+
+**Reuse:** existing shell, `@maple/ui`, editor, native bridge, notebook saves, legacy daily tests and donor provenance.
+
+**Work:** capture clean baseline test results separately from preexisting failures. Record the existing dirty worktree and do not reset it. Inventory supported host/companion capabilities. Freeze PRD acceptance IDs and update `docs/product/LIVING-DAILY-NOTE.md`, `docs/ARCHITECTURE.md`, AGENTS.md and `docs/UI-PROVENANCE.md` to the approved ownership model during implementation. Update `scripts/generate-ui-theme.py` to generate both modes from `theme/just-maple-tokens.css`. Extract only select/drawer/tabs/code/audio/command controls actually needed, with dependency/provenance records.
+
+**Exit:** deterministic theme generation; approved light/dark token matrix; existing shell/onboarding remain usable; no donor-repo changes. No migration or default-route flip yet.
+
+## P1 — Prove the document contract
+
+**Reuse:** `NotebookLibrary.swift`, `NotebookService`, `MarkdownEditorComponent`, existing `sugar-editor` converters and notebook regression tests.
+
+**Work:** add codec fixtures and stable IDs under proposed `src/web/src/app/editor/`. Define the corresponding Swift metadata decoder and proposed `MapleDailyDocuments` target in `src/apple/Packages/MapleCore/Package.swift`. Introduce a generic managed-document registry (daily date optional), plus journal/revision/outbox records through the core migration mechanism. Implement per-document serialization, coordinated expected-hash saves, create races, durable drafts and crash recovery. Use a temporary notebook and one email reference as the smallest vertical slice; keep the existing landing route while this proves out.
+
+**Exit:** text + source reference survives formatted/source toggle and relaunch with identical identities. Every injected crash boundary recovers, external edits conflict visibly, duplicate commands have one effect, and unsupported syntax is preserved. New schema can open preexisting databases without rewriting user content.
+
+## P2 — Capture trustworthy source history
+
+**Dependency:** P0; can progress alongside P1 after shared identity contracts settle.
+
+**Reuse:** `KnowledgeStore.ingest`, `ProcessingQueue`, `FactExtraction`, `TaskExtraction`, `StateExtraction`, `decisions.raw_response`, existing leases and retry tests.
+
+**Work:** append processing transitions and provider attempts in the same transactions as queue changes; aggregate current effective branch runs while preserving superseded failures. Introduce the typed provider-result envelope for actual input/output artifacts; capture repair calls, skips, coalescing, retries, stale-result discards and interrupted runs. Expose legacy retained responses with explicit limitations. Add `sourceList/detail/history/artifact/retry` typed bridge actions and query-session/filter indexes by adapting `HistoryInbox.swift` and `WebShell.swift`.
+
+**Exit:** an event that fails, retries, succeeds and has a discarded stale result shows every recorded attempt truthfully. State/account/type/date filters produce stable pages while new events and status changes arrive. No secrets/private HTTP bodies reach logs/UI. Turn on capture before the UI release so history accumulates.
+
+## P3 — Today shell and continuous editor
+
+**Dependencies:** P0 + P1.
+
+**Reuse:** current `app.component.*`, router, daily date navigation, notebook save guards, shared UI and source-mode editor behavior.
+
+**Work:** introduce `TodayComponent` and `TodayDocumentService`; extract shared editor lifecycle and document session; add `/today` and `/today/:date` behind capability gating. Implement empty/opening/saving/recovered/conflict/unavailable states, local date resolution, midnight banner and the app iCloud `Just Maple/YYYY/MM` location. Adapt suggestion/carry-forward reads to offer commands without changing files. Keep `/daily` compatibility and onboard-first behavior.
+
+**Exit:** opening Today creates exactly one correctly dated file; writing survives navigation, relaunch, IME and conflict recovery. JustMaple light/dark shells match the hierarchy of the polished concept. No whole-document refresh overwrites typing.
+
+## P4 — Sources table, shared inspector and note references
+
+**Dependencies:** P2 + P3 for end-to-end note insertion; table work can start on P2 independently.
+
+**Reuse:** HistoryComponent paging/request fencing and original evidence projection; shared source component and extracted controls.
+
+**Work:** implement `sources/` and `source-reference/`. Build semantic table, combined filters, query snapshot notices/counts, direct-linked detail, history and on-demand responses. Add Angular NodeViews for email/iMessage/HA/generic source/recording. Insert into Today or an ordinary notebook with validated anchors; persist backlinks by stable block ID and document revision. Add local media playback for existing recording attachments, with missing-media state.
+
+**Exit:** fixture email/iMessage/HA rows and note cards open the same event revision and history. Filter/Back/Forward/selection behavior works. A source can appear in multiple notes without duplication of evidence. Missing/pruned records are explicit. Keyboard focus restores and table headers remain accessible.
+
+## P5 — Task semantics and inline Maple
+
+**Dependencies:** P1 + P2 + P4.
+
+**Reuse:** canonical task mutation APIs, daily command idempotency/history, configured provider transports and local indexed source retrieval.
+
+**Work:** implement linked-task completion separately from local checklists and attention clearing. Persist task reservations honored by every canonical writer, with startup recovery; journal cross-day moves and suppression tombstones; support explicit restore/copy/Undo semantics. Add `MapleRequest/MapleReply` nodes, explicit submit shortcut/button with commit-before-enqueue ordering and unique reply effects, durable `InlineMapleCoordinator`, bounded `find_sources` capability, sender disambiguation, evidence links, cancel/retry and anchored response application. Preserve provider outputs even when the note anchor conflicts.
+
+**Exit:** the Dominick request returns real ingested evidence or truthful empty/error/coverage feedback once; reopen/retry does not duplicate a reply or task effect. Editing/deleting/moving its anchor during execution is safe. Clear does not complete; completing does not send anything externally; reprojecting does not resurrect tombstones.
+
+## P6 — Migration and companion compatibility
+
+**Dependencies:** P1 + P3 + P4 + P5.
+
+**Reuse:** legacy DailyNotes history, NotebookLibrary coordinated writes, companion encrypted outbox/receipts, existing snapshot caps/tests.
+
+**Work:** implement previewed, idempotent per-day import into dated Markdown with collision recovery copies; retain old history and suppressions. Disable old daily writers for migrated days. Add `dailyDocumentV1/sourceReferenceV1` negotiation and reject legacy mutation paths for migrated documents. Make old phone views safely read-only; route managed daily documents away from direct iCloud notebook writes. Then implement new pending semantic commands and Mac-acknowledged snapshots for editable phone Today if all delivery gates pass.
+
+**Exit:** migration reruns safely and never overwrites existing same-date files. Older clients cannot corrupt migrated days. Phone receipt/snapshot ordering never claims early success. A read-only compatible phone rollout is acceptable; editable support is explicitly gated, not silently half-enabled.
+
+## P7 — Integrated release gate and route switch
+
+**Dependencies:** all preceding gates; P6 may leave phone read-only explicitly.
+
+**Work:** run regression suites, failure injection, UI/native integration and performance measurements. Extend `scripts/daily-note-smoke.mjs` to assert actual file/database effects as well as the visible journey. Review light/dark screenshots of Today, Sources, inspector, error/conflict/empty states and narrow layouts. Validate macOS keyboard/VoiceOver and IME. Enable Today as the default only after migration readiness; preserve route aliases and a recovery view. Record rollout/rollback procedure and capability versions.
+
+**Exit:** PRD T1–T5, S1–S4, U1, C1 and M1 have evidence. No unexplained failures, fabricated live model success or altered signing. A rollback disables new writes while retaining Markdown/journal/history, and never reactivates an old SQLite writer on migrated days.
+
+## Dependency map
+
+```mermaid
+flowchart LR
+  P0[P0 Theme / baseline] --> P1[P1 Codec / journal]
+  P0 --> P2[P2 Processing history]
+  P1 --> P3[P3 Today editor]
+  P2 --> P4[P4 Sources / references]
+  P3 --> P4
+  P4 --> P5[P5 Tasks / inline Maple]
+  P5 --> P6[P6 Migration / companion]
+  P6 --> P7[P7 Release gate]
+```
+
+P1 and P2 are independently testable foundations. Ship the smallest internal slice after P1: one dated note, one source reference, safe save/reload. Do not call that internal slice the completed two-page release.
+
+## Required validation record
+
+| Area | Commands / evidence |
+| --- | --- |
+| Core storage, queues, queries, migration | `npm run test:core` and `swift build --package-path src/apple/Packages/MapleCore --product just-maple` |
+| Angular editor, routes, table and themes | `npm test`, `npm run build:web`, targeted UI library build for extracted controls |
+| Host integration | `npm run test:apple`; existing Xcode app/scheme, no signing changes |
+| Provider contract changes | `npm run test:providers`; raw-output/context envelopes and retry/repair behavior |
+| Companion | Existing iPhone/native delivery tests using a verified available simulator scheme/destination |
+| User journey | `scripts/today-sources-smoke.mjs` and `scripts/writing-source-journey.mjs` for synthetic browser flows; native `WebKitEditorContractTests` for real bridge, saved Markdown and SQLite assertions in an isolated synthetic workspace |
+| Live model quality | Separately consented limited real Jev/downstream run; evidence and failures inspectable; no fixture fallback |
+| Performance | 256 KB editor and ≥10,000-event Sources fixture; record p95 input and query latency against PRD targets |
+
+The original plan's implementation is recorded in the linked baseline evidence. The active completion goal above tracks the expanded requirements. Storage, UI and provider-contract validation use temporary fixtures; live provider quality evaluation remains separate from deterministic integration checks.

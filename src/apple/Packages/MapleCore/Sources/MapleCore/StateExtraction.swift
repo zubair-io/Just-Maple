@@ -17,6 +17,9 @@ extension KnowledgeStore {
         AND (e.id IN (SELECT event_id FROM source_facts) OR e.id IN (SELECT event_id FROM task_extraction_jobs WHERE status='succeeded'))
         """)
     }
+    func enqueueStateIfNeeded(eventID:String)throws {
+        try db.execute("INSERT OR IGNORE INTO state_jobs(event_id) SELECT e.id FROM events e WHERE e.id=? AND e.connector IN ('gmail','imessage','resume','notes','profile') AND (EXISTS(SELECT 1 FROM source_facts f WHERE f.event_id=e.id) OR EXISTS(SELECT 1 FROM task_extraction_jobs t WHERE t.event_id=e.id AND t.status='succeeded'))",[eventID])
+    }
     public func requestStateExtraction(eventID:String) throws {
         guard let event=try event(eventID),["gmail","imessage","resume","notes","profile"].contains(event.source.connector) else {throw MapleError.invalid("Unsupported state source.")}
         try db.execute("INSERT INTO state_jobs(event_id) VALUES (?) ON CONFLICT(event_id) DO UPDATE SET status='pending',token=NULL,error=NULL",[eventID])
@@ -35,7 +38,7 @@ extension KnowledgeStore {
     public func failStateJob(eventID:String,token:String)throws {
         try db.execute("UPDATE state_jobs SET status='failed',error='State extraction failed; retry required',token=NULL WHERE event_id=? AND token=?",[eventID,token])
     }
-    public func finishStateJob(eventID:String,token:String,response:String,provider:String,at:Date=Date())throws {
+    public func finishStateJob(eventID:String,token:String,response:String,provider:String,at:Date=Date(),invocationID:String?=nil)throws {
         guard let event=try event(eventID) else {throw MapleError.invalid("Missing state source.")}
         struct Output:Decodable {let states:[StateCandidate]}
         let candidates=try JSONDecoder().decode(Output.self,from:Data(response.utf8)).states
@@ -69,7 +72,16 @@ extension KnowledgeStore {
                 try history(subjects:[claim.subject,eventID],type:"state.inferred",before:Optional<WorldStateClaim>.none,after:claim,command:token,at:at,actor:provider,effectiveAt:claim.validFrom)
             }
             // Raw validated output includes exact quotes, retained beside immutable evidence.
+            // source_state_update atomically ends the lease parent and all invocation children as committed.
             try db.execute("UPDATE state_jobs SET status='done',response=?,token=NULL,error=NULL WHERE event_id=?",[response,eventID])
+            // Validation and application evidence must commit with the inferred states, never afterwards.
+            if let invocationID {
+                for (kind,payload) in [("validation","valid"),("application","committed")] {
+                    let audit=ProviderAuditEvent(invocationID:invocationID,provider:provider,model:"subscription-default",kind:kind,payload:payload)
+                    try appendProviderInvocation(audit,jobID:eventID,attemptID:token,stage:"state",eventID:eventID)
+                    try recordSourceArtifact(eventID:eventID,attemptID:token+":"+invocationID,stage:"state",kind:kind,payload:payload,provider:provider,model:"subscription-default")
+                }
+            }
         }
     }
 }
@@ -80,6 +92,8 @@ public struct StateExtractionEngine:Sendable {
     public init(store:KnowledgeStore,client:ACPClient){self.store=store;self.client=client}
     public func runOne(eventID:String?=nil)async throws {
         guard let (event,token)=try await store.acquireStateJob(eventID:eventID) else {return}
+        let invocationID=UUID().uuidString,provider="acp/\(client.provider)/state-v1"
+        let audit:ProviderAuditSink={entry in try await store.recordProviderAudit(entry,eventID:event.id,leaseID:token,stage:"state")}
         do {
             try AIProcessingWindow.require(event)
             let prompt="""
@@ -89,10 +103,16 @@ public struct StateExtractionEngine:Sendable {
             SOURCE occurred \(event.occurredAt.ISO8601Format()), connector \(event.source.connector), source subjects \(event.subjects):
             \(String(event.content.prefix(24000)))
             """
-            let response=try await client.request(prompt)
-            try await store.finishStateJob(eventID:event.id,token:token,response:response,provider:"acp/\(client.provider)/state-v1")
+            try await audit(ProviderAuditEvent(invocationID:invocationID,provider:provider,model:"subscription-default",kind:"context",payload:prompt))
+            let response=try await client.request(prompt,beforeDispatch:{
+                try await audit(ProviderAuditEvent(invocationID:invocationID,provider:provider,model:"subscription-default",kind:"dispatch",payload:"",dispatch:ProviderDispatchCapture(evidence:[ProviderInputEvidence(eventID:event.id,occurredAt:event.occurredAt)])))
+            })
+            try await audit(ProviderAuditEvent(invocationID:invocationID,provider:provider,model:"subscription-default",kind:"response",payload:response))
+            try await store.finishStateJob(eventID:event.id,token:token,response:response,provider:provider,invocationID:invocationID)
         } catch {
-            try await store.failStateJob(eventID:event.id,token:token)
+            // No repair request: storage, transport and validation failures all remain retryable work.
+            try? await audit(ProviderAuditEvent(invocationID:invocationID,provider:provider,model:"subscription-default",kind:"validation",payload:"not_applied"))
+            try? await store.failStateJob(eventID:event.id,token:token)
             throw error
         }
     }

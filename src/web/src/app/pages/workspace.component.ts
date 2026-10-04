@@ -1,3 +1,4 @@
+import { QualityCaptureComponent } from '../world/quality-capture.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -31,6 +32,7 @@ import { ConnectionsComponent } from "./connections.component";
     MuiButtonComponent,
     MuiInputComponent,
     ConnectionsComponent,
+    QualityCaptureComponent,
   ],
   templateUrl: "./workspace.component.html",
   changeDetection: ChangeDetectionStrategy.OnPush,

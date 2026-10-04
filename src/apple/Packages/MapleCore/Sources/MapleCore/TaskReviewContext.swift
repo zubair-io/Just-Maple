@@ -82,7 +82,13 @@ extension KnowledgeStore {
         func excerpt(_ event:Event,_ limit:Int)->Event {
             Event(id:event.id,type:event.type,source:event.source,occurredAt:event.occurredAt,receivedAt:event.receivedAt,subjects:event.subjects,content:Self.utf8Excerpt(event.content,limit:limit))
         }
-        return Context(event:excerpt(source,12_000),currentState:claims,recentEvents:replies.map {excerpt($0,1_500)},relatedEvidence:[],version:"task-review-v1/30-day-window",sourceFacts:facts,
-                       world:ReasoningWorldContext(asOf:at,activities:Array(try activities().filter {$0.lifecycle == .active && $0.updatedAt >= cutoff && $0.updatedAt <= at}.prefix(30)),tasks:Array(tasks.prefix(20)),states:states))
+        let review:MessageConversationReview?
+        if let snapshot=try messageReviewContext(for:source.id,at:at)?.messageReview {
+            review=MessageConversationReview(asOf:snapshot.asOf,snapshotHash:snapshot.snapshotHash,totalObservations:snapshot.totalObservations,
+                selectedEventIDs:replies.map(\.id),omittedCount:max(0,snapshot.totalObservations-1-replies.count),
+                truncatedEventIDs:([source].filter{$0.content.utf8.count>12_000}+replies.filter{$0.content.utf8.count>1_500}).map(\.id).sorted(),assessmentScope:snapshot.assessmentScope)
+        } else {review=nil}
+        return Context(event:excerpt(source,12_000),currentState:claims,recentEvents:replies.map {excerpt($0,1_500)},relatedEvidence:[],version:"task-review-v2/30-day-window",sourceFacts:facts,
+                       world:ReasoningWorldContext(asOf:at,activities:Array(try activities().filter {$0.lifecycle == .active && $0.updatedAt >= cutoff && $0.updatedAt <= at}.prefix(30)),tasks:Array(tasks.prefix(20)),states:states),messageReview:review)
     }
 }

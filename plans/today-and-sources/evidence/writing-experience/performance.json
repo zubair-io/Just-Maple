@@ -1,0 +1,8 @@
+{
+  "fixture": "Synthetic near-limit managed Markdown with a heading every ten blocks",
+  "bytes": 248005,
+  "samples": 40,
+  "p95Milliseconds": 26.799999952316284,
+  "targetMilliseconds": 50,
+  "method": "beforeinput to next requestAnimationFrame; browser integration estimate, not native latency"
+}

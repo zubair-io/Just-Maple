@@ -7,6 +7,8 @@ import MapleCompanionTransport
 @MainActor protocol CompanionMacMailbox {
     func pending(limit: Int) async throws -> [SyncRequest]
     func acknowledge(deviceID: UUID, captureIDs: [UUID]) async throws
+    func pendingDailyActions() async throws -> [SyncDeviceDailyAction]
+    func acknowledgeDailyAction(deviceID:UUID,receipt:SyncDailyReceipt)async throws
     func pendingGroupActions() async throws -> [SyncDeviceGroupAction]
     func acknowledgeGroupAction(deviceID:UUID,receipt:SyncGroupActionReceipt)async throws
     func pendingActions() async throws -> [SyncDeviceTaskAction]
@@ -15,6 +17,8 @@ import MapleCompanionTransport
 }
 extension CloudCompanionMailbox: CompanionMacMailbox {}
 extension CompanionMacMailbox {
+    func pendingDailyActions()async throws->[SyncDeviceDailyAction]{[]}
+    func acknowledgeDailyAction(deviceID:UUID,receipt:SyncDailyReceipt)async throws{throw CloudMailboxError.invalidPayload}
     func pendingGroupActions()async throws->[SyncDeviceGroupAction]{[]}
     func acknowledgeGroupAction(deviceID:UUID,receipt:SyncGroupActionReceipt)async throws{throw CloudMailboxError.invalidPayload}
     func pendingActions()async throws->[SyncDeviceTaskAction]{[]}
@@ -160,8 +164,8 @@ extension CompanionMacMailbox {
     }
     func receive(_ data:Data,configuration:PairingConfiguration)async throws->Data {
         let request=try SyncCodec.decode(SyncRequest.self,from:data)
-        guard request.version==1,request.captures.count<=8,["pair","sync"].contains(request.operation),
-              request.operation != "pair" || request.captures.isEmpty else{throw MapleError.invalid("Unsupported companion request.")}
+        guard request.version==1,request.captures.count<=8,(request.dailyActions?.count ?? 0)<=2,(request.dailyActions?.allSatisfy(\.valid) ?? true),["pair","sync"].contains(request.operation),
+              request.operation != "pair" || request.captures.isEmpty && (request.dailyActions?.isEmpty ?? true) else{throw MapleError.invalid("Unsupported companion request.")}
         if cloudConfiguration?.id==configuration.id {
             guard let binding=cloudBinding,cloudEnabled else{throw MapleError.invalid("iCloud connection paused.")}
             let generation=cloudGeneration
@@ -174,13 +178,20 @@ extension CompanionMacMailbox {
                 let receipt=try await store.ingestCompanionCapture(.init(id:capture.id,text:capture.text,createdAt:capture.createdAt),authenticatedDeviceID:request.deviceID)
                 receipts.append(receipt.id)
             }
+            var dailyReceipts:[SyncDailyReceipt]=[]
+            for action in request.dailyActions ?? [] {
+                try await validateCloud(configuration:configuration,accountID:binding.accountID,generation:generation)
+                dailyReceipts.append(try await DailyNoteProjection.apply(action,deviceID:request.deviceID,store:store))
+            }
             let world=try await store.worldSnapshot()
             let people=try await store.people(limit:12)
             try await validateCloud(configuration: configuration, accountID: binding.accountID, generation: generation)
             status="Connected through iCloud · last sync \(Date().formatted(date:.omitted,time:.shortened))"
             var response=CompanionSyncProjection.make(world:world,deviceID:request.deviceID,receivedIDs:receipts,people:people)
+            response.dailyReceipts=dailyReceipts
             try await ReviewedGroupProjection.attach(to:&response,world:world,store:store)
             try await SourceEvidenceProjection.attach(to:&response,store:store)
+            try await DailyNoteProjection.attach(to:&response,store:store)
             try await validateCloud(configuration:configuration,accountID:binding.accountID,generation:generation)
             return try SyncCodec.encode(response)
         }
@@ -207,14 +218,22 @@ extension CompanionMacMailbox {
             let receipt=try await store.ingestCompanionCapture(.init(id:capture.id,text:capture.text,createdAt:capture.createdAt),authenticatedDeviceID:record.deviceID)
             receipts.append(receipt.id)
         }
+        var dailyReceipts:[SyncDailyReceipt]=[]
+        for action in request.dailyActions ?? [] {
+            guard self.record?.configuration.id==configuration.id else{throw MapleError.invalid("Device disconnected.")}
+            dailyReceipts.append(try await DailyNoteProjection.apply(action,deviceID:record.deviceID,store:store))
+        }
         let world=try await store.worldSnapshot()
-            let people=try await store.people(limit:12)
+        let people=try await store.people(limit:12)
         guard self.record?.configuration.id==configuration.id else{throw MapleError.invalid("Device disconnected.")}
         status="Paired · last connected \(Date().formatted(date:.omitted,time:.shortened))"
         // Acknowledged IDs come only from committed ingestion; a lost reply is safe to retry.
         var response=CompanionSyncProjection.make(world:world,deviceID:record.deviceID,receivedIDs:receipts,people:people)
+        response.dailyReceipts=dailyReceipts
         try await ReviewedGroupProjection.attach(to:&response,world:world,store:store)
-            try await SourceEvidenceProjection.attach(to:&response,store:store)
+        try await SourceEvidenceProjection.attach(to:&response,store:store)
+        try await DailyNoteProjection.attach(to:&response,store:store)
+        guard self.record?.configuration.id==configuration.id else{throw MapleError.invalid("Device disconnected.")}
         return try SyncCodec.encode(response)
     }
     private func invalidateCloud(){
@@ -320,6 +339,12 @@ extension CompanionMacMailbox {
                              accountID: String, generation: Int) async throws {
         guard let store = model?.store else { throw MapleError.invalid("Mac data is not ready.") }
         try await validateCloud(configuration: configuration, accountID: accountID, generation: generation)
+        for envelope in try await mailbox.pendingDailyActions() {
+            try await validateCloud(configuration:configuration,accountID:accountID,generation:generation)
+            let receipt=try await DailyNoteProjection.apply(envelope.action,deviceID:envelope.deviceID,store:store)
+            try await validateCloud(configuration:configuration,accountID:accountID,generation:generation)
+            try await mailbox.acknowledgeDailyAction(deviceID:envelope.deviceID,receipt:receipt)
+        }
         for envelope in try await mailbox.pendingGroupActions() {
             try await validateCloud(configuration:configuration,accountID:accountID,generation:generation)
             let action=envelope.action
@@ -403,6 +428,7 @@ extension CompanionMacMailbox {
         try await validateCloud(configuration:configuration,accountID:accountID,generation:generation)
         response.supportedGroupIntents=dependencies.supportedGroupIntents.map(\.rawValue)
         response.supportedTaskIntents=dependencies.supportedTaskIntents.map(\.rawValue)
+        try await DailyNoteProjection.attach(to:&response,store:store)
         var comparable = response; comparable.asOf = Date(timeIntervalSince1970: 0)
         let fingerprint = try JSONSerialization.data(withJSONObject: JSONSerialization.jsonObject(with: SyncCodec.encode(comparable)), options: [.sortedKeys])
         if fingerprint != publishedSnapshot || publishedAt.map({ Date().timeIntervalSince($0) >= 300 }) != false {

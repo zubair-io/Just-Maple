@@ -42,7 +42,8 @@ struct HomeAssistantTests {
         #expect(try await store.ingestSourceSnapshot(same, connector: "home_assistant", scopeIDs: selected) == 0)
         #expect(try await store.ingestSourceSnapshot(b, connector: "home_assistant", scopeIDs: selected) == 1)
         #expect(try await store.ingestSourceSnapshot(a, connector: "home_assistant", scopeIDs: selected) == 1)
-        #expect(try await store.queue().count == 3)
+        #expect(try await store.queue().filter { $0.status == "pending" }.count == 3)
+        #expect(try await store.queue().filter { $0.status == "batched" }.count == 3)
     }
     @Test func rejectsInsecureRemoteURLsInvalidRecordsAndPrivateErrorBodies() async throws {
         #expect(throws: MapleError.self) { try HomeAssistantClient(url: "http://example.com", token: "x") }

@@ -10,6 +10,13 @@ extension KnowledgeStore {
         try excludeExpiredAIWork(at:now)
         return try db.transaction {
             if let eventIDs,eventIDs.isEmpty {return nil}
+            // A crash or repeated context invalidation must not bypass the retry ceiling.
+            // An unexpired fifth lease can still commit; only abandoned/queued work is blocked.
+            try db.execute("""
+                UPDATE processing_jobs SET status='blocked',lease_token=NULL,lease_until=NULL,
+                    error='Classification attempt limit reached. Evidence is saved; retry explicitly when ready.'
+                WHERE attempts>=5 AND (status='pending' OR (status='leased' AND lease_until<=?))
+                """, [String(now.timeIntervalSince1970)])
             let filter=eventIDs.map{" AND p.event_id IN ("+Array(repeating:"?",count:$0.count).joined(separator:",")+")"} ?? ""
             let parameters = [String(now.timeIntervalSince1970), String(now.timeIntervalSince1970)] + (eventIDs ?? [])
             let eligible = "((p.status='pending' AND p.next_attempt_at<=?) OR (p.status='leased' AND p.lease_until<=?))\(filter)"
@@ -35,7 +42,9 @@ extension KnowledgeStore {
                 VALUES (?,(SELECT COALESCE(MAX(last_turn),0)+1 FROM processing_schedule),1)
                 ON CONFLICT(connector) DO UPDATE SET last_turn=excluded.last_turn,dispatches=dispatches+1
                 """,[connector])
-            let lease = Lease(eventID: row["event_id"]!, token: UUID().uuidString)
+            let selectedID = row["event_id"]!
+            let batchID = eventIDs == nil && connector == "home_assistant" ? try batchLegacyHomeWork(startingAt: selectedID, now: now) : nil
+            let lease = Lease(eventID: batchID ?? selectedID, token: UUID().uuidString)
             try db.execute("UPDATE processing_jobs SET status='leased', attempts=attempts+1, lease_token=?, lease_until=?, error=NULL WHERE event_id=?",
                            [lease.token, String(now.addingTimeInterval(duration).timeIntervalSince1970), lease.eventID])
             return lease
@@ -44,18 +53,23 @@ extension KnowledgeStore {
 
     func finish(_ lease: Lease, decision: Decision, raw: Data, now: Date) throws -> Bool {
         try db.transaction {
+            try recordSourceArtifact(eventID:lease.eventID,attemptID:lease.token,stage:"classification",kind:"response",payload:String(decoding:raw,as:UTF8.self),provider:decision.assessment.provider,model:decision.assessment.model)
+            try recordSourceArtifact(eventID:lease.eventID,attemptID:lease.token,stage:"classification",kind:"decision_context",payload:try JSONCodec.string(decision.context))
             guard try owns(lease, now: now) else { return false }
+            guard try classificationMessageReviewIsCurrent(decision.context,at:now) else {
+                try scheduleClassificationRetry(lease,error:"The conversation changed during classification. The response is saved; a fresh assessment is pending or needs explicit retry.",now:now)
+                return false
+            }
             let freshContext = try classificationValidationSnapshot(for: lease.eventID, at: now)
             let fresh = freshContext.currentState
             // A correction/another event can arrive while the network request is in flight.
-            guard Array(fresh.prefix(24)) == decision.context.currentState else {
-                try db.execute("UPDATE processing_jobs SET status='pending', next_attempt_at=?, lease_token=NULL, lease_until=NULL WHERE event_id=?",
-                               [String(now.timeIntervalSince1970), lease.eventID])
+            guard fresh == decision.context.currentState else {
+                try scheduleClassificationRetry(lease, error: "Classification context changed during the request. The response is saved; a fresh assessment is pending or needs explicit retry.", now: now)
                 return false
             }
             let freshFacts = freshContext.sourceFacts
             guard freshFacts == (decision.context.sourceFacts ?? []) else {
-                try db.execute("UPDATE processing_jobs SET status='pending', next_attempt_at=?, lease_token=NULL, lease_until=NULL WHERE event_id=?", [String(now.timeIntervalSince1970), lease.eventID])
+                try scheduleClassificationRetry(lease, error: "Classification facts changed during the request. The response is saved; a fresh assessment is pending or needs explicit retry.", now: now)
                 return false
             }
             // Quiet historical retention does not imply an explicit request is resolved.
@@ -75,27 +89,46 @@ extension KnowledgeStore {
                                       observedAt: decision.context.event.occurredAt, confidence: assessment.stageConfidence,
                                       origin: "inference"))
             }
-            try db.execute("INSERT INTO decisions VALUES (?,?,?)",
+            try reviewPriorTaskProposalsIfNeeded(decision)
+            try db.execute("INSERT INTO decisions VALUES (?,?,?) ON CONFLICT(event_id) DO UPDATE SET json=excluded.json,raw_response=excluded.raw_response",
                            [lease.eventID, try JSONCodec.string(decision), String(decoding: raw, as: UTF8.self)])
+            try commitConversationAttention(decision)
             if decision.route != .retain {
                 let status = [.notify, .askUser].contains(decision.route) ? "unread" : "proposed"
                 try db.execute("INSERT OR IGNORE INTO work_items VALUES (?,?,?,?)",
                                [UUID().uuidString, lease.eventID, decision.route.rawValue, status])
+            }
+            for (table,stage) in [("fact_jobs","facts"),("task_extraction_jobs","tasks")] {
+                if try db.rows("SELECT event_id FROM \(table) WHERE event_id=?",[lease.eventID]).isEmpty {
+                    try db.execute("INSERT INTO source_transitions(event_id,stage,to_state,attempt_id,reason,at) VALUES (?,?,'not_needed',?,'routing_policy_did_not_schedule_stage',?)",[lease.eventID,stage,lease.token,String(now.timeIntervalSince1970)])
+                }
             }
             try db.execute("UPDATE processing_jobs SET status='succeeded', lease_token=NULL, lease_until=NULL, error=NULL WHERE event_id=?", [lease.eventID])
             return true
         }
     }
 
+    func blockClassification(_ lease: Lease, reason: String, now: Date) throws {
+        try db.transaction {
+            guard try owns(lease, now: now) else { return }
+            try db.execute("UPDATE processing_jobs SET status='blocked',error=?,lease_token=NULL,lease_until=NULL WHERE event_id=?", [reason, lease.eventID])
+        }
+    }
+
     func fail(_ lease: Lease, error: String, now: Date) throws {
         try db.transaction {
             guard try owns(lease, now: now) else { return }
-            let attempts = Int(try db.rows("SELECT attempts FROM processing_jobs WHERE event_id=?", [lease.eventID]).first?["attempts"] ?? "1") ?? 1
-            let delay = min(3600.0, 5 * pow(2, Double(min(attempts - 1, 10))))
-            try db.execute("UPDATE processing_jobs SET status=?, next_attempt_at=?, error=?, lease_token=NULL, lease_until=NULL WHERE event_id=?",
-                           [attempts >= 5 ? "blocked" : "pending", String(now.addingTimeInterval(delay).timeIntervalSince1970),
-                            String(error.prefix(500)), lease.eventID])
+            try scheduleClassificationRetry(lease, error: error, now: now)
         }
+    }
+
+    /// Called only within a transaction after confirming current lease ownership.
+    private func scheduleClassificationRetry(_ lease: Lease, error: String, now: Date) throws {
+        let attempts = Int(try db.rows("SELECT attempts FROM processing_jobs WHERE event_id=?", [lease.eventID]).first?["attempts"] ?? "1") ?? 1
+        let delay = min(3600.0, 5 * pow(2, Double(min(attempts - 1, 10))))
+        try db.execute("UPDATE processing_jobs SET status=?, next_attempt_at=?, error=?, lease_token=NULL, lease_until=NULL WHERE event_id=?",
+                       [attempts >= 5 ? "blocked" : "pending", String(now.addingTimeInterval(delay).timeIntervalSince1970),
+                        String(error.prefix(500)), lease.eventID])
     }
 
     private func owns(_ lease: Lease, now: Date) throws -> Bool {

@@ -19,7 +19,7 @@ public enum AIProcessingWindow {
         }
         world=value
         }
-        return Context(event:context.event,currentState:context.currentState.filter{includes($0.observedAt,at:at)},recentEvents:context.recentEvents.filter{includes($0.occurredAt,at:at)},relatedEvidence:context.relatedEvidence.filter{includes($0.occurredAt,at:at)},version:context.version+"/30-day-window",sourceFacts:context.sourceFacts?.filter{ $0.sourceOccurredAt.map{includes($0,at:at)} ?? false },world:world)
+        return Context(event:context.event,currentState:context.currentState.filter{includes($0.observedAt,at:at)},recentEvents:context.recentEvents.filter{includes($0.occurredAt,at:at)},relatedEvidence:context.relatedEvidence.filter{includes($0.occurredAt,at:at)},version:context.version+"/30-day-window",sourceFacts:context.sourceFacts?.filter{ $0.sourceOccurredAt.map{includes($0,at:at)} ?? false },world:world,messageReview:context.messageReview)
     }
 }
 
@@ -32,7 +32,7 @@ extension KnowledgeStore {
         }
     }
     public func modelContext(for id:String,at:Date=Date())throws->Context {
-        let raw=try context(for:id)
+        let raw=try messageReviewContext(for:id,at:at) ?? context(for:id)
         var context=try AIProcessingWindow.filtered(raw,at:at)
         func recentEvidence(_ ids:[String])throws->Bool {
             try ids.allSatisfy { id in guard let source=try event(id) else {return false};return AIProcessingWindow.includes(source.occurredAt,at:at) }
@@ -43,6 +43,6 @@ extension KnowledgeStore {
             world.states=try world.states.filter { state in try state.candidates.allSatisfy{try recentEvidence($0.evidenceIDs)} }
             context.world=world
         }
-        return Context(event:context.event,currentState:claims,recentEvents:context.recentEvents,relatedEvidence:context.relatedEvidence,version:context.version,sourceFacts:context.sourceFacts,world:context.world)
+        return Context(event:context.event,currentState:claims,recentEvents:context.recentEvents,relatedEvidence:context.relatedEvidence,version:context.version,sourceFacts:context.sourceFacts,world:context.world,messageReview:context.messageReview)
     }
 }

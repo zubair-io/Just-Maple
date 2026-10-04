@@ -1,5 +1,5 @@
 @if (companion) {<maple-companion />} @else {
-<mui-app-shell navPlacement="side"
+<mui-app-shell navPlacement="side" [class.daily-workspace]="dailyWorkspace()"
   ><aside slot="nav" class="sidebar">
     <div class="brand">
       <img src="maple-leaf.svg" alt="Just Maple leaf" />Just Maple
@@ -13,13 +13,29 @@
         (activeIdChange)="step($event)"
       />
     } @else {
-      <mui-sidebar
-        role="tree"
-        aria-label="Workspace navigation"
-        [sections]="sections"
-        [activeId]="active()"
-        (activeIdChange)="navigate($event)"
-      />
+      <div class="daily-navigation">
+        <p class="nav-caption">Your days</p><div class="day-rail">
+          @for(day of days(); track day.route){<a [routerLink]="day.route" [attr.aria-current]="activePath() === '/daily/' + day.day ? 'page' : null" [attr.title]="day.day"><span class="nav-station"></span>{{day.label}}</a>}
+        </div>
+        <p class="nav-caption">Notebooks</p><div class="notebook-routes">
+          @for(book of notebooks.catalog().notebooks; track book.id){
+            <details class="notebook-folder" [open]="notebooks.bookID() === book.id && active() === 'notebooks'">
+              <summary><span class="folder-icon" aria-hidden="true">▱</span><span>{{book.name}}</span><small>{{book.notes.length}}</small></summary>
+              <div class="notebook-folder-notes">
+                @for(note of book.notes; track note.path){
+                  <button type="button" [attr.aria-current]="active() === 'notebooks' && notebooks.document()?.notebookID === book.id && notebooks.document()?.path === note.path ? 'page' : null" (click)="openNotebook(book.id, note.path)">{{note.name}}</button>
+                } @empty {<p class="folder-empty">No notes yet</p>}
+                <button class="folder-manage" type="button" (click)="openNotebook(book.id)">Open notebook</button>
+              </div>
+            </details>
+          }
+          <button class="secondary-nav" type="button" (click)="navigate('notebooks')">Manage notebooks</button>
+        </div>
+        <button class="secondary-nav" type="button" [attr.aria-current]="active()==='sources'?'page':null" (click)="navigate('sources')">Sources</button>
+        <a class="secondary-nav processing-link" routerLink="/processing" [attr.aria-current]="active()==='processing'?'page':null">Processing</a>
+        <details class="workspace-tools"><summary>Workspace tools</summary><mui-sidebar role="tree" aria-label="Additional workspace tools" [sections]="sections" [activeId]="active()" (activeIdChange)="navigate($event)" /></details>
+        <button class="secondary-nav" type="button" (click)="navigate('connections')">Connections & settings</button>
+      </div>
     }
     <footer>
       {{ s().name || "Your knowledge lives here." }}<br /><small
@@ -45,7 +61,13 @@
       <p class="notice" role="status">{{ s().message }}</p>
     }
     @if (!s().loaded) {
-      <h1>Opening your workspace…</h1>
+      @if (s().startupError) {
+        <h1>Unable to open your workspace</h1>
+        <p role="alert">{{ s().startupError }}</p>
+        <mui-button [disabled]="bridge.pending()" (pressed)="bridge.act({ action: 'retryStartup' })">Try again</mui-button>
+      } @else {
+        <h1>Opening your workspace…</h1>
+      }
     } @else if (s().step >= 0) {
       <maple-onboarding />
     } @else {

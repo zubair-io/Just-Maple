@@ -68,34 +68,8 @@
         />
       </div>
     </div>
-    <div class="form-grid">
-      <div class="field">
-        <label for="due-kind">Due</label
-        ><select id="due-kind" [(ngModel)]="dueKind">
-          <option value="none">No date</option>
-          <option value="date">Date only</option>
-          <option value="instant">Exact time</option>
-        </select>
-      </div>
-      <div class="field">
-        @if (dueKind === "date") {
-          <label for="due-date">Date</label
-          ><input id="due-date" type="date" [(ngModel)]="dueDate" />
-        }
-        @if (dueKind === "instant") {
-          <label for="due-time">Date and time · this Mac's local time</label
-          ><input id="due-time" type="datetime-local" [(ngModel)]="dueTime" />
-        }
-      </div>
-      <div class="field">
-        <label>Interpretation time zone</label
-        ><mui-input ariaLabel="Task time zone" [(value)]="zone" />
-      </div>
-      <div class="field">
-        <label for="scheduled-date">Schedule for a day (optional)</label
-        ><input id="scheduled-date" type="date" [(ngModel)]="scheduledDate" />
-      </div>
-    </div>
+    <maple-task-timing [field]="dueTiming" prefix="due" label="Due" />
+    <maple-task-timing [field]="scheduledTiming" prefix="scheduled" label="Scheduled" />
     <div class="field">
       <label>Relevant when your location / presence is</label
       ><mui-input
@@ -127,6 +101,7 @@
           </select>
         </div>
         @if (repeat !== "none") {
+          <div class="field"><label>Recurrence time zone</label><mui-input ariaLabel="Recurrence time zone" [(value)]="dueTiming.zone" /></div>
           <div class="field">
             <label for="repeat-start">First occurrence</label
             ><input id="repeat-start" type="date" [(ngModel)]="repeatStart" />
@@ -186,29 +161,7 @@
       </section>
     }
     <maple-desktop-task-actions [nodeID]="'task:' + task.id" />
-    <dl class="detail-list">
-      <dt>Status</dt>
-      <dd>{{ task.status.replaceAll("_", " ") }}</dd>
-      <dt>When</dt>
-      <dd>
-        {{ world.dueLabel(task.due) }}
-        @if (task.due) {
-          · {{ task.due.timeZone }}
-        }
-      </dd>
-      <dt>Scheduled</dt>
-      <dd>{{ world.dueLabel(task.scheduled) }}</dd>
-      <dt>Responsible person</dt>
-      <dd>{{ task.assignee || "Not assigned" }} · private label</dd>
-      <dt>Where</dt>
-      <dd>{{ task.place || "Not set" }}</dd>
-      <dt>People</dt>
-      <dd>{{ task.people.join(", ") || "None linked" }}</dd>
-      @if (task.seriesID) {
-        <dt>Occurrence</dt>
-        <dd>{{ task.occurrenceKey }}</dd>
-      }
-    </dl>
+    <maple-task-facts [task]="task" [nodeID]="'task:' + task.id" />
     @for (item of world.data().attention; track item.id) {
       @if (item.taskID === task.id) {
         <section
@@ -254,12 +207,6 @@
       <p>No context conditions set.</p>
     }
     <maple-task-evidence [nodeID]="'task:' + task.id" />
-    <h2>Sources</h2>
-    @for (id of task.evidenceIDs; track id) {
-      <mui-button (pressed)="evidence(id)">Inspect source</mui-button>
-    } @empty {
-      <p>Captured by you. No external source is linked.</p>
-    }
     <h2>Task history</h2>
     @for (h of history(); track h.id) {
       <div class="item">
@@ -273,13 +220,4 @@
 } @else {
   <h1>Task unavailable</h1>
   <p>It may have changed or this link may be invalid.</p>
-}
-@if (source()) {
-  <section class="panel">
-    <h3>Source evidence</h3>
-    <p class="event">{{ source()!.content }}</p>
-    <mui-button variant="ghost" (pressed)="source.set(null)"
-      >Close source</mui-button
-    >
-  </section>
 }

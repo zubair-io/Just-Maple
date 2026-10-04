@@ -62,6 +62,25 @@ final class SQLite {
         }
     }
 
+    /// Pin all reads and a subsequent backup to one snapshot without a source write transaction.
+    func readTransaction<T>(_ body: () throws -> T) throws -> T {
+        try execute("BEGIN DEFERRED")
+        do {let result=try body();try execute("COMMIT");return result}
+        catch {try? execute("ROLLBACK");throw error}
+    }
+
+    /// Destination is a newly created private empty file; never copy the live WAL with filesystem APIs.
+    func backup(to url:URL)throws {
+        var destination:OpaquePointer?
+        guard sqlite3_open_v2(url.path,&destination,SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX,nil)==SQLITE_OK else {
+            sqlite3_close(destination);throw MapleError.database("Could not open the private capture database.")
+        }
+        defer {sqlite3_close(destination)}
+        guard let operation=sqlite3_backup_init(destination,"main",handle,"main") else {throw MapleError.database("Could not start the database capture.")}
+        let result=sqlite3_backup_step(operation,-1),finished=sqlite3_backup_finish(operation)
+        guard result==SQLITE_DONE,finished==SQLITE_OK else {throw MapleError.database("Database capture did not finish. Retry when current work is quiet.")}
+    }
+
     private func prepare(_ sql: String, _ arguments: [String?]) throws -> OpaquePointer {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK, let statement else { throw failure() }

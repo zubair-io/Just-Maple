@@ -105,6 +105,7 @@ export type MapleIconName =
   // MapleIconShapes.cs so the glyphs stay pixel-identical across platforms.
   | 'cloud'
   | 'calendar'
+  | 'mail'
   // --- Ported verbatim from inline <svg> markup (#956) — native viewBox
   // sizes recorded in `ICON_VIEWBOX` below, one entry per distinct glyph
   // (several inline usages drew the exact same glyph independently; those
@@ -290,6 +291,7 @@ export const ICON_SHAPES: Record<MapleIconName, readonly IconShape[]> = {
   cloud: [path('M4.6 12A2.6 2.6 0 014 6.9a3.6 3.6 0 017-1.3A2.8 2.8 0 0110.6 12H4.6z')],
   // Rounded date grid — Timeline tree's per-node icon (#3024, Windows-first
   // #3022). Path data copied verbatim from MapleIconShapes.cs's "calendar".
+  mail: [rect(2, 3.5, 12, 9, 1.5), path('M2.5 4l5.5 4 5.5-4')],
   calendar: [rect(2.5, 3.5, 11, 10, 1.5), path('M5 2.5v2M11 2.5v2'), path('M2.5 6.5h11')],
 
   // ── Ported verbatim from inline <svg> markup (#956) ──────────────────────

@@ -1,13 +1,25 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { By } from '@angular/platform-browser';
+import { TaskActionsComponent, TaskActionRequest } from '../world/task-actions.component';
 import { CompanionComponent } from './companion.component';
 
 describe('iPhone companion',()=>{
   afterEach(()=>{delete (window as any).webkit;delete (window as any).mapleHost;TestBed.resetTestingModule();});
+  it('opens the shared daily note by default and keeps phone sync state visible',async()=>{
+    (window as any).mapleHost='iphone';
+    const now=new Date();const day=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const send=vi.fn(async(body:any)=>body.action==='todayRead'?{day,path:'2026/09/'+day+'.md',content:'Shared iCloud writing from the Mac',revision:'fixture-revision',readOnly:true}:{deviceID:'fixture',captures:[],connectionStatus:'Waiting for your Mac'});
+    (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    expect(fixture.componentInstance.view()).toBe('daily');expect(fixture.nativeElement.querySelector('maple-companion-today')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Waiting for your Mac');expect(fixture.nativeElement.textContent).toContain('Same iCloud document as your Mac');
+    expect(fixture.nativeElement.textContent).toContain('Shared iCloud writing from the Mac');expect(send.mock.calls.map(c=>c[0].action)).toContain('todayRead');
+  });
   it('keeps a failed capture draft and reuses its request ID for a safe retry',async()=>{
     const send=vi.fn().mockResolvedValueOnce({deviceID:'fixture',captures:[]}).mockRejectedValueOnce(new Error('write failed')).mockResolvedValueOnce({deviceID:'fixture',captures:[{id:'fixture',text:'Keep this thought',createdAt:new Date().toISOString()}]});
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();
     const c=fixture.componentInstance;c.draft='Keep this thought';await c.save();
     expect(c.draft).toBe('Keep this thought');expect(c.error()).toContain('Could not save');
     const first=send.mock.calls[1][0];await c.save();
@@ -17,16 +29,16 @@ describe('iPhone companion',()=>{
     const id='fixture-capture';
     const send=vi.fn().mockResolvedValue({deviceID:'fixture',captures:[{id,text:'Synthetic note',createdAt:new Date().toISOString()}],receivedIDs:[id],paired:true,connectionStatus:'Up to date',mac:{asOf:new Date().toISOString(),activities:[{id:'fixture-area',name:'Fixture area',kind:'area',lifecycle:'active',openTaskCount:1}],people:[{id:'fixture-person',name:'Fixture person',pinned:true,relationship:'Friend'}],states:[],tasks:[{id:'task',title:'Confirm the appointment time',status:'open',activities:['House'],due:'2026-10-01'}]}});
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();fixture.detectChanges();
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();fixture.detectChanges();
     const text=fixture.nativeElement.textContent;
-    expect(text).not.toContain('Saved on this iPhone');expect(text).toContain('Confirm the appointment time');expect(text).toContain('House');expect(text).toContain('Last synced');
+    expect(text).not.toContain('Saved on this iPhone');expect(text).toContain('Confirm the appointment time');expect(text).toContain('House');expect(text).toContain('Mac processing snapshot:');
     expect(text).not.toContain('Waiting for Mac pairing');
     expect(text).toContain('Fixture area');await fixture.componentInstance.selectView('people');fixture.detectChanges();expect(fixture.nativeElement.textContent).toContain('Fixture person');expect(fixture.nativeElement.textContent).toContain('Pinned · Friend');
   });
   it('distinguishes cloud uploads from durable Mac receipts',async()=>{
     const send=vi.fn().mockResolvedValue({deviceID:'fixture',captures:[{id:'cloud-fixture',text:'Synthetic cloud note',createdAt:new Date().toISOString()}],uploadedIDs:['cloud-fixture'],receivedIDs:[],paired:true});
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();fixture.detectChanges();
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();fixture.detectChanges();
     await fixture.componentInstance.selectView('capture');fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Saved in iCloud · waiting for Mac');
     expect(fixture.nativeElement.textContent).not.toContain('Saved on Mac');
@@ -36,7 +48,7 @@ describe('iPhone companion',()=>{
     const state={deviceID:'fixture',captures:[],cloudEnabled:true,connectionStatus:'Waiting for iCloud Keychain'};
     const send=vi.fn().mockResolvedValue(state);
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();
     fixture.detectChanges();
     expect(send.mock.calls.every(c=>c[0].action==='snapshot')).toBe(true);
     expect(fixture.nativeElement.textContent).toContain('Waiting for iCloud Keychain');
@@ -44,7 +56,7 @@ describe('iPhone companion',()=>{
     expect(fixture.nativeElement.textContent).not.toContain('Pause connection');
   });
   it('does not pretend to be connected without a native host',async()=>{
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();fixture.detectChanges();
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();fixture.detectChanges();
     expect(fixture.componentInstance.loaded()).toBe(false);
     expect(fixture.nativeElement.textContent).toContain('Connecting to iCloud');
     expect(fixture.nativeElement.textContent).toContain('could not be opened');
@@ -52,7 +64,7 @@ describe('iPhone companion',()=>{
   it('uses the shared overview and preserves Mac task order when filtering activities',async()=>{
     const send=vi.fn().mockResolvedValue({deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),displayName:'Fixture User',states:[{property:'presence',status:'known',value:'Home'}],activities:[{id:'area',name:'Shared area',kind:'area',lifecycle:'active',openTaskCount:2}],tasks:[{id:'b',title:'First from Mac',status:'waiting',activities:['Shared area']},{id:'a',title:'Second from Mac',status:'open',activities:['Shared area']}]}});
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();fixture.detectChanges();
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('maple-overview-surface')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Fixture User');
     expect(fixture.nativeElement.textContent).not.toContain('Keep the thought');
@@ -64,7 +76,7 @@ describe('iPhone companion',()=>{
     const tasks=[waiting,...Array.from({length:8},(_,i)=>({id:'task-'+i,title:'Action '+i,status:'open',activities:[]})),{id:'done',title:'Completed work',status:'completed',activities:[]}];
     const activities=Array.from({length:9},(_,i)=>({id:'area-'+i,name:'Area '+i,kind:'area',lifecycle:'active',openTaskCount:0}));
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:vi.fn().mockResolvedValue({deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],tasks,activities}})}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();fixture.detectChanges();
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();fixture.detectChanges();
     expect([...fixture.nativeElement.querySelectorAll('[attention] [data-task-id]')].map((e:any)=>e.getAttribute('data-task-id'))).toEqual(['task-0','task-1','task-2','task-3','task-4']);
     expect(fixture.nativeElement.textContent).not.toContain(waiting.title);
     expect(fixture.nativeElement.textContent).toContain('Waiting · 1');
@@ -89,7 +101,7 @@ describe('iPhone companion',()=>{
     const state={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],tasks:[task]}};
     const send=vi.fn(async(body:any)=>body.action==='copySource'?{copied:true}:state);
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();fixture.detectChanges();
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();fixture.detectChanges();
     fixture.componentInstance.openTask(task);fixture.detectChanges();
     const open=[...fixture.nativeElement.querySelectorAll('[role="dialog"] button')].find((b:any)=>b.textContent.includes('Open source')) as HTMLButtonElement;open.click();fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('maple-source-inspector').textContent).toContain(source.content);
@@ -105,7 +117,7 @@ describe('iPhone companion',()=>{
       return state;
     });
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();fixture.detectChanges();
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();fixture.detectChanges();
     const c=fixture.componentInstance;fixture.nativeElement.querySelector('[data-task-id] button').click();fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[role="dialog"]').textContent).toContain(task.detail);
     const complete=[...fixture.nativeElement.querySelectorAll('[role="dialog"] button')].find((b:any)=>b.textContent.includes('Mark complete')) as HTMLButtonElement;complete.click();await fixture.whenStable();fixture.detectChanges();
@@ -127,7 +139,7 @@ describe('iPhone companion',()=>{
       return {deviceID:'fixture',captures:[]};
     });
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();fixture.detectChanges();
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();fixture.detectChanges();
     const component=fixture.componentInstance;
     const navigation=fixture.nativeElement.querySelector('nav[aria-label="Companion sections"]');
     expect(navigation.textContent).toContain('Notebooks');
@@ -135,7 +147,7 @@ describe('iPhone companion',()=>{
     expect(fixture.nativeElement.querySelector('maple-notebooks')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Fixture notebook');
     await component.notes.selectBook('book');await component.notes.open('note.md');fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('maple-markdown-editor')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('maple-editor')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('This large note was not queued for the Mac.');
     expect(fixture.nativeElement.querySelector('.notebook-layout.editor-open')).not.toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Notes in this notebook');
@@ -149,7 +161,7 @@ describe('iPhone companion',()=>{
     const group={review:{id:'review',context:{intentID:'Review requests',actorID:'Fixture actor',targetID:'Fixture target',connector:'fixture',account:'fixture',sourceScopeID:'thread'},maximumSpan:3600,children:[{nodeID:'task:a',expectedVersion:1},{nodeID:'task:b',expectedVersion:2}]},titles:{'task:a':'First request','task:b':'Second request'}};
     const state={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],tasks,reviewedGroups:[group],reviewedGroupTotal:1}};
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:vi.fn().mockResolvedValue(state)}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();const c=fixture.componentInstance;
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();const c=fixture.componentInstance;
     c.showTasks();fixture.detectChanges();
     expect(c.ungroupedTasks().map(t=>t.id)).toEqual(['task:c']);
     const details=fixture.nativeElement.querySelector('maple-companion-groups details');
@@ -170,9 +182,38 @@ describe('iPhone companion',()=>{
     const prefix='A'.repeat(80);
     const state={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],activities:[{id:'one',name:prefix+' one',kind:'area',lifecycle:'active',openTaskCount:1},{id:'two',name:prefix+' two',kind:'area',lifecycle:'active',openTaskCount:1}],tasks:[{id:'a',title:'First',status:'open',activities:[prefix],activityIDs:['one']},{id:'b',title:'Second',status:'open',activities:[prefix],activityIDs:['two']}]}};
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:vi.fn().mockResolvedValue(state)}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();
     fixture.componentInstance.showActivity('two');fixture.detectChanges();
     expect(fixture.componentInstance.visibleTasks().map(t=>t.id)).toEqual(['b']);
+  });
+  it('blocks a live companion action draft and reopens against the latest task version', async()=>{
+    const task={id:'task:fixture',title:'Fixture action',status:'open',version:3,activities:[]};
+    const state:any={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],tasks:[task],supportedTaskIntents:['done','later','waiting','notNeeded','undo']}};
+    const send=vi.fn().mockResolvedValue(state);
+    (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();const c=fixture.componentInstance;
+    c.showTasks();c.openTask(task);fixture.detectChanges();
+    const child:TaskActionsComponent=fixture.debugElement.query(By.directive(TaskActionsComponent)).componentInstance;
+    child.open('waiting');child.waitingOn='Fixture reviewer';
+    c.state.set({...state,mac:{...state.mac,tasks:[{...task,version:4}]}});fixture.detectChanges();
+    child.send('waiting');expect(send.mock.calls.filter(([body])=>body.action==='taskAction')).toHaveLength(0);
+    expect(child.staleDraft()).toBe(true);
+    child.cancel();child.open('waiting');child.send('waiting');await fixture.whenStable();
+    expect(send.mock.calls.filter(([body])=>body.action==='taskAction')[0][0]).toMatchObject({taskID:task.id,expectedVersion:4,intent:'waiting'});
+  });
+  it('retries the same companion command without rebasing its target/version onto refreshed data', async()=>{
+    const state:any={deviceID:'fixture',captures:[],mac:{asOf:new Date().toISOString(),states:[],tasks:[],supportedTaskIntents:['done','later','waiting','notNeeded','undo']}};
+    let fail=true;
+    const send=vi.fn(async(body:any)=>{if(body.action==='taskAction'&&fail){fail=false;throw Error('lost response');}return state;});
+    (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();const c=fixture.componentInstance;
+    const request:TaskActionRequest={identity:'task:original',expectedVersion:3,requestID:'same-request',intent:'undo',issuedAt:'2030-01-01T10:00:00Z',payload:{targetMutationID:'original-change'}};
+    await c.applyTask(request);
+    c.state.set({...state,mac:{...state.mac,tasks:[{id:'task:original',title:'Updated',version:4,status:'open',activities:[]}]}});
+    await c.applyTask(request);
+    const commands=send.mock.calls.map(([body])=>body).filter(body=>body.action==='taskAction');
+    expect(commands).toHaveLength(2);expect(commands[1]).toEqual(commands[0]);
+    expect(commands[1]).toMatchObject({taskID:'task:original',expectedVersion:3,id:'same-request',payload:{targetMutationID:'original-change'}});
   });
   it('uses typed row completion, preserves retries, and offers Undo after the task disappears',async()=>{
     const task={id:'task:fixture',title:'Fixture action',status:'open',version:3,activities:[]};
@@ -185,7 +226,7 @@ describe('iPhone companion',()=>{
       return state;
     });
     (window as any).webkit={messageHandlers:{mapleCompanion:{postMessage:send}}};
-    const fixture=TestBed.createComponent(CompanionComponent);await fixture.whenStable();const c=fixture.componentInstance;
+    const fixture=TestBed.createComponent(CompanionComponent);fixture.componentInstance.view.set('overview');await fixture.whenStable();const c=fixture.componentInstance;
     await c.completeTask(task);await c.completeTask(task);
     const commands=send.mock.calls.map(c=>c[0]).filter(c=>c.action==='taskAction');
     expect(commands[0]).toEqual(commands[1]);expect(commands[0].intent).toBe('done');

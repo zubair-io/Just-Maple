@@ -6,8 +6,8 @@ import TaskList from '@tiptap/extension-task-list';
 import { markdownBodyToDoc } from './sugar-editor/markdown-to-document';
 import { docToMarkdown } from './sugar-editor/document-to-markdown';
 import { getTableExtensions } from './sugar-editor/table-extension';
-import { splitMarkdown,requiresSource } from './markdown-editor.component';
-describe('Copied Sugar Maple Markdown engine',()=>{
+import { splitMarkdown,requiresSource } from './markdown-format';
+describe('Notebook Markdown compatibility',()=>{
  it('round trips headings, emphasis, lists, checklists, code and tables',()=>{
  const raw='# Morning\n\n**Bold** and *quiet*.\n\n- First\n- Second\n\n- [x] Done\n- [ ] Next\n\n```js\nconst x = 1;\n```\n\n| Name | Value |\n| --- | --- |\n| One | Two |\n';
  const doc=markdownBodyToDoc(raw);const editor=new Editor({element:document.createElement('div'),extensions:[StarterKit,TaskList,TaskItem,...getTableExtensions()],content:doc});

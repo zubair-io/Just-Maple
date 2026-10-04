@@ -1,5 +1,8 @@
 import { bootstrapApplication } from "@angular/platform-browser";
 import { provideRouter, withHashLocation } from "@angular/router";
+import { dailyRoutes, todayRedirect } from "./app/today/daily.routes";
+import { SourcesComponent } from "./app/sources/sources.component";
+import { DailyNoteComponent } from "./app/daily-note/daily-note.component";
 import { AppComponent } from "./app/app.component";
 import { WorkspaceComponent } from "./app/pages/workspace.component";
 import { OverviewComponent } from "./app/world/overview.component";
@@ -14,6 +17,26 @@ bootstrapApplication(AppComponent, {
   providers: [
     provideRouter(
       [
+        ...dailyRoutes,
+        {
+          matcher: (segments) =>
+            segments[0]?.path === "sources" && segments.length <= 2
+              ? {
+                  consumed: segments,
+                  ...(segments[1]
+                    ? { posParams: { eventID: segments[1] } }
+                    : {}),
+                }
+              : null,
+          component: SourcesComponent,
+        },
+        {
+          path: "daily-legacy",
+          component: DailyNoteComponent,
+          canDeactivate: [
+            (component: DailyNoteComponent) => component.notes.flush(),
+          ],
+        },
         { path: "overview", component: OverviewComponent },
         { path: "tasks", component: TasksComponent },
         { path: "tasks/:id", component: TaskDetailComponent },
@@ -26,8 +49,14 @@ bootstrapApplication(AppComponent, {
           component: StateComponent,
           data: { lens },
         })),
-        { path: "history", component: HistoryComponent },
-        {path:"notebooks", component:NotebooksComponent,canDeactivate:[(component:NotebooksComponent)=>component.notes.flush()]},
+        { path: "history", redirectTo: "sources", pathMatch: "full" },
+        {
+          path: "notebooks",
+          component: NotebooksComponent,
+          canDeactivate: [
+            (component: NotebooksComponent) => component.flush(),
+          ],
+        },
         ...[
           { path: "people", page: "People" },
           { path: "schedule", page: "Calendar" },
@@ -42,9 +71,9 @@ bootstrapApplication(AppComponent, {
         })),
         { path: "notes", redirectTo: "notebooks", pathMatch: "full" },
         { path: "calendar", redirectTo: "schedule", pathMatch: "full" },
-        { path: "activity", redirectTo: "history", pathMatch: "full" },
-        { path: "", redirectTo: "overview", pathMatch: "full" },
-        { path: "**", redirectTo: "overview" },
+        { path: "activity", redirectTo: "sources", pathMatch: "full" },
+        { path: "", redirectTo: todayRedirect, pathMatch: "full" },
+        { path: "**", redirectTo: todayRedirect },
       ],
       withHashLocation(),
     ),

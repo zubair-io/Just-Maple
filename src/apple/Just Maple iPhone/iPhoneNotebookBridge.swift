@@ -8,7 +8,9 @@ import UniformTypeIdentifiers
 @MainActor final class iPhoneNotebookBridge: NSObject, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
     private let directory: URL
     private let cloudRootProvider: @Sendable () async -> URL?
+    private let afterInitialCatalog: (@Sendable (URL?) async -> Void)?
     private var library: NotebookLibrary?
+    private var cloudUnavailable = false
     private var picking: CheckedContinuation<URL?, Never>?
     private(set) var indexingNotice: String?
 
@@ -17,16 +19,32 @@ import UniformTypeIdentifiers
              await Task.detached(priority: .utility) {
                  FileManager.default.url(forUbiquityContainerIdentifier: "iCloud.com.just.maple.JapaneseMaple")?.appendingPathComponent("Documents", isDirectory: true)
              }.value
-         }) {
+         }, afterInitialCatalog: (@Sendable (URL?) async -> Void)? = nil) {
         self.directory = directory; self.library = library; self.cloudRootProvider = cloudRootProvider
+        self.afterInitialCatalog = afterInitialCatalog
     }
 
-    static let actions: Set<String> = ["notebookCatalog", "notebookConnect", "notebookDisconnect", "notebookCreate", "noteDraft", "noteReadDraft", "noteCreate", "noteRead", "noteSave"]
+    static let actions: Set<String> = ["todayRead", "notebookCatalog", "notebookConnect", "notebookDisconnect", "notebookCreate", "noteDraft", "noteReadDraft", "noteCreate", "noteRead", "noteSave"]
 
     func command(_ action: String, body: [String: Any], presenting: UIViewController? = nil, store: CompanionStore) async throws -> Any {
         guard Self.actions.contains(action) else { throw NotebookError.invalid("Unsupported notebook action.") }
-        let library = try await notebookLibrary()
+        let library = try await notebookLibrary(recheckCloud:["notebookCatalog","todayRead","notebookCreate"].contains(action))
         switch action {
+        case "todayRead":
+            let day = try string(body, "day", limit: 10)
+            let id = try await library.ensureJustMapleDailyNotebook()
+            let folder = try await library.prepareDailyDirectory(notebookID: id, day: day)
+            // Resolve the same app-owned file as the Mac, never the legacy block cache.
+            // Absence is not permission to create a competing document on the phone.
+            let current = try await library.readIfPresent(notebookID: id, path: folder + "/" + day + ".md")
+            let document: NotebookDocument?
+            if let current { document = current }
+            else { document = try await library.readIfPresent(notebookID: id, path: "Daily/" + day + ".md") }
+            guard let document else { throw NotebookError.invalid("This day's note has not arrived in iCloud Drive yet. Open this day on your Mac, then retry here.") }
+            var result = try json(document) as! [String: Any]
+            result["day"] = day
+            result["readOnly"] = true
+            return result
         case "notebookCatalog": return try json(try await library.catalog())
         case "notebookConnect":
             guard let presenting else { throw NotebookError.invalid("Open Maple to choose a notebook folder.") }
@@ -49,7 +67,11 @@ import UniformTypeIdentifiers
             let document: NotebookDocument
             switch action {
             case "noteCreate": document = try await library.createNote(notebookID: id, name: string(body, "name", limit: 180))
-            case "noteSave": document = try await library.save(notebookID: id, path: string(body, "path", limit: 4096), content: string(body, "content", limit: 256000, allowEmpty: true), expectedRevision: string(body, "revision", limit: 128))
+            case "noteSave":
+                let path=try string(body,"path",limit:4096)
+                let current=try await library.read(notebookID:id,path:path)
+                guard !(current.content.hasPrefix("---\n") && current.content.contains("\nmaple:\n")) else {throw NotebookError.invalid("This managed document is read-only on iPhone. Open Today on your Mac to save changes; your local draft is retained.")}
+                document = try await library.save(notebookID: id, path:path, content: string(body, "content", limit: 256000, allowEmpty: true), expectedRevision: string(body, "revision", limit: 128))
             default: document = try await library.read(notebookID: id, path: string(body, "path", limit: 4096))
             }
             indexingNotice = nil
@@ -64,7 +86,10 @@ import UniformTypeIdentifiers
                 }
             }
             var result = try json(document) as! [String: Any]
-            if let indexingNotice { result["indexingWarning"] = indexingNotice }
+            if document.content.hasPrefix("---\n") && document.content.contains("\nmaple:\n") {
+                result["readOnly"]=true
+                result["indexingWarning"]="Managed note · read-only on iPhone. Changes are coordinated by your Mac."
+            } else if let indexingNotice { result["indexingWarning"] = indexingNotice }
             return result
         }
     }
@@ -76,14 +101,26 @@ import UniformTypeIdentifiers
         bytes[6] = (bytes[6] & 0x0f) | 0x50; bytes[8] = (bytes[8] & 0x3f) | 0x80
         return UUID(uuid: (bytes[0],bytes[1],bytes[2],bytes[3],bytes[4],bytes[5],bytes[6],bytes[7],bytes[8],bytes[9],bytes[10],bytes[11],bytes[12],bytes[13],bytes[14],bytes[15]))
     }
-    private func notebookLibrary() async throws -> NotebookLibrary {
-        if let library { return library }
+    private func notebookLibrary(recheckCloud:Bool) async throws -> NotebookLibrary {
+        // Local saves and draft writes must not wait on an unavailable cloud
+        // account. Explicit open/catalog retries can restore the cloud root.
+        if let library, !cloudUnavailable || !recheckCloud { return library }
         let root = await cloudRootProvider()
         if let root { try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true) }
-        if let library { return library }
+        if let library {
+            if let root {try await library.restoreCloudRootIfNeeded(root);cloudUnavailable=false}
+            return library
+        }
         let created = try NotebookLibrary(registryURL: directory.appendingPathComponent("notebooks.json"), cloudRoot: root)
         _ = try await created.catalog()
-        library = created; return created
+        if let afterInitialCatalog {await afterInitialCatalog(root)}
+        // The catalog lookup suspends; another command may already have installed
+        // the shared library. Keep that authority rather than replacing it.
+        if let library {
+            if let root {try await library.restoreCloudRootIfNeeded(root);cloudUnavailable=false}
+            return library
+        }
+        library = created;cloudUnavailable = root == nil;return created
     }
     private func string(_ body: [String: Any], _ key: String, limit: Int, allowEmpty: Bool = false) throws -> String {
         guard let value = body[key] as? String, value.utf8.count <= limit, allowEmpty || !value.isEmpty else { throw NotebookError.invalid("Invalid notebook field: \(key).") }

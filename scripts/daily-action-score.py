@@ -37,12 +37,90 @@ def ratio(numerator, denominator):
             "rate": numerator / denominator if denominator else None}
 
 
+def coverage_report(predictions, sources, tasks, snapshots):
+    """Validate capture assertions; unknown coverage is never inferred from empty arrays."""
+    reasons = []
+    run = predictions["run"]
+    capture = run.get("coverage", {"status": "unknown"})
+    require(isinstance(capture, dict) and capture.get("status") in {"complete", "incomplete", "unknown"}, "Invalid run coverage")
+    modern = predictions["schemaVersion"] == 2
+    if not modern:
+        reasons.append("legacy_prediction_contract")
+    if run.get("wholePipeline") is not True:
+        reasons.append("whole_pipeline_not_captured")
+    complete = capture["status"] == "complete" and modern
+    if not complete:
+        reasons.append("run_coverage_" + capture["status"])
+    start = through = None
+    if complete:
+        require(isinstance(capture.get("captureID"), str) and capture["captureID"], "Complete coverage needs captureID")
+        start, through = timestamp(capture["startedAt"]), timestamp(capture["throughAt"])
+        require(start <= through <= timestamp(run["at"]), "Invalid capture interval")
+        require("completionHistory" in capture, "Complete capture needs completionHistory coverage")
+        projection_ids = capture.get("projectionSnapshotIDs")
+        require(isinstance(projection_ids, list) and len(set(projection_ids)) == len(projection_ids)
+                and set(projection_ids) == set(snapshots), "Complete coverage needs every exact projection snapshot")
+        require(all(start <= timestamp(row["at"]) <= through for row in snapshots.values()), "Projection snapshot outside capture interval")
+    completion_coverage = capture.get("completionHistory", "unknown")
+    require(completion_coverage in {"complete", "incomplete", "unknown"}, "Invalid completion history coverage")
+    if completion_coverage != "complete":
+        reasons.append("completion_history_" + completion_coverage)
+    if not sources and not tasks:
+        reasons.append("no_sampled_population")
+    rows = []
+    calls = {}
+    for kind, samples, predictions_key in [("source", sources, "sourcePredictions"), ("task", tasks, "taskPredictions")]:
+        by_id = {row["sampleID"]: row for row in predictions[predictions_key]}
+        for sid, sample in samples.items():
+            prediction = by_id.get(sid)
+            if prediction is None:
+                rows.append({"sampleKind": kind, "sampleID": sid, "status": "unknown", "reason": "prediction_missing"})
+                continue
+            row = prediction.get("coverage", {"status": "unknown", "modelCallCount": None})
+            require(isinstance(row, dict) and row.get("status") in {"complete", "incomplete", "unknown"}, "Invalid sample coverage")
+            count = row.get("modelCallCount")
+            require(count is None or type(count) is int and count >= 0, "Invalid modelCallCount")
+            status = row["status"] if modern else "unknown"
+            if status == "complete":
+                require(complete, "Complete sample coverage requires complete capture coverage")
+                require(row.get("captureID") == capture["captureID"], "Sample captureID mismatch")
+                require(type(count) is int, "Complete sample coverage needs modelCallCount")
+                origin = timestamp(row["originAt"])
+                snapshot = timestamp(sample["snapshotAt"] if kind == "source" else snapshots[sample["snapshotID"]]["at"])
+                require(start <= origin <= snapshot <= through, "Sample origin/snapshot outside capture interval; pre-cutover history is unknown")
+                invocations = {}
+                for evidence in prediction["modelEvidence"]:
+                    invocation = evidence.get("invocationID")
+                    require(isinstance(invocation, str) and invocation, "Complete evidence needs invocationID")
+                    sent = timestamp(evidence["sentAt"])
+                    require(origin <= sent <= snapshot, "Model send outside sample capture interval")
+                    event = evidence["eventID"]
+                    occurred = timestamp(evidence["occurredAt"])
+                    if invocation not in invocations:
+                        invocations[invocation] = {"sentAt": sent, "events": {}}
+                    call = invocations[invocation]
+                    require(call["sentAt"] == sent, "Invocation send time changed")
+                    require(event not in call["events"], "Duplicate invocation evidence")
+                    call["events"][event] = occurred
+                require(len(invocations) == count, "modelCallCount disagrees with captured invocation evidence")
+                for invocation, call in invocations.items():
+                    require(invocation not in calls or calls[invocation] == call, "Invocation evidence differs between samples")
+                    calls[invocation] = call
+            rows.append({"sampleKind": kind, "sampleID": sid, "status": status,
+                         "modelCallCount": count, "reason": None if status == "complete" else "sample_coverage_" + status})
+    if any(row["status"] != "complete" for row in rows):
+        reasons.append("sample_coverage_incomplete")
+    return {"complete": not reasons, "status": "complete" if not reasons else "incomplete",
+            "reasons": reasons, "samples": rows, "completeSampleCount": sum(row["status"] == "complete" for row in rows),
+            "sampleCount": len(rows), "capturedUniqueModelCalls": len(calls)}
+
+
 def score(manifest, labels, predictions):
     for document, kind in [(manifest, "manifest"), (labels, "labels"), (predictions, "predictions")]:
-        require(document.get("schemaVersion") == 1 and document.get("kind") == kind, "Wrong document kind/version: " + kind)
+        require(document.get("schemaVersion") in ({1, 2} if kind == "predictions" else {1}) and document.get("kind") == kind, "Wrong document kind/version: " + kind)
     require(manifest.get("datasetKind") in {"live_local", "synthetic_scorer_test"}, "Unknown dataset kind")
     require(labels.get("manifestID") == predictions.get("manifestID") == manifest.get("id"), "Manifest IDs differ")
-    require(predictions.get("run", {}).get("wholePipeline") is True, "Predictions must represent the whole pipeline")
+    require(type(predictions.get("run", {}).get("wholePipeline")) is bool, "Whole-pipeline capture assertion missing")
     require(predictions["run"].get("id") and predictions["run"].get("pipelineVersion"), "Run identity/version missing")
     timestamp(predictions["run"]["at"])
     timestamp(manifest["selection"]["frozenAt"])
@@ -130,6 +208,7 @@ def score(manifest, labels, predictions):
         if cid in completion_labels:
             require(completion_labels[cid]["support"] in {"supported", "unsupported", "ambiguous"}, "Invalid completion label")
 
+    coverage = coverage_report(predictions, sources, tasks, snapshots)
     metrics = {}
     for split in sorted(SPLITS):
         source_ids = [sid for sid, sample in sources.items() if sample["split"] == split and eligible[sid]]
@@ -173,7 +252,7 @@ def score(manifest, labels, predictions):
             "taskUnpredicted": sum(t not in task_predictions for t in task_ids),
         }
     holdout = metrics["holdout"]
-    complete = (counts == TARGETS and len(sources) == 100 and len(tasks) == 50
+    complete = (coverage["complete"] and counts == TARGETS and len(sources) == 100 and len(tasks) == 50
                 and set(source_labels) == set(source_predictions) == set(sources)
                 and set(task_labels) == set(task_predictions) == set(tasks)
                 and set(completion_labels) == set(completions))
@@ -184,12 +263,12 @@ def score(manifest, labels, predictions):
             "sampleReadiness": {"complete": complete, "sourceTargets": TARGETS, "eligibleSourceCounts": counts, "visibleTaskCount": len(tasks), "visibleTaskTarget": 50,
                                 "sourceCountsBySplit": {split: {stratum: sum(s["split"] == split and s["stratum"] == stratum and eligible[sid] for sid, s in sources.items()) for stratum in TARGETS} for split in sorted(SPLITS)},
                                 "ineligibleSourceIDs": [s for s, ok in eligible.items() if not ok]},
-            "metrics": metrics, "modelAgeViolations": policy_violations,
+            "metrics": metrics, "modelAgeViolations": policy_violations, "coverage": coverage,
             "proposedGates": {
-                "holdoutRecall85Percent": None if recall is None else recall >= .85,
-                "eachHoldoutTopList90Percent": None if not top or any(t["unlabeled"] or t["unpredicted"] or t["ambiguous"] or not t["denominator"] for t in top) else all(t["rate"] >= .90 for t in top),
-                "noUnsupportedAutomaticCompletions": None if not completion["observed"] or completion["unlabeled"] or completion["ambiguous"] else completion["numerator"] == 0,
-                "thirtyDayModelPolicy": not policy_violations},
+                "holdoutRecall85Percent": None if not coverage["complete"] or recall is None else recall >= .85,
+                "eachHoldoutTopList90Percent": None if not coverage["complete"] or not top or any(t["unlabeled"] or t["unpredicted"] or t["ambiguous"] or not t["denominator"] for t in top) else all(t["rate"] >= .90 for t in top),
+                "noUnsupportedAutomaticCompletions": None if not coverage["complete"] or not completion["observed"] or completion["unlabeled"] or completion["ambiguous"] else completion["numerator"] == 0,
+                "thirtyDayModelPolicy": None if not coverage["complete"] else not policy_violations},
             "releaseConclusion": "not_established: labeling completeness, independent holdout and non-quality reliability gates require human review"}
 
 

@@ -1,0 +1,2697 @@
+{
+  "synthetic": true,
+  "prompt_sha256": "60207fd9c2c0cb59673d558d1b2784c0b70e0b9b4240fa15ba3f3f5f3752d782",
+  "rows": [
+    {
+      "id": "synthetic-acknowledgment",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 16.382599042000948,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.03684731616131883
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.10465535149347686
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.039107352069480426
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.010001316137736036
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.06575862945070046
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "social",
+            "probabilities": {
+              "commitment": 0.020316897286931854,
+              "information": 0.041512891172910876,
+              "noise": 0.08274069715931877,
+              "plan_change": 0.003333542411299043,
+              "request": 0.004891184657791037,
+              "social": 0.841681666119993,
+              "uncertain": 0.005523121191755338
+            },
+            "confidence": 0.6730298491622082
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.010259732609998722
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.043425669133572806
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.048756678043388166
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.010657953470237352
+          }
+        },
+        "usage": {
+          "input_tokens": 3682,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-autopay",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 6.628949416990508,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.037633016769089776
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.04857340594562522
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.2054989756893074
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.010475767929933322
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.21003971329864302
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "information",
+            "probabilities": {
+              "commitment": 0.010587561087332843,
+              "information": 0.8608148046580482,
+              "noise": 0.09772493331895907,
+              "plan_change": 0.00476712382713131,
+              "request": 0.011049528416308158,
+              "social": 0.003789552221857138,
+              "uncertain": 0.011266496470363213
+            },
+            "confidence": 0.7166498341588411
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.015437354941879054
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.01886305291504051
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.1270416552099237
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.05686012941712564
+          }
+        },
+        "usage": {
+          "input_tokens": 3687,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-completed-request",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 7.0975842909974745,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.04041897722231798
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.13462915221181185
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.06120543471907525
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.010520269495171564
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.1376279019416567
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "information",
+            "probabilities": {
+              "commitment": 0.1879392145384144,
+              "information": 0.5499281316638733,
+              "noise": 0.18284905725677383,
+              "plan_change": 0.006703573808902065,
+              "request": 0.010851476509572796,
+              "social": 0.04271827095348762,
+              "uncertain": 0.019010275268975765
+            },
+            "confidence": 0.35950223996767916
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.012529535869592465
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.02381194236015334
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.09711723475531596
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.009853621048322473
+          }
+        },
+        "usage": {
+          "input_tokens": 3681,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-decision",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 7.483299792002072,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.8434496116570642
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.018427664007750994
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.1273145909253207
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.010009483750338301
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.8504321949843184
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "request",
+            "probabilities": {
+              "commitment": 0.005640022641228698,
+              "information": 0.051261755119417565,
+              "noise": 0.0036749719467890425,
+              "plan_change": 0.0020378937574816623,
+              "request": 0.9296129285428064,
+              "social": 0.0021607538099563703,
+              "uncertain": 0.0056116741823203095
+            },
+            "confidence": 0.8330257026593453
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.020384469384351917
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.8741918640063944
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.46739622699839284
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.01862227223777819
+          }
+        },
+        "usage": {
+          "input_tokens": 3700,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "ask_user",
+        "review": "true",
+        "reply_needed": "true"
+      }
+    },
+    {
+      "id": "synthetic-delegated",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 7.642974040994886,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.04063762603547963
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.3624997770494343
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.11866037011503436
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.009405774051682027
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.4354232541150256
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "commitment",
+            "probabilities": {
+              "commitment": 0.6328427862465323,
+              "information": 0.33185673934461535,
+              "noise": 0.00908128869981172,
+              "plan_change": 0.006959308937443566,
+              "request": 0.008020647093582634,
+              "social": 0.005534664627235303,
+              "uncertain": 0.00570456505077919
+            },
+            "confidence": 0.5735621856211794
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.014117075451201831
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.05804162703412234
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.7725292010977114
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.06120538334645155
+          }
+        },
+        "usage": {
+          "input_tokens": 3690,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-information-request",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 7.585780000008526,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.62863330325074
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.016460176784889598
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.03844344180737359
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.01054796561344632
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.4113102371419482
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "request",
+            "probabilities": {
+              "commitment": 0.0046137764305818965,
+              "information": 0.017153980573083583,
+              "noise": 0.018937569142468535,
+              "plan_change": 0.001923260472339214,
+              "request": 0.9446164637442308,
+              "social": 0.0026104668930002463,
+              "uncertain": 0.010144482744295602
+            },
+            "confidence": 0.8470528053476714
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.038443058431860314
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.6966300632885583
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.5395391907713424
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.020039877156954638
+          }
+        },
+        "usage": {
+          "input_tokens": 3679,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-optional-review",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 7.6464864580048015,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.02654737669921292
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.014149788471266257
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.051031402367833885
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.008991545180443424
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.05745601773560381
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "noise",
+            "probabilities": {
+              "commitment": 0.0058481403248245275,
+              "information": 0.04801416287093149,
+              "noise": 0.49714215890241686,
+              "plan_change": 0.002996572920004649,
+              "request": 0.4035295619776225,
+              "social": 0.03177647489175375,
+              "uncertain": 0.01069292811244602
+            },
+            "confidence": 0.45268009034543344
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.012841423908230811
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.018987166242235436
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.02606790847896368
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.010505978742164112
+          }
+        },
+        "usage": {
+          "input_tokens": 3683,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-renewal",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 8.289115415987908,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.9402088985594748
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.01581589447303429
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.25602208015387223
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.01015795613108707
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.8311979622720227
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "request",
+            "probabilities": {
+              "commitment": 0.02855120493015414,
+              "information": 0.3295527891948174,
+              "noise": 0.061410314938728894,
+              "plan_change": 0.023369111645077698,
+              "request": 0.508163576153635,
+              "social": 0.011543700051205022,
+              "uncertain": 0.03740930308638169
+            },
+            "confidence": 0.3602509681216933
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.02110231662390662
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.04261033673964533
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.9084469365432193
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.9205979992838619
+          }
+        },
+        "usage": {
+          "input_tokens": 3686,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "notify",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-sale",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 8.448206833010772,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.025552708533885162
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.017906675074781695
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.03941100758519113
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.010485979334927398
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.06169986615333878
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "noise",
+            "probabilities": {
+              "commitment": 0.009255360920586347,
+              "information": 0.04222611202764,
+              "noise": 0.9027310379885637,
+              "plan_change": 0.00656004878704752,
+              "request": 0.022039977897772324,
+              "social": 0.0062181776634248126,
+              "uncertain": 0.01096928471496529
+            },
+            "confidence": 0.7597545167844869
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.014467431070971613
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.022342176645321937
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.0302342328180875
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.06736253198623891
+          }
+        },
+        "usage": {
+          "input_tokens": 3677,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-scheduling",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 10.064813625009265,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.9561005984987934
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.02199881453001897
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.06412031767682086
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.013362716664223635
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.6461559203906547
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "request",
+            "probabilities": {
+              "commitment": 0.004498127798271267,
+              "information": 0.01123613545871464,
+              "noise": 0.004935655476416842,
+              "plan_change": 0.0029188619721389154,
+              "request": 0.9677564362225737,
+              "social": 0.004700981539553221,
+              "uncertain": 0.003953801532331454
+            },
+            "confidence": 0.8988721525574962
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.024114712856975102
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.9229374314337313
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.8495281845170567
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.6199540743184074
+          }
+        },
+        "usage": {
+          "input_tokens": 3679,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "ask_user",
+        "review": "true",
+        "reply_needed": "true"
+      }
+    },
+    {
+      "id": "synthetic-service-fault",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 10.601500042001135,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.803725088041792
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.016657756628015972
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.11695498529356328
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.010814858763444658
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.7594328359957879
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "request",
+            "probabilities": {
+              "commitment": 0.012884764816974922,
+              "information": 0.25250285487499363,
+              "noise": 0.08259058295672887,
+              "plan_change": 0.014987375536481287,
+              "request": 0.5893370255641419,
+              "social": 0.005739055923968562,
+              "uncertain": 0.041958340326710745
+            },
+            "confidence": 0.41065693585257035
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.026510112077877027
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.029741481269262387
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.6296436815199863
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.5272538871674153
+          }
+        },
+        "usage": {
+          "input_tokens": 3689,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-success",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 11.72431137500098,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.03007826388085694
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.042360906185422986
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.0838477938071984
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.009335697685677831
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.1183178805166171
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "information",
+            "probabilities": {
+              "commitment": 0.02749862746948671,
+              "information": 0.7018464851049315,
+              "noise": 0.23143794997906456,
+              "plan_change": 0.006273826823380627,
+              "request": 0.010298702984754332,
+              "social": 0.009633009337273771,
+              "uncertain": 0.013011398301108458
+            },
+            "confidence": 0.5548841068611363
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.011980269828400737
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.0157183625095991
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.03660782404477181
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.010201174495989144
+          }
+        },
+        "usage": {
+          "input_tokens": 3674,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-survey",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 11.719624707999174,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.036158079544389474
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.016248553907504786
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.030911570625310837
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.010589527069455122
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.049040014162827224
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "noise",
+            "probabilities": {
+              "commitment": 0.0075455527297303955,
+              "information": 0.07497666868497188,
+              "noise": 0.6840109139634599,
+              "plan_change": 0.004424468312766745,
+              "request": 0.20591641121919357,
+              "social": 0.011304621130099054,
+              "uncertain": 0.011821363959778236
+            },
+            "confidence": 0.5151852685857929
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.014032687903717431
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.021843114269324854
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.026958580535306087
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.012314651842963905
+          }
+        },
+        "usage": {
+          "input_tokens": 3685,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-tentative",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 12.053537499989034,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.1278429748142719
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.04683139695170018
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.08663832162732746
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.014097055472867227
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.17469398903380023
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "social",
+            "probabilities": {
+              "commitment": 0.018717626737480588,
+              "information": 0.135656122724166,
+              "noise": 0.18261225281855215,
+              "plan_change": 0.006581952147016367,
+              "request": 0.1289436262299496,
+              "social": 0.469426064782369,
+              "uncertain": 0.05806235456046616
+            },
+            "confidence": 0.24281351696088027
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.022296832628676093
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.20749795770984747
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.05428107084445026
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.013608849434769863
+          }
+        },
+        "usage": {
+          "input_tokens": 3684,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "synthetic-waiting",
+      "split": "development",
+      "label": {
+        "group": "screening",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 11.623511624988168,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.05874346158078084
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.27664308057562725
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.1597611692997937
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.010476488383063764
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.3361767149137296
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "information",
+            "probabilities": {
+              "commitment": 0.29355392189723084,
+              "information": 0.5863035262072313,
+              "noise": 0.056158698296113675,
+              "plan_change": 0.011550417481239781,
+              "request": 0.01657125665386269,
+              "social": 0.01558311867072844,
+              "uncertain": 0.02027906079359333
+            },
+            "confidence": 0.43577564446948114
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.01496386763613397
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.07735484622165634
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.6464021516267101
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.11452546780936934
+          }
+        },
+        "usage": {
+          "input_tokens": 3676,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-0",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 11.85300562500197,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.045998699035447045
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.2634576921856267
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.22675129849422923
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.008896995405833278
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.3027627316252333
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "commitment",
+            "probabilities": {
+              "commitment": 0.5581746063031074,
+              "information": 0.36951791448225185,
+              "noise": 0.03035064952600945,
+              "plan_change": 0.012288930572513982,
+              "request": 0.008821382332137315,
+              "social": 0.012395289770938702,
+              "uncertain": 0.008451227013041386
+            },
+            "confidence": 0.4912591759638568
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.012570404526724168
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.07349087827907651
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.706360739325994
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.028814962445951577
+          }
+        },
+        "usage": {
+          "input_tokens": 3687,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-1",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 11.730848792009056,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.0765143806389605
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.6691014224308549
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.31912797008815325
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.010374247339408312
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.48106212817695715
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "commitment",
+            "probabilities": {
+              "commitment": 0.7862894449309487,
+              "information": 0.17140840350508119,
+              "noise": 0.01038628436003401,
+              "plan_change": 0.008061569058043129,
+              "request": 0.008201720634276138,
+              "social": 0.0101003437141212,
+              "uncertain": 0.00555223379749535
+            },
+            "confidence": 0.6442251750873629
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.01604468705695016
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.08565341887738838
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.7664286718803126
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.11340663316960756
+          }
+        },
+        "usage": {
+          "input_tokens": 3689,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-2",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 11.849019708010019,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.042523663864819934
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.36897557517394425
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.3408530878420589
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.010520625645243763
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.3865279506976866
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "commitment",
+            "probabilities": {
+              "commitment": 0.841434122959739,
+              "information": 0.10748340940168391,
+              "noise": 0.010604577542292618,
+              "plan_change": 0.004833144134669622,
+              "request": 0.015710599118622756,
+              "social": 0.014227638978362924,
+              "uncertain": 0.005706507864629221
+            },
+            "confidence": 0.6843498105051815
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.014650100381391749
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.08473974573123046
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.8175328998199041
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.06791311342999842
+          }
+        },
+        "usage": {
+          "input_tokens": 3693,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-3",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 11.888684916004422,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.048063227842458235
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.08866069852690267
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.08244329972143732
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.01037940235134904
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.26762983563537873
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "information",
+            "probabilities": {
+              "commitment": 0.3402462563693722,
+              "information": 0.5206112570909112,
+              "noise": 0.0592761520957526,
+              "plan_change": 0.007529086495268159,
+              "request": 0.03179917275459774,
+              "social": 0.018736875202785167,
+              "uncertain": 0.021801199991312956
+            },
+            "confidence": 0.394358727873077
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.015148325048582885
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.07520173900103395
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.6870393169305172
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.05144914456863401
+          }
+        },
+        "usage": {
+          "input_tokens": 3692,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-4",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 11.72808787500253,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.04385034976873416
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.3584398692963317
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.20448218237986543
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.010505142279696192
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.3777473654437832
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "commitment",
+            "probabilities": {
+              "commitment": 0.6479278911190012,
+              "information": 0.2822895900207819,
+              "noise": 0.03233700866456414,
+              "plan_change": 0.004599480533289292,
+              "request": 0.011560826873092829,
+              "social": 0.01083780278168107,
+              "uncertain": 0.010447400007589614
+            },
+            "confidence": 0.5260798344269217
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.016027451518804102
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.08703889735742806
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.764373758659884
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.12786068709725273
+          }
+        },
+        "usage": {
+          "input_tokens": 3690,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-5",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 11.601389666000614,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.3815703355108675
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.5333357363419811
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.29625840949699683
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.008528532792070715
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.37137987426598157
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "commitment",
+            "probabilities": {
+              "commitment": 0.7121404874025536,
+              "information": 0.19355135824246641,
+              "noise": 0.046827586960671894,
+              "plan_change": 0.008518864646278351,
+              "request": 0.014911330638043457,
+              "social": 0.009202146363188998,
+              "uncertain": 0.014848225746797093
+            },
+            "confidence": 0.531364690611617
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.013075892768046016
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.027691113722682358
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.6802903234099229
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.12449403968250951
+          }
+        },
+        "usage": {
+          "input_tokens": 3687,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-6",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 11.564265541994246,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.3525437332607082
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.6383678051516416
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.2799681520213119
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.007687272091061296
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.3333941837505427
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "commitment",
+            "probabilities": {
+              "commitment": 0.6877296130493262,
+              "information": 0.18405876301588023,
+              "noise": 0.051116089250493074,
+              "plan_change": 0.015635498819720622,
+              "request": 0.020930387649316682,
+              "social": 0.01954924407484069,
+              "uncertain": 0.020980404140422466
+            },
+            "confidence": 0.47329635990048413
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.014468830841374826
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.023472832304389506
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.6884840384711232
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.08821675483856885
+          }
+        },
+        "usage": {
+          "input_tokens": 3687,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-7",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 11.739837583998451,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.9324514317626627
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.02256575374693784
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.052488086193727024
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.0268080389642901
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.5989855877805789
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "request",
+            "probabilities": {
+              "commitment": 0.005604436976656529,
+              "information": 0.008721112972375433,
+              "noise": 0.006070960329726446,
+              "plan_change": 0.0037496762972154484,
+              "request": 0.9668395475188574,
+              "social": 0.005384088410676071,
+              "uncertain": 0.003630177494492868
+            },
+            "confidence": 0.8954358755322569
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.015611483592796621
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.9139884132564425
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.662481964495066
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.044980523631522086
+          }
+        },
+        "usage": {
+          "input_tokens": 3699,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "ask_user",
+        "review": "true",
+        "reply_needed": "true"
+      }
+    },
+    {
+      "id": "holdout-8",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 11.707998207988567,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.8840707919002113
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.02187286675579701
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.04243723879914144
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.012021660066964708
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.4718129439885591
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "request",
+            "probabilities": {
+              "commitment": 0.0037894330545605636,
+              "information": 0.016050696155783133,
+              "noise": 0.012974972271129226,
+              "plan_change": 0.0020936264738540015,
+              "request": 0.9539593033219169,
+              "social": 0.004208914410239167,
+              "uncertain": 0.0069230543125171455
+            },
+            "confidence": 0.8668208668839358
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.018589199322813853
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.8429641396710643
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.6291871558956571
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.024858909664420517
+          }
+        },
+        "usage": {
+          "input_tokens": 3692,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "true",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-9",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "true"
+      },
+      "status": 200,
+      "seconds": 11.363078958005644,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.8844359886489065
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.021558703209305686
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.04059177981405867
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.01132643329612512
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.6091889910121953
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "request",
+            "probabilities": {
+              "commitment": 0.004907104369528422,
+              "information": 0.008237125936298122,
+              "noise": 0.008609684480852869,
+              "plan_change": 0.001645480078009958,
+              "request": 0.9668663193978995,
+              "social": 0.0024107254637815287,
+              "uncertain": 0.007323560273629683
+            },
+            "confidence": 0.8971048553904163
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.018371629824357527
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.9114596001871756
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.6538915690527085
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.037979757521349126
+          }
+        },
+        "usage": {
+          "input_tokens": 3690,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "ask_user",
+        "review": "true",
+        "reply_needed": "true"
+      }
+    },
+    {
+      "id": "holdout-10",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 10.943984790996183,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.0551292497809263
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.048036885454397875
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.09401876968147534
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.014818178131064924
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.1278739344621446
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "social",
+            "probabilities": {
+              "commitment": 0.02178584857290012,
+              "information": 0.17770833055997076,
+              "noise": 0.2647683743572121,
+              "plan_change": 0.002364117726681384,
+              "request": 0.0395822968433188,
+              "social": 0.4424929627543654,
+              "uncertain": 0.051298069185551375
+            },
+            "confidence": 0.28183407839806807
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.02101552460009527
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.09724155961306163
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.09683445931071406
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.01263970941949611
+          }
+        },
+        "usage": {
+          "input_tokens": 3693,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-11",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 11.583258083002875,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.1453197442965177
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.03116106481793549
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.07128083055585475
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.01092323645822852
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.26088970808232215
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "social",
+            "probabilities": {
+              "commitment": 0.018934023973800607,
+              "information": 0.05907158430243785,
+              "noise": 0.05812779752656273,
+              "plan_change": 0.00544542695068402,
+              "request": 0.31676436346619763,
+              "social": 0.5163912853738188,
+              "uncertain": 0.02526551840649836
+            },
+            "confidence": 0.36566846087648075
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.015080204562856359
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.3519939336178217
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.04143604297650176
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.026535900500623627
+          }
+        },
+        "usage": {
+          "input_tokens": 3694,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-12",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 11.29076287499629,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.04539807548968671
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.07225201934521308
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.026969292839714623
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.008814552129967571
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.05044172370409909
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "social",
+            "probabilities": {
+              "commitment": 0.014445425181496318,
+              "information": 0.05919807492836251,
+              "noise": 0.14827940084962973,
+              "plan_change": 0.00371987824337674,
+              "request": 0.010714099777705644,
+              "social": 0.7550790072067867,
+              "uncertain": 0.00856411381264229
+            },
+            "confidence": 0.5714735576831806
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.009438127358191113
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.04929590205540992
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.04653279189557526
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.009243597001170112
+          }
+        },
+        "usage": {
+          "input_tokens": 3691,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-13",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 10.48163295899576,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.02281629468187618
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.05093249104941709
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.16479138545509195
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.009083416950665016
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.1833632698053334
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "information",
+            "probabilities": {
+              "commitment": 0.020218200935914494,
+              "information": 0.7743530191680976,
+              "noise": 0.16626771534419246,
+              "plan_change": 0.0037983005382095842,
+              "request": 0.007725531719779367,
+              "social": 0.011059447586691666,
+              "uncertain": 0.016577784707114695
+            },
+            "confidence": 0.6136878923182533
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.011926766199481546
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.01500336929852516
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.04321617474182266
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.010264309337192183
+          }
+        },
+        "usage": {
+          "input_tokens": 3694,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-14",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 11.127463166994858,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.024074058556449774
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.01838127646317526
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.05394343252067399
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.011198377658237661
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.08657209695246548
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "noise",
+            "probabilities": {
+              "commitment": 0.010396539697015999,
+              "information": 0.19572858212767383,
+              "noise": 0.7446742794060904,
+              "plan_change": 0.0062261752495201455,
+              "request": 0.016451370173299028,
+              "social": 0.01115467003021565,
+              "uncertain": 0.015368383316184992
+            },
+            "confidence": 0.5890034010812668
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.01347965830820655
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.021522311932082927
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.02984714736837067
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.021261231000811707
+          }
+        },
+        "usage": {
+          "input_tokens": 3693,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-15",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 11.305434000008972,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.02862379704196837
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.014080566473151224
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.023975224812399946
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.008086858609758362
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.05492858775337026
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "noise",
+            "probabilities": {
+              "commitment": 0.009473327232836217,
+              "information": 0.08118761557277722,
+              "noise": 0.47671632375441486,
+              "plan_change": 0.003808811119722922,
+              "request": 0.3406777682399884,
+              "social": 0.07104442708276912,
+              "uncertain": 0.017091726997491407
+            },
+            "confidence": 0.3593460500565222
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.009838368053575977
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.019269836839677767
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.02330334664139732
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.008125852057216583
+          }
+        },
+        "usage": {
+          "input_tokens": 3698,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-16",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 10.848520083993208,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.06286950542291841
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.021614382346783957
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.28008440621583475
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.00888097309683253
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.28084336493740375
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "social",
+            "probabilities": {
+              "commitment": 0.008978727802514814,
+              "information": 0.07776112580566674,
+              "noise": 0.22064957999148033,
+              "plan_change": 0.0024389383161016833,
+              "request": 0.013011637989993084,
+              "social": 0.6676735310172853,
+              "uncertain": 0.009486459076958026
+            },
+            "confidence": 0.5069485823318767
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.013064951673752375
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.19518634053916575
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.0350085229587592
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.061534402664595575
+          }
+        },
+        "usage": {
+          "input_tokens": 3689,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-17",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 9.982929666992277,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.05248234015073979
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.1868089378891939
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.04253662015344085
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.011304599435461868
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.10691976861939585
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "noise",
+            "probabilities": {
+              "commitment": 0.09349057523670241,
+              "information": 0.28464880962915845,
+              "noise": 0.43762164901738376,
+              "plan_change": 0.038599948117254,
+              "request": 0.06693704276194393,
+              "social": 0.04396627868622486,
+              "uncertain": 0.03473569655133262
+            },
+            "confidence": 0.22834413502719408
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.01367077740884688
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.03206352040594809
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.09461395119619101
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.009609329153256367
+          }
+        },
+        "usage": {
+          "input_tokens": 3698,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-18",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 11.072125457998482,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.0420742777428879
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.02272416683338134
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.027418036175276037
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.01038875234836998
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.12617041050657535
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "request",
+            "probabilities": {
+              "commitment": 0.009423180371265173,
+              "information": 0.04452302389121559,
+              "noise": 0.03532283583998898,
+              "plan_change": 0.004291748094589883,
+              "request": 0.8781259330281012,
+              "social": 0.013072622628095651,
+              "uncertain": 0.015240656146743586
+            },
+            "confidence": 0.712949206111475
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.01611855526550276
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.07484314683589256
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.27235882627450975
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.016500636902165588
+          }
+        },
+        "usage": {
+          "input_tokens": 3691,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    },
+    {
+      "id": "holdout-19",
+      "split": "holdout",
+      "label": {
+        "group": "fresh-message-holdout",
+        "review": "false",
+        "route": "retain"
+      },
+      "status": 200,
+      "seconds": 12.548948167008348,
+      "response": {
+        "model": "maple-clef:64k",
+        "answers": {
+          "action_needed": {
+            "type": "noul",
+            "noul": 0.031185757575820056
+          },
+          "commitment_changed": {
+            "type": "noul",
+            "noul": 0.019715548618885637
+          },
+          "contains_facts": {
+            "type": "noul",
+            "noul": 0.09958480041756859
+          },
+          "context_conflict": {
+            "type": "noul",
+            "noul": 0.01583258946002672
+          },
+          "meaningful_update": {
+            "type": "noul",
+            "noul": 0.1312697112350553
+          },
+          "message_kind": {
+            "type": "choice",
+            "choice": "noise",
+            "probabilities": {
+              "commitment": 0.010601721562010303,
+              "information": 0.3457787209379739,
+              "noise": 0.4846867037887594,
+              "plan_change": 0.006537452924084584,
+              "request": 0.07743169830048796,
+              "social": 0.04739319590480532,
+              "uncertain": 0.027570506581878547
+            },
+            "confidence": 0.3622807069711296
+          },
+          "needs_reasoning": {
+            "type": "noul",
+            "noul": 0.03452481282856109
+          },
+          "reply_needed": {
+            "type": "noul",
+            "noul": 0.03958844345417826
+          },
+          "task_review_needed": {
+            "type": "noul",
+            "noul": 0.04335785711053532
+          },
+          "time_sensitive": {
+            "type": "noul",
+            "noul": 0.015007991837567925
+          }
+        },
+        "usage": {
+          "input_tokens": 3715,
+          "output_tokens": 0
+        }
+      },
+      "passed": true,
+      "schema_valid": true,
+      "actual": {
+        "route": "retain",
+        "review": "false",
+        "reply_needed": "false"
+      }
+    }
+  ],
+  "summary": {
+    "development": {
+      "passed": 15,
+      "total": 15
+    },
+    "holdout": {
+      "passed": 20,
+      "total": 20
+    }
+  },
+  "context_length": 65536,
+  "question_version": "clef-message-obligations-v1",
+  "corpus_sha256": "1a5742a954500f3b8d8230afb071455d8de299c55f96f61fc01a66fbce6d6540"
+}

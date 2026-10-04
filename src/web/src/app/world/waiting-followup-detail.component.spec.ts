@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TaskDetailComponent } from './task-detail.component';
 import { WorldService } from './world.service';
 import { emptyWorld, newTask } from './world.models';
+import { rankTasks } from './task-ranking';
 
 describe('waiting follow-up detail', () => {
   afterEach(() => TestBed.resetTestingModule());
@@ -14,7 +15,7 @@ describe('waiting follow-up detail', () => {
     const review = { ...newTask(), id: 'review', title: 'Fixture follow-up', waitingFollowUp: { parentNodeID: 'source:original', triggerAt: 1, reason: 'review_due' } };
     const data = signal({ ...emptyWorld, tasks: [parent, review], suggestions: [{ id: 'original', reviewStatus: 'accepted', acceptedTaskID: parent.id, candidate: parent } as any] });
     const go = vi.fn(), params = convertToParamMap({ id: review.id });
-    const world = { data, go, activity: () => undefined, dueLabel: () => 'No deadline', bridge: { pending: signal(false), act: vi.fn() } };
+    const world = { data, go, rankedTasks: () => rankTasks(data()), activity: () => undefined, dueLabel: () => 'No deadline', bridge: { pending: signal(false), act: vi.fn() } };
     TestBed.configureTestingModule({ providers: [
       { provide: WorldService, useValue: world },
       { provide: ActivatedRoute, useValue: { paramMap: of(params), snapshot: { paramMap: params, queryParamMap: convertToParamMap({}) } } }

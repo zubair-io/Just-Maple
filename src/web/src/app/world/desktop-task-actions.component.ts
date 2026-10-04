@@ -16,7 +16,7 @@ export class DesktopTaskActionsComponent {
  readonly deadline=computed(()=>this.record()?.due?dueInstant(this.record()!.due,true):undefined);
  date(at:number){return new Date(at*1000).toLocaleString();}
  async apply(request:TaskActionRequest){
-  await this.world.bridge.act({action:'applyTaskAction',id:this.root(),expectedVersion:this.version(),requestID:request.requestID,
+  await this.world.bridge.act({action:'applyTaskAction',id:request.identity,expectedVersion:request.expectedVersion,requestID:request.requestID,
    change:{kind:request.intent,issuedAt:Date.parse(request.issuedAt)/1000,
     resurfaceAt:request.payload.resurfaceAt?Date.parse(request.payload.resurfaceAt)/1000:undefined,
     reviewAt:request.payload.reviewAt?Date.parse(request.payload.reviewAt)/1000:undefined,

@@ -46,12 +46,13 @@ describe('Notebook native transport',()=>{
   service.change('Typed during copy');
   releaseCreate({notebookID:'book',path:'copy.md',content:'',revision:'empty'});
   await work;
-  expect(service.document()).toMatchObject({path:'copy.md',content:'Typed during copy'});
+  expect(service.document()).toMatchObject({path:'original.md',revision:'original',content:'Typed during copy'});
   expect(service.dirty()).toBe(true);
-  expect(send).toHaveBeenCalledWith('noteDraft',{record:expect.objectContaining({path:'copy.md',content:'Typed during copy'})});
-  expect(await service.flush()).toBe(true);
-  expect(send).toHaveBeenCalledWith('noteSave',expect.objectContaining({path:'copy.md',content:'Typed during copy'}));
+  expect(send).toHaveBeenCalledWith('noteDraft',{record:expect.objectContaining({path:'original.md',content:'Typed during copy'})});
+  expect(send).toHaveBeenCalledWith('noteSave',expect.objectContaining({path:'copy.md',content:'Before copy'}));
   expect(send.mock.calls.filter(([action,data])=>action==='noteSave'&&data.path==='original.md')).toHaveLength(0);
+  expect(await service.flush()).toBe(true);
+  expect(send).toHaveBeenCalledWith('noteSave',expect.objectContaining({path:'original.md',revision:'original',content:'Typed during copy'}));
  });
 
 });

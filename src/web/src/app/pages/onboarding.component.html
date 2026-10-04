@@ -85,7 +85,11 @@
     @case (5) {
       <div class="eyebrow">Your intelligence</div>
       <h1>Choose how Maple learns.</h1>
-      <p>Classification with Jev, source fact extraction on your Mac.</p>
+      <p>
+        Laya is an experimental local classifier awaiting quality validation. Jev remains
+        the rollout default. Choose fact and task extraction
+        separately.
+      </p>
       <maple-connections scope="intelligence" />
     }
     @default {
@@ -98,12 +102,13 @@
       <section class="panel soft">
         <h3>Learning runs automatically</h3>
         <p>
-          Once Jev is connected, Maple automatically classifies observations, extracts supported facts and surfaces
-          questions that need your input.
+          When the selected classifier is ready and validated, Maple classifies
+          observations, extracts supported facts and surfaces questions that
+          need your input.
         </p>
         <mui-button
           variant="primary"
-          [disabled]="!s().connected"
+          [disabled]="!s().running && !s().classificationCanRun"
           (pressed)="bridge.act({ action: 'loop' })"
           >{{ s().running ? "Pause loop" : "Resume loop" }}</mui-button
         >

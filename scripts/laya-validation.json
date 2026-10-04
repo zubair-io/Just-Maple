@@ -1,0 +1,8 @@
+{
+  "approved": false,
+  "modelRevision": "78c0b0e5054eb5804c72080016227d4f3b0bd08d",
+  "adapter": "maple-laya-v1",
+  "evaluatedAt": "2026-09-28",
+  "reason": "Maple routing validation failed: 9/15 screening cases passed; reply and context-conflict scenarios failed. Live routing remains disabled for this checkpoint.",
+  "evidence": "docs/evaluations/LAYA-COREML.md"
+}

@@ -49,7 +49,7 @@
           <p>{{ s().count }} observations in your local store.</p>
           <mui-button
             variant="primary"
-            [disabled]="!s().connected"
+            [disabled]="!s().running && !s().classificationCanRun"
             (pressed)="act('loop')"
             >{{ s().running ? "Pause loop" : "Resume loop" }}</mui-button
           >
@@ -290,13 +290,76 @@
     }
   }
   @case ("Activity") {
-    <h1>The loop, in the open.</h1>
-    <section class="panel"><h2>Connector audit</h2><p>Import 30 days of Messages and up to 100 matching emails. Run the real classifiers and review suggested follow-ups.</p><mui-input ariaLabel="Gmail audit query" [(value)]="auditQuery"/><mui-button [disabled]="s().auditRunning || !s().connected || s().busy" (pressed)="runAudit()">Run connector audit</mui-button><mui-button [disabled]="s().auditRunning || !s().connected || s().busy" (pressed)="runAudit(true)">Audit imported evidence</mui-button><p>For imported evidence, enter plain search words instead of Gmail query operators.</p><p role="status">{{s().auditStatus}}</p></section>
+    <h1>Processing</h1>
+    <p>Queue status updates automatically while the app is open.</p>
+    <section class="panel" aria-label="Processing status" aria-live="polite">
+      <h2>{{ s().classificationProvider === 'jev' && s().jevPause
+        ? "Jev processing is paused"
+        : s().running ? "Processing is enabled" : "Processing is paused" }}</h2>
+      @if (!s().jevPause) { <p>{{ s().classificationStatus }}</p> }
+      @if (s().jevPause; as pause) {
+        <p>Jev requests are paused: {{ pause.reason }}</p>
+        <mui-button variant="ghost" (pressed)="go('/connections')"
+          >Open connection settings</mui-button>
+      }
+    </section>
+    <h2>Processing queue</h2>
+    <p>
+      {{ s().processingQueueCounts?.["pending"] ?? 0 }} waiting ·
+      {{ s().processingQueueCounts?.["leased"] ?? 0 }} processing ·
+      {{ s().processingQueueCounts?.["blocked"] ?? 0 }} need retry ·
+      {{ s().processingQueueCounts?.["succeeded"] ?? 0 }} processed
+    </p>
+    <p>
+      Showing up to 100 recent classification records. Counts cover the whole queue.
+      Open a source to inspect its stages, attempts and responses.
+    </p>
+    @for (q of s().queue; track q.eventID) {
+      <div class="item">
+        <strong>{{
+          q.status === "outside_window"
+            ? "Older than 30 days · local index only"
+            : q.status
+        }}</strong>
+        · {{ q.attempts }} attempts
+        <p>{{ q.error }}</p>
+        <mui-button variant="ghost" (pressed)="router.navigate(['/sources', q.eventID])"
+          >Inspect source</mui-button>
+      </div>
+    }
+
+    <maple-quality-capture />
+
+    <section class="panel">
+      <h2>Connector audit</h2>
+      <p>
+        Import 30 days of Messages and up to 100 matching emails. Run the real
+        classifiers and review suggested follow-ups.
+      </p>
+      <mui-input
+        ariaLabel="Gmail audit query"
+        [(value)]="auditQuery"
+      /><mui-button
+        [disabled]="s().auditRunning || !s().classificationCanRun || s().busy"
+        (pressed)="runAudit()"
+        >Run connector audit</mui-button
+      ><mui-button
+        [disabled]="s().auditRunning || !s().classificationCanRun || s().busy"
+        (pressed)="runAudit(true)"
+        >Audit imported evidence</mui-button
+      >
+      <p>
+        For imported evidence, enter plain search words instead of Gmail query
+        operators.
+      </p>
+      <p role="status">{{ s().auditStatus }}</p>
+    </section>
     <p>Every decision keeps its context and evidence.</p>
+    <p role="status">{{ s().classificationStatus }}</p>
     <div class="actions">
       <mui-button
         variant="primary"
-        [disabled]="!s().connected"
+        [disabled]="!s().running && !s().classificationCanRun"
         (pressed)="act('loop')"
         >{{ s().running ? "Pause loop" : "Resume loop" }}</mui-button
       ><mui-button (pressed)="act('retry')">Retry failed events</mui-button
@@ -311,35 +374,45 @@
         <div class="actions">
           <mui-button (pressed)="detail.set(d)">Inspect decision</mui-button
           ><mui-button
-            [disabled]="!s().connected || s().busy"
+            [disabled]="!s().classificationCanRun || s().busy"
             (pressed)="bridge.act({ action: 'checkFacts', id: d.eventID })"
-            >Ask Jev: new facts?</mui-button
-          ><mui-button (pressed)="bridge.act({ action: 'extractTasks', id: d.eventID })">Review for tasks</mui-button
+            >Check for new facts</mui-button
+          ><mui-button
+            (pressed)="bridge.act({ action: 'extractTasks', id: d.eventID })"
+            >Review for tasks</mui-button
           >
         </div>
       </article>
     } @empty {
       <p>No decisions yet. Add context and start the loop.</p>
     }
-    <h2>Processing queue</h2>
-    <p>{{ s().processingQueueCounts?.['pending'] ?? 0 }} waiting · {{ s().processingQueueCounts?.['leased'] ?? 0 }} processing · {{ s().processingQueueCounts?.['blocked'] ?? 0 }} need retry · {{ s().processingQueueCounts?.['succeeded'] ?? 0 }} processed</p>
-    <p>Showing up to 100 recent records. Open History to browse source observations.</p>
-    @for (q of s().queue; track q.eventID) {
-      <div class="item">
-        <strong>{{ q.status === 'outside_window' ? 'Older than 30 days · local index only' : q.status }}</strong> · {{ q.attempts }} attempts
-        <p>{{ q.error }}</p>
-      </div>
-    }
     <h2>Task extraction</h2>
     @for (q of s().taskExtractionQueue ?? []; track q.eventID) {
-      <div class="item"><strong>{{ q.status === 'outside_window' ? 'Older than 30 days · local index only' : q.status }}</strong> · {{ q.attempts }} attempts<p>{{ q.error }}</p>
-      @if (q.status === 'failed') {<mui-button (pressed)="bridge.act({action: 'extractTasks', id: q.eventID})">Retry task extraction</mui-button>}
+      <div class="item">
+        <strong>{{
+          q.status === "outside_window"
+            ? "Older than 30 days · local index only"
+            : q.status
+        }}</strong>
+        · {{ q.attempts }} attempts
+        <p>{{ q.error }}</p>
+        @if (q.status === "failed") {
+          <mui-button
+            (pressed)="bridge.act({ action: 'extractTasks', id: q.eventID })"
+            >Retry task extraction</mui-button
+          >
+        }
       </div>
     }
     <h2>Fact extraction</h2>
     @for (q of s().factQueue; track q.eventID) {
       <div class="item">
-        <strong>{{ q.status === 'outside_window' ? 'Older than 30 days · local index only' : q.status }}</strong> · {{ q.attempts }} attempts
+        <strong>{{
+          q.status === "outside_window"
+            ? "Older than 30 days · local index only"
+            : q.status
+        }}</strong>
+        · {{ q.attempts }} attempts
         <p>{{ q.error }}</p>
       </div>
     }

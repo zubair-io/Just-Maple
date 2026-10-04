@@ -1,3 +1,6 @@
+import { TaskTimingField } from './task-timing-field';
+import { TaskTimingComponent } from './task-timing.component';
+import { TaskFactsComponent } from './task-facts.component';
 import { taskRoot } from './task-ranking';
 import { DesktopTaskActionsComponent } from './desktop-task-actions.component';
 import { TaskEvidenceComponent } from "./task-evidence.component";
@@ -20,11 +23,10 @@ import {
 } from "@maple/ui";
 import { WorldService } from "./world.service";
 import { LifeTask, newTask, Series, localDate, isOpen } from "./world.models";
-import { SourceEvent } from "../core/native-bridge.service";
 @Component({
   selector: "maple-task-detail",
   standalone: true,
-  imports: [DesktopTaskActionsComponent,
+  imports: [TaskTimingComponent, TaskFactsComponent, DesktopTaskActionsComponent,
     TaskEvidenceComponent,
     DatePipe,
     FormsModule,
@@ -57,14 +59,11 @@ export class TaskDetailComponent {
     this.world.data().tasks.find((t) => t.id === this.id()),
   );
   readonly editing = signal(false);
-  readonly source = signal<SourceEvent | null>(null);
   readonly isOpen = isOpen;
   draft = newTask();
-  dueKind = "none";
-  dueDate = "";
-  dueTime = "";
-  zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  scheduledDate = "";
+  readonly dueTiming = new TaskTimingField();
+  readonly scheduledTiming = new TaskTimingField();
+  get zone() { return this.dueTiming.zone; }
   conditionValue = "";
   peopleText = "";
   repeat = "none";
@@ -72,12 +71,15 @@ export class TaskDetailComponent {
   repeatStart = localDate(Date.now() / 1000, this.zone);
   scope = "occurrence";
   private loadedID = "";
+  private loadedSeriesVersion?: number;
   constructor() {
     effect(() => {
       const id = this.id(),
         record = this.record();
       if (id !== this.loadedID) {
         this.loadedID = id;
+        this.scope = "occurrence";
+        this.repeat = "none";
         this.editing.set(id === "new");
         this.load(record ?? newTask());
         const activity = this.route.snapshot.queryParamMap?.get("activity");
@@ -87,19 +89,9 @@ export class TaskDetailComponent {
   }
   load(task: LifeTask) {
     this.draft = structuredClone(task);
-    this.dueKind = task.due?.kind ?? "none";
-    this.zone =
-      task.due?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    this.dueDate = task.due?.date ?? "";
-    this.dueTime = task.due?.instant
-      ? new Date(
-          task.due.instant * 1000 -
-            new Date(task.due.instant * 1000).getTimezoneOffset() * 60000,
-        )
-          .toISOString()
-          .slice(0, 16)
-      : "";
-    this.scheduledDate = task.scheduled?.date ?? "";
+    this.loadedSeriesVersion = this.world.data().series.find(series => series.id === task.seriesID)?.version;
+    this.dueTiming.load(task.due);
+    this.scheduledTiming.load(task.scheduled);
     this.conditionValue = task.conditions.find(c => c.subject === "person:self" && c.property === "presence")?.value ?? "";
     this.peopleText = task.people.join(", ");
   }
@@ -117,20 +109,8 @@ export class TaskDetailComponent {
   }
   async save() {
     const draft = structuredClone(this.draft);
-    draft.due =
-      this.dueKind === "none"
-        ? undefined
-        : this.dueKind === "date"
-          ? { kind: "date", date: this.dueDate, timeZone: this.zone }
-          : {
-              kind: "instant",
-              date: "",
-              instant: new Date(this.dueTime).getTime() / 1000,
-              timeZone: this.zone,
-            };
-    draft.scheduled = this.scheduledDate
-      ? { kind: "date", date: this.scheduledDate, timeZone: this.zone }
-      : undefined;
+    draft.due = this.dueTiming.value();
+    draft.scheduled = this.scheduledTiming.value();
     draft.people = this.peopleText
       .split(",")
       .map((s) => s.trim())
@@ -171,7 +151,7 @@ export class TaskDetailComponent {
         .data()
         .series.find((s) => s.id === draft.seriesID);
       if (current) {
-        const series = { ...current, template: draft };
+        const series = { ...current, version: this.loadedSeriesVersion ?? 0, template: draft };
         if (
           await this.world.bridge.act({
             action: "saveSeries",
@@ -189,11 +169,6 @@ export class TaskDetailComponent {
       this.editing.set(false);
       this.world.go("tasks/" + draft.id);
     }
-  }
-  async evidence(id: string) {
-    try {
-      this.source.set(await this.world.bridge.evidence(id));
-    } catch {}
   }
   async pauseSeries() {
     const series = this.world

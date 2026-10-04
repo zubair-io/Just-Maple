@@ -1,3 +1,4 @@
+import { CompanionTodayComponent, CompanionTodayService } from "./companion-today.component";
 import { CompanionGroupsComponent, ReviewedGroup, GroupAction, GroupReceipt } from './companion-groups.component';
 import { SourceInspectorComponent } from '../sources/source-inspector.component';
 import { SourceEvidence } from '../sources/source.models';
@@ -18,19 +19,21 @@ export interface CompanionCapture { id: string; text: string; createdAt: string 
 export interface CompanionSnapshot {groupActions?:GroupAction[];groupActionReceipts?:GroupReceipt[]; deviceID: string; captures: CompanionCapture[]; taskActions?:CompanionTaskAction[];taskActionReceipts?:{id:string;outcome:string;resultingVersion?:number}[]; receivedIDs?:string[]; uploadedIDs?:string[]; cloudEnabled?:boolean; paired?:boolean; connectionStatus?:string;
   mac?:{reviewedGroups?:ReviewedGroup[];reviewedGroupTotal?:number;supportedGroupIntents?:string[];asOf:string;needsYouTotal?:number;waitingTotal?:number;laterTotal?:number;supportedTaskIntents?:string[];displayName?:string;activities?:{id:string;name:string;kind:string;lifecycle:string;openTaskCount:number}[];people?:{id:string;name:string;pinned:boolean;relationship:string}[];tasks:CompanionTask[];states:{property:string;status:string;value?:string}[]} }
 @Component({
-  selector: 'maple-companion', standalone: true, imports: [CompanionGroupsComponent, SourceInspectorComponent, TaskActionsComponent, NgTemplateOutlet, FormsModule, MuiButtonComponent, NotebooksComponent, OverviewSurfaceComponent],
+  selector: 'maple-companion', standalone: true, imports: [CompanionTodayComponent, CompanionGroupsComponent, SourceInspectorComponent, TaskActionsComponent, NgTemplateOutlet, FormsModule, MuiButtonComponent, NotebooksComponent, OverviewSurfaceComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="companion">
       <header><img src="maple-leaf.svg" alt="Just Maple leaf"/><span>Just Maple</span></header>
       <nav class="companion-nav" aria-label="Companion sections">
-        @for (tab of tabs; track tab.id) {<mui-button variant="ghost" [fullWidth]="true" [attr.aria-current]="view() === tab.id ? 'page' : null" (pressed)="selectView(tab.id)">{{ tab.label }}</mui-button>}
+        @for (tab of tabs.slice(0, 2); track tab.id) {<mui-button variant="ghost" [fullWidth]="true" [attr.aria-current]="view() === tab.id ? 'page' : null" (pressed)="selectView(tab.id)">{{ tab.label }}</mui-button>}
+        <div class="companion-tools"><button type="button" [attr.aria-expanded]="moreOpen()" aria-controls="companion-more" (click)="moreOpen.set(!moreOpen())">More</button>@if(moreOpen()){<div id="companion-more">@for(tab of tabs.slice(2);track tab.id){<mui-button variant="ghost" [fullWidth]="true" (pressed)="selectView(tab.id)">{{tab.label}}</mui-button>}</div>}</div>
       </nav>
       <p class="sync-status" role="status">{{ state().connectionStatus || 'Connecting to iCloud…' }}</p>
-      @if (state().mac; as mac) {<p class="muted sync-time">Last synced {{ date(mac.asOf) }} · Available offline</p>
+      @if (state().mac; as mac) {<p class="muted sync-time">Mac processing snapshot: {{ date(mac.asOf) }} · Available offline</p>
       @if(partialSnapshot()){<p class="muted">Showing a limited set from your Mac. More tasks are available there.</p>}}
       @if (error()) {<p class="error notice" role="alert">{{ error() }}</p>}
-      @if (view() === 'notebooks') {<main class="notebooks-page"><maple-notebooks /></main>}
+      @if (view() === 'daily') {<maple-companion-today />}
+      @else if (view() === 'notebooks') {<main class="notebooks-page"><maple-notebooks /></main>}
       @else if (view() === 'overview') {<main>
         @if (state().mac; as mac) {
           <maple-overview-surface [greeting]="greeting()" [name]="mac.displayName || ''" [states]="nowStates()" [activities]="activities()" [total]="mac.needsYouTotal ?? needsYouTasks().length" [waiting]="mac.waitingTotal ?? waitingTasks().length" (viewWaiting)="showWaiting()" (viewActivities)="selectView('activities')" [inspectable]="false" (viewTasks)="showNeedsYou()" (activitySelected)="showActivity($event)">
@@ -81,7 +84,7 @@ export interface CompanionSnapshot {groupActions?:GroupAction[];groupActionRecei
         @if (task.assignee) {<p>{{ task.status === 'waiting' ? 'Waiting on' : 'Assigned to' }} {{ task.assignee }}</p>}
         @if (task.due) {<p>Due {{ task.due }}</p>}
         <div class="tags">@for(tag of task.activities; track tag){<span>{{ tag }}</span>}</div>
-        @if(typedActionsAvailable()) {<maple-task-actions [identity]="task.id" [deadline]="taskDeadline(task)" [version]="task.version || 0" [disabled]="busy() || !task.version || taskPending(task.id) || taskApplied(task)" [waiting]="task.status==='waiting'" [terminal]="task.status==='completed'||task.status==='cancelled'" [undoID]="task.actionState?.canUndo ? task.actionState?.lastMutationID || '' : ''" (submitAction)="applyTask(task,$event)" />}
+        @if(typedActionsAvailable()) {<maple-task-actions [identity]="task.id" [deadline]="taskDeadline(task)" [version]="task.version || 0" [disabled]="busy() || !task.version || taskPending(task.id) || taskApplied(task)" [waiting]="task.status==='waiting'" [terminal]="task.status==='completed'||task.status==='cancelled'" [undoID]="task.actionState?.canUndo ? task.actionState?.lastMutationID || '' : ''" (submitAction)="applyTask($event)" />}
         @else {<mui-button [disabled]="busy() || !task.version || taskPending(task.id) || taskApplied(task)" (pressed)="completeTask(task)">Mark complete</mui-button>}
         @if(task.actionState?.resurfaceAt; as at){<p>Deferred until {{date(at)}}.</p>}
         @if(task.actionState?.reviewAt; as at){<p>Waiting review: {{date(at)}}.</p>}
@@ -96,6 +99,7 @@ export interface CompanionSnapshot {groupActions?:GroupAction[];groupActionRecei
       </section>}
     </div>`,
   styles: [`
+    .companion-tools{position:relative}.companion-tools>button{width:100%;text-align:center;font-size:14px;padding:10px;min-height:40px}.companion-tools>div{position:absolute;z-index:25;right:0;width:180px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:8px;box-shadow:var(--shadow-soft)}
     .task-detail{position:fixed;z-index:20;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));max-height:75dvh;overflow:auto;max-width:640px;margin:auto;padding:20px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:16px;box-shadow:0 10px 40px #0003}.task-detail p{white-space:pre-wrap;overflow-wrap:anywhere}.task-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.companion-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:-16px 0 28px;padding:5px;border:1px solid var(--color-border);border-radius:12px}.companion-nav button{flex:1;border:0;border-radius:8px;padding:12px;background:transparent;color:var(--color-text-muted);font:inherit;font-size:14px;min-height:44px}.companion-nav button[aria-current="page"]{background:var(--color-bg-secondary);color:var(--color-text-main);font-weight:600}.companion-nav button:focus-visible{outline:2px solid var(--color-primary)}.notebooks-page{min-width:0}
     .tags{display:flex;gap:6px;flex-wrap:wrap}.tags span{border:1px solid color-mix(in srgb,currentColor 20%,transparent);border-radius:20px;padding:3px 9px;font-size:12px}
     :host{display:block;min-height:100dvh;color:var(--color-text-main);background:var(--color-bg)}
@@ -109,8 +113,10 @@ export class CompanionComponent implements OnDestroy {
   private timer = setInterval(()=>{if(!this.busy())void this.load();},3000);
   ngOnDestroy(){clearInterval(this.timer);}
   readonly notes=inject(NotebookService);
-  readonly tabs=[{id:'overview',label:'Overview'},{id:'tasks',label:'Tasks'},{id:'people',label:'People'},{id:'notebooks',label:'Notebooks'},{id:'capture',label:'Capture'}] as const;
-  readonly view=signal<'overview'|'tasks'|'activities'|'people'|'notebooks'|'capture'>('overview');
+  readonly daily=inject(CompanionTodayService);
+  readonly moreOpen=signal(false);
+  readonly tabs=[{id:'daily',label:'Today'},{id:'notebooks',label:'Notebooks'},{id:'overview',label:'Overview'},{id:'tasks',label:'Tasks'},{id:'people',label:'People'},{id:'capture',label:'Capture'}] as const;
+  readonly view=signal<'daily'|'overview'|'tasks'|'activities'|'people'|'notebooks'|'capture'>('daily');
   readonly activityFilter=signal('');
   readonly activityFilterID=signal('');readonly laterOnly=signal(false);
   readonly activityLabel=computed(()=>this.state().mac?.activities?.find(a=>a.id===this.activityFilterID())?.name || this.activityFilter());
@@ -158,7 +164,7 @@ export class CompanionComponent implements OnDestroy {
   showTasks(){this.clearTaskFilters();void this.selectView('tasks');}
   filterTasks(name:string){this.clearTaskFilters();this.activityFilter.set(name);void this.selectView('tasks');}
   showActivity(id:string){const a=this.state().mac?.activities?.find(a=>a.id===id);if(a){this.clearTaskFilters();this.activityFilterID.set(id);void this.selectView('tasks');}}
-  async selectView(view:'overview'|'tasks'|'activities'|'people'|'notebooks'|'capture'){if(this.view()===view)return;if(this.view()==='notebooks' && !await this.notes.flush())return;this.view.set(view);}
+  async selectView(view:'daily'|'overview'|'tasks'|'activities'|'people'|'notebooks'|'capture'){if(this.view()==='notebooks' && !await this.notes.flush())return;this.moreOpen.set(false);if(view==='daily')void this.daily.openToday();if(this.view()!==view)this.view.set(view);}
   readonly state=signal<CompanionSnapshot>({deviceID:'',captures:[]});
   readonly busy=signal(false); readonly loaded=signal(false); readonly error=signal(''); readonly saved=signal(false);
   draft=''; requestID='';
@@ -192,8 +198,8 @@ export class CompanionComponent implements OnDestroy {
     if(this.typedActionsAvailable()){
       const key=task.id+':'+task.version;
       let request=this.completionRequests.get(key);
-      if(!request){request={requestID:crypto.randomUUID(),intent:'done',issuedAt:new Date().toISOString(),payload:{}};this.completionRequests.set(key,request);}
-      await this.applyTask(task,request);return;
+      if(!request){request={identity:task.id,expectedVersion:task.version||0,requestID:crypto.randomUUID(),intent:'done',issuedAt:new Date().toISOString(),payload:{}};this.completionRequests.set(key,request);}
+      await this.applyTask(request);return;
     }
     if(this.busy() || !task.version || this.taskPending(task.id) || this.taskApplied(task))return;
     this.busy.set(true);this.error.set('');
@@ -206,18 +212,18 @@ export class CompanionComponent implements OnDestroy {
   readonly typedActionsAvailable=computed(()=>['done','later','waiting','notNeeded','undo'].every(i=>this.state().mac?.supportedTaskIntents?.includes(i)));
   readonly undoableChanges=computed(()=> (this.state().taskActions||[]).filter(a=>a.intent && a.intent!=='undo' && this.latestAction(a.taskID)?.id===a.id && this.state().taskActionReceipts?.some(r=>r.id.toLowerCase()===a.id.toLowerCase()&&r.outcome==='applied'&&!!r.resultingVersion)).slice(-3));
   intentLabel(intent?:string){return ({done:'completion',later:'deferral',waiting:'waiting change',notNeeded:'dismissal'} as Record<string,string>)[intent||'']||'change';}
-  async applyTask(task:CompanionTask,request:TaskActionRequest){
-    if(this.busy()||!task.version||this.taskPending(task.id))return;
+  async applyTask(request:TaskActionRequest){
+    if(this.busy()||!request.identity||!request.expectedVersion||this.taskPending(request.identity))return;
     this.busy.set(true);this.error.set('');
-    try{this.state.set(await this.command({action:'taskAction',id:request.requestID,taskID:task.id,expectedVersion:task.version,intent:request.intent,issuedAt:request.issuedAt,payload:request.payload}));}
+    try{this.state.set(await this.command({action:'taskAction',id:request.requestID,taskID:request.identity,expectedVersion:request.expectedVersion,intent:request.intent,issuedAt:request.issuedAt,payload:request.payload}));}
     catch{this.error.set('Could not confirm the task change. Please retry; the same change will not be applied twice.');}
     finally{this.busy.set(false);}
   }
   async undoChange(change:CompanionTaskAction){
     const receipt=this.state().taskActionReceipts?.find(r=>r.id.toLowerCase()===change.id.toLowerCase());if(!receipt?.resultingVersion)return;
     const key='undo:'+change.id;
-    let request=this.undoRequests.get(key);if(!request){request={requestID:crypto.randomUUID(),intent:'undo',issuedAt:new Date().toISOString(),payload:{targetMutationID:change.id}};this.undoRequests.set(key,request);}
-    await this.applyTask({id:change.taskID,title:'',status:'completed',activities:[],version:receipt.resultingVersion},request);
+    let request=this.undoRequests.get(key);if(!request){request={identity:change.taskID,expectedVersion:receipt.resultingVersion,requestID:crypto.randomUUID(),intent:'undo',issuedAt:new Date().toISOString(),payload:{targetMutationID:change.id}};this.undoRequests.set(key,request);}
+    await this.applyTask(request);
   }
   readonly groupsAvailable=computed(()=>['done','notNeeded','undo'].every(i=>this.state().mac?.supportedGroupIntents?.includes(i)));
   async applyGroup(action:GroupAction){if(this.busy()||!this.groupsAvailable())return;this.busy.set(true);this.error.set('');try{this.state.set(await this.command({action:'groupAction',...action}));}catch{this.error.set('Could not confirm the group change. Retry with the same reviewed members; no partial change will be applied.');}finally{this.busy.set(false);}}

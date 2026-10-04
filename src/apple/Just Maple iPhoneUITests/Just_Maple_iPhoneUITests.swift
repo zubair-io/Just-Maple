@@ -1,12 +1,17 @@
 import XCTest
 
 final class Just_Maple_iPhoneUITests: XCTestCase {
+    @MainActor private func openMore(_ app:XCUIApplication) {
+        let button=app.webViews.buttons["More"]
+        if button.exists {button.tap()} else {app.webViews.staticTexts["More"].tap()}
+    }
     @MainActor func testBundledAngularLoadsAndCapturePersists()throws {
         let app=XCUIApplication();app.launchArguments=["--companion-ui-test"];app.launch()
         XCTAssertTrue(app.webViews.firstMatch.waitForExistence(timeout:20))
-        XCTAssertTrue(app.webViews.staticTexts["Your overview."].waitForExistence(timeout:20))
+        XCTAssertTrue(app.webViews.staticTexts["Today"].waitForExistence(timeout:20))
         XCTAssertFalse(app.webViews.buttons["Use iCloud"].exists)
         XCTAssertFalse(app.webViews.buttons["Pause connection"].exists)
+        openMore(app)
         app.webViews.buttons["Capture"].tap()
         let field=app.webViews.textViews.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout:20))
@@ -16,7 +21,8 @@ final class Just_Maple_iPhoneUITests: XCTestCase {
         XCTAssertTrue(save.waitForExistence(timeout:5));save.tap()
         XCTAssertTrue(app.webViews.staticTexts["Saved on this iPhone."].waitForExistence(timeout:5))
         app.terminate();app.launch()
-        XCTAssertTrue(app.webViews.buttons["Capture"].waitForExistence(timeout:20))
+        XCTAssertTrue(app.webViews.staticTexts["Today"].waitForExistence(timeout:20))
+        openMore(app)
         app.webViews.buttons["Capture"].tap()
         XCTAssertTrue(app.webViews.staticTexts[note].waitForExistence(timeout:20))
         XCTAssertFalse(app.webViews.buttons["Use a pairing code"].exists)

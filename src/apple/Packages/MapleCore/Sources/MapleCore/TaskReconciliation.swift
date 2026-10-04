@@ -132,15 +132,15 @@ extension KnowledgeStore {
         while Set(nodes.flatMap(\.sourceIDs)).count>20 {nodes.removeLast()}
         // Thread replies first, then local lexical retrieval. Similarity is a retrieval aid, never a merge decision.
         var related:[Event]=[]
-        let hasVectors=try indexStatus().chunks>0
+        let hasVectors = !(try db.rows("SELECT event_id FROM semantic_chunks LIMIT 1")).isEmpty
+        if hasVectors {
+            related += try semanticSearchBatch(nodes.map(\.title),limit:3,before:at,after:nodes.map{max($0.requestedAt,at.addingTimeInterval(-AIProcessingWindow.duration))},connectors:["gmail","imessage"]).flatMap{$0}
+        }
         for node in nodes {
             let threads=node.sourceIDs.compactMap{sources[$0]}.flatMap(\.subjects).filter{$0.hasPrefix("thread:")}
             if !threads.isEmpty {
                 let marks=Array(repeating:"?",count:threads.count).joined(separator:",")
                 related += try db.rows("SELECT DISTINCT e.json FROM events e JOIN event_subjects s ON e.id=s.event_id WHERE s.subject IN (\(marks)) AND e.occurred_at>=? ORDER BY e.occurred_at DESC LIMIT 6",threads+[String(max(node.requestedAt,at.addingTimeInterval(-30*86400)).timeIntervalSince1970)]).map{try JSONCodec.decode(Event.self,from:Data($0["json"]!.utf8))}
-            }
-            if hasVectors {
-                related += try semanticSearch(node.title,limit:3,before:at).filter{AIProcessingWindow.includes($0.occurredAt,at:at) && $0.occurredAt>=node.requestedAt && ["gmail","imessage"].contains($0.source.connector)}
             }
             related += try search(node.title,limit:12).filter{AIProcessingWindow.includes($0.occurredAt,at:at) && $0.occurredAt>=node.requestedAt && ["gmail","imessage"].contains($0.source.connector)}.prefix(3)
         }
@@ -269,8 +269,27 @@ public struct TaskReconciliationEngine:Sendable {
             INPUT:
             \(try JSONCodec.string(job.input))
             """
-            let response=try await client.request(prompt)
-            try await store.finishTaskReconciliation(job,response:response)
+            let invocation=UUID().uuidString
+            let provider="acp/\(client.provider)",model="subscription-default/reconciliation-v1"
+            @Sendable func audit(_ kind:String,_ payload:String,dispatch:ProviderDispatchCapture?=nil)async throws {
+                try await store.recordPipelineProviderAudit(.init(invocationID:invocation,provider:provider,model:model,kind:kind,payload:payload,dispatch:dispatch),jobID:job.id,attemptID:job.token,stage:"task_reconciliation")
+            }
+            // Include every serialized source identity, not only sources cited by the answer.
+            // Candidate and canonical task prose can incorporate context outside this
+            // bounded retrieval; their complete derivation lineage is not recorded.
+            let dates=Dictionary(job.input.sources.map{($0.id,$0.occurredAt)},uniquingKeysWith:{first,_ in first})
+            let ids=Set(job.input.sources.map(\.id)+job.input.nodes.flatMap(\.sourceIDs)).sorted()
+            let evidence=ids.map{ProviderInputEvidence(eventID:$0,occurredAt:dates[$0])}
+            let coverage:ProviderEvidenceCoverage=job.input.nodes.isEmpty ? .complete:.partial
+            try await audit("context",prompt)
+            let response:String
+            do {response=try await client.request(prompt,beforeDispatch:{
+                try await audit("dispatch","",dispatch:.init(evidence:evidence,coverage:coverage))
+            })}
+            catch {try await audit("failure","provider_request_failed");throw error}
+            try await audit("response",response)
+            do {try await store.finishTaskReconciliation(job,response:response)}
+            catch {try await audit("validation","not_applied");throw error}
         } catch {try await store.failTaskReconciliation(job);throw error}
     }
 }
