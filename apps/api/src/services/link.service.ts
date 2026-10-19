@@ -1,7 +1,7 @@
 import { ObjectId } from 'mongodb';
+import type { AnyBulkWriteOperation, Binary, Document } from 'mongodb';
 import * as Y from 'yjs';
 import { getDb } from '../db/client';
-import { getMemoState, findMemosByPageIds } from '../repositories/memo.repo';
 import { extractTagsFromYjs } from '../repositories/search.repo';
 import { escapeRegex } from '../utils/regex';
 import type {
@@ -17,6 +17,120 @@ import type {
     ConnectionNode,
     ConnectionEdge,
 } from '@maple/shared';
+
+interface MemoGraphMetadata {
+    format: 1;
+    version: number;
+    updatedAt: string;
+    links: PageLink[];
+    mentions: UserMention[];
+    tags: string[];
+    title: string;
+}
+interface GraphMemoDocument extends Document {
+    id: string;
+    pageId: string;
+    version: number;
+    updatedAt: Date;
+    state?: Binary;
+    graphMetadata?: MemoGraphMetadata;
+}
+interface IndexedGraphMemo {
+    id: string;
+    pageId: string;
+    metadata: MemoGraphMetadata;
+}
+
+/** Read small revision-stamped indexes first; fetch/decode only stale binary states. */
+async function indexedGraphMemos(ids: string[], byPageId = false): Promise<IndexedGraphMemo[]> {
+    const memos = getDb().collection<GraphMemoDocument>('memos');
+    const result: IndexedGraphMemo[] = [];
+    const writes: AnyBulkWriteOperation<GraphMemoDocument>[] = [];
+    for (let offset = 0; offset < ids.length; offset += 500) {
+        const docs = await memos
+            .find({ [byPageId ? 'pageId' : 'id']: { $in: ids.slice(offset, offset + 500) } })
+            .project<GraphMemoDocument>({
+                id: 1,
+                pageId: 1,
+                version: 1,
+                updatedAt: 1,
+                graphMetadata: 1,
+            })
+            .toArray();
+        const stale: string[] = [];
+        for (const memo of docs) {
+            const cache = memo.graphMetadata;
+            if (
+                cache?.format === 1 &&
+                cache.version === memo.version &&
+                cache.updatedAt === memo.updatedAt?.toISOString()
+            ) {
+                result.push({ id: memo.id, pageId: memo.pageId, metadata: cache });
+            } else stale.push(memo.id);
+        }
+        for (let start = 0; start < stale.length; start += 500) {
+            const uncached = await memos
+                .find({ id: { $in: stale.slice(start, start + 500) } })
+                .project<GraphMemoDocument>({
+                    id: 1,
+                    pageId: 1,
+                    state: 1,
+                    version: 1,
+                    updatedAt: 1,
+                })
+                .toArray();
+            for (const memo of uncached) {
+                if (!memo.state) continue;
+                const ydoc = new Y.Doc();
+                try {
+                    Y.applyUpdate(ydoc, new Uint8Array(memo.state.buffer));
+                    const fragment = ydoc.getXmlFragment('prosemirror');
+                    let title = 'Untitled Card';
+                    for (const child of fragment.toArray()) {
+                        if (child instanceof Y.XmlElement && child.nodeName === 'heading') {
+                            const heading = child
+                                .toArray()
+                                .map((c) => c.toString())
+                                .join('');
+                            if (heading) {
+                                title = heading;
+                                break;
+                            }
+                        }
+                    }
+                    const metadata: MemoGraphMetadata = {
+                        format: 1,
+                        version: memo.version,
+                        updatedAt: memo.updatedAt?.toISOString() ?? '',
+                        links: extractLinksFromYjs(fragment),
+                        mentions: extractUserMentionsFromYjs(fragment),
+                        tags: extractTagsFromYjs(fragment),
+                        title,
+                    };
+                    result.push({ id: memo.id, pageId: memo.pageId, metadata });
+                    // A stale decode must never overwrite an index for a newer persisted revision.
+                    writes.push({
+                        updateOne: {
+                            filter: {
+                                id: memo.id,
+                                version: memo.version,
+                                updatedAt: memo.updatedAt,
+                            },
+                            update: { $set: { graphMetadata: metadata } },
+                        },
+                    });
+                } catch {
+                    // Corrupt documents retain the existing graph's skip behavior, without caching a fake empty index.
+                } finally {
+                    ydoc.destroy();
+                }
+            }
+        }
+    }
+    for (let offset = 0; offset < writes.length; offset += 500)
+        await memos.bulkWrite(writes.slice(offset, offset + 500));
+    return result;
+}
 
 /**
  * Link Service
@@ -699,13 +813,53 @@ export async function reindexAllLinks(userId: string, notebookId?: string): Prom
 
     const allPages = await pages.find(query).toArray();
     let count = 0;
-
+    const operations: Document[] = [];
+    const indexedAt = new Date().toISOString();
     for (const page of allPages) {
-        if (page.content) {
-            await updateLinksForPage(page.id, page.content, page.title);
-            count++;
+        if (!page.content) continue;
+        const links = extractLinksFromContent(page.content);
+        const oldLinks: PageLink[] = page.linksMeta?.forwardLinks || [];
+        const oldIds = new Set(oldLinks.map((link) => link.pageId));
+        const newIds = new Set(links.map((link) => link.pageId));
+        operations.push({
+            updateOne: {
+                filter: { id: page.id, userId: new ObjectId(userId) },
+                update: {
+                    $set: { 'linksMeta.forwardLinks': links, 'linksMeta.lastIndexedAt': indexedAt },
+                },
+            },
+        });
+        for (const link of links) {
+            if (oldIds.has(link.pageId)) continue;
+            operations.push({
+                updateOne: {
+                    filter: { id: link.pageId },
+                    update: {
+                        $push: {
+                            'linksMeta.backlinks': {
+                                pageId: page.id,
+                                title: page.title,
+                                type: link.type,
+                            },
+                        },
+                    },
+                },
+            });
+        }
+        const removedIds = [...oldIds].filter((id) => !newIds.has(id));
+        if (removedIds.length)
+            operations.push({
+                updateMany: {
+                    filter: { id: { $in: removedIds } },
+                    update: { $pull: { 'linksMeta.backlinks': { pageId: page.id } } },
+                },
+            });
+        count++;
+        while (operations.length >= 500) {
+            await pages.bulkWrite(operations.splice(0, 500) as AnyBulkWriteOperation<Document>[]);
         }
     }
+    if (operations.length) await pages.bulkWrite(operations as AnyBulkWriteOperation<Document>[]);
 
     return count;
 }
@@ -774,6 +928,13 @@ export async function getConnectionGraph(
     // Map: userId -> { displayName, mentionedInPageIds[] }
     const userMentionsMap = new Map<string, { displayName: string; pageIds: Set<string> }>();
 
+    const legacyMemos = await indexedGraphMemos(
+        allPages
+            .filter((page) => page.type === 'memo' && (!page.linksMeta || !page.mentionsMeta))
+            .map((page) => page.id),
+    );
+    const legacyIndex = new Map(legacyMemos.map((memo) => [memo.id, memo.metadata]));
+
     for (const page of allPages) {
         // If linksMeta exists and has forward links, use those
         if (page.linksMeta?.forwardLinks?.length > 0) {
@@ -792,39 +953,20 @@ export async function getConnectionGraph(
                     });
                 }
             }
-        } else if (page.type === 'memo' && (!page.linksMeta || !page.mentionsMeta)) {
-            // Fallback for legacy memos that haven't been indexed on save
-            try {
-                const state = await getMemoState(page.id);
-                if (state) {
-                    const ydoc = new Y.Doc();
-                    Y.applyUpdate(ydoc, state);
-                    const xmlFragment = ydoc.getXmlFragment('prosemirror');
-
-                    // Extract page links (if not already from linksMeta)
-                    if (!pageLinksMap.has(page.id)) {
-                        const links = extractLinksFromYjs(xmlFragment);
-                        if (links.length > 0) {
-                            pageLinksMap.set(page.id, links);
-                        }
-                    }
-
-                    // Extract @user mentions
-                    const mentions = extractUserMentionsFromYjs(xmlFragment);
-                    for (const m of mentions) {
-                        const existing = userMentionsMap.get(m.userId);
-                        if (existing) {
-                            existing.pageIds.add(page.id);
-                        } else {
-                            userMentionsMap.set(m.userId, {
-                                displayName: m.displayName,
-                                pageIds: new Set([page.id]),
-                            });
-                        }
-                    }
+        } else {
+            const cached = legacyIndex.get(page.id);
+            if (cached) {
+                if (!pageLinksMap.has(page.id) && cached.links.length)
+                    pageLinksMap.set(page.id, cached.links);
+                for (const m of cached.mentions) {
+                    const existing = userMentionsMap.get(m.userId);
+                    if (existing) existing.pageIds.add(page.id);
+                    else
+                        userMentionsMap.set(m.userId, {
+                            displayName: m.displayName,
+                            pageIds: new Set([page.id]),
+                        });
                 }
-            } catch (e) {
-                // Ignore errors, just skip this page
             }
         }
     }
@@ -855,79 +997,28 @@ export async function getConnectionGraph(
 
     if (kanbanPages.length > 0) {
         const kanbanPageIds = kanbanPages.map((p) => p.id);
-        const cardMemos = await findMemosByPageIds(kanbanPageIds);
-
+        const cardMemos = await indexedGraphMemos(kanbanPageIds, true);
         for (const memo of cardMemos) {
-            try {
-                const state = memo.state;
-                if (!state) continue;
-
-                const stateBytes =
-                    state instanceof Uint8Array ? state : new Uint8Array(state as ArrayBuffer);
-                const ydoc = new Y.Doc();
-                Y.applyUpdate(ydoc, stateBytes);
-                const xmlFragment = ydoc.getXmlFragment('prosemirror');
-
-                // Extract tags from Y.js content
-                const cardTags = extractTagsFromYjs(xmlFragment);
-
-                // Extract page links from Y.js content (for graph edges)
-                const cardLinks = extractLinksFromYjs(xmlFragment);
-                if (cardLinks.length > 0) {
-                    pageLinksMap.set(memo.id, cardLinks);
-                }
-
-                // Extract @user mentions from card memos
-                const cardUserMentions = extractUserMentionsFromYjs(xmlFragment);
-                for (const m of cardUserMentions) {
-                    const existing = userMentionsMap.get(m.userId);
-                    if (existing) {
-                        existing.pageIds.add(memo.id);
-                    } else {
-                        userMentionsMap.set(m.userId, {
-                            displayName: m.displayName,
-                            pageIds: new Set([memo.id]),
-                        });
-                    }
-                }
-
-                // Extract title from first heading or first line
-                let cardTitle = 'Untitled Card';
-                const children = xmlFragment.toArray();
-                for (const child of children) {
-                    if (child instanceof Y.XmlElement) {
-                        if (child.nodeName === 'heading') {
-                            const headingText = child
-                                .toArray()
-                                .map((c: any) => c.toString())
-                                .join('');
-                            if (headingText) {
-                                cardTitle = headingText;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                // Add card memo as node
-                const cardLinkCount = 1 + cardLinks.length; // Parent kanban + page links
-                nodes.push({
-                    id: memo.id,
-                    label: cardTitle,
-                    type: 'kanban-card',
-                    linkCount: cardLinkCount,
-                    tags: cardTags.length > 0 ? cardTags : undefined,
-                });
-                pageIdSet.add(memo.id);
-
-                // Track edge from kanban page to card memo
-                kanbanCardEdges.push({
-                    kanbanPageId: memo.pageId,
-                    cardMemoId: memo.id,
-                });
-            } catch {
-                // Skip card memos that fail to decode
+            const { links: cardLinks, tags: cardTags, mentions, title } = memo.metadata;
+            if (cardLinks.length) pageLinksMap.set(memo.id, cardLinks);
+            for (const m of mentions) {
+                const existing = userMentionsMap.get(m.userId);
+                if (existing) existing.pageIds.add(memo.id);
+                else
+                    userMentionsMap.set(m.userId, {
+                        displayName: m.displayName,
+                        pageIds: new Set([memo.id]),
+                    });
             }
+            nodes.push({
+                id: memo.id,
+                label: title,
+                type: 'kanban-card',
+                linkCount: 1 + cardLinks.length,
+                tags: cardTags.length ? cardTags : undefined,
+            });
+            pageIdSet.add(memo.id);
+            kanbanCardEdges.push({ kanbanPageId: memo.pageId, cardMemoId: memo.id });
         }
     }
 
