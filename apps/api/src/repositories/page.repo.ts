@@ -861,6 +861,45 @@ async function generateUniquePageSlug(notebookId: ObjectId | undefined): Promise
     return customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 12)();
 }
 
+/** Reserve candidates in memory and check collisions once per batch, not per page. */
+async function generatePageSlugs(notebookId: ObjectId, count: number): Promise<string[]> {
+    const reserved = new Set<string>();
+    for (let attempt = 0; attempt < 20 && reserved.size < count; attempt++) {
+        const candidates = new Set<string>();
+        const generate =
+            attempt < 10
+                ? generatePageSlugId
+                : customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 12);
+        // Bound the query size and also reserve distinct IDs within this publish batch.
+        for (
+            let draw = 0;
+            draw < (count - reserved.size) * 4 &&
+            candidates.size < Math.min(500, count - reserved.size);
+            draw++
+        ) {
+            const slug = generate();
+            if (!reserved.has(slug)) candidates.add(slug);
+        }
+        if (candidates.size === 0) continue;
+        const query: Record<string, unknown> = {
+            notebookId: { $in: [notebookId, notebookId.toString()] },
+            publishedSlug: { $in: [...candidates] },
+        };
+        const collisions = await getCollection()
+            .find(query)
+            .project({ publishedSlug: 1 })
+            .toArray();
+        const occupied = new Set(collisions.map((page) => page.publishedSlug));
+        for (const candidate of candidates) {
+            if (!occupied.has(candidate)) reserved.add(candidate);
+        }
+        // Completing a collision-free chunk is progress, not a failed retry.
+        if (occupied.size === 0 && reserved.size < count) attempt--;
+    }
+    if (reserved.size !== count) throw new Error('Unable to reserve unique page slugs');
+    return [...reserved];
+}
+
 /**
  * Convert Y.js binary state to ProseMirror JSON.
  */
@@ -1086,9 +1125,10 @@ export async function bulkPublishPagesForNotebook(notebookId: string): Promise<n
 
         const now = new Date();
         const bulkOps = [];
+        const slugs = await generatePageSlugs(oid, docs.length);
 
-        for (const doc of docs) {
-            const slug = await generateUniquePageSlug(oid);
+        for (const [index, doc] of docs.entries()) {
+            const slug = slugs[index]!;
             const state = memoMap.get(doc.id);
             const stateBytes = state
                 ? state instanceof Uint8Array
