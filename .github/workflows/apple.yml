@@ -1,0 +1,35 @@
+name: Apple
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  build:
+    name: apple-${{ matrix.platform }}
+    runs-on: xcode-27
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            destination: generic/platform=macOS
+          - platform: ios
+            destination: generic/platform=iOS
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build Apple app and embedded Watch app without distribution signing
+        env:
+          DESTINATION: ${{ matrix.destination }}
+        run: |
+          set -euo pipefail
+          xcodebuild -project apps/apple/JapaneseMaple.xcodeproj \
+            -scheme JapaneseMaple -configuration Release \
+            -destination "$DESTINATION" -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO build
