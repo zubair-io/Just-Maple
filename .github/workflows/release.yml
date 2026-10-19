@@ -1,0 +1,25 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    name: Publish Xcode Cloud release
+    if: github.repository == 'zubair-io/Just-Maple' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 210
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Wait for matching Cloud archive and publish validated assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/publish_cloud_release.py
