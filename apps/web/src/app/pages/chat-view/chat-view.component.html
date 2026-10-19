@@ -2,10 +2,10 @@
   <div class="notebook-landing flex flex-col h-full overflow-hidden bg-[var(--color-bg)]">
     <app-header>
       <!-- Switcher dropdown container -->
-      <div headerContext class="relative">
+      <div headerContext class="relative" (keydown.escape)="switcherOpen.set(false)">
         <button
           (click)="switcherOpen.set(!switcherOpen())"
-          aria-haspopup="listbox"
+          aria-haspopup="menu"
           [attr.aria-expanded]="switcherOpen()"
           aria-label="Switch notebook"
           class="flex items-center gap-1.5 max-w-full h-9 px-2 font-sans font-bold text-lg tracking-tight text-[var(--color-text-main)] bg-transparent border-1.5 border-transparent hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer transition-all outline-none"
@@ -21,13 +21,59 @@
           <div class="fixed inset-0 z-40 bg-transparent" (click)="switcherOpen.set(false)"></div>
 
           <div
-            role="listbox"
-            class="absolute top-[42px] left-0 z-50 w-60 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-1.5 shadow-lg flex flex-col gap-0.5 animate-maple-modal-in"
+            role="menu"
+            aria-label="Notebook navigation"
+            class="absolute top-[42px] left-0 z-50 w-60 max-h-[calc(100dvh-96px)] overflow-y-auto bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-1.5 shadow-lg flex flex-col gap-0.5 animate-maple-modal-in"
           >
+            <div role="group" aria-label="Notebook sections" class="md:hidden">
+              <p
+                class="px-2.5 pt-1 pb-1.5 m-0 text-[10px] font-mono uppercase tracking-wider text-[var(--color-text-muted)]"
+              >
+                {{ notebook.label }}
+              </p>
+              <button
+                role="menuitemradio"
+                [attr.aria-checked]="selectedHeaderTab() === 'overview'"
+                (click)="selectTab('overview')"
+                class="flex items-center justify-between w-full h-9 px-2.5 text-sm bg-transparent border-none rounded-lg cursor-pointer text-left hover:bg-[var(--color-surface-hover)] text-[var(--color-text-main)]"
+              >
+                Overview
+                @if (selectedHeaderTab() === 'overview') {
+                  <span
+                    class="material-symbols-rounded text-base text-[var(--color-primary)]"
+                    aria-hidden="true"
+                    >check</span
+                  >
+                }
+              </button>
+              @for (tab of dynamicTabs(); track tab.id) {
+                <button
+                  role="menuitemradio"
+                  [attr.aria-checked]="selectedHeaderTab() === tab.id"
+                  (click)="selectTab(tab.id)"
+                  class="flex items-center justify-between w-full h-9 px-2.5 text-sm bg-transparent border-none rounded-lg cursor-pointer text-left hover:bg-[var(--color-surface-hover)] text-[var(--color-text-main)]"
+                >
+                  {{ tab.label }}
+                  @if (selectedHeaderTab() === tab.id) {
+                    <span
+                      class="material-symbols-rounded text-base text-[var(--color-primary)]"
+                      aria-hidden="true"
+                      >check</span
+                    >
+                  }
+                </button>
+              }
+              <div class="h-px bg-[var(--color-border)] my-1.5 mx-1.5"></div>
+            </div>
+            <p
+              class="px-2.5 pt-1 pb-1.5 m-0 text-[10px] font-mono uppercase tracking-wider text-[var(--color-text-muted)]"
+            >
+              Switch notebook
+            </p>
             @for (item of switcherItems(); track item._id) {
               <button
-                role="option"
-                [attr.aria-selected]="item.active"
+                role="menuitemradio"
+                [attr.aria-checked]="item.active"
                 (click)="selectNotebook(item._id)"
                 class="flex items-center gap-2 w-full h-9 px-2.5 box-border font-sans text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none rounded-lg cursor-pointer text-left transition-colors"
                 [class.bg-[var(--color-surface-hover)]]="item.active"
