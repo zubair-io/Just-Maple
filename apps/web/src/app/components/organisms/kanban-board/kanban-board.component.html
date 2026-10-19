@@ -5,9 +5,36 @@
       <span>Loading board...</span>
     </div>
   } @else {
-    <div class="lanes-container" #lanesContainer>
+    <div class="flex gap-2 px-4 pt-3" role="group" aria-label="Board view">
+      <button
+        class="rounded border border-[var(--color-border)] px-3 py-1 text-sm text-[var(--color-text-main)] aria-pressed:bg-[var(--color-bg-secondary)]"
+        [attr.aria-pressed]="viewMode() === 'board'"
+        (click)="viewMode.set('board')"
+      >
+        Board
+      </button>
+      <button
+        class="rounded border border-[var(--color-border)] px-3 py-1 text-sm text-[var(--color-text-main)] aria-pressed:bg-[var(--color-bg-secondary)]"
+        [attr.aria-pressed]="viewMode() === 'list'"
+        (click)="viewMode.set('list')"
+      >
+        List
+      </button>
+    </div>
+    <div
+      class="lanes-container"
+      [attr.data-view]="viewMode()"
+      [ngClass]="
+        viewMode() === 'list' ? '!flex-col !overflow-y-auto !overflow-x-hidden !snap-none' : ''
+      "
+      #lanesContainer
+    >
       @for (lane of lanes(); track trackByLaneId($index, lane)) {
-        <div class="lane" [class.is-done]="lane.isDoneLane">
+        <div
+          class="lane"
+          [class.is-done]="lane.isDoneLane"
+          [ngClass]="viewMode() === 'list' ? '!w-full !max-w-none !max-h-none' : ''"
+        >
           <div class="lane-header">
             @if (editingLaneId() === lane.id) {
               <input

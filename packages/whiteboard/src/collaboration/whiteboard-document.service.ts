@@ -38,6 +38,7 @@ interface OpenWhiteboard {
     ydoc: Y.Doc;
     awareness: Awareness;
     persistence: IndexeddbPersistence;
+    undoManager: Y.UndoManager;
     wsProvider: YJSWSProvider | null;
     parentPageId?: string; // For embedded whiteboards
 }
@@ -153,6 +154,7 @@ export class WhiteboardDocumentService {
             ydoc,
             awareness,
             persistence,
+            undoManager: new Y.UndoManager([ydoc.getMap('elements'), ydoc.getArray('layers')]),
             wsProvider: null,
             parentPageId,
         };
@@ -165,6 +167,7 @@ export class WhiteboardDocumentService {
         // Initialize default structure if empty
         if (isDocEmpty) {
             this.initializeEmptyWhiteboard(ydoc);
+            doc.undoManager.clear();
         }
 
         // Connect to server if online
@@ -224,43 +227,47 @@ export class WhiteboardDocumentService {
         const doc = this.openDocs.get(pageId);
         if (!doc) return;
 
-        const elements = doc.ydoc.getMap<Y.Map<unknown>>('elements');
-        const layers = doc.ydoc.getArray<Y.Map<unknown>>('layers');
-        const metadata = doc.ydoc.getMap<unknown>('metadata');
-        const activeLayerId = metadata.get('activeLayerId') as string;
+        doc.undoManager.stopCapturing();
+        doc.ydoc.transact(() => {
+            const elements = doc.ydoc.getMap<Y.Map<unknown>>('elements');
+            const layers = doc.ydoc.getArray<Y.Map<unknown>>('layers');
+            const metadata = doc.ydoc.getMap<unknown>('metadata');
+            const activeLayerId = metadata.get('activeLayerId') as string;
 
-        // Create Y.Map for element
-        const yElement = new Y.Map<unknown>();
-        for (const [key, value] of Object.entries(element)) {
-            if (typeof value === 'object' && value !== null) {
-                if (Array.isArray(value)) {
-                    const yArray = new Y.Array<unknown>();
-                    yArray.push(value);
-                    yElement.set(key, yArray);
-                } else {
-                    const yMap = new Y.Map<unknown>();
-                    for (const [k, v] of Object.entries(value)) {
-                        yMap.set(k, v);
+            // Create Y.Map for element
+            const yElement = new Y.Map<unknown>();
+            for (const [key, value] of Object.entries(element)) {
+                if (typeof value === 'object' && value !== null) {
+                    if (Array.isArray(value)) {
+                        const yArray = new Y.Array<unknown>();
+                        yArray.push(value);
+                        yElement.set(key, yArray);
+                    } else {
+                        const yMap = new Y.Map<unknown>();
+                        for (const [k, v] of Object.entries(value)) {
+                            yMap.set(k, v);
+                        }
+                        yElement.set(key, yMap);
                     }
-                    yElement.set(key, yMap);
+                } else {
+                    yElement.set(key, value);
                 }
-            } else {
-                yElement.set(key, value);
             }
-        }
 
-        // Add to elements map
-        elements.set(element.id, yElement);
+            // Add to elements map
+            elements.set(element.id, yElement);
 
-        // Add to active layer's elements list
-        for (let i = 0; i < layers.length; i++) {
-            const layer = layers.get(i);
-            if (layer.get('id') === activeLayerId) {
-                const layerElements = layer.get('elements') as string[];
-                layer.set('elements', [...layerElements, element.id]);
-                break;
+            // Add to active layer's elements list
+            for (let i = 0; i < layers.length; i++) {
+                const layer = layers.get(i);
+                if (layer.get('id') === activeLayerId) {
+                    const layerElements = layer.get('elements') as string[];
+                    layer.set('elements', [...layerElements, element.id]);
+                    break;
+                }
             }
-        }
+        });
+        doc.undoManager.stopCapturing();
     }
 
     /**
@@ -270,25 +277,27 @@ export class WhiteboardDocumentService {
         const doc = this.openDocs.get(pageId);
         if (!doc) return;
 
-        const elements = doc.ydoc.getMap<Y.Map<unknown>>('elements');
-        const yElement = elements.get(elementId);
-        if (!yElement) return;
+        doc.ydoc.transact(() => {
+            const elements = doc.ydoc.getMap<Y.Map<unknown>>('elements');
+            const yElement = elements.get(elementId);
+            if (!yElement) return;
 
-        for (const [key, value] of Object.entries(updates)) {
-            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                // Update nested Y.Map
-                let yMap = yElement.get(key) as Y.Map<unknown>;
-                if (!yMap) {
-                    yMap = new Y.Map<unknown>();
-                    yElement.set(key, yMap);
+            for (const [key, value] of Object.entries(updates)) {
+                if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                    // Update nested Y.Map
+                    let yMap = yElement.get(key) as Y.Map<unknown>;
+                    if (!yMap) {
+                        yMap = new Y.Map<unknown>();
+                        yElement.set(key, yMap);
+                    }
+                    for (const [k, v] of Object.entries(value)) {
+                        yMap.set(k, v);
+                    }
+                } else {
+                    yElement.set(key, value);
                 }
-                for (const [k, v] of Object.entries(value)) {
-                    yMap.set(k, v);
-                }
-            } else {
-                yElement.set(key, value);
             }
-        }
+        });
     }
 
     /**
@@ -298,21 +307,33 @@ export class WhiteboardDocumentService {
         const doc = this.openDocs.get(pageId);
         if (!doc) return;
 
-        const elements = doc.ydoc.getMap<Y.Map<unknown>>('elements');
-        const layers = doc.ydoc.getArray<Y.Map<unknown>>('layers');
+        doc.undoManager.stopCapturing();
+        doc.ydoc.transact(() => {
+            const elements = doc.ydoc.getMap<Y.Map<unknown>>('elements');
+            const layers = doc.ydoc.getArray<Y.Map<unknown>>('layers');
 
-        // Remove from elements map
-        elements.delete(elementId);
+            // Remove from elements map
+            elements.delete(elementId);
 
-        // Remove from all layers
-        for (let i = 0; i < layers.length; i++) {
-            const layer = layers.get(i);
-            const layerElements = layer.get('elements') as string[];
-            const newElements = layerElements.filter((id) => id !== elementId);
-            if (newElements.length !== layerElements.length) {
-                layer.set('elements', newElements);
+            // Remove from all layers
+            for (let i = 0; i < layers.length; i++) {
+                const layer = layers.get(i);
+                const layerElements = layer.get('elements') as string[];
+                const newElements = layerElements.filter((id) => id !== elementId);
+                if (newElements.length !== layerElements.length) {
+                    layer.set('elements', newElements);
+                }
             }
-        }
+        });
+        doc.undoManager.stopCapturing();
+    }
+
+    undo(pageId: string): void {
+        this.openDocs.get(pageId)?.undoManager.undo();
+    }
+
+    redo(pageId: string): void {
+        this.openDocs.get(pageId)?.undoManager.redo();
     }
 
     /**
@@ -550,6 +571,7 @@ export class WhiteboardDocumentService {
         if (!doc) return;
 
         doc.wsProvider?.destroy();
+        doc.undoManager.destroy();
         doc.persistence.destroy();
         doc.ydoc.destroy();
 
@@ -624,6 +646,7 @@ export class WhiteboardDocumentService {
             ydoc,
             awareness,
             persistence,
+            undoManager: new Y.UndoManager([ydoc.getMap('elements'), ydoc.getArray('layers')]),
             wsProvider: null,
         };
         this.openDocs.set(pageId, doc);
