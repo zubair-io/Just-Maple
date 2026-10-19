@@ -14,6 +14,13 @@ import {
 import { CommonModule } from '@angular/common';
 import type { Editor } from '@tiptap/core';
 
+export interface EditorPageAction {
+  icon: string;
+  label: string;
+  action: () => void;
+  danger?: boolean;
+}
+
 interface ToolbarButton {
   icon: string;
   label: string;
@@ -36,11 +43,17 @@ interface ToolbarButton {
 })
 export class EditorToolbarComponent implements OnInit, OnDestroy {
   readonly editor = input.required<Editor | null>();
+  readonly pageActions = input<EditorPageAction[]>([]);
   private readonly element = inject(ElementRef<HTMLElement>);
   readonly openPanel = signal<'style' | 'more' | null>(null);
   readonly currentTextStyle = computed(
     () => this.textTypeButtons().find((button) => button.isActive?.())?.label ?? 'Paragraph',
   );
+
+  runPageAction(action: EditorPageAction): void {
+    this.closePanel();
+    action.action();
+  }
 
   togglePanel(panel: 'style' | 'more'): void {
     this.openPanel.update((current) => (current === panel ? null : panel));

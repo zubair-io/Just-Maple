@@ -59,6 +59,10 @@
     outline-offset: 2px;
   }
 
+  &.danger {
+    color: var(--color-error, #dc4c4c);
+  }
+
   &.active {
     background: var(--color-primary-light);
     color: var(--color-primary);

@@ -18,6 +18,24 @@
 
   @if (openPanel() === 'more') {
     <div class="toolbar-panel more-panel" role="region" aria-label="More formatting options">
+      @if (pageActions().length) {
+        <section class="panel-section">
+          <h3>Page</h3>
+          <div class="panel-options">
+            @for (action of pageActions(); track action.label) {
+              <button
+                type="button"
+                class="option-button"
+                [class.danger]="action.danger"
+                (click)="runPageAction(action)"
+              >
+                <span class="material-symbols-rounded" aria-hidden="true">{{ action.icon }}</span>
+                <span>{{ action.label }}</span>
+              </button>
+            }
+          </div>
+        </section>
+      }
       @for (
         group of [
           { label: 'Text', buttons: formattingButtons().slice(3) },
