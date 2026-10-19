@@ -65,6 +65,40 @@
               }
               <div class="h-px bg-[var(--color-border)] my-1.5 mx-1.5"></div>
             </div>
+            <div role="group" aria-label="Notebook pages" class="md:hidden">
+              <p
+                class="px-2.5 pt-1 pb-1.5 m-0 text-[10px] font-mono uppercase tracking-wider text-[var(--color-text-muted)]"
+              >
+                Pages
+              </p>
+              @for (page of navigationPages(); track page.id) {
+                <button
+                  role="menuitem"
+                  [attr.aria-current]="routePageId() === page.id ? 'page' : null"
+                  [title]="page.title || 'Untitled page'"
+                  (click)="onFileClicked(page.id)"
+                  class="flex items-center gap-2 w-full min-h-9 px-2.5 py-2 text-sm text-[var(--color-text-main)] bg-transparent hover:bg-[var(--color-surface-hover)] border-none rounded-lg cursor-pointer text-left"
+                  [class.bg-[var(--color-surface-hover)]]="routePageId() === page.id"
+                >
+                  <span
+                    class="material-symbols-rounded text-base text-[var(--color-text-muted)] flex-none"
+                    aria-hidden="true"
+                    >{{ getPageTypeIcon(page.type) }}</span
+                  >
+                  <span class="flex-1 min-w-0 truncate">{{ page.title || 'Untitled page' }}</span>
+                  @if (routePageId() === page.id) {
+                    <span
+                      class="material-symbols-rounded text-base text-[var(--color-primary)] flex-none"
+                      aria-hidden="true"
+                      >check</span
+                    >
+                  }
+                </button>
+              } @empty {
+                <p class="px-2.5 py-2 m-0 text-xs text-[var(--color-text-muted)]">No pages yet</p>
+              }
+              <div class="h-px bg-[var(--color-border)] my-1.5 mx-1.5"></div>
+            </div>
             <p
               class="px-2.5 pt-1 pb-1.5 m-0 text-[10px] font-mono uppercase tracking-wider text-[var(--color-text-muted)]"
             >
