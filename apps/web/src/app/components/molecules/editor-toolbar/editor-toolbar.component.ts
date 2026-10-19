@@ -1,5 +1,8 @@
 import {
   Component,
+  HostListener,
+  ElementRef,
+  inject,
   input,
   computed,
   signal,
@@ -10,6 +13,13 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Editor } from '@tiptap/core';
+
+export interface EditorPageAction {
+  icon: string;
+  label: string;
+  action: () => void;
+  danger?: boolean;
+}
 
 interface ToolbarButton {
   icon: string;
@@ -28,10 +38,42 @@ interface ToolbarButton {
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[style.bottom]': 'toolbarBottom()',
+    '[style.--keyboard-offset]': 'keyboardOffset() + "px"',
   },
 })
 export class EditorToolbarComponent implements OnInit, OnDestroy {
   readonly editor = input.required<Editor | null>();
+  readonly pageActions = input<EditorPageAction[]>([]);
+  private readonly element = inject(ElementRef<HTMLElement>);
+  readonly openPanel = signal<'style' | 'more' | null>(null);
+  readonly currentTextStyle = computed(() => {
+    const label = this.textTypeButtons().find((button) => button.isActive?.())?.label;
+    return label?.startsWith('Heading ') ? label.replace('Heading ', 'H') : 'P';
+  });
+
+  runPageAction(action: EditorPageAction): void {
+    this.closePanel();
+    action.action();
+  }
+
+  togglePanel(panel: 'style' | 'more'): void {
+    this.openPanel.update((current) => (current === panel ? null : panel));
+  }
+
+  chooseStyle(button: ToolbarButton): void {
+    button.action();
+    this.openPanel.set(null);
+  }
+
+  @HostListener('document:keydown.escape')
+  closePanel(): void {
+    this.openPanel.set(null);
+  }
+
+  @HostListener('document:click', ['$event'])
+  onOutsideClick(event: MouseEvent): void {
+    if (!this.element.nativeElement.contains(event.target as Node)) this.closePanel();
+  }
 
   // Signal to track editor state updates (increments on each transaction).
   private readonly editorStateVersion = signal(0);

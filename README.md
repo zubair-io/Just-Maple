@@ -2,7 +2,7 @@
 
 ## Overview
 
-A self-hosted platform where documents and conversations live together, organized by tags that control both structure and permissions. Features passwordless authentication (passkeys + magic links), multi-server support for native apps, privacy-first push notifications, and embedded reactive widgets with AI workflows.
+A self-hosted platform where documents and conversations live together, organized by tags that control both structure and permissions. Features passwordless authentication (passkeys), multi-server support for native apps, privacy-first push notifications, and embedded reactive widgets with AI workflows.
 
 **Product Name**: Just Maple
 
@@ -40,7 +40,7 @@ A self-hosted platform where documents and conversations live together, organize
 
 ## Goals
 
-- **Passwordless authentication**: Passkeys (WebAuthn) and magic links only
+- **Passwordless authentication**: Passkeys (WebAuthn) only
 - **Tags as organizing primitive**: Folders + permissions + chat container
 - **Living documents**: Reactive widgets that respond to events and context
 - **Multi-tenant architecture**: Same codebase, separate deployments per tenant
@@ -244,7 +244,7 @@ just-maple/
 │   │       │   ├── note.repo.ts
 │   │       │   ├── message.repo.ts
 │   │       │   ├── passkey.repo.ts
-│   │       │   └── magic-link.repo.ts
+│   │       │   └── passkey-challenge.repo.ts
 │   │       ├── routes/
 │   │       │   ├── auth.ts
 │   │       │   ├── tags.ts
@@ -367,11 +367,11 @@ just-maple/
                     └─────────────┘
 
 ┌─────────────┐     ┌─────────────┐
-│  passkeys   │     │ magic_links │
+│  passkeys   │     │ passkey_challenges │
 ├─────────────┤     ├─────────────┤
 │ _id         │     │ _id         │
 │ userId      │────►│ userId      │────►
-│ credentialId│     │ token       │
+│ credentialId│     │ kind        │
 │ publicKey   │     │ expiresAt   │ ← TTL
 │ counter     │     └─────────────┘
 │ createdAt   │
@@ -507,8 +507,8 @@ export const UserSchema = t.Object({
 { userId: 1 }
 { credentialId: 1 }  // unique
 
-// magic_links
-{ token: 1 }
+// passkey_challenges
+{ _id: 1 } // challenge, unique
 { expiresAt: 1 }  // TTL, expireAfterSeconds: 0
 ```
 
@@ -778,12 +778,11 @@ class TranscriptionService {
 ### Flow Overview
 
 ```
-Magic Link Flow:
-  1. User enters email
-  2. POST /auth/magic-link → Creates user if new, sends email
-  3. User clicks link in email
-  4. GET /auth/verify?token=xxx → Validates, issues JWT
-  5. JWT stored in httpOnly cookie (web) or Keychain (native)
+Passkey Signup:
+  1. User enters a display name
+  2. POST /api/auth/passkey/signup/start → Returns WebAuthn creation options
+  3. Browser creates a discoverable passkey
+  4. POST /api/auth/passkey/signup/finish → Verifies, creates account, issues JWT
 
 Passkey Registration (authenticated users):
   1. POST /auth/passkey/register/start → Returns WebAuthn options
@@ -798,16 +797,16 @@ Passkey Login:
 
 ### API Endpoints
 
-| Method | Endpoint                        | Auth     | Description                   |
-| ------ | ------------------------------- | -------- | ----------------------------- |
-| POST   | `/auth/magic-link`              | Public   | Request magic link email      |
-| GET    | `/auth/verify`                  | Public   | Verify magic link token       |
-| POST   | `/auth/passkey/register/start`  | Required | Start passkey registration    |
-| POST   | `/auth/passkey/register/finish` | Required | Complete passkey registration |
-| POST   | `/auth/passkey/login/start`     | Public   | Start passkey login           |
-| POST   | `/auth/passkey/login/finish`    | Public   | Complete passkey login        |
-| POST   | `/auth/logout`                  | Required | Clear session                 |
-| GET    | `/auth/me`                      | Required | Get current user              |
+| Method | Endpoint                        | Auth     | Description                       |
+| ------ | ------------------------------- | -------- | --------------------------------- |
+| POST   | `/auth/passkey/signup/start`    | Public   | Start passkey account creation    |
+| POST   | `/auth/passkey/signup/finish`   | Public   | Verify passkey and create account |
+| POST   | `/auth/passkey/register/start`  | Required | Start passkey registration        |
+| POST   | `/auth/passkey/register/finish` | Required | Complete passkey registration     |
+| POST   | `/auth/passkey/login/start`     | Public   | Start passkey login               |
+| POST   | `/auth/passkey/login/finish`    | Public   | Complete passkey login            |
+| POST   | `/auth/logout`                  | Required | Clear session                     |
+| GET    | `/auth/me`                      | Required | Get current user                  |
 
 ---
 
@@ -1125,7 +1124,7 @@ bun run dev:web
 
 | Feature                    | Description                 |
 | -------------------------- | --------------------------- |
-| **DIY Auth Migration**     | Passkeys + magic links      |
+| **DIY Auth Migration**     | Passkeys                    |
 | **PaperbarkMaple Backend** | Bun + Elysia migration      |
 | **iOS App**                | RedSunsetMaple iOS target   |
 | **Chat**                   | Messages per tag, WebSocket |

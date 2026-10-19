@@ -8,7 +8,7 @@ import { findUserById } from '../repositories/user.repo';
  */
 export async function authenticateWebSocket(
     ws: any,
-): Promise<{ userId: string; email: string } | null> {
+): Promise<{ userId: string; email?: string } | null> {
     // Try to get token from Sec-WebSocket-Protocol header first (recommended)
     const request = ws.data?.request;
     const headers = request?.headers;

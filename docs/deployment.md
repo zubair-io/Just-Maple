@@ -129,8 +129,6 @@ ORIGIN=https://justmaple.app
 CORS_ORIGINS=https://justmaple.app,https://www.justmaple.app
 
 # Email
-AZURE_COMMUNICATION_CONNECTION_STRING=<from-key-vault>
-EMAIL_FROM=noreply@justmaple.app
 
 # Push Notifications
 APNS_KEY_ID=<from-key-vault>

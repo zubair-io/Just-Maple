@@ -116,7 +116,7 @@ export async function buildWebhookPayload(
         userIds.map(async (userId) => {
             const user = await findUserById(userId);
             if (user) {
-                userMap.set(userId, user.displayName || user.email);
+                userMap.set(userId, user.displayName || user.email || 'Maple user');
             }
         }),
     );

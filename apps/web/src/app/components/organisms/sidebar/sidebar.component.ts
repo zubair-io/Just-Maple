@@ -139,14 +139,14 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   readonly userInitials = computed(() => {
     const user = this.authService.user();
     if (!user) return '?';
-    const name = user.displayName || user.email.split('@')[0];
+    const name = user.displayName || user.email?.split('@')[0] || 'Maple user';
     return name.slice(0, 2).toUpperCase();
   });
 
   readonly userName = computed(() => {
     const user = this.authService.user();
     if (!user) return 'Guest';
-    return user.displayName || user.email.split('@')[0];
+    return user.displayName || user.email?.split('@')[0] || 'Maple user';
   });
 
   readonly notificationUnreadCount = computed(() => {

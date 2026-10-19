@@ -28,12 +28,10 @@ export async function setup() {
         testDb = client.db('just-maple-test');
 
         // Create indexes like the real DB
-        await testDb.collection('users').createIndex({ email: 1 }, { unique: true });
-        await testDb.collection('magic_links').createIndex({ token: 1 }, { unique: true });
+        await testDb.collection('users').createIndex({ email: 1 }, { unique: true, sparse: true });
         await testDb
-            .collection('magic_links')
+            .collection('passkey_challenges')
             .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-        await testDb.collection('magic_links').createIndex({ email: 1 });
         await testDb.collection('passkeys').createIndex({ credentialId: 1 }, { unique: true });
         await testDb.collection('passkeys').createIndex({ userId: 1 });
 

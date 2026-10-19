@@ -203,7 +203,7 @@ Every Page has a `type` field determining its content and editor:
 | Feature             | Description                | Status  |
 | ------------------- | -------------------------- | ------- |
 | **Passkeys**        | WebAuthn passwordless auth | Shipped |
-| **Magic Links**     | Email-based login          | Shipped |
+| **Passkey signup**  | Display name + passkey     | Shipped |
 | **JWT Tokens**      | Access + refresh tokens    | Shipped |
 | **Device Tracking** | User agent, IP in tokens   | Shipped |
 | **Multi-Device**    | Multiple passkeys per user | Shipped |

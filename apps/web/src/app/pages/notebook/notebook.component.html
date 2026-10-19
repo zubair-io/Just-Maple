@@ -1,6 +1,8 @@
 <div class="notebook-page">
   @if (selectedPage(); as page) {
     <app-note-header
+      [showDetails]="false"
+      [showControls]="false"
       [page]="page"
       [notebook]="selectedNotebook()"
       [canUndo]="canUndo()"
@@ -22,7 +24,11 @@
     <div class="notebook-content">
       @if (pageId(); as id) {
         @if (notebookId(); as nbId) {
-          <app-notebook-editor [pageId]="id" [notebookId]="nbId" />
+          <app-notebook-editor
+            [pageId]="id"
+            [notebookId]="nbId"
+            [pageActions]="footerPageActions()"
+          />
         }
       }
     </div>

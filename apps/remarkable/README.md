@@ -14,7 +14,7 @@ Native reMarkable tablet application for Just Maple, providing Notes, Whiteboard
 ```
 src/
 ├── main.rs          # App entry point and state management
-├── auth/            # Authentication (magic link login)
+├── auth/            # Stored session management; passkey login unavailable
 ├── storage/         # Local sled database
 ├── sync/            # HTTP API client, WebSocket, offline queue
 ├── eink/            # E-ink display refresh management

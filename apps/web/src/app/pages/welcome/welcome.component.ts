@@ -1,144 +1,199 @@
-import { Component, inject, signal, computed } from '@angular/core';
+import { AppHeaderComponent } from '../../components/organisms/app-header/app-header.component';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  ElementRef,
+  ViewChild,
+  HostListener,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { FileSystemService } from '../../services/file-system.service';
 import { AuthService } from '../../services/auth.service';
 import { NativeBridgeService } from '../../services/native-bridge.service';
 import { NotebookService } from '../../services/notebook.service';
+import { PageService } from '../../services/page.service';
+import { MessageService } from '../../services/message.service';
+import { DialogService } from '../../components';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
-
-interface Feature {
-  key: string;
-  icon: string;
-  label: string;
-  description: string;
-}
 
 @Component({
   selector: 'app-welcome',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, AppHeaderComponent, FormsModule, RouterLink],
   templateUrl: './welcome.component.html',
   styleUrl: './welcome.component.scss',
 })
 export class WelcomeComponent {
+  @ViewChild('searchInput') searchInput!: ElementRef<HTMLInputElement>;
+
   private readonly fsService = inject(FileSystemService);
   private readonly authService = inject(AuthService);
   private readonly nativeBridge = inject(NativeBridgeService);
-  private readonly notebookService = inject(NotebookService);
+  readonly notebookService = inject(NotebookService);
+  private readonly pageService = inject(PageService);
+  private readonly messageService = inject(MessageService);
+  private readonly dialogService = inject(DialogService);
   private readonly router = inject(Router);
 
   readonly isFileSystemSupported = this.fsService.isSupported;
   readonly isAuthenticated = this.authService.isAuthenticated;
   readonly isNativeApp = computed(() => this.nativeBridge.isNativeApp());
 
-  readonly icloudNotebook = computed(() => {
-    return this.notebookService
-      .notebooks()
-      .find((nb) => isLocalNotebook(nb._id) && this.notebookService.isICloud(nb._id));
-  });
-  readonly currentYear = new Date().getFullYear();
+  readonly searchQuery = signal<string>('');
+  private readonly pinnedIds = signal<Set<string>>(this.loadPinnedIds());
 
-  readonly selectedFeature = signal<string | null>(null);
-
-  readonly features: Feature[] = [
-    {
-      key: 'notes',
-      icon: 'description',
-      label: 'Rich notes',
-      description:
-        'A full-featured editor with headings, lists, checklists, tables, code blocks, and embedded media.',
-    },
-    {
-      key: 'local',
-      icon: 'folder_open',
-      label: 'Local-first files',
-      description:
-        'Notes are stored as plain .maple.md files on your device. No account needed, no lock-in.',
-    },
-    {
-      key: 'whiteboards',
-      icon: 'draw',
-      label: 'Whiteboards',
-      description:
-        'Infinite canvas for sketching diagrams, mind maps, and visual ideas with real-time collaboration.',
-    },
-    {
-      key: 'kanban',
-      icon: 'view_kanban',
-      label: 'Kanban boards',
-      description:
-        'Organize projects with drag-and-drop columns and cards. Track progress at a glance.',
-    },
-    {
-      key: 'todos',
-      icon: 'check_box',
-      label: 'Todos & priorities',
-      description:
-        'Inline task lists with priority levels, due dates, and color coding right inside your notes.',
-    },
-    {
-      key: 'search',
-      icon: 'search',
-      label: '\u2318K search',
-      description:
-        'Instantly find any page by title or content across all your notebooks, local and cloud.',
-    },
-    {
-      key: 'code',
-      icon: 'code',
-      label: 'Code blocks',
-      description: 'Syntax-highlighted code blocks with language detection for over 100 languages.',
-    },
-    {
-      key: 'images',
-      icon: 'image',
-      label: 'Image embeds',
-      description:
-        'Drag and drop images directly into your notes. Assets are stored alongside your files.',
-    },
-    {
-      key: 'sync',
-      icon: 'sync',
-      label: 'Cloud sync',
-      description: 'Sign in to sync your notebooks across devices with real-time collaboration.',
-    },
-    {
-      key: 'markdown',
-      icon: 'markdown',
-      label: 'Markdown',
-      description:
-        'Notes are saved in an extended Markdown format. Portable, readable, and future-proof.',
-    },
-    {
-      key: 'dark',
-      icon: 'dark_mode',
-      label: 'Dark mode',
-      description: 'Full dark theme support that follows your system preference.',
-    },
-    {
-      key: 'chat',
-      icon: 'chat',
-      label: 'Conversations',
-      description:
-        'Real-time chat threads attached to notebooks for quick discussions and sharing.',
-    },
-  ];
-
-  readonly selectedFeatureData = computed(() => {
-    const key = this.selectedFeature();
-    return key ? (this.features.find((f) => f.key === key) ?? null) : null;
-  });
-
-  toggleFeature(key: string): void {
-    this.selectedFeature.update((current) => (current === key ? null : key));
+  @HostListener('document:keydown', ['$event'])
+  onKeyDown(event: KeyboardEvent): void {
+    if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+      event.preventDefault();
+      this.searchInput?.nativeElement?.focus();
+    }
   }
 
-  openICloudNotebook(): void {
-    const nb = this.icloudNotebook();
-    if (nb) {
-      this.router.navigate(['/', nb._id]);
+  private loadPinnedIds(): Set<string> {
+    if (typeof localStorage === 'undefined') return new Set();
+    const val = localStorage.getItem('maple-pinned-notebooks');
+    if (!val) return new Set();
+    try {
+      return new Set(JSON.parse(val));
+    } catch {
+      return new Set();
     }
+  }
+
+  togglePin(notebookId: string, event: Event): void {
+    event.stopPropagation();
+    event.preventDefault();
+    this.pinnedIds.update((set) => {
+      const next = new Set(set);
+      if (next.has(notebookId)) {
+        next.delete(notebookId);
+      } else {
+        next.add(notebookId);
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('maple-pinned-notebooks', JSON.stringify([...next]));
+      }
+      return next;
+    });
+  }
+
+  isPinned(notebookId: string): boolean {
+    return this.pinnedIds().has(notebookId);
+  }
+
+  readonly processedNotebooks = computed(() => {
+    const all = this.notebookService.notebooks();
+    const pages = this.pageService.pages();
+    const query = this.searchQuery().trim().toLowerCase();
+
+    const filtered = all.filter((nb) => !query || nb.label.toLowerCase().includes(query));
+
+    return filtered.map((nb) => {
+      const nbPages = pages.filter((p) => p.notebookId === nb._id);
+      const uniqueTypes = [...new Set(nbPages.map((p) => p.type))];
+      const unreadCount = this.messageService.getUnreadCount(nb._id);
+      const pinned = this.pinnedIds().has(nb._id);
+
+      let activity = 'recently';
+      if (nb.updatedAt) {
+        activity = this.formatTimeAgo(new Date(nb.updatedAt));
+      }
+
+      return {
+        ...nb,
+        pinned,
+        unreadCount,
+        pageTypes: uniqueTypes,
+        pagesCount: nbPages.length,
+        activity,
+      };
+    });
+  });
+
+  readonly groupedNotebooks = computed(() => {
+    const all = this.processedNotebooks();
+    return {
+      pinned: all.filter((nb) => nb.pinned),
+      public: all.filter(
+        (nb) => !nb.pinned && !isLocalNotebook(nb._id) && nb.sharing?.['isPublic'],
+      ),
+      cloud: all.filter(
+        (nb) => !nb.pinned && !isLocalNotebook(nb._id) && !nb.sharing?.['isPublic'],
+      ),
+      icloud: all.filter(
+        (nb) => !nb.pinned && isLocalNotebook(nb._id) && this.notebookService.isICloud(nb._id),
+      ),
+      local: all.filter(
+        (nb) => !nb.pinned && isLocalNotebook(nb._id) && !this.notebookService.isICloud(nb._id),
+      ),
+    };
+  });
+
+  getPageTypeIcon(type: string): string {
+    switch (type) {
+      case 'collectable':
+        return 'brick';
+      case 'memo':
+        return 'description';
+      case 'whiteboard':
+        return 'draw';
+      case 'kanban':
+        return 'view_kanban';
+      case 'message':
+        return 'chat';
+      case 'json':
+        return 'data_object';
+      case 'canvas':
+        return 'dashboard';
+      default:
+        return 'article';
+    }
+  }
+
+  getPageTypeLabel(type: string): string {
+    switch (type) {
+      case 'collectable':
+        return 'Collectible';
+      case 'memo':
+        return 'Note';
+      case 'whiteboard':
+        return 'Whiteboard';
+      case 'kanban':
+        return 'Kanban';
+      case 'message':
+        return 'Chat';
+      case 'json':
+        return 'JSON';
+      case 'canvas':
+        return 'Canvas';
+      default:
+        return 'Page';
+    }
+  }
+
+  async onCreateNotebook(): Promise<void> {
+    const name = await this.dialogService.prompt({
+      title: 'New Notebook',
+      message: 'Enter a name for the notebook:',
+      placeholder: 'Notebook name',
+      confirmLabel: 'Create',
+    });
+    if (!name) return;
+
+    this.notebookService.createNotebook({ label: name }).subscribe({
+      error: (error) => {
+        console.error('Failed to create notebook:', error);
+      },
+    });
+  }
+
+  openNotebook(notebookId: string): void {
+    this.router.navigate(['/', notebookId]);
   }
 
   async openFolder(): Promise<void> {
@@ -149,5 +204,19 @@ export class WelcomeComponent {
     if (folder) {
       this.router.navigate(['/', folder.id]);
     }
+  }
+
+  private formatTimeAgo(date: Date): string {
+    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return 'now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days === 1) return 'yesterday';
+    if (days < 30) return `${days}d ago`;
+    const months = Math.floor(days / 30);
+    return `${months}mo ago`;
   }
 }

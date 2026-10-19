@@ -1,16 +1,11 @@
 import { ObjectId, Collection } from 'mongodb';
 import { getDb } from '../db/client';
-import type { User, CreateUser, UserResponse, UserPreferences } from '@maple/shared';
-import { getGravatarProfileAndImageUrl } from '../services/gravatar.service';
-import {
-    deleteProfilePictures,
-    downloadProcessAndUploadImage,
-    type ProfilePictureUrls,
-} from '../services/storage.service';
+import type { CreateUser, UserResponse, UserPreferences } from '@maple/shared';
+import { deleteProfilePictures, type ProfilePictureUrls } from '../services/storage.service';
 
 interface UserDocument {
     _id: ObjectId;
-    email: string;
+    email?: string;
     displayName?: string;
     profilePictureUrl?: string;
     profilePictureThumbnailUrl?: string;
@@ -72,60 +67,14 @@ export async function findUsersByIds(ids: string[]): Promise<Map<string, UserRes
 export async function createUser(data: CreateUser): Promise<UserResponse> {
     const now = new Date();
 
-    // Try to fetch Gravatar profile data and image URL
-    const gravatarData = await getGravatarProfileAndImageUrl(data.email);
-
-    // Create initial user document without profile picture
     const doc: Omit<UserDocument, '_id'> = {
-        email: data.email.toLowerCase(),
-        displayName: data.displayName || gravatarData.displayName,
+        ...(data.email ? { email: data.email.toLowerCase() } : {}),
+        displayName: data.displayName,
         createdAt: now,
         updatedAt: now,
     };
-
     const result = await getCollection().insertOne(doc as UserDocument);
-    const userId = result.insertedId.toString();
-
-    // If Gravatar has an image, download, process, and upload it
-    if (gravatarData.imageUrl) {
-        try {
-            const profilePictures = await downloadProcessAndUploadImage(
-                userId,
-                gravatarData.imageUrl,
-            );
-            if (profilePictures) {
-                // Update user with processed profile picture URLs
-                await getCollection().updateOne(
-                    { _id: result.insertedId },
-                    {
-                        $set: {
-                            profilePictureUrl: profilePictures.thumbnailUrl,
-                            profilePictureFullUrl: profilePictures.fullUrl,
-                            profilePictureThumbnailUrl: profilePictures.thumbnailUrl,
-                        },
-                    },
-                );
-
-                return {
-                    _id: userId,
-                    email: doc.email,
-                    displayName: doc.displayName,
-                    profilePictureUrl: profilePictures.thumbnailUrl,
-                    profilePictureFullUrl: profilePictures.fullUrl,
-                    profilePictureThumbnailUrl: profilePictures.thumbnailUrl,
-                };
-            }
-        } catch (error) {
-            console.error('[User] Failed to process Gravatar image:', error);
-            // Continue without profile picture if processing fails
-        }
-    }
-
-    return {
-        _id: userId,
-        email: doc.email,
-        displayName: doc.displayName,
-    };
+    return toUserResponse({ ...doc, _id: result.insertedId });
 }
 
 export async function findOrCreateUser(email: string): Promise<UserResponse> {
