@@ -25,13 +25,16 @@
     @if (!isLocal()) {
       <div class="p-4 border-b border-[var(--color-border)]">
         <label class="block text-sm font-medium text-[var(--color-text-main)] mb-2">
-          Share with someone
+          Share with someone using their account ID
         </label>
+        <p class="text-xs text-[var(--color-text-muted)] mb-3">
+          They can find their account ID in Settings.
+        </p>
         <div class="flex gap-2">
           <input
-            type="email"
-            [(ngModel)]="emailInput"
-            placeholder="Enter email address"
+            type="text"
+            [(ngModel)]="accountIdInput"
+            placeholder="Enter account ID"
             class="flex-1 px-3 py-2 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)]"
             [disabled]="isSharing()"
             (keyup.enter)="shareNotebook()"
@@ -46,7 +49,7 @@
           </select>
           <button
             (click)="shareNotebook()"
-            [disabled]="isSharing() || !emailInput().trim()"
+            [disabled]="isSharing() || !accountIdInput().trim()"
             class="px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {{ isSharing() ? 'Sharing...' : 'Share' }}
@@ -71,16 +74,16 @@
             >
               <div class="flex items-center gap-3">
                 <app-profile-avatar
-                  [email]="member.email"
+                  [email]="member.email ?? member.userId"
                   [displayName]="member.displayName"
                   [profilePictureUrl]="member.profilePictureUrl"
                   size="sm"
                 />
                 <div>
                   <div class="text-sm font-medium text-[var(--color-text-main)]">
-                    {{ member.displayName || member.email.split('@')[0] }}
+                    {{ member.displayName || (member.email ?? '').split('@')[0] || 'Maple user' }}
                   </div>
-                  <div class="text-xs text-[var(--color-text-muted)]">{{ member.email }}</div>
+                  <div class="text-xs text-[var(--color-text-muted)]">{{ member.userId }}</div>
                 </div>
               </div>
 

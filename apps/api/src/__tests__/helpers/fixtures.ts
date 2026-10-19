@@ -15,15 +15,6 @@ export interface UserDoc {
     updatedAt: Date;
 }
 
-export interface MagicLinkDoc {
-    _id: ObjectId;
-    userId: string;
-    email: string;
-    token: string;
-    expiresAt: Date;
-    createdAt: Date;
-}
-
 export interface PasskeyDoc {
     _id: ObjectId;
     userId: string;
@@ -59,27 +50,15 @@ export async function createUserFixture(options: CreateUserOptions = {}): Promis
     return doc;
 }
 
-export interface CreateMagicLinkOptions {
-    userId?: string;
-    email?: string;
-    token?: string;
-    expiresAt?: Date;
-}
-
-export async function createMagicLinkFixture(
-    options: CreateMagicLinkOptions = {},
-): Promise<MagicLinkDoc> {
-    const now = new Date();
-    const doc: MagicLinkDoc = {
-        _id: new ObjectId(),
-        userId: options.userId || new ObjectId().toString(),
-        email: options.email || `test-${Date.now()}@example.com`,
-        token: options.token || randomBytes(32).toString('hex'),
-        expiresAt: options.expiresAt || new Date(Date.now() + 15 * 60 * 1000),
-        createdAt: now,
-    };
-    await testDb.collection('magic_links').insertOne(doc);
-    return doc;
+// Direct JWT fixtures are test-only; production authentication always uses WebAuthn.
+export async function createAuthToken(userId: string, _email?: string): Promise<string> {
+    const { SignJWT } = await import('jose');
+    const { config } = await import('../../config');
+    return new SignJWT({ sub: userId })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setIssuedAt()
+        .setExpirationTime('1h')
+        .sign(new TextEncoder().encode(config.jwtSecret));
 }
 
 export interface CreatePasskeyOptions {

@@ -2,7 +2,7 @@ import { test as base, expect, Page } from '@playwright/test';
 
 type TestFixtures = {
     authenticatedPage: Page;
-    testUser: { email: string; userId: string; token: string };
+    testUser: { displayName: string; userId: string; token: string };
 };
 
 /**
@@ -12,35 +12,12 @@ export const test = base.extend<TestFixtures>({
     /**
      * Creates a test user and returns their credentials
      */
-    testUser: async ({ page, baseURL }, use) => {
-        const email = `e2e-${Date.now()}-${Math.random().toString(36).substring(7)}@example.com`;
-
-        // Request magic link via API using baseURL
-        const apiBaseUrl = baseURL || 'http://localhost:7072';
-        const response = await page.request.post(`${apiBaseUrl}/api/auth/magic-link`, {
-            data: { email },
-        });
-
-        expect(response.ok()).toBeTruthy();
-        const data = await response.json();
-
-        // In dev mode, the API returns a devToken for testing
-        const devToken = data.devToken;
-        expect(devToken).toBeDefined();
-
-        // Verify the token to get JWT
-        const verifyResponse = await page.request.get(
-            `${apiBaseUrl}/api/auth/verify?token=${devToken}`,
+    testUser: async ({ page, baseURL, browserName }, use) => {
+        base.skip(
+            browserName !== 'chromium',
+            'Virtual passkey authenticator requires Chromium CDP',
         );
-
-        expect(verifyResponse.ok()).toBeTruthy();
-        const verifyData = await verifyResponse.json();
-
-        await use({
-            email,
-            userId: verifyData.user._id,
-            token: verifyData.accessToken,
-        });
+        await use(await createTestUser(page, baseURL));
     },
 
     /**
@@ -53,18 +30,18 @@ export const test = base.extend<TestFixtures>({
         // Set the auth data in localStorage using the correct key format
         // AuthService uses `auth:${origin}` as the key and stores { accessToken, user }
         await page.evaluate(
-            ({ token, userId, email }) => {
+            ({ token, userId, displayName }) => {
                 const storageKey = `auth:${window.location.origin}`;
                 const authData = {
                     accessToken: token,
                     user: {
                         _id: userId,
-                        email: email,
+                        displayName,
                     },
                 };
                 localStorage.setItem(storageKey, JSON.stringify(authData));
             },
-            { token: testUser.token, userId: testUser.userId, email: testUser.email },
+            { token: testUser.token, userId: testUser.userId, displayName: testUser.displayName },
         );
 
         // Reload to apply the auth state
@@ -83,24 +60,42 @@ export { expect };
  * Helper to create a test user via API without using fixtures
  */
 export async function createTestUser(page: Page, baseURL: string = 'http://localhost:7072') {
-    const email = `e2e-${Date.now()}-${Math.random().toString(36).substring(7)}@example.com`;
-
-    const response = await page.request.post(`${baseURL}/api/auth/magic-link`, {
-        data: { email },
-    });
-
-    const data = await response.json();
-    const verifyResponse = await page.request.get(
-        `${baseURL}/api/auth/verify?token=${data.devToken}`,
+    base.skip(
+        page.context().browser()?.browserType().name() !== 'chromium',
+        'Virtual passkey authenticator requires Chromium CDP',
     );
-
-    const verifyData = await verifyResponse.json();
-
-    return {
-        email,
-        userId: verifyData.user._id,
-        token: verifyData.accessToken,
-    };
+    const displayName = `E2E reader ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('WebAuthn.enable');
+    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+        options: {
+            protocol: 'ctap2',
+            transport: 'internal',
+            hasResidentKey: true,
+            hasUserVerification: true,
+            isUserVerified: true,
+            automaticPresenceSimulation: true,
+        },
+    });
+    try {
+        await page.goto(baseURL);
+        await page.evaluate(() => localStorage.clear());
+        await page.goto(`${baseURL}/login`);
+        await page.getByRole('button', { name: 'New to Just Maple? Create an account' }).click();
+        await page.locator('input#displayName').fill(displayName);
+        const response = page.waitForResponse((r) =>
+            r.url().endsWith('/api/auth/passkey/signup/finish'),
+        );
+        await page.getByRole('button', { name: 'Create account with a passkey' }).click();
+        const result = await response;
+        expect(result.ok()).toBeTruthy();
+        const data = await result.json();
+        await expect(page).not.toHaveURL(/\/login/);
+        return { displayName, userId: data.user._id, token: data.accessToken };
+    } finally {
+        await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
+        await cdp.detach();
+    }
 }
 
 /**
@@ -110,7 +105,7 @@ export async function authenticateWithToken(
     page: Page,
     token: string,
     userId?: string,
-    email?: string,
+    displayName?: string,
 ) {
     await page.goto('/');
     await page.evaluate(
@@ -120,12 +115,12 @@ export async function authenticateWithToken(
                 accessToken: t,
                 user: {
                     _id: uid || 'test-user-id',
-                    email: e || 'test@example.com',
+                    displayName: e || 'Test reader',
                 },
             };
             localStorage.setItem(storageKey, JSON.stringify(authData));
         },
-        { t: token, uid: userId, e: email },
+        { t: token, uid: userId, e: displayName },
     );
     await page.reload();
     await page.waitForLoadState('networkidle');

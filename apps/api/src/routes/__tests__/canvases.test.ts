@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createTestApp } from '../../__tests__/helpers/app';
 import {
     createUserFixture,
-    createMagicLinkFixture,
+    createAuthToken,
     createNotebookFixture,
     createPageFixture,
     createCanvasFixture,
@@ -26,12 +26,7 @@ describe.runIf(mongoAvailable)('Canvas Routes', () => {
     });
 
     async function getAuthToken(userId: string, email: string) {
-        const magicLink = await createMagicLinkFixture({ userId, email });
-        const response = await app.handle(
-            new Request(`http://localhost/api/auth/verify?token=${magicLink.token}`),
-        );
-        const data: any = await response.json();
-        return data.accessToken;
+        return createAuthToken(userId, email);
     }
 
     async function createTestContext() {

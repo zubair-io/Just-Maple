@@ -27,12 +27,12 @@ npx playwright test --project=webkit
 
 ### 1. Authentication (`auth.spec.ts`)
 
-Tests the authentication flow including magic link login and token validation.
+Tests the authentication flow using passkey signup, sign-in, and session validation.
 
 **Coverage:**
 
 - ✅ Display login page for unauthenticated users
-- ✅ Send magic link and show success message
+- ✅ Create an account with a display name and passkey
 - ✅ Successfully authenticate with valid token
 - ✅ Show user email after login
 - ✅ Logout successfully

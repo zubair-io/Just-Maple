@@ -1,157 +1,57 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { LoginComponent } from '../login.component';
+import { BrowserTestingModule, platformBrowserTesting } from '@angular/platform-browser/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { AuthService } from '../../../services/auth.service';
-import { signal, WritableSignal } from '@angular/core';
+import { LoginComponent } from '../login.component';
 
-describe('LoginComponent', () => {
-  let component: LoginComponent;
-  let fixture: ComponentFixture<LoginComponent>;
-  let authServiceMock: {
-    isLoading: WritableSignal<boolean>;
-    error: WritableSignal<string | null>;
-    supportsPasskeys: WritableSignal<boolean>;
-    requestMagicLink: ReturnType<typeof vi.fn>;
-    loginWithPasskey: ReturnType<typeof vi.fn>;
+describe('Passkey login', () => {
+  const auth = {
+    isLoading: signal(false),
+    error: signal<string | null>(null),
+    supportsPasskeys: signal(true),
+    signupWithPasskey: vi.fn().mockResolvedValue(undefined),
+    loginWithPasskey: vi.fn().mockResolvedValue(undefined),
   };
-
-  beforeEach(async () => {
-    authServiceMock = {
-      isLoading: signal(false),
-      error: signal(null),
-      supportsPasskeys: signal(true),
-      requestMagicLink: vi.fn().mockResolvedValue({ message: 'Sent', devToken: 'test-token' }),
-      loginWithPasskey: vi.fn().mockResolvedValue(undefined),
-    };
-
-    await TestBed.configureTestingModule({
+  beforeAll(() => {
+    TestBed.resetTestEnvironment();
+    TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
+  });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    auth.isLoading.set(false);
+    auth.error.set(null);
+    auth.supportsPasskeys.set(true);
+    TestBed.configureTestingModule({
       imports: [LoginComponent],
-      providers: [{ provide: AuthService, useValue: authServiceMock }],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(LoginComponent);
-    component = fixture.componentInstance;
+      providers: [provideZonelessChangeDetection(), { provide: AuthService, useValue: auth }],
+    });
+  });
+  it('shows passkey sign-in without email or code fields', () => {
+    const fixture = TestBed.createComponent(LoginComponent);
     fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Sign in with a passkey');
+    expect(fixture.nativeElement.querySelector('input')).toBeNull();
   });
-
-  describe('rendering', () => {
-    it('should render email input', () => {
-      const emailInput = fixture.nativeElement.querySelector('input[type="email"]');
-      expect(emailInput).not.toBeNull();
-    });
-
-    it('should render send magic link button', () => {
-      const button = fixture.nativeElement.querySelector('button[type="submit"]');
-      expect(button.textContent).toContain('Send Magic Link');
-    });
-
-    it('should render passkey button when supported', () => {
-      const buttons = fixture.nativeElement.querySelectorAll('button[type="button"]');
-      const passkeyBtn = Array.from(buttons as NodeListOf<Element>).find((btn) =>
-        btn.textContent?.includes('Sign in with Passkey'),
-      );
-      expect(passkeyBtn).not.toBeUndefined();
-    });
-
-    it('should show passkey note when not supported', async () => {
-      authServiceMock.supportsPasskeys.set(false);
-      fixture.detectChanges();
-
-      const paragraphs = fixture.nativeElement.querySelectorAll('p');
-      const note = Array.from(paragraphs as NodeListOf<Element>).find((p) =>
-        p.textContent?.includes('HTTPS'),
-      );
-      expect(note).not.toBeUndefined();
-    });
+  it('requires a display name to create an account', async () => {
+    const fixture = TestBed.createComponent(LoginComponent);
+    const component = fixture.componentInstance;
+    component.creatingAccount.set(true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Display name');
+    component.displayName.set('   ');
+    await component.onSubmit();
+    expect(auth.signupWithPasskey).not.toHaveBeenCalled();
+    component.displayName.set('Reader');
+    await component.onSubmit();
+    expect(auth.signupWithPasskey).toHaveBeenCalledWith('Reader');
   });
-
-  describe('form submission', () => {
-    it('should call requestMagicLink on submit', async () => {
-      component.email.set('test@example.com');
-
-      await component.onSubmit();
-
-      expect(authServiceMock.requestMagicLink).toHaveBeenCalledWith('test@example.com');
-    });
-
-    it('should set emailSent after successful submission', async () => {
-      component.email.set('test@example.com');
-
-      await component.onSubmit();
-
-      expect(component.emailSent()).toBe(true);
-    });
-
-    it('should store devToken after successful submission', async () => {
-      component.email.set('test@example.com');
-
-      await component.onSubmit();
-
-      expect(component.devToken()).toBe('test-token');
-    });
-
-    it('should not submit if email is empty', async () => {
-      component.email.set('');
-
-      await component.onSubmit();
-
-      expect(authServiceMock.requestMagicLink).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('reset', () => {
-    it('should reset form state', async () => {
-      component.email.set('test@example.com');
-      component.emailSent.set(true);
-      component.devToken.set('token');
-
-      component.reset();
-
-      expect(component.email()).toBe('');
-      expect(component.emailSent()).toBe(false);
-      expect(component.devToken()).toBeNull();
-    });
-  });
-
-  describe('passkey login', () => {
-    it('should call loginWithPasskey without email when empty', async () => {
-      component.email.set('');
-
-      await component.loginWithPasskey();
-
-      expect(authServiceMock.loginWithPasskey).toHaveBeenCalledWith(undefined);
-    });
-
-    it('should call loginWithPasskey with email when provided', async () => {
-      component.email.set('test@example.com');
-
-      await component.loginWithPasskey();
-
-      expect(authServiceMock.loginWithPasskey).toHaveBeenCalledWith('test@example.com');
-    });
-  });
-
-  describe('error handling', () => {
-    it('should display error message', async () => {
-      authServiceMock.error.set('Something went wrong');
-      fixture.detectChanges();
-
-      const paragraphs = fixture.nativeElement.querySelectorAll('p');
-      const error = Array.from(paragraphs as NodeListOf<Element>).find((p) =>
-        p.textContent?.includes('Something went wrong'),
-      );
-      expect(error).not.toBeUndefined();
-    });
-  });
-
-  describe('loading state', () => {
-    it('should disable button when loading', async () => {
-      authServiceMock.isLoading.set(true);
-      fixture.detectChanges();
-
-      const button = fixture.nativeElement.querySelector('button[type="submit"]');
-      expect(button.disabled).toBe(true);
-      expect(button.textContent).toContain('Sending...');
-    });
+  it('explains unsupported browsers instead of offering a dead login action', () => {
+    auth.supportsPasskeys.set(false);
+    const fixture = TestBed.createComponent(LoginComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('browser that supports passkeys');
+    expect(fixture.nativeElement.querySelector('button')).toBeNull();
   });
 });

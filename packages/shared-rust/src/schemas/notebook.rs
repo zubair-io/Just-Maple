@@ -101,7 +101,8 @@ pub struct ShareNotebookInput {
 pub struct NotebookMember {
     #[serde(rename = "userId")]
     pub user_id: String,
-    pub email: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
     #[serde(rename = "displayName", skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
     #[serde(rename = "profilePictureUrl", skip_serializing_if = "Option::is_none")]
