@@ -84,7 +84,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   // Tab navigation state
   readonly activeTab = signal<string>('overview');
   readonly childPageOpen = signal(false);
-  private readonly routePageId = signal<string | null>(null);
+  readonly routePageId = signal<string | null>(null);
   readonly selectedHeaderTab = computed(() => {
     const pageId = this.routePageId();
     const page = pageId ? this.pageService.pages().find((p) => p.id === pageId) : null;
@@ -268,7 +268,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     return all.slice(-2);
   });
 
-  readonly notebookPages = computed(() => {
+  readonly navigationPages = computed(() => {
     const notebookId = this.selectedNotebookId();
     if (!notebookId) return [];
 
@@ -276,6 +276,11 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       ? this.localPages()
       : this.pageService.pages().filter((p) => p.notebookId === notebookId);
 
+    return pages.filter((page) => !page.isTrashed);
+  });
+
+  readonly notebookPages = computed(() => {
+    const pages = this.navigationPages();
     const query = this.pageSearchQuery().trim().toLowerCase();
     return pages.filter((p) => !query || p.title.toLowerCase().includes(query));
   });
@@ -412,6 +417,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   }
 
   onFileClicked(pageId: string): void {
+    this.switcherOpen.set(false);
     const notebookId = this.selectedNotebookId();
     if (notebookId) {
       this.router.navigate(['/', notebookId, pageId]);
