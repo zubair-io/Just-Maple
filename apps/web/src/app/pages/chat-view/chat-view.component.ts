@@ -313,12 +313,11 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   }
 
   selectTab(tab: string): void {
+    this.switcherOpen.set(false);
     this.activeTab.set(tab);
-    if (this.childPageOpen()) {
-      this.router.navigate(['/', this.selectedNotebookId()], {
-        queryParams: { tab: tab === 'overview' ? null : tab },
-      });
-    }
+    this.router.navigate(['/', this.selectedNotebookId()], {
+      queryParams: { tab: tab === 'overview' ? null : tab },
+    });
   }
 
   ngOnDestroy(): void {
