@@ -1,33 +1,14 @@
 @if (selectedNotebook(); as notebook) {
   <div class="notebook-landing flex flex-col h-full overflow-hidden bg-[var(--color-bg)]">
-    <!-- Header -->
-    <header
-      class="min-h-20 box-border flex-none flex items-center gap-4 flex-wrap px-6 py-4 border-b border-[var(--color-border)] bg-[var(--color-sidebar)]"
-    >
-      <!-- Brand links back to the notebook home. -->
-      <a
-        routerLink="/"
-        aria-label="Just Maple home"
-        class="flex h-8 flex-none items-center gap-2.5 no-underline text-[var(--color-text-main)]"
-      >
-        <img
-          src="https://hornbeam.justmaple.app/data/assets/justmaple.svg"
-          alt=""
-          class="w-8 h-8"
-        />
-        <span class="font-serif font-bold text-lg tracking-tight whitespace-nowrap"
-          >Just Maple</span
-        >
-      </a>
-
+    <app-header>
       <!-- Switcher dropdown container -->
-      <div class="relative">
+      <div headerContext class="relative">
         <button
           (click)="switcherOpen.set(!switcherOpen())"
           aria-haspopup="listbox"
           [attr.aria-expanded]="switcherOpen()"
           aria-label="Switch notebook"
-          class="flex items-center gap-1.5 max-w-xs h-9 px-3.5 font-sans font-bold text-lg tracking-tight text-[var(--color-text-main)] bg-transparent border-1.5 border-transparent hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer transition-all outline-none"
+          class="flex items-center gap-1.5 max-w-full h-9 px-2 font-sans font-bold text-lg tracking-tight text-[var(--color-text-main)] bg-transparent border-1.5 border-transparent hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer transition-all outline-none"
         >
           <span class="truncate">{{ notebook.label }}</span>
           <span class="material-symbols-rounded text-base text-[var(--color-text-muted)] mt-0.5"
@@ -79,10 +60,8 @@
         }
       </div>
 
-      <span class="flex-1"></span>
-
       <!-- Header Actions (members group, share button) -->
-      <div class="flex items-center gap-3">
+      <div headerActions class="flex items-center gap-2">
         @if (!isLocal() && members().length > 1) {
           <div
             class="flex items-center gap-2 px-2.5 py-1 hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer transition-colors"
@@ -178,42 +157,44 @@
           </button>
         }
       </div>
-    </header>
 
-    <!-- Tabs Navigation -->
-    <nav
-      role="tablist"
-      class="flex-none flex border-b border-[var(--color-border)] bg-[var(--color-bg)] px-6 overflow-x-auto"
-    >
-      <button
-        role="tab"
-        [attr.aria-selected]="activeTab() === 'overview'"
-        (click)="activeTab.set('overview')"
-        class="h-11 px-6 font-sans font-bold text-xs bg-transparent border-none border-b-2 cursor-pointer transition-colors whitespace-nowrap"
-        [class.text-[var(--color-text-main)]]="activeTab() === 'overview'"
-        [class.border-[var(--color-primary)]]="activeTab() === 'overview'"
-        [class.text-[var(--color-text-muted)]]="activeTab() !== 'overview'"
-        [class.border-transparent]="activeTab() !== 'overview'"
+      <!-- Tabs Navigation -->
+      <nav
+        headerNavigation
+        role="tablist"
+        aria-label="Notebook sections"
+        class="flex-none flex px-4 md:px-6 overflow-x-auto"
       >
-        Overview
-      </button>
-
-      <!-- Dynamic Page Type Tabs -->
-      @for (tab of dynamicTabs(); track tab.id) {
         <button
           role="tab"
-          [attr.aria-selected]="activeTab() === tab.id"
-          (click)="activeTab.set(tab.id)"
+          [attr.aria-selected]="activeTab() === 'overview'"
+          (click)="activeTab.set('overview')"
           class="h-11 px-6 font-sans font-bold text-xs bg-transparent border-none border-b-2 cursor-pointer transition-colors whitespace-nowrap"
-          [class.text-[var(--color-text-main)]]="activeTab() === tab.id"
-          [class.border-[var(--color-primary)]]="activeTab() === tab.id"
-          [class.text-[var(--color-text-muted)]]="activeTab() !== tab.id"
-          [class.border-transparent]="activeTab() !== tab.id"
+          [class.text-[var(--color-text-main)]]="activeTab() === 'overview'"
+          [class.border-[var(--color-primary)]]="activeTab() === 'overview'"
+          [class.text-[var(--color-text-muted)]]="activeTab() !== 'overview'"
+          [class.border-transparent]="activeTab() !== 'overview'"
         >
-          {{ tab.label }}
+          Overview
         </button>
-      }
-    </nav>
+
+        <!-- Dynamic Page Type Tabs -->
+        @for (tab of dynamicTabs(); track tab.id) {
+          <button
+            role="tab"
+            [attr.aria-selected]="activeTab() === tab.id"
+            (click)="activeTab.set(tab.id)"
+            class="h-11 px-6 font-sans font-bold text-xs bg-transparent border-none border-b-2 cursor-pointer transition-colors whitespace-nowrap"
+            [class.text-[var(--color-text-main)]]="activeTab() === tab.id"
+            [class.border-[var(--color-primary)]]="activeTab() === tab.id"
+            [class.text-[var(--color-text-muted)]]="activeTab() !== tab.id"
+            [class.border-transparent]="activeTab() !== tab.id"
+          >
+            {{ tab.label }}
+          </button>
+        }
+      </nav>
+    </app-header>
 
     <!-- Tab View Outlet -->
     <div class="flex-1 overflow-hidden relative">

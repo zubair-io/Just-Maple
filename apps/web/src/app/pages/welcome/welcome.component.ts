@@ -1,3 +1,4 @@
+import { AppHeaderComponent } from '../../components/organisms/app-header/app-header.component';
 import {
   Component,
   inject,
@@ -8,7 +9,7 @@ import {
   HostListener,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { FileSystemService } from '../../services/file-system.service';
 import { AuthService } from '../../services/auth.service';
@@ -22,7 +23,7 @@ import { isLocalNotebook } from '../../providers/data-provider.interface';
 @Component({
   selector: 'app-welcome',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule],
+  imports: [CommonModule, AppHeaderComponent, FormsModule],
   templateUrl: './welcome.component.html',
   styleUrl: './welcome.component.scss',
 })
