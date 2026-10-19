@@ -9,6 +9,8 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
+pub mod whiteboard;
+
 /// Local storage backed by sled
 #[derive(Clone)]
 pub struct LocalStorage {
@@ -270,6 +272,20 @@ impl LocalStorage {
             Some(bytes) => Ok(Some(bytes.to_vec())),
             None => Ok(None),
         }
+    }
+
+    /// Persist a whiteboard edit and acknowledge only after sled flushes it.
+    /// CAS prevents a concurrent cache write from being replaced by a stale snapshot.
+    pub fn save_whiteboard(&self, id: &str, additions: &[maple_shared::WhiteboardElement]) -> Result<()> {
+        for _ in 0..8 {
+            let before = self.documents.get(id)?;
+            let after = whiteboard::append(before.as_deref(), additions)?;
+            if self.documents.compare_and_swap(id, before.as_deref(), Some(after))?.is_ok() {
+                self.flush()?;
+                return Ok(());
+            }
+        }
+        anyhow::bail!("Whiteboard changed while saving; retry the save")
     }
 
     /// Delete a document
