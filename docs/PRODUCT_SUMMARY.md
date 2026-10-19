@@ -31,7 +31,7 @@ The interface is a familiar two-pane layout: tags and their notes in the sidebar
 
 **2. Documents that understand their purpose.** Maple infers context from a note's title, its parent tag, or an explicit template — so an _"Interview: Jane Doe"_ note can automatically surface the right recording and scoring widgets.
 
-**3. Truly private and portable.** Passwordless sign-in (passkeys + magic links — no passwords to steal), **privacy-first push notifications** that never transmit your content (only IDs — the device fetches the real data), and the freedom to **self-host** on your own server or use the hosted option. Native apps let users pick which server to connect to.
+**3. Truly private and portable.** Passwordless sign-in (passkeys — no passwords to steal), **privacy-first push notifications** that never transmit your content (only IDs — the device fetches the real data), and the freedom to **self-host** on your own server or use the hosted option. Native apps let users pick which server to connect to.
 
 **4. Works offline, everywhere.** Full functionality with no connection — write, edit, organize — and it syncs cleanly when you're back online, resolving conflicts automatically. Available as a web app and native macOS and iOS apps that share the same experience.
 

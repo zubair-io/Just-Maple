@@ -553,11 +553,11 @@ export class NotebookService {
    */
   shareNotebook(
     notebookId: string,
-    email: string,
+    userId: string,
     accessLevel: 'read' | 'write',
   ): Observable<Notebook> {
     return this.http
-      .post<{ notebook: Notebook }>(`/api/notebooks/${notebookId}/share`, { email, accessLevel })
+      .post<{ notebook: Notebook }>(`/api/notebooks/${notebookId}/share`, { userId, accessLevel })
       .pipe(
         tap((response) => {
           this.store.update(updateEntities(notebookId, () => response.notebook));

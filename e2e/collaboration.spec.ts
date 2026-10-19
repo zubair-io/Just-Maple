@@ -33,10 +33,10 @@ test.describe('Collaboration & Sharing', () => {
         await shareButton.click();
         await page.waitForTimeout(500);
 
-        // Fill in user2's email
-        const emailInput = page.locator('input[type="email"][placeholder*="email"]');
-        if (await emailInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await emailInput.fill(user2.email);
+        // Fill in user2's account ID
+        const accountIdInput = page.locator('input[placeholder="Enter account ID"]');
+        if (await accountIdInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await accountIdInput.fill(user2.userId);
 
             // Select access level (write or read)
             const accessSelect = page.locator('select');
@@ -50,7 +50,7 @@ test.describe('Collaboration & Sharing', () => {
             await page.waitForTimeout(1500);
 
             // Verify user2 appears in the member list
-            await expect(page.locator(`text=${user2.email}`)).toBeVisible({ timeout: 5000 });
+            await expect(page.locator(`text=${user2.displayName}`)).toBeVisible({ timeout: 5000 });
         } else {
             test.skip();
         }
@@ -90,9 +90,9 @@ test.describe('Collaboration & Sharing', () => {
             await shareButton.click();
             await page1.waitForTimeout(500);
 
-            const emailInput = page1.locator('input[type="email"][placeholder*="email"]');
-            if (await emailInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-                await emailInput.fill(user2.email);
+            const accountIdInput = page1.locator('input[placeholder="Enter account ID"]');
+            if (await accountIdInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+                await accountIdInput.fill(user2.userId);
 
                 const accessSelect = page1.locator('select');
                 if (await accessSelect.isVisible()) {
@@ -177,9 +177,9 @@ test.describe('Collaboration & Sharing', () => {
         await page.waitForTimeout(500);
 
         // Share with user2
-        const emailInput = page.locator('input[type="email"][placeholder*="email"]');
-        if (await emailInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await emailInput.fill(user2.email);
+        const accountIdInput = page.locator('input[placeholder="Enter account ID"]');
+        if (await accountIdInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await accountIdInput.fill(user2.userId);
 
             const accessSelect = page.locator('select');
             if (await accessSelect.isVisible()) {
@@ -192,7 +192,7 @@ test.describe('Collaboration & Sharing', () => {
 
             // Verify user2 is in the member list
             const user2InList = await page
-                .locator(`text=${user2.email}`)
+                .locator(`text=${user2.displayName}`)
                 .isVisible({ timeout: 3000 })
                 .catch(() => false);
 
@@ -211,7 +211,7 @@ test.describe('Collaboration & Sharing', () => {
                 await page.waitForTimeout(500);
 
                 // User2 should no longer be in the members list
-                await expect(page.locator(`text=${user2.email}`)).not.toBeVisible({
+                await expect(page.locator(`text=${user2.displayName}`)).not.toBeVisible({
                     timeout: 3000,
                 });
             } else {
@@ -256,9 +256,9 @@ test.describe('Collaboration & Sharing', () => {
             await shareButton.click();
             await page1.waitForTimeout(500);
 
-            const emailInput = page1.locator('input[type="email"][placeholder*="email"]');
-            if (await emailInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-                await emailInput.fill(user2.email);
+            const accountIdInput = page1.locator('input[placeholder="Enter account ID"]');
+            if (await accountIdInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+                await accountIdInput.fill(user2.userId);
 
                 const accessSelect = page1.locator('select');
                 if (await accessSelect.isVisible()) {

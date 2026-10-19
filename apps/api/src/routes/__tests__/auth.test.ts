@@ -1,213 +1,207 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createTestApp } from '../../__tests__/helpers/app';
-import { createUserFixture, createMagicLinkFixture } from '../../__tests__/helpers/fixtures';
-import { mongoAvailable } from '../../__tests__/setup';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Elysia } from 'elysia';
+import { authRoutes } from '../auth';
+import { testDb, mongoAvailable } from '../../__tests__/setup';
+import {
+    createUserFixture,
+    createAuthToken,
+    createPasskeyFixture,
+} from '../../__tests__/helpers/fixtures';
+import { verifyRegistrationResponse, verifyAuthenticationResponse } from '@simplewebauthn/server';
 
-// Mock email service
-vi.mock('../../services/email', () => ({
-    sendMagicLinkEmail: vi.fn().mockResolvedValue(undefined),
+vi.mock('@simplewebauthn/server', async (original) => ({
+    ...(await original<typeof import('@simplewebauthn/server')>()),
+    verifyRegistrationResponse: vi.fn(),
+    verifyAuthenticationResponse: vi.fn(),
 }));
 
-describe.runIf(mongoAvailable)('Auth Routes', () => {
-    let app: ReturnType<typeof createTestApp>;
+function credential(challenge: string, id = 'test-credential') {
+    return {
+        id,
+        response: {
+            clientDataJSON: Buffer.from(JSON.stringify({ challenge })).toString('base64url'),
+        },
+    };
+}
 
-    beforeEach(() => {
-        app = createTestApp();
+describe.runIf(mongoAvailable)('Passkey authentication', () => {
+    const app = new Elysia().use(authRoutes);
+    const post = (path: string, body: unknown = {}, token?: string) =>
+        app.handle(
+            new Request(`http://localhost/api/auth${path}`, {
+                method: 'POST',
+                headers: {
+                    'content-type': 'application/json',
+                    ...(token ? { authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify(body),
+            }),
+        );
+    beforeEach(() => vi.resetAllMocks());
+
+    async function startSignup(displayName = 'Maple reader') {
+        const response = await post('/passkey/signup/start', { displayName });
+        expect(response.status).toBe(200);
+        return response.json();
+    }
+    function registrationVerified(id = 'test-credential') {
+        vi.mocked(verifyRegistrationResponse).mockResolvedValue({
+            verified: true,
+            registrationInfo: {
+                credential: { id, publicKey: new Uint8Array([1, 2, 3]), counter: 0 },
+                credentialDeviceType: 'multiDevice',
+                credentialBackedUp: true,
+            },
+        } as any);
+    }
+
+    it('creates no user until a passkey is verified; signup needs no email', async () => {
+        const options = await startSignup('  Maple reader  ');
+        expect(options.authenticatorSelection.residentKey).toBe('required');
+        expect(options.authenticatorSelection.userVerification).toBe('required');
+        expect(await testDb!.collection('users').countDocuments()).toBe(0);
+        registrationVerified();
+        const response = await post('/passkey/signup/finish', credential(options.challenge));
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result.accessToken).toBeTruthy();
+        expect(result.user.displayName).toBe('Maple reader');
+        expect(result.user.email).toBeUndefined();
+        const user = await testDb!.collection('users').findOne({ displayName: 'Maple reader' });
+        expect(user).toBeTruthy();
+        expect(user).not.toHaveProperty('email');
+        expect(verifyRegistrationResponse).toHaveBeenCalledWith(
+            expect.objectContaining({ requireUserVerification: true }),
+        );
+        expect((await post('/passkey/signup/finish', credential(options.challenge))).status).toBe(
+            400,
+        );
     });
 
-    describe('POST /api/auth/magic-link', () => {
-        it('should send magic link for new user', async () => {
-            const uniqueEmail = `newuser-${Date.now()}@example.com`;
-            const response = await app.handle(
-                new Request('http://localhost/api/auth/magic-link', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: uniqueEmail }),
-                }),
-            );
-
-            expect(response.status).toBe(200);
-            const data = await response.json();
-            expect(data.message).toBe('Magic link sent to your email');
-            // In dev mode, token should be included
-            expect(data.devToken).toBeDefined();
-        });
-
-        it('should send magic link for existing user', async () => {
-            const fixture = await createUserFixture();
-
-            const response = await app.handle(
-                new Request('http://localhost/api/auth/magic-link', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: fixture.email }),
-                }),
-            );
-
-            expect(response.status).toBe(200);
-            const data = await response.json();
-            expect(data.message).toBe('Magic link sent to your email');
-        });
-
-        it('should return 422 for invalid email', async () => {
-            const response = await app.handle(
-                new Request('http://localhost/api/auth/magic-link', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: 'invalid-email' }),
-                }),
-            );
-
-            expect(response.status).toBe(422); // Elysia validation error
-        });
+    it('supports multiple accounts without email and duplicate display names', async () => {
+        for (const id of ['first-key', 'second-key']) {
+            const options = await startSignup();
+            registrationVerified(id);
+            expect(
+                (await post('/passkey/signup/finish', credential(options.challenge, id))).status,
+            ).toBe(200);
+        }
+        expect(await testDb!.collection('users').countDocuments()).toBe(2);
     });
 
-    describe('GET /api/auth/verify', () => {
-        it('should verify valid token and return JWT', async () => {
-            const user = await createUserFixture();
-            const magicLink = await createMagicLinkFixture({
-                userId: user._id.toString(),
-                email: user.email,
-            });
-
-            const response = await app.handle(
-                new Request(`http://localhost/api/auth/verify?token=${magicLink.token}`),
-            );
-
-            expect(response.status).toBe(200);
-            const data = await response.json();
-            expect(data.accessToken).toBeDefined();
-            expect(data.user.email).toBe(user.email);
-        });
-
-        it('should return 401 for invalid token', async () => {
-            const response = await app.handle(
-                new Request('http://localhost/api/auth/verify?token=invalid-token'),
-            );
-
-            expect(response.status).toBe(401);
-            const data = await response.json();
-            expect(data.error).toBe('Invalid or expired token');
-        });
-
-        it('should return 401 for expired token', async () => {
-            const user = await createUserFixture();
-            const magicLink = await createMagicLinkFixture({
-                userId: user._id.toString(),
-                email: user.email,
-                expiresAt: new Date(Date.now() - 1000),
-            });
-
-            const response = await app.handle(
-                new Request(`http://localhost/api/auth/verify?token=${magicLink.token}`),
-            );
-
-            expect(response.status).toBe(401);
-        });
+    it('rejects whitespace names and overlong names', async () => {
+        expect((await post('/passkey/signup/start', { displayName: '   ' })).status).toBe(400);
+        expect((await post('/passkey/signup/start', { displayName: 'a'.repeat(81) })).status).toBe(
+            422,
+        );
     });
 
-    describe('GET /api/auth/me', () => {
-        it('should return user for valid JWT', async () => {
-            const user = await createUserFixture();
-            const magicLink = await createMagicLinkFixture({
-                userId: user._id.toString(),
-                email: user.email,
-            });
-
-            // First get a token
-            const verifyResponse = await app.handle(
-                new Request(`http://localhost/api/auth/verify?token=${magicLink.token}`),
-            );
-            const { accessToken } = await verifyResponse.json();
-
-            // Then use it to get user info
-            const response = await app.handle(
-                new Request('http://localhost/api/auth/me', {
-                    headers: { Authorization: `Bearer ${accessToken}` },
-                }),
-            );
-
-            expect(response.status).toBe(200);
-            const data = await response.json();
-            expect(data.user.email).toBe(user.email);
-        });
-
-        it('should return 401 without auth header', async () => {
-            const response = await app.handle(new Request('http://localhost/api/auth/me'));
-
-            expect(response.status).toBe(401);
-        });
-
-        it('should return 401 with invalid token', async () => {
-            const response = await app.handle(
-                new Request('http://localhost/api/auth/me', {
-                    headers: { Authorization: 'Bearer invalid-token' },
-                }),
-            );
-
-            expect(response.status).toBe(401);
-        });
+    it('rejects expired, mismatched, and malformed challenges without creating accounts', async () => {
+        const options = await startSignup();
+        await testDb!
+            .collection('passkey_challenges')
+            .updateOne({ _id: options.challenge } as any, { $set: { expiresAt: new Date(0) } });
+        for (const challenge of [options.challenge, 'unknown-challenge-value', { $ne: null }]) {
+            expect(
+                (await post('/passkey/signup/finish', credential(challenge as any))).status,
+            ).toBe(400);
+        }
+        expect(verifyRegistrationResponse).not.toHaveBeenCalled();
+        expect(await testDb!.collection('users').countDocuments()).toBe(0);
     });
 
-    describe('POST /api/auth/logout', () => {
-        it('should return success message', async () => {
-            const response = await app.handle(
-                new Request('http://localhost/api/auth/logout', {
-                    method: 'POST',
-                }),
-            );
-
-            expect(response.status).toBe(200);
-            const data = await response.json();
-            expect(data.message).toBe('Logged out successfully');
-        });
+    it('consumes failed verification attempts and leaves no user', async () => {
+        const options = await startSignup();
+        vi.mocked(verifyRegistrationResponse).mockRejectedValue(
+            new Error('Wrong origin or signature'),
+        );
+        expect((await post('/passkey/signup/finish', credential(options.challenge))).status).toBe(
+            400,
+        );
+        registrationVerified();
+        expect((await post('/passkey/signup/finish', credential(options.challenge))).status).toBe(
+            400,
+        );
+        expect(await testDb!.collection('users').countDocuments()).toBe(0);
     });
 
-    describe('GET /api/auth/passkeys', () => {
-        it('should return 401 without auth', async () => {
-            const response = await app.handle(new Request('http://localhost/api/auth/passkeys'));
-
-            expect(response.status).toBe(401);
-        });
-
-        it('should return empty array for user without passkeys', async () => {
-            const user = await createUserFixture();
-            const magicLink = await createMagicLinkFixture({
-                userId: user._id.toString(),
-                email: user.email,
-            });
-
-            const verifyResponse = await app.handle(
-                new Request(`http://localhost/api/auth/verify?token=${magicLink.token}`),
-            );
-            const { accessToken } = await verifyResponse.json();
-
-            const response = await app.handle(
-                new Request('http://localhost/api/auth/passkeys', {
-                    headers: { Authorization: `Bearer ${accessToken}` },
-                }),
-            );
-
-            expect(response.status).toBe(200);
-            const data = await response.json();
-            expect(data.passkeys).toEqual([]);
-        });
+    it('cannot reuse an existing credential to create another account', async () => {
+        await createPasskeyFixture({ credentialId: 'test-credential' });
+        const options = await startSignup();
+        registrationVerified();
+        expect((await post('/passkey/signup/finish', credential(options.challenge))).status).toBe(
+            400,
+        );
+        expect(await testDb!.collection('users').countDocuments()).toBe(0);
     });
 
-    describe('POST /api/auth/passkey/login/start', () => {
-        it('should return authentication options', async () => {
-            const response = await app.handle(
-                new Request('http://localhost/api/auth/passkey/login/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({}),
-                }),
-            );
+    it('requires a session to enroll additional passkeys and binds the challenge to that user', async () => {
+        expect((await post('/passkey/register/start')).status).toBe(401);
+        const user = await createUserFixture();
+        const other = await createUserFixture();
+        const token = await createAuthToken(user._id.toString());
+        const options = await (await post('/passkey/register/start', {}, token)).json();
+        registrationVerified();
+        expect(
+            (
+                await post(
+                    '/passkey/register/finish',
+                    credential(options.challenge),
+                    await createAuthToken(other._id.toString()),
+                )
+            ).status,
+        ).toBe(400);
+        expect((await post('/passkey/signup/finish', credential(options.challenge))).status).toBe(
+            400,
+        );
+        expect(
+            (await post('/passkey/register/finish', credential(options.challenge), token)).status,
+        ).toBe(200);
+    });
 
-            expect(response.status).toBe(200);
-            const data = await response.json();
-            expect(data.challenge).toBeDefined();
-            expect(data.rpId).toBeDefined();
+    it('signs in existing users with discoverable credentials and rejects replay', async () => {
+        const user = await createUserFixture();
+        await createPasskeyFixture({
+            userId: user._id.toString(),
+            credentialId: 'test-credential',
         });
+        const options = await (await post('/passkey/login/start')).json();
+        expect(options.allowCredentials ?? []).toEqual([]);
+        expect(options.userVerification).toBe('required');
+        vi.mocked(verifyAuthenticationResponse).mockResolvedValue({
+            verified: true,
+            authenticationInfo: { newCounter: 1 },
+        } as any);
+        const result = await post('/passkey/login/finish', credential(options.challenge));
+        expect(result.status).toBe(200);
+        expect((await result.json()).user._id).toBe(user._id.toString());
+        expect(verifyAuthenticationResponse).toHaveBeenCalledWith(
+            expect.objectContaining({ requireUserVerification: true }),
+        );
+        expect((await post('/passkey/login/finish', credential(options.challenge))).status).toBe(
+            400,
+        );
+    });
+
+    it('rejects authentication verification failures', async () => {
+        await createPasskeyFixture({ credentialId: 'test-credential' });
+        const options = await (await post('/passkey/login/start')).json();
+        vi.mocked(verifyAuthenticationResponse).mockResolvedValue({ verified: false } as any);
+        expect((await post('/passkey/login/finish', credential(options.challenge))).status).toBe(
+            401,
+        );
+    });
+
+    it('keeps existing sessions valid and removes all email login endpoints', async () => {
+        const user = await createUserFixture();
+        const token = await createAuthToken(user._id.toString());
+        expect((await post('/refresh', {}, token)).status).toBe(200);
+        expect((await post('/magic-link', { email: 'test@example.com' })).status).toBe(404);
+        expect(
+            (await post('/verify-code', { email: 'test@example.com', code: '123456' })).status,
+        ).toBe(404);
+        expect(
+            (await app.handle(new Request('http://localhost/api/auth/verify?token=old'))).status,
+        ).toBe(404);
     });
 });

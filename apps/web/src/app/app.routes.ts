@@ -29,8 +29,8 @@ export const routes: Routes = [
   },
   {
     path: 'verify',
-    loadComponent: () => import('./pages/verify/verify.component').then((m) => m.VerifyComponent),
-    canActivate: [swUpdateGuard],
+    redirectTo: 'login',
+    pathMatch: 'full',
   },
 
   // Gmail OAuth callback - public route, no auth required

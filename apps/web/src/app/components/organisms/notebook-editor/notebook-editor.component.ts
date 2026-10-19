@@ -2077,7 +2077,7 @@ export class NotebookEditorComponent implements OnDestroy {
     this.notebookService.fetchNotebookMembers(notebookId).subscribe((members) => {
       const users: MentionableUser[] = members.map((member) => ({
         id: member.userId,
-        displayName: member.displayName || member.email.split('@')[0],
+        displayName: member.displayName || member.email?.split('@')[0] || 'Maple user',
         avatarUrl: member.profilePictureUrl,
       }));
       this.mentionableUsers.set(users);

@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
-import { findUserById, findUserByEmail } from '../repositories/user.repo';
+import { findUserById } from '../repositories/user.repo';
 import type { JWTPayload } from '@maple/shared';
 
 /**
@@ -183,7 +183,7 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
         },
     )
 
-    // Share notebook with user (by email)
+    // Share notebook with user (by account ID)
     .post(
         '/:id/share',
         async ({ auth, params, body, set }) => {
@@ -191,11 +191,11 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            // Find user by email
-            const targetUser = await findUserByEmail(body.email);
+            // Find user by account ID
+            const targetUser = await findUserById(body.userId);
             if (!targetUser) {
                 set.status = 404;
-                return { error: 'User not found', message: 'No user with that email exists' };
+                return { error: 'User not found', message: 'No user with that account ID exists' };
             }
 
             const notebook = await shareNotebook(params.id, auth.user._id, {
@@ -230,7 +230,7 @@ export const notebookRoutes = new Elysia({ prefix: '/api/notebooks' })
                 id: t.String(),
             }),
             body: t.Object({
-                email: t.String({ format: 'email' }),
+                userId: t.String({ pattern: '^[a-fA-F0-9]{24}$' }),
                 accessLevel: t.Union([t.Literal('read'), t.Literal('write')]),
             }),
         },
