@@ -1,6 +1,7 @@
-import { Component, input, output, computed, signal, inject } from '@angular/core';
+import { Component, input, output, computed, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import type { Page, Notebook } from '@maple/shared';
 import { toDisplaySlug } from '@maple/shared/utils/slug';
 import { Clipboard } from '@angular/cdk/clipboard';
@@ -12,7 +13,7 @@ export type ExportFormat = 'markdown' | 'html';
 @Component({
   selector: 'app-note-header',
   standalone: true,
-  imports: [CommonModule, FormsModule, VersionHistoryComponent],
+  imports: [CommonModule, FormsModule, VersionHistoryComponent, RouterLink],
   templateUrl: './note-header.component.html',
   styleUrl: './note-header.component.scss',
 })
@@ -64,6 +65,13 @@ export class NoteHeaderComponent {
   readonly showVersionHistory = signal(false);
   readonly isEditingTitle = signal(false);
   readonly editTitleValue = signal('');
+
+  constructor() {
+    effect(() => {
+      const title = this.page()?.title || '';
+      this.editTitleValue.set(title);
+    });
+  }
 
   openSidebarOnMobile(): void {
     this.uiStateService.openSidebar();

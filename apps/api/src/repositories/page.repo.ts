@@ -594,6 +594,24 @@ export async function findMessagesPageByNotebookId(notebookId: string): Promise<
  * This is used when sending messages to ensure a messages page exists
  */
 export async function findOrCreateMessagesPage(notebookId: string, userId: string): Promise<Page> {
+    if (!ObjectId.isValid(notebookId)) {
+        const now = new Date();
+        return {
+            _id: 'virtual-messages',
+            id: 'virtual-messages',
+            userId: userId,
+            type: 'message',
+            title: 'Messages',
+            content: { type: 'doc', content: [] },
+            notebookId: notebookId,
+            isFavorite: false,
+            isArchived: false,
+            isTrashed: false,
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString(),
+        };
+    }
+
     // Try to find existing messages page
     const existing = await findMessagesPageByNotebookId(notebookId);
     if (existing) {

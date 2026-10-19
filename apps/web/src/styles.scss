@@ -835,3 +835,60 @@ img.ProseMirror-separator {
     background: var(--color-surface-hover, #374151);
   }
 }
+
+/* ============================================================
+   Redesign Transition Animations
+   ============================================================ */
+
+@keyframes mapleTagIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mapleContentIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes mapleModalIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-maple-tag-in {
+  animation: mapleTagIn 0.25s ease-out both;
+}
+
+.animate-maple-content-in {
+  animation: mapleContentIn 0.15s ease-in 0.12s both;
+}
+
+.animate-maple-modal-in {
+  animation: mapleModalIn 0.2s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-maple-tag-in,
+  .animate-maple-content-in,
+  .animate-maple-modal-in {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    transition-duration: 0s !important;
+  }
+}

@@ -526,6 +526,10 @@ export async function handlePageDeletion(pageId: string): Promise<void> {
  * Get graph data for knowledge graph visualization
  */
 export async function getGraphData(userId: string, notebookId?: string): Promise<GraphData> {
+    if (notebookId && !ObjectId.isValid(notebookId)) {
+        return { nodes: [], edges: [] };
+    }
+
     const db = getDb();
     const pages = db.collection('pages');
 
@@ -677,6 +681,10 @@ export async function getLocalGraph(
  * Bulk reindex links for all pages (migration/repair)
  */
 export async function reindexAllLinks(userId: string, notebookId?: string): Promise<number> {
+    if (notebookId && !ObjectId.isValid(notebookId)) {
+        return 0;
+    }
+
     const db = getDb();
     const pages = db.collection('pages');
 
@@ -710,6 +718,19 @@ export async function getConnectionGraph(
     userId: string,
     notebookId?: string,
 ): Promise<ConnectionGraph> {
+    if (notebookId && !ObjectId.isValid(notebookId)) {
+        return {
+            nodes: [],
+            edges: [],
+            stats: {
+                totalNodes: 0,
+                totalEdges: 0,
+                linkEdges: 0,
+                hashtagEdges: 0,
+            },
+        };
+    }
+
     const db = getDb();
     const pages = db.collection('pages');
     const searchIndex = db.collection('search_index');
