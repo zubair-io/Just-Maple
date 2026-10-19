@@ -23,6 +23,7 @@ export class NoteHeaderComponent {
 
   readonly page = input<Page | null>(null);
   readonly notebook = input<Notebook | null>(null);
+  readonly showDetails = input(true);
 
   // Editor state inputs
   readonly canUndo = input<boolean>(false);

@@ -143,30 +143,32 @@
       </div>
     </div>
 
-    <!-- Page title input (editable, borderless, large serif) -->
-    <input
-      type="text"
-      [ngModel]="editTitleValue()"
-      (ngModelChange)="editTitleValue.set($event)"
-      (blur)="saveTitle()"
-      (keydown.enter)="$any($event.target).blur()"
-      placeholder="Untitled page"
-      aria-label="Page title"
-      class="w-full font-sans font-bold text-3xl text-[var(--color-text-main)] bg-transparent border-none outline-none py-3 px-0 block"
-    />
+    @if (showDetails()) {
+      <!-- Page title input (editable, borderless, large serif) -->
+      <input
+        type="text"
+        [ngModel]="editTitleValue()"
+        (ngModelChange)="editTitleValue.set($event)"
+        (blur)="saveTitle()"
+        (keydown.enter)="$any($event.target).blur()"
+        placeholder="Untitled page"
+        aria-label="Page title"
+        class="w-full font-sans font-bold text-3xl text-[var(--color-text-main)] bg-transparent border-none outline-none py-3 px-0 block"
+      />
 
-    <!-- Metadata line -->
-    <div
-      class="flex items-center gap-3.5 pb-3.5 border-b border-[var(--color-border)] font-sans text-[11px] text-[var(--color-text-muted)]"
-    >
-      <span>{{ formattedDate() }}</span>
-      <span class="capitalize">{{ page()!.type }}</span>
-      <span class="flex-1"></span>
-      <span class="text-[var(--color-success)] flex items-center gap-1 font-semibold">
-        <span class="w-1.5 h-1.5 rounded-full bg-[var(--color-success)] inline-block"></span>
-        synced
-      </span>
-    </div>
+      <!-- Metadata line -->
+      <div
+        class="flex items-center gap-3.5 pb-3.5 border-b border-[var(--color-border)] font-sans text-[11px] text-[var(--color-text-muted)]"
+      >
+        <span>{{ formattedDate() }}</span>
+        <span class="capitalize">{{ page()!.type }}</span>
+        <span class="flex-1"></span>
+        <span class="text-[var(--color-success)] flex items-center gap-1 font-semibold">
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--color-success)] inline-block"></span>
+          synced
+        </span>
+      </div>
+    }
   </div>
 
   <!-- Version History Panel -->

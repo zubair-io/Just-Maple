@@ -1,135 +1,136 @@
 <div class="toolbar-container">
-  <div class="editor-toolbar" [class.disabled]="!editor()">
-    <!-- Text type buttons (Paragraph, Headings) -->
-    <div class="toolbar-group">
+  @if (openPanel() === 'style') {
+    <div class="toolbar-panel style-panel" role="group" aria-label="Text styles">
       @for (btn of textTypeButtons(); track btn.label) {
         <button
           type="button"
-          class="toolbar-btn"
+          class="option-button"
           [class.active]="btn.isActive?.()"
-          [disabled]="btn.disabled?.()"
-          [title]="btn.label"
-          (click)="btn.action()"
+          [attr.aria-pressed]="!!btn.isActive?.()"
+          (click)="chooseStyle(btn)"
         >
-          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
+          <span class="material-symbols-rounded" aria-hidden="true">{{ btn.icon }}</span>
+          <span>{{ btn.label }}</span>
         </button>
       }
     </div>
+  }
 
-    <div class="toolbar-divider"></div>
-
-    <!-- Formatting buttons -->
-    <div class="toolbar-group">
-      @for (btn of formattingButtons(); track btn.label) {
-        <button
-          type="button"
-          class="toolbar-btn"
-          [class.active]="btn.isActive?.()"
-          [disabled]="btn.disabled?.()"
-          [title]="btn.label"
-          (click)="btn.action()"
-        >
-          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
-        </button>
-      }
-    </div>
-
-    <div class="toolbar-divider"></div>
-
-    <!-- Block buttons -->
-    <div class="toolbar-group">
-      @for (btn of blockButtons(); track btn.label) {
-        <button
-          type="button"
-          class="toolbar-btn"
-          [class.active]="btn.isActive?.()"
-          [disabled]="btn.disabled?.()"
-          [title]="btn.label"
-          (click)="btn.action()"
-        >
-          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
-        </button>
-      }
-    </div>
-
-    <div class="toolbar-divider"></div>
-
-    <!-- Alignment buttons -->
-    <div class="toolbar-group">
-      @for (btn of alignButtons(); track btn.label) {
-        <button
-          type="button"
-          class="toolbar-btn"
-          [class.active]="btn.isActive?.()"
-          [title]="btn.label"
-          (click)="btn.action()"
-        >
-          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
-        </button>
-      }
-    </div>
-
-    <div class="toolbar-divider"></div>
-
-    <!-- Text color -->
-    <div class="toolbar-group">
-      <label class="toolbar-btn toolbar-color" title="Text color">
-        <span class="btn-icon material-symbols-rounded">format_color_text</span>
-        <input type="color" (change)="applyColor($any($event.target).value)" />
-      </label>
-      <button type="button" class="toolbar-btn" title="Clear color" (click)="clearColor()">
-        <span class="btn-icon material-symbols-rounded">format_color_reset</span>
-      </button>
-    </div>
-
-    <div class="toolbar-divider"></div>
-
-    <!-- Insert buttons -->
-    <div class="toolbar-group">
-      @for (btn of insertButtons(); track btn.label) {
-        <button
-          type="button"
-          class="toolbar-btn"
-          [class.active]="btn.isActive?.()"
-          [disabled]="btn.disabled?.()"
-          [title]="btn.label"
-          (click)="btn.action()"
-        >
-          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
-        </button>
-      }
-    </div>
-
-    <div class="toolbar-spacer"></div>
-
-    <!-- Word count -->
-    <span class="toolbar-wordcount" title="Word count">{{ wordCount() }}w</span>
-
-    <!-- History buttons -->
-    <div class="toolbar-group">
-      @for (btn of historyButtons(); track btn.label) {
-        <button
-          type="button"
-          class="toolbar-btn"
-          [disabled]="btn.disabled?.()"
-          [title]="btn.label"
-          (click)="btn.action()"
-        >
-          <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
-        </button>
-      }
-    </div>
-
-    <!-- Table controls (only while inside a table) -->
-    @if (tableButtons().length) {
-      <div class="toolbar-divider"></div>
-      <div class="toolbar-group">
-        @for (btn of tableButtons(); track btn.label) {
-          <button type="button" class="toolbar-btn" [title]="btn.label" (click)="btn.action()">
-            <span class="btn-icon material-symbols-rounded">{{ btn.icon }}</span>
-          </button>
+  @if (openPanel() === 'more') {
+    <div class="toolbar-panel more-panel" role="region" aria-label="More formatting options">
+      @for (
+        group of [
+          { label: 'Text', buttons: formattingButtons().slice(3) },
+          { label: 'Lists & blocks', buttons: blockButtons() },
+          { label: 'Alignment', buttons: alignButtons() },
+          { label: 'Insert', buttons: insertButtons() },
+          { label: 'History', buttons: historyButtons() },
+          { label: 'Table', buttons: tableButtons() },
+        ];
+        track group.label
+      ) {
+        @if (group.buttons.length) {
+          <section class="panel-section">
+            <h3>{{ group.label }}</h3>
+            <div class="panel-options">
+              @for (btn of group.buttons; track btn.label) {
+                <button
+                  type="button"
+                  class="option-button"
+                  [class.active]="btn.isActive?.()"
+                  [disabled]="btn.disabled?.()"
+                  [attr.aria-pressed]="btn.isActive ? !!btn.isActive() : null"
+                  (click)="btn.action()"
+                >
+                  <span class="material-symbols-rounded" aria-hidden="true">{{ btn.icon }}</span>
+                  <span>{{ btn.label }}</span>
+                </button>
+              }
+            </div>
+          </section>
         }
-      </div>
-    }
+      }
+      <section class="panel-section">
+        <h3>Text color</h3>
+        <div class="panel-options">
+          <label class="option-button toolbar-color">
+            <span class="material-symbols-rounded" aria-hidden="true">format_color_text</span>
+            <span>Choose color</span>
+            <input
+              type="color"
+              aria-label="Text color"
+              (change)="applyColor($any($event.target).value)"
+            />
+          </label>
+          <button type="button" class="option-button" (click)="clearColor()">
+            <span class="material-symbols-rounded" aria-hidden="true">format_color_reset</span>
+            <span>Clear color</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  }
+
+  <div
+    class="editor-toolbar"
+    role="toolbar"
+    aria-label="Document formatting"
+    [class.disabled]="!editor()"
+  >
+    <button
+      type="button"
+      class="style-trigger"
+      aria-label="Text style"
+      [attr.aria-expanded]="openPanel() === 'style'"
+      (click)="togglePanel('style')"
+    >
+      <span>{{ currentTextStyle() }}</span>
+      <span class="material-symbols-rounded" aria-hidden="true">unfold_more</span>
+    </button>
+    <div class="toolbar-divider" aria-hidden="true"></div>
+    <div class="toolbar-group" role="group" aria-label="Text formatting">
+      @for (btn of formattingButtons().slice(0, 3); track btn.label) {
+        <button
+          type="button"
+          class="toolbar-btn"
+          [class.active]="btn.isActive?.()"
+          [attr.aria-pressed]="!!btn.isActive?.()"
+          [title]="btn.label"
+          [attr.aria-label]="btn.label"
+          (click)="btn.action()"
+        >
+          <span class="material-symbols-rounded" aria-hidden="true">{{ btn.icon }}</span>
+        </button>
+      }
+    </div>
+    <div class="toolbar-divider desktop-control" aria-hidden="true"></div>
+    <div class="toolbar-group desktop-control" role="group" aria-label="Lists">
+      @for (btn of blockButtons().slice(0, 3); track btn.label) {
+        <button
+          type="button"
+          class="toolbar-btn"
+          [class.active]="btn.isActive?.()"
+          [attr.aria-pressed]="!!btn.isActive?.()"
+          [title]="btn.label"
+          [attr.aria-label]="btn.label"
+          (click)="btn.action()"
+        >
+          <span class="material-symbols-rounded" aria-hidden="true">{{ btn.icon }}</span>
+        </button>
+      }
+    </div>
+    <div class="toolbar-divider" aria-hidden="true"></div>
+    <button
+      type="button"
+      class="toolbar-btn"
+      aria-label="More formatting"
+      title="More formatting"
+      [class.active]="openPanel() === 'more'"
+      [attr.aria-expanded]="openPanel() === 'more'"
+      (click)="togglePanel('more')"
+    >
+      <span class="material-symbols-rounded" aria-hidden="true">tune</span>
+    </button>
+    <span class="toolbar-wordcount" aria-label="Word count">{{ wordCount() }} words</span>
   </div>
 </div>
