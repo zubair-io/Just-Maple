@@ -15,7 +15,7 @@
           (ngModelChange)="searchQuery.set($event)"
           placeholder="Search notebooks   ⌘K"
           aria-label="Search notebooks"
-          class="w-full h-9 md:h-10 box-border px-0 md:pr-3.5 md:pl-9 focus:pl-9 max-md:placeholder:text-transparent max-md:focus:placeholder:text-[var(--color-text-muted)] font-mono text-xs text-[var(--color-text-main)] bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded-lg outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+          class="w-full h-9 md:h-10 box-border px-0 md:pr-3.5 md:pl-9 focus:pl-9 max-md:placeholder:text-transparent max-md:focus:placeholder:text-[var(--color-text-muted)] font-sans text-xs text-[var(--color-text-main)] bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded-lg outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
         />
         <span
           class="material-symbols-rounded text-base text-[var(--color-text-muted)] pointer-events-none absolute left-2.5 top-2 md:left-3 md:top-2.5"
@@ -102,7 +102,7 @@
         <p class="m-0 mb-1.5 font-sans font-bold text-base text-[var(--color-text-main)]">
           No notebooks match “{{ searchQuery() }}”
         </p>
-        <p class="m-0 font-mono text-xs">Try a different search query or create a new notebook.</p>
+        <p class="m-0 font-sans text-xs">Try a different search query or create a new notebook.</p>
       </div>
     }
   </div>
@@ -114,7 +114,7 @@
     <div>
       <div class="flex items-baseline gap-2.5 mb-4">
         <span
-          class="font-mono text-[10px] font-semibold tracking-wider text-[var(--color-text-muted)]"
+          class="font-sans text-[10px] font-semibold tracking-wider text-[var(--color-text-muted)]"
           >{{ label }}</span
         >
         <span class="flex-1 h-[1px] bg-[var(--color-border)]"></span>
@@ -163,7 +163,7 @@
               <!-- Unread Message Count badge -->
               @if (notebook.unreadCount > 0) {
                 <span
-                  class="flex-none min-w-[14px] text-center font-mono text-[10px] font-bold text-white bg-[var(--color-primary)] rounded-full px-1.5 py-0.5"
+                  class="flex-none min-w-[14px] text-center font-sans text-[10px] font-bold text-white bg-[var(--color-primary)] rounded-full px-1.5 py-0.5"
                   [attr.aria-label]="notebook.unreadCount + ' unread messages'"
                 >
                   {{ notebook.unreadCount > 99 ? '99+' : notebook.unreadCount }}
@@ -200,7 +200,7 @@
               </div>
 
               <!-- Activity Timestamp -->
-              <span class="font-mono text-[9px] text-[var(--color-text-muted)] whitespace-nowrap">
+              <span class="font-sans text-[9px] text-[var(--color-text-muted)] whitespace-nowrap">
                 {{ notebook.activity }}
               </span>
             </div>
