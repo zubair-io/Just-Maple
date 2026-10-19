@@ -1,5 +1,8 @@
 import {
   Component,
+  HostListener,
+  ElementRef,
+  inject,
   input,
   computed,
   signal,
@@ -28,10 +31,35 @@ interface ToolbarButton {
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[style.bottom]': 'toolbarBottom()',
+    '[style.--keyboard-offset]': 'keyboardOffset() + "px"',
   },
 })
 export class EditorToolbarComponent implements OnInit, OnDestroy {
   readonly editor = input.required<Editor | null>();
+  private readonly element = inject(ElementRef<HTMLElement>);
+  readonly openPanel = signal<'style' | 'more' | null>(null);
+  readonly currentTextStyle = computed(
+    () => this.textTypeButtons().find((button) => button.isActive?.())?.label ?? 'Paragraph',
+  );
+
+  togglePanel(panel: 'style' | 'more'): void {
+    this.openPanel.update((current) => (current === panel ? null : panel));
+  }
+
+  chooseStyle(button: ToolbarButton): void {
+    button.action();
+    this.openPanel.set(null);
+  }
+
+  @HostListener('document:keydown.escape')
+  closePanel(): void {
+    this.openPanel.set(null);
+  }
+
+  @HostListener('document:click', ['$event'])
+  onOutsideClick(event: MouseEvent): void {
+    if (!this.element.nativeElement.contains(event.target as Node)) this.closePanel();
+  }
 
   // Signal to track editor state updates (increments on each transaction).
   private readonly editorStateVersion = signal(0);

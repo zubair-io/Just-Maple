@@ -1,6 +1,7 @@
 <div class="notebook-page">
   @if (selectedPage(); as page) {
     <app-note-header
+      [showDetails]="false"
       [page]="page"
       [notebook]="selectedNotebook()"
       [canUndo]="canUndo()"
