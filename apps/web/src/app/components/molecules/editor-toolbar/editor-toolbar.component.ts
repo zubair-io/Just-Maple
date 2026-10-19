@@ -46,9 +46,10 @@ export class EditorToolbarComponent implements OnInit, OnDestroy {
   readonly pageActions = input<EditorPageAction[]>([]);
   private readonly element = inject(ElementRef<HTMLElement>);
   readonly openPanel = signal<'style' | 'more' | null>(null);
-  readonly currentTextStyle = computed(
-    () => this.textTypeButtons().find((button) => button.isActive?.())?.label ?? 'Paragraph',
-  );
+  readonly currentTextStyle = computed(() => {
+    const label = this.textTypeButtons().find((button) => button.isActive?.())?.label;
+    return label?.startsWith('Heading ') ? label.replace('Heading ', 'H') : 'P';
+  });
 
   runPageAction(action: EditorPageAction): void {
     this.closePanel();
