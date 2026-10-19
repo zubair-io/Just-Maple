@@ -8,6 +8,7 @@ import {
     OnDestroy,
     ViewChild,
     HostListener,
+    ElementRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { WhiteboardToolType, Camera } from '@maple/shared';
@@ -28,12 +29,14 @@ import { ShapeTool } from '../../tools/shape.tool';
     standalone: true,
     imports: [CommonModule, CanvasComponent, ToolbarComponent, CursorsComponent],
     templateUrl: './whiteboard.component.html',
+    host: { tabindex: '-1' },
     styleUrl: './whiteboard.component.scss',
 })
 export class WhiteboardComponent implements OnDestroy {
     @ViewChild(CanvasComponent) private canvasComponent?: CanvasComponent;
 
     private readonly whiteboardService = inject(WhiteboardDocumentService);
+    private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
     // Inputs
     readonly pageId = input.required<string>();
@@ -155,17 +158,32 @@ export class WhiteboardComponent implements OnDestroy {
         this.canvasComponent?.zoomToFit();
     }
 
+    @HostListener('pointerdown', ['$event'])
+    focusCanvas(event: PointerEvent): void {
+        const target = event.target;
+        if (
+            target instanceof HTMLElement &&
+            (target.isContentEditable || target.closest('input, textarea, select'))
+        )
+            return;
+        this.host.nativeElement.focus({ preventScroll: true });
+    }
+
     @HostListener('document:keydown', ['$event'])
     onKeyDown(event: KeyboardEvent): void {
-        // Don't handle if in input field
+        // Text editors keep their own undo/redo and shortcuts.
         if (
-            event.target instanceof HTMLInputElement ||
-            event.target instanceof HTMLTextAreaElement
+            event.defaultPrevented ||
+            (event.target instanceof HTMLElement &&
+                (event.target.isContentEditable ||
+                    !!event.target.closest('input, textarea, select')))
         ) {
             return;
         }
 
         if ((event.ctrlKey || event.metaKey) && ['z', 'y'].includes(event.key.toLowerCase())) {
+            if (this.parentPageId() && !this.host.nativeElement.contains(event.target as Node))
+                return;
             event.preventDefault();
             if (event.key.toLowerCase() === 'y' || event.shiftKey)
                 this.whiteboardService.redo(this.pageId());
