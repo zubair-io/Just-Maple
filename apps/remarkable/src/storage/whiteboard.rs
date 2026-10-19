@@ -35,9 +35,15 @@ pub fn elements(bytes: &[u8]) -> Result<Vec<WhiteboardElement>> {
     let mut seen = HashSet::new();
     for layer in layers.iter(&txn) {
         let layer = json(layer.to_json(&txn))?;
+        let visible = layer
+            .get("visible")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
         if let Some(order) = layer.get("elements").and_then(Value::as_array) {
             for id in order.iter().filter_map(Value::as_str) {
-                if seen.insert(id.to_owned()) {
+                // Hidden-layer members remain accounted for so the orphan fallback
+                // cannot accidentally reveal them.
+                if seen.insert(id.to_owned()) && visible {
                     ids.push(id.to_owned());
                 }
             }
@@ -255,6 +261,33 @@ mod tests {
         if let Ok(path) = std::env::var("MAPLE_INTEROP_OUTPUT") {
             std::fs::write(path, saved)?;
         }
+        Ok(())
+    }
+
+    #[test]
+    fn hidden_layers_stay_hidden_and_are_preserved_on_save() -> Result<()> {
+        let doc = document(Some(WEB))?;
+        let layers = doc.get_or_insert_array("layers");
+        {
+            let mut txn = doc.transact_mut();
+            let Out::YMap(layer) = layers.get(&txn, 0).unwrap() else {
+                panic!("layer map")
+            };
+            layer.insert(&mut txn, "visible", false);
+        }
+        let bytes = doc
+            .transact()
+            .encode_state_as_update_v1(&StateVector::default());
+        assert!(elements(&bytes)?.is_empty());
+        let saved = append(Some(&bytes), &[])?;
+        let reopened = document(Some(&saved))?;
+        let original_map = doc.get_or_insert_map("elements");
+        let reopened_map = reopened.get_or_insert_map("elements");
+        assert_eq!(
+            json(original_map.to_json(&doc.transact()))?,
+            json(reopened_map.to_json(&reopened.transact()))?
+        );
+        assert!(elements(&saved)?.is_empty());
         Ok(())
     }
 

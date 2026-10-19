@@ -1,0 +1,33 @@
+name: reMarkable
+
+on:
+  pull_request:
+    paths:
+      - 'apps/remarkable/**'
+      - 'packages/shared-rust/**'
+      - '.github/workflows/remarkable.yml'
+  push:
+    branches: [main, development]
+    paths:
+      - 'apps/remarkable/**'
+      - 'packages/shared-rust/**'
+      - '.github/workflows/remarkable.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-tests:
+    name: Tablet Rust tests
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/remarkable -> target
+      - name: Test tablet application
+        run: cargo test --manifest-path apps/remarkable/Cargo.toml --locked
+      - name: Build desktop tablet application
+        run: cargo build --manifest-path apps/remarkable/Cargo.toml --locked
