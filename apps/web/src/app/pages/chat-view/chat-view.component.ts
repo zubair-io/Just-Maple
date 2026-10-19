@@ -212,7 +212,11 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     // Make sure activeTab falls back to overview if the selected page type tab is no longer available
     effect(() => {
       const tab = this.activeTab();
-      if (tab.startsWith('type-')) {
+      if (
+        tab.startsWith('type-') &&
+        !this.pageService.isLoading() &&
+        this.pageService.pages().length > 0
+      ) {
         const available = this.dynamicTabs().some((t) => t.id === tab);
         if (!available) {
           this.activeTab.set('overview');
