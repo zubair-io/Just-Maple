@@ -170,13 +170,13 @@
       >
         <button
           role="tab"
-          [attr.aria-selected]="activeTab() === 'overview'"
-          (click)="activeTab.set('overview')"
+          [attr.aria-selected]="selectedHeaderTab() === 'overview'"
+          (click)="selectTab('overview')"
           class="h-9 px-3 font-sans font-bold text-xs bg-transparent border-none border-b-2 cursor-pointer transition-colors whitespace-nowrap"
-          [class.text-[var(--color-text-main)]]="activeTab() === 'overview'"
-          [class.border-[var(--color-primary)]]="activeTab() === 'overview'"
-          [class.text-[var(--color-text-muted)]]="activeTab() !== 'overview'"
-          [class.border-transparent]="activeTab() !== 'overview'"
+          [class.text-[var(--color-text-main)]]="selectedHeaderTab() === 'overview'"
+          [class.border-[var(--color-primary)]]="selectedHeaderTab() === 'overview'"
+          [class.text-[var(--color-text-muted)]]="selectedHeaderTab() !== 'overview'"
+          [class.border-transparent]="selectedHeaderTab() !== 'overview'"
         >
           Overview
         </button>
@@ -185,13 +185,13 @@
         @for (tab of dynamicTabs(); track tab.id) {
           <button
             role="tab"
-            [attr.aria-selected]="activeTab() === tab.id"
-            (click)="activeTab.set(tab.id)"
+            [attr.aria-selected]="selectedHeaderTab() === tab.id"
+            (click)="selectTab(tab.id)"
             class="h-9 px-3 font-sans font-bold text-xs bg-transparent border-none border-b-2 cursor-pointer transition-colors whitespace-nowrap"
-            [class.text-[var(--color-text-main)]]="activeTab() === tab.id"
-            [class.border-[var(--color-primary)]]="activeTab() === tab.id"
-            [class.text-[var(--color-text-muted)]]="activeTab() !== tab.id"
-            [class.border-transparent]="activeTab() !== tab.id"
+            [class.text-[var(--color-text-main)]]="selectedHeaderTab() === tab.id"
+            [class.border-[var(--color-primary)]]="selectedHeaderTab() === tab.id"
+            [class.text-[var(--color-text-muted)]]="selectedHeaderTab() !== tab.id"
+            [class.border-transparent]="selectedHeaderTab() !== tab.id"
           >
             {{ tab.label }}
           </button>
@@ -200,214 +200,222 @@
     </app-header>
 
     <!-- Tab View Outlet -->
-    <div class="flex-1 overflow-hidden relative">
-      <!-- OVERVIEW TAB -->
-      @if (activeTab() === 'overview') {
-        <div class="absolute inset-0 overflow-y-auto p-6 md:p-8 animate-maple-content-in">
-          <!-- Overview subtitle stats -->
-          <div class="mb-6 text-xs text-[var(--color-text-muted)] font-mono">
-            <span>{{ isLocal() ? localPages().length : summary()?.totalPages }} pages</span>
-            <span class="mx-1.5">·</span>
-            <span>last activity {{ notebook.updatedAt | date: 'shortTime' }}</span>
-          </div>
+    <div class="flex-1 flex flex-col min-h-0 overflow-hidden relative">
+      @if (childPageOpen()) {
+        <router-outlet />
+      } @else {
+        <!-- OVERVIEW TAB -->
+        @if (activeTab() === 'overview') {
+          <div class="absolute inset-0 overflow-y-auto p-6 md:p-8 animate-maple-content-in">
+            <!-- Overview subtitle stats -->
+            <div class="mb-6 text-xs text-[var(--color-text-muted)] font-mono">
+              <span>{{ isLocal() ? localPages().length : summary()?.totalPages }} pages</span>
+              <span class="mx-1.5">·</span>
+              <span>last activity {{ notebook.updatedAt | date: 'shortTime' }}</span>
+            </div>
 
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Left pane: Pages & Messages previews -->
-            <div class="flex flex-col gap-6">
-              <!-- Recent Pages -->
-              <div
-                class="p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm"
-              >
-                <h3 class="m-0 mb-4 font-sans font-bold text-sm text-[var(--color-text-main)]">
-                  Recent Pages
-                </h3>
-                <div class="flex flex-col gap-2">
-                  @for (page of recentPages(); track page.id) {
-                    <button
-                      (click)="onFileClicked(page.id)"
-                      class="flex items-center gap-3 w-full h-11 px-3 box-border font-sans font-semibold text-sm text-[var(--color-text-main)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-text-muted)] rounded-lg cursor-pointer text-left transition-colors"
-                    >
-                      <span class="font-mono text-[10px] text-[var(--color-text-muted)]">
-                        {{ page.updatedAt | date: 'MMM d' }}
-                      </span>
-                      <span class="flex-1 truncate">{{ page.title || 'Untitled' }}</span>
-                      <span class="font-sans font-bold text-sm text-[var(--color-primary)]">→</span>
-                    </button>
-                  } @empty {
-                    <p class="m-0 py-6 text-center text-xs text-[var(--color-text-muted)]">
-                      No pages yet.
-                    </p>
-                  }
-                </div>
-              </div>
-
-              <!-- Recent messages Dialogue preview -->
-              @if (!isLocal()) {
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <!-- Left pane: Pages & Messages previews -->
+              <div class="flex flex-col gap-6">
+                <!-- Recent Pages -->
                 <div
                   class="p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm"
                 >
-                  <h3
-                    class="m-0 mb-4 font-sans font-bold text-sm text-[var(--color-text-main)] flex items-center gap-1.5"
-                  >
-                    <span class="material-symbols-rounded text-base text-[var(--color-primary)]"
-                      >chat</span
-                    >
-                    <span>Recent Activity</span>
+                  <h3 class="m-0 mb-4 font-sans font-bold text-sm text-[var(--color-text-main)]">
+                    Recent Pages
                   </h3>
-                  <div class="flex flex-col gap-3">
-                    @for (msg of recentMessages(); track msg.id) {
-                      <div class="text-sm leading-relaxed text-[var(--color-text-main)]">
-                        <span class="font-bold mr-1.5"
-                          >{{ msg.senderDisplayName || msg.userId.slice(0, 5) }}:</span
-                        >
-                        <span>{{ msg.content?.text || '' }}</span>
-                        <span class="font-mono text-[10px] text-[var(--color-text-muted)] ml-2">
-                          {{ msg.createdAt | date: 'shortTime' }}
+                  <div class="flex flex-col gap-2">
+                    @for (page of recentPages(); track page.id) {
+                      <button
+                        (click)="onFileClicked(page.id)"
+                        class="flex items-center gap-3 w-full h-11 px-3 box-border font-sans font-semibold text-sm text-[var(--color-text-main)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-text-muted)] rounded-lg cursor-pointer text-left transition-colors"
+                      >
+                        <span class="font-mono text-[10px] text-[var(--color-text-muted)]">
+                          {{ page.updatedAt | date: 'MMM d' }}
                         </span>
-                      </div>
+                        <span class="flex-1 truncate">{{ page.title || 'Untitled' }}</span>
+                        <span class="font-sans font-bold text-sm text-[var(--color-primary)]"
+                          >→</span
+                        >
+                      </button>
                     } @empty {
                       <p class="m-0 py-6 text-center text-xs text-[var(--color-text-muted)]">
-                        No messages yet.
+                        No pages yet.
                       </p>
                     }
                   </div>
                 </div>
-              }
-            </div>
 
-            <!-- Right pane: Connection Graph or statistics breakdown -->
-            <div class="flex flex-col gap-6">
-              @if (isLocal()) {
-                <div
-                  class="p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm"
-                >
-                  <h3 class="m-0 mb-3 font-sans font-bold text-sm text-[var(--color-text-main)]">
-                    Pages
-                  </h3>
-                  <div class="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
-                    @for (page of localPages(); track page.id) {
-                      <button
-                        (click)="onFileClicked(page.id)"
-                        class="flex items-center gap-2.5 px-3 py-2 text-sm text-left border-none bg-transparent hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer w-full text-[var(--color-text-main)]"
+                <!-- Recent messages Dialogue preview -->
+                @if (!isLocal()) {
+                  <div
+                    class="p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm"
+                  >
+                    <h3
+                      class="m-0 mb-4 font-sans font-bold text-sm text-[var(--color-text-main)] flex items-center gap-1.5"
+                    >
+                      <span class="material-symbols-rounded text-base text-[var(--color-primary)]"
+                        >chat</span
+                      >
+                      <span>Recent Activity</span>
+                    </h3>
+                    <div class="flex flex-col gap-3">
+                      @for (msg of recentMessages(); track msg.id) {
+                        <div class="text-sm leading-relaxed text-[var(--color-text-main)]">
+                          <span class="font-bold mr-1.5"
+                            >{{ msg.senderDisplayName || msg.userId.slice(0, 5) }}:</span
+                          >
+                          <span>{{ msg.content?.text || '' }}</span>
+                          <span class="font-mono text-[10px] text-[var(--color-text-muted)] ml-2">
+                            {{ msg.createdAt | date: 'shortTime' }}
+                          </span>
+                        </div>
+                      } @empty {
+                        <p class="m-0 py-6 text-center text-xs text-[var(--color-text-muted)]">
+                          No messages yet.
+                        </p>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <!-- Right pane: Connection Graph or statistics breakdown -->
+              <div class="flex flex-col gap-6">
+                @if (isLocal()) {
+                  <div
+                    class="p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm"
+                  >
+                    <h3 class="m-0 mb-3 font-sans font-bold text-sm text-[var(--color-text-main)]">
+                      Pages
+                    </h3>
+                    <div class="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
+                      @for (page of localPages(); track page.id) {
+                        <button
+                          (click)="onFileClicked(page.id)"
+                          class="flex items-center gap-2.5 px-3 py-2 text-sm text-left border-none bg-transparent hover:bg-[var(--color-surface-hover)] rounded-lg cursor-pointer w-full text-[var(--color-text-main)]"
+                        >
+                          <span
+                            class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                          >
+                            {{ getPageTypeIcon(page.type) }}
+                          </span>
+                          <span class="truncate flex-1">{{ page.title || 'Untitled' }}</span>
+                        </button>
+                      }
+                    </div>
+                  </div>
+                } @else if (summary()) {
+                  <!-- Category breakdown / Page type counts -->
+                  <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    @for (entry of summary()!.pageCounts | keyvalue; track entry.key) {
+                      <div
+                        class="flex flex-col items-center p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-center hover:-translate-y-0.5 transition-all duration-150"
                       >
                         <span
-                          class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                          class="material-symbols-rounded text-lg text-[var(--color-text-muted)] mb-1.5"
                         >
-                          {{ getPageTypeIcon(page.type) }}
+                          {{ getPageTypeIcon(entry.key) }}
                         </span>
-                        <span class="truncate flex-1">{{ page.title || 'Untitled' }}</span>
-                      </button>
+                        <span class="font-bold text-xl text-[var(--color-text-main)] mb-0.5">{{
+                          entry.value
+                        }}</span>
+                        <span
+                          class="text-[10px] text-[var(--color-text-muted)] font-mono uppercase tracking-wider"
+                        >
+                          {{ getPageTypeLabel(entry.key) }}s
+                        </span>
+                      </div>
                     }
                   </div>
-                </div>
-              } @else if (summary()) {
-                <!-- Category breakdown / Page type counts -->
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  @for (entry of summary()!.pageCounts | keyvalue; track entry.key) {
-                    <div
-                      class="flex flex-col items-center p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl text-center hover:-translate-y-0.5 transition-all duration-150"
-                    >
-                      <span
-                        class="material-symbols-rounded text-lg text-[var(--color-text-muted)] mb-1.5"
-                      >
-                        {{ getPageTypeIcon(entry.key) }}
-                      </span>
-                      <span class="font-bold text-xl text-[var(--color-text-main)] mb-0.5">{{
-                        entry.value
-                      }}</span>
-                      <span
-                        class="text-[10px] text-[var(--color-text-muted)] font-mono uppercase tracking-wider"
-                      >
-                        {{ getPageTypeLabel(entry.key) }}s
-                      </span>
-                    </div>
-                  }
-                </div>
-              }
-            </div>
-          </div>
-
-          <!-- Connection Graph component (Full Width at bottom) -->
-          @if (!isLocal() && connectionGraph()) {
-            <div
-              class="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm overflow-hidden mt-6"
-            >
-              <app-connection-graph
-                [nodes]="connectionGraph()!.nodes"
-                [edges]="connectionGraph()!.edges"
-                [stats]="connectionGraph()!.stats"
-                (nodeClicked)="onGraphNodeClicked($event)"
-              />
-            </div>
-          }
-        </div>
-      }
-
-      <!-- DYNAMIC PAGES TAB -->
-      @if (activeTab().startsWith('type-')) {
-        <div class="absolute inset-0 overflow-y-auto p-6 md:p-8 animate-maple-content-in">
-          <div class="max-w-[720px] mx-auto">
-            <!-- Header of Pages -->
-            <div
-              class="flex items-baseline justify-between mb-4 border-b border-[var(--color-border)] pb-3"
-            >
-              <span
-                class="font-mono text-[11px] font-semibold tracking-wider text-[var(--color-text-muted)] uppercase"
-              >
-                {{ activeTab().substring(5) === 'memo' ? 'Notes' : activeTab().substring(5) + 's' }}
-              </span>
-
-              <div class="flex items-center gap-4">
-                <!-- Search box -->
-                <div class="relative">
-                  <input
-                    type="text"
-                    [ngModel]="pageSearchQuery()"
-                    (ngModelChange)="pageSearchQuery.set($event)"
-                    placeholder="Search pages..."
-                    class="h-7 px-2 font-mono text-[10px] text-[var(--color-text-main)] bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded outline-none focus:border-[var(--color-primary)] transition-colors w-32"
-                  />
-                </div>
-
-                <!-- Add button for this specific type -->
-                <button
-                  (click)="createNewPage($any(activeTab().substring(5)))"
-                  class="font-mono text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] bg-transparent border-none cursor-pointer p-0 font-semibold flex items-center gap-1"
-                >
-                  + Create {{ getPageTypeLabel(activeTab().substring(5)) }}
-                </button>
+                }
               </div>
             </div>
 
-            <!-- Pages List -->
-            <div class="flex flex-col">
-              @for (page of filteredPagesForActiveTab(); track page.id) {
-                <button
-                  (click)="onFileClicked(page.id)"
-                  class="flex items-baseline justify-between gap-4 text-left py-3.5 px-1 bg-transparent border-none border-b border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] cursor-pointer text-[var(--color-text-main)] transition-colors w-full"
+            <!-- Connection Graph component (Full Width at bottom) -->
+            @if (!isLocal() && connectionGraph()) {
+              <div
+                class="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm overflow-hidden mt-6"
+              >
+                <app-connection-graph
+                  [nodes]="connectionGraph()!.nodes"
+                  [edges]="connectionGraph()!.edges"
+                  [stats]="connectionGraph()!.stats"
+                  (nodeClicked)="onGraphNodeClicked($event)"
+                />
+              </div>
+            }
+          </div>
+        }
+
+        <!-- DYNAMIC PAGES TAB -->
+        @if (activeTab().startsWith('type-')) {
+          <div class="absolute inset-0 overflow-y-auto p-6 md:p-8 animate-maple-content-in">
+            <div class="max-w-[720px] mx-auto">
+              <!-- Header of Pages -->
+              <div
+                class="flex items-baseline justify-between mb-4 border-b border-[var(--color-border)] pb-3"
+              >
+                <span
+                  class="font-mono text-[11px] font-semibold tracking-wider text-[var(--color-text-muted)] uppercase"
                 >
-                  <div class="flex items-center gap-2.5 min-w-0">
-                    <span
-                      class="material-symbols-rounded text-sm text-[var(--color-text-muted)] flex-shrink-0"
-                    >
-                      {{ getPageTypeIcon(page.type) }}
-                    </span>
-                    <span class="font-serif text-base leading-normal truncate">{{
-                      page.title || 'Untitled page'
-                    }}</span>
+                  {{
+                    activeTab().substring(5) === 'memo' ? 'Notes' : activeTab().substring(5) + 's'
+                  }}
+                </span>
+
+                <div class="flex items-center gap-4">
+                  <!-- Search box -->
+                  <div class="relative">
+                    <input
+                      type="text"
+                      [ngModel]="pageSearchQuery()"
+                      (ngModelChange)="pageSearchQuery.set($event)"
+                      placeholder="Search pages..."
+                      class="h-7 px-2 font-mono text-[10px] text-[var(--color-text-main)] bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded outline-none focus:border-[var(--color-primary)] transition-colors w-32"
+                    />
                   </div>
-                  <span class="flex-none font-mono text-[11px] text-[var(--color-text-muted)]">
-                    {{ page.updatedAt | date: 'MMM d, y' }}
-                  </span>
-                </button>
-              } @empty {
-                <p class="font-mono text-xs text-[var(--color-text-muted)] text-center py-10">
-                  No pages of this type yet. Click above to create one.
-                </p>
-              }
+
+                  <!-- Add button for this specific type -->
+                  <button
+                    (click)="createNewPage($any(activeTab().substring(5)))"
+                    class="font-mono text-xs text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] bg-transparent border-none cursor-pointer p-0 font-semibold flex items-center gap-1"
+                  >
+                    + Create {{ getPageTypeLabel(activeTab().substring(5)) }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Pages List -->
+              <div class="flex flex-col">
+                @for (page of filteredPagesForActiveTab(); track page.id) {
+                  <button
+                    (click)="onFileClicked(page.id)"
+                    class="flex items-baseline justify-between gap-4 text-left py-3.5 px-1 bg-transparent border-none border-b border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] cursor-pointer text-[var(--color-text-main)] transition-colors w-full"
+                  >
+                    <div class="flex items-center gap-2.5 min-w-0">
+                      <span
+                        class="material-symbols-rounded text-sm text-[var(--color-text-muted)] flex-shrink-0"
+                      >
+                        {{ getPageTypeIcon(page.type) }}
+                      </span>
+                      <span class="font-serif text-base leading-normal truncate">{{
+                        page.title || 'Untitled page'
+                      }}</span>
+                    </div>
+                    <span class="flex-none font-mono text-[11px] text-[var(--color-text-muted)]">
+                      {{ page.updatedAt | date: 'MMM d, y' }}
+                    </span>
+                  </button>
+                } @empty {
+                  <p class="font-mono text-xs text-[var(--color-text-muted)] text-center py-10">
+                    No pages of this type yet. Click above to create one.
+                  </p>
+                }
+              </div>
             </div>
           </div>
-        </div>
+        }
       }
     </div>
   </div>

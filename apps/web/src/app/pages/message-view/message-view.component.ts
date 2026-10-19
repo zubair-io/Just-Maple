@@ -8,7 +8,6 @@ import { MessageService } from '../../services/message.service';
 import { NotificationService } from '../../services/notification.service';
 import { PageService } from '../../services/page.service';
 import { ShareModalComponent } from '../../components/organisms/share-modal/share-modal.component';
-import { NotebookHeaderComponent } from '../../components/molecules/notebook-header/notebook-header.component';
 import { ChatComponent } from '../../components/organisms/chat/chat.component';
 import { ThreadPanelComponent } from '../../components/organisms/chat/thread-panel/thread-panel.component';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
@@ -17,13 +16,7 @@ import type { NotebookMember, Message } from '@maple/shared';
 @Component({
   selector: 'app-message-view',
   standalone: true,
-  imports: [
-    CommonModule,
-    ShareModalComponent,
-    NotebookHeaderComponent,
-    ChatComponent,
-    ThreadPanelComponent,
-  ],
+  imports: [CommonModule, ShareModalComponent, ChatComponent, ThreadPanelComponent],
   templateUrl: './message-view.component.html',
   styleUrl: './message-view.component.scss',
 })
