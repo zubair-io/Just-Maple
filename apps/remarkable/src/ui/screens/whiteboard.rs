@@ -5,7 +5,13 @@ use crate::AppState;
 use egui::{Color32, Painter, Pos2, Rect, Sense, Stroke, Ui};
 use maple_shared::{Page, StrokeElement, StrokePoint, StrokeStyle, WhiteboardElement};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{oneshot, RwLock};
+
+struct PendingSave {
+    receipt: oneshot::Receiver<Result<(), String>>,
+    count: usize,
+    leave_after: bool,
+}
 
 /// Whiteboard screen
 pub struct WhiteboardScreen {
@@ -26,6 +32,11 @@ pub struct WhiteboardScreen {
     // UI state
     show_toolbar: bool,
     is_dirty: bool,
+    unsaved: Vec<WhiteboardElement>,
+    saving: Option<PendingSave>,
+    save_error: Option<String>,
+    load_error: Option<String>,
+    saved_locally: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -51,6 +62,11 @@ impl WhiteboardScreen {
             stroke_size: 4.0,
             show_toolbar: true,
             is_dirty: false,
+            unsaved: Vec::new(),
+            saving: None,
+            save_error: None,
+            load_error: None,
+            saved_locally: false,
         }
     }
 
@@ -62,11 +78,23 @@ impl WhiteboardScreen {
             self.current_stroke = None;
             self.loading = true;
             self.is_dirty = false;
+            self.unsaved.clear();
+            self.saving = None;
+            self.save_error = None;
+            self.load_error = None;
+            self.saved_locally = false;
         }
     }
 
     pub fn ui(&mut self, ui: &mut Ui, state: &Arc<RwLock<AppState>>) -> Option<Screen> {
-        let mut navigation = None;
+        let mut navigation = self.poll_save();
+        if navigation.is_some() {
+            return navigation;
+        }
+        if self.saving.is_some() {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(50));
+        }
 
         // Load page if needed
         if self.loading && self.page.is_none() {
@@ -78,9 +106,10 @@ impl WhiteboardScreen {
             ui.horizontal(|ui| {
                 if ui.button("← Back").clicked() {
                     if self.is_dirty {
-                        self.save_page(state);
+                        self.save_page(state, true);
+                    } else if self.saving.is_none() {
+                        navigation = Some(Screen::NotebookList);
                     }
-                    navigation = Some(Screen::NotebookList);
                 }
 
                 ui.separator();
@@ -90,22 +119,13 @@ impl WhiteboardScreen {
                 let eraser_selected = self.current_tool == Tool::Eraser;
                 let select_selected = self.current_tool == Tool::Select;
 
-                if ui
-                    .selectable_label(pen_selected, "✏️ Pen")
-                    .clicked()
-                {
+                if ui.selectable_label(pen_selected, "✏️ Pen").clicked() {
                     self.current_tool = Tool::Pen;
                 }
-                if ui
-                    .selectable_label(eraser_selected, "🧹 Eraser")
-                    .clicked()
-                {
+                if ui.selectable_label(eraser_selected, "🧹 Eraser").clicked() {
                     self.current_tool = Tool::Eraser;
                 }
-                if ui
-                    .selectable_label(select_selected, "👆 Select")
-                    .clicked()
-                {
+                if ui.selectable_label(select_selected, "👆 Select").clicked() {
                     self.current_tool = Tool::Select;
                 }
 
@@ -129,18 +149,16 @@ impl WhiteboardScreen {
                     let selected = &self.stroke_color == *hex;
 
                     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-                    ui.painter()
-                        .rect_filled(rect, 4.0, *color);
-                    ui.painter()
-                        .rect_stroke(
-                            rect,
-                            4.0,
-                            if selected {
-                                Stroke::new(3.0, Color32::DARK_BLUE)
-                            } else {
-                                Stroke::new(1.0, Color32::DARK_GRAY)
-                            },
-                        );
+                    ui.painter().rect_filled(rect, 4.0, *color);
+                    ui.painter().rect_stroke(
+                        rect,
+                        4.0,
+                        if selected {
+                            Stroke::new(3.0, Color32::DARK_BLUE)
+                        } else {
+                            Stroke::new(1.0, Color32::DARK_GRAY)
+                        },
+                    );
 
                     if response.clicked() {
                         self.stroke_color = hex.to_string();
@@ -149,8 +167,11 @@ impl WhiteboardScreen {
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if self.is_dirty {
-                        if ui.button("Save").clicked() {
-                            self.save_page(state);
+                        if ui
+                            .add_enabled(self.saving.is_none(), egui::Button::new("Save"))
+                            .clicked()
+                        {
+                            self.save_page(state, false);
                         }
                     }
 
@@ -166,6 +187,23 @@ impl WhiteboardScreen {
             });
 
             ui.separator();
+        }
+
+        if let Some(error) = &self.save_error {
+            ui.colored_label(Color32::DARK_RED, error);
+        }
+        if self.saving.is_some() {
+            ui.label("Saving on this device…");
+        } else if self.saved_locally && !self.is_dirty {
+            ui.label("Saved on this device");
+        }
+        if let Some(error) = &self.load_error {
+            ui.colored_label(Color32::DARK_RED, error);
+            if ui.button("Retry loading").clicked() {
+                self.loading = true;
+                self.load_error = None;
+            }
+            return navigation;
         }
 
         // Canvas area
@@ -199,45 +237,101 @@ impl WhiteboardScreen {
 
         // Render current stroke
         if let Some(points) = &self.current_stroke {
-            self.render_stroke(&painter, canvas_rect, points, &self.stroke_color, self.stroke_size);
+            self.render_stroke(
+                &painter,
+                canvas_rect,
+                points,
+                &self.stroke_color,
+                self.stroke_size,
+            );
         }
 
         navigation
     }
 
     fn load_page(&mut self, state: &Arc<RwLock<AppState>>) {
-        let page_id = self.page_id.clone();
-        let state_clone = state.clone();
-
-        // Try local storage first
-        let page = tokio::task::block_in_place(|| {
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(async {
-                let state_guard = state_clone.read().await;
-                state_guard.storage.get_page::<Page>(&page_id).ok().flatten()
+        let result = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let state = state.read().await;
+                let page = state.storage.get_page::<Page>(&self.page_id)?;
+                let elements = match state.storage.get_document(&self.page_id)? {
+                    Some(bytes) => crate::storage::whiteboard::elements(&bytes)?,
+                    None => Vec::new(),
+                };
+                Ok::<_, anyhow::Error>((page, elements))
             })
         });
-
-        if let Some(page) = page {
-            // TODO: Extract whiteboard elements from Y.js document
-            self.page = Some(page);
+        match result {
+            Ok((page, elements)) => {
+                self.page = page;
+                self.elements = elements;
+                self.load_error = None;
+            }
+            Err(_) => {
+                self.load_error =
+                    Some("Unable to load this whiteboard. Retry before drawing.".into());
+            }
         }
-
         self.loading = false;
     }
 
-    fn save_page(&mut self, state: &Arc<RwLock<AppState>>) {
-        // TODO: Serialize elements to Y.js and save
+    fn save_page(&mut self, state: &Arc<RwLock<AppState>>, leave_after: bool) {
+        if let Some(pending) = &mut self.saving {
+            pending.leave_after |= leave_after;
+            return;
+        }
+        if self.load_error.is_some() {
+            return;
+        }
         let page_id = self.page_id.clone();
-        let state_clone = state.clone();
-
-        tokio::spawn(async move {
-            let _state_guard = state_clone.read().await;
-            tracing::info!("Saving whiteboard: {}", page_id);
-            // TODO: Implement whiteboard save
+        let additions = self.unsaved.clone();
+        let count = additions.len();
+        let state = state.clone();
+        let (sender, receipt) = oneshot::channel();
+        self.save_error = None;
+        self.saving = Some(PendingSave {
+            receipt,
+            count,
+            leave_after,
         });
+        tokio::spawn(async move {
+            let storage = state.read().await.storage.clone();
+            let result =
+                tokio::task::spawn_blocking(move || storage.save_whiteboard(&page_id, &additions))
+                    .await;
+            let outcome = match result {
+                Ok(Ok(())) => Ok(()),
+                _ => Err(
+                    "Could not save this whiteboard. Your changes are still unsaved; retry Save."
+                        .into(),
+                ),
+            };
+            let _ = sender.send(outcome);
+        });
+    }
 
-        self.is_dirty = false;
+    fn poll_save(&mut self) -> Option<Screen> {
+        let pending = self.saving.as_mut()?;
+        let result = match pending.receipt.try_recv() {
+            Ok(result) => result,
+            Err(oneshot::error::TryRecvError::Empty) => return None,
+            Err(_) => Err("Whiteboard save was interrupted. Retry Save before leaving.".into()),
+        };
+        let pending = self.saving.take().unwrap();
+        match result {
+            Ok(()) => {
+                self.unsaved.drain(..pending.count);
+                self.is_dirty = !self.unsaved.is_empty();
+                self.saved_locally = true;
+                if pending.leave_after && !self.is_dirty {
+                    return Some(Screen::NotebookList);
+                }
+            }
+            Err(error) => {
+                self.save_error = Some(error);
+            }
+        }
+        None
     }
 
     fn handle_stroke_start(&mut self, pos: Pos2, canvas_rect: Rect) {
@@ -285,6 +379,7 @@ impl WhiteboardScreen {
                     },
                 });
 
+                self.unsaved.push(stroke.clone());
                 self.elements.push(stroke);
                 self.is_dirty = true;
             }
@@ -372,5 +467,125 @@ impl WhiteboardScreen {
 impl Default for WhiteboardScreen {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dirty_screen() -> WhiteboardScreen {
+        let mut screen = WhiteboardScreen::new();
+        let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(100., 100.));
+        screen.handle_stroke_start(Pos2::new(1., 2.), rect);
+        screen.handle_stroke_move(Pos2::new(3., 4.), rect);
+        // handle_stroke_end does not use the app state; construct the stroke through its pending points.
+        let points = screen.current_stroke.take().unwrap();
+        let element = WhiteboardElement::Stroke(StrokeElement {
+            base: maple_shared::BaseElement {
+                id: "one".into(),
+                created_by: "test".into(),
+                created_at: 1,
+                updated_at: 1,
+                transform: maple_shared::Transform::default(),
+                locked: None,
+            },
+            element_type: "stroke".into(),
+            points,
+            style: StrokeStyle::default(),
+        });
+        screen.elements.push(element.clone());
+        screen.unsaved.push(element);
+        screen.is_dirty = true;
+        screen
+    }
+
+    #[test]
+    fn failed_or_interrupted_save_retains_dirty_state_and_blocks_navigation() {
+        for interrupted in [false, true] {
+            let mut screen = dirty_screen();
+            let (sender, receipt) = oneshot::channel();
+            screen.saving = Some(PendingSave {
+                receipt,
+                count: 1,
+                leave_after: true,
+            });
+            assert_eq!(screen.poll_save(), None);
+            assert!(screen.is_dirty);
+            if interrupted {
+                drop(sender);
+            } else {
+                sender.send(Err("Disk full".into())).unwrap();
+            }
+            assert_eq!(screen.poll_save(), None);
+            assert!(screen.is_dirty);
+            assert_eq!(screen.unsaved.len(), 1);
+            assert!(screen.save_error.is_some());
+        }
+    }
+
+    #[test]
+    fn acknowledged_save_only_clears_the_saved_revision() {
+        for edit_during_save in [false, true] {
+            let mut screen = dirty_screen();
+            let (sender, receipt) = oneshot::channel();
+            screen.saving = Some(PendingSave {
+                receipt,
+                count: 1,
+                leave_after: true,
+            });
+            if edit_during_save {
+                screen.unsaved.push(screen.elements[0].clone());
+            }
+            sender.send(Ok(())).unwrap();
+            assert_eq!(
+                screen.poll_save(),
+                if edit_during_save {
+                    None
+                } else {
+                    Some(Screen::NotebookList)
+                }
+            );
+            assert_eq!(screen.is_dirty, edit_during_save);
+            assert_eq!(screen.unsaved.len(), usize::from(edit_during_save));
+        }
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn real_save_acknowledges_durable_data_then_reloads_it() -> anyhow::Result<()> {
+        let path = std::env::temp_dir().join(format!("maple-ui-save-{}", uuid::Uuid::new_v4()));
+        {
+            let state = Arc::new(RwLock::new(
+                AppState::new(crate::Config {
+                    storage_path: path.to_string_lossy().into_owned(),
+                    ..Default::default()
+                })
+                .await?,
+            ));
+            let mut screen = dirty_screen();
+            screen.page_id = "board".into();
+            screen.save_page(&state, true);
+            assert!(screen.is_dirty);
+            let navigation = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    if screen.saving.is_none() {
+                        break None;
+                    }
+                    if let Some(destination) = screen.poll_save() {
+                        break Some(destination);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+            })
+            .await?;
+            assert_eq!(navigation, Some(Screen::NotebookList));
+            assert!(!screen.is_dirty);
+            let mut reopened = WhiteboardScreen::new();
+            reopened.set_page_id("board".into());
+            reopened.load_page(&state);
+            assert!(reopened.load_error.is_none());
+            assert_eq!(reopened.elements.len(), 1);
+        }
+        std::fs::remove_dir_all(path)?;
+        Ok(())
     }
 }
