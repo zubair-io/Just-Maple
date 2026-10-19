@@ -100,7 +100,10 @@ import { BotService } from '../../../services/bot.service';
 import { NotebookService } from '../../../services/notebook.service';
 import { RecordingBlockComponent } from '../../molecules/recording-block/recording-block.component';
 import { PaperEmbedComponent } from '../../molecules/paper-embed/paper-embed.component';
-import { EditorToolbarComponent } from '../../molecules/editor-toolbar/editor-toolbar.component';
+import {
+  EditorToolbarComponent,
+  type EditorPageAction,
+} from '../../molecules/editor-toolbar/editor-toolbar.component';
 import { AiBotWidgetComponent } from '../../molecules/ai-bot-widget/ai-bot-widget.component';
 import { AIPreviewPanelComponent } from '../../molecules/ai-preview-panel/ai-preview-panel.component';
 import { AICommandMenuComponent } from '../../molecules/ai-command-menu/ai-command-menu.component';
@@ -164,6 +167,7 @@ export class NotebookEditorComponent implements OnDestroy {
   readonly pageId = input.required<string>();
   readonly notebookId = input.required<string>();
   readonly editable = input<boolean>(true);
+  readonly pageActions = input<EditorPageAction[]>([]);
   readonly skipPageSync = input<boolean>(false);
   readonly titleChanged = output<string>();
   readonly tagsChanged = output<string[]>();

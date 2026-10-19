@@ -1,5 +1,7 @@
+import type { EditorPageAction } from '../../components/molecules/editor-toolbar/editor-toolbar.component';
 import {
   Component,
+  computed,
   inject,
   signal,
   OnDestroy,
@@ -29,6 +31,7 @@ import { NoteHeaderComponent, type ExportFormat, DialogService } from '../../com
 })
 export class NotebookComponent implements OnDestroy {
   @ViewChild(NotebookEditorComponent) private editorComponent?: NotebookEditorComponent;
+  @ViewChild(NoteHeaderComponent) private noteActions?: NoteHeaderComponent;
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -54,6 +57,38 @@ export class NotebookComponent implements OnDestroy {
   readonly canRedo = signal(false);
   readonly isFullWidth = signal(false);
   readonly contentDirty = signal(false);
+
+  readonly footerPageActions = computed<EditorPageAction[]>(() => [
+    {
+      icon: this.isFullWidth() ? 'width_normal' : 'width_wide',
+      label: this.isFullWidth() ? 'Narrow width' : 'Full width',
+      action: () => this.handleToggleWidth(),
+    },
+    {
+      icon: 'history',
+      label: 'Version history',
+      action: () => this.noteActions?.toggleVersionHistory(),
+    },
+    { icon: 'description', label: 'Export Markdown', action: () => this.handleExport('markdown') },
+    { icon: 'code', label: 'Export HTML', action: () => this.handleExport('html') },
+    ...(this.selectedNotebook()?.sharing?.isPublic
+      ? [
+          {
+            icon: 'public',
+            label: 'Publish page',
+            action: () => this.noteActions?.openPublishModal(),
+          },
+        ]
+      : []),
+    {
+      icon: 'delete',
+      label: 'Delete page',
+      danger: true,
+      action: () => {
+        void this.handleDelete();
+      },
+    },
+  ]);
 
   // Get the page from the store
   readonly selectedPage = toSignal(this.pageService.activePage$, { initialValue: null });
