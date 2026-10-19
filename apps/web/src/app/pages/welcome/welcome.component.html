@@ -2,13 +2,12 @@
   class="min-h-full bg-[var(--color-bg)] text-[var(--color-text-main)] font-sans animate-maple-tag-in"
 >
   <app-header [home]="true">
-    <span headerContext class="font-mono text-[11px] text-[var(--color-text-muted)]">{{
-      tagCountLabel()
-    }}</span>
     <!-- Action items -->
-    <div headerActions class="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
+    <div headerActions class="flex items-center gap-2">
       <!-- Search bar -->
-      <div class="relative col-span-2 sm:col-span-1 flex-1 min-w-[140px]">
+      <div
+        class="relative w-9 md:w-44 lg:w-60 flex-none max-md:focus-within:absolute max-md:focus-within:inset-x-4 max-md:focus-within:top-16 max-md:focus-within:w-auto max-md:focus-within:z-30"
+      >
         <input
           #searchInput
           type="text"
@@ -16,10 +15,10 @@
           (ngModelChange)="searchQuery.set($event)"
           placeholder="Search notebooks   ⌘K"
           aria-label="Search notebooks"
-          class="w-full lg:w-60 h-10 box-border px-3.5 pl-9 font-mono text-xs text-[var(--color-text-main)] bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded-lg outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+          class="w-full h-9 md:h-10 box-border px-0 md:pr-3.5 md:pl-9 focus:pl-9 max-md:placeholder:text-transparent max-md:focus:placeholder:text-[var(--color-text-muted)] font-mono text-xs text-[var(--color-text-main)] bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded-lg outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
         />
         <span
-          class="material-symbols-rounded text-base text-[var(--color-text-muted)] absolute left-3 top-2.5"
+          class="material-symbols-rounded text-base text-[var(--color-text-muted)] pointer-events-none absolute left-2.5 top-2 md:left-3 md:top-2.5"
           >search</span
         >
       </div>
@@ -28,20 +27,24 @@
       @if (isFileSystemSupported()) {
         <button
           (click)="openFolder()"
-          class="h-10 px-4 font-sans font-bold text-xs text-[var(--color-text-main)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5"
+          aria-label="Open Folder"
+          class="h-9 w-9 md:h-10 md:w-auto px-0 md:px-4 font-sans font-bold text-xs text-[var(--color-text-main)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5"
           title="Open local folder"
         >
           <span class="material-symbols-rounded text-sm">folder_open</span>
-          <span>Open Folder</span>
+          <span class="hidden md:inline">Open Folder</span>
         </button>
       }
 
       <!-- Add notebook -->
       <button
         (click)="onCreateNotebook()"
-        class="h-10 px-4.5 font-sans font-bold text-sm text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] border-none rounded-lg transition-all cursor-pointer shadow-sm"
+        aria-label="New notebook"
+        title="New notebook"
+        class="h-9 w-9 md:h-10 md:w-auto px-0 md:px-4.5 inline-flex items-center justify-center gap-1.5 font-sans font-bold text-sm text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] border-none rounded-lg transition-all cursor-pointer shadow-sm"
       >
-        + Notebook
+        <span class="material-symbols-rounded text-xl" aria-hidden="true">add</span>
+        <span class="hidden md:inline">Notebook</span>
       </button>
     </div>
   </app-header>

@@ -129,20 +129,12 @@ export const routes: Routes = [
           ),
         canActivate: [AuthGuard],
       },
-      // Tag routes - all routes with :notebookId are nested under the tag component
+      // Keep notebook navigation mounted while opening pages within the notebook.
       {
         path: ':notebookId',
         loadComponent: () =>
-          import('./pages/notebook-layout/notebook-layout.component').then(
-            (m) => m.NotebookLayoutComponent,
-          ),
+          import('./pages/chat-view/chat-view.component').then((m) => m.ChatViewComponent),
         children: [
-          // Tag view - shows chat/messages for the tag (default child route)
-          {
-            path: '',
-            loadComponent: () =>
-              import('./pages/chat-view/chat-view.component').then((m) => m.ChatViewComponent),
-          },
           // Create new note route
           {
             path: 'new',

@@ -134,11 +134,6 @@ export class WelcomeComponent {
     };
   });
 
-  readonly tagCountLabel = computed(() => {
-    const count = this.notebookService.notebooks().length;
-    return `${count} notebook${count === 1 ? '' : 's'} · offline-ready`;
-  });
-
   getPageTypeIcon(type: string): string {
     switch (type) {
       case 'collectable':

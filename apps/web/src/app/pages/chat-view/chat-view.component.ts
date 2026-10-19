@@ -3,8 +3,18 @@ import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
-import { Subscription, switchMap, of, combineLatest, map, catchError, take } from 'rxjs';
+import { ActivatedRoute, Router, RouterOutlet, NavigationEnd } from '@angular/router';
+import {
+  Subscription,
+  switchMap,
+  of,
+  combineLatest,
+  map,
+  catchError,
+  take,
+  filter,
+  startWith,
+} from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
 import { NotificationService } from '../../services/notification.service';
 import { PageService } from '../../services/page.service';
@@ -43,6 +53,7 @@ interface ConnectionGraphData {
     CommonModule,
     FormsModule,
     AppHeaderComponent,
+    RouterOutlet,
     ShareModalComponent,
     NotebookHeaderComponent,
     ConnectionGraphComponent,
@@ -72,6 +83,13 @@ export class ChatViewComponent implements OnInit, OnDestroy {
 
   // Tab navigation state
   readonly activeTab = signal<string>('overview');
+  readonly childPageOpen = signal(false);
+  private readonly routePageId = signal<string | null>(null);
+  readonly selectedHeaderTab = computed(() => {
+    const pageId = this.routePageId();
+    const page = pageId ? this.pageService.pages().find((p) => p.id === pageId) : null;
+    return page ? `type-${page.type}` : this.activeTab();
+  });
   readonly switcherOpen = signal<boolean>(false);
   readonly pageSearchQuery = signal<string>('');
   readonly newPageDropdownOpen = signal<boolean>(false);
@@ -263,19 +281,44 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   getPageTypeIcon = getIcon;
 
   ngOnInit(): void {
-    // Subscribe to route params and set ID directly - let computed handle the rest
-    this.routeSubscription = this.route.params.subscribe((params) => {
+    this.routeSubscription = combineLatest([
+      this.route.params,
+      this.router.events.pipe(
+        filter((event) => event instanceof NavigationEnd),
+        startWith(null),
+      ),
+    ]).subscribe(([params]) => {
       const notebookId = params['notebookId'] || null;
+      const notebookChanged = notebookId !== this.selectedNotebookId();
+      const wasChildPageOpen = this.childPageOpen();
       this.selectedNotebookId.set(notebookId);
-      this.activeTab.set('overview');
-      this.pageSearchQuery.set('');
-      this.switcherOpen.set(false);
-
-      // For local notebooks, load pages into store
-      if (notebookId && isLocalNotebook(notebookId)) {
-        this.pageService.loadLocalPages(notebookId).pipe(take(1)).subscribe();
+      this.notificationService.setActiveNotebook(notebookId);
+      this.childPageOpen.set(!!this.route.firstChild);
+      this.routePageId.set(this.route.firstChild?.snapshot.paramMap.get('id') ?? null);
+      if (notebookChanged) {
+        this.activeTab.set('overview');
+        this.pageSearchQuery.set('');
+        if (notebookId && isLocalNotebook(notebookId)) {
+          this.pageService.loadLocalPages(notebookId).pipe(take(1)).subscribe();
+        }
       }
+      const tab = this.route.snapshot.queryParamMap.get('tab');
+      if (!this.childPageOpen() && tab) this.activeTab.set(tab);
+      if (wasChildPageOpen && !this.childPageOpen()) {
+        this.summaryRefreshTrigger.update((value) => value + 1);
+      }
+      this.switcherOpen.set(false);
+      this.newPageDropdownOpen.set(false);
     });
+  }
+
+  selectTab(tab: string): void {
+    this.activeTab.set(tab);
+    if (this.childPageOpen()) {
+      this.router.navigate(['/', this.selectedNotebookId()], {
+        queryParams: { tab: tab === 'overview' ? null : tab },
+      });
+    }
   }
 
   ngOnDestroy(): void {
