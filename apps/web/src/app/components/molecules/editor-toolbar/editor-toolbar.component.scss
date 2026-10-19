@@ -86,10 +86,11 @@
 }
 
 .style-trigger {
-  justify-content: space-between;
-  width: 64px;
+  justify-content: center;
+  gap: 2px;
+  width: 52px;
   height: 36px;
-  padding: 0 10px;
+  padding: 0 6px;
   font-size: 12px;
   font-weight: 600;
 }
@@ -189,7 +190,7 @@
   }
 
   .style-trigger {
-    width: 64px;
+    width: 52px;
   }
 
   .toolbar-btn {

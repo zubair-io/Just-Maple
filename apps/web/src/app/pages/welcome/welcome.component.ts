@@ -9,7 +9,7 @@ import {
   HostListener,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { FileSystemService } from '../../services/file-system.service';
 import { AuthService } from '../../services/auth.service';
@@ -23,7 +23,7 @@ import { isLocalNotebook } from '../../providers/data-provider.interface';
 @Component({
   selector: 'app-welcome',
   standalone: true,
-  imports: [CommonModule, AppHeaderComponent, FormsModule],
+  imports: [CommonModule, AppHeaderComponent, FormsModule, RouterLink],
   templateUrl: './welcome.component.html',
   styleUrl: './welcome.component.scss',
 })
