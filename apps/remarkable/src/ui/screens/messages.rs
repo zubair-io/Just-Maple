@@ -1,6 +1,6 @@
 //! Messages screen
 
-use crate::ui::Screen;
+use crate::ui::{widgets::keyboard::KeyboardState, Screen};
 use crate::AppState;
 use egui::{Color32, RichText, ScrollArea, Ui};
 use maple_shared::{CreateMessageInput, Message, PageContent};
@@ -14,6 +14,7 @@ pub struct MessagesScreen {
     input_text: String,
     loading: bool,
     show_keyboard: bool,
+    keyboard: KeyboardState,
     scroll_to_bottom: bool,
 }
 
@@ -25,6 +26,7 @@ impl MessagesScreen {
             input_text: String::new(),
             loading: false,
             show_keyboard: false,
+            keyboard: KeyboardState::default(),
             scroll_to_bottom: false,
         }
     }
@@ -35,6 +37,59 @@ impl MessagesScreen {
             self.messages.clear();
             self.loading = true;
         }
+    }
+
+    pub fn realtime_changed(
+        &mut self,
+        event: &serde_json::Value,
+        storage: &crate::storage::LocalStorage,
+    ) -> anyhow::Result<()> {
+        let notebook = event
+            .get("notebookId")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        if notebook.is_empty() {
+            return Ok(());
+        }
+        let action = event
+            .get("action")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        let data = &event["data"];
+        let id = data
+            .get("_id")
+            .or_else(|| data.get("messageId"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        if id.is_empty() {
+            return Ok(());
+        }
+        let key = format!("tag:{}:{}", notebook, id);
+        match action {
+            "deleted" => {
+                storage.delete_message(&key)?;
+                if notebook == self.notebook_id {
+                    self.messages.retain(|message| message.id != id);
+                }
+            }
+            "message" | "edited" | "message_updated" => {
+                let mut data = data.clone();
+                data["tagId"] = notebook.into();
+                let message: Message = serde_json::from_value(data)?;
+                storage.store_message(&key, &message)?;
+                if notebook != self.notebook_id {
+                    return Ok(());
+                }
+                if let Some(existing) = self.messages.iter_mut().find(|item| item.id == id) {
+                    *existing = message;
+                } else {
+                    self.messages.push(message);
+                    self.scroll_to_bottom = true;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     pub fn ui(&mut self, ui: &mut Ui, state: &Arc<RwLock<AppState>>) -> Option<Screen> {
@@ -200,7 +255,7 @@ impl MessagesScreen {
 
                     // Timestamp
                     ui.label(
-                        RichText::new(&message.created_at[..16])
+                        RichText::new(message.created_at.get(..16).unwrap_or(&message.created_at))
                             .small()
                             .color(Color32::GRAY),
                     );
@@ -317,24 +372,13 @@ impl MessagesScreen {
                         for key in row {
                             let key_width = if *key == "space" { 300.0 } else { 48.0 };
 
-                            let button =
-                                egui::Button::new(*key).min_size(egui::vec2(key_width, 45.0));
+                            let button = egui::Button::new(self.keyboard.label(key))
+                                .selected(*key == "⇧" && self.keyboard.shifted())
+                                .min_size(egui::vec2(key_width, 45.0));
 
                             if ui.add(button).clicked() {
-                                match *key {
-                                    "⌫" => {
-                                        self.input_text.pop();
-                                    }
-                                    "⇧" => {
-                                        // TODO: Implement shift
-                                    }
-                                    "space" => {
-                                        self.input_text.push(' ');
-                                    }
-                                    k => {
-                                        self.input_text.push_str(k);
-                                    }
-                                }
+                                let changed = self.keyboard.press(key, &mut self.input_text);
+                                let _ = changed;
                             }
                         }
                     });
@@ -346,5 +390,41 @@ impl MessagesScreen {
 impl Default for MessagesScreen {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn realtime_messages_update_cache_and_visible_conversation() -> anyhow::Result<()> {
+        let path = std::env::temp_dir().join(format!("maple-chat-{}", uuid::Uuid::new_v4()));
+        {
+            let storage = crate::storage::LocalStorage::new(&path)?;
+            let mut screen = MessagesScreen::new();
+            screen.set_notebook_id("notebook".into());
+            let mut event = serde_json::json!({"action":"message","notebookId":"notebook","data":{"_id":"message","pageId":"messages-page","userId":"user","content":{"type":"doc","content":[]},"createdAt":"2026-10-19T00:00:00Z"}});
+            screen.realtime_changed(&event, &storage)?;
+            assert_eq!(screen.messages.len(), 1);
+            assert_eq!(
+                storage.get_messages_for_tag::<Message>("notebook")?.len(),
+                1
+            );
+            event["action"] = "edited".into();
+            event["data"]["senderDisplayName"] = "Updated".into();
+            screen.realtime_changed(&event, &storage)?;
+            assert_eq!(
+                screen.messages[0].sender_display_name.as_deref(),
+                Some("Updated")
+            );
+            event["action"] = "deleted".into();
+            screen.realtime_changed(&event, &storage)?;
+            assert!(screen.messages.is_empty());
+            assert!(storage
+                .get_messages_for_tag::<Message>("notebook")?
+                .is_empty());
+        }
+        std::fs::remove_dir_all(path)?;
+        Ok(())
     }
 }

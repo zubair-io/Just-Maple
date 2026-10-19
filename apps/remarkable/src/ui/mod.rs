@@ -17,8 +17,7 @@ use crate::input::InputManager;
 use crate::AppState;
 
 use screens::{
-    LegoScreen, LoginScreen, MessagesScreen, NotebookListScreen, NoteEditorScreen,
-    WhiteboardScreen,
+    LegoScreen, LoginScreen, MessagesScreen, NoteEditorScreen, NotebookListScreen, WhiteboardScreen,
 };
 
 /// Current screen in the app
@@ -47,6 +46,9 @@ pub struct App {
     lego_screen: LegoScreen,
     // UI state
     needs_full_refresh: bool,
+    realtime_error: Option<String>,
+    primary_touch: Option<u32>,
+    stylus_down: bool,
 }
 
 impl App {
@@ -64,6 +66,9 @@ impl App {
             messages_screen: MessagesScreen::new(),
             lego_screen: LegoScreen::new(),
             needs_full_refresh: true,
+            realtime_error: None,
+            primary_touch: None,
+            stylus_down: false,
         };
 
         // Check if already authenticated
@@ -86,6 +91,25 @@ impl App {
     async fn run_ui_loop(self) -> Result<()> {
         // Start input listener
         self.input.start().await?;
+        let (sync, auth) = {
+            let state = self.state.read().await;
+            (state.sync.clone(), state.auth.clone())
+        };
+        tokio::spawn(async move {
+            loop {
+                if auth.is_authenticated().await && !sync.is_online().await {
+                    if let Err(error) = async {
+                        sync.init_api().await?;
+                        sync.connect_websocket().await
+                    }
+                    .await
+                    {
+                        tracing::warn!(%error,"Realtime connection unavailable; retrying");
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        });
 
         // Create egui context with e-ink optimized settings
         let options = eframe::NativeOptions {
@@ -103,10 +127,7 @@ impl App {
             Box::new(move |cc| {
                 // Configure fonts and style for e-ink
                 Self::configure_style(&cc.egui_ctx);
-                Ok(Box::new(EframeApp {
-                    inner: self,
-                    state,
-                }))
+                Ok(Box::new(EframeApp { inner: self, state }))
             }),
         )
         .map_err(|e| anyhow::anyhow!("eframe error: {}", e))
@@ -156,11 +177,23 @@ impl App {
         // Larger text styles for e-ink
         let mut style = (*ctx.style()).clone();
         style.text_styles = [
-            (TextStyle::Heading, FontId::new(28.0, FontFamily::Proportional)),
+            (
+                TextStyle::Heading,
+                FontId::new(28.0, FontFamily::Proportional),
+            ),
             (TextStyle::Body, FontId::new(18.0, FontFamily::Proportional)),
-            (TextStyle::Monospace, FontId::new(16.0, FontFamily::Monospace)),
-            (TextStyle::Button, FontId::new(18.0, FontFamily::Proportional)),
-            (TextStyle::Small, FontId::new(14.0, FontFamily::Proportional)),
+            (
+                TextStyle::Monospace,
+                FontId::new(16.0, FontFamily::Monospace),
+            ),
+            (
+                TextStyle::Button,
+                FontId::new(18.0, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Small,
+                FontId::new(14.0, FontFamily::Proportional),
+            ),
         ]
         .into();
 
@@ -174,6 +207,23 @@ impl App {
     /// Navigate to a new screen
     fn navigate(&mut self, screen: Screen) {
         if self.current_screen != screen {
+            let next_page = match &screen {
+                Screen::Whiteboard { page_id } | Screen::NoteEditor { page_id } => {
+                    Some(page_id.clone())
+                }
+                _ => None,
+            };
+            let previous_page = match &self.current_screen {
+                Screen::Whiteboard { page_id } | Screen::NoteEditor { page_id } => {
+                    Some(page_id.clone())
+                }
+                _ => None,
+            };
+            let state = self.state.clone();
+            tokio::spawn(async move {
+                let state = state.read().await;
+                state.sync.set_active_page(previous_page, next_page).await;
+            });
             self.current_screen = screen;
             self.needs_full_refresh = true;
         }
@@ -187,7 +237,151 @@ struct EframeApp {
 }
 
 impl eframe::App for EframeApp {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        use crate::input::{InputEvent, StylusEventType, TouchEventType};
+        let rect = input.screen_rect.unwrap_or_else(|| ctx.screen_rect());
+        for event in self.inner.input.drain() {
+            match event {
+                InputEvent::Stylus(e) => {
+                    if e.event_type == StylusEventType::Down {
+                        self.inner.stylus_down = true;
+                        if self.inner.primary_touch.take().is_some() {
+                            input.events.push(egui::Event::PointerButton {
+                                pos: egui::pos2(
+                                    rect.left() + e.x * rect.width(),
+                                    rect.top() + e.y * rect.height(),
+                                ),
+                                button: egui::PointerButton::Primary,
+                                pressed: false,
+                                modifiers: input.modifiers,
+                            });
+                        }
+                    }
+                    if e.event_type == StylusEventType::Up {
+                        self.inner.stylus_down = false;
+                    }
+                    let pos = egui::pos2(
+                        rect.left() + e.x * rect.width(),
+                        rect.top() + e.y * rect.height(),
+                    );
+                    input.events.push(egui::Event::PointerMoved(pos));
+                    if matches!(e.event_type, StylusEventType::Down | StylusEventType::Up) {
+                        input.events.push(egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed: e.event_type == StylusEventType::Down,
+                            modifiers: input.modifiers,
+                        });
+                    }
+                    if matches!(self.inner.current_screen, Screen::Whiteboard { .. }) {
+                        self.inner.whiteboard_screen.queue_stylus(e, pos);
+                    }
+                }
+                InputEvent::Touch(e) => {
+                    let pos = egui::pos2(
+                        rect.left() + e.x * rect.width(),
+                        rect.top() + e.y * rect.height(),
+                    );
+                    input.events.push(egui::Event::Touch {
+                        device_id: egui::TouchDeviceId(0),
+                        id: egui::TouchId(e.finger_id.into()),
+                        phase: match e.event_type {
+                            TouchEventType::Down => egui::TouchPhase::Start,
+                            TouchEventType::Move => egui::TouchPhase::Move,
+                            TouchEventType::Up => egui::TouchPhase::End,
+                        },
+                        pos,
+                        force: None,
+                    });
+                    if !self.inner.stylus_down {
+                        if e.event_type == TouchEventType::Down
+                            && self.inner.primary_touch.is_none()
+                        {
+                            self.inner.primary_touch = Some(e.finger_id);
+                        }
+                        if self.inner.primary_touch == Some(e.finger_id) {
+                            input.events.push(egui::Event::PointerMoved(pos));
+                            if matches!(e.event_type, TouchEventType::Down | TouchEventType::Up) {
+                                input.events.push(egui::Event::PointerButton {
+                                    pos,
+                                    button: egui::PointerButton::Primary,
+                                    pressed: e.event_type == TouchEventType::Down,
+                                    modifiers: input.modifiers,
+                                });
+                            }
+                            if e.event_type == TouchEventType::Up {
+                                self.inner.primary_touch = None;
+                            }
+                        }
+                    }
+                }
+                InputEvent::Button(_) => {}
+            }
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Consume bounded network events on the UI thread. Never replace dirty editor state.
+        if let Ok(state) = self.state.try_read() {
+            for event in state.sync.drain_events() {
+                use crate::sync::RealtimeEvent;
+                let result: anyhow::Result<()> = match event {
+                    RealtimeEvent::Connected => {
+                        self.inner.realtime_error = None;
+                        Ok(())
+                    }
+                    RealtimeEvent::Chat(event) => self
+                        .inner
+                        .messages_screen
+                        .realtime_changed(&event, &state.storage),
+                    RealtimeEvent::Sync { page_id, event } => {
+                        use base64::Engine;
+                        let data = &event["data"];
+                        let encoded = data
+                            .get("update")
+                            .or_else(|| data.get("state"))
+                            .and_then(serde_json::Value::as_str);
+                        if matches!(event["type"].as_str(), Some("ydoc-init" | "ydoc-update")) {
+                            if let Some(encoded) = encoded {
+                                match base64::engine::general_purpose::STANDARD.decode(encoded) {
+                                    Ok(bytes) => match state
+                                        .storage
+                                        .merge_document(&page_id, &bytes)
+                                    {
+                                        Ok(()) => {
+                                            self.inner.whiteboard_screen.remote_changed(&page_id);
+                                            Ok(())
+                                        }
+                                        Err(error) => Err(error),
+                                    },
+                                    Err(error) => Err(error.into()),
+                                }
+                            } else {
+                                Err(anyhow::anyhow!("Realtime document update is missing state"))
+                            }
+                        } else {
+                            Ok(())
+                        }
+                    }
+                    RealtimeEvent::App(_event) => {
+                        self.inner.notebook_list_screen.invalidate();
+                        Ok(())
+                    }
+                    RealtimeEvent::Error(message) => {
+                        self.inner.realtime_error = Some(message);
+                        Ok(())
+                    }
+                    RealtimeEvent::Disconnected => {
+                        self.inner.realtime_error =
+                            Some("Realtime disconnected; reconnecting".into());
+                        Ok(())
+                    }
+                };
+                if let Err(error) = result {
+                    self.inner.realtime_error = Some(format!("Realtime update failed: {error}"));
+                }
+            }
+        }
         // Determine refresh mode based on current activity
         let refresh_mode = if self.inner.needs_full_refresh {
             self.inner.needs_full_refresh = false;
@@ -204,6 +398,14 @@ impl eframe::App for EframeApp {
 
         // Render current screen
         egui::CentralPanel::default().show(ctx, |ui| {
+            if let Some(error) = self.inner.realtime_error.clone() {
+                ui.horizontal(|ui| {
+                    ui.colored_label(Color32::DARK_RED, error);
+                    if ui.button("Dismiss").clicked() {
+                        self.inner.realtime_error = None;
+                    }
+                });
+            }
             let navigation = match &self.inner.current_screen {
                 Screen::Login => self.inner.login_screen.ui(ui, &self.state),
                 Screen::NotebookList => self.inner.notebook_list_screen.ui(ui, &self.state),
@@ -216,7 +418,9 @@ impl eframe::App for EframeApp {
                     self.inner.whiteboard_screen.ui(ui, &self.state)
                 }
                 Screen::Messages { notebook_id } => {
-                    self.inner.messages_screen.set_notebook_id(notebook_id.clone());
+                    self.inner
+                        .messages_screen
+                        .set_notebook_id(notebook_id.clone());
                     self.inner.messages_screen.ui(ui, &self.state)
                 }
                 Screen::Lego => self.inner.lego_screen.ui(ui, &self.state),
@@ -229,7 +433,9 @@ impl eframe::App for EframeApp {
         });
 
         // Request display refresh with appropriate mode
-        self.inner.display.refresh(Region::full_screen(), refresh_mode);
+        self.inner
+            .display
+            .refresh(Region::full_screen(), refresh_mode);
 
         // Request repaint at 30fps for responsive feel
         ctx.request_repaint_after(std::time::Duration::from_millis(33));

@@ -29,6 +29,9 @@ pub struct WhiteboardScreen {
     current_tool: Tool,
     stroke_color: String,
     stroke_size: f32,
+    stylus_samples: Vec<(crate::input::StylusEvent, Pos2)>,
+    device_stylus: bool,
+    pressure: f64,
     // UI state
     show_toolbar: bool,
     is_dirty: bool,
@@ -60,6 +63,9 @@ impl WhiteboardScreen {
             current_tool: Tool::Pen,
             stroke_color: "#000000".to_string(),
             stroke_size: 4.0,
+            stylus_samples: Vec::new(),
+            device_stylus: false,
+            pressure: 0.5,
             show_toolbar: true,
             is_dirty: false,
             unsaved: Vec::new(),
@@ -76,6 +82,7 @@ impl WhiteboardScreen {
             self.page = None;
             self.elements.clear();
             self.current_stroke = None;
+            self.stylus_samples.clear();
             self.loading = true;
             self.is_dirty = false;
             self.unsaved.clear();
@@ -83,6 +90,17 @@ impl WhiteboardScreen {
             self.save_error = None;
             self.load_error = None;
             self.saved_locally = false;
+        }
+    }
+
+    pub fn remote_changed(&mut self, page_id: &str) {
+        if self.page_id == page_id
+            && !self.is_dirty
+            && self.current_stroke.is_none()
+            && self.saving.is_none()
+        {
+            self.page = None;
+            self.loading = true;
         }
     }
 
@@ -198,6 +216,7 @@ impl WhiteboardScreen {
             ui.label("Saved on this device");
         }
         if let Some(error) = &self.load_error {
+            self.stylus_samples.clear();
             ui.colored_label(Color32::DARK_RED, error);
             if ui.button("Retry loading").clicked() {
                 self.loading = true;
@@ -215,16 +234,17 @@ impl WhiteboardScreen {
         painter.rect_filled(canvas_rect, 0.0, Color32::WHITE);
 
         // Handle input
-        if response.drag_started() {
+        self.process_stylus(canvas_rect);
+        if !self.device_stylus && response.drag_started() {
             if let Some(pos) = response.interact_pointer_pos() {
                 self.handle_stroke_start(pos, canvas_rect);
             }
-        } else if response.dragged() {
+        } else if !self.device_stylus && response.dragged() {
             if let Some(pos) = response.interact_pointer_pos() {
                 self.handle_stroke_move(pos, canvas_rect);
             }
-        } else if response.drag_stopped() {
-            self.handle_stroke_end(state);
+        } else if !self.device_stylus && response.drag_stopped() {
+            self.handle_stroke_end();
         }
 
         // Toggle toolbar with tap
@@ -323,6 +343,10 @@ impl WhiteboardScreen {
                 self.unsaved.drain(..pending.count);
                 self.is_dirty = !self.unsaved.is_empty();
                 self.saved_locally = true;
+                if !self.is_dirty && self.current_stroke.is_none() {
+                    self.page = None;
+                    self.loading = true;
+                }
                 if pending.leave_after && !self.is_dirty {
                     return Some(Screen::NotebookList);
                 }
@@ -334,13 +358,39 @@ impl WhiteboardScreen {
         None
     }
 
+    fn process_stylus(&mut self, canvas_rect: Rect) {
+        for (event, pos) in std::mem::take(&mut self.stylus_samples) {
+            use crate::input::StylusEventType;
+            self.pressure = if event.pressure.is_finite() {
+                event.pressure.clamp(0., 1.) as f64
+            } else {
+                0.5
+            };
+            match event.event_type {
+                StylusEventType::Down if canvas_rect.contains(pos) => {
+                    self.handle_stroke_start(pos, canvas_rect)
+                }
+                StylusEventType::Move if self.current_stroke.is_some() => {
+                    self.handle_stroke_move(pos, canvas_rect)
+                }
+                StylusEventType::Up => self.handle_stroke_end(),
+                _ => {}
+            }
+        }
+    }
+
+    pub fn queue_stylus(&mut self, event: crate::input::StylusEvent, pos: Pos2) {
+        self.device_stylus = true;
+        self.stylus_samples.push((event, pos));
+    }
+
     fn handle_stroke_start(&mut self, pos: Pos2, canvas_rect: Rect) {
         if self.current_tool == Tool::Pen {
             let point = self.screen_to_canvas(pos, canvas_rect);
             self.current_stroke = Some(vec![StrokePoint {
                 x: point.x as f64,
                 y: point.y as f64,
-                pressure: 0.5,
+                pressure: self.pressure,
             }]);
         }
     }
@@ -352,12 +402,12 @@ impl WhiteboardScreen {
             points.push(StrokePoint {
                 x: canvas_point.x as f64,
                 y: canvas_point.y as f64,
-                pressure: 0.5, // TODO: Get actual pressure from stylus
+                pressure: self.pressure,
             });
         }
     }
 
-    fn handle_stroke_end(&mut self, _state: &Arc<RwLock<AppState>>) {
+    fn handle_stroke_end(&mut self) {
         if let Some(points) = self.current_stroke.take() {
             if points.len() >= 2 {
                 // Create stroke element
@@ -400,20 +450,13 @@ impl WhiteboardScreen {
 
     fn render_elements(&self, painter: &Painter, canvas_rect: Rect) {
         for element in &self.elements {
-            match element {
-                WhiteboardElement::Stroke(stroke) => {
-                    self.render_stroke(
-                        painter,
-                        canvas_rect,
-                        &stroke.points,
-                        &stroke.style.color,
-                        stroke.style.size as f32,
-                    );
-                }
-                _ => {
-                    // TODO: Render shapes and text
-                }
-            }
+            super::whiteboard_render::paint(
+                painter,
+                element,
+                Pos2::new(self.camera_x, self.camera_y),
+                self.zoom,
+                canvas_rect,
+            );
         }
     }
 
@@ -473,6 +516,40 @@ impl Default for WhiteboardScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queued_device_samples_keep_individual_pressure_and_pointer_has_fallback() {
+        use crate::input::{StylusEvent, StylusEventType};
+        let mut screen = WhiteboardScreen::new();
+        let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(100., 100.));
+        screen.handle_stroke_start(Pos2::new(1., 2.), rect);
+        assert_eq!(screen.current_stroke.take().unwrap()[0].pressure, 0.5);
+        for (event_type, pressure, x) in [
+            (StylusEventType::Down, 0.1, 2.),
+            (StylusEventType::Move, 0.9, 3.),
+            (StylusEventType::Up, 0., 3.),
+        ] {
+            screen.queue_stylus(
+                StylusEvent {
+                    x: 0.,
+                    y: 0.,
+                    pressure,
+                    tilt_x: 0.,
+                    tilt_y: 0.,
+                    event_type,
+                },
+                Pos2::new(x, 4.),
+            );
+        }
+        screen.process_stylus(rect);
+        let WhiteboardElement::Stroke(stroke) = &screen.elements[0] else {
+            panic!("Missing stroke")
+        };
+        assert!((stroke.points[0].pressure - 0.1).abs() < 0.0001);
+        assert!((stroke.points[1].pressure - 0.9).abs() < 0.0001);
+        assert!(screen.is_dirty);
+        assert_eq!(screen.unsaved.len(), 1);
+    }
 
     fn dirty_screen() -> WhiteboardScreen {
         let mut screen = WhiteboardScreen::new();

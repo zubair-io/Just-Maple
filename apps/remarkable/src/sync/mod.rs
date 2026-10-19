@@ -8,7 +8,7 @@ mod websocket;
 
 pub use api::ApiClient;
 pub use offline::OfflineQueue;
-pub use websocket::WebSocketClient;
+pub use websocket::{RealtimeEvent, WebSocketClient};
 
 use anyhow::Result;
 use std::sync::Arc;
@@ -35,6 +35,7 @@ pub struct SyncManager {
     api: Arc<RwLock<Option<ApiClient>>>,
     ws: Arc<RwLock<Option<WebSocketClient>>>,
     offline_queue: OfflineQueue,
+    active_page: Arc<RwLock<Option<String>>>,
     connection_state: Arc<RwLock<ConnectionState>>,
 }
 
@@ -48,6 +49,7 @@ impl SyncManager {
             api: Arc::new(RwLock::new(None)),
             ws: Arc::new(RwLock::new(None)),
             offline_queue,
+            active_page: Arc::new(RwLock::new(None)),
             connection_state: Arc::new(RwLock::new(ConnectionState::Disconnected)),
         }
     }
@@ -87,7 +89,13 @@ impl SyncManager {
             .await
             .ok_or_else(|| anyhow::anyhow!("Not authenticated"))?;
 
-        let ws = WebSocketClient::connect(&self.config.ws_url, &token).await?;
+        let ws = match WebSocketClient::connect(&self.config.ws_url, &token).await {
+            Ok(ws) => ws,
+            Err(error) => {
+                *self.connection_state.write().await = ConnectionState::Disconnected;
+                return Err(error);
+            }
+        };
 
         {
             let mut ws_lock = self.ws.write().await;
@@ -99,11 +107,41 @@ impl SyncManager {
             *state = ConnectionState::Connected;
         }
 
+        if let Some(page) = self.active_page.read().await.as_ref() {
+            self.subscribe_page(page).await?;
+        }
         info!("WebSocket connected");
 
         // Process any pending offline operations
         self.process_offline_queue().await;
 
+        Ok(())
+    }
+
+    pub fn drain_events(&self) -> Vec<RealtimeEvent> {
+        self.ws
+            .try_read()
+            .ok()
+            .and_then(|ws| ws.as_ref().map(WebSocketClient::drain))
+            .unwrap_or_default()
+    }
+
+    pub async fn set_active_page(&self, previous: Option<String>, next: Option<String>) {
+        *self.active_page.write().await = next.clone();
+        if let Some(ws) = self.ws.read().await.as_ref() {
+            if let Some(page) = previous {
+                let _ = ws.unsubscribe(vec![page]).await;
+            }
+            if let Some(page) = next {
+                let _ = ws.subscribe(vec![page]).await;
+            }
+        }
+    }
+
+    pub async fn subscribe_page(&self, page_id: &str) -> Result<()> {
+        if let Some(ws) = self.ws.read().await.as_ref() {
+            ws.subscribe(vec![page_id.to_owned()]).await?;
+        }
         Ok(())
     }
 
@@ -122,7 +160,11 @@ impl SyncManager {
 
     /// Check if we're online and connected
     pub async fn is_online(&self) -> bool {
-        *self.connection_state.read().await == ConnectionState::Connected
+        if let Some(ws) = self.ws.read().await.as_ref() {
+            ws.is_connected().await
+        } else {
+            false
+        }
     }
 
     /// Queue operation for offline processing

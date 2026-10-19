@@ -7,3 +7,5 @@ mod toolbar;
 pub use status_badge::StatusBadge;
 #[allow(unused_imports)]
 pub use toolbar::Toolbar;
+
+pub mod keyboard;
