@@ -1,0 +1,146 @@
+# Tag the committed version, then open the next development-version PR.
+name: version-sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      next_version:
+        description: 'Next development version (blank = patch increment)'
+        required: false
+        type: string
+      advance_only:
+        description: 'Migration: only advance an already-tagged version; do not release'
+        default: false
+        type: boolean
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  release-readiness:
+    name: Release readiness
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 125
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Wait for the complete release CI suite
+        run: |
+          set -euo pipefail
+
+          if ! [[ "$HEAD_BRANCH" =~ ^release/next-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Not a stable release PR; release readiness does not apply."
+            exit 0
+          fi
+
+          expected_workflows=("CI" "Apple" "Release tooling")
+          deadline=$((SECONDS + 7200))
+
+          while (( SECONDS < deadline )); do
+            runs="$(gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100")"
+            waiting=()
+
+            for workflow in "${expected_workflows[@]}"; do
+              run="$(jq -c --arg workflow "$workflow" \
+                '[.[].workflow_runs[] | select(.name == $workflow)] | first // empty' <<<"$runs")"
+              if [ -z "$run" ]; then
+                waiting+=("$workflow (not started)")
+                continue
+              fi
+
+              status="$(jq -r '.status' <<<"$run")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"$run")"
+              url="$(jq -r '.html_url' <<<"$run")"
+              if [ "$status" != "completed" ]; then
+                waiting+=("$workflow ($status)")
+                continue
+              fi
+
+              case "$conclusion" in
+                success)
+                  ;;
+                *)
+                  echo "::error::$workflow completed with $conclusion: $url"
+                  exit 1
+                  ;;
+              esac
+            done
+
+            if [ "${#waiting[@]}" -eq 0 ]; then
+              echo "All release workflows completed successfully for $HEAD_SHA."
+              exit 0
+            fi
+
+            printf 'Waiting for: %s\n' "${waiting[*]}"
+            sleep 30
+          done
+
+          echo "::error::Timed out waiting for release workflows for $HEAD_SHA."
+          exit 1
+
+  validate-ci:
+    name: Validate pinned web and API
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
+  validate-apple:
+    name: Validate Apple targets
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/apple.yml
+
+  validate-release-tools:
+    name: Validate release tooling
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/release-tools.yml
+
+  create-release:
+    name: Tag current version and open next-version PR
+    needs: [validate-ci, validate-apple, validate-release-tools]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      statuses: write
+    concurrency:
+      group: release-handoff
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ secrets.VERSION_SYNC_TOKEN }}
+      GH_STATUS_TOKEN: ${{ github.token }}
+      NEXT_VERSION: ${{ inputs.next_version }}
+      ADVANCE_ONLY: ${{ inputs.advance_only }}
+      RELEASE_SHA: ${{ github.sha }}
+      REPOSITORY_OWNER: ${{ github.repository_owner }}
+      VALIDATED_CI_SHA: ${{ github.sha }}
+    steps:
+      - name: Require a downstream-triggering token
+        run: |
+          test -n "$GH_TOKEN" || { echo "::error::VERSION_SYNC_TOKEN is required to trigger downstream tag/PR workflows"; exit 1; }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          token: ${{ secrets.VERSION_SYNC_TOKEN }}
+      - name: Create release handoff
+        run: |
+          set -euo pipefail
+          user_json=$(gh api "users/$REPOSITORY_OWNER")
+          owner_name=$(jq -r '.name // .login' <<<"$user_json")
+          owner_id=$(jq -r '.id' <<<"$user_json")
+          git config user.name "$owner_name"
+          git config user.email "${owner_id}+${REPOSITORY_OWNER}@users.noreply.github.com"
+          command=release
+          if [ "$ADVANCE_ONLY" = true ]; then command=advance; fi
+          python3 tools/release_control.py "$command" --next-version "$NEXT_VERSION" --release-sha "$RELEASE_SHA"
