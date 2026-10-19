@@ -102,7 +102,7 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
 
                 // Get user info
                 const user = await findUserById(userId);
-                const userName = user?.name || email || 'Anonymous';
+                const userName = user?.displayName || email || 'Anonymous';
                 const userColor = getUserColor(userId);
 
                 // Auto-subscribe to user's notebooks for chat

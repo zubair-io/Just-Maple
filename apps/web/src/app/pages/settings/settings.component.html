@@ -25,7 +25,9 @@
                   'User'
               }}
             </p>
-            <p class="text-sm text-[var(--color-text-muted)]">{{ authService.user()?.email }}</p>
+            <p class="text-sm text-[var(--color-text-muted)]">
+              Account ID: <span class="select-all break-all">{{ authService.user()?._id }}</span>
+            </p>
           </div>
         </div>
       </div>

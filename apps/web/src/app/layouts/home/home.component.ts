@@ -51,24 +51,15 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   private routerSubscription?: Subscription;
   private queryParamsSubscription?: Subscription;
-  private hasHandledInitialRedirect = false;
 
   ngOnInit(): void {
     // Cloud-only init: skip for unauthenticated local-only sessions
     if (this.authService.isAuthenticated()) {
-      // Try to redirect to last visited location before loading notebooks
-      this.redirectToLastVisitedIfNeeded();
-
       // Ensure default notebook exists, then load pages
       this.notebookService.ensureDefaultNotebook().subscribe({
         next: () => {
           // Load pages so route guards and sidebar have data
           this.pageService.loadPages().subscribe();
-
-          // Auto-select first notebook if on root path (only if we didn't redirect)
-          if (!this.hasHandledInitialRedirect) {
-            this.autoSelectFirstNotebook();
-          }
         },
       });
 
@@ -127,19 +118,15 @@ export class HomeComponent implements OnInit, OnDestroy {
     const pathOnly = url.split('?')[0];
     const segments = pathOnly.split('/').filter(Boolean);
 
-    if (segments.length >= 1) {
-      if (this.isNotebookRoute(segments)) {
-        this.selectedNotebookId.set(segments[0]);
-      } else {
-        this.selectedNotebookId.set(null);
-      }
-    }
+    this.selectedNotebookId.set(this.isNotebookRoute(segments) ? segments[0] : null);
 
     if (segments.length >= 2) {
       // Second segment is id - find page by id and set selectedPageId
       const id = segments[1];
       const page = this.pageService.pages().find((n) => n.id === id);
       this.selectedPageId.set(page?.id || null);
+    } else {
+      this.selectedPageId.set(null);
     }
 
     // Cache or clear last visited location
@@ -156,42 +143,6 @@ export class HomeComponent implements OnInit, OnDestroy {
     } else if (segments.length > 0) {
       // Non-notebook route (settings, notifications, etc.) - clear the cache
       this.lastVisitedService.clear();
-    }
-  }
-
-  private autoSelectFirstNotebook(): void {
-    // Only redirect if on root path (no notebook selected)
-    const url = this.router.url;
-    const segments = url.split('/').filter(Boolean);
-
-    if (segments.length === 0) {
-      const notebooks = this.notebookService.notebooks();
-      if (notebooks.length > 0) {
-        this.router.navigate(['/', notebooks[0]._id]);
-      }
-    }
-  }
-
-  /**
-   * Redirect to last visited notebook/page if we're on the root path
-   */
-  private redirectToLastVisitedIfNeeded(): void {
-    const url = this.router.url;
-    const segments = url.split('/').filter(Boolean);
-
-    // Only redirect if on root path
-    if (segments.length === 0) {
-      const lastVisited = this.lastVisitedService.get();
-      if (lastVisited) {
-        this.hasHandledInitialRedirect = true;
-        // Clear the cache after redirect to prevent repeated redirects
-        this.lastVisitedService.clear();
-        if (lastVisited.pageId) {
-          this.router.navigate(['/', lastVisited.notebookId, lastVisited.pageId]);
-        } else {
-          this.router.navigate(['/', lastVisited.notebookId]);
-        }
-      }
     }
   }
 

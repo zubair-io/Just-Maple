@@ -1,281 +1,113 @@
 :host {
+  display: block;
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.notebook-landing {
+  width: 100%;
+  height: 100%;
+}
+
+/* ============================================================
+   Title Switcher Dropdown & Backdrop
+   ============================================================ */
+
+.animate-maple-modal-in {
+  animation: mapleModalIn 0.2s ease-out both;
+}
+
+.animate-maple-content-in {
+  animation: mapleContentIn 0.15s ease-in 0.12s both;
+}
+
+/* ============================================================
+   Tab Layout
+   ============================================================ */
+
+nav[role='tablist'] {
+  button[role='tab'] {
+    position: relative;
+    outline: none;
+    transition: all 0.15s ease-in-out;
+
+    &:hover {
+      color: var(--color-text-main) !important;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: -2px;
+    }
+  }
+}
+
+/* ============================================================
+   Overview Sub-Views
+   ============================================================ */
+
+.connection-graph-section {
+  display: block;
+  width: 100%;
+}
+
+/* Custom Scrollbar inside Lists */
+.overflow-y-auto {
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: rgba(120, 113, 108, 0.15);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(120, 113, 108, 0.3);
+  }
+}
+
+/* ============================================================
+   Chat Organism Wrapper override
+   ============================================================ */
+
+app-chat {
   display: flex;
   flex-direction: column;
   height: 100%;
+  width: 100%;
   min-height: 0;
-}
 
-.notebook-summary {
-  flex: 1;
-  padding: 2rem;
-  padding-bottom: 6rem;
-  overflow-y: auto;
-
-  .summary-header {
-    margin-bottom: 2rem;
-
-    .name-display {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-
-      h2 {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--color-text-main);
-        margin: 0;
-      }
-
-      .edit-name-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 32px;
-        height: 32px;
-        padding: 0;
-        border: none;
-        border-radius: 6px;
-        background: transparent;
-        color: var(--color-text-muted);
-        cursor: pointer;
-        opacity: 0;
-        transition: all 0.15s ease;
-
-        // Always show on mobile (no hover)
-        @media (max-width: 768px) {
-          opacity: 1;
-        }
-
-        span {
-          font-size: 18px;
-        }
-
-        &:hover {
-          background: var(--color-bg-hover);
-          color: var(--color-text-main);
-        }
-      }
-
-      &:hover .edit-name-btn {
-        opacity: 1;
-      }
+  ::ng-deep {
+    .chat-container {
+      flex: 1;
+      height: 100%;
+      min-height: 0;
     }
-
-    .name-edit-container {
-      margin-bottom: 0.25rem;
-
-      .name-input {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--color-text-main);
-        background: transparent;
-        border: none;
-        border-bottom: 2px solid var(--color-primary);
-        padding: 0 0 0.25rem 0;
-        width: 100%;
-        max-width: 400px;
-        outline: none;
-      }
-    }
-
-    .summary-subtitle {
-      font-size: 0.875rem;
-      color: var(--color-text-muted);
-      margin-top: 0.25rem;
-    }
-  }
-
-  .page-counts {
-    .total-count {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 1.5rem;
-      background: var(--color-surface);
-      border-radius: 0.75rem;
-      margin-bottom: 1.5rem;
-
-      span.material-symbols-rounded {
-        font-size: 2rem;
-        color: var(--color-primary);
-      }
-
-      .count {
-        font-size: 2rem;
-        font-weight: 700;
-        color: var(--color-text-main);
-      }
-
-      .label {
-        font-size: 1rem;
-        color: var(--color-text-muted);
-      }
-    }
-
-    .type-breakdown {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 1rem;
-
-      .type-card {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 1.25rem;
-        background: var(--color-surface);
-        border-radius: 0.75rem;
-        text-align: center;
-        transition: transform 0.15s ease;
-
-        &:hover {
-          transform: translateY(-2px);
-        }
-
-        span.material-symbols-rounded {
-          font-size: 1.5rem;
-          color: var(--color-text-muted);
-          margin-bottom: 0.5rem;
-        }
-
-        .count {
-          font-size: 1.5rem;
-          font-weight: 600;
-          color: var(--color-text-main);
-          margin-bottom: 0.25rem;
-        }
-
-        .label {
-          font-size: 0.75rem;
-          color: var(--color-text-muted);
-        }
-      }
-    }
-  }
-
-  .todo-stats {
-    margin-top: 2rem;
-
-    h3 {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--color-text-main);
-      margin-bottom: 1rem;
-
-      span {
-        font-size: 1.25rem;
-        color: var(--color-primary);
-      }
-    }
-
-    .todo-cards {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-      gap: 1rem;
-
-      .todo-card {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 1rem;
-        background: var(--color-surface);
-        border-radius: 0.75rem;
-        text-align: center;
-
-        .count {
-          font-size: 1.5rem;
-          font-weight: 600;
-          color: var(--color-text-main);
-          margin-bottom: 0.25rem;
-        }
-
-        .label {
-          font-size: 0.75rem;
-          color: var(--color-text-muted);
-        }
-
-        &.completed {
-          .count {
-            color: #22c55e;
-          }
-        }
-
-        &.pending {
-          .count {
-            color: #f59e0b;
-          }
-        }
-
-        &.overdue {
-          background: #fef2f2;
-          .count {
-            color: #dc2626;
-          }
-        }
-      }
-    }
-  }
-
-  .loading-summary {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 3rem;
-    color: var(--color-text-muted);
-
-    .spin {
-      font-size: 2rem;
-      animation: spin 1s linear infinite;
-    }
-
-    p {
-      margin-top: 0.5rem;
-      font-size: 0.875rem;
-    }
-  }
-
-  .connection-graph-section {
-    margin-top: 2rem;
   }
 }
 
+.loading-state,
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  text-align: center;
+  gap: 0.75rem;
   color: var(--color-text-muted);
 
-  .empty-icon {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    background: var(--color-surface);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 1rem;
-
-    span {
-      font-size: 2.5rem;
-      color: var(--color-text-muted);
-    }
+  span.spin {
+    animation: spin 1s linear infinite;
   }
 
-  h2 {
+  h3 {
+    margin: 0;
     font-size: 1.125rem;
-    font-weight: 600;
     color: var(--color-text-main);
-    margin-bottom: 0.5rem;
-  }
-
-  p {
-    font-size: 0.875rem;
   }
 }
 

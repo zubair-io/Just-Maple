@@ -1,14 +1,5 @@
 @if (selectedNotebook(); as notebook) {
   <div class="message-view">
-    <app-notebook-header
-      [notebook]="notebook"
-      [members]="members()"
-      [contextIcon]="'chat'"
-      [contextLabel]="selectedPage()?.title || 'Messages'"
-      [showNewButton]="true"
-      (shareClicked)="openShareModal()"
-    />
-
     <div class="chat-container">
       <app-chat [notebookId]="selectedNotebookId()!" (openThread)="openThread($event)" />
 

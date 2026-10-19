@@ -71,7 +71,7 @@ test.describe('Tag Management', () => {
         await authenticatedPage.waitForTimeout(500);
 
         // Look for "Rename" option in context menu
-        const renameOption = authenticatedPage.locator('button:has-text("Rename"), text=Rename');
+        const renameOption = authenticatedPage.getByRole('button', { name: 'Rename', exact: true });
 
         if (!(await renameOption.isVisible({ timeout: 2000 }).catch(() => false))) {
             // Try clicking settings/edit icon instead
@@ -173,9 +173,10 @@ test.describe('Tag Management', () => {
             await authenticatedPage.waitForTimeout(500);
 
             // Look for "Delete" option
-            const deleteOption = authenticatedPage.locator(
-                'button:has-text("Delete"), text=Delete',
-            );
+            const deleteOption = authenticatedPage.getByRole('button', {
+                name: 'Delete',
+                exact: true,
+            });
 
             if (await deleteOption.isVisible({ timeout: 2000 })) {
                 // Handle confirmation dialog
@@ -214,7 +215,10 @@ test.describe('Tag Management', () => {
         await authenticatedPage.waitForTimeout(500);
 
         // Look for "Archive" option
-        const archiveOption = authenticatedPage.locator('button:has-text("Archive"), text=Archive');
+        const archiveOption = authenticatedPage.getByRole('button', {
+            name: 'Archive',
+            exact: true,
+        });
 
         if (await archiveOption.isVisible({ timeout: 2000 })) {
             await archiveOption.click();

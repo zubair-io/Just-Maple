@@ -118,7 +118,7 @@
     </button>
 
     <!-- Floating Toolbar -->
-    <app-editor-toolbar [editor]="getEditor()" />
+    <app-editor-toolbar [editor]="getEditor()" [pageActions]="pageActions()" />
 
     @if (!isReady()) {
       <div class="loading-overlay">

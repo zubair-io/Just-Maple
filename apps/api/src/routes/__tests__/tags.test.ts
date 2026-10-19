@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createTestApp } from '../../__tests__/helpers/app';
 import {
     createUserFixture,
-    createMagicLinkFixture,
+    createAuthToken,
     createNotebookFixture,
     createUserBotFixture,
     createBotTemplateFixture,
 } from '../../__tests__/helpers/fixtures';
-import { mongoAvailable } from '../../__tests__/setup';
+import { mongoAvailable, testDb } from '../../__tests__/setup';
 
 // Mock notification service
 vi.mock('../../services/notification.service', () => ({
@@ -22,12 +22,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
     });
 
     async function getAuthToken(userId: string, email: string) {
-        const magicLink = await createMagicLinkFixture({ userId, email });
-        const response = await app.handle(
-            new Request(`http://localhost/api/auth/verify?token=${magicLink.token}`),
-        );
-        const data: any = await response.json();
-        return data.accessToken;
+        return createAuthToken(userId, email);
     }
 
     describe('GET /api/notebooks/', () => {
@@ -326,9 +321,12 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
     });
 
     describe('POST /api/notebooks/:id/share', () => {
-        it('should share tag with user', async () => {
+        it('should share a notebook with an account that has no email', async () => {
             const user1 = await createUserFixture();
             const user2 = await createUserFixture();
+            await testDb!
+                .collection('users')
+                .updateOne({ _id: user2._id }, { $unset: { email: '' } });
             const tag = await createNotebookFixture({ createdBy: user1._id.toString() });
             const token = await getAuthToken(user1._id.toString(), user1.email);
 
@@ -339,7 +337,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
                         Authorization: `Bearer ${token}`,
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ email: user2.email, accessLevel: 'write' }),
+                    body: JSON.stringify({ userId: user2._id.toString(), accessLevel: 'write' }),
                 }),
             );
 
@@ -370,7 +368,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        email: 'nonexistent@example.com',
+                        userId: '000000000000000000000000',
                         accessLevel: 'write',
                     }),
                 }),
@@ -399,7 +397,7 @@ describe.runIf(mongoAvailable)('Tag Routes', () => {
                         Authorization: `Bearer ${token}`,
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ email: user3.email, accessLevel: 'write' }),
+                    body: JSON.stringify({ userId: user3._id.toString(), accessLevel: 'write' }),
                 }),
             );
 

@@ -256,7 +256,7 @@ export async function sendMessageReceivedNotification(
     userId: string,
     notebookId: string,
     messageId: string,
-    senderEmail: string,
+    senderEmail: string | undefined,
     senderName: string | undefined,
     senderProfilePictureUrl: string | undefined,
     messageContent: any,
@@ -266,7 +266,7 @@ export async function sendMessageReceivedNotification(
     const messagePreview = messageText.substring(0, 200); // Store up to 200 chars
 
     // Use sender name if available, otherwise email
-    const displayName = senderName || senderEmail;
+    const displayName = senderName || senderEmail || 'Maple user';
 
     const notificationBody = messageText
         ? `${displayName}: ${messageText.substring(0, 100)}${messageText.length > 100 ? '...' : ''}`

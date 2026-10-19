@@ -3,7 +3,7 @@
 //! Handles login, token storage, and session management.
 
 use anyhow::{anyhow, Result};
-use maple_shared::{AuthResponse, AuthUser, MagicLinkRequest, MagicLinkResponse, VerifyCodeRequest};
+use maple_shared::{AuthResponse, AuthUser};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -72,78 +72,6 @@ impl AuthManager {
             .await
             .as_ref()
             .map(|c| c.user.clone())
-    }
-
-    /// Request magic link for email
-    pub async fn request_magic_link(&self, email: &str) -> Result<MagicLinkResponse> {
-        let api_url = self.api_url.read().await.clone();
-        let url = format!("{}/api/auth/magic-link", api_url);
-
-        let request = MagicLinkRequest {
-            email: email.to_string(),
-        };
-
-        info!("Requesting magic link from: {}", url);
-
-        let response = self
-            .http_client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await?;
-
-        let status = response.status();
-        let response_url = response.url().to_string();
-
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(anyhow!("Request to {} failed with status {}: {}", response_url, status, body));
-        }
-
-        let body = response.text().await?;
-        debug!("Response from {}: {}", response_url, body);
-
-        let parsed: MagicLinkResponse = serde_json::from_str(&body)
-            .map_err(|e| anyhow!("Failed to parse response from {}: {} - Body: {}", response_url, e, body))?;
-
-        info!("Magic link requested for {}", email);
-        Ok(parsed)
-    }
-
-    /// Verify 6-digit code and authenticate
-    pub async fn verify_code(&self, email: &str, code: &str) -> Result<AuthResponse> {
-        let api_url = self.api_url.read().await.clone();
-        let url = format!("{}/api/auth/verify-code", api_url);
-
-        let request = VerifyCodeRequest {
-            email: email.to_string(),
-            code: code.to_string(),
-        };
-
-        info!("Verifying code at: {}", url);
-
-        let response = self
-            .http_client
-            .post(&url)
-            .json(&request)
-            .send()
-            .await?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(anyhow!("Verification failed with status {}: {}", status, body));
-        }
-
-        let body = response.text().await?;
-        let auth_response: AuthResponse = serde_json::from_str(&body)
-            .map_err(|e| anyhow!("Failed to parse auth response: {} - Body: {}", e, body))?;
-
-        // Store credentials
-        self.store_credentials(&auth_response).await?;
-
-        info!("Authentication successful for {}", auth_response.user.email);
-        Ok(auth_response)
     }
 
     /// Store credentials locally

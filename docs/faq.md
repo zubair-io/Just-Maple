@@ -38,9 +38,9 @@ See the deployment documentation for detailed instructions.
 
 Just Maple uses passwordless authentication:
 
-1. Enter your email address
-2. Click the magic link sent to your email
-3. Optionally set up a passkey for faster login
+1. Enter a display name to create an account, or choose Sign in with a passkey
+2. Create or use a passkey when your device prompts you
+3. Optionally add a second passkey in Settings
 
 ### Can I import notes from other apps?
 
@@ -144,7 +144,7 @@ Yes:
 
 1. Open notebook settings
 2. Click "Share"
-3. Enter email addresses
+3. Enter account IDs (found in Settings)
 4. Choose permission levels
 5. Send invitations
 
@@ -205,7 +205,7 @@ Yes. Native apps have full offline support with local databases.
 1. Open the app
 2. Go to Settings > Servers
 3. Enter your server URL
-4. Sign in with email
+4. Sign in with a passkey
 
 ## Troubleshooting
 
@@ -220,7 +220,7 @@ Try:
 
 ### I can't log in
 
-1. Check email for magic link (including spam)
+1. Choose Sign in with a passkey and use your saved passkey
 2. Ensure link hasn't expired (15 min limit)
 3. Try requesting a new link
 4. Check server logs for errors
