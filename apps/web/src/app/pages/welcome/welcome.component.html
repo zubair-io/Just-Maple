@@ -1,34 +1,14 @@
 <div
   class="min-h-full bg-[var(--color-bg)] text-[var(--color-text-main)] font-sans animate-maple-tag-in"
 >
-  <header
-    class="min-h-20 box-border flex-none flex items-center gap-4 flex-wrap px-6 py-4 border-b border-[var(--color-border)] bg-[var(--color-sidebar)]"
-  >
-    <div class="flex-none mr-auto">
-      <a
-        routerLink="/"
-        aria-label="Just Maple home"
-        class="flex h-8 flex-none items-center gap-2.5 no-underline text-[var(--color-text-main)]"
-      >
-        <img
-          src="https://hornbeam.justmaple.app/data/assets/justmaple.svg"
-          alt=""
-          class="w-8 h-8"
-        />
-        <span class="font-serif font-bold text-lg tracking-tight whitespace-nowrap"
-          >Just Maple</span
-        >
-      </a>
-      <span
-        class="block pl-[42px] font-mono text-[10px] leading-3 text-[var(--color-text-muted)]"
-        >{{ tagCountLabel() }}</span
-      >
-    </div>
-
+  <app-header [home]="true">
+    <span headerContext class="font-mono text-[11px] text-[var(--color-text-muted)]">{{
+      tagCountLabel()
+    }}</span>
     <!-- Action items -->
-    <div class="flex items-center gap-3 flex-wrap">
+    <div headerActions class="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
       <!-- Search bar -->
-      <div class="relative">
+      <div class="relative col-span-2 sm:col-span-1 flex-1 min-w-[140px]">
         <input
           #searchInput
           type="text"
@@ -36,7 +16,7 @@
           (ngModelChange)="searchQuery.set($event)"
           placeholder="Search notebooks   ⌘K"
           aria-label="Search notebooks"
-          class="w-44 lg:w-60 h-10 box-border px-3.5 pl-9 font-mono text-xs text-[var(--color-text-main)] bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded-lg outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+          class="w-full lg:w-60 h-10 box-border px-3.5 pl-9 font-mono text-xs text-[var(--color-text-main)] bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded-lg outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
         />
         <span
           class="material-symbols-rounded text-base text-[var(--color-text-muted)] absolute left-3 top-2.5"
@@ -48,7 +28,7 @@
       @if (isFileSystemSupported()) {
         <button
           (click)="openFolder()"
-          class="h-10 px-4 font-sans font-bold text-xs text-[var(--color-text-main)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
+          class="h-10 px-4 font-sans font-bold text-xs text-[var(--color-text-main)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5"
           title="Open local folder"
         >
           <span class="material-symbols-rounded text-sm">folder_open</span>
@@ -64,7 +44,7 @@
         + Notebook
       </button>
     </div>
-  </header>
+  </app-header>
   <div class="max-w-5xl mx-auto px-6 py-8 md:px-12">
     <!-- Notebook groups -->
     <div class="space-y-9 animate-maple-content-in">

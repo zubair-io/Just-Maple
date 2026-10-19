@@ -1,8 +1,9 @@
+import { AppHeaderComponent } from '../../components/organisms/app-header/app-header.component';
 import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription, switchMap, of, combineLatest, map, catchError, take } from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
 import { NotificationService } from '../../services/notification.service';
@@ -41,7 +42,7 @@ interface ConnectionGraphData {
   imports: [
     CommonModule,
     FormsModule,
-    RouterLink,
+    AppHeaderComponent,
     ShareModalComponent,
     NotebookHeaderComponent,
     ConnectionGraphComponent,
