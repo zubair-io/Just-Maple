@@ -76,10 +76,13 @@
         <div class="relative">
           <button
             (click)="toggleNewPageDropdown($event)"
-            class="h-9 px-3 font-sans font-bold text-xs text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] border-none rounded-lg transition-all cursor-pointer shadow-sm flex items-center gap-1"
+            aria-label="New page"
+            title="New page"
+            aria-haspopup="menu"
+            [attr.aria-expanded]="newPageDropdownOpen()"
+            class="h-9 w-9 text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] border-none rounded-lg transition-all cursor-pointer shadow-sm flex items-center justify-center"
           >
-            + Page
-            <span class="material-symbols-rounded text-sm">expand_more</span>
+            <span class="material-symbols-rounded text-xl" aria-hidden="true">add</span>
           </button>
 
           @if (newPageDropdownOpen()) {
@@ -163,13 +166,13 @@
         headerNavigation
         role="tablist"
         aria-label="Notebook sections"
-        class="flex-none flex px-4 md:px-6 overflow-x-auto"
+        class="flex min-w-0 overflow-x-auto"
       >
         <button
           role="tab"
           [attr.aria-selected]="activeTab() === 'overview'"
           (click)="activeTab.set('overview')"
-          class="h-11 px-6 font-sans font-bold text-xs bg-transparent border-none border-b-2 cursor-pointer transition-colors whitespace-nowrap"
+          class="h-9 px-3 font-sans font-bold text-xs bg-transparent border-none border-b-2 cursor-pointer transition-colors whitespace-nowrap"
           [class.text-[var(--color-text-main)]]="activeTab() === 'overview'"
           [class.border-[var(--color-primary)]]="activeTab() === 'overview'"
           [class.text-[var(--color-text-muted)]]="activeTab() !== 'overview'"
@@ -184,7 +187,7 @@
             role="tab"
             [attr.aria-selected]="activeTab() === tab.id"
             (click)="activeTab.set(tab.id)"
-            class="h-11 px-6 font-sans font-bold text-xs bg-transparent border-none border-b-2 cursor-pointer transition-colors whitespace-nowrap"
+            class="h-9 px-3 font-sans font-bold text-xs bg-transparent border-none border-b-2 cursor-pointer transition-colors whitespace-nowrap"
             [class.text-[var(--color-text-main)]]="activeTab() === tab.id"
             [class.border-[var(--color-primary)]]="activeTab() === tab.id"
             [class.text-[var(--color-text-muted)]]="activeTab() !== tab.id"
