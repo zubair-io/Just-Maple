@@ -1,106 +1,215 @@
-<div class="flex h-full flex-col items-center overflow-y-auto px-6 py-12">
-  <div class="w-full max-w-lg">
+<div
+  class="min-h-screen bg-[var(--color-bg)] text-[var(--color-text-main)] font-sans px-6 py-8 md:px-12 animate-maple-tag-in"
+>
+  <div class="max-w-5xl mx-auto">
     <!-- Header -->
-    <div class="mb-10 text-center">
-      <h1 class="mb-2 text-2xl font-bold text-[var(--color-text-main)]">Just Maple</h1>
-      <p class="text-[var(--color-text-muted)]">Write freely. Own your notes.</p>
-    </div>
+    <header
+      class="flex items-center gap-5 flex-wrap mb-9 border-b border-[var(--color-border)] pb-6"
+    >
+      <div class="flex items-baseline gap-2.5 mr-auto">
+        <span class="font-sans font-extrabold text-2xl tracking-tight">Maple</span>
+        <span class="font-mono text-xs text-[var(--color-text-muted)]">{{ tagCountLabel() }}</span>
+      </div>
 
-    <!-- Let's go -->
-    <div class="mb-8">
-      <h2
-        class="mb-4 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)]"
-      >
-        Let's go
-      </h2>
-      <div class="flex flex-col gap-3">
-        @if (icloudNotebook(); as nb) {
-          <button
-            (click)="openICloudNotebook()"
-            class="flex items-center gap-4 rounded-lg border border-[var(--color-border)] p-4 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
+      <!-- Action items -->
+      <div class="flex items-center gap-3">
+        <!-- Search bar -->
+        <div class="relative">
+          <input
+            #searchInput
+            type="text"
+            [ngModel]="searchQuery()"
+            (ngModelChange)="searchQuery.set($event)"
+            placeholder="Search notebooks   ⌘K"
+            aria-label="Search notebooks"
+            class="w-60 h-10 box-border px-3.5 pl-9 font-mono text-xs text-[var(--color-text-main)] bg-[var(--color-input-bg)] border border-[var(--color-border)] rounded-lg outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)] transition-all"
+          />
+          <span
+            class="material-symbols-rounded text-base text-[var(--color-text-muted)] absolute left-3 top-2.5"
+            >search</span
           >
-            <span
-              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500"
-            >
-              <span class="material-symbols-rounded text-xl">cloud</span>
-            </span>
-            <div>
-              <span class="text-sm font-medium text-[var(--color-text-main)]">{{ nb.label }}</span>
-              <p class="mt-0.5 text-xs text-[var(--color-text-muted)]">
-                Your iCloud notebook — syncs across all your Apple devices
-              </p>
-            </div>
-          </button>
-        }
+        </div>
 
+        <!-- Open local folder if supported -->
         @if (isFileSystemSupported()) {
           <button
             (click)="openFolder()"
-            class="flex items-center gap-4 rounded-lg border border-[var(--color-border)] p-4 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
+            class="h-10 px-4 font-sans font-bold text-xs text-[var(--color-text-main)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
+            title="Open local folder"
           >
-            <span
-              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
-            >
-              <span class="material-symbols-rounded text-xl">folder_open</span>
-            </span>
-            <div>
-              <span class="text-sm font-medium text-[var(--color-text-main)]">Open a Folder</span>
-              <p class="mt-0.5 text-xs text-[var(--color-text-muted)]">
-                Pick a folder on your device to start writing locally
-              </p>
-            </div>
+            <span class="material-symbols-rounded text-sm">folder_open</span>
+            <span>Import Folder</span>
           </button>
         }
 
-        @if (!isAuthenticated()) {
-          <a
-            routerLink="/login"
-            class="flex items-center gap-4 rounded-lg border border-[var(--color-border)] p-4 text-left transition-colors hover:bg-[var(--color-surface-hover)]"
-          >
-            <span
-              class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface)] text-[var(--color-text-muted)]"
-            >
-              <span class="material-symbols-rounded text-xl">cloud</span>
-            </span>
-            <div>
-              <span class="text-sm font-medium text-[var(--color-text-main)]">Sign In</span>
-              <p class="mt-0.5 text-xs text-[var(--color-text-muted)]">
-                Sync your notes across devices with a cloud account
-              </p>
-            </div>
-          </a>
-        }
-      </div>
-    </div>
-
-    <!-- Features -->
-    <div class="mb-8">
-      <p class="mb-2 text-[11px] text-[var(--color-text-muted)]">What you can do</p>
-      <div class="flex flex-wrap gap-1.5">
-        @for (feature of features; track feature.key) {
-          <button
-            (click)="toggleFeature(feature.key)"
-            class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] transition-colors cursor-pointer"
-            [class.bg-[var(--color-primary)]]="selectedFeature() === feature.key"
-            [class.text-white]="selectedFeature() === feature.key"
-            [class.bg-[var(--color-surface)]]="selectedFeature() !== feature.key"
-            [class.text-[var(--color-text-muted)]]="selectedFeature() !== feature.key"
-            [class.hover:bg-[var(--color-surface-hover)]]="selectedFeature() !== feature.key"
-          >
-            <span class="material-symbols-rounded text-sm">{{ feature.icon }}</span
-            >{{ feature.label }}
-          </button>
-        }
-      </div>
-
-      <!-- Feature detail -->
-      @if (selectedFeatureData(); as detail) {
-        <div
-          class="mt-3 rounded-lg bg-[var(--color-surface)] px-4 py-3 text-xs text-[var(--color-text-muted)]"
+        <!-- Add notebook -->
+        <button
+          (click)="onCreateNotebook()"
+          class="h-10 px-4.5 font-sans font-bold text-sm text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] border-none rounded-lg transition-all cursor-pointer shadow-sm"
         >
-          {{ detail.description }}
-        </div>
+          + Notebook
+        </button>
+      </div>
+    </header>
+
+    <!-- Notebook groups -->
+    <div class="space-y-9 animate-maple-content-in">
+      <!-- Helper group renderer template -->
+      <ng-container
+        *ngTemplateOutlet="
+          groupSection;
+          context: { $implicit: groupedNotebooks().pinned, label: 'PINNED' }
+        "
+      ></ng-container>
+
+      @if (groupedNotebooks().cloud.length > 0) {
+        <ng-container
+          *ngTemplateOutlet="
+            groupSection;
+            context: { $implicit: groupedNotebooks().cloud, label: 'MAPLE CLOUD' }
+          "
+        ></ng-container>
+      }
+
+      @if (groupedNotebooks().public.length > 0) {
+        <ng-container
+          *ngTemplateOutlet="
+            groupSection;
+            context: { $implicit: groupedNotebooks().public, label: 'PUBLIC' }
+          "
+        ></ng-container>
+      }
+
+      @if (groupedNotebooks().icloud.length > 0) {
+        <ng-container
+          *ngTemplateOutlet="
+            groupSection;
+            context: { $implicit: groupedNotebooks().icloud, label: 'ICLOUD' }
+          "
+        ></ng-container>
+      }
+
+      @if (groupedNotebooks().local.length > 0) {
+        <ng-container
+          *ngTemplateOutlet="
+            groupSection;
+            context: { $implicit: groupedNotebooks().local, label: 'LOCAL' }
+          "
+        ></ng-container>
       }
     </div>
+
+    <!-- Empty/No results state -->
+    @if (processedNotebooks().length === 0) {
+      <div class="text-center py-20 text-[var(--color-text-muted)] animate-maple-content-in">
+        <p class="m-0 mb-1.5 font-sans font-bold text-base text-[var(--color-text-main)]">
+          No notebooks match “{{ searchQuery() }}”
+        </p>
+        <p class="m-0 font-mono text-xs">Try a different search query or create a new notebook.</p>
+      </div>
+    }
   </div>
 </div>
+
+<!-- Reusable Group Section Template -->
+<ng-template #groupSection let-notebooks let-label="label">
+  @if (notebooks && notebooks.length > 0) {
+    <div>
+      <div class="flex items-baseline gap-2.5 mb-4">
+        <span
+          class="font-mono text-[10px] font-semibold tracking-wider text-[var(--color-text-muted)]"
+          >{{ label }}</span
+        >
+        <span class="flex-1 h-[1px] bg-[var(--color-border)]"></span>
+      </div>
+
+      <div
+        role="list"
+        [attr.aria-label]="label"
+        class="grid grid-cols-[repeat(auto-fill,160px)] gap-6"
+      >
+        @for (notebook of notebooks; track notebook._id) {
+          <button
+            role="listitem"
+            (click)="openNotebook(notebook._id)"
+            [title]="notebook.label"
+            class="group relative w-[160px] h-[214px] text-left cursor-pointer bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-text-muted)] rounded flex flex-col overflow-hidden transition-all duration-150 shadow-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:ring-offset-2"
+            [style.box-shadow]="
+              notebook.unreadCount > 0
+                ? '0 0 0 1.5px var(--color-maple), 0 0 14px color-mix(in srgb, var(--color-maple) 35%, transparent), var(--shadow-soft)'
+                : ''
+            "
+          >
+            <!-- Card Header: Pinned status + Unread badge -->
+            <div class="flex items-center gap-1.5 px-3 py-2.5 flex-none w-full box-border">
+              <!-- Pin Toggle Icon -->
+              <button
+                type="button"
+                (click)="togglePin(notebook._id, $event)"
+                class="bg-transparent border-none p-0 cursor-pointer flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
+                [title]="isPinned(notebook._id) ? 'Unpin notebook' : 'Pin notebook'"
+              >
+                @if (isPinned(notebook._id)) {
+                  <span class="material-symbols-rounded text-sm text-[var(--color-primary)] fill-1"
+                    >push_pin</span
+                  >
+                } @else {
+                  <span
+                    class="material-symbols-rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity hover:opacity-100"
+                    >push_pin</span
+                  >
+                }
+              </button>
+
+              <span class="flex-1"></span>
+
+              <!-- Unread Message Count badge -->
+              @if (notebook.unreadCount > 0) {
+                <span
+                  class="flex-none min-w-[14px] text-center font-mono text-[10px] font-bold text-white bg-[var(--color-primary)] rounded-full px-1.5 py-0.5"
+                  [attr.aria-label]="notebook.unreadCount + ' unread messages'"
+                >
+                  {{ notebook.unreadCount > 99 ? '99+' : notebook.unreadCount }}
+                </span>
+              }
+            </div>
+
+            <!-- Page-cover vertical border accent -->
+            <div class="flex-none h-1.5 bg-[var(--color-bg)]"></div>
+
+            <!-- Card Body: Notebook Title -->
+            <div class="flex-1 flex items-center justify-center px-3 py-3.5 text-center">
+              <span
+                class="font-sans font-bold text-sm leading-snug overflow-hidden line-clamp-4 text-[var(--color-text-main)]"
+              >
+                {{ notebook.label }}
+              </span>
+            </div>
+
+            <!-- Card Footer: Content types + Activity -->
+            <div class="flex-none flex items-center justify-between gap-2 px-3 py-2.5">
+              <!-- Content type tag icons -->
+              <div class="flex items-center gap-1">
+                @for (type of notebook.pageTypes; track type) {
+                  <span
+                    [title]="getPageTypeLabel(type)"
+                    class="flex items-center justify-center w-5 h-5 rounded bg-[var(--color-surface-alt)] text-[var(--color-text-muted)]"
+                  >
+                    <span class="material-symbols-rounded text-xs">{{
+                      getPageTypeIcon(type)
+                    }}</span>
+                  </span>
+                }
+              </div>
+
+              <!-- Activity Timestamp -->
+              <span class="font-mono text-[9px] text-[var(--color-text-muted)] whitespace-nowrap">
+                {{ notebook.activity }}
+              </span>
+            </div>
+          </button>
+        }
+      </div>
+    </div>
+  }
+</ng-template>

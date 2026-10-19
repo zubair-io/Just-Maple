@@ -1,176 +1,173 @@
 @if (page()) {
-  <header
-    class="h-14 flex items-center justify-between px-4 md:px-6 py-4 flex-shrink-0 bg-[var(--color-bg)]/95 backdrop-blur-sm sticky top-0 z-10 border-b border-[var(--color-border)]"
-  >
-    <!-- Left side: Menu + Page name -->
-    <div class="flex items-center gap-2 text-sm text-[var(--color-text-main)] min-w-0">
-      <!-- Menu button (mobile only) -->
-      <button
-        (click)="openSidebarOnMobile()"
-        class="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors flex-shrink-0"
-        title="Open menu"
-        aria-label="Open menu"
+  <div class="note-editor-header max-w-[680px] mx-auto pt-6 px-6 pb-2 select-none">
+    <!-- Back to tag view -->
+    <div class="flex items-center justify-between mb-2">
+      <a
+        [routerLink]="['/', notebook()?._id || '']"
+        class="font-mono text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] cursor-pointer no-underline flex items-center gap-1 py-1"
+        title="Back to tag overview (Esc)"
       >
-        <span aria-hidden="true" class="material-symbols-rounded text-xl">menu</span>
-      </button>
+        ← All pages
+      </a>
 
-      <!-- Page name -->
-      <div class="flex items-center gap-1.5 font-medium truncate">
-        <span
-          aria-hidden="true"
-          class="material-symbols-rounded text-base text-[var(--color-primary)] flex-shrink-0 !hidden md:!block"
-          >article</span
-        >
-        @if (isEditingTitle()) {
-          <input
-            type="text"
-            class="truncate bg-transparent border border-[var(--color-primary)] rounded px-1.5 py-0.5 outline-none text-sm font-medium text-[var(--color-text-main)]"
-            [(ngModel)]="editTitleValue"
-            (blur)="saveTitle()"
-            (keydown.enter)="saveTitle()"
-            (keydown.escape)="cancelEditingTitle()"
-            autofocus
-          />
-        } @else {
-          <span class="truncate cursor-default" (dblclick)="startEditingTitle()">{{
-            page()!.title
-          }}</span>
-        }
-      </div>
-    </div>
-
-    <!-- Right side: Actions -->
-    <div class="flex items-center gap-1">
-      <!-- Undo/Redo -->
-      <div class="flex items-center">
+      <!-- Right actions in same row or aligned -->
+      <div class="flex items-center gap-1">
+        <!-- Undo/Redo -->
         <button
           (click)="undoRequested.emit()"
           [disabled]="!canUndo()"
-          class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          class="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed border-none bg-transparent cursor-pointer"
           title="Undo"
           aria-label="Undo"
         >
-          <span aria-hidden="true" class="material-symbols-rounded text-lg">undo</span>
+          <span aria-hidden="true" class="material-symbols-rounded text-base">undo</span>
         </button>
         <button
           (click)="redoRequested.emit()"
           [disabled]="!canRedo()"
-          class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          class="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed border-none bg-transparent cursor-pointer"
           title="Redo"
           aria-label="Redo"
         >
-          <span aria-hidden="true" class="material-symbols-rounded text-lg">redo</span>
+          <span aria-hidden="true" class="material-symbols-rounded text-base">redo</span>
         </button>
-      </div>
 
-      <!-- Width toggle (hidden on mobile) -->
-      <button
-        (click)="toggleWidthRequested.emit()"
-        class="hidden md:flex w-8 h-8 items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-        [title]="isFullWidth() ? 'Narrow width' : 'Full width'"
-        [attr.aria-label]="isFullWidth() ? 'Narrow width' : 'Full width'"
-      >
-        @if (isFullWidth()) {
-          <span aria-hidden="true" class="material-symbols-rounded text-lg">width_normal</span>
-        } @else {
-          <span aria-hidden="true" class="material-symbols-rounded text-lg">width_wide</span>
-        }
-      </button>
-
-      <!-- Divider -->
-      <div class="w-px h-5 bg-[var(--color-border)] mx-1"></div>
-
-      <!-- History button -->
-      <button
-        (click)="toggleVersionHistory()"
-        class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-        title="Version history"
-        aria-label="Version history"
-      >
-        <span aria-hidden="true" class="material-symbols-rounded text-lg">history</span>
-      </button>
-
-      <!-- Publish button (only for public notebooks) -->
-      @if (isNotebookPublic()) {
+        <!-- Width toggle (hidden on mobile) -->
         <button
-          (click)="openPublishModal()"
-          class="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
-          [class]="
-            isPublishStale()
-              ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10'
-              : isPagePublished()
-                ? 'text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-500/10'
-                : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)]'
-          "
-          [title]="
-            isPublishStale()
-              ? 'Changes pending — click to manage'
-              : isPagePublished()
-                ? 'Published — click to manage'
-                : 'Not published — click to publish'
-          "
-          [attr.aria-label]="
-            isPublishStale()
-              ? 'Changes pending — click to manage'
-              : isPagePublished()
-                ? 'Published — click to manage'
-                : 'Not published — click to publish'
-          "
+          (click)="toggleWidthRequested.emit()"
+          class="hidden md:flex w-7 h-7 items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors border-none bg-transparent cursor-pointer"
+          [title]="isFullWidth() ? 'Narrow width' : 'Full width'"
+          [attr.aria-label]="isFullWidth() ? 'Narrow width' : 'Full width'"
         >
-          <span aria-hidden="true" class="material-symbols-rounded text-lg">{{
-            isPagePublished() ? 'public' : 'public_off'
-          }}</span>
+          @if (isFullWidth()) {
+            <span aria-hidden="true" class="material-symbols-rounded text-base">width_normal</span>
+          } @else {
+            <span aria-hidden="true" class="material-symbols-rounded text-base">width_wide</span>
+          }
         </button>
-      }
 
-      <!-- Export button with dropdown -->
-      <div class="relative">
+        <!-- Divider -->
+        <div class="w-px h-4 bg-[var(--color-border)] mx-1"></div>
+
+        <!-- History button -->
         <button
-          (click)="toggleExportMenu()"
-          class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-          title="Export"
-          aria-label="Export"
+          (click)="toggleVersionHistory()"
+          class="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors border-none bg-transparent cursor-pointer"
+          title="Version history"
+          aria-label="Version history"
         >
-          <span aria-hidden="true" class="material-symbols-rounded text-lg">download</span>
+          <span aria-hidden="true" class="material-symbols-rounded text-base">history</span>
         </button>
-        @if (showExportMenu()) {
-          <!-- Backdrop to close menu on outside click -->
-          <div class="fixed inset-0 z-40" (click)="closeExportMenu()"></div>
-          <div
-            class="absolute right-0 top-full mt-1 bg-[var(--color-bg)] rounded-lg shadow-lg border border-[var(--color-border)] py-1 min-w-[140px] z-50"
+
+        <!-- Publish button (only for public notebooks) -->
+        @if (isNotebookPublic()) {
+          <button
+            (click)="openPublishModal()"
+            [attr.aria-label]="
+              isPublishStale()
+                ? 'Changes pending — click to manage'
+                : isPagePublished()
+                  ? 'Published — click to manage'
+                  : 'Not published — click to publish'
+            "
+            class="w-7 h-7 flex items-center justify-center rounded-lg transition-colors border-none bg-transparent cursor-pointer"
+            [class]="
+              isPublishStale()
+                ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10'
+                : isPagePublished()
+                  ? 'text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-500/10'
+                  : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)]'
+            "
+            [title]="
+              isPublishStale()
+                ? 'Changes pending — click to manage'
+                : isPagePublished()
+                  ? 'Published — click to manage'
+                  : 'Not published — click to publish'
+            "
           >
-            <button
-              (click)="exportAs('markdown')"
-              class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
-            >
-              <span aria-hidden="true" class="material-symbols-rounded text-base">description</span>
-              Markdown
-            </button>
-            <button
-              (click)="exportAs('html')"
-              class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2"
-            >
-              <span aria-hidden="true" class="material-symbols-rounded text-base">code</span>
-              HTML
-            </button>
-          </div>
+            <span aria-hidden="true" class="material-symbols-rounded text-base">{{
+              isPagePublished() ? 'public' : 'public_off'
+            }}</span>
+          </button>
         }
+
+        <!-- Export button with dropdown -->
+        <div class="relative">
+          <button
+            (click)="toggleExportMenu()"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors border-none bg-transparent cursor-pointer"
+            title="Export"
+            aria-label="Export"
+          >
+            <span aria-hidden="true" class="material-symbols-rounded text-base">download</span>
+          </button>
+          @if (showExportMenu()) {
+            <!-- Backdrop to close menu on outside click -->
+            <div class="fixed inset-0 z-40" (click)="closeExportMenu()"></div>
+            <div
+              class="absolute right-0 top-full mt-1 bg-[var(--color-bg)] rounded-lg shadow-lg border border-[var(--color-border)] py-1 min-w-[140px] z-50 animate-maple-modal-in"
+            >
+              <button
+                (click)="exportAs('markdown')"
+                class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2 border-none bg-transparent cursor-pointer"
+              >
+                <span aria-hidden="true" class="material-symbols-rounded text-base"
+                  >description</span
+                >
+                Markdown
+              </button>
+              <button
+                (click)="exportAs('html')"
+                class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] flex items-center gap-2 border-none bg-transparent cursor-pointer"
+              >
+                <span aria-hidden="true" class="material-symbols-rounded text-base">code</span>
+                HTML
+              </button>
+            </div>
+          }
+        </div>
+
+        <!-- Divider -->
+        <div class="w-px h-4 bg-[var(--color-border)] mx-1"></div>
+
+        <!-- Delete button -->
+        <button
+          (click)="deleteRequested.emit()"
+          class="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors border-none bg-transparent cursor-pointer"
+          title="Delete page"
+          aria-label="Delete page"
+        >
+          <span aria-hidden="true" class="material-symbols-rounded text-base">delete</span>
+        </button>
       </div>
-
-      <!-- Divider -->
-      <div class="w-px h-5 bg-[var(--color-border)] mx-1"></div>
-
-      <!-- Delete button -->
-      <button
-        (click)="deleteRequested.emit()"
-        class="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-        title="Delete page"
-        aria-label="Delete page"
-      >
-        <span aria-hidden="true" class="material-symbols-rounded text-lg">delete</span>
-      </button>
     </div>
-  </header>
+
+    <!-- Page title input (editable, borderless, large serif) -->
+    <input
+      type="text"
+      [ngModel]="editTitleValue()"
+      (ngModelChange)="editTitleValue.set($event)"
+      (blur)="saveTitle()"
+      (keydown.enter)="$any($event.target).blur()"
+      placeholder="Untitled page"
+      aria-label="Page title"
+      class="w-full font-serif font-bold text-3xl text-[var(--color-text-main)] bg-transparent border-none outline-none py-3 px-0 block"
+    />
+
+    <!-- Metadata line -->
+    <div
+      class="flex items-center gap-3.5 pb-3.5 border-b border-[var(--color-border)] font-mono text-[11px] text-[var(--color-text-muted)]"
+    >
+      <span>{{ formattedDate() }}</span>
+      <span class="capitalize">{{ page()!.type }}</span>
+      <span class="flex-1"></span>
+      <span class="text-[var(--color-success)] flex items-center gap-1 font-semibold">
+        <span class="w-1.5 h-1.5 rounded-full bg-[var(--color-success)] inline-block"></span>
+        synced
+      </span>
+    </div>
+  </div>
 
   <!-- Version History Panel -->
   <app-version-history
@@ -195,9 +192,8 @@
           <h3 class="text-sm font-semibold text-[var(--color-text-main)]">Publish page</h3>
           <button
             (click)="closePublishModal()"
-            class="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
-            title="Close modal"
             aria-label="Close modal"
+            class="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] transition-colors"
           >
             <span aria-hidden="true" class="material-symbols-rounded text-lg">close</span>
           </button>
@@ -218,10 +214,10 @@
           </div>
           <button
             (click)="onPublishToggle()"
+            [attr.aria-label]="isPagePublished() ? 'Unpublish page' : 'Publish page'"
             [disabled]="isTogglingPublish()"
             class="relative w-10 h-6 rounded-full transition-colors"
             [class]="isPagePublished() ? 'bg-green-600' : 'bg-[var(--color-border)]'"
-            [attr.aria-label]="isPagePublished() ? 'Unpublish page' : 'Publish page'"
           >
             <span
               class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"

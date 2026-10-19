@@ -2,22 +2,26 @@ import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subscription, switchMap, of, combineLatest, map, catchError, take } from 'rxjs';
 import { NotebookService } from '../../services/notebook.service';
 import { NotificationService } from '../../services/notification.service';
 import { PageService } from '../../services/page.service';
+import { MessageService } from '../../services/message.service';
 import {
   ShareModalComponent,
   NotebookHeaderComponent,
   ConnectionGraphComponent,
+  ChatComponent,
+  DialogService,
+  MemberAvatarGroupComponent,
   type GraphNode,
   type GraphEdge,
   type GraphStats,
 } from '../../components';
 import { getPageTypeLabel as getLabel, getPageTypeIcon as getIcon } from '../../utils/page-types';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
-import type { NotebookMember, Page } from '@maple/shared';
+import type { NotebookMember, Page, Message } from '@maple/shared';
 
 interface NotebookSummary {
   pageCounts: Record<string, number>;
@@ -37,9 +41,12 @@ interface ConnectionGraphData {
   imports: [
     CommonModule,
     FormsModule,
+    RouterLink,
     ShareModalComponent,
     NotebookHeaderComponent,
     ConnectionGraphComponent,
+    ChatComponent,
+    MemberAvatarGroupComponent,
   ],
   templateUrl: './chat-view.component.html',
   styleUrl: './chat-view.component.scss',
@@ -50,6 +57,8 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   readonly notebookService = inject(NotebookService);
   private readonly notificationService = inject(NotificationService);
   private readonly pageService = inject(PageService);
+  private readonly messageService = inject(MessageService);
+  private readonly dialogService = inject(DialogService);
 
   private routeSubscription?: Subscription;
 
@@ -59,6 +68,14 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   readonly editingName = signal<string>('');
   private readonly membersRefreshTrigger = signal<number>(0);
   private readonly summaryRefreshTrigger = signal<number>(0);
+
+  // Tab navigation state
+  readonly activeTab = signal<string>('overview');
+  readonly switcherOpen = signal<boolean>(false);
+  readonly pageSearchQuery = signal<string>('');
+  readonly newPageDropdownOpen = signal<boolean>(false);
+
+  private readonly pinnedIds = signal<Set<string>>(this.loadPinnedIds());
 
   // Reactively load members when notebook changes or refresh is triggered
   readonly members = toSignal(
@@ -111,15 +128,81 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     { initialValue: null as ConnectionGraphData | null },
   );
 
+  readonly dynamicTabs = computed(() => {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return [];
+
+    const pages = this.isLocal()
+      ? this.localPages()
+      : this.pageService.pages().filter((p) => p.notebookId === notebookId);
+
+    const types = [...new Set(pages.map((p) => p.type))];
+
+    return types.map((type) => ({
+      id: `type-${type}`,
+      type,
+      label: this.getPageTypeTabLabel(type),
+    }));
+  });
+
+  readonly filteredPagesForActiveTab = computed(() => {
+    const tab = this.activeTab();
+    const pages = this.notebookPages();
+
+    if (tab.startsWith('type-')) {
+      const targetType = tab.substring(5);
+      return pages.filter((p) => p.type === targetType);
+    }
+    return [];
+  });
+
+  private getPageTypeTabLabel(type: string): string {
+    switch (type) {
+      case 'memo':
+        return 'Notes';
+      case 'whiteboard':
+        return 'Whiteboards';
+      case 'kanban':
+        return 'Kanbans';
+      case 'message':
+        return 'Chats';
+      case 'json':
+        return 'JSON Pages';
+      case 'canvas':
+        return 'Canvases';
+      case 'collectable':
+        return 'Collectibles';
+      default:
+        return `${type.charAt(0).toUpperCase() + type.slice(1)}s`;
+    }
+  }
+
   constructor() {
-    // Track active notebook for smart notification filtering
+    // Track active notebook for smart notification filtering and message loading
     effect(() => {
       const notebookId = this.selectedNotebookId();
       this.notificationService.setActiveNotebook(notebookId);
+
+      const isValidObjectId = notebookId && /^[0-9a-fA-F]{24}$/.test(notebookId);
+      if (notebookId && isValidObjectId) {
+        // Load messages for the notebook chat
+        this.messageService.loadMessages(notebookId).subscribe();
+      }
+    });
+
+    // Make sure activeTab falls back to overview if the selected page type tab is no longer available
+    effect(() => {
+      const tab = this.activeTab();
+      if (tab.startsWith('type-')) {
+        const available = this.dynamicTabs().some((t) => t.id === tab);
+        if (!available) {
+          this.activeTab.set('overview');
+        }
+      }
     });
   }
 
-  // Computed signals reactively derive from store - no validation needed
+  // Computed signals reactively derive from store
   readonly selectedNotebook = computed(() => {
     const notebookId = this.selectedNotebookId();
     if (!notebookId) return null;
@@ -134,6 +217,46 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     return this.pageService.pages().filter((p) => p.notebookId === notebookId);
   });
 
+  readonly switcherItems = computed(() => {
+    const all = this.notebookService.notebooks();
+    const activeId = this.selectedNotebookId();
+    return all.map((nb) => ({
+      _id: nb._id,
+      name: nb.label,
+      active: nb._id === activeId,
+      pinned: this.pinnedIds().has(nb._id),
+      unreadCount: this.messageService.getUnreadCount(nb._id),
+      unreadLabel:
+        this.messageService.getUnreadCount(nb._id) > 99
+          ? '99+'
+          : String(this.messageService.getUnreadCount(nb._id)),
+    }));
+  });
+
+  readonly recentPages = computed(() => {
+    const pages = this.isLocal()
+      ? this.localPages()
+      : this.pageService.pages().filter((p) => p.notebookId === this.selectedNotebookId());
+    return pages.slice(0, 3);
+  });
+
+  readonly recentMessages = computed(() => {
+    const all = this.messageService.messagesForTag();
+    return all.slice(-2);
+  });
+
+  readonly notebookPages = computed(() => {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return [];
+
+    const pages = this.isLocal()
+      ? this.localPages()
+      : this.pageService.pages().filter((p) => p.notebookId === notebookId);
+
+    const query = this.pageSearchQuery().trim().toLowerCase();
+    return pages.filter((p) => !query || p.title.toLowerCase().includes(query));
+  });
+
   // Delegate to shared utilities
   getPageTypeLabel = getLabel;
   getPageTypeIcon = getIcon;
@@ -143,6 +266,9 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     this.routeSubscription = this.route.params.subscribe((params) => {
       const notebookId = params['notebookId'] || null;
       this.selectedNotebookId.set(notebookId);
+      this.activeTab.set('overview');
+      this.pageSearchQuery.set('');
+      this.switcherOpen.set(false);
 
       // For local notebooks, load pages into store
       if (notebookId && isLocalNotebook(notebookId)) {
@@ -155,6 +281,38 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     this.routeSubscription?.unsubscribe();
     // Clear active notebook when leaving chat view
     this.notificationService.setActiveNotebook(null);
+  }
+
+  private loadPinnedIds(): Set<string> {
+    if (typeof localStorage === 'undefined') return new Set();
+    const val = localStorage.getItem('maple-pinned-notebooks');
+    if (!val) return new Set();
+    try {
+      return new Set(JSON.parse(val));
+    } catch {
+      return new Set();
+    }
+  }
+
+  togglePin(notebookId: string, event: Event): void {
+    event.stopPropagation();
+    event.preventDefault();
+    this.pinnedIds.update((set) => {
+      const next = new Set(set);
+      if (next.has(notebookId)) {
+        next.delete(notebookId);
+      } else {
+        next.add(notebookId);
+      }
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('maple-pinned-notebooks', JSON.stringify([...next]));
+      }
+      return next;
+    });
+  }
+
+  isPinned(notebookId: string): boolean {
+    return this.pinnedIds().has(notebookId);
   }
 
   openShareModal(): void {
@@ -238,5 +396,60 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     }
 
     this.router.navigate(['/', notebookId, pageId]);
+  }
+
+  selectNotebook(notebookId: string): void {
+    this.switcherOpen.set(false);
+    this.router.navigate(['/', notebookId]);
+  }
+
+  async createNewNotebook(): Promise<void> {
+    this.switcherOpen.set(false);
+    const name = await this.dialogService.prompt({
+      title: 'New Notebook',
+      message: 'Enter a name for the notebook:',
+      placeholder: 'Notebook name',
+      confirmLabel: 'Create',
+    });
+    if (!name) return;
+
+    this.notebookService.createNotebook({ label: name }).subscribe({
+      next: (nb) => {
+        if (nb) {
+          this.router.navigate(['/', nb._id]);
+        }
+      },
+      error: (error) => {
+        console.error('Failed to create notebook:', error);
+      },
+    });
+  }
+
+  createNewPage(type: 'memo' | 'whiteboard' | 'message' | 'kanban' | 'json' = 'memo'): void {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return;
+
+    const id = crypto.randomUUID();
+    this.pageService
+      .createPage({
+        id,
+        title: 'Untitled',
+        content: { type: 'doc', content: [] },
+        notebookId: notebookId || undefined,
+        type,
+      })
+      .subscribe({
+        next: (page) => {
+          this.router.navigate(['/', notebookId, page.id]);
+        },
+        error: (error) => {
+          console.error('Failed to create page:', error);
+        },
+      });
+  }
+
+  toggleNewPageDropdown(event: Event): void {
+    event.stopPropagation();
+    this.newPageDropdownOpen.update((v) => !v);
   }
 }
