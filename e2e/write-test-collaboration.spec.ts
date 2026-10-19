@@ -1,49 +1,12 @@
+import { createTestUser } from './fixtures';
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
 
 /**
  * Helper to create a test user and get their auth token
  */
-async function createTestUserAndGetToken(
-    page: Page,
-    baseURL: string = 'http://localhost:7072',
-): Promise<{
-    email: string;
-    token: string;
-    userId: string;
-}> {
-    const email = `e2e-collab-${Date.now()}-${Math.random().toString(36).substring(7)}@example.com`;
-
-    // Request magic link via API
-    const response = await page.request.post(`${baseURL}/api/auth/magic-link`, {
-        data: { email },
-    });
-
-    if (!response.ok()) {
-        throw new Error(`Failed to request magic link: ${response.status()}`);
-    }
-
-    const data = await response.json();
-    const devToken = data.devToken;
-
-    if (!devToken) {
-        throw new Error('Dev token not returned - is the API in dev mode?');
-    }
-
-    // Verify the token to get JWT
-    const verifyResponse = await page.request.get(`${baseURL}/api/auth/verify?token=${devToken}`);
-
-    if (!verifyResponse.ok()) {
-        throw new Error(`Failed to verify token: ${verifyResponse.status()}`);
-    }
-
-    const verifyData = await verifyResponse.json();
-
-    return {
-        email,
-        token: verifyData.accessToken,
-        userId: verifyData.user._id,
-    };
+async function createTestUserAndGetToken(page: Page, apiBaseUrl: string) {
+    return createTestUser(page, apiBaseUrl);
 }
 
 /**
@@ -53,7 +16,7 @@ async function authenticatePage(
     page: Page,
     token: string,
     userId: string,
-    email: string,
+    displayName: string,
     baseURL: string = 'http://localhost:7072',
 ): Promise<void> {
     await page.goto(baseURL);
@@ -64,12 +27,12 @@ async function authenticatePage(
                 accessToken: t,
                 user: {
                     _id: uid,
-                    email: e,
+                    displayName: e,
                 },
             };
             localStorage.setItem(storageKey, JSON.stringify(authData));
         },
-        { t: token, uid: userId, e: email },
+        { t: token, uid: userId, e: displayName },
     );
     await page.reload();
     await page.waitForLoadState('networkidle');
@@ -151,21 +114,21 @@ test.describe.serial('Y.js Collaboration Test (/write)', () => {
         try {
             // Create a shared test user (both contexts will use the same auth)
             const testUser = await createTestUserAndGetToken(page1, apiBaseUrl);
-            console.log('Test user created:', testUser.email);
+            console.log('Test user created:', testUser.displayName);
 
             // Authenticate both pages with the same user
             await authenticatePage(
                 page1,
                 testUser.token,
                 testUser.userId,
-                testUser.email,
+                testUser.displayName,
                 apiBaseUrl,
             );
             await authenticatePage(
                 page2,
                 testUser.token,
                 testUser.userId,
-                testUser.email,
+                testUser.displayName,
                 apiBaseUrl,
             );
 
@@ -289,14 +252,14 @@ test.describe.serial('Y.js Collaboration Test (/write)', () => {
                 page1,
                 testUser.token,
                 testUser.userId,
-                testUser.email,
+                testUser.displayName,
                 apiBaseUrl,
             );
             await authenticatePage(
                 page2,
                 testUser.token,
                 testUser.userId,
-                testUser.email,
+                testUser.displayName,
                 apiBaseUrl,
             );
 

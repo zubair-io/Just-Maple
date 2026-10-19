@@ -4,7 +4,6 @@ export const config = {
     redisUrl: process.env.REDIS_URL,
     jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
     jwtExpiresIn: '14d', // 14 days - refreshes on each app open
-    magicLinkExpiresIn: 15 * 60 * 1000, // 15 minutes
     get isDev() {
         return process.env.NODE_ENV !== 'production';
     },
@@ -17,10 +16,6 @@ export const config = {
         'https://dev.justmaple.app:4200',
         'https://dev.justmaple.ai:4200',
     ],
-
-    // Email config
-    azureCommConnectionString: process.env.AZURE_COMMUNICATION_CONNECTION_STRING,
-    emailFrom: process.env.EMAIL_FROM || 'DoNotReply@justmaple.app',
 
     // WebAuthn/Passkey config
     rpName: process.env.RP_NAME || 'Just Maple',

@@ -9,7 +9,7 @@
   <div class="flex -space-x-2">
     @for (member of displayMembers(); track member.userId) {
       <app-profile-avatar
-        [email]="member.email"
+        [email]="member.email ?? member.userId"
         [displayName]="member.displayName"
         [profilePictureUrl]="member.profilePictureUrl"
         [size]="size()"

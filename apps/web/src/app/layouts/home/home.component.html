@@ -1,26 +1,24 @@
 <div class="h-screen pt-[env(safe-area-inset-top)] flex overflow-hidden bg-[var(--color-bg)]">
   <!-- Mobile Overlay -->
   @if (sidebarOpen()) {
-    <div class="fixed inset-0 bg-black/50 z-40 md:hidden" (click)="closeSidebar()"></div>
+    <div class="fixed inset-0 bg-black/50 z-40" (click)="closeSidebar()"></div>
   }
 
-  <!-- Sidebar -->
-  <div
-    class="fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:h-full"
-    [class.-translate-x-full]="!sidebarOpen()"
-    [class.translate-x-0]="sidebarOpen()"
-  >
-    <app-sidebar
-      [selectedNotebookId]="selectedNotebookId()"
-      (newPage)="onNewPage($event)"
-      (newFromTemplate)="onNewFromTemplate()"
-      (selectPage)="onSelectPage($event); closeSidebar()"
-      (selectNotebook)="onSelectNotebook($event)"
-      (createNotebook)="onCreateNotebook()"
-      (settings)="onSettings()"
-      (search)="uiStateService.openSearchModal()"
-    />
-  </div>
+  <!-- Sidebar stays hidden until explicitly opened. -->
+  @if (sidebarOpen()) {
+    <div class="fixed inset-y-0 left-0 z-50 h-full">
+      <app-sidebar
+        [selectedNotebookId]="selectedNotebookId()"
+        (newPage)="onNewPage($event)"
+        (newFromTemplate)="onNewFromTemplate()"
+        (selectPage)="onSelectPage($event); closeSidebar()"
+        (selectNotebook)="onSelectNotebook($event)"
+        (createNotebook)="onCreateNotebook()"
+        (settings)="onSettings()"
+        (search)="uiStateService.openSearchModal()"
+      />
+    </div>
+  }
 
   <!-- Main Content Area -->
   <main
@@ -29,23 +27,6 @@
     (touchmove)="onTouchMove($event)"
     (touchend)="onTouchEnd($event)"
   >
-    <!-- Mobile Header (hidden when a page is selected, since page headers have their own menu button) -->
-    @if (!selectedPageId()) {
-      <div
-        class="flex items-center gap-3 px-4 py-3 border-b border-[var(--color-border)] md:hidden"
-      >
-        <button
-          (click)="toggleSidebar()"
-          aria-label="Toggle menu"
-          title="Toggle menu"
-          class="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-[var(--color-surface-hover)] text-[var(--color-text-muted)]"
-        >
-          <span class="material-symbols-rounded text-xl" aria-hidden="true">menu</span>
-        </button>
-        <span class="font-serif font-bold text-sm text-[var(--color-text-main)]">Just Maple</span>
-      </div>
-    }
-
     <router-outlet />
   </main>
 </div>

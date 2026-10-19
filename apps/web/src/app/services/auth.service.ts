@@ -24,7 +24,7 @@ import type {
   PublicKeyCredentialCreationOptionsJSON,
   PublicKeyCredentialRequestOptionsJSON,
 } from '@simplewebauthn/browser';
-import type { UserResponse, AuthResponse, MagicLinkResponse } from '@maple/shared';
+import type { UserResponse, AuthResponse } from '@maple/shared';
 import { IndexedDBService } from './indexed-db.service';
 import { NativeBridgeService } from './native-bridge.service';
 
@@ -225,68 +225,25 @@ export class AuthService {
     }
   }
 
-  requestMagicLink(email: string): Observable<MagicLinkResponse> {
+  async signupWithPasskey(displayName: string): Promise<void> {
     this._isLoading.set(true);
     this._error.set(null);
-
-    return this.http.post<MagicLinkResponse>('/api/auth/magic-link', { email }).pipe(
-      tap(() => this._isLoading.set(false)),
-      catchError((err: any) => {
-        const message = err?.error?.error || 'Failed to send magic link';
-        this._error.set(message);
-        this._isLoading.set(false);
-        return throwError(() => new Error(message));
-      }),
-    );
-  }
-
-  async verifyToken(token: string): Promise<void> {
-    this._isLoading.set(true);
-    this._error.set(null);
-
     try {
-      const response = await firstValueFrom(
-        this.http.get<AuthResponse>('/api/auth/verify', {
-          params: { token },
+      const options = await firstValueFrom(
+        this.http.post<PublicKeyCredentialCreationOptionsJSON>('/api/auth/passkey/signup/start', {
+          displayName: displayName.trim(),
         }),
       );
-
-      this._accessToken.set(response.accessToken);
-      this._user.set(response.user);
-      this.saveToStorage({
-        accessToken: response.accessToken,
-        user: response.user,
-      });
-
-      await this.navigateAfterAuth();
-    } catch (err: any) {
-      const message = err?.error?.error || 'Verification failed';
-      this._error.set(message);
-      throw new Error(message);
-    } finally {
-      this._isLoading.set(false);
-    }
-  }
-
-  async verifyCode(email: string, code: string): Promise<void> {
-    this._isLoading.set(true);
-    this._error.set(null);
-
-    try {
+      const credential = await startRegistration({ optionsJSON: options });
       const response = await firstValueFrom(
-        this.http.post<AuthResponse>('/api/auth/verify-code', { email, code }),
+        this.http.post<AuthResponse>('/api/auth/passkey/signup/finish', credential),
       );
-
       this._accessToken.set(response.accessToken);
       this._user.set(response.user);
-      this.saveToStorage({
-        accessToken: response.accessToken,
-        user: response.user,
-      });
-
+      this.saveToStorage({ accessToken: response.accessToken, user: response.user });
       await this.navigateAfterAuth();
     } catch (err: any) {
-      const message = err?.error?.error || 'Invalid or expired code';
+      const message = err?.error?.error || err?.message || 'Could not create account';
       this._error.set(message);
       throw new Error(message);
     } finally {
@@ -409,17 +366,14 @@ export class AuthService {
       );
   }
 
-  async loginWithPasskey(email?: string): Promise<void> {
+  async loginWithPasskey(): Promise<void> {
     this._isLoading.set(true);
     this._error.set(null);
 
     try {
       // Get authentication options from server
       const options = await firstValueFrom(
-        this.http.post<PublicKeyCredentialRequestOptionsJSON>(
-          '/api/auth/passkey/login/start',
-          email ? { email } : {},
-        ),
+        this.http.post<PublicKeyCredentialRequestOptionsJSON>('/api/auth/passkey/login/start', {}),
       );
 
       // Start WebAuthn authentication in browser
@@ -459,7 +413,7 @@ export class AuthService {
 
   updateDisplayName(displayName: string | undefined): Observable<void> {
     return this.http
-      .patch<{ user: { _id: string; email: string; displayName?: string } }>('/api/auth/me', {
+      .patch<{ user: { _id: string; email?: string; displayName?: string } }>('/api/auth/me', {
         displayName,
       })
       .pipe(
@@ -487,7 +441,7 @@ export class AuthService {
   uploadProfilePicture(file: File): Observable<void> {
     return this.http
       .post<{
-        user: { _id: string; email: string; displayName?: string; profilePictureUrl?: string };
+        user: { _id: string; email?: string; displayName?: string; profilePictureUrl?: string };
       }>('/api/auth/me/profile-picture', file, {
         headers: {
           'Content-Type': file.type,

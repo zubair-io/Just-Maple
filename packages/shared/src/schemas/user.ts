@@ -10,7 +10,7 @@ export type UserPreferences = Static<typeof UserPreferencesSchema>;
 
 export const UserSchema = Type.Object({
     _id: Type.String(),
-    email: Type.String({ format: 'email' }),
+    email: Type.Optional(Type.String({ format: 'email' })),
     displayName: Type.Optional(Type.String()),
     profilePictureUrl: Type.Optional(Type.String()),
     profilePictureFullUrl: Type.Optional(Type.String()),
@@ -24,7 +24,7 @@ export const UserSchema = Type.Object({
 export type User = Static<typeof UserSchema>;
 
 export const CreateUserSchema = Type.Object({
-    email: Type.String({ format: 'email' }),
+    email: Type.Optional(Type.String({ format: 'email' })),
     displayName: Type.Optional(Type.String()),
 });
 
@@ -32,7 +32,7 @@ export type CreateUser = Static<typeof CreateUserSchema>;
 
 export const UserResponseSchema = Type.Object({
     _id: Type.String(),
-    email: Type.String(),
+    email: Type.Optional(Type.String()),
     displayName: Type.Optional(Type.String()),
     profilePictureUrl: Type.Optional(Type.String()),
     profilePictureFullUrl: Type.Optional(Type.String()),

@@ -21,73 +21,23 @@ Authorization: Bearer <token>
 
 ## Auth Endpoints
 
-### POST /api/auth/magic-link
+### POST /api/auth/passkey/signup/start
 
-Send a magic link to the user's email.
+Public. Start account creation with `{ "displayName": "Your name" }` (1–80 characters). Returns WebAuthn creation options for a discoverable passkey with user verification required. No account is stored until verification succeeds.
 
-**Request:**
+### POST /api/auth/passkey/signup/finish
 
-```json
-{
-    "email": "user@example.com"
-}
-```
+Public. Submit the browser registration response. Returns `{ "accessToken": "...", "user": { "_id": "...", "displayName": "Your name" } }` after verification. No email is required.
 
-**Response:**
+### POST /api/auth/passkey/login/start and /finish
 
-```json
-{
-    "success": true,
-    "message": "Magic link sent"
-}
-```
-
-### POST /api/auth/verify
-
-Verify a magic link token.
-
-**Request:**
-
-```json
-{
-    "token": "abc123..."
-}
-```
-
-**Response:**
-
-```json
-{
-    "accessToken": "eyJ...",
-    "refreshToken": "eyJ...",
-    "user": {
-        "_id": "507f1f77bcf86cd799439011",
-        "email": "user@example.com",
-        "name": "John Doe"
-    }
-}
-```
+Public. Start with an empty body; submit the browser authentication response to `/finish` to receive an access token and user. Sign-in uses discoverable passkeys without an email filter.
 
 ### POST /api/auth/refresh
 
-Refresh an expired access token.
+Requires a valid bearer token. Returns a fresh access token and user, extending the session by 14 days. An expired token requires passkey sign-in.
 
-**Request:**
-
-```json
-{
-    "refreshToken": "eyJ..."
-}
-```
-
-**Response:**
-
-```json
-{
-    "accessToken": "eyJ...",
-    "refreshToken": "eyJ..."
-}
-```
+Email login endpoints have been removed. See [Authentication](eng-auth.md) for security and deployment details.
 
 ### POST /api/auth/passkey/register/start
 

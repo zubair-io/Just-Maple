@@ -30,7 +30,7 @@ export class ShareModalComponent {
   readonly closed = output<void>();
   readonly membersChanged = output<void>();
 
-  readonly emailInput = signal('');
+  readonly accountIdInput = signal('');
   readonly isSharing = signal(false);
   readonly shareError = signal<string | null>(null);
   readonly selectedAccessLevel = signal<'read' | 'write'>('write');
@@ -88,17 +88,17 @@ export class ShareModalComponent {
   }
 
   async shareNotebook(): Promise<void> {
-    const email = this.emailInput().trim();
-    if (!email) return;
+    const userId = this.accountIdInput().trim();
+    if (!userId) return;
 
     this.isSharing.set(true);
     this.shareError.set(null);
 
     this.notebookService
-      .shareNotebook(this.notebook()._id, email, this.selectedAccessLevel())
+      .shareNotebook(this.notebook()._id, userId, this.selectedAccessLevel())
       .subscribe({
         next: () => {
-          this.emailInput.set('');
+          this.accountIdInput.set('');
           this.isSharing.set(false);
           this.membersChanged.emit();
         },

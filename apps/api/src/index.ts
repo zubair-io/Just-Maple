@@ -216,7 +216,6 @@ async function main() {
     const envName = Bun.env.NODE_ENV === 'production' ? 'production' : 'development';
     console.log(`🍁 PaperbarkMaple API running at http://localhost:${config.port}`);
     console.log(`   Environment: ${envName}`);
-    console.log(`   MongoDB: ${config.mongodbUri}`);
     console.log(`   Redis: ${redisPubSub.connected ? config.redisUrl : 'not connected'}`);
     console.log(`   WebSocket: ws://localhost:${config.port}/ws/realtime`);
     console.log(`   Frontend: ${frontendAvailable ? 'serving from ' + STATIC_DIR : 'not built'}`);

@@ -1,3 +1,4 @@
+import { ensurePasskeyIndexes } from './passkey-indexes';
 import { MongoClient, Db } from 'mongodb';
 import { config } from '../config';
 import { seedBotTemplates } from './seed-bots';
@@ -10,7 +11,7 @@ export async function connectToDatabase(): Promise<Db> {
     if (db) {
         return db;
     }
-    console.log(`Connecting to MongoDB at ${config.mongodbUri}...`);
+    console.log('Connecting to MongoDB...');
     try {
         client = new MongoClient(config.mongodbUri + '', {
             maxPoolSize: 10,
@@ -66,15 +67,7 @@ async function createUniqueIndex(
 }
 
 async function createIndexes(database: Db): Promise<void> {
-    // Users collection
-    await createUniqueIndex(database, 'users', { email: 1 }, 'email');
-
-    // Magic links collection with TTL
-    await createUniqueIndex(database, 'magic_links', { token: 1 }, 'token');
-    await database
-        .collection('magic_links')
-        .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-    await database.collection('magic_links').createIndex({ email: 1 });
+    await ensurePasskeyIndexes(database);
 
     // Passkeys collection
     await createUniqueIndex(database, 'passkeys', { credentialId: 1 }, 'credentialId');
