@@ -2,15 +2,22 @@
   <div class="notebook-landing flex flex-col h-full overflow-hidden bg-[var(--color-bg)]">
     <!-- Header -->
     <header
-      class="flex-none flex items-center gap-4 px-6 py-4 border-b border-[var(--color-border)] bg-[var(--color-bg)]"
+      class="min-h-20 box-border flex-none flex items-center gap-4 flex-wrap px-6 py-4 border-b border-[var(--color-border)] bg-[var(--color-sidebar)]"
     >
-      <!-- Back button -->
+      <!-- Brand links back to the notebook home. -->
       <a
         routerLink="/"
-        aria-label="Back to canvas (Esc)"
-        class="w-11 h-11 flex-none flex items-center justify-center font-sans font-bold text-xl text-[var(--color-text-main)] bg-transparent border-1.5 border-[var(--color-border)] hover:border-[var(--color-text-muted)] hover:bg-[var(--color-surface)] rounded-lg cursor-pointer transition-all no-underline"
+        aria-label="Just Maple home"
+        class="flex h-8 flex-none items-center gap-2.5 no-underline text-[var(--color-text-main)]"
       >
-        ←
+        <img
+          src="https://hornbeam.justmaple.app/data/assets/justmaple.svg"
+          alt=""
+          class="w-8 h-8"
+        />
+        <span class="font-serif font-bold text-lg tracking-tight whitespace-nowrap"
+          >Just Maple</span
+        >
       </a>
 
       <!-- Switcher dropdown container -->
