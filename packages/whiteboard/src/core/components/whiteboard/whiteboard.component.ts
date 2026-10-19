@@ -97,6 +97,7 @@ export class WhiteboardComponent implements OnDestroy {
     }
 
     onToolChange(type: WhiteboardToolType): void {
+        if (type === this.activeToolType()) return;
         // Deactivate current tool
         const current = this.activeTool();
         if (current) {
@@ -161,6 +162,14 @@ export class WhiteboardComponent implements OnDestroy {
             event.target instanceof HTMLInputElement ||
             event.target instanceof HTMLTextAreaElement
         ) {
+            return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && ['z', 'y'].includes(event.key.toLowerCase())) {
+            event.preventDefault();
+            if (event.key.toLowerCase() === 'y' || event.shiftKey)
+                this.whiteboardService.redo(this.pageId());
+            else this.whiteboardService.undo(this.pageId());
             return;
         }
 

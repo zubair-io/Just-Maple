@@ -54,6 +54,8 @@ export class KanbanBoardComponent implements OnInit, OnDestroy {
   readonly archivedCount = signal(0);
   readonly isLoading = signal(true);
 
+  readonly viewMode = signal<'board' | 'list'>('board');
+
   // UI state
   readonly editingLaneId = signal<string | null>(null);
   readonly editingCardId = signal<string | null>(null);
