@@ -1,122 +1,97 @@
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 
-test.describe('Authentication', () => {
-    test('should display login page for unauthenticated users', async ({ page }) => {
-        await page.goto('/login');
+test.describe('Passkey-only authentication', () => {
+    test.skip(
+        ({ browserName }) => browserName !== 'chromium',
+        'Virtual authenticator requires CDP',
+    );
 
-        // Check that we're on the login page
-        await expect(page).toHaveURL(/\/login/);
-
-        // Check for email input
-        await expect(page.locator('input#email')).toBeVisible();
-    });
-
-    test('should send magic link and show success message', async ({ page }) => {
-        await page.goto('/login');
-
-        // Wait for the page to load
-        await page.waitForLoadState('networkidle');
-
-        // Fill in email - use a more flexible selector
-        const emailInput = page.locator('input[type="email"]').first();
-        await expect(emailInput).toBeVisible({ timeout: 5000 });
-        await emailInput.fill('test@example.com');
-
-        // Click send magic link button - use text content matcher
-        const sendButton = page.locator('button:has-text("Send Magic Link")');
-        await expect(sendButton).toBeVisible({ timeout: 5000 });
-        await sendButton.click();
-
-        // Wait for the API call to complete and view to switch
-        // The code verification form shows when emailSent() is true
-        // Use a more flexible selector for the code input
-        const codeInput = page.locator('input[inputmode="numeric"]');
-        await expect(codeInput).toBeVisible({
-            timeout: 15000,
-        });
-
-        // Also verify the success message is shown
-        await expect(page.locator('text=Check your email')).toBeVisible({ timeout: 5000 });
-    });
-
-    test('should successfully authenticate with valid token', async ({ testUser, page }) => {
-        // testUser fixture already handles authentication
-        await page.goto('/');
-        // Set the auth data in localStorage using the correct key format
-        await page.evaluate(
-            ({ token, userId, email }) => {
-                const storageKey = `auth:${window.location.origin}`;
-                const authData = {
-                    accessToken: token,
-                    user: {
-                        _id: userId,
-                        email: email,
-                    },
-                };
-                localStorage.setItem(storageKey, JSON.stringify(authData));
+    test('creates an email-free account, signs out, and signs in with its discoverable passkey', async ({
+        page,
+    }) => {
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('WebAuthn.enable');
+        await cdp.send('WebAuthn.addVirtualAuthenticator', {
+            options: {
+                protocol: 'ctap2',
+                transport: 'internal',
+                hasResidentKey: true,
+                hasUserVerification: true,
+                isUserVerified: true,
+                automaticPresenceSimulation: true,
             },
-            { token: testUser.token, userId: testUser.userId, email: testUser.email },
-        );
-        await page.reload();
-
-        // Should not be on login page
-        await expect(page).not.toHaveURL(/login|auth/);
-
-        // Check for authenticated UI elements (adjust based on your app)
-        // For example, user menu or profile indicator
-        await page.waitForLoadState('networkidle');
-    });
-
-    test('should show user email after login', async ({ authenticatedPage }) => {
-        // User should be logged in via fixture
-        await expect(authenticatedPage).not.toHaveURL(/login|auth/);
-
-        // The authenticated page should show user-specific content
-        await authenticatedPage.waitForLoadState('networkidle');
-    });
-
-    test('should logout successfully', async ({ authenticatedPage }) => {
-        // Find and click logout button (adjust selector)
-        const logoutButton = authenticatedPage.locator('button', { hasText: /logout|sign out/i });
-
-        if (await logoutButton.isVisible()) {
-            await logoutButton.click();
-
-            // Should redirect to login
-            await expect(authenticatedPage).toHaveURL(/login|auth/, { timeout: 5000 });
-        }
-    });
-
-    test('should handle invalid token gracefully', async ({ page }) => {
-        // Set invalid token using correct key format
-        await page.goto('/');
-        await page.evaluate(() => {
-            const storageKey = `auth:${window.location.origin}`;
-            const authData = {
-                accessToken: 'invalid-token-12345',
-                user: {
-                    _id: 'invalid-user-id',
-                    email: 'invalid@example.com',
-                },
-            };
-            localStorage.setItem(storageKey, JSON.stringify(authData));
         });
-
-        // Try to access protected route - should redirect to login or show error
-        await page.reload();
-        await page.waitForTimeout(2000); // Wait for auth check and redirect
-
-        // Should either be on login page or show login UI or stay on main page (depends on app behavior)
-        const isOnLoginPage = page.url().includes('/login');
-        const hasEmailInput = await page
-            .locator('input#email')
-            .isVisible({ timeout: 2000 })
-            .catch(() => false);
-
-        // If neither, the app might handle invalid tokens by staying on the page
-        // Just verify we didn't crash
-        const pageIsLoaded = await page.locator('body').isVisible();
-
-        expect(isOnLoginPage || hasEmailInput || pageIsLoaded).toBeTruthy();
+        await page.goto('/login?returnUrl=%2Fsettings');
+        await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible();
+        await expect(page.locator('input[type="email"]')).toHaveCount(0);
+        await page.getByRole('button', { name: 'New to Just Maple? Create an account' }).click();
+        await page.locator('input#displayName').fill('Passkey reader');
+        const signupResponse = page.waitForResponse((r) =>
+            r.url().endsWith('/api/auth/passkey/signup/finish'),
+        );
+        await page.getByRole('button', { name: 'Create account with a passkey' }).click();
+        const signup = await signupResponse;
+        expect(signup.ok()).toBeTruthy();
+        const account = await signup.json();
+        expect(account.user.email).toBeUndefined();
+        await expect(page).toHaveURL(/\/settings$/);
+        await page.getByRole('button', { name: /sign out|log out|logout/i }).click();
+        await expect(page).toHaveURL(/\/login/);
+        const loginResponse = page.waitForResponse((r) =>
+            r.url().endsWith('/api/auth/passkey/login/finish'),
+        );
+        await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
+        const login = await loginResponse;
+        expect(login.ok()).toBeTruthy();
+        expect((await login.json()).user._id).toBe(account.user._id);
+        await expect(page).not.toHaveURL(/\/login/);
+        // Old email endpoints cannot issue credentials.
+        expect(
+            (
+                await page.request.post('/api/auth/magic-link', {
+                    data: { email: 'old@example.com' },
+                })
+            ).status(),
+        ).toBe(404);
+        await cdp.detach();
+    });
+    test('rejects a registration response for a different origin without signing in', async ({
+        page,
+    }) => {
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('WebAuthn.enable');
+        await cdp.send('WebAuthn.addVirtualAuthenticator', {
+            options: {
+                protocol: 'ctap2',
+                transport: 'internal',
+                hasResidentKey: true,
+                hasUserVerification: true,
+                isUserVerified: true,
+                automaticPresenceSimulation: true,
+            },
+        });
+        await page.route('**/api/auth/passkey/signup/finish', async (route) => {
+            const body = route.request().postDataJSON();
+            const data = JSON.parse(
+                Buffer.from(body.response.clientDataJSON, 'base64url').toString(),
+            );
+            data.origin = 'https://untrusted.example';
+            body.response.clientDataJSON = Buffer.from(JSON.stringify(data)).toString('base64url');
+            await route.continue({ postData: JSON.stringify(body) });
+        });
+        await page.goto('/login');
+        await page.getByRole('button', { name: 'New to Just Maple? Create an account' }).click();
+        await page.locator('input#displayName').fill('Unverified reader');
+        const response = page.waitForResponse((r) =>
+            r.url().endsWith('/api/auth/passkey/signup/finish'),
+        );
+        await page.getByRole('button', { name: 'Create account with a passkey' }).click();
+        expect((await response).status()).toBe(400);
+        await expect(page.getByRole('alert')).toContainText('Could not create account');
+        await expect(page).toHaveURL(/\/login$/);
+        expect(
+            await page.evaluate(() => localStorage.getItem(`auth:${location.origin}`)),
+        ).toBeNull();
+        await cdp.detach();
     });
 });

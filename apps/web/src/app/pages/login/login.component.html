@@ -1,171 +1,87 @@
 <main class="min-h-screen flex items-center justify-center p-6 bg-[var(--color-cream)]">
-  <div class="w-full max-w-md">
-    <!-- Card -->
-    <div
-      class="bg-[var(--color-snow)] rounded-2xl shadow-xl p-8 md:p-10 border border-[var(--color-pearl)]"
-    >
-      <!-- Header -->
-      <div class="text-center mb-8">
-        <h1
-          class="text-3xl md:text-4xl font-bold font-sans text-[var(--color-charcoal)] mb-2 tracking-tight"
-        >
-          Just Maple
-        </h1>
-        <p class="text-[var(--color-mist)] text-sm font-medium">Enter your email to sign in</p>
-      </div>
-
-      @if (!emailSent()) {
-        <!-- Login Form -->
+  <div
+    class="w-full max-w-md bg-[var(--color-snow)] rounded-2xl shadow-xl p-8 md:p-10 border border-[var(--color-pearl)]"
+  >
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold font-sans text-[var(--color-charcoal)] mb-3">🍁 Just Maple</h1>
+      <h2 class="text-xl font-sans mb-2">
+        {{ creatingAccount() ? 'Create your account' : 'Welcome back' }}
+      </h2>
+      <p class="text-[var(--color-mist)] text-sm">
+        {{
+          creatingAccount()
+            ? 'A display name and a passkey are all you need.'
+            : 'Use your passkey to sign in.'
+        }}
+      </p>
+    </div>
+    @if (authService.error()) {
+      <p
+        role="alert"
+        class="mb-5 p-3 rounded-lg bg-[var(--color-error-bg)] text-sm text-[var(--color-error)]"
+      >
+        {{ authService.error() }}
+      </p>
+    }
+    @if (authService.supportsPasskeys()) {
+      @if (creatingAccount()) {
         <form (ngSubmit)="onSubmit()" class="space-y-6">
-          <!-- Email Field -->
-          <ui-form-field label="Email" for="email">
+          <ui-form-field label="Display name" for="displayName">
             <ui-input
-              type="email"
-              id="email"
-              name="email"
-              placeholder="you@example.com"
+              id="displayName"
+              name="displayName"
+              autocomplete="nickname"
+              placeholder="Your name"
               [required]="true"
-              autocomplete="email"
-              [(ngModel)]="email"
+              [(ngModel)]="displayName"
               [disabled]="authService.isLoading()"
             />
           </ui-form-field>
-
-          <!-- Error Message -->
-          @if (authService.error()) {
-            <div
-              class="p-3 rounded-lg bg-[var(--color-error-bg)] border border-[var(--color-error)]/20"
-            >
-              <p class="text-sm text-[var(--color-error)]">{{ authService.error() }}</p>
-            </div>
-          }
-
-          <!-- Submit Button -->
+          <p class="text-sm text-[var(--color-mist)]">
+            Your device will help you save a passkey. Keep it in a password manager you can access
+            on your other devices.
+          </p>
           <ui-button
             type="submit"
             variant="primary"
             [fullWidth]="true"
             [loading]="authService.isLoading()"
-            [disabled]="!email()"
+            [disabled]="
+              !displayName().trim() || displayName().trim().length > 80 || authService.isLoading()
+            "
           >
-            @if (authService.isLoading()) {
-              Sending...
-            } @else {
-              Send Magic Link
-            }
+            <ui-icon name="fingerprint" size="md" class="mr-2" /> Create account with a passkey
           </ui-button>
-
-          <!-- Passkey Section -->
-          @if (authService.supportsPasskeys()) {
-            <ui-divider text="or" />
-
-            <ui-button
-              type="button"
-              variant="secondary"
-              [fullWidth]="true"
-              [loading]="authService.isLoading()"
-              (clicked)="loginWithPasskey()"
-            >
-              <ui-icon name="fingerprint" size="md" class="mr-2" />
-              Sign in with Passkey
-            </ui-button>
-          } @else {
-            <p class="text-center text-[var(--color-mist)] text-xs mt-4">
-              Passkeys require HTTPS or localhost access.
-            </p>
-          }
         </form>
-
-        <!-- Terms -->
-        <div class="mt-8 text-center">
-          <p class="text-xs text-[var(--color-mist)]">
-            By signing in, you agree to our
-            <a
-              href="#"
-              class="text-[var(--color-maple)] hover:text-[var(--color-maple-light)] underline decoration-1 underline-offset-2 transition-colors"
-              >Terms of Service</a
-            >
-            and
-            <a
-              href="#"
-              class="text-[var(--color-maple)] hover:text-[var(--color-maple-light)] underline decoration-1 underline-offset-2 transition-colors"
-              >Privacy Policy</a
-            >.
-          </p>
-        </div>
       } @else {
-        <!-- Success State -->
-        <div class="text-center space-y-4">
-          <div
-            class="w-16 h-16 bg-[var(--color-success-bg)] rounded-full flex items-center justify-center mx-auto"
-          >
-            <ui-icon name="check_circle" size="xl" color="text-[var(--color-success)]" />
-          </div>
-
-          <h2 class="text-xl font-semibold text-[var(--color-charcoal)]">Check your email!</h2>
-
-          <p class="text-[var(--color-warm-gray)]">
-            We sent a magic link and code to<br />
-            <strong class="text-[var(--color-charcoal)]">{{ email() }}</strong>
-          </p>
-
-          <!-- Code Input -->
-          <div class="mt-6 space-y-4">
-            <ui-divider text="or enter code" />
-
-            <div class="flex justify-center">
-              <input
-                type="text"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                maxlength="6"
-                placeholder="000000"
-                class="w-48 text-center text-2xl font-bold tracking-[0.5em] py-3 px-4 border-2 border-[var(--color-pearl)] rounded-lg focus:border-[var(--color-maple)] focus:outline-none transition-colors"
-                [(ngModel)]="code"
-                [disabled]="authService.isLoading()"
-              />
-            </div>
-
-            @if (codeError()) {
-              <p class="text-sm text-[var(--color-error)]">{{ codeError() }}</p>
-            }
-
-            <ui-button
-              type="button"
-              variant="primary"
-              [fullWidth]="true"
-              [loading]="authService.isLoading()"
-              [disabled]="code().length !== 6"
-              (clicked)="verifyCode()"
-            >
-              Verify Code
-            </ui-button>
-          </div>
-
-          @if (devToken() || devCode()) {
-            <div
-              class="mt-6 p-4 bg-[var(--color-info-bg)] rounded-lg border border-dashed border-[var(--color-info)]"
-            >
-              <p class="text-sm font-semibold text-[var(--color-info)] mb-2">Dev Mode</p>
-              @if (devToken()) {
-                <a
-                  [href]="'/verify?token=' + devToken()"
-                  class="text-[var(--color-info)] hover:underline text-sm break-all block"
-                >
-                  Click here to verify
-                </a>
-              }
-              @if (devCode()) {
-                <p class="text-xs text-[var(--color-mist)] mt-2">Code: {{ devCode() }}</p>
-              }
-            </div>
-          }
-
-          <ui-button type="button" variant="outline" [fullWidth]="true" (clicked)="reset()">
-            Try another email
-          </ui-button>
-        </div>
+        <ui-button
+          type="button"
+          variant="primary"
+          [fullWidth]="true"
+          [loading]="authService.isLoading()"
+          [disabled]="authService.isLoading()"
+          (clicked)="loginWithPasskey()"
+        >
+          <ui-icon name="fingerprint" size="md" class="mr-2" /> Sign in with a passkey
+        </ui-button>
       }
-    </div>
+      <button
+        type="button"
+        class="mt-6 w-full text-sm text-[var(--color-maple)] hover:underline disabled:opacity-50"
+        [disabled]="authService.isLoading()"
+        (click)="creatingAccount.set(!creatingAccount())"
+      >
+        {{
+          creatingAccount()
+            ? 'Already have an account? Sign in'
+            : 'New to Just Maple? Create an account'
+        }}
+      </button>
+    } @else {
+      <p class="text-center text-sm text-[var(--color-mist)]">
+        Open Just Maple in a browser that supports passkeys. A secure HTTPS connection or localhost
+        is required.
+      </p>
+    }
   </div>
 </main>

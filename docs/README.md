@@ -6,7 +6,7 @@ Welcome to the Just Maple documentation. This guide covers everything you need t
 
 Just Maple is a self-hosted note-taking and collaboration platform featuring:
 
-- **Passwordless Authentication** - Passkeys (WebAuthn) and magic links
+- **Passwordless Authentication** - Passkeys (WebAuthn)
 - **Tag-Based Organization** - Folders with permissions and chat containers
 - **Living Documents** - Reactive widgets with AI workflows
 - **Multi-Server Support** - Native apps connect to user's chosen servers

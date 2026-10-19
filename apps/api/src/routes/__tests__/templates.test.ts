@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { createTestApp } from '../../__tests__/helpers/app';
 import {
     createUserFixture,
-    createMagicLinkFixture,
+    createAuthToken,
     createTemplateFixture,
     createNotebookFixture,
 } from '../../__tests__/helpers/fixtures';
@@ -16,16 +16,7 @@ describe.runIf(mongoAvailable)('Template Routes', () => {
     });
 
     async function getAuthToken(userId: string, email: string) {
-        const magicLink = await createMagicLinkFixture({
-            userId,
-            email,
-        });
-
-        const verifyResponse = await app.handle(
-            new Request(`http://localhost/api/auth/verify?token=${magicLink.token}`),
-        );
-        const verifyData = (await verifyResponse.json()) as { accessToken: string };
-        return verifyData.accessToken;
+        return createAuthToken(userId, email);
     }
 
     describe('GET /api/templates', () => {

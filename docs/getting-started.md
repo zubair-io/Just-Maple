@@ -82,9 +82,6 @@ RP_NAME=Just Maple
 RP_ID=localhost
 ORIGIN=http://localhost:4200
 
-# Email (for magic links)
-AZURE_COMMUNICATION_CONNECTION_STRING=your-connection-string
-EMAIL_FROM=noreply@justmaple.app
 
 # Optional: Push Notifications
 APNS_KEY_ID=your-key-id
@@ -130,7 +127,7 @@ Open [http://localhost:4200](http://localhost:4200) in your browser.
 
 You should see the login page with options for:
 
-- Magic link authentication
+- Passkey signup and sign-in
 - Passkey login (if supported by your browser)
 
 ---

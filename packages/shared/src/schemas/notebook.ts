@@ -92,7 +92,7 @@ export type UpdateSharingInput = Static<typeof UpdateSharingSchema>;
 // Notebook member with full user data (for displaying member list)
 export const NotebookMemberSchema = Type.Object({
     userId: Type.String(),
-    email: Type.String({ format: 'email' }),
+    email: Type.Optional(Type.String({ format: 'email' })),
     displayName: Type.Optional(Type.String()),
     profilePictureUrl: Type.Optional(Type.String()),
     accessLevel: AccessLevelSchema,
