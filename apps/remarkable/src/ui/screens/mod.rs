@@ -6,6 +6,7 @@ mod messages;
 mod note_editor;
 mod notebook_list;
 mod whiteboard;
+mod whiteboard_render;
 
 pub use lego::LegoScreen;
 pub use login::LoginScreen;

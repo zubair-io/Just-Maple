@@ -3,6 +3,7 @@
 //! Handles stylus, touch, and button input on reMarkable devices.
 
 use tokio::sync::mpsc;
+mod accumulator;
 
 /// Input event types
 #[derive(Debug, Clone)]
@@ -15,7 +16,7 @@ pub enum InputEvent {
     Button(ButtonEvent),
 }
 
-/// Stylus event data
+/// Stylus event data; x/y and pressure are normalized to 0..1.
 #[derive(Debug, Clone)]
 pub struct StylusEvent {
     pub x: f32,
@@ -38,7 +39,7 @@ pub enum StylusEventType {
     Hover,
 }
 
-/// Touch event data
+/// Touch event data; x/y are normalized to 0..1.
 #[derive(Debug, Clone)]
 pub struct TouchEvent {
     pub x: f32,
@@ -91,7 +92,11 @@ pub enum Gesture {
         direction: SwipeDirection,
     },
     /// Pinch zoom
-    Pinch { center_x: f32, center_y: f32, scale: f32 },
+    Pinch {
+        center_x: f32,
+        center_y: f32,
+        scale: f32,
+    },
     /// Two-finger scroll
     Scroll { delta_x: f32, delta_y: f32 },
 }
@@ -127,62 +132,90 @@ impl InputManager {
         self.event_rx.take()
     }
 
+    pub fn drain(&mut self) -> Vec<InputEvent> {
+        let mut events = Vec::new();
+        if let Some(rx) = self.event_rx.as_mut() {
+            while let Ok(event) = rx.try_recv() {
+                events.push(event);
+            }
+        }
+        events
+    }
+
     /// Start listening for input events (reMarkable device)
     #[cfg(feature = "remarkable")]
     pub async fn start(&self) -> anyhow::Result<()> {
+        use accumulator::{Axis, StylusAccumulator, TouchAccumulator};
         use evdev::{Device, InputEventKind};
-        use tracing::{debug, error, info};
-
-        info!("Starting input listener");
-
-        // Find input devices
-        let mut devices = Vec::new();
-
-        // Stylus device (typically /dev/input/event1 on rM2)
-        if let Ok(device) = Device::open("/dev/input/event1") {
-            devices.push(("stylus", device));
-        }
-
-        // Touch device (typically /dev/input/event2 on rM2)
-        if let Ok(device) = Device::open("/dev/input/event2") {
-            devices.push(("touch", device));
-        }
-
-        // Button device
-        if let Ok(device) = Device::open("/dev/input/event0") {
-            devices.push(("buttons", device));
-        }
-
-        let tx = self.event_tx.clone();
-
-        for (name, mut device) in devices {
-            let tx_clone = tx.clone();
-            tokio::spawn(async move {
-                loop {
-                    match device.fetch_events() {
-                        Ok(events) => {
-                            for event in events {
-                                match event.kind() {
-                                    InputEventKind::AbsAxis(_) if name == "stylus" => {
-                                        // Process stylus events
-                                        // TODO: Accumulate axis events into StylusEvent
-                                    }
-                                    InputEventKind::AbsAxis(_) if name == "touch" => {
-                                        // Process touch events
-                                        // TODO: Accumulate axis events into TouchEvent
-                                    }
-                                    InputEventKind::Key(_) if name == "buttons" => {
-                                        // Process button events
-                                        debug!("Button event: {:?}", event);
-                                    }
-                                    _ => {}
+        // evdev's synchronized Device stream reconstructs state after SYN_DROPPED.
+        // Blocking reads must not occupy Tokio's asynchronous worker threads.
+        for (name, path) in [
+            ("stylus", "/dev/input/event1"),
+            ("touch", "/dev/input/event2"),
+            ("buttons", "/dev/input/event0"),
+        ] {
+            let Ok(mut device) = Device::open(path) else {
+                continue;
+            };
+            let state = device.get_abs_state()?;
+            let axis = |code: usize| Axis {
+                min: state[code].minimum,
+                max: state[code].maximum,
+            };
+            let mut stylus = StylusAccumulator::new(axis(0), axis(1), axis(24));
+            let mut touch = TouchAccumulator::new(axis(53), axis(54));
+            // Seed persistent axis state: Linux emits only changed axes.
+            for code in [0, 1, 24, 26, 27] {
+                stylus.axis(code as u16, state[code].value);
+            }
+            if let Ok(keys) = device.get_key_state() {
+                stylus.key(320, i32::from(keys.contains(evdev::Key::BTN_TOOL_PEN)));
+                stylus.key(330, i32::from(keys.contains(evdev::Key::BTN_TOUCH)));
+            }
+            let tx = self.event_tx.clone();
+            std::thread::spawn(move || loop {
+                if tx.is_closed() {
+                    break;
+                }
+                match device.fetch_events() {
+                    Ok(events) => {
+                        for event in events {
+                            match event.kind() {
+                                InputEventKind::AbsAxis(axis) if name == "stylus" => {
+                                    stylus.axis(axis.0, event.value())
                                 }
+                                InputEventKind::Key(key) if name == "stylus" => {
+                                    stylus.key(key.0, event.value())
+                                }
+                                InputEventKind::AbsAxis(axis) if name == "touch" => {
+                                    touch.axis(axis.0, event.value())
+                                }
+                                InputEventKind::Synchronization(code) if code.0 == 0 => {
+                                    let events = if name == "stylus" {
+                                        stylus
+                                            .report()
+                                            .map(InputEvent::Stylus)
+                                            .into_iter()
+                                            .collect::<Vec<_>>()
+                                    } else if name == "touch" {
+                                        touch.report().into_iter().map(InputEvent::Touch).collect()
+                                    } else {
+                                        Vec::new()
+                                    };
+                                    for mut event in events {
+                                        orient(&mut event);
+                                        if tx.blocking_send(event).is_err() {
+                                            return;
+                                        }
+                                    }
+                                }
+                                _ => {}
                             }
                         }
-                        Err(e) => {
-                            error!("Error reading {} events: {}", name, e);
-                            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                        }
+                    }
+                    Err(error) => {
+                        tracing::error!(%error, name, "Input device disconnected");
+                        break;
                     }
                 }
             });
@@ -202,6 +235,28 @@ impl InputManager {
     pub fn predict_stylus(&mut self, current: &StylusEvent) -> Option<StylusEvent> {
         self.stroke_predictor.predict(current)
     }
+}
+
+#[cfg(feature = "remarkable")]
+fn orient(event: &mut InputEvent) {
+    use libremarkable::device::{rotate::InputDeviceRotation, CURRENT_DEVICE};
+    let (x, y, placement) = match event {
+        InputEvent::Stylus(e) => (&mut e.x, &mut e.y, CURRENT_DEVICE.get_wacom_placement()),
+        InputEvent::Touch(e) => (
+            &mut e.x,
+            &mut e.y,
+            CURRENT_DEVICE.get_multitouch_placement(),
+        ),
+        _ => return,
+    };
+    let (rx, ry) = match placement.rotation {
+        InputDeviceRotation::Rot0 => (*x, *y),
+        InputDeviceRotation::Rot90 => (1. - *y, *x),
+        InputDeviceRotation::Rot180 => (1. - *x, 1. - *y),
+        InputDeviceRotation::Rot270 => (*y, 1. - *x),
+    };
+    *x = if placement.invert_x { 1. - rx } else { rx };
+    *y = if placement.invert_y { 1. - ry } else { ry };
 }
 
 impl Default for InputManager {

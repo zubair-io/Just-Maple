@@ -276,16 +276,52 @@ impl LocalStorage {
 
     /// Persist a whiteboard edit and acknowledge only after sled flushes it.
     /// CAS prevents a concurrent cache write from being replaced by a stale snapshot.
-    pub fn save_whiteboard(&self, id: &str, additions: &[maple_shared::WhiteboardElement]) -> Result<()> {
+    pub fn save_whiteboard(
+        &self,
+        id: &str,
+        additions: &[maple_shared::WhiteboardElement],
+    ) -> Result<()> {
         for _ in 0..8 {
             let before = self.documents.get(id)?;
             let after = whiteboard::append(before.as_deref(), additions)?;
-            if self.documents.compare_and_swap(id, before.as_deref(), Some(after))?.is_ok() {
+            if self
+                .documents
+                .compare_and_swap(id, before.as_deref(), Some(after))?
+                .is_ok()
+            {
                 self.flush()?;
                 return Ok(());
             }
         }
         anyhow::bail!("Whiteboard changed while saving; retry the save")
+    }
+
+    /// Merge remote state with local edits rather than replacing an offline snapshot.
+    pub fn merge_document(&self, id: &str, update: &[u8]) -> Result<()> {
+        use yrs::{updates::decoder::Decode, Doc, ReadTxn, StateVector, Transact, Update};
+        for _ in 0..8 {
+            let before = self.documents.get(id)?;
+            let doc = Doc::new();
+            {
+                let mut txn = doc.transact_mut();
+                if let Some(bytes) = before.as_deref() {
+                    txn.apply_update(Update::decode_v1(bytes)?)?;
+                }
+                txn.apply_update(Update::decode_v1(update)?)?;
+            }
+            let merged = doc
+                .transact()
+                .encode_state_as_update_v1(&StateVector::default());
+            if self
+                .documents
+                .compare_and_swap(id, before.as_deref(), Some(merged))?
+                .is_ok()
+            {
+                self.flush()?;
+                return Ok(());
+            }
+        }
+        anyhow::bail!("Document changed while applying remote update")
     }
 
     /// Delete a document
@@ -316,6 +352,54 @@ impl LocalStorage {
         self.collectables.clear()?;
         self.offline_queue.clear()?;
         self.documents.clear()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod realtime_tests {
+    use super::*;
+    #[test]
+    fn remote_document_merge_preserves_local_edits_and_rejects_corruption() -> Result<()> {
+        use yrs::{Doc, Map, ReadTxn, StateVector, Transact};
+        let path = std::env::temp_dir().join(format!("maple-merge-{}", uuid::Uuid::new_v4()));
+        {
+            let storage = LocalStorage::new(&path)?;
+            let local = Doc::new();
+            let map = local.get_or_insert_map("local");
+            map.insert(&mut local.transact_mut(), "saved", "yes");
+            storage.store_document(
+                "page",
+                &local
+                    .transact()
+                    .encode_state_as_update_v1(&StateVector::default()),
+            )?;
+            let remote = Doc::new();
+            let map = remote.get_or_insert_map("remote");
+            map.insert(&mut remote.transact_mut(), "received", "yes");
+            let update = remote
+                .transact()
+                .encode_state_as_update_v1(&StateVector::default());
+            storage.merge_document("page", &update)?;
+            storage.merge_document("page", &update)?;
+            let before = storage.get_document("page")?.unwrap();
+            assert!(storage.merge_document("page", b"corrupt").is_err());
+            assert_eq!(storage.get_document("page")?.unwrap(), before);
+            use yrs::{updates::decoder::Decode, Update};
+            let merged = Doc::new();
+            merged
+                .transact_mut()
+                .apply_update(Update::decode_v1(&before)?)?;
+            assert!(merged
+                .get_or_insert_map("local")
+                .get(&merged.transact(), "saved")
+                .is_some());
+            assert!(merged
+                .get_or_insert_map("remote")
+                .get(&merged.transact(), "received")
+                .is_some());
+        }
+        std::fs::remove_dir_all(path)?;
         Ok(())
     }
 }

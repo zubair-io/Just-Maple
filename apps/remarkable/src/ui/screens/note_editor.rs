@@ -1,6 +1,6 @@
 //! Note editor screen
 
-use crate::ui::Screen;
+use crate::ui::{widgets::keyboard::KeyboardState, Screen};
 use crate::AppState;
 use egui::{Color32, RichText, ScrollArea, Ui};
 use maple_shared::Page;
@@ -24,6 +24,7 @@ pub struct NoteEditorScreen {
     is_dirty: bool,
     loading: Arc<Mutex<bool>>,
     show_keyboard: bool,
+    keyboard: KeyboardState,
     data_loaded: bool,
 }
 
@@ -37,6 +38,7 @@ impl NoteEditorScreen {
             is_dirty: false,
             loading: Arc::new(Mutex::new(false)),
             show_keyboard: false,
+            keyboard: KeyboardState::default(),
             data_loaded: false,
         }
     }
@@ -156,13 +158,14 @@ impl NoteEditorScreen {
             let state_guard = state_clone.read().await;
 
             // Get id from local storage if available (list endpoint stores basic info)
-            let page_route_id = if let Ok(Some(page)) = state_guard.storage.get_page::<Page>(&page_id) {
-                tracing::debug!("Found page in local storage, id: {}", page.id);
-                page.id.clone()
-            } else {
-                // Assume page_id is the id if not in storage
-                page_id.clone()
-            };
+            let page_route_id =
+                if let Ok(Some(page)) = state_guard.storage.get_page::<Page>(&page_id) {
+                    tracing::debug!("Found page in local storage, id: {}", page.id);
+                    page.id.clone()
+                } else {
+                    // Assume page_id is the id if not in storage
+                    page_id.clone()
+                };
 
             // Always fetch from API to get full content
             if let Some(api) = state_guard.sync.api().await {
@@ -307,10 +310,7 @@ impl NoteEditorScreen {
             } else {
                 // Queue for offline sync
                 state_guard.sync.queue_offline(
-                    crate::sync::offline::OfflineOperation::UpdatePage {
-                        id: page_id,
-                        input,
-                    },
+                    crate::sync::offline::OfflineOperation::UpdatePage { id: page_id, input },
                 );
             }
         });
@@ -335,36 +335,15 @@ impl NoteEditorScreen {
                     ui.horizontal(|ui| {
                         ui.add_space(4.0);
                         for key in row {
-                            let key_width = if key.contains("space") {
-                                300.0
-                            } else {
-                                45.0
-                            };
+                            let key_width = if key.contains("space") { 300.0 } else { 45.0 };
 
-                            let button = egui::Button::new(*key).min_size(egui::vec2(key_width, 45.0));
+                            let button = egui::Button::new(self.keyboard.label(key))
+                                .selected(*key == "⇧" && self.keyboard.shifted())
+                                .min_size(egui::vec2(key_width, 45.0));
 
                             if ui.add(button).clicked() {
-                                match *key {
-                                    "⌫" => {
-                                        self.local_content.pop();
-                                        self.is_dirty = true;
-                                    }
-                                    "⏎" => {
-                                        self.local_content.push('\n');
-                                        self.is_dirty = true;
-                                    }
-                                    "⇧" => {
-                                        // Shift - TODO: implement shift state
-                                    }
-                                    k if k.contains("space") => {
-                                        self.local_content.push(' ');
-                                        self.is_dirty = true;
-                                    }
-                                    k => {
-                                        self.local_content.push_str(k);
-                                        self.is_dirty = true;
-                                    }
-                                }
+                                let changed = self.keyboard.press(key, &mut self.local_content);
+                                self.is_dirty |= changed;
                             }
                         }
                     });

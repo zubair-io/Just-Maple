@@ -29,6 +29,10 @@ impl NotebookListScreen {
         }
     }
 
+    pub fn invalidate(&mut self) {
+        self.last_refresh = None;
+    }
+
     pub fn ui(&mut self, ui: &mut Ui, state: &Arc<RwLock<AppState>>) -> Option<Screen> {
         let mut navigation = None;
 
