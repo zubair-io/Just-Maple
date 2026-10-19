@@ -233,10 +233,11 @@
         } @else if (members().length <= 1) {
           <button
             (click)="openShareModal()"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] text-xs font-semibold rounded-lg transition-colors border-none bg-transparent cursor-pointer"
+            aria-label="Share notebook"
+            title="Share notebook"
+            class="flex items-center justify-center h-9 w-9 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] rounded-lg transition-colors border border-[var(--color-border)] bg-transparent cursor-pointer"
           >
-            <span class="material-symbols-rounded text-base">share</span>
-            <span class="hidden md:inline">Share</span>
+            <span class="material-symbols-rounded text-base" aria-hidden="true">share</span>
           </button>
         }
       </div>
