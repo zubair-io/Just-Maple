@@ -661,6 +661,27 @@ test.describe('Whiteboard', () => {
         await expect
             .poll(() => whiteboardElementCount(page.request, testUser.token, board.id))
             .toBe(1);
+        // A text editor elsewhere in the document retains native undo.
+        const interceptedTextUndo = await page.evaluate(() => {
+            const editor = document.createElement('div');
+            editor.contentEditable = 'true';
+            document.body.append(editor);
+            editor.focus();
+            const event = new KeyboardEvent('keydown', {
+                key: 'z',
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true,
+            });
+            editor.dispatchEvent(event);
+            editor.remove();
+            return event.defaultPrevented;
+        });
+        expect(interceptedTextUndo).toBe(false);
+        await expect
+            .poll(() => whiteboardElementCount(page.request, testUser.token, board.id))
+            .toBe(1);
+        await page.locator('app-whiteboard').focus();
         await page.keyboard.press('ControlOrMeta+z');
         await expect
             .poll(() => whiteboardElementCount(page.request, testUser.token, board.id))
