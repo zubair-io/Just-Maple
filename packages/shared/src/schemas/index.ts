@@ -29,3 +29,4 @@ export * from './google-calendar';
 export * from './atoms';
 export * from './connector-manifest';
 export * from './canvas';
+export * from './mac-data';

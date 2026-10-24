@@ -14,9 +14,11 @@ class ServerConfigService {
     private let server: ServerConfig = {
         #if DEBUG
         #if os(macOS)
+        // MAPLE_DEV_SERVER_URL lets a worktree's dev server run beside the main one,
+        // e.g. `open JapaneseMaple.app --env MAPLE_DEV_SERVER_URL=http://localhost:4300`.
         return ServerConfig(
             name: "Development",
-            url: "http://localhost:4200"
+            url: ProcessInfo.processInfo.environment["MAPLE_DEV_SERVER_URL"] ?? "http://localhost:4200"
         )
         #else
         return ServerConfig(
