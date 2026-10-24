@@ -37,7 +37,7 @@
         <form (ngSubmit)="onSubmit()" class="space-y-6">
           <ui-form-field label="Display name" for="displayName">
             <ui-input
-              id="displayName"
+              [id]="'displayName'"
               name="displayName"
               autocomplete="nickname"
               placeholder="Your name"
@@ -91,6 +91,48 @@
         Open Just Maple in a browser that supports passkeys. A secure HTTPS connection or localhost
         is required.
       </p>
+    }
+    @if (devTokenLogin) {
+      <details class="mt-6 pt-6 border-t border-[var(--color-pearl)]">
+        <summary class="cursor-pointer text-sm font-medium text-[var(--color-maple)]">
+          Development sign-in
+        </summary>
+        <form (ngSubmit)="loginWithDevToken()" class="mt-4 space-y-4">
+          <p class="text-sm text-[var(--color-mist)]">
+            Use your account email and a valid token issued by this development API.
+          </p>
+          <ui-form-field label="Email" for="devEmail">
+            <ui-input
+              [id]="'devEmail'"
+              name="devEmail"
+              type="email"
+              autocomplete="email"
+              [required]="true"
+              [(ngModel)]="devEmail"
+              [disabled]="authService.isLoading()"
+            />
+          </ui-form-field>
+          <ui-form-field label="Development token (JWT)" for="devToken">
+            <ui-input
+              [id]="'devToken'"
+              name="devToken"
+              type="password"
+              autocomplete="off"
+              [required]="true"
+              [(ngModel)]="devToken"
+              [disabled]="authService.isLoading()"
+            />
+          </ui-form-field>
+          <ui-button
+            type="submit"
+            variant="primary"
+            [fullWidth]="true"
+            [loading]="authService.isLoading()"
+            [disabled]="!devEmail().trim() || !devToken().trim() || authService.isLoading()"
+            >Sign in with token</ui-button
+          >
+        </form>
+      </details>
     }
   </div>
 </main>

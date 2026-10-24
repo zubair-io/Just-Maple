@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ProfileAvatarComponent } from '../profile-avatar/profile-avatar.component';
 
@@ -19,6 +19,7 @@ export interface ToastData {
   standalone: true,
   imports: [CommonModule, ProfileAvatarComponent],
   templateUrl: './toast.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './toast.component.scss',
 })
 export class ToastComponent {

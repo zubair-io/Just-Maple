@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -6,6 +6,7 @@ import { CommonModule } from '@angular/common';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './settings-header.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './settings-header.component.scss',
 })
 export class SettingsHeaderComponent {

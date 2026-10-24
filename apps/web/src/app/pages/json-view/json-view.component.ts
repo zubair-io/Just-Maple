@@ -1,4 +1,12 @@
-import { Component, computed, inject, signal, OnDestroy, effect } from '@angular/core';
+import {
+  Component,
+  computed,
+  inject,
+  signal,
+  OnDestroy,
+  effect,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -17,6 +25,7 @@ type ViewMode = 'code' | 'form' | 'split';
   standalone: true,
   imports: [CommonModule, NoteHeaderComponent, JsonCodeEditorComponent, JsonFormBuilderComponent],
   templateUrl: './json-view.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './json-view.component.scss',
 })
 export class JsonViewComponent implements OnDestroy {

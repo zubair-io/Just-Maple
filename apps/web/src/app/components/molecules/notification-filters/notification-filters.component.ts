@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export interface NotificationFilters {
@@ -11,6 +11,7 @@ export interface NotificationFilters {
   standalone: true,
   imports: [CommonModule],
   templateUrl: './notification-filters.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './notification-filters.component.scss',
 })
 export class NotificationFiltersComponent {

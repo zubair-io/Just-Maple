@@ -18,7 +18,7 @@ export default defineConfig({
     },
     server: {
       deps: {
-        inline: [/@angular/, /@simplewebauthn/, /@analogjs/, /@tiptap/],
+        inline: [/@angular/, /@simplewebauthn/, /@analogjs/, /@tiptap/, /@openuidev/],
       },
     },
   },

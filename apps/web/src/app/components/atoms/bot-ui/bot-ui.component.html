@@ -1,0 +1,13 @@
+@if (source(); as source) {
+  <openui-renderer
+    [response]="source"
+    [library]="library"
+    (action)="onAction($event)"
+    (error)="renderFailed.set(true)"
+  />
+}
+@if (!source() || renderFailed()) {
+  <p role="status">
+    The interactive response could not be displayed. Please ask the bot to respond as text.
+  </p>
+}

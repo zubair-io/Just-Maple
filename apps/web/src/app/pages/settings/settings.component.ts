@@ -1,4 +1,11 @@
-import { Component, inject, signal, OnInit, computed } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  OnInit,
+  computed,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -22,6 +29,7 @@ interface PasskeyInfo {
   standalone: true,
   imports: [CommonModule, FormsModule, ProfileAvatarComponent, SettingsHeaderComponent],
   templateUrl: './settings.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './settings.component.scss',
 })
 export class SettingsComponent implements OnInit {

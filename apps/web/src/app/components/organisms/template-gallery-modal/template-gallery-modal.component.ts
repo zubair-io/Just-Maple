@@ -1,4 +1,11 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  OnInit,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
@@ -24,6 +31,7 @@ type CategoryFilter = 'all' | 'work' | 'personal' | 'planning' | 'custom';
   standalone: true,
   imports: [CommonModule, FormsModule, TemplateCardComponent],
   templateUrl: './template-gallery-modal.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './template-gallery-modal.component.scss',
 })
 export class TemplateGalleryModalComponent implements OnInit {

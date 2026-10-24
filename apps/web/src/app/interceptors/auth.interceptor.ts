@@ -21,7 +21,11 @@ export const authInterceptor: HttpInterceptorFn = (
   }
 
   // Skip auth header for certain endpoints
-  const skipAuthUrls = ['/api/auth/passkey/signup/', '/api/auth/passkey/login/'];
+  const skipAuthUrls = [
+    '/api/auth/passkey/signup/',
+    '/api/auth/passkey/login/',
+    '/api/auth/dev-token',
+  ];
   if (
     skipAuthUrls.some((skipUrl) => req.url.includes(skipUrl)) ||
     req.url.startsWith('/api/public/')

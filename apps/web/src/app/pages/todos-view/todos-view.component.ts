@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import {
@@ -14,6 +14,7 @@ import type { TodoQueryResult, TodoPriority, TodoColor } from '@maple/shared';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './todos-view.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './todos-view.component.scss',
 })
 export class TodosViewComponent implements OnInit {

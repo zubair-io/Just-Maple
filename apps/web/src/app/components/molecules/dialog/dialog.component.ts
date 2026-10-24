@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
@@ -9,6 +9,7 @@ import type { DialogConfig } from './dialog.service';
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './dialog.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './dialog.component.scss',
 })
 export class DialogContentComponent {

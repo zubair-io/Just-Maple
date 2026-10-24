@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -14,6 +14,7 @@ import { NoteHeaderComponent, DialogService } from '../../components';
   standalone: true,
   imports: [CommonModule, WhiteboardComponent, NoteHeaderComponent],
   templateUrl: './whiteboard-view.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './whiteboard-view.component.scss',
 })
 export class WhiteboardViewComponent implements OnDestroy {
