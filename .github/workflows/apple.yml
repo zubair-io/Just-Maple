@@ -35,4 +35,5 @@ jobs:
           xcodebuild -project apps/apple/JapaneseMaple.xcodeproj \
             -scheme JapaneseMaple -configuration Release \
             -destination "$DESTINATION" -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -skipPackagePluginValidation -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO build
