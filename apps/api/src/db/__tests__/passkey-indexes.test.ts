@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import type { Db } from 'mongodb';
 import { ensurePasskeyIndexes } from '../passkey-indexes';
 import { testDb, mongoAvailable } from '../../__tests__/setup';
 import {
@@ -20,10 +21,7 @@ describe.runIf(mongoAvailable)('Passkey storage', () => {
             'email',
             'legacy@example.com',
         );
-        expect((await users.indexes()).find((i) => i.name === 'email_1')).toMatchObject({
-            unique: true,
-            sparse: true,
-        });
+        expect((await users.indexes()).some((i) => i.key.email === 1 && !i.sparse)).toBe(false);
     });
 
     it('allows only one concurrent consumption of a challenge', async () => {
@@ -44,5 +42,30 @@ describe.runIf(mongoAvailable)('Passkey storage', () => {
                 $set: { expiresAt: new Date(Date.now() - 1000) },
             });
         expect(await consumePasskeyChallenge('expired-challenge', 'login')).toBeNull();
+    });
+});
+
+// Reproduce Cosmos DB's unique-index creation failure without changing a live database.
+describe('Passkey startup compatibility', () => {
+    it('does not create an obsolete email index on an existing collection', async () => {
+        const users = {
+            indexes: vi.fn().mockResolvedValue([{ name: '_id_', key: { _id: 1 } }]),
+            createIndex: vi
+                .fn()
+                .mockRejectedValue(new Error("Detected stuck collection metadata for 'users'.")),
+            dropIndex: vi.fn(),
+        };
+        const challenges = { createIndex: vi.fn().mockResolvedValue('expiresAt_1') };
+        const database = {
+            listCollections: () => ({ hasNext: async () => true }),
+            collection: (name: string) => (name === 'users' ? users : challenges),
+        } as unknown as Db;
+        await ensurePasskeyIndexes(database);
+        expect(users.createIndex).not.toHaveBeenCalled();
+        expect(users.dropIndex).not.toHaveBeenCalled();
+        expect(challenges.createIndex).toHaveBeenCalledWith(
+            { expiresAt: 1 },
+            { expireAfterSeconds: 0 },
+        );
     });
 });

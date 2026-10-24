@@ -7,6 +7,8 @@ import type {
     PageContent,
     Message,
 } from '@maple/shared';
+import { isBotModel } from '@maple/shared';
+import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
@@ -204,15 +206,20 @@ export class BotExecutorService {
     async execute(invocationId: string): Promise<void> {
         const startTime = Date.now();
 
+        let timer: ReturnType<typeof setTimeout> | undefined;
         // Create timeout promise for overall execution
         const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => {
+            timer = setTimeout(() => {
                 reject(new Error(`Bot execution timed out after ${BOT_EXECUTION_TIMEOUT_MS}ms`));
             }, BOT_EXECUTION_TIMEOUT_MS);
         });
 
         // Race execution against timeout
-        await Promise.race([this.executeWithContext(invocationId, startTime), timeoutPromise]);
+        try {
+            await Promise.race([this.executeWithContext(invocationId, startTime), timeoutPromise]);
+        } finally {
+            clearTimeout(timer);
+        }
     }
 
     /**
@@ -235,11 +242,11 @@ export class BotExecutorService {
             config: userBot.config,
             variables: {
                 // Built-in context variables with size limits to prevent memory issues
-                $mentionText: (invocation.context.mentionText || '').slice(0, 1000),
+                $mentionText: (invocation.context.mentionText || '').slice(0, 10000),
                 $content: (invocation.context.fullContent || '').slice(0, 50000), // 50KB limit
                 $documentTitle: (invocation.context.documentTitle || '').slice(0, 200),
                 $selection: (invocation.context.selection || '').slice(0, 10000),
-                $previousMessages: (invocation.context.previousMessages || []).slice(0, 10), // Max 10 messages
+                $previousMessages: (invocation.context.previousMessages || []).slice(-10), // Max 10 messages
                 $userId: invocation.userId,
                 $notebookId: invocation.notebookId,
                 $sourceType: invocation.sourceType,
@@ -266,6 +273,7 @@ export class BotExecutorService {
                 userBot,
                 template,
                 responseContent,
+                ctx,
             );
 
             // Calculate execution time
@@ -361,27 +369,63 @@ export class BotExecutorService {
         }
 
         const userPrompt = this.interpolate(config.userPrompt, ctx.variables);
-        const systemPrompt = config.systemPrompt
+        let systemPrompt = config.systemPrompt
             ? this.interpolate(config.systemPrompt, ctx.variables)
             : undefined;
 
         // Build conversation history from previous messages
-        const previousMessages = (ctx.variables.$previousMessages || []) as Array<{
-            role?: string;
-            content?: string | { type: string; content: unknown[] };
-            senderType?: string;
-        }>;
+        const previousMessages = (
+            (ctx.variables.$previousMessages || []) as Array<{
+                role?: string;
+                content?: string | { type: string; content: unknown[] };
+                senderType?: string;
+                botUI?: Message['botUI'];
+            }>
+        ).map((message) => {
+            if (!message.botUI) return message;
+            const content =
+                typeof message.content === 'string'
+                    ? message.content
+                    : message.content
+                      ? extractTextFromContent(message.content as PageContent)
+                      : '';
+            return {
+                ...message,
+                content: `${content}\n\n${botUIToText(message.botUI)}`.slice(0, 50000),
+            };
+        });
 
+        const provider = config.provider || 'anthropic';
+        const model =
+            ctx.invocation.context.model || ctx.config?.model || config.model || DEFAULT_LLM_MODEL;
+        if (!isBotModel(model, provider))
+            throw new Error('The selected model does not match this bot provider');
+        ctx.variables.$model = model;
+        if (ctx.config?.responseMode !== 'text' && provider !== 'inception') {
+            systemPrompt = `${systemPrompt || ''}\n\n${botUIPrompt}`;
+        }
         let response: string;
 
-        if (config.provider === 'inception') {
-            response = await this.callInceptionAPI({
+        if (provider === 'openai') {
+            response = await this.callOpenAI({
                 apiKey,
-                model: config.model || 'mercury-2',
+                model,
                 systemPrompt,
                 userPrompt,
                 previousMessages,
-                maxTokens: config.maxTokens || 1024,
+                maxTokens: config.maxTokens || 4096,
+            });
+        } else if (provider === 'inception') {
+            response = await this.callInceptionAPI({
+                apiKey,
+                model,
+                systemPrompt,
+                userPrompt,
+                previousMessages,
+                maxTokens: Math.max(
+                    config.maxTokens || 1024,
+                    ctx.config?.responseMode === 'text' ? 1024 : 4096,
+                ),
             });
         } else {
             const isOAuthToken = ctx.config?.isOAuthToken || false;
@@ -399,11 +443,14 @@ export class BotExecutorService {
             response = await this.callClaudeAPI({
                 apiKey,
                 isOAuthToken,
-                model: config.model || DEFAULT_LLM_MODEL,
+                model,
                 systemPrompt: finalSystemPrompt,
                 userPrompt,
                 previousMessages,
-                maxTokens: config.maxTokens || 1024,
+                maxTokens: Math.max(
+                    config.maxTokens || 1024,
+                    ctx.config?.responseMode === 'text' ? 1024 : 4096,
+                ),
             });
         }
 
@@ -604,7 +651,7 @@ export class BotExecutorService {
         const prompt = conversationParts.join('\n\n');
 
         let fullContent = '';
-        process.env.ANTHROPIC_API_KEY = params.apiKey;
+
         // Use env option to pass API key without modifying global process.env (prevents race conditions)
         const result = query({
             prompt,
@@ -616,10 +663,7 @@ export class BotExecutorService {
                           type: 'preset',
                           preset: 'claude_code',
                       },
-                // env: {
-                // ...process.env,
-                //     ANTHROPIC_API_KEY: params.apiKey,
-                // },
+                env: { ...process.env, ANTHROPIC_API_KEY: params.apiKey },
                 permissionMode: 'bypassPermissions',
                 allowDangerouslySkipPermissions: true,
             },
@@ -784,14 +828,71 @@ export class BotExecutorService {
         return data.choices[0]?.message?.content || '';
     }
 
+    private async callOpenAI(params: {
+        apiKey: string;
+        model: string;
+        systemPrompt?: string;
+        userPrompt: string;
+        previousMessages?: Array<{
+            content?: string | { type: string; content: unknown[] };
+            senderType?: string;
+        }>;
+        maxTokens: number;
+    }): Promise<string> {
+        const input = (params.previousMessages || [])
+            .map((msg) => ({
+                role: msg.senderType === 'bot' ? 'assistant' : 'user',
+                content:
+                    typeof msg.content === 'string'
+                        ? msg.content
+                        : msg.content
+                          ? extractTextFromContent(msg.content as PageContent)
+                          : '',
+            }))
+            .filter((msg) => msg.content);
+        input.push({ role: 'user', content: params.userPrompt });
+        const response = await fetch('https://api.openai.com/v1/responses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${params.apiKey}`,
+            },
+            signal: AbortSignal.timeout(55000),
+            body: JSON.stringify({
+                model: params.model,
+                instructions: params.systemPrompt,
+                input,
+                max_output_tokens: params.maxTokens,
+                store: false,
+            }),
+        });
+        if (!response.ok)
+            throw new Error(
+                `OpenAI request failed (${response.status}). Check the model and API key in bot settings.`,
+            );
+        const data = (await response.json()) as {
+            output?: Array<{ content?: Array<{ type: string; text?: string }> }>;
+        };
+        const text = (data.output || [])
+            .flatMap((item) => item.content || [])
+            .filter((block) => block.type === 'output_text')
+            .map((block) => block.text || '')
+            .join('');
+        if (!text)
+            throw new Error(
+                'OpenAI returned no text. Try a larger output budget or a different model.',
+            );
+        return text;
+    }
+
     /**
      * Prepare response content for posting
      */
     private prepareResponse(ctx: ExecutionContext): PageContent {
         const response = String(ctx.variables.$response || '');
-
-        // Convert markdown to ProseMirror JSON
-        return markdownToProseMirror(response);
+        const parsed = parseBotResponse(response);
+        ctx.variables.$botUI = parsed.ui;
+        return markdownToProseMirror(parsed.markdown || (parsed.ui ? botUIToText(parsed.ui) : ''));
     }
 
     /**
@@ -802,7 +903,10 @@ export class BotExecutorService {
         userBot: UserBot,
         template: BotTemplate,
         content: PageContent,
+        ctx: ExecutionContext,
     ): Promise<{ threadId: string; messageId: string }> {
+        const source = await findMessageById(invocation.sourceId);
+        if (!source) throw new Error('Source message not found');
         // Get or create thread for the parent message
         const thread = await getOrCreateThread({
             parentMessageId: invocation.sourceId,
@@ -815,6 +919,9 @@ export class BotExecutorService {
 
         // Create the bot's response message in the thread
         const message = await createMessageInThread({
+            pageId: source.pageId,
+            botUI: ctx.variables.$botUI as Message['botUI'],
+            botModel: ctx.variables.$model as string | undefined,
             notebookId: invocation.notebookId,
             threadId: thread._id,
             userId: userBot.userId,
@@ -830,6 +937,7 @@ export class BotExecutorService {
 
         // Broadcast thread message event
         await broadcastChatEvent(invocation.notebookId, {
+            pageId: source.pageId,
             action: 'thread_message',
             data: {
                 threadId: thread._id,
@@ -841,7 +949,7 @@ export class BotExecutorService {
             timestamp: new Date().toISOString(),
         });
 
-        return { threadId: thread._id, messageId: message._id };
+        return { threadId: thread._id, messageId: message.id };
     }
 
     /**
@@ -974,6 +1082,7 @@ export class BotExecutorService {
                   : 'bot_invocation_failed';
 
         broadcastChatEvent(invocation.notebookId, {
+            pageId: invocation.context.pageId || invocation.notebookId,
             action,
             data: {
                 invocationId: invocation._id,

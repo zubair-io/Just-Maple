@@ -19,6 +19,23 @@ Authenticated users can add additional passkeys in Settings using `/api/auth/pas
 
 JWTs use the account ID (`sub`) as identity and expire after 14 days. `/api/auth/refresh` requires a valid bearer token; it does not recover an expired session. Browser sessions use origin-scoped local storage, and native wrappers can use their existing Keychain bridge.
 
+## Local development sign-in
+
+On localhost, development builds show **Development sign-in** below the passkey form.
+Enter an existing account's email and a JWT signed by the development API. From the
+repository root, generate a token with:
+
+```sh
+bun run dev:token you@example.com
+```
+
+The command reads `apps/api/.env`, looks up the existing user, and prints a one-hour
+token. It does not create or modify accounts. Paste the token into the form with
+that account's email. The API validates the signature, expiration, existing user,
+and email before returning the normal session. This endpoint is disabled when
+`NODE_ENV=production` and rejects non-local browser origins. Production builds do
+not display the form. Passkey signup and sign-in remain available.
+
 ## Challenge storage
 
 Challenges are stored in MongoDB's `passkey_challenges` collection with a ceremony kind, optional account ID/display name, and five-minute expiry. Finish endpoints atomically consume the matching challenge before verification. Expiry is checked in the query, independently of MongoDB TTL cleanup. This prevents concurrent replay and supports multiple API replicas. Invalid client data cannot be used as a database query operator.
@@ -30,7 +47,7 @@ Settings displays the account ID. Share a notebook with another user's account I
 ## Deployment
 
 - Set `RP_ID` to the relying-party hostname and `ORIGIN` to the exact HTTPS app origin. Local tests use `localhost` and `http://localhost:7072`.
-- Startup migrates the legacy non-sparse email index to a sparse unique index, allowing multiple accounts without email. It creates a TTL index for passkey challenges. Migration failures stop startup. Test this migration against your database provider before deploying.
+- Startup removes the legacy non-sparse email index, allowing multiple accounts without email. Email is retained as metadata and no replacement unique email index is created; this also avoids unsupported unique-index creation on populated Cosmos DB collections. Account IDs and passkey credentials remain the identity keys. It creates a TTL index for passkey challenges. Migration failures stop startup. Test this migration against your database provider before deploying.
 - The email sending service and its Azure Communication Email dependency/configuration are removed. Remove `AZURE_COMMUNICATION_CONNECTION_STRING` and `EMAIL_FROM` from deployment secrets when no longer needed elsewhere.
 - Existing users have passkeys. Check that these are discoverable and accessible at the configured RP before rollout. Add another passkey while signed in if needed. Keep a synced passkey or a second passkey: there is no email recovery path.
 - Old `/api/auth/magic-link`, `/verify`, and `/verify-code` endpoints return 404. The old browser `/verify` route redirects to login. Old `magic_links` records are no longer read; they can expire or be removed by a separate database maintenance operation.

@@ -1,4 +1,13 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Subscription } from 'rxjs';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  OnInit,
+  OnDestroy,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -11,7 +20,7 @@ import {
 import { Clipboard } from '@angular/cdk/clipboard';
 import { ProfileAvatarComponent } from '../../components/atoms/profile-avatar/profile-avatar.component';
 import { SettingsHeaderComponent, DialogService } from '../../components';
-import type { BotTemplate, CreateCustomBotInput } from '@maple/shared';
+import { type BotModelOption, type BotTemplate, type CreateCustomBotInput } from '@maple/shared';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -19,9 +28,10 @@ import { environment } from '../../../environments/environment';
   standalone: true,
   imports: [CommonModule, FormsModule, ProfileAvatarComponent, SettingsHeaderComponent],
   templateUrl: './bots.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './bots.component.scss',
 })
-export class BotsComponent implements OnInit {
+export class BotsComponent implements OnInit, OnDestroy {
   private readonly clipboard = inject(Clipboard);
   private readonly router = inject(Router);
   private readonly botService = inject(BotService);
@@ -58,6 +68,80 @@ export class BotsComponent implements OnInit {
   readonly selectedTemplate = signal<BotTemplate | null>(null);
   readonly customHandle = signal('');
   readonly apiKey = signal('');
+  readonly model = signal('');
+  readonly responseMode = signal<'auto' | 'text'>('auto');
+  readonly editModel = signal('');
+  readonly editResponseMode = signal<'auto' | 'text'>('auto');
+
+  readonly registerModels = signal<BotModelOption[]>([]);
+  readonly editModels = signal<BotModelOption[]>([]);
+  readonly registerModelsLoading = signal(false);
+  readonly editModelsLoading = signal(false);
+  readonly registerModelsError = signal<string | null>(null);
+  readonly editModelsError = signal<string | null>(null);
+  private registerModelsRequest?: Subscription;
+  private editModelsRequest?: Subscription;
+
+  supportsModelSelection(templateId?: string): boolean {
+    const action = this.templates()
+      .find((t) => t._id === templateId)
+      ?.definition.actions.find((a) => a.type === 'llm');
+    return (
+      !!action && ['anthropic', 'openai'].includes(String(action.config['provider'] || 'anthropic'))
+    );
+  }
+  ngOnDestroy(): void {
+    this.registerModelsRequest?.unsubscribe();
+    this.editModelsRequest?.unsubscribe();
+  }
+  changeApiKey(mode: 'register' | 'edit', value: string): void {
+    (mode === 'edit' ? this.editApiKey : this.apiKey).set(value);
+    (mode === 'edit' ? this.editModelsRequest : this.registerModelsRequest)?.unsubscribe();
+    (mode === 'edit' ? this.editModels : this.registerModels).set([]);
+    (mode === 'edit' ? this.editModelsLoading : this.registerModelsLoading).set(false);
+    (mode === 'edit' ? this.editModelsError : this.registerModelsError).set(null);
+  }
+  loadRegisterModels(): void {
+    this.loadModels('register');
+  }
+  loadEditModels(): void {
+    this.loadModels('edit');
+  }
+  private loadModels(mode: 'register' | 'edit'): void {
+    const editing = mode === 'edit';
+    const bot = this.editingBot();
+    const templateId = editing ? bot?.templateId : this.selectedTemplate()?._id;
+    if (!this.supportsModelSelection(templateId)) return;
+    const options = editing ? this.editModels : this.registerModels;
+    const loading = editing ? this.editModelsLoading : this.registerModelsLoading;
+    const error = editing ? this.editModelsError : this.registerModelsError;
+    (editing ? this.editModelsRequest : this.registerModelsRequest)?.unsubscribe();
+    loading.set(true);
+    error.set(null);
+    const request = this.botService
+      .loadModels({
+        ...(editing ? { userBotId: bot!._id } : { templateId }),
+        apiKey: (editing ? this.editApiKey() : this.apiKey()).trim() || undefined,
+      })
+      .subscribe({
+        next: (models) => {
+          options.set(models);
+          loading.set(false);
+          if (!editing && !models.some((option) => option.id === this.model())) this.model.set('');
+          if (!models.length)
+            error.set('No compatible reply models were returned for this account.');
+        },
+        error: (err) => {
+          loading.set(false);
+          error.set(err.message);
+        },
+      });
+    if (editing) this.editModelsRequest = request;
+    else this.registerModelsRequest = request;
+  }
+  hasModel(options: BotModelOption[], id: string): boolean {
+    return options.some((option) => option.id === id);
+  }
   readonly registerError = signal<string | null>(null);
   readonly isRegistering = signal(false);
 
@@ -130,14 +214,22 @@ export class BotsComponent implements OnInit {
 
   selectTemplate(template: BotTemplate): void {
     this.selectedTemplate.set(template);
+    this.model.set(
+      String(template.definition.actions.find((a) => a.type === 'llm')?.config['model'] || ''),
+    );
+    this.responseMode.set('auto');
     this.customHandle.set(template.handle);
     this.apiKey.set('');
 
     this.registerError.set(null);
+    this.registerModels.set([]);
+    this.registerModelsError.set(null);
     this.showRegisterDialog.set(true);
   }
 
   closeRegisterDialog(): void {
+    this.registerModelsRequest?.unsubscribe();
+    this.registerModelsLoading.set(false);
     this.showRegisterDialog.set(false);
     this.selectedTemplate.set(null);
     this.customHandle.set('');
@@ -155,6 +247,10 @@ export class BotsComponent implements OnInit {
       return;
     }
 
+    if (this.supportsModelSelection(template._id) && !this.model().trim()) {
+      this.registerError.set('Select a model for this bot');
+      return;
+    }
     this.isRegistering.set(true);
     this.registerError.set(null);
 
@@ -165,6 +261,8 @@ export class BotsComponent implements OnInit {
         config: template.requiresConfig
           ? {
               apiKey: this.apiKey().trim(),
+              model: this.model().trim() || undefined,
+              responseMode: this.responseMode(),
             }
           : undefined,
       })
@@ -186,13 +284,27 @@ export class BotsComponent implements OnInit {
 
   editBot(bot: EnrichedUserBot): void {
     this.editingBot.set(bot);
+    this.editModel.set(
+      bot.config?.model ||
+        String(
+          this.templates()
+            .find((t) => t._id === bot.templateId)
+            ?.definition.actions.find((a) => a.type === 'llm')?.config['model'] || '',
+        ),
+    );
+    this.editResponseMode.set(bot.config?.responseMode || 'auto');
     this.editApiKey.set('');
     this.editEnabled.set(bot.isEnabled);
     this.editError.set(null);
+    this.editModels.set([]);
+    this.editModelsError.set(null);
     this.showEditDialog.set(true);
+    this.loadEditModels();
   }
 
   closeEditDialog(): void {
+    this.editModelsRequest?.unsubscribe();
+    this.editModelsLoading.set(false);
     this.showEditDialog.set(false);
     this.editingBot.set(null);
     this.editApiKey.set('');
@@ -208,16 +320,16 @@ export class BotsComponent implements OnInit {
 
     const updateData: {
       isEnabled?: boolean;
-      config?: { apiKey?: string };
+      config?: { apiKey?: string; model?: string; responseMode?: 'auto' | 'text' };
     } = {
       isEnabled: this.editEnabled(),
     };
 
-    if (this.editApiKey().trim()) {
-      updateData.config = {
-        apiKey: this.editApiKey().trim(),
-      };
-    }
+    updateData.config = {
+      model: this.editModel().trim() || undefined,
+      responseMode: this.editResponseMode(),
+      ...(this.editApiKey().trim() ? { apiKey: this.editApiKey().trim() } : {}),
+    };
 
     this.botService.updateBot(bot._id, updateData).subscribe({
       next: () => {

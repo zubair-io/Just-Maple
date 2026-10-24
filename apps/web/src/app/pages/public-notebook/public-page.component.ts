@@ -1,4 +1,11 @@
-import { Component, inject, signal, OnDestroy, DestroyRef } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  OnDestroy,
+  DestroyRef,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -10,6 +17,7 @@ import { ContentRendererComponent } from '../../components/atoms/content-rendere
   standalone: true,
   imports: [CommonModule, RouterLink, ContentRendererComponent],
   templateUrl: './public-page.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './public-page.component.scss',
 })
 export class PublicPageComponent implements OnDestroy {

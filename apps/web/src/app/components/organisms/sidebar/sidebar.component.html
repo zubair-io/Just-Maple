@@ -591,8 +591,8 @@
     >
       <app-profile-avatar
         [email]="authService.user()?.email ?? ''"
-        [displayName]="authService.user()?.displayName"
-        [profilePictureUrl]="authService.user()?.profilePictureUrl"
+        [displayName]="$safeNavigationMigration(authService.user()?.displayName)"
+        [profilePictureUrl]="$safeNavigationMigration(authService.user()?.profilePictureUrl)"
         size="sm"
       />
       <div class="flex flex-col">

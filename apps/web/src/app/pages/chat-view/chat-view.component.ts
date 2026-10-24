@@ -1,5 +1,14 @@
 import { AppHeaderComponent } from '../../components/organisms/app-header/app-header.component';
-import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  OnInit,
+  OnDestroy,
+  effect,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -61,6 +70,7 @@ interface ConnectionGraphData {
     MemberAvatarGroupComponent,
   ],
   templateUrl: './chat-view.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './chat-view.component.scss',
 })
 export class ChatViewComponent implements OnInit, OnDestroy {

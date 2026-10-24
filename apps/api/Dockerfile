@@ -1,5 +1,9 @@
+# Angular 22 requires Node 24.15 or newer in the build environment.
+FROM node:24.15.0-bookworm-slim AS node-runtime
+
 # Build stage
 FROM oven/bun:latest AS builder
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 
 WORKDIR /app
 

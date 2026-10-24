@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   TextComponent,
@@ -41,6 +41,7 @@ import type { ListSize } from '../../atoms/list/list.component';
     CheckboxComponent,
   ],
   templateUrl: './widget-renderer.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './widget-renderer.component.scss',
 })
 export class WidgetRendererComponent {
