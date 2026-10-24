@@ -19,6 +19,8 @@ actor MacDataEngine {
 
     private var running: Set<MacDataSource> = []
     private var rerun: Set<MacDataSource> = []
+    /// One embedding pass at a time; a running pass picks up items added while it works.
+    var isEmbedding = false
     private var failures: [MacDataSource: MacDataError] = [:]
     let searchIndex = MacDataSearchIndex()
     private let storePath: String
