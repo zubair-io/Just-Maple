@@ -1,5 +1,6 @@
 import { listBotModels, BotModelsError } from '../services/bot-models.service';
-import { isBotModel, type BotProvider } from '@maple/shared';
+import { isBotModel, type BotConfig, type BotProvider, type BotTemplate } from '@maple/shared';
+import { assertPublicHost, normalizeEndpointBaseUrl } from '../utils/url-safety';
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
@@ -129,14 +130,30 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             const template = templateId ? await findBotTemplateById(templateId) : null;
             const action = template?.definition.actions.find((action) => action.type === 'llm');
             const provider = String(action?.config.provider || 'anthropic');
-            if (!action || !['anthropic', 'openai'].includes(provider)) {
+            if (!action || !['anthropic', 'openai', 'openai-compatible'].includes(provider)) {
                 set.status = 400;
-                return { error: 'Model discovery is available for Claude and OpenAI bots' };
+                return { error: 'Model discovery is not available for this bot' };
             }
             const apiKey = body.apiKey?.trim() || bot?.config?.apiKey;
             if (!apiKey || apiKey === '***REDACTED***') {
                 set.status = 400;
                 return { error: 'Enter an API key to load available models' };
+            }
+            let baseUrl: string | undefined;
+            if (provider === 'openai-compatible') {
+                const draftUrl = body.baseUrl?.trim();
+                // A saved key only goes to the saved server, never to a URL typed in a draft.
+                if (draftUrl && !body.apiKey?.trim() && bot) {
+                    set.status = 400;
+                    return { error: 'Enter the API key again to use a different server' };
+                }
+                try {
+                    baseUrl = normalizeEndpointBaseUrl(draftUrl || bot?.config?.baseUrl || '');
+                    await assertPublicHost(baseUrl);
+                } catch (error) {
+                    set.status = 400;
+                    return { error: (error as Error).message };
+                }
             }
             try {
                 return {
@@ -144,6 +161,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                         provider as BotProvider,
                         apiKey,
                         body.apiKey?.trim() ? false : bot?.config?.isOAuthToken,
+                        baseUrl,
                     ),
                 };
             } catch (error) {
@@ -161,6 +179,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 userBotId: t.Optional(t.String()),
                 templateId: t.Optional(t.String()),
                 apiKey: t.Optional(t.String({ maxLength: 8192 })),
+                baseUrl: t.Optional(t.String({ maxLength: 2048 })),
             }),
         },
     )
@@ -184,6 +203,12 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             if (template.requiresConfig && !body.config?.apiKey) {
                 set.status = 400;
                 return { error: 'This bot requires an API key' };
+            }
+
+            const endpointError = await checkEndpointConfig(template, body.config);
+            if (endpointError) {
+                set.status = 400;
+                return { error: endpointError };
             }
 
             // Check handle uniqueness for this user
@@ -215,6 +240,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                         responseMode: t.Optional(t.Union([t.Literal('auto'), t.Literal('text')])),
                         apiKey: t.Optional(t.String()),
                         isOAuthToken: t.Optional(t.Boolean()),
+                        baseUrl: t.Optional(t.String({ maxLength: 2048 })),
                         customSettings: t.Optional(t.Record(t.String(), t.Any())),
                     }),
                 ),
@@ -228,6 +254,39 @@ export const botRoutes = new Elysia({ prefix: '/api' })
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
+            }
+
+            if (body.config?.baseUrl !== undefined) {
+                const existing = await findUserBotByIdInternal(params.id);
+                if (!existing || existing.userId !== auth.user._id) {
+                    set.status = 404;
+                    return { error: 'Bot not found' };
+                }
+                const template = existing.templateId
+                    ? await findBotTemplateById(existing.templateId)
+                    : null;
+                const merged = { ...existing.config, ...body.config };
+                const endpointError = template
+                    ? await checkEndpointConfig(template, merged)
+                    : 'Invalid bot template';
+                if (endpointError) {
+                    set.status = 400;
+                    return { error: endpointError };
+                }
+                if (!template || !usesCustomServer(template)) {
+                    // Not a custom-server bot: there is no URL to save.
+                    delete body.config.baseUrl;
+                } else {
+                    // A saved key only goes to the saved server.
+                    if (
+                        merged.baseUrl !== existing.config?.baseUrl &&
+                        !body.config.apiKey?.trim()
+                    ) {
+                        set.status = 400;
+                        return { error: 'Enter the API key again to use a different server' };
+                    }
+                    body.config.baseUrl = merged.baseUrl;
+                }
             }
 
             const userBot = await updateUserBot(params.id, auth.user._id, body);
@@ -248,6 +307,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                         responseMode: t.Optional(t.Union([t.Literal('auto'), t.Literal('text')])),
                         apiKey: t.Optional(t.String()),
                         isOAuthToken: t.Optional(t.Boolean()),
+                        baseUrl: t.Optional(t.String({ maxLength: 2048 })),
                         customSettings: t.Optional(t.Record(t.String(), t.Any())),
                     }),
                 ),
@@ -726,3 +786,29 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }),
         },
     );
+
+/**
+ * OpenAI-compatible bots need a public https server URL; it is stored normalized.
+ * Returns an error message, or null when the config is fine.
+ */
+async function checkEndpointConfig(
+    template: BotTemplate,
+    config: Partial<BotConfig> | undefined,
+): Promise<string | null> {
+    if (!usesCustomServer(template)) return null;
+    if (!config?.baseUrl?.trim()) return 'Enter the server URL for this bot';
+    try {
+        config.baseUrl = normalizeEndpointBaseUrl(config.baseUrl);
+        await assertPublicHost(config.baseUrl);
+    } catch (error) {
+        return (error as Error).message;
+    }
+    if (config.model && !isBotModel(config.model, 'openai-compatible'))
+        return 'That model name has characters that are not allowed';
+    return null;
+}
+
+function usesCustomServer(template: BotTemplate): boolean {
+    const llm = template.definition.actions.find((action) => action.type === 'llm');
+    return llm?.config.provider === 'openai-compatible';
+}

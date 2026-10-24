@@ -43,7 +43,16 @@ import {
     macDataToolDefinitions,
     type MacDataToolContext,
 } from './mac-data-tools.service';
-import { runAnthropicWithTools, runOpenAIWithTools, type ChatTurn } from './llm-tool-loop.service';
+import {
+    ChatCompletionsError,
+    runAnthropicWithTools,
+    runChatCompletions,
+    runChatCompletionsWithTools,
+    runOpenAIWithTools,
+    type ChatCompletionsTarget,
+    type ChatTurn,
+} from './llm-tool-loop.service';
+import { assertPublicHost, normalizeEndpointBaseUrl, validateUrl } from '../utils/url-safety';
 import { findPageByIdForBot } from '../repositories/page.repo';
 import { appendProactiveInstruction } from './proactive-settings.service';
 
@@ -369,7 +378,7 @@ export class BotExecutorService {
     }
 
     /**
-     * LLM action - calls Claude API or Inception API based on provider
+     * LLM action - calls Claude, OpenAI, or an OpenAI-compatible server based on provider
      */
     private async executeLLM(
         action: Action,
@@ -424,7 +433,11 @@ export class BotExecutorService {
 
         const provider = config.provider || 'anthropic';
         const model =
-            ctx.invocation.context.model || ctx.config?.model || config.model || DEFAULT_LLM_MODEL;
+            ctx.invocation.context.model ||
+            ctx.config?.model ||
+            config.model ||
+            (provider === 'openai-compatible' ? '' : DEFAULT_LLM_MODEL);
+        if (!model) throw new Error('Choose a model for this bot in bot settings');
         if (!isBotModel(model, provider))
             throw new Error('The selected model does not match this bot provider');
         ctx.variables.$model = model;
@@ -432,21 +445,56 @@ export class BotExecutorService {
             systemPrompt = `${systemPrompt || ''}\n\n${botUIPrompt}`;
         }
         let response: string;
+        const endpoint = await this.chatCompletionsTarget(provider, ctx);
 
         // iMessage, Mail and Calendar on the user's Mac, when this notebook has Mac pages.
         const macData = await this.macDataContextFor(ctx);
-        if (macData) {
-            systemPrompt = `${systemPrompt || ''}\n\n${macDataSystemPrompt(macData)}`;
-            if (provider === 'inception') {
-                // No tool calling: search once with the request and include the results.
-                const found = await executeMacDataTool(macData, 'search_local_data', {
-                    query: userPrompt.slice(0, 500),
-                });
-                systemPrompt += `\n\nSearch results for the user's request:\n${found}`;
-            }
-        }
+        if (macData) systemPrompt = `${systemPrompt || ''}\n\n${macDataSystemPrompt(macData)}`;
+        // Without tool calling, search once with the request and include the results.
+        const withSearchResults = async () =>
+            macData
+                ? `${systemPrompt}\n\nSearch results for the user's request:\n${await executeMacDataTool(
+                      macData,
+                      'search_local_data',
+                      { query: userPrompt.slice(0, 500) },
+                  )}`
+                : systemPrompt;
 
-        if (macData && provider !== 'inception') {
+        if (endpoint) {
+            const call = {
+                ...endpoint,
+                apiKey,
+                model,
+                turns: [
+                    ...this.toTurns(previousMessages),
+                    { role: 'user' as const, content: userPrompt },
+                ],
+                maxTokens: Math.max(
+                    config.maxTokens || 1024,
+                    ctx.config?.responseMode === 'text' ? 1024 : 4096,
+                ),
+            };
+            if (macData && provider === 'openai-compatible') {
+                try {
+                    response = await runChatCompletionsWithTools({
+                        ...call,
+                        system: systemPrompt,
+                        tools: macDataToolDefinitions(macData),
+                        execute: (name, input) => executeMacDataTool(macData, name, input),
+                    });
+                } catch (error) {
+                    // Many servers or models reject tools; answer from one search instead.
+                    if (!(error instanceof ChatCompletionsError) || error.status >= 500)
+                        throw error;
+                    response = await runChatCompletions({
+                        ...call,
+                        system: await withSearchResults(),
+                    });
+                }
+            } else {
+                response = await runChatCompletions({ ...call, system: await withSearchResults() });
+            }
+        } else if (macData) {
             const isOAuthToken = provider === 'anthropic' && (ctx.config?.isOAuthToken || false);
             const loop = {
                 apiKey,
@@ -475,18 +523,6 @@ export class BotExecutorService {
                 userPrompt,
                 previousMessages,
                 maxTokens: config.maxTokens || 4096,
-            });
-        } else if (provider === 'inception') {
-            response = await this.callInceptionAPI({
-                apiKey,
-                model,
-                systemPrompt,
-                userPrompt,
-                previousMessages,
-                maxTokens: Math.max(
-                    config.maxTokens || 1024,
-                    ctx.config?.responseMode === 'text' ? 1024 : 4096,
-                ),
             });
         } else {
             const isOAuthToken = ctx.config?.isOAuthToken || false;
@@ -521,6 +557,23 @@ export class BotExecutorService {
         }
         // Also set as $response for convenience
         ctx.variables.$response = response;
+    }
+
+    /**
+     * Where OpenAI-compatible providers send chat completions: Inception's fixed server, or
+     * the URL saved on a custom bot (checked again on every call). Null for other providers.
+     */
+    private async chatCompletionsTarget(
+        provider: string,
+        ctx: ExecutionContext,
+    ): Promise<ChatCompletionsTarget | null> {
+        if (provider === 'inception')
+            return { baseUrl: 'https://api.inceptionlabs.ai/v1', label: 'Inception API' };
+        if (provider !== 'openai-compatible') return null;
+        if (!ctx.config?.baseUrl) throw new Error('Add the server URL in bot settings');
+        const baseUrl = normalizeEndpointBaseUrl(ctx.config.baseUrl);
+        await assertPublicHost(baseUrl);
+        return { baseUrl, label: ctx.userBot?.displayName || new URL(baseUrl).hostname };
     }
 
     /**
@@ -590,55 +643,6 @@ export class BotExecutorService {
     }
 
     /**
-     * Validate URL to prevent SSRF attacks
-     */
-    private validateUrl(url: string): void {
-        const parsedUrl = new URL(url);
-        const hostname = parsedUrl.hostname.toLowerCase();
-
-        // Only allow HTTP and HTTPS protocols
-        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-            throw new Error('Only HTTP and HTTPS protocols are allowed');
-        }
-
-        // Block localhost and loopback addresses
-        if (
-            hostname === 'localhost' ||
-            hostname === '127.0.0.1' ||
-            hostname === '0.0.0.0' ||
-            hostname === '::1' ||
-            hostname === '[::1]'
-        ) {
-            throw new Error('Access to localhost is not allowed');
-        }
-
-        // Block private IPv4 ranges
-        // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
-        if (
-            hostname.match(/^10\./) ||
-            hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./) ||
-            hostname.match(/^192\.168\./) ||
-            hostname.match(/^169\.254\./)
-        ) {
-            throw new Error('Access to private networks is not allowed');
-        }
-
-        // Block AWS/cloud metadata endpoints
-        if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') {
-            throw new Error('Access to cloud metadata endpoints is not allowed');
-        }
-
-        // Block internal domain patterns (common in enterprises)
-        if (
-            hostname.endsWith('.internal') ||
-            hostname.endsWith('.local') ||
-            hostname.endsWith('.localhost')
-        ) {
-            throw new Error('Access to internal domains is not allowed');
-        }
-    }
-
-    /**
      * HTTP action - makes external API calls
      */
     private async executeHTTP(action: Action, ctx: ExecutionContext): Promise<void> {
@@ -653,7 +657,7 @@ export class BotExecutorService {
         const url = this.interpolate(config.url, ctx.variables);
 
         // SECURITY: Validate URL to prevent SSRF attacks
-        this.validateUrl(url);
+        validateUrl(url);
 
         const headers = config.headers
             ? Object.fromEntries(
@@ -870,69 +874,6 @@ export class BotExecutorService {
         };
         const textContent = data.content.find((c) => c.type === 'text');
         return textContent?.text || '';
-    }
-
-    /**
-     * Call Inception Labs API (Mercury-2) using OpenAI-compatible chat completions
-     */
-    private async callInceptionAPI(params: {
-        apiKey: string;
-        model: string;
-        systemPrompt?: string;
-        userPrompt: string;
-        previousMessages?: Array<{
-            role?: string;
-            content?: string | { type: string; content: unknown[] };
-            senderType?: string;
-        }>;
-        maxTokens: number;
-    }): Promise<string> {
-        const messages: Array<{ role: string; content: string }> = [];
-
-        if (params.systemPrompt) {
-            messages.push({ role: 'system', content: params.systemPrompt });
-        }
-
-        if (params.previousMessages && params.previousMessages.length > 0) {
-            for (const msg of params.previousMessages) {
-                let textContent = '';
-                if (typeof msg.content === 'object' && msg.content && 'content' in msg.content) {
-                    textContent = extractTextFromContent(msg.content as any);
-                } else if (typeof msg.content === 'string') {
-                    textContent = msg.content;
-                }
-
-                if (textContent) {
-                    const role = msg.senderType === 'bot' ? 'assistant' : 'user';
-                    messages.push({ role, content: textContent });
-                }
-            }
-        }
-
-        messages.push({ role: 'user', content: params.userPrompt });
-
-        const response = await fetch('https://api.inceptionlabs.ai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${params.apiKey}`,
-            },
-            body: JSON.stringify({
-                model: params.model,
-                messages,
-                max_tokens: params.maxTokens,
-            }),
-        });
-
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Inception API error: ${response.status} - ${error}`);
-        }
-
-        const data = (await response.json()) as {
-            choices: Array<{ message: { content: string } }>;
-        };
-        return data.choices[0]?.message?.content || '';
     }
 
     private async callOpenAI(params: {

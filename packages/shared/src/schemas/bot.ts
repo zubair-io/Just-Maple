@@ -124,6 +124,8 @@ export const BotConfigSchema = Type.Object({
     responseMode: Type.Optional(Type.Union([Type.Literal('auto'), Type.Literal('text')])),
     apiKey: Type.Optional(Type.String()), // For bots that need external API keys (e.g., Claude)
     isOAuthToken: Type.Optional(Type.Boolean()), // Whether apiKey is an OAuth token (vs API key)
+    // OpenAI-compatible bots: the server's API root, e.g. https://openrouter.ai/api/v1
+    baseUrl: Type.Optional(Type.String({ maxLength: 2048 })),
     customSettings: Type.Optional(Type.Record(Type.String(), Type.Any())),
 });
 

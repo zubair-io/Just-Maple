@@ -169,6 +169,125 @@ export async function runOpenAIWithTools(params: ToolLoopParams): Promise<string
     return '';
 }
 
+// MARK: - OpenAI-compatible chat completions
+
+/** Any server that speaks OpenAI's chat completions API: Inception, OpenRouter, Groq, vLLM… */
+export interface ChatCompletionsTarget {
+    /** API root, e.g. https://openrouter.ai/api/v1. "/chat/completions" is appended. */
+    baseUrl: string;
+    /** Shown in errors, e.g. the bot's name. */
+    label: string;
+}
+
+export class ChatCompletionsError extends Error {
+    constructor(
+        message: string,
+        readonly status: number,
+    ) {
+        super(message);
+    }
+}
+
+interface ChatCompletionsMessage {
+    role: string;
+    content?: string | Array<{ type: string; text?: string }> | null;
+    tool_calls?: Array<{ id: string; function: { name: string; arguments?: string } }>;
+    tool_call_id?: string;
+}
+
+async function postChatCompletions(
+    params: ChatCompletionsTarget & { apiKey: string },
+    body: Record<string, unknown>,
+): Promise<ChatCompletionsMessage> {
+    const response = await fetch(`${params.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${params.apiKey}`,
+        },
+        // The URL was checked before the call; a redirect could lead somewhere it wasn't.
+        redirect: 'error',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+        const detail = (await response.text().catch(() => '')).slice(0, 300);
+        throw new ChatCompletionsError(
+            `${params.label} request failed (${response.status})${detail ? `: ${detail}` : ''}`,
+            response.status,
+        );
+    }
+    const data = (await response.json()) as {
+        choices?: Array<{ message?: ChatCompletionsMessage }>;
+    };
+    const message = data.choices?.[0]?.message;
+    if (!message) throw new ChatCompletionsError(`${params.label} returned no reply`, 502);
+    return message;
+}
+
+function chatCompletionsText(message: ChatCompletionsMessage): string {
+    if (typeof message.content === 'string') return message.content;
+    return (message.content || []).map((part) => part.text || '').join('');
+}
+
+function chatCompletionsMessages(system: string | undefined, turns: ChatTurn[]) {
+    return [
+        ...(system ? [{ role: 'system', content: system }] : []),
+        ...turns.map((turn) => ({ role: turn.role, content: turn.content })),
+    ] as ChatCompletionsMessage[];
+}
+
+/** One reply, no tools. */
+export async function runChatCompletions(
+    params: Omit<ToolLoopParams, 'tools' | 'execute'> & ChatCompletionsTarget,
+): Promise<string> {
+    const message = await postChatCompletions(params, {
+        model: params.model,
+        messages: chatCompletionsMessages(params.system, params.turns),
+        max_tokens: params.maxTokens,
+    });
+    return chatCompletionsText(message);
+}
+
+/** Chat completions with function tools. */
+export async function runChatCompletionsWithTools(
+    params: ToolLoopParams & ChatCompletionsTarget,
+): Promise<string> {
+    const messages = chatCompletionsMessages(params.system, params.turns);
+    const tools = params.tools.map((t) => ({
+        type: 'function',
+        function: { name: t.name, description: t.description, parameters: t.parameters },
+    }));
+
+    for (let round = 0; round <= MAX_ROUNDS; round++) {
+        const lastRound = round === MAX_ROUNDS;
+        const message = await postChatCompletions(params, {
+            model: params.model,
+            messages,
+            tools,
+            tool_choice: lastRound ? 'none' : 'auto',
+            max_tokens: params.maxTokens,
+        });
+        const calls = message.tool_calls || [];
+        if (calls.length === 0) return chatCompletionsText(message);
+        messages.push({ role: 'assistant', content: message.content ?? null, tool_calls: calls });
+        for (const call of calls) {
+            let args: Record<string, unknown> = {};
+            try {
+                args = JSON.parse(call.function.arguments || '{}');
+            } catch {
+                // Leave args empty; the tool reports what's missing.
+            }
+            messages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                content: await params.execute(call.function.name, args),
+            });
+        }
+    }
+    return '';
+}
+
 /** Claude requires alternating roles; merge consecutive turns from the same side. */
 function mergeTurns(turns: ChatTurn[]): Array<{ role: string; content: string }> {
     const merged: Array<{ role: string; content: string }> = [];

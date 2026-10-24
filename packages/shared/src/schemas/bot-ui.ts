@@ -42,10 +42,13 @@ export const BotUIResponseSchema = Type.Object({
 export type BotUIBlock = Static<typeof BotUIBlockSchema>;
 export type BotUIResponse = Static<typeof BotUIResponseSchema>;
 
-export type BotProvider = 'anthropic' | 'openai';
+export type BotProvider = 'anthropic' | 'openai' | 'openai-compatible';
 export const BotModelOptionSchema = Type.Object({ id: Type.String(), name: Type.String() });
 export type BotModelOption = Static<typeof BotModelOptionSchema>;
 export function isBotModel(model: string, provider: string): boolean {
+    // Any server's model names are allowed, including routed ones like "meta-llama/llama-3.3-70b".
+    if (provider === 'openai-compatible')
+        return /^[a-zA-Z0-9][a-zA-Z0-9._:/@+-]{0,127}$/.test(model);
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/.test(model)) return false;
     return provider === 'openai'
         ? /^(?:ft:)?(gpt-|o[1-9])/.test(model)

@@ -38,15 +38,20 @@ vi.mock('../mac-data-tools.service', () => ({
     macDataToolDefinitions: vi.fn(() => [{ name: 'search_local_data' }]),
     executeMacDataTool: vi.fn().mockResolvedValue('{"results":[{"id":"mail:1"}]}'),
 }));
-vi.mock('../llm-tool-loop.service', () => ({
+vi.mock('../llm-tool-loop.service', async (importOriginal) => ({
+    // Chat completions run for real against the stubbed fetch.
+    ...(await importOriginal<typeof import('../llm-tool-loop.service')>()),
     runAnthropicWithTools: vi.fn().mockResolvedValue('Practice is at 2:30.'),
     runOpenAIWithTools: vi.fn().mockResolvedValue('From OpenAI.'),
+}));
+vi.mock('node:dns/promises', () => ({
+    lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34' }]),
 }));
 
 import { BotExecutorService } from '../bot-executor.service';
 import { findBotTemplateById } from '../../repositories/bot-template.repo';
 import { findUserBotByIdInternal } from '../../repositories/user-bot.repo';
-import { findInvocationById } from '../../repositories/bot-invocation.repo';
+import { findInvocationById, updateInvocationStatus } from '../../repositories/bot-invocation.repo';
 import {
     createMessageInThread,
     createTopLevelBotMessage,
@@ -153,6 +158,94 @@ describe('bots with Mac data', () => {
         const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
         expect(body.messages[0].content).toContain('"mail:1"');
         vi.unstubAllGlobals();
+    });
+
+    describe('custom OpenAI-compatible servers', () => {
+        const reply = (message: unknown, status = 200) => ({
+            ok: status < 400,
+            status,
+            text: async () => 'tools are not supported',
+            json: async () => ({ choices: [{ message }] }),
+        });
+        beforeEach(() => {
+            template.definition.actions[0].config = {
+                provider: 'openai-compatible',
+                userPrompt: '{{$mentionText}}',
+            };
+            userBot.displayName = 'Groq';
+            userBot.config = {
+                apiKey: 'groq-key',
+                baseUrl: 'https://llm.example.com/v1',
+                model: 'meta-llama/llama-3.3-70b',
+            };
+        });
+
+        it('calls the saved server with the Mac data tools', async () => {
+            const fetchMock = vi
+                .fn()
+                .mockResolvedValueOnce(
+                    reply({
+                        role: 'assistant',
+                        content: null,
+                        tool_calls: [
+                            {
+                                id: 'call1',
+                                function: {
+                                    name: 'search_local_data',
+                                    arguments: '{"query":"practice"}',
+                                },
+                            },
+                        ],
+                    }),
+                )
+                .mockResolvedValueOnce(reply({ role: 'assistant', content: 'At 2:30.' }));
+            vi.stubGlobal('fetch', fetchMock);
+            await new BotExecutorService().execute('invocation');
+            expect(fetchMock.mock.calls[0]![0]).toBe('https://llm.example.com/v1/chat/completions');
+            expect(fetchMock.mock.calls[0]![1].headers.Authorization).toBe('Bearer groq-key');
+            const first = JSON.parse(fetchMock.mock.calls[0]![1].body);
+            expect(first.model).toBe('meta-llama/llama-3.3-70b');
+            expect(first.tools[0].function.name).toBe('search_local_data');
+            const second = JSON.parse(fetchMock.mock.calls[1]![1].body);
+            expect(second.messages.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'call1' });
+            expect(executeMacDataTool).toHaveBeenCalledWith(
+                expect.anything(),
+                'search_local_data',
+                { query: 'practice' },
+            );
+            expect(createMessageInThread).toHaveBeenCalled();
+            vi.unstubAllGlobals();
+        });
+
+        it('answers from one search when the server rejects tools', async () => {
+            const fetchMock = vi
+                .fn()
+                .mockResolvedValueOnce(reply(null, 400))
+                .mockResolvedValueOnce(reply({ role: 'assistant', content: 'At 2:30.' }));
+            vi.stubGlobal('fetch', fetchMock);
+            await new BotExecutorService().execute('invocation');
+            const retry = JSON.parse(fetchMock.mock.calls[1]![1].body);
+            expect(retry.tools).toBeUndefined();
+            expect(retry.messages[0].content).toContain('"mail:1"');
+            expect(createMessageInThread).toHaveBeenCalled();
+            vi.unstubAllGlobals();
+        });
+
+        it('refuses a server on a private network', async () => {
+            userBot.config.baseUrl = 'https://10.0.0.5/v1';
+            const fetchMock = vi.fn();
+            vi.stubGlobal('fetch', fetchMock);
+            await expect(new BotExecutorService().execute('invocation')).rejects.toThrow(
+                'private networks',
+            );
+            expect(fetchMock).not.toHaveBeenCalled();
+            expect(updateInvocationStatus).toHaveBeenCalledWith(
+                'invocation',
+                'failed',
+                expect.anything(),
+            );
+            vi.unstubAllGlobals();
+        });
     });
 
     it('answers in the conversation itself on a proactive page', async () => {

@@ -172,6 +172,43 @@ export async function seedBotTemplates(): Promise<void> {
             required: ['apiKey'],
         },
     });
+    // Any OpenAI-compatible server (OpenRouter, Groq, Together, vLLM…). Each bot added from
+    // this template keeps its own server URL, key and model, so users can add many.
+    await upsertBotTemplate('openai-compatible', {
+        name: 'Custom AI provider',
+        handle: 'openai-compatible',
+        avatar: '🔌',
+        description:
+            'Any OpenAI-compatible API, like OpenRouter, Groq or your own server. Add as many as you like.',
+        definition: {
+            ...claudeDefinition,
+            trigger: { mentionPatterns: ['openai-compatible'] },
+            actions: [
+                {
+                    type: 'llm',
+                    id: 'openai-compatible-response',
+                    config: {
+                        provider: 'openai-compatible',
+                        systemPrompt:
+                            'You are a helpful AI assistant in Maple. Be concise and friendly.',
+                        userPrompt: '{{$mentionText}}',
+                        maxTokens: 4096,
+                    },
+                    outputVariable: 'response',
+                },
+            ],
+        },
+        requiresConfig: true,
+        isSystemBot: true,
+        configSchema: {
+            type: 'object',
+            properties: {
+                baseUrl: { type: 'string', title: 'Server URL' },
+                apiKey: { type: 'string', title: 'API Key' },
+            },
+            required: ['baseUrl', 'apiKey'],
+        },
+    });
     // Hello World Bot
     await upsertBotTemplate('hello', {
         name: 'Hello World',

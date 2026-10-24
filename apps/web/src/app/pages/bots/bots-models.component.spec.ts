@@ -39,6 +39,7 @@ describe('provider models in bot settings', () => {
     loadCustomBots: vi.fn(() => of([])),
     loadModels: vi.fn(),
     updateBot: vi.fn(() => of(bot)),
+    registerBot: vi.fn(() => of(bot)),
   };
   beforeEach(() => {
     service.loadModels.mockReset();
@@ -121,6 +122,60 @@ describe('provider models in bot settings', () => {
       apiKey: 'draft-key',
     });
     expect(fixture.componentInstance.registerModels()).toHaveLength(2);
+    fixture.destroy();
+  });
+  it('adds any number of AI providers, including custom servers from the New button', () => {
+    const custom = {
+      _id: 'custom',
+      name: 'Custom AI provider',
+      handle: 'openai-compatible',
+      requiresConfig: true,
+      definition: { actions: [{ type: 'llm', config: { provider: 'openai-compatible' } }] },
+    } as unknown as BotTemplate;
+    service.templates.set([template, custom]);
+    const fixture = TestBed.createComponent(BotsComponent);
+    fixture.detectChanges();
+    const page: HTMLElement = fixture.nativeElement;
+    expect(page.textContent).toContain('AI Providers');
+    // The custom template is behind "New", and Claude can be added again with a fresh handle.
+    expect([...page.querySelectorAll('.template-name')].map((n) => n.textContent)).toEqual([
+      'Claude',
+    ]);
+    expect(page.querySelector('.template-card.registered')).toBeNull();
+    fixture.componentInstance.selectTemplate(template);
+    expect(fixture.componentInstance.customHandle()).toBe('claude2');
+    fixture.componentInstance.closeRegisterDialog();
+
+    const newButton = [...page.querySelectorAll('button')].find((b) =>
+      b.textContent?.trim().endsWith('New'),
+    )!;
+    newButton.click();
+    fixture.detectChanges();
+    expect(page.querySelector('.dialog-header h2')!.textContent).toContain('New AI provider');
+    const component = fixture.componentInstance;
+    component.displayName.set('Groq');
+    component.changeBaseUrl('register', 'https://api.groq.com/openai/v1');
+    component.changeApiKey('register', 'groq-key');
+    component.loadRegisterModels();
+    expect(service.loadModels).toHaveBeenLastCalledWith({
+      templateId: 'custom',
+      apiKey: 'groq-key',
+      baseUrl: 'https://api.groq.com/openai/v1',
+    });
+    component.model.set('llama-3.3-70b-versatile');
+    component.registerBot();
+    expect(service.registerBot).toHaveBeenCalledWith({
+      templateId: 'custom',
+      handle: 'ai',
+      displayName: 'Groq',
+      config: {
+        apiKey: 'groq-key',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        model: 'llama-3.3-70b-versatile',
+        responseMode: 'auto',
+      },
+    });
+    service.templates.set([template]);
     fixture.destroy();
   });
 });
