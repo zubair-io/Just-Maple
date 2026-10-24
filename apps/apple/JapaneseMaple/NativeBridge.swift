@@ -8,6 +8,12 @@
 import Foundation
 import WebKit
 import AuthenticationServices
+import MapleRecorderKit
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 // MARK: - Message Types
 
@@ -481,6 +487,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
     private var authSession: ASWebAuthenticationSession?
     private var pendingOAuthCompletion = false
     private var folderPickerObserver: NSObjectProtocol?
+    private var recorderOpenObserver: NSObjectProtocol?
     /// Security-scoped folder URLs granted by the user via folder picker.
     /// Must be kept alive so file operations within these folders are allowed by the sandbox.
     private var grantedFolderURLs: [URL] = []
@@ -490,9 +497,15 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         super.init()
         encoder.dateEncodingStrategy = .iso8601
         decoder.dateDecodingStrategy = .iso8601
+        recorderOpenObserver = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("MapleRecorderWebOpen"), object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.sendRecorderOpenIfNeeded() }
+        }
     }
 
     deinit {
+        if let recorderOpenObserver { NotificationCenter.default.removeObserver(recorderOpenObserver) }
         // Balance all startAccessingSecurityScopedResource() calls
         for url in grantedFolderURLs {
             url.stopAccessingSecurityScopedResource()
@@ -509,6 +522,61 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             return
         }
 
+        // S1 requests contain private note text. Handle them as a correlated envelope
+        // before normal bridge decoding so their contents are never printed to logs.
+        if let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           envelope["type"] as? String == "s1CleanRequest" {
+            guard message.frameInfo.isMainFrame,
+                  let payload = envelope["payload"] as? [String: Any],
+                  let requestID = payload["requestId"] as? String,
+                  !requestID.isEmpty else { return }
+            let text = payload["text"] as? String ?? ""
+            Task { @MainActor [weak self] in
+                var response: [String: Any] = ["requestId": requestID]
+                do {
+                    response["text"] = try await RecorderWebController.shared.cleanNote(text)
+                } catch {
+                    response["error"] = error.localizedDescription
+                }
+                guard let webView = self?.webView else { return }
+                _ = try? await webView.callAsyncJavaScript(
+                    "window.__nativeBridge__?.receive(message)",
+                    arguments: [
+                        "message": ["type": "s1CleanResponse", "payload": response]
+                    ],
+                    in: nil,
+                    contentWorld: .page
+                )
+            }
+            return
+        }
+
+        // Recorder requests use a correlated envelope and must not be logged: settings
+        // can contain write-only API keys. Only accept requests from the main frame.
+        if let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           envelope["type"] as? String == "recorderRequest" {
+            guard message.frameInfo.isMainFrame,
+                  let payload = envelope["payload"],
+                  let request = try? JSONSerialization.data(withJSONObject: payload) else { return }
+            Task { @MainActor [weak self] in
+                let response = await RecorderWebController.shared.handle(request)
+                guard let self, let webView = self.webView,
+                      var payload = try? JSONSerialization.jsonObject(with: response) as? [String: Any] else { return }
+                if let text = payload["exported"] as? String {
+                    do {
+                        try await self.exportRecorderMarkdown(text, webView: webView)
+                        payload["exportHandled"] = true
+                    } catch {
+                        payload["error"] = error.localizedDescription
+                    }
+                }
+                _ = try? await webView.callAsyncJavaScript(
+                    "window.__nativeBridge__?.receive(message)",
+                    arguments: ["message": ["type": "recorderResponse", "payload": payload]],
+                    in: nil, contentWorld: .page)
+            }
+            return
+        }
         do {
             let message = try decoder.decode(WebToNativeMessage.self, from: data)
             print("[Bridge] Received from web: \(message)")
@@ -518,6 +586,43 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
         } catch {
             print("[Bridge] Failed to decode message: \(error)")
         }
+    }
+
+    @MainActor
+    private func sendRecorderOpenIfNeeded() async {
+        guard RecorderWebController.shared.webOpenRequested, let webView else { return }
+        let result = try? await webView.callAsyncJavaScript(
+            "if (!window.__nativeBridge__?.receive) return false; window.__nativeBridge__.receive({type: 'recorderOpen', payload: {}}); return true;",
+            arguments: [:], in: nil, contentWorld: .page)
+        if result as? Bool == true { RecorderWebController.shared.markWebWorkspaceOpened() }
+    }
+
+    @MainActor
+    private func exportRecorderMarkdown(_ text: String, webView: WKWebView) async throws {
+        #if os(macOS)
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Recording.md"
+        let result = await withCheckedContinuation { continuation in
+            panel.begin { continuation.resume(returning: $0) }
+        }
+        if result == .OK, let url = panel.url {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        }
+        #else
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("Recording.md")
+        try text.write(to: file, atomically: true, encoding: .utf8)
+        guard var presenter = webView.window?.rootViewController else {
+            throw NSError(domain: "Recorder", code: 1, userInfo: [NSLocalizedDescriptionKey: "The share sheet could not be opened."])
+        }
+        while let presented = presenter.presentedViewController { presenter = presented }
+        let sheet = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+        sheet.popoverPresentationController?.sourceView = webView
+        sheet.popoverPresentationController?.sourceRect = CGRect(x: webView.bounds.midX, y: webView.bounds.midY, width: 1, height: 1)
+        sheet.completionWithItemsHandler = { _, _, _, _ in try? FileManager.default.removeItem(at: directory) }
+        presenter.present(sheet, animated: true)
+        #endif
     }
 
     // MARK: - Handle Messages
@@ -1511,6 +1616,7 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             serverName: activeServer.name
         )
         send(.initialize(initialState))
+        Task { @MainActor [weak self] in await self?.sendRecorderOpenIfNeeded() }
     }
 
     func sendDeepLink(url: String) {

@@ -104,6 +104,11 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./pages/welcome/welcome.component').then((m) => m.WelcomeComponent),
       },
+      {
+        path: 'recorder',
+        loadComponent: () =>
+          import('./pages/recorder/recorder.component').then((m) => m.RecorderComponent),
+      },
       // Settings route - must come before the home route
       {
         path: 'settings',

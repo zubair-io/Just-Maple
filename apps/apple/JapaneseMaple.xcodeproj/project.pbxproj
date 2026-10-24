@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AABBCCDD0011223344556601 /* MapleRecorderKit in Frameworks */ = {isa = PBXBuildFile; productRef = AABBCCDD0011223344556602 /* MapleRecorderKit */; };
 		E3C8DD2F2EF70F33003D56DA /* Tag.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C8DD272EF70F33003D56DA /* Tag.swift */; };
 		E3C8DD302EF70F33003D56DA /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C8DD2B2EF70F33003D56DA /* KeychainHelper.swift */; };
 		E3C8DD312EF70F33003D56DA /* APIResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C8DD242EF70F33003D56DA /* APIResponse.swift */; };
@@ -24,7 +25,6 @@
 		E3C8DD3D2EF70F33003D56DA /* NoteContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C8DD262EF70F33003D56DA /* NoteContent.swift */; };
 		E3C8DD3E2EF70F33003D56DA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C8DD252EF70F33003D56DA /* Message.swift */; };
 		E3DF6CEB2EF7CB10001AA433 /* SignalRClient in Frameworks */ = {isa = PBXBuildFile; productRef = E3DF6CEA2EF7CB00001AA433 /* SignalRClient */; };
-		E3E2C52E2EDC2E5100F16E47 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 26495016164A4B7D820F1D18 /* WhisperKit */; };
 		E3F7D1812EF6839000F8DE3C /* Just Maple Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = E3F7D1612EF6838E00F8DE3C /* Just Maple Watch App.app */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -159,7 +159,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E3E2C52E2EDC2E5100F16E47 /* WhisperKit in Frameworks */,
+				AABBCCDD0011223344556601 /* MapleRecorderKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -284,7 +284,7 @@
 			);
 			name = JapaneseMaple;
 			packageProductDependencies = (
-				26495016164A4B7D820F1D18 /* WhisperKit */,
+				AABBCCDD0011223344556602 /* MapleRecorderKit */,
 			);
 			productName = JapaneseMaple;
 			productReference = E37162732EDC1981006A0A2F /* JapaneseMaple.app */;
@@ -449,7 +449,7 @@
 			mainGroup = E371626A2EDC1981006A0A2F;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				7461055901DA42F78BE46662 /* XCRemoteSwiftPackageReference "WhisperKit" */,
+				AABBCCDD0011223344556603 /* XCLocalSwiftPackageReference "MapleRecorderKit" */,
 				E3DF6CE82EF7CAAA001AA433 /* XCRemoteSwiftPackageReference "signalr-client-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -736,7 +736,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
 				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
@@ -747,7 +747,12 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = JapaneseMaple/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Just Maple";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Just Maple can use the current calendar event to name recordings when you enable calendar titles.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Japanese Maple needs access to your camera to scan barcodes.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Japanese Maple needs access to your microphone to record audio for transcription.";
+				INFOPLIST_KEY_NSSystemAdministrationUsageDescription = "Japanese Maple needs screen recording permission to capture system audio for multi-track transcription.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -803,7 +808,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
 				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
@@ -814,7 +819,12 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = JapaneseMaple/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Just Maple";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Just Maple can use the current calendar event to name recordings when you enable calendar titles.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Japanese Maple needs access to your camera to scan barcodes.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Japanese Maple needs access to your microphone to record audio for transcription.";
+				INFOPLIST_KEY_NSSystemAdministrationUsageDescription = "Japanese Maple needs screen recording permission to capture system audio for multi-track transcription.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -1192,15 +1202,14 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		7461055901DA42F78BE46662 /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/argmaxinc/WhisperKit";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.7.0;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		AABBCCDD0011223344556603 /* XCLocalSwiftPackageReference "MapleRecorderKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = MapleRecorderKit;
 		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
 		E3DF6CE82EF7CAAA001AA433 /* XCRemoteSwiftPackageReference "signalr-client-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/dotnet/signalr-client-swift";
@@ -1212,10 +1221,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		26495016164A4B7D820F1D18 /* WhisperKit */ = {
+		AABBCCDD0011223344556602 /* MapleRecorderKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 7461055901DA42F78BE46662 /* XCRemoteSwiftPackageReference "WhisperKit" */;
-			productName = WhisperKit;
+			package = AABBCCDD0011223344556603 /* XCLocalSwiftPackageReference "MapleRecorderKit" */;
+			productName = MapleRecorderKit;
 		};
 		E3DF6CEA2EF7CB00001AA433 /* SignalRClient */ = {
 			isa = XCSwiftPackageProductDependency;
