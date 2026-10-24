@@ -1,4 +1,12 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  OnInit,
+  OnDestroy,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule, Location } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
@@ -14,6 +22,7 @@ import type { CollectableStatus } from '@maple/shared';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './collectible-registry-view.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './collectible-registry-view.component.scss',
 })
 export class CollectibleRegistryViewComponent implements OnInit, OnDestroy {

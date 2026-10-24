@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Template } from '@maple/shared';
 
@@ -7,6 +7,7 @@ import type { Template } from '@maple/shared';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './template-card.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './template-card.component.scss',
 })
 export class TemplateCardComponent {

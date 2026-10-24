@@ -5,6 +5,7 @@ export * from './page';
 export * from './message';
 export * from './thread';
 export * from './bot';
+export * from './bot-ui';
 export * from './collectable';
 export * from './collectible-registry';
 export * from './notification';

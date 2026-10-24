@@ -8,6 +8,7 @@ import {
   ViewChild,
   OnDestroy,
   afterNextRender,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Editor } from '@tiptap/core';
@@ -20,6 +21,7 @@ import type { BotInvocation, PageContent } from '@maple/shared';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './bot-output.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './bot-output.component.scss',
 })
 export class BotOutputComponent implements OnDestroy {

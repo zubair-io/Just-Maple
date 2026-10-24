@@ -1,4 +1,4 @@
-import { Component, inject, effect } from '@angular/core';
+import { Component, inject, effect, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { PublicNotebookService } from '../../services/public-notebook.service';
@@ -8,6 +8,7 @@ import { PublicNotebookService } from '../../services/public-notebook.service';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './public-landing.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './public-landing.component.scss',
 })
 export class PublicLandingComponent {

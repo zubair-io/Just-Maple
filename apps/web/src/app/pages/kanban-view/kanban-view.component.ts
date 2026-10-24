@@ -1,4 +1,11 @@
-import { Component, computed, inject, signal, OnDestroy } from '@angular/core';
+import {
+  Component,
+  computed,
+  inject,
+  signal,
+  OnDestroy,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -16,6 +23,7 @@ import { NoteHeaderComponent } from '../../components';
   standalone: true,
   imports: [CommonModule, KanbanBoardComponent, KanbanCardModalComponent, NoteHeaderComponent],
   templateUrl: './kanban-view.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './kanban-view.component.scss',
 })
 export class KanbanViewComponent implements OnDestroy {

@@ -1,4 +1,4 @@
-import { Component, input, output, forwardRef } from '@angular/core';
+import { Component, input, output, forwardRef, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR, FormsModule } from '@angular/forms';
 
@@ -15,6 +15,7 @@ export type InputType = 'text' | 'email' | 'password' | 'number' | 'tel' | 'url'
       multi: true,
     },
   ],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <input
       [type]="type()"
@@ -26,6 +27,7 @@ export type InputType = 'text' | 'email' | 'password' | 'number' | 'tel' | 'url'
       [autocomplete]="autocomplete()"
       [class]="inputClasses"
       [ngModel]="value"
+      [ngModelOptions]="{ standalone: true }"
       (ngModelChange)="onValueChange($event)"
       (blur)="onTouched()"
     />

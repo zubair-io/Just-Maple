@@ -1,4 +1,4 @@
-import { Component, input, output, computed } from '@angular/core';
+import { Component, input, output, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import type { Message } from '@maple/shared';
 import { ContentRendererComponent } from '../../atoms/content-renderer/content-renderer.component';
@@ -74,6 +74,7 @@ import { ProfileAvatarComponent } from '../../atoms';
       </div>
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       .message-wrapper {

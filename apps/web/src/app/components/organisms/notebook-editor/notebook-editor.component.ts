@@ -15,6 +15,7 @@ import {
   type ComponentRef,
   EnvironmentInjector,
   ViewEncapsulation,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
@@ -132,6 +133,7 @@ import type { Awareness } from 'y-protocols/awareness';
   standalone: true,
   imports: [CommonModule, EditorToolbarComponent, PageLinkSearchComponent, GcalEventPopupComponent],
   templateUrl: './notebook-editor.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './notebook-editor.component.scss',
   // encapsulation: ViewEncapsulation.None,
 })

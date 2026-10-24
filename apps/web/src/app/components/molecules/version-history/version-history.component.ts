@@ -1,4 +1,13 @@
-import { Component, input, output, signal, inject, effect, computed } from '@angular/core';
+import {
+  Component,
+  input,
+  output,
+  signal,
+  inject,
+  effect,
+  computed,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as Y from 'yjs';
 import { MemoVersionService, type MemoVersionFull } from '../../../services/memo-version.service';
@@ -9,6 +18,7 @@ import type { MemoVersionListItem, VersionTrigger } from '@maple/shared';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './version-history.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './version-history.component.scss',
 })
 export class VersionHistoryComponent {

@@ -1,3 +1,5 @@
+import { listBotModels, BotModelsError } from '../services/bot-models.service';
+import { isBotModel, type BotProvider } from '@maple/shared';
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
@@ -11,6 +13,7 @@ import {
 import {
     findUserBotsByUserId,
     findUserBotById,
+    findUserBotByIdInternal,
     findUserBotByHandle,
     findUserBotByHandleForNotebook,
     createUserBot,
@@ -112,6 +115,56 @@ export const botRoutes = new Elysia({ prefix: '/api' })
         return { userBots: enrichedBots };
     })
 
+    // Load available models for a draft or an owned bot. Saved keys stay on the server.
+    .post(
+        '/bot-models',
+        async ({ auth, body, set }) => {
+            if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+            const bot = body.userBotId ? await findUserBotByIdInternal(body.userBotId) : null;
+            if (body.userBotId && (!bot || bot.userId !== auth.user._id)) {
+                set.status = 404;
+                return { error: 'Bot not found' };
+            }
+            const templateId = bot?.templateId || body.templateId;
+            const template = templateId ? await findBotTemplateById(templateId) : null;
+            const action = template?.definition.actions.find((action) => action.type === 'llm');
+            const provider = String(action?.config.provider || 'anthropic');
+            if (!action || !['anthropic', 'openai'].includes(provider)) {
+                set.status = 400;
+                return { error: 'Model discovery is available for Claude and OpenAI bots' };
+            }
+            const apiKey = body.apiKey?.trim() || bot?.config?.apiKey;
+            if (!apiKey || apiKey === '***REDACTED***') {
+                set.status = 400;
+                return { error: 'Enter an API key to load available models' };
+            }
+            try {
+                return {
+                    models: await listBotModels(
+                        provider as BotProvider,
+                        apiKey,
+                        body.apiKey?.trim() ? false : bot?.config?.isOAuthToken,
+                    ),
+                };
+            } catch (error) {
+                set.status = error instanceof BotModelsError ? error.status : 502;
+                return {
+                    error:
+                        error instanceof BotModelsError
+                            ? error.message
+                            : 'Could not load provider models',
+                };
+            }
+        },
+        {
+            body: t.Object({
+                userBotId: t.Optional(t.String()),
+                templateId: t.Optional(t.String()),
+                apiKey: t.Optional(t.String({ maxLength: 8192 })),
+            }),
+        },
+    )
+
     // Register a new bot
     .post(
         '/user-bots',
@@ -158,6 +211,8 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 displayName: t.Optional(t.String()),
                 config: t.Optional(
                     t.Object({
+                        model: t.Optional(t.String({ minLength: 1, maxLength: 128 })),
+                        responseMode: t.Optional(t.Union([t.Literal('auto'), t.Literal('text')])),
                         apiKey: t.Optional(t.String()),
                         isOAuthToken: t.Optional(t.Boolean()),
                         customSettings: t.Optional(t.Record(t.String(), t.Any())),
@@ -189,6 +244,8 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 displayName: t.Optional(t.String()),
                 config: t.Optional(
                     t.Object({
+                        model: t.Optional(t.String({ minLength: 1, maxLength: 128 })),
+                        responseMode: t.Optional(t.Union([t.Literal('auto'), t.Literal('text')])),
                         apiKey: t.Optional(t.String()),
                         isOAuthToken: t.Optional(t.Boolean()),
                         customSettings: t.Optional(t.Record(t.String(), t.Any())),
@@ -239,17 +296,30 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             const enrichedBots = await findUserBotsForNotebook(params.id);
 
             // Map to BotSuggestion format with owner info
-            const suggestions = enrichedBots.map((bot: any) => ({
-                id: bot._id,
-                handle: bot.handle,
-                displayName: bot.displayName || bot.templateName || bot.handle,
-                avatar: bot.templateAvatar,
-                description: bot.templateDescription,
-                type: 'bot' as const,
-                ownerId: bot.userId,
-                ownerName: bot.ownerName,
-                ownerAvatar: bot.ownerAvatar,
-            }));
+            const suggestions = await Promise.all(
+                enrichedBots.map(async (bot: any) => {
+                    const template = bot.templateId
+                        ? await findBotTemplateById(bot.templateId)
+                        : null;
+                    const llm = template?.definition.actions.find((a) => a.type === 'llm');
+                    const provider = llm
+                        ? (String(llm.config.provider || 'anthropic') as BotProvider)
+                        : undefined;
+                    return {
+                        id: bot._id,
+                        handle: bot.handle,
+                        displayName: bot.displayName || bot.templateName || bot.handle,
+                        avatar: bot.templateAvatar,
+                        description: bot.templateDescription,
+                        type: 'bot' as const,
+                        provider,
+                        defaultModel: bot.config?.model || llm?.config.model,
+                        ownerId: bot.userId,
+                        ownerName: bot.ownerName,
+                        ownerAvatar: bot.ownerAvatar,
+                    };
+                }),
+            );
 
             return { bots: suggestions };
         },
@@ -281,6 +351,18 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
             console.log(`[BotInvoke] Found bot: ${userBot._id}, type: ${userBot.botType}`);
 
+            const template = userBot.templateId
+                ? await findBotTemplateById(userBot.templateId)
+                : null;
+            const llm = template?.definition.actions.find((a) => a.type === 'llm');
+            if (
+                body.context.model &&
+                (!llm ||
+                    !isBotModel(body.context.model, String(llm.config.provider || 'anthropic')))
+            ) {
+                set.status = 400;
+                return { error: 'The selected model does not match this bot provider' };
+            }
             // Build context with conversation history if this is a thread
             const context: any = { ...body.context };
 
@@ -290,7 +372,16 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 const { findThreadByParentMessage } = await import('../repositories/thread.repo');
                 const { findMessagesByThreadId } = await import('../repositories/message.repo');
 
-                const sourceMessage = await findMessageById(body.sourceId);
+                const sourceMessage = await findMessageById(body.sourceId, auth.user._id);
+                const { findPageById } = await import('../repositories/page.repo');
+                const sourcePage = sourceMessage
+                    ? await findPageById(sourceMessage.pageId, auth.user._id)
+                    : null;
+                if (!sourceMessage || sourcePage?.notebookId !== params.id) {
+                    set.status = 404;
+                    return { error: 'Source message not found in this notebook' };
+                }
+                context.pageId = sourceMessage.pageId;
 
                 // Check if this message has a thread
                 if (sourceMessage?.hasThread) {
@@ -330,6 +421,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 sourceType: t.Union([t.Literal('message'), t.Literal('note')]),
                 sourceId: t.String(),
                 context: t.Object({
+                    model: t.Optional(t.String({ minLength: 1, maxLength: 128 })),
                     mentionText: t.Optional(t.String()),
                     fullContent: t.Optional(t.String()),
                     documentTitle: t.Optional(t.String()),

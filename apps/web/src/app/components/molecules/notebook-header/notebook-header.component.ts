@@ -1,4 +1,12 @@
-import { Component, input, output, inject, TemplateRef, contentChild } from '@angular/core';
+import {
+  Component,
+  input,
+  output,
+  inject,
+  TemplateRef,
+  contentChild,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Notebook, NotebookMember } from '@maple/shared';
 import { MemberAvatarGroupComponent } from '../member-avatar-group/member-avatar-group.component';
@@ -10,6 +18,7 @@ import { UiStateService } from '../../../services/ui-state.service';
   standalone: true,
   imports: [CommonModule, MemberAvatarGroupComponent, NewPageButtonComponent],
   templateUrl: './notebook-header.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './notebook-header.component.scss',
 })
 export class NotebookHeaderComponent {

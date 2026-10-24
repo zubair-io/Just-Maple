@@ -255,7 +255,8 @@
                 type="password"
                 id="apiKey"
                 [ngModel]="apiKey()"
-                (ngModelChange)="apiKey.set($event)"
+                (ngModelChange)="changeApiKey('register', $event)"
+                (change)="loadRegisterModels()"
                 placeholder="Enter your API key"
               />
               <p class="field-hint">
@@ -264,6 +265,58 @@
             </div>
           }
 
+          @if (supportsModelSelection(template._id)) {
+            <div class="form-field">
+              <label for="model">Model</label>
+              <select
+                id="model"
+                [ngModel]="model()"
+                (ngModelChange)="model.set($event)"
+                [disabled]="registerModelsLoading()"
+                class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-main)] px-3 py-2.5"
+              >
+                <option value="" disabled>
+                  {{ registerModelsLoading() ? 'Loading models…' : 'Choose a model' }}
+                </option>
+                @if (model() && !hasModel(registerModels(), model())) {
+                  <option [value]="model()">{{ model() }} (current)</option>
+                }
+                @for (option of registerModels(); track option.id) {
+                  <option [value]="option.id">
+                    {{ option.name }}{{ option.name !== option.id ? ' (' + option.id + ')' : '' }}
+                  </option>
+                }
+              </select>
+              <button
+                type="button"
+                class="mt-2 text-sm text-[var(--color-primary)] hover:underline disabled:opacity-50"
+                (click)="loadRegisterModels()"
+                [disabled]="registerModelsLoading() || !apiKey().trim()"
+              >
+                {{ registerModelsLoading() ? 'Loading…' : 'Refresh models from provider' }}
+              </button>
+              @if (registerModelsError()) {
+                <p role="alert" class="field-hint text-[var(--color-error)]">
+                  {{ registerModelsError() }}
+                </p>
+              } @else {
+                <p class="field-hint">
+                  Enter your API key to load the models available to your account.
+                </p>
+              }
+            </div>
+            <div class="form-field">
+              <label for="responseMode">Replies</label>
+              <select
+                id="responseMode"
+                [ngModel]="responseMode()"
+                (ngModelChange)="responseMode.set($event)"
+              >
+                <option value="auto">Text and interactive UI</option>
+                <option value="text">Text only</option>
+              </select>
+            </div>
+          }
           @if (registerError()) {
             <div class="error-message">{{ registerError() }}</div>
           }
@@ -337,12 +390,65 @@
               type="password"
               id="editApiKey"
               [ngModel]="editApiKey()"
-              (ngModelChange)="editApiKey.set($event)"
+              (ngModelChange)="changeApiKey('edit', $event)"
+              (change)="loadEditModels()"
               placeholder="Leave blank to keep current key"
             />
             <p class="field-hint">Only fill this if you want to change the API key</p>
           </div>
 
+          @if (supportsModelSelection(bot.templateId)) {
+            <div class="form-field">
+              <label for="editModel">Model</label>
+              <select
+                id="editModel"
+                [ngModel]="editModel()"
+                (ngModelChange)="editModel.set($event)"
+                [disabled]="editModelsLoading()"
+                class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-main)] px-3 py-2.5"
+              >
+                <option value="" disabled>
+                  {{ editModelsLoading() ? 'Loading models…' : 'Choose a model' }}
+                </option>
+                @if (editModel() && !hasModel(editModels(), editModel())) {
+                  <option [value]="editModel()">{{ editModel() }} (current)</option>
+                }
+                @for (option of editModels(); track option.id) {
+                  <option [value]="option.id">
+                    {{ option.name }}{{ option.name !== option.id ? ' (' + option.id + ')' : '' }}
+                  </option>
+                }
+              </select>
+              <button
+                type="button"
+                class="mt-2 text-sm text-[var(--color-primary)] hover:underline disabled:opacity-50"
+                (click)="loadEditModels()"
+                [disabled]="editModelsLoading()"
+              >
+                {{ editModelsLoading() ? 'Loading…' : 'Refresh models from provider' }}
+              </button>
+              @if (editModelsError()) {
+                <p role="alert" class="field-hint text-[var(--color-error)]">
+                  {{ editModelsError() }}
+                </p>
+              } @else {
+                <p class="field-hint">
+                  Models are loaded using your saved API key, or the replacement key above.
+                </p>
+              }
+            </div>
+            <div class="form-field">
+              <label for="editResponseMode">Replies</label>
+              <select
+                id="editResponseMode"
+                [ngModel]="editResponseMode()"
+                (ngModelChange)="editResponseMode.set($event)"
+              >
+                <option value="auto">Text and interactive UI</option>
+                <option value="text">Text only</option>
+              </select>
+            </div>
+          }
           @if (editError()) {
             <div class="error-message">{{ editError() }}</div>
           }

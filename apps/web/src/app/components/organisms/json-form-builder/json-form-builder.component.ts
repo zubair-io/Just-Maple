@@ -1,4 +1,4 @@
-import { Component, input, output, signal, effect } from '@angular/core';
+import { Component, input, output, signal, effect, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -22,6 +22,7 @@ interface FormField {
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './json-form-builder.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './json-form-builder.component.scss',
 })
 export class JsonFormBuilderComponent {

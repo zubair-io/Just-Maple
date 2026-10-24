@@ -1,6 +1,7 @@
 import { Injectable, signal, computed, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { environment } from '../../environments/environment';
 import { Router } from '@angular/router';
 import {
   firstValueFrom,
@@ -222,6 +223,35 @@ export class AuthService {
     if (this.nativeBridge.isNativeApp()) {
       const serverId = this.getNativeServerId();
       this.nativeBridge.clearToken(serverId);
+    }
+  }
+
+  async loginWithDevToken(email: string, token: string): Promise<void> {
+    if (environment.production) throw new Error('Development sign-in is unavailable');
+    this._isLoading.set(true);
+    this._error.set(null);
+    try {
+      const response = await firstValueFrom(
+        this.http.post<AuthResponse>('/api/auth/dev-token', {
+          email: email.trim(),
+          token: token.trim(),
+        }),
+      );
+      this._accessToken.set(response.accessToken);
+      this._user.set(response.user);
+      this.saveToStorage(response);
+      await this.navigateAfterAuth();
+    } catch (err: unknown) {
+      const message =
+        err instanceof HttpErrorResponse
+          ? err.error?.error || 'Development sign-in failed'
+          : err instanceof Error
+            ? err.message
+            : 'Development sign-in failed';
+      this._error.set(message);
+      throw new Error(message);
+    } finally {
+      this._isLoading.set(false);
     }
   }
 

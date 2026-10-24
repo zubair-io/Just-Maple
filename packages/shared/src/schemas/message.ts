@@ -1,5 +1,6 @@
 import { Type, Static } from '@sinclair/typebox';
 import { PageContentSchema } from './page';
+import { BotUIResponseSchema } from './bot-ui';
 
 // Sender type - distinguishes between user and bot messages
 export const SenderTypeSchema = Type.Union([
@@ -34,6 +35,8 @@ export const MessageSchema = Type.Object({
     senderEmail: Type.Optional(Type.String()), // Populated sender email
     senderDisplayName: Type.Optional(Type.String()), // Populated sender display name (or bot name)
     senderProfilePictureUrl: Type.Optional(Type.String()), // Populated sender profile picture (or bot avatar)
+    botUI: Type.Optional(BotUIResponseSchema),
+    botModel: Type.Optional(Type.String()),
     content: PageContentSchema, // TipTap/ProseMirror JSON (rich text)
     mentions: Type.Optional(Type.Array(MentionSchema)), // Parsed mentions from content
     hasThread: Type.Optional(Type.Boolean()), // Whether this message has a thread reply

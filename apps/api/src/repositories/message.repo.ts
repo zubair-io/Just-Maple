@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { getDb } from '../db/client';
 import type {
     Message,
+    BotUIResponse,
     PageContent,
     CreateMessageInput,
     UpdateMessageInput,
@@ -31,6 +32,8 @@ interface MessageDocument {
     senderDisplayName?: string;
     senderProfilePictureUrl?: string;
     content: PageContent;
+    botUI?: BotUIResponse;
+    botModel?: string;
     mentions?: Mention[];
     hasThread?: boolean;
     createdAt: Date;
@@ -63,6 +66,8 @@ function toMessageResponse(
         senderDisplayName: senderDisplayName || doc.senderDisplayName,
         senderProfilePictureUrl: senderProfilePictureUrl || doc.senderProfilePictureUrl,
         content: doc.content,
+        botUI: doc.botUI,
+        botModel: doc.botModel,
         mentions: doc.mentions,
         hasThread: doc.hasThread,
         createdAt: doc.createdAt.toISOString(),
@@ -251,6 +256,8 @@ export async function createMessage(
         senderDisplayName,
         senderProfilePictureUrl,
         content: doc.content,
+        botUI: doc.botUI,
+        botModel: doc.botModel,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
     };
@@ -432,6 +439,8 @@ export async function createMessageInThread(data: {
     senderDisplayName?: string;
     senderProfilePictureUrl?: string;
     content: PageContent;
+    botUI?: BotUIResponse;
+    botModel?: string;
 }): Promise<Message> {
     const now = new Date();
     const messageId = generateMessageId();
@@ -448,6 +457,8 @@ export async function createMessageInThread(data: {
         senderDisplayName: isBot ? data.senderDisplayName : undefined,
         senderProfilePictureUrl: isBot ? data.senderProfilePictureUrl : undefined,
         content: data.content,
+        botUI: data.botUI,
+        botModel: data.botModel,
         createdAt: now,
         updatedAt: now,
     };
@@ -466,6 +477,8 @@ export async function createMessageInThread(data: {
         senderDisplayName: data.senderDisplayName,
         senderProfilePictureUrl: data.senderProfilePictureUrl,
         content: data.content,
+        botUI: data.botUI,
+        botModel: data.botModel,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
     };

@@ -11,6 +11,7 @@ import {
   AfterViewInit,
   OnDestroy,
   DestroyRef,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
@@ -49,6 +50,7 @@ interface MessageWithGrouping extends Message {
   standalone: true,
   imports: [CommonModule, ChatMessageComponent, ChatTypingComponent, MentionSuggestionComponent],
   templateUrl: './chat.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './chat.component.scss',
 })
 export class ChatComponent implements AfterViewInit, OnDestroy {

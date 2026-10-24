@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { TypingEvent } from '@maple/shared';
 
@@ -16,6 +16,7 @@ import type { TypingEvent } from '@maple/shared';
       <span class="text">{{ typingText() }}</span>
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       .typing-indicator {

@@ -8,6 +8,7 @@ import {
   OnDestroy,
   ViewChild,
   ElementRef,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule, Location } from '@angular/common';
@@ -27,6 +28,7 @@ import type { Collectable, CollectibleRegistry, CollectableStatus } from '@maple
   standalone: true,
   imports: [CommonModule, FormsModule, ScrollingModule],
   templateUrl: './lego-scan.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './lego-scan.component.scss',
 })
 export class LegoScanComponent implements OnInit, OnDestroy {

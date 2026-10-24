@@ -7,6 +7,7 @@ import {
   signal,
   ElementRef,
   ViewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
@@ -18,6 +19,7 @@ import type { LinkSearchResult } from '@maple/shared';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './page-link-search.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './page-link-search.component.scss',
 })
 export class PageLinkSearchComponent {

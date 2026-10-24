@@ -140,6 +140,38 @@ const claudeDefinition: BotDefinition = {
  * Uses upsert so it's safe to run on every server boot
  */
 export async function seedBotTemplates(): Promise<void> {
+    await upsertBotTemplate('openai', {
+        name: 'OpenAI',
+        handle: 'openai',
+        avatar: '✦',
+        description: 'An AI assistant powered by OpenAI. Requires your OpenAI API key.',
+        definition: {
+            ...claudeDefinition,
+            trigger: { mentionPatterns: ['openai'] },
+            actions: [
+                {
+                    type: 'llm',
+                    id: 'openai-response',
+                    config: {
+                        provider: 'openai',
+                        model: 'gpt-4.1',
+                        systemPrompt:
+                            'You are a helpful AI assistant in Maple. Be concise and friendly.',
+                        userPrompt: '{{$mentionText}}',
+                        maxTokens: 4096,
+                    },
+                    outputVariable: 'response',
+                },
+            ],
+        },
+        requiresConfig: true,
+        isSystemBot: true,
+        configSchema: {
+            type: 'object',
+            properties: { apiKey: { type: 'string', title: 'OpenAI API Key' } },
+            required: ['apiKey'],
+        },
+    });
     // Hello World Bot
     await upsertBotTemplate('hello', {
         name: 'Hello World',
