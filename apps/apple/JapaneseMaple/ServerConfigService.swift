@@ -13,10 +13,17 @@ class ServerConfigService {
 
     private let server: ServerConfig = {
         #if DEBUG
+        #if os(macOS)
+        return ServerConfig(
+            name: "Development",
+            url: "http://localhost:4200"
+        )
+        #else
         return ServerConfig(
             name: "Development",
             url: "http://192.168.1.123:4200"
         )
+        #endif
         #else
         return ServerConfig(
             name: "Production",
@@ -132,13 +139,22 @@ class ServerConfigService {
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
 
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let token = String(data: data, encoding: .utf8) else {
-            return nil
+        if status == errSecSuccess,
+           let data = result as? Data,
+           let token = String(data: data, encoding: .utf8) {
+            return token
         }
 
-        return token
+        #if DEBUG && os(macOS)
+        // WKWebView cannot complete a platform-passkey assertion for a localhost
+        // development origin. Reuse the existing production session in debug builds
+        // so local UI work does not require exporting or duplicating credentials.
+        if serverId == "http://localhost:4200" {
+            return getToken(serverId: "https://justmaple.app")
+        }
+        #endif
+
+        return nil
     }
 
     func clearToken(serverId: String? = nil) -> Bool {

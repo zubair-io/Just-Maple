@@ -132,3 +132,19 @@
     }
   }
 }
+
+.recorder-status {
+  color: var(--color-primary);
+  font-size: 11px;
+  white-space: nowrap;
+  text-decoration: none;
+  padding: 6px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
