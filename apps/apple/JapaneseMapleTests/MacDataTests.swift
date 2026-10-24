@@ -371,6 +371,20 @@ private func attributedBody(_ text: String) -> Data {
         #expect(listed.map(\.id) == ["imessage:1", "imessage:2"])
     }
 
+    @Test func overlappingEmbeddingPassesEmbedEachItemOnce() async throws {
+        let t = now.timeIntervalSince1970
+        let (engine, store) = try await makeEngine(
+            (1...80).map { item("imessage:\($0)", .imessage, "Friend", "Message number \($0)", at: t - Double($0)) })
+        // Every Mail change starts a sync and an embedding pass; they used to redo each other's work.
+        async let first = engine.embedPending()
+        async let second = engine.embedPending()
+        async let third = engine.embedPending()
+        let total = await first + second + third
+        #expect(total == 80)
+        #expect(try store.pendingEmbeddingCount() == 0)
+        #expect(await engine.embedPending() == 0)
+    }
+
     @Test func proactiveBatchesOnlyCarryFreshNewsForProactiveNotebooks() async throws {
         let t = now.timeIntervalSince1970
         let (engine, _) = try await makeEngine([

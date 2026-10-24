@@ -41,12 +41,20 @@ extension MacDataEngine {
 
     // MARK: - Embedding
 
-    /// Embeds items imported or changed since the last pass. Safe to call often.
+    /// Embeds items imported or changed since the last pass. Safe to call often: Mail
+    /// triggers a sync every few seconds, and overlapping passes would each embed the
+    /// same unfinished items, so later calls return at once and leave it to the running pass.
     @discardableResult
     func embedPending() async -> Int {
-        guard MacDataEmbedding.isAvailable, let store = try? store() else { return 0 }
+        guard MacDataEmbedding.isAvailable, !isEmbedding, let store = try? store() else { return 0 }
+        isEmbedding = true
+        defer { isEmbedding = false }
         var embedded = 0
+        var attempted = Set<String>()
         while let batch = try? store.itemsNeedingEmbedding(limit: 64), !batch.isEmpty {
+            // Items that failed to save would come back forever; stop instead of spinning.
+            guard batch.contains(where: { !attempted.contains($0.id) }) else { break }
+            attempted.formUnion(batch.map(\.id))
             // The model runs off the actor so searches aren't blocked behind it.
             let vectors = await Task.detached(priority: .utility) {
                 batch.map { item in
