@@ -24,6 +24,7 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
     private static let pollInterval: TimeInterval = 120
 
     private let engine = MacDataEngine()
+    private lazy var connection = MacDataConnection(engine: engine)
     private weak var webView: WKWebView?
     private var started = false
     private var watchers: [MacDataFileWatcher] = []
@@ -71,6 +72,10 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
             Task { @MainActor in self?.syncAll() }
         }
         syncAll()
+        connection.onStateChange = { [weak self] _ in
+            Task { @MainActor in await self?.emitStatus() }
+        }
+        connection.start()
     }
 
     private func syncAll() {
@@ -89,6 +94,8 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
                 self.emit(["type": "changed", "source": source.rawValue])
             }
             await self.emitStatus()
+            // Make new items searchable by bots; cheap when nothing is pending.
+            await engine.embedPending()
         }
     }
 
@@ -117,6 +124,9 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
         case "status":
             return try Self.json(await engine.statuses())
 
+        case "relayStatus":
+            return connection.state
+
         case "listPages":
             return try Self.json(await engine.pages(notebookId: body["notebookId"] as? String))
 
@@ -133,6 +143,7 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
                 _ = await engine.requestCalendarAccess()
             }
             sync(source)
+            connection.announce()
             return try Self.json(page)
 
         case "renamePage":
@@ -141,7 +152,12 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
 
         case "deletePage":
             try await engine.deletePage(id: try Self.string(body, "id"))
+            connection.announce()
             return true
+
+        case "getItem":
+            let id = try Self.string(body, "id")
+            return try await engine.localItem(id: id).map(Self.json) ?? NSNull()
 
         case "query":
             let data = try JSONSerialization.data(withJSONObject: body)
@@ -178,7 +194,7 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
     private func emitStatus() async {
         guard let statuses = try? await engine.statuses(), let json = try? Self.json(statuses)
         else { return }
-        emit(["type": "status", "statuses": json])
+        emit(["type": "status", "statuses": json, "relay": connection.state])
     }
 
     private func emit(_ detail: [String: Any]) {

@@ -494,3 +494,56 @@ export async function markMessageHasThread(messageId: string): Promise<void> {
         // Ignore errors
     }
 }
+
+/**
+ * Create a top-level bot message in a page (not in a thread). Used by proactive bots,
+ * which post updates and answers directly in the conversation.
+ */
+export async function createTopLevelBotMessage(data: {
+    pageId: string;
+    notebookId?: string;
+    userId: string;
+    userBotId: string;
+    senderDisplayName?: string;
+    senderProfilePictureUrl?: string;
+    content: PageContent;
+    botUI?: BotUIResponse;
+    botModel?: string;
+}): Promise<Message> {
+    const now = new Date();
+    const messageId = generateMessageId();
+    const doc: Omit<MessageDocument, '_id'> = {
+        id: messageId,
+        pageId: data.pageId,
+        notebookId: data.notebookId ? new ObjectId(data.notebookId) : undefined,
+        userId: new ObjectId(data.userId),
+        userBotId: new ObjectId(data.userBotId),
+        senderType: 'bot',
+        senderDisplayName: data.senderDisplayName,
+        senderProfilePictureUrl: data.senderProfilePictureUrl,
+        content: data.content,
+        botUI: data.botUI,
+        botModel: data.botModel,
+        createdAt: now,
+        updatedAt: now,
+    };
+
+    const result = await getCollection().insertOne(doc as MessageDocument);
+
+    return {
+        _id: result.insertedId.toString(),
+        id: messageId,
+        pageId: data.pageId,
+        notebookId: data.notebookId,
+        userId: data.userId,
+        userBotId: data.userBotId,
+        senderType: 'bot',
+        senderDisplayName: data.senderDisplayName,
+        senderProfilePictureUrl: data.senderProfilePictureUrl,
+        content: data.content,
+        botUI: data.botUI,
+        botModel: data.botModel,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+    };
+}

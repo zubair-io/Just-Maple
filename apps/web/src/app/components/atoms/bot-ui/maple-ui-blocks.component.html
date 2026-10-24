@@ -37,6 +37,25 @@
           {{ block.label }}
         </button>
       }
+      @case ('source') {
+        @if (macData.isAvailable()) {
+          <button type="button" class="maple-source" (click)="openSource(block.itemId)">
+            <span class="material-symbols-rounded" aria-hidden="true">{{
+              block.itemId.startsWith('mail:')
+                ? 'mail'
+                : block.itemId.startsWith('calendar:')
+                  ? 'calendar_month'
+                  : 'sms'
+            }}</span>
+            {{ block.label }}
+          </button>
+        } @else {
+          <span class="maple-source" title="This item is stored on your Mac">
+            <span class="material-symbols-rounded" aria-hidden="true">laptop_mac</span>
+            {{ block.label }} · on your Mac
+          </span>
+        }
+      }
       @case ('form') {
         <form class="maple-card" (ngSubmit)="submit(block, index)">
           <h3>{{ block.title }}</h3>

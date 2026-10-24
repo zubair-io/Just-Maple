@@ -10,6 +10,7 @@ import { collectableRoutes } from './routes/collectables';
 import { collectibleRegistryRoutes } from './routes/collectible-registry';
 import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
+import { macDataRoutes } from './routes/mac-data';
 import { legoRoutes } from './routes/lego';
 import { collabRoutes } from './routes/collab';
 import { memoRoutes } from './routes/memo';
@@ -85,6 +86,7 @@ async function main() {
         .use(collectibleRegistryRoutes)
         .use(notificationRoutes)
         .use(botRoutes)
+        .use(macDataRoutes)
         .use(legoRoutes)
         .use(collabRoutes)
         .use(memoRoutes)

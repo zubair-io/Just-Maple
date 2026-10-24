@@ -29,6 +29,22 @@ export function injectMacDataList(source: MacDataSource, options: MacDataListOpt
     initialValue: route.snapshot.paramMap.get('id'),
   });
   const page = computed(() => macData.pages().find((p) => p.id === pageId()) ?? null);
+
+  // ?item=<id>: an item a bot cited, shown in full above the table.
+  const focusedId = toSignal(route.queryParamMap.pipe(map((params) => params.get('item'))), {
+    initialValue: route.snapshot.queryParamMap.get('item'),
+  });
+  const focused = signal<MacDataItem | null>(null);
+  effect(() => {
+    const id = focusedId();
+    focused.set(null);
+    if (id) {
+      macData.getItem(id).then(
+        (item) => focusedId() === id && focused.set(item),
+        () => undefined,
+      );
+    }
+  });
   const status = computed(() => macData.statusBySource()[source] ?? null);
 
   const search = signal('');
@@ -90,6 +106,12 @@ export function injectMacDataList(source: MacDataSource, options: MacDataListOpt
     loading: loading.asReadonly(),
     error: error.asReadonly(),
     canLoadMore,
+    focused: focused.asReadonly(),
+    relay: macData.relay.asReadonly(),
+
+    clearFocus(): void {
+      router.navigate([], { relativeTo: route, queryParams: { item: null } });
+    },
 
     loadMore(): void {
       if (!loading() && canLoadMore()) void load(items().length, pageSize);

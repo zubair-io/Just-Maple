@@ -26,6 +26,7 @@ import { ContentRendererComponent } from '../../../atoms/content-renderer/conten
 import { ProfileAvatarComponent } from '../../../atoms/profile-avatar/profile-avatar.component';
 import { MentionSuggestionComponent } from '../mention-suggestion.component';
 import { Mention, type MentionNodeAttrs } from '../extensions/mention';
+import { isBotUIFallbackContent } from '@maple/shared';
 import type { Message, Thread, PageContent } from '@maple/shared';
 import { extractMentions, extractText } from '@maple/shared';
 import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of } from 'rxjs';
@@ -44,8 +45,13 @@ import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of 
   templateUrl: './thread-panel.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './thread-panel.component.scss',
+  host: {
+    '[class.fullscreen]': 'isFullscreen()',
+    '[style.--thread-width.px]': 'width()',
+  },
 })
 export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
+  readonly isBotUIFallbackContent = isBotUIFallbackContent;
   @ViewChild('threadMessageList') private messageListRef?: ElementRef<HTMLElement>;
   @ViewChild('threadEditorElement', { static: false })
   private editorRef?: ElementRef<HTMLElement>;
@@ -66,6 +72,13 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
   readonly actionPending = signal(false);
   readonly actionError = signal<string | null>(null);
   readonly isClosing = signal(false);
+
+  // Size: drag the left edge to resize (remembered), or fill the chat area.
+  private static readonly widthKey = 'maple.threadPanelWidth';
+  private static readonly minWidth = 320;
+  readonly width = signal(ThreadPanelComponent.savedWidth());
+  readonly isFullscreen = signal(false);
+  readonly isResizing = signal(false);
 
   // Mention autocomplete state
   readonly showMentionSuggestions = signal(false);
@@ -130,12 +143,75 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
 
   @HostListener('document:keydown.escape')
   onEscapeKey(): void {
-    if (!this.showMentionSuggestions()) {
+    if (this.showMentionSuggestions()) return;
+    // Escape leaves full screen first, then closes the thread.
+    if (this.isFullscreen()) {
+      this.isFullscreen.set(false);
+    } else {
       this.close();
     }
   }
 
+  toggleFullscreen(): void {
+    this.isFullscreen.update((full) => !full);
+  }
+
+  /** Drag the left edge; the panel grows to the left. Arrow keys resize from the keyboard. */
+  startResize(event: PointerEvent): void {
+    if (this.isFullscreen()) return;
+    event.preventDefault();
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startWidth = this.width();
+    this.isResizing.set(true);
+    const move = (e: PointerEvent) => this.setWidth(startWidth + (startX - e.clientX));
+    const end = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      this.isResizing.set(false);
+      this.saveWidth();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }
+
+  resizeWithKeyboard(event: KeyboardEvent): void {
+    const step = event.shiftKey ? 80 : 20;
+    if (event.key === 'ArrowLeft') this.setWidth(this.width() + step);
+    else if (event.key === 'ArrowRight') this.setWidth(this.width() - step);
+    else return;
+    event.preventDefault();
+    this.saveWidth();
+  }
+
+  private setWidth(width: number): void {
+    const max = Math.max(ThreadPanelComponent.minWidth, window.innerWidth * 0.7);
+    this.width.set(Math.round(Math.min(Math.max(width, ThreadPanelComponent.minWidth), max)));
+  }
+
+  private saveWidth(): void {
+    try {
+      localStorage.setItem(ThreadPanelComponent.widthKey, String(this.width()));
+    } catch {
+      // Storage unavailable (private mode); the width just isn't remembered.
+    }
+  }
+
+  private static savedWidth(): number {
+    try {
+      const saved = Number(localStorage.getItem(ThreadPanelComponent.widthKey));
+      return saved >= ThreadPanelComponent.minWidth ? saved : 380;
+    } catch {
+      return 380;
+    }
+  }
+
   close(): void {
+    // Closing plays the slide-out animation, which full screen turns off.
+    this.isFullscreen.set(false);
     this.isClosing.set(true);
   }
 

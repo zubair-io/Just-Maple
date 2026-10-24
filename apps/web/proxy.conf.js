@@ -1,6 +1,9 @@
+// API_PROXY_TARGET lets a worktree's dev server talk to its own API (e.g. port 8082).
+const API_TARGET = process.env.API_PROXY_TARGET || 'http://127.0.0.1:8081';
+
 const PROXY_CONFIG = {
   '/api/events/stream': {
-    target: 'http://127.0.0.1:8081',
+    target: API_TARGET,
     secure: false,
     changeOrigin: true,
     logLevel: 'debug',
@@ -17,12 +20,12 @@ const PROXY_CONFIG = {
     },
   },
   '/api': {
-    target: 'http://127.0.0.1:8081',
+    target: API_TARGET,
     secure: false,
     changeOrigin: true,
   },
   '/ws': {
-    target: 'http://127.0.0.1:8081',
+    target: API_TARGET,
     secure: false,
     changeOrigin: true,
     ws: true,

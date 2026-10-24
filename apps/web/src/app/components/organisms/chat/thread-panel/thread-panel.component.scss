@@ -2,13 +2,32 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  --thread-width: 380px;
+}
+
+// Full screen covers the chat area it sits in (the container is position: relative).
+:host(.fullscreen) {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+
+  .thread-panel {
+    width: 100%;
+    border-left: none;
+    animation: none;
+  }
 }
 
 .thread-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
-  width: 380px;
+  width: var(--thread-width);
+
+  &.resizing {
+    user-select: none;
+  }
   background: var(--color-bg);
   border-left: 1px solid var(--color-border);
   animation: slideIn 0.2s ease-out forwards;
@@ -25,14 +44,14 @@
     opacity: 0;
   }
   to {
-    width: 380px;
+    width: var(--thread-width);
     opacity: 1;
   }
 }
 
 @keyframes slideOut {
   from {
-    width: 380px;
+    width: var(--thread-width);
     opacity: 1;
   }
   to {
@@ -48,6 +67,32 @@
   padding: 12px 16px;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
+}
+
+.thread-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+// A thin grab strip on the left edge; highlights while hovered or dragged.
+.thread-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+
+  &:hover,
+  &:focus-visible,
+  .resizing > & {
+    background: var(--color-primary);
+    opacity: 0.5;
+    outline: none;
+  }
 }
 
 .thread-header-info {
@@ -209,8 +254,8 @@
   align-items: stretch;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 6px;
+  border-radius: 12px;
+  padding: 8px;
   transition: border-color 0.2s;
 
   &:focus-within {
@@ -233,6 +278,7 @@
     border: none !important;
     padding: 4px 8px;
     min-height: 24px;
+    line-height: 1.5;
     font-size: 14px;
 
     &:focus {

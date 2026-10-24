@@ -581,6 +581,17 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     this.messageService.sendTyping(this.notebookId(), false);
   }
 
+  /** Sends a bot UI button's or form's text as a plain message in this chat. */
+  sendFollowUp(text: string): void {
+    const content: PageContent = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: text.slice(0, 9000) }] }],
+    };
+    this.isAtBottom = true;
+    this.scrollToBottom();
+    this.sendRegularMessage(content, []);
+  }
+
   private sendRegularMessage(content: PageContent, mentions: MentionNodeAttrs[]): void {
     const hasBotMentions = mentions.some((m) => m.type === 'bot');
 

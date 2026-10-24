@@ -9,6 +9,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { injectTriggerAction } from '@openuidev/angular-lang';
 import type { BotUIResponse, BotUIBlock } from '@maple/shared';
+import { MacDataService } from '../../../services/mac-data.service';
 
 export const BOT_UI_DISABLED = new InjectionToken<() => boolean>('BOT_UI_DISABLED');
 
@@ -27,6 +28,11 @@ export class MapleUIBlocksComponent {
   readonly disabled = inject(BOT_UI_DISABLED);
   private readonly triggerAction = injectTriggerAction();
   readonly values = signal<Record<string, string>>({});
+  /** Sources open the cited iMessage, email or event, which only exists on the Mac. */
+  readonly macData = inject(MacDataService);
+  openSource(itemId: string): void {
+    void this.macData.openItem(itemId);
+  }
   send(message: string): void {
     if (!this.disabled()) void this.triggerAction(message);
   }

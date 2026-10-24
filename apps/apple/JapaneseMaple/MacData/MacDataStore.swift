@@ -10,7 +10,7 @@
 import Foundation
 
 nonisolated final class MacDataStore: @unchecked Sendable {
-    private let db: MacDataSQLite
+    let db: MacDataSQLite
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -25,7 +25,11 @@ nonisolated final class MacDataStore: @unchecked Sendable {
 
     private func migrate() throws {
         let version = try db.rows("PRAGMA user_version").first?["user_version"]?.int ?? 0
-        guard version < 1 else { return }
+        if version < 1 { try migrateV1() }
+        if version < 2 { try migrateV2() }
+    }
+
+    private func migrateV1() throws {
         try db.transaction {
             try db.execute(
                 """
@@ -69,6 +73,23 @@ nonisolated final class MacDataStore: @unchecked Sendable {
                     created_at REAL NOT NULL)
                 """)
             try db.execute("PRAGMA user_version = 1")
+        }
+    }
+
+    /// Semantic search: embedding vectors per item, plus small key/value state.
+    private func migrateV2() throws {
+        try db.transaction {
+            try db.execute("ALTER TABLE items ADD COLUMN embedded_revision TEXT")
+            try db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chunks(
+                    item_id TEXT NOT NULL,
+                    ordinal INTEGER NOT NULL,
+                    vector BLOB NOT NULL,
+                    PRIMARY KEY(item_id, ordinal))
+                """)
+            try db.execute("CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            try db.execute("PRAGMA user_version = 2")
         }
     }
 
@@ -148,6 +169,7 @@ nonisolated final class MacDataStore: @unchecked Sendable {
                 let exists = !(try db.rows("SELECT 1 FROM items WHERE id=?", [id])).isEmpty
                 guard exists else { continue }
                 try db.execute("DELETE FROM items WHERE id=?", [id])
+                try db.execute("DELETE FROM chunks WHERE item_id=?", [id])
                 try log(id, source, "removed", at)
                 changes += 1
             }

@@ -104,6 +104,9 @@ class ServerConfigService {
         return query
     }
 
+    /// Posted after the bearer token is saved or cleared (sign-in, sign-out).
+    static let tokenDidChange = Notification.Name("MapleTokenDidChange")
+
     func saveToken(_ token: String, serverId: String? = nil) -> Bool {
         let data = token.data(using: .utf8)!
         let account = tokenKey(for: serverId)
@@ -122,6 +125,7 @@ class ServerConfigService {
         let success = status == errSecSuccess
 
         if success {
+            NotificationCenter.default.post(name: Self.tokenDidChange, object: nil)
             print("[ServerConfigService] Saved token to keychain for account: \(account)")
         } else {
             print("[ServerConfigService] Failed to save token: \(status)")
@@ -165,6 +169,7 @@ class ServerConfigService {
         let query = keychainQuery(account: account)
 
         let status = SecItemDelete(query as CFDictionary)
+        NotificationCenter.default.post(name: Self.tokenDidChange, object: nil)
         return status == errSecSuccess || status == errSecItemNotFound
     }
 }

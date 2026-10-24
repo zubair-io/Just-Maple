@@ -80,3 +80,27 @@ input:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 3px;
 }
+// Citation of an item from the user's Mac data. Quieter than an action button.
+.maple-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+
+  .material-symbols-rounded {
+    font-size: 1rem;
+  }
+}
+button.maple-source {
+  color: var(--color-text-main);
+
+  &:hover {
+    border-color: var(--color-text-muted);
+  }
+}

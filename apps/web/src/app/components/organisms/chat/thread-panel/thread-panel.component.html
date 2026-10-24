@@ -1,13 +1,43 @@
-<div class="thread-panel" [class.closing]="isClosing()" (animationend)="onAnimationEnd($event)">
+<div
+  class="thread-panel"
+  [class.closing]="isClosing()"
+  [class.resizing]="isResizing()"
+  (animationend)="onAnimationEnd($event)"
+>
+  @if (!isFullscreen()) {
+    <div
+      class="thread-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize thread panel"
+      tabindex="0"
+      [attr.aria-valuenow]="width()"
+      (pointerdown)="startResize($event)"
+      (keydown)="resizeWithKeyboard($event)"
+    ></div>
+  }
   <!-- Header -->
   <div class="thread-header">
     <div class="thread-header-info">
       <span class="thread-title">Thread</span>
       <span class="thread-parent-sender">{{ parentSenderDisplay }}</span>
     </div>
-    <button type="button" class="thread-close-btn" (click)="close()" aria-label="Close thread">
-      <span class="material-symbols-rounded">close</span>
-    </button>
+    <div class="thread-header-actions">
+      <button
+        type="button"
+        class="thread-close-btn"
+        (click)="toggleFullscreen()"
+        [attr.aria-label]="isFullscreen() ? 'Exit full screen' : 'Full screen'"
+        [title]="isFullscreen() ? 'Exit full screen' : 'Full screen'"
+      >
+        <span class="material-symbols-rounded">{{
+          isFullscreen() ? 'close_fullscreen' : 'open_in_full'
+        }}</span>
+      </button>
+      <button type="button" class="thread-close-btn" (click)="close()" aria-label="Close thread">
+        <span class="material-symbols-rounded">close</span>
+      </button>
+    </div>
   </div>
 
   <!-- Parent message preview -->
@@ -100,7 +130,9 @@
             }
           </div>
           <div class="thread-message-content">
-            <app-content-renderer [content]="message.content" />
+            @if (!isBotUIFallbackContent(message.content, message.botUI)) {
+              <app-content-renderer [content]="message.content" />
+            }
             @if (message.senderType === 'bot' && message.botUI; as ui) {
               <app-bot-ui
                 [response]="ui"

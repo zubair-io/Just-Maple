@@ -12,6 +12,9 @@
   (loadMore)="list.loadMore()"
   (requestAccess)="list.requestAccess()"
   (remove)="list.remove()"
+  [focused]="list.focused()"
+  [relay]="list.relay()"
+  (clearFocus)="list.clearFocus()"
 >
   <div class="flex gap-1 pt-4" role="tablist" aria-label="Time range">
     @for (option of ranges; track option.id) {

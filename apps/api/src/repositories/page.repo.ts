@@ -2,6 +2,7 @@ import { ObjectId, Collection } from 'mongodb';
 import { randomUUID } from 'crypto';
 import { customAlphabet } from 'nanoid';
 import { getDb } from '../db/client';
+import type { ProactiveBotSettings } from '@maple/shared';
 import type {
     Page,
     PageContent,
@@ -44,6 +45,8 @@ interface PageDocument {
     todoMeta?: PageTodoMeta;
     // Tags extracted from content (e.g., #work, #ideas)
     tags?: string[];
+    // Messages pages only: proactive bot settings
+    proactive?: Omit<ProactiveBotSettings, 'updatedAt'> & { updatedAt: Date };
     // Public publishing fields
     isPublished?: boolean;
     publishedSlug?: string;
@@ -74,6 +77,9 @@ function toPageResponse(doc: PageDocument): Page {
         trashedAt: doc.trashedAt?.toISOString(),
         todoMeta: doc.todoMeta, // Todo metadata
         tags: doc.tags, // Tags extracted from content
+        proactive: doc.proactive
+            ? { ...doc.proactive, updatedAt: doc.proactive.updatedAt.toISOString() }
+            : undefined,
         isPublished: doc.isPublished,
         publishedSlug: doc.publishedSlug,
         publishedAt: doc.publishedAt?.toISOString(),
@@ -1179,4 +1185,46 @@ export async function bulkPublishPagesForNotebook(notebookId: string): Promise<n
     } catch {
         return 0;
     }
+}
+
+// ============================================
+// Proactive Bot Functions
+// ============================================
+
+/**
+ * Set or clear a messages page's proactive bot. Access is checked by the caller.
+ */
+export async function setPageProactive(
+    id: string,
+    settings: ProactiveBotSettings | null,
+): Promise<Page | null> {
+    const update = settings
+        ? { $set: { proactive: { ...settings, updatedAt: new Date(settings.updatedAt) } } }
+        : { $unset: { proactive: '' as const } };
+    const result = await getCollection().findOneAndUpdate({ id, type: 'message' }, update, {
+        returnDocument: 'after',
+    });
+    return result ? toPageResponse(result) : null;
+}
+
+/**
+ * Messages pages with an enabled proactive bot whose Mac data belongs to `ownerUserId`.
+ * Optionally limited to one notebook.
+ */
+export async function findProactivePages(
+    ownerUserId: string,
+    notebookId?: string,
+): Promise<Page[]> {
+    const filter: Record<string, unknown> = {
+        type: 'message',
+        'proactive.enabled': true,
+        'proactive.ownerUserId': ownerUserId,
+        isTrashed: { $ne: true },
+    };
+    if (notebookId) {
+        if (!ObjectId.isValid(notebookId)) return [];
+        filter.notebookId = new ObjectId(notebookId);
+    }
+    const docs = await getCollection().find(filter).limit(200).toArray();
+    return docs.map(toPageResponse);
 }

@@ -1,5 +1,7 @@
 import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import type {
+  MacDataItem,
   MacDataPage,
   MacDataQuery,
   MacDataQueryResult,
@@ -11,6 +13,7 @@ interface MacDataEventDetail {
   type: 'changed' | 'status';
   source?: MacDataSource;
   statuses?: MacDataSourceStatus[];
+  relay?: string;
 }
 
 export const MAC_DATA_SOURCES: ReadonlyArray<{
@@ -33,12 +36,15 @@ export const MAC_DATA_SOURCES: ReadonlyArray<{
 @Injectable({ providedIn: 'root' })
 export class MacDataService {
   private readonly zone = inject(NgZone);
+  private readonly router = inject(Router);
 
   /** True only inside the native macOS app. */
   readonly isAvailable = signal(!!window.webkit?.messageHandlers?.macData);
 
   readonly pages = signal<MacDataPage[]>([]);
   readonly statuses = signal<MacDataSourceStatus[]>([]);
+  /** Whether bots on other devices can reach this Mac, e.g. "Connected". */
+  readonly relay = signal<string | null>(null);
 
   /** Bumped per source whenever the Mac imports, changes or removes items. */
   private readonly _versions = signal<Partial<Record<MacDataSource, number>>>({});
@@ -110,6 +116,27 @@ export class MacDataService {
     return this.call<MacDataQueryResult>('query', { ...query });
   }
 
+  async getItem(id: string): Promise<MacDataItem | null> {
+    return (await this.call<MacDataItem | null>('getItem', { id })) ?? null;
+  }
+
+  /**
+   * Opens a cited item (from a bot's Source block) in the matching Mac page, preferring
+   * the notebook currently open.
+   */
+  async openItem(itemId: string): Promise<void> {
+    if (!this.isAvailable()) return;
+    const source = itemId.split(':')[0] as MacDataSource;
+    await this.loadPages();
+    const notebookId = this.router.url.split(/[/?#]/)[1];
+    const candidates = this.pages().filter((page) => page.source === source);
+    const page = candidates.find((p) => p.notebookId === notebookId) ?? candidates[0];
+    if (!page) return;
+    await this.router.navigate(['/', page.notebookId, 'mac', page.id], {
+      queryParams: { item: itemId },
+    });
+  }
+
   async requestAccess(source: MacDataSource): Promise<void> {
     await this.call('requestAccess', { source });
   }
@@ -117,6 +144,7 @@ export class MacDataService {
   async refreshStatus(): Promise<void> {
     if (!this.isAvailable()) return;
     this.statuses.set(await this.call<MacDataSourceStatus[]>('status'));
+    this.relay.set(await this.call<string>('relayStatus').catch(() => null));
   }
 
   // MARK: - Private
@@ -124,6 +152,7 @@ export class MacDataService {
   private handleEvent(detail: MacDataEventDetail): void {
     if (detail.type === 'status' && detail.statuses) {
       this.statuses.set(detail.statuses);
+      if (detail.relay) this.relay.set(detail.relay);
     } else if (detail.type === 'changed' && detail.source) {
       const source = detail.source;
       this._versions.update((versions) => ({ ...versions, [source]: (versions[source] ?? 0) + 1 }));

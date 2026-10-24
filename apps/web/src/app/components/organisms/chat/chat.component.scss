@@ -145,7 +145,7 @@
 }
 
 .message-input {
-  padding: 16px;
+  padding: 12px 16px;
   border-top: 1px solid var(--color-border);
   background: var(--color-bg-elevated);
 }
@@ -181,6 +181,8 @@
     border: none !important;
     padding: 4px 8px;
     min-height: 24px;
+    font-size: 14px;
+    line-height: 1.5;
 
     &:focus {
       outline: none !important;

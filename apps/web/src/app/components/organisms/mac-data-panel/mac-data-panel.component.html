@@ -6,7 +6,7 @@
       icon()
     }}</span>
     <div class="min-w-0 flex-1">
-      <h1 class="m-0 truncate font-sans text-base font-bold text-[var(--color-text-main)]">
+      <h1 class="m-0 truncate font-sans text-base! font-bold text-[var(--color-text-main)]">
         {{ title() }}
       </h1>
       <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]">
@@ -19,6 +19,9 @@
           {{ total() }} {{ total() === 1 ? 'item' : 'items' }}
         }
         · stored only on this Mac
+        @if (relay(); as relayState) {
+          · bots: {{ relayState }}
+        }
       </p>
     </div>
     <label class="relative max-md:w-full">
@@ -88,6 +91,38 @@
   }
 
   <div class="mac-data-scroll min-h-0 flex-1 overflow-auto px-6 pb-6 max-md:px-4">
+    @if (focused(); as item) {
+      <article
+        class="mt-4 rounded-xl border border-[var(--color-primary)] bg-[var(--color-surface)] p-4"
+        aria-label="Cited item"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h2 class="m-0 font-sans text-sm! font-bold text-[var(--color-text-main)]">
+              {{ item.title || item.thread || '(untitled)' }}
+            </h2>
+            <p class="m-0 mt-0.5 font-sans text-xs text-[var(--color-text-muted)]">
+              {{ item.sender }}{{ item.sender ? ' · ' : ''
+              }}{{ item.occurredAt * 1000 | date: 'EEE, MMM d, h:mm a'
+              }}{{ item.location ? ' · ' + item.location : '' }}
+            </p>
+          </div>
+          <button
+            type="button"
+            (click)="clearFocus.emit()"
+            aria-label="Close cited item"
+            class="flex h-8 w-8 flex-none cursor-pointer items-center justify-center rounded-lg border-none bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+          >
+            <span class="material-symbols-rounded text-lg" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <p
+          class="m-0 mt-3 max-h-80 overflow-auto whitespace-pre-line font-sans text-sm leading-relaxed text-[var(--color-text-main)]"
+        >
+          {{ item.body }}
+        </p>
+      </article>
+    }
     <ng-content />
 
     @if (shown() === 0 && !loading() && !needsAccess()) {

@@ -23,6 +23,7 @@
         [botError]="hasFailedBot(message.id)"
         (threadClicked)="openThread.emit($event)"
         (replyClicked)="openThread.emit($event)"
+        (followUp)="sendFollowUp($event)"
       />
     } @empty {
       @if (!isLoading()) {

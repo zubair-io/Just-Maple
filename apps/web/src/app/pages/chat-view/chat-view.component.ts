@@ -297,6 +297,11 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     return pages.filter((p) => !query || p.title.toLowerCase().includes(query));
   });
 
+  /** This notebook's chats, for choosing where a bot is proactive. */
+  readonly chatPages = computed(() =>
+    this.navigationPages().filter((page) => page.type === 'message'),
+  );
+
   /** iMessage, Email and Calendar pages that exist only on this Mac. */
   readonly macDataAvailable = this.macData.isAvailable;
   readonly macSources = MAC_DATA_SOURCES;

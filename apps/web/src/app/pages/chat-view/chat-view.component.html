@@ -563,6 +563,8 @@
   <app-share-modal
     [notebook]="selectedNotebook()!"
     [members]="members()"
+    [chatPages]="chatPages()"
+    [currentChatId]="routePageId()"
     (closed)="closeShareModal()"
     (membersChanged)="onMembersChanged()"
   />

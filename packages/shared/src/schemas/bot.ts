@@ -307,6 +307,8 @@ export const BotInvocationSchema = Type.Object({
         documentTitle: Type.Optional(Type.String()),
         selection: Type.Optional(Type.String()),
         previousMessages: Type.Optional(Type.Array(Type.Any())),
+        // Proactive pages: answer in the conversation itself rather than in a thread
+        replyTopLevel: Type.Optional(Type.Boolean()),
     }),
     variables: Type.Record(Type.String(), Type.Any()),
     // Output is PageContent (ProseMirror JSON) for consistent rendering with TipTap
