@@ -8,6 +8,7 @@ import {
   inject,
   afterNextRender,
   ViewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -24,6 +25,7 @@ export interface TodoPopoverPosition {
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './todo-popover.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './todo-popover.component.scss',
 })
 export class TodoPopoverComponent {

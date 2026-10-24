@@ -8,6 +8,7 @@ import {
   effect,
   inject,
   signal,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -21,6 +22,7 @@ import type { RecorderPrompt, RecorderRequest, RecorderSettings } from '../../ty
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink, AppHeaderComponent, A11yModule],
   templateUrl: './recorder.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './recorder.component.scss',
 })
 export class RecorderComponent implements OnInit, OnDestroy {

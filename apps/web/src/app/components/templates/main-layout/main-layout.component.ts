@@ -1,4 +1,4 @@
-import { Component, HostListener, inject, signal } from '@angular/core';
+import { Component, HostListener, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { SidebarComponent } from '../../organisms';
@@ -11,6 +11,7 @@ import type { PageType } from '@maple/shared';
   selector: 'app-main-layout',
   standalone: true,
   imports: [CommonModule, SidebarComponent],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="h-screen flex overflow-hidden bg-[var(--color-bg)]">
       <app-sidebar

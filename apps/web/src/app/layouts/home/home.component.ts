@@ -1,4 +1,12 @@
-import { Component, inject, signal, OnInit, OnDestroy, HostListener } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  OnInit,
+  OnDestroy,
+  HostListener,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd, ActivatedRoute } from '@angular/router';
 import { Subscription, filter } from 'rxjs';
@@ -16,6 +24,7 @@ import { SidebarComponent, DialogService } from '../../components';
   standalone: true,
   imports: [CommonModule, RouterOutlet, SidebarComponent],
   templateUrl: './home.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './home.component.scss',
 })
 export class HomeComponent implements OnInit, OnDestroy {

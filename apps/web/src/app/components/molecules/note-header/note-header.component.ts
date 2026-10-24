@@ -1,4 +1,13 @@
-import { Component, input, output, computed, signal, inject, effect } from '@angular/core';
+import {
+  Component,
+  input,
+  output,
+  computed,
+  signal,
+  inject,
+  effect,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -15,6 +24,7 @@ export type ExportFormat = 'markdown' | 'html';
   standalone: true,
   imports: [CommonModule, FormsModule, VersionHistoryComponent, RouterLink],
   templateUrl: './note-header.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './note-header.component.scss',
 })
 export class NoteHeaderComponent {

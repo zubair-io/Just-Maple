@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { Notification } from '@maple/shared';
 
@@ -7,6 +7,7 @@ import type { Notification } from '@maple/shared';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './notification-item.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './notification-item.component.scss',
 })
 export class NotificationItemComponent {

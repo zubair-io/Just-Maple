@@ -7,6 +7,7 @@ import {
   ElementRef,
   ViewChild,
   HostListener,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
@@ -25,6 +26,7 @@ import { isLocalNotebook } from '../../providers/data-provider.interface';
   standalone: true,
   imports: [CommonModule, AppHeaderComponent, FormsModule, RouterLink],
   templateUrl: './welcome.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './welcome.component.scss',
 })
 export class WelcomeComponent {

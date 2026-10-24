@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, PLATFORM_ID } from '@angular/core';
+import { Component, OnInit, inject, PLATFORM_ID, ChangeDetectionStrategy } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { NativeBridgeService } from '../../services/native-bridge.service';
@@ -8,6 +8,7 @@ import { GoogleCalendarService } from '../../services/google-calendar/google-cal
 @Component({
   selector: 'app-gmail-oauth-callback',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.Eager,
   templateUrl: './gmail-oauth-callback.component.html',
 })
 export class GmailOAuthCallbackComponent implements OnInit {

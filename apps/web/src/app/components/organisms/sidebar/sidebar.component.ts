@@ -11,6 +11,7 @@ import {
   ElementRef,
   ViewChildren,
   QueryList,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -45,6 +46,7 @@ import { EMPTY, filter, map, switchMap } from 'rxjs';
     CdkConnectedOverlay,
   ],
   templateUrl: './sidebar.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './sidebar.component.scss',
 })
 export class SidebarComponent implements OnInit, AfterViewChecked {

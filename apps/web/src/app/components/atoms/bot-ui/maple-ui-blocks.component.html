@@ -1,0 +1,61 @@
+<div class="bot-ui" aria-label="Interactive bot response">
+  @for (block of props().blocks; track $index; let index = $index) {
+    @switch (block.type) {
+      @case ('text') {
+        <p>{{ block.content }}</p>
+      }
+      @case ('card') {
+        <section class="maple-card">
+          <h3>{{ block.title }}</h3>
+          <p>{{ block.content }}</p>
+        </section>
+      }
+      @case ('table') {
+        <div class="table-scroll" tabindex="0" role="region" aria-label="Bot comparison table">
+          <table>
+            <thead>
+              <tr>
+                @for (header of block.headers; track $index) {
+                  <th scope="col">{{ header }}</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of block.rows; track $index) {
+                <tr>
+                  @for (cell of row; track $index) {
+                    <td>{{ cell }}</td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+      @case ('button') {
+        <button type="button" [disabled]="disabled()" (click)="send(block.message)">
+          {{ block.label }}
+        </button>
+      }
+      @case ('form') {
+        <form class="maple-card" (ngSubmit)="submit(block, index)">
+          <h3>{{ block.title }}</h3>
+          @for (field of block.fields; track $index; let fieldIndex = $index) {
+            <label
+              >{{ field.label }}
+              <input
+                type="text"
+                [name]="'field-' + fieldIndex"
+                maxlength="2000"
+                [disabled]="disabled()"
+                [ngModel]="values()[index + ':' + field.name] || ''"
+                (ngModelChange)="setValue(index, field.name, $event)"
+              />
+            </label>
+          }
+          <button type="submit" [disabled]="disabled()">{{ block.submitLabel }}</button>
+        </form>
+      }
+    }
+  }
+</div>

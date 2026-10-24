@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PageService } from '../../services/page.service';
@@ -13,6 +13,7 @@ import type { PageType } from '@maple/shared';
   selector: 'app-new-note',
   standalone: true,
   imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="flex items-center justify-center h-full">
       <div class="text-[var(--color-text-muted)]">Creating page...</div>

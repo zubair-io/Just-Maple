@@ -112,7 +112,7 @@
             <label class="check"
               ><input
                 type="checkbox"
-                [checked]="s.assist?.automatic"
+                [checked]="$safeNavigationMigration(s.assist?.automatic)"
                 (change)="act({ operation: 'autoAssist', flag: $any($event.target).checked })"
               />
               Assist automatically on screen changes</label

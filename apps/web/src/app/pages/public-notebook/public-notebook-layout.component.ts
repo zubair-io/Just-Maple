@@ -1,4 +1,11 @@
-import { Component, inject, signal, OnDestroy, DestroyRef } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  OnDestroy,
+  DestroyRef,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -9,6 +16,7 @@ import { PublicNotebookService } from '../../services/public-notebook.service';
   standalone: true,
   imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive],
   templateUrl: './public-notebook-layout.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './public-notebook-layout.component.scss',
 })
 export class PublicNotebookLayoutComponent implements OnDestroy {

@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type ImageFit = 'cover' | 'contain';
@@ -8,6 +8,7 @@ export type ImageFit = 'cover' | 'contain';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './image.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './image.component.scss',
 })
 export class ImageComponent {

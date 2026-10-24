@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   TextComponent,
@@ -32,6 +32,7 @@ import {
     CheckboxComponent,
   ],
   templateUrl: './atoms-showcase.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './atoms-showcase.component.scss',
 })
 export class AtomsShowcaseComponent {

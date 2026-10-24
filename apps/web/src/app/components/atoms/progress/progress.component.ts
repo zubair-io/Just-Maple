@@ -1,4 +1,4 @@
-import { Component, input, computed } from '@angular/core';
+import { Component, input, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type ProgressVariant = 'bar' | 'ring';
@@ -8,6 +8,7 @@ export type ProgressVariant = 'bar' | 'ring';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './progress.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './progress.component.scss',
 })
 export class ProgressComponent {

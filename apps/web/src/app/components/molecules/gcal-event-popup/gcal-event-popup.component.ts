@@ -8,6 +8,7 @@ import {
   inject,
   ElementRef,
   ViewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -50,6 +51,7 @@ function addOneHour(time: string): string {
   selector: 'app-gcal-event-popup',
   standalone: true,
   imports: [CommonModule, FormsModule],
+  changeDetection: ChangeDetectionStrategy.Eager,
   templateUrl: './gcal-event-popup.component.html',
 })
 export class GcalEventPopupComponent {
