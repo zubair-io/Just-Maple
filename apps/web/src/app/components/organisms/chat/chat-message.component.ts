@@ -2,6 +2,7 @@ import { Component, input, output, computed, ChangeDetectionStrategy } from '@an
 import { CommonModule, DatePipe } from '@angular/common';
 import { isBotUIFallbackContent, type Message } from '@maple/shared';
 import { BotUIComponent } from '../../atoms/bot-ui/bot-ui.component';
+import { ChatTypingComponent } from './chat-typing.component';
 import { ContentRendererComponent } from '../../atoms/content-renderer/content-renderer.component';
 import { ProfileAvatarComponent } from '../../atoms';
 
@@ -14,6 +15,7 @@ import { ProfileAvatarComponent } from '../../atoms';
     ContentRendererComponent,
     ProfileAvatarComponent,
     BotUIComponent,
+    ChatTypingComponent,
   ],
   template: `
     <div [id]="'message-' + message().id" class="message-wrapper" [class.grouped]="isGrouped()">
@@ -54,12 +56,27 @@ import { ProfileAvatarComponent } from '../../atoms';
             }
           </div>
 
+          <!-- A bot is writing its reply in this message's thread -->
+          @if (replyingBots().length > 0) {
+            <app-chat-typing [names]="replyingBots()" verb="replying in thread" />
+          }
+
           <!-- Thread replies link -->
           @if (message().hasThread) {
             <button type="button" class="thread-link" (click)="onThreadClick($event)">
               <span class="material-symbols-rounded thread-icon">forum</span>
               <span>View thread</span>
             </button>
+          }
+
+          <!-- Send failed: keep the text and offer to try again -->
+          @if (sendFailed()) {
+            <div class="send-failed" role="alert">
+              <span class="material-symbols-rounded">error</span>
+              <span>Not sent.</span>
+              <button type="button" (click)="retrySend.emit()">Retry</button>
+              <button type="button" (click)="discardSend.emit()">Delete</button>
+            </div>
           }
 
           <!-- Bot error -->
@@ -223,6 +240,29 @@ import { ProfileAvatarComponent } from '../../atoms';
         }
       }
 
+      .send-failed {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--color-primary);
+
+        .material-symbols-rounded {
+          font-size: 14px;
+        }
+
+        button {
+          padding: 0;
+          border: none;
+          background: none;
+          color: var(--color-text-main);
+          font: inherit;
+          text-decoration: underline;
+          cursor: pointer;
+        }
+      }
+
       .bot-error {
         display: flex;
         align-items: center;
@@ -248,6 +288,10 @@ export class ChatMessageComponent {
   readonly isOwn = input<boolean>(false);
   readonly isGrouped = input<boolean>(false);
   readonly botError = input<string | undefined>(undefined);
+  readonly replyingBots = input<string[]>([]);
+  readonly sendFailed = input(false);
+  readonly retrySend = output<void>();
+  readonly discardSend = output<void>();
 
   readonly threadClicked = output<Message>();
   readonly replyClicked = output<Message>();

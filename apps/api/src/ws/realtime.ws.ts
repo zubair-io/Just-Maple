@@ -33,7 +33,7 @@ import type { ChatEvent, TypingEvent, PageContent, Page } from '@maple/shared';
 import { Value } from '@sinclair/typebox/value';
 import { MacDataHostInfoSchema } from '@maple/shared';
 import { macDataRelay, type MacDataHostSocket } from '../services/mac-data-relay.service';
-import { handleMacDataChanges } from '../services/proactive-bot.service';
+import { handleMacDataChanges, maybeAutoReply } from '../services/proactive-bot.service';
 
 /** Minimal page context for authorization of embedded/card memos */
 interface SyntheticPageContext {
@@ -507,6 +507,13 @@ async function handleChatMessage(
             };
 
             broadcastChatEvent(notebookId, chatEvent).catch(console.error);
+
+            // A proactive bot answers messages in its chat without an @mention.
+            if (messagesPage.proactive?.enabled) {
+                maybeAutoReply({ page: messagesPage, message, userId: context.userId }).catch(
+                    (error) => console.error('[Proactive] Auto-reply failed:', error),
+                );
+            }
 
             // Send push notifications to all notebook members except the author
             getNotebookMembers(notebookId, context.userId)
