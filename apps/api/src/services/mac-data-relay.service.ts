@@ -120,7 +120,7 @@ export class MacDataRelayService {
 
     async request<T>(
         userId: string,
-        op: 'info' | 'search' | 'get',
+        op: 'info' | 'search' | 'get' | 'http',
         params: Record<string, unknown>,
         timeoutMs = DEFAULT_TIMEOUT_MS,
     ): Promise<T> {
@@ -217,3 +217,38 @@ export class MacDataRelayService {
 }
 
 export const macDataRelay = new MacDataRelayService();
+
+/** Local AI servers can take a while to load a model and answer. */
+const MAC_HTTP_TIMEOUT_MS = 170_000;
+
+/**
+ * Sends an HTTP request from the user's Mac, for AI servers on their own machine or
+ * network (Ollama, LM Studio) that the API can't reach. The Mac only allows model-list
+ * and chat requests to local addresses.
+ */
+export function macHttpSend(
+    userId: string,
+    timeoutMs = MAC_HTTP_TIMEOUT_MS,
+): (request: {
+    method: 'GET' | 'POST';
+    url: string;
+    headers: Record<string, string>;
+    body?: string;
+}) => Promise<{ status: number; body: string }> {
+    return async (request) => {
+        try {
+            return await macDataRelay.request<{ status: number; body: string }>(
+                userId,
+                'http',
+                request,
+                timeoutMs,
+            );
+        } catch (error) {
+            if (error instanceof MacDataUnavailableError)
+                throw new MacDataUnavailableError(
+                    "This AI server runs on its owner's Mac, which is offline or asleep. Open the Maple app on that Mac and try again.",
+                );
+            throw error;
+        }
+    };
+}

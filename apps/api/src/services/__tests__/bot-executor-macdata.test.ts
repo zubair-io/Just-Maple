@@ -44,6 +44,9 @@ vi.mock('../llm-tool-loop.service', async (importOriginal) => ({
     runAnthropicWithTools: vi.fn().mockResolvedValue('Practice is at 2:30.'),
     runOpenAIWithTools: vi.fn().mockResolvedValue('From OpenAI.'),
 }));
+vi.mock('../mac-data-relay.service', () => ({
+    macHttpSend: vi.fn(),
+}));
 vi.mock('node:dns/promises', () => ({
     lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34' }]),
 }));
@@ -61,6 +64,7 @@ import { findPageByIdForBot } from '../../repositories/page.repo';
 import { sendMessageReceivedNotification } from '../notification.service';
 import { getMacDataToolContext, executeMacDataTool } from '../mac-data-tools.service';
 import { runAnthropicWithTools } from '../llm-tool-loop.service';
+import { macHttpSend } from '../mac-data-relay.service';
 
 const macData = {
     userId: 'owner',
@@ -148,7 +152,8 @@ describe('bots with Mac data', () => {
         };
         const fetchMock = vi.fn().mockResolvedValue({
             ok: true,
-            json: async () => ({ choices: [{ message: { content: 'ok' } }] }),
+            status: 200,
+            text: async () => JSON.stringify({ choices: [{ message: { content: 'ok' } }] }),
         });
         vi.stubGlobal('fetch', fetchMock);
         await new BotExecutorService().execute('invocation');
@@ -164,8 +169,10 @@ describe('bots with Mac data', () => {
         const reply = (message: unknown, status = 200) => ({
             ok: status < 400,
             status,
-            text: async () => 'tools are not supported',
-            json: async () => ({ choices: [{ message }] }),
+            text: async () =>
+                status < 400
+                    ? JSON.stringify({ choices: [{ message }] })
+                    : 'tools are not supported',
         });
         beforeEach(() => {
             template.definition.actions[0].config = {
@@ -243,8 +250,34 @@ describe('bots with Mac data', () => {
             vi.unstubAllGlobals();
         });
 
-        it('refuses a server on a private network', async () => {
-            userBot.config.baseUrl = 'https://10.0.0.5/v1';
+        it("asks the owner's Mac to call a local server, never the API itself", async () => {
+            userBot.config.baseUrl = 'http://localhost:11434/v1';
+            delete userBot.config.apiKey;
+            const send = vi.fn().mockResolvedValue({
+                status: 200,
+                body: JSON.stringify({ choices: [{ message: { content: 'From Ollama' } }] }),
+            });
+            vi.mocked(macHttpSend).mockReturnValue(send);
+            const fetchMock = vi.fn();
+            vi.stubGlobal('fetch', fetchMock);
+            vi.mocked(getMacDataToolContext).mockResolvedValue(null);
+            await new BotExecutorService().execute('invocation');
+            expect(fetchMock).not.toHaveBeenCalled();
+            expect(macHttpSend).toHaveBeenCalledWith('owner');
+            expect(send).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    method: 'POST',
+                    url: 'http://localhost:11434/v1/chat/completions',
+                }),
+            );
+            expect(createMessageInThread).toHaveBeenCalled();
+            vi.unstubAllGlobals();
+        });
+
+        it('refuses an internet name that points into a private network', async () => {
+            userBot.config.baseUrl = 'https://intranet.example.com/v1';
+            const dns = await import('node:dns/promises');
+            vi.mocked(dns.lookup).mockResolvedValueOnce([{ address: '10.1.2.3' }] as never);
             const fetchMock = vi.fn();
             vi.stubGlobal('fetch', fetchMock);
             await expect(new BotExecutorService().execute('invocation')).rejects.toThrow(

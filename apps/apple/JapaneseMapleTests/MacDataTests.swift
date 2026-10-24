@@ -412,3 +412,37 @@ private func attributedBody(_ text: String) -> Data {
     }
 }
 #endif
+
+#if os(macOS)
+@Suite struct MacDataLocalHTTPTests {
+    @Test func onlyLocalAddressesCountAsLocal() {
+        for host in ["localhost", "127.0.0.1", "192.168.1.20", "10.0.0.5", "172.20.1.1", "[::1]", "fd00::1",
+                     "nas.local", "studio", "box.lan"] {
+            #expect(MacDataLocalHTTP.isLocalHost(host), "\(host)")
+        }
+        for host in ["openrouter.ai", "8.8.8.8", "172.32.0.1", "example.com", "2606:4700::1111"] {
+            #expect(!MacDataLocalHTTP.isLocalHost(host), "\(host)")
+        }
+    }
+
+    @Test func onlyModelListsAndChatsToLocalServersAreAllowed() throws {
+        let ok: [(String, String)] = [
+            ("GET", "http://localhost:11434/v1/models"),
+            ("POST", "http://localhost:11434/v1/chat/completions"),
+            ("POST", "https://192.168.1.20/v1/chat/completions"),
+        ]
+        for (method, url) in ok {
+            #expect(throws: Never.self) { try MacDataLocalHTTP.check(method: method, url: URL(string: url)!) }
+        }
+        let refused: [(String, String)] = [
+            ("GET", "https://openrouter.ai/api/v1/models"),  // not local
+            ("GET", "http://localhost:11434/api/delete"),  // not a model list or chat
+            ("POST", "http://localhost:11434/v1/models"),  // wrong method
+            ("GET", "file:///etc/passwd"),
+        ]
+        for (method, url) in refused {
+            #expect(throws: (any Error).self) { try MacDataLocalHTTP.check(method: method, url: URL(string: url)!) }
+        }
+    }
+}
+#endif

@@ -1,6 +1,7 @@
 import { listBotModels, BotModelsError } from '../services/bot-models.service';
 import { isBotModel, type BotConfig, type BotProvider, type BotTemplate } from '@maple/shared';
-import { assertPublicHost, normalizeEndpointBaseUrl } from '../utils/url-safety';
+import { resolveEndpoint } from '../utils/url-safety';
+import { macHttpSend } from '../services/mac-data-relay.service';
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
@@ -140,6 +141,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Enter an API key to load available models' };
             }
             let baseUrl: string | undefined;
+            let send: ReturnType<typeof macHttpSend> | undefined;
             if (provider === 'openai-compatible') {
                 const draftUrl = body.baseUrl?.trim();
                 // A saved key only goes to the saved server, never to a URL typed in a draft.
@@ -148,8 +150,10 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                     return { error: 'Enter the API key again to use a different server' };
                 }
                 try {
-                    baseUrl = normalizeEndpointBaseUrl(draftUrl || bot?.config?.baseUrl || '');
-                    await assertPublicHost(baseUrl);
+                    const endpoint = await resolveEndpoint(draftUrl || bot?.config?.baseUrl || '');
+                    baseUrl = endpoint.baseUrl;
+                    // Local servers (Ollama) are asked from the user's own Mac.
+                    if (endpoint.local) send = macHttpSend(auth.user._id, 15_000);
                 } catch (error) {
                     set.status = 400;
                     return { error: (error as Error).message };
@@ -162,6 +166,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                         apiKey,
                         body.apiKey?.trim() ? false : bot?.config?.isOAuthToken,
                         baseUrl,
+                        send,
                     ),
                 };
             } catch (error) {
@@ -800,8 +805,7 @@ async function checkEndpointConfig(
     if (!usesCustomServer(template)) return null;
     if (!config?.baseUrl?.trim()) return 'Enter the server URL for this bot';
     try {
-        config.baseUrl = normalizeEndpointBaseUrl(config.baseUrl);
-        await assertPublicHost(config.baseUrl);
+        config.baseUrl = (await resolveEndpoint(config.baseUrl)).baseUrl;
     } catch (error) {
         return (error as Error).message;
     }
