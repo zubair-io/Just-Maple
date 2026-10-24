@@ -28,6 +28,7 @@ import {
 import { findThreadById } from '../repositories/thread.repo';
 import { broadcastChatEvent } from '../services/realtime.service';
 import { sendMessageReceivedNotification } from '../services/notification.service';
+import { maybeAutoReply } from '../services/proactive-bot.service';
 
 export const messageRoutes = new Elysia({ prefix: '/api' })
     .use(jwtPlugin)
@@ -193,6 +194,16 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                     timestamp: new Date().toISOString(),
                 };
                 broadcastChatEvent(page.notebookId, threadFlagEvent).catch(console.error);
+            }
+
+            // A proactive bot answers messages in its page without an @mention.
+            if (page.proactive?.enabled) {
+                maybeAutoReply({
+                    page,
+                    message,
+                    userId: auth.user._id,
+                    parentMessageId,
+                }).catch((error) => console.error('[Proactive] Auto-reply failed:', error));
             }
 
             // Send push notifications

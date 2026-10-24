@@ -1,4 +1,5 @@
 import { Type, Static } from '@sinclair/typebox';
+import { ProactiveBotSettingsSchema } from './proactive';
 import { PageTodoMetaSchema } from './todo';
 import { PageLinksMetaSchema } from './link';
 import { GmailConfigSchema } from './gmail';
@@ -58,6 +59,8 @@ export const PageSchema = Type.Object({
     tags: Type.Optional(Type.Array(Type.String())),
     // Gmail page configuration (only for type: 'gmail')
     gmailConfig: Type.Optional(GmailConfigSchema),
+    // Messages pages only: the bot that answers every message and posts proactively
+    proactive: Type.Optional(ProactiveBotSettingsSchema),
     // Public publishing fields
     isPublished: Type.Optional(Type.Boolean()),
     publishedSlug: Type.Optional(Type.String()),

@@ -302,3 +302,99 @@ private func attributedBody(_ text: String) -> Data {
     }
 }
 #endif
+
+// MARK: - Search and proactive batches
+
+#if os(macOS)
+@Suite struct MacDataRelayTests {
+    let now = Date(timeIntervalSince1970: 1_790_000_000)
+
+    private func item(
+        _ id: String, _ source: MacDataSource, _ title: String, _ body: String, at time: Double,
+        fromMe: Bool = false, end: Double? = nil
+    ) -> MacDataItem {
+        MacDataItem(
+            id: id, source: source, revision: "1", occurredAt: time, endAt: end, title: title,
+            sender: source == .imessage ? (fromMe ? "Me" : "coach@example.com") : "notices@example.com",
+            participants: [], thread: nil, body: body, isFromMe: source == .imessage ? fromMe : nil,
+            location: nil, calendar: nil, allDay: nil, mailbox: nil, isRead: nil)
+    }
+
+    /// An engine over a temporary store with pages in notebook "n1" for iMessage and Calendar.
+    private func makeEngine(_ items: [MacDataItem]) async throws -> (MacDataEngine, MacDataStore) {
+        let path = try tempDirectory().appendingPathComponent("store.sqlite").path
+        let engine = MacDataEngine(storePath: path)
+        _ = try await engine.createPage(notebookId: "n1", source: .imessage, title: nil)
+        _ = try await engine.createPage(notebookId: "n1", source: .calendar, title: nil)
+        _ = try await engine.createPage(notebookId: "n2", source: .mail, title: nil)
+        let store = try await engine.store()
+        for source in MacDataSource.allCases {
+            let batch = items.filter { $0.source == source }
+            guard !batch.isEmpty else { continue }
+            try store.apply(
+                MacDataReadResult(items: batch, removedIds: [], presentIds: nil, reconcileWindow: nil, checkpoint: "cp"),
+                source: source, now: now)
+        }
+        return (engine, store)
+    }
+
+    @Test func searchIsScopedToTheNotebooksMacPages() async throws {
+        let t = now.timeIntervalSince1970
+        let (engine, _) = try await makeEngine([
+            item("imessage:1", .imessage, "Soccer parents", "No practice Friday", at: t - 3600),
+            item("mail:1", .mail, "UPS delivery", "Your package arrives Friday", at: t - 1800),
+        ])
+        let n1 = try await engine.search(MacDataSearchRequest(notebookId: "n1", query: "friday"))
+        #expect(n1.map(\.id) == ["imessage:1"])  // mail has no page in n1
+        let n2 = try await engine.search(MacDataSearchRequest(notebookId: "n2", query: "friday"))
+        #expect(n2.map(\.id) == ["mail:1"])
+        let none = try await engine.search(MacDataSearchRequest(notebookId: "other", query: "friday"))
+        #expect(none.isEmpty)
+        #expect(try await engine.item(id: "mail:1", notebookId: "n1") == nil)
+        #expect(try await engine.item(id: "mail:1", notebookId: "n2")?.title == "UPS delivery")
+    }
+
+    @Test func searchRanksByMeaningAfterEmbedding() async throws {
+        let t = now.timeIntervalSince1970
+        let (engine, _) = try await makeEngine([
+            item("imessage:1", .imessage, "Coach", "Lacrosse practice is 2:30 to 4:30 at DiCaprio Park field 4", at: t - 7200),
+            item("imessage:2", .imessage, "Julia", "Can you pick up milk on the way home", at: t - 3600),
+        ])
+        #expect(await engine.embedPending() == 2)
+        let hits = try await engine.search(
+            MacDataSearchRequest(notebookId: "n1", query: "when does lacrosse start", limit: 1))
+        #expect(hits.first?.id == "imessage:1")
+        #expect(hits.first?.when.hasPrefix("20") == true)
+        // A date range without a query lists items in time order.
+        let listed = try await engine.search(
+            MacDataSearchRequest(notebookId: "n1", from: t - 10_000, to: t))
+        #expect(listed.map(\.id) == ["imessage:1", "imessage:2"])
+    }
+
+    @Test func proactiveBatchesOnlyCarryFreshNewsForProactiveNotebooks() async throws {
+        let t = now.timeIntervalSince1970
+        let (engine, _) = try await makeEngine([
+            item("imessage:new", .imessage, "Coach", "Purple socks tomorrow", at: t - 600),
+            item("imessage:mine", .imessage, "Coach", "Thanks!", at: t - 500, fromMe: true),
+            item("imessage:old", .imessage, "Coach", "Last week's news", at: t - 3 * 86_400),
+            item("calendar:soon", .calendar, "Game vs LaSalle", "", at: t + 86_400, end: t + 90_000),
+            item("calendar:past", .calendar, "Old game", "", at: t - 86_400, end: t - 80_000),
+            item("mail:1", .mail, "UPS", "Signature required", at: t - 100),
+        ])
+
+        // Without proactive notebooks nothing is sent, and the cursor skips ahead.
+        let idle = try await engine.proactiveBatches(for: [], now: now)
+        #expect(idle.batches.isEmpty)
+
+        let result = try await engine.proactiveBatches(for: ["n1", "n2"], now: now)
+        let n1 = try #require(result.batches.first { $0.notebookId == "n1" })
+        #expect(Set(n1.entries.map(\.item.id)) == ["imessage:new", "calendar:soon"])
+        let n2 = try #require(result.batches.first { $0.notebookId == "n2" })
+        #expect(n2.entries.map(\.item.id) == ["mail:1"])
+
+        try await engine.commitProactiveCursor(result.cursor)
+        let again = try await engine.proactiveBatches(for: ["n1", "n2"], now: now)
+        #expect(again.batches.isEmpty)
+    }
+}
+#endif

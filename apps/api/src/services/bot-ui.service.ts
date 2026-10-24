@@ -1,7 +1,7 @@
 import { createLibrary, defineComponent, createParser } from '@openuidev/lang-core';
 import { z } from 'zod/v4';
 import { Value } from '@sinclair/typebox/value';
-import { BotUIResponseSchema, type BotUIResponse } from '@maple/shared';
+import { BotUIResponseSchema, MAC_DATA_ITEM_ID_PATTERN, type BotUIResponse } from '@maple/shared';
 
 const text = z.string().max(10000);
 const definitions = [
@@ -50,6 +50,16 @@ const definitions = [
         }),
         component: null,
     }),
+    defineComponent({
+        name: 'Source',
+        description:
+            'Cites an item from the user\'s Mac data (an iMessage, email or calendar event) by the id a local-data tool returned. Use a short label such as "UPS notice".',
+        props: z.object({
+            label: z.string().min(1).max(200),
+            itemId: z.string().regex(new RegExp(MAC_DATA_ITEM_ID_PATTERN)).max(400),
+        }),
+        component: null,
+    }),
 ];
 const Response = defineComponent({
     name: 'Response',
@@ -78,7 +88,8 @@ export const botUIPrompt = library.prompt({
     additionalRules: [
         'For ordinary answers, return Markdown. When a card, table, form, or follow-up button helps, return a short Markdown explanation followed by exactly one ```openui fenced block.',
         'Use only static literals and named references. No tools, queries, mutations, state variables, expressions, HTML, or scripts.',
-        'The root must be Response. Its children must be Text, Card, Table, Button, or Form. Do not nest containers.',
+        'The root must be Response. Its children must be Text, Card, Table, Button, Form, or Source. Do not nest containers.',
+        'Only use Source with an itemId returned by a local-data tool in this conversation.',
     ],
     examples: [
         'intro = Text("Choose an option")\ncard = Card("Option A", "Details")\nroot = Response([intro, card])',
@@ -143,24 +154,4 @@ export function parseBotResponse(response: string): { markdown: string; ui?: Bot
 }
 
 /** Keep generated UI details available to text clients and subsequent conversation turns. */
-export function botUIToText(ui: BotUIResponse): string {
-    return ui.blocks
-        .map((block) => {
-            switch (block.type) {
-                case 'text':
-                    return block.content;
-                case 'card':
-                    return `${block.title}\n${block.content}`;
-                case 'table':
-                    return [
-                        block.headers.join(' | '),
-                        ...block.rows.map((row) => row.join(' | ')),
-                    ].join('\n');
-                case 'button':
-                    return `${block.label}: ${block.message}`;
-                case 'form':
-                    return `${block.title}\n${block.fields.map((field) => field.label).join(', ')}`;
-            }
-        })
-        .join('\n\n');
-}
+export { botUIToText } from '@maple/shared';

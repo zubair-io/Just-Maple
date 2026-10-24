@@ -20,10 +20,17 @@ actor MacDataEngine {
     private var running: Set<MacDataSource> = []
     private var rerun: Set<MacDataSource> = []
     private var failures: [MacDataSource: MacDataError] = [:]
+    let searchIndex = MacDataSearchIndex()
+    private let storePath: String
 
-    private func store() throws -> MacDataStore {
+    init(storePath: String = MacDataPaths.store.path) {
+        self.storePath = storePath
+    }
+
+    /// Only use the store from inside this actor; its connection isn't shared safely elsewhere.
+    func store() throws -> MacDataStore {
         if let cachedStore { return cachedStore }
-        let store = try MacDataStore(path: MacDataPaths.store.path)
+        let store = try MacDataStore(path: storePath)
         cachedStore = store
         return store
     }

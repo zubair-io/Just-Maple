@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, model, output } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import type { MacDataSource, MacDataSourceStatus } from '@maple/shared';
+import type { MacDataItem, MacDataSource, MacDataSourceStatus } from '@maple/shared';
 
 const SOURCE_COPY: Record<MacDataSource, { app: string; accessButton: string }> = {
   imessage: { app: 'Messages', accessButton: 'Open Full Disk Access settings' },
@@ -30,12 +30,17 @@ export class MacDataPanelComponent {
   readonly loading = input(false);
   readonly error = input<string | null>(null);
   readonly canLoadMore = input(false);
+  /** An item a bot cited, shown in full above the table. */
+  readonly focused = input<MacDataItem | null>(null);
+  /** Whether bots on other devices can reach this Mac. */
+  readonly relay = input<string | null>(null);
 
   readonly search = model('');
 
   readonly loadMore = output<void>();
   readonly requestAccess = output<void>();
   readonly remove = output<void>();
+  readonly clearFocus = output<void>();
 
   readonly copy = computed(() => SOURCE_COPY[this.source()]);
   readonly needsAccess = computed(() => this.status()?.state === 'needsAccess');

@@ -30,6 +30,10 @@ import {
 } from '../services/realtime.service';
 import { customAlphabet } from 'nanoid';
 import type { ChatEvent, TypingEvent, PageContent, Page } from '@maple/shared';
+import { Value } from '@sinclair/typebox/value';
+import { MacDataHostInfoSchema } from '@maple/shared';
+import { macDataRelay, type MacDataHostSocket } from '../services/mac-data-relay.service';
+import { handleMacDataChanges } from '../services/proactive-bot.service';
 
 /** Minimal page context for authorization of embedded/card memos */
 interface SyntheticPageContext {
@@ -174,6 +178,10 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
                         handleSystemMessage(ws, context, action, payload);
                         break;
 
+                    case 'macData':
+                        await handleMacDataMessage(ws, context, action, payload);
+                        break;
+
                     default:
                         break;
                 }
@@ -193,6 +201,7 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
 
             // Unregister connection
             realtimeWSService.unregisterConnection(context.userId, context.connection);
+            void macDataRelay.unregister(context.userId, ws.raw as unknown as MacDataHostSocket);
 
             // Check if we should unsubscribe from Redis channels
             for (const notebookId of context.subscribedNotebooks) {
@@ -558,6 +567,41 @@ async function handleChatMessage(
             }
             break;
         }
+    }
+}
+
+/**
+ * Handle messages from a Mac data host (the Mac app's own connection).
+ * See MacDataConnection.swift for the other side of this protocol.
+ */
+async function handleMacDataMessage(
+    ws: any,
+    context: WSContext,
+    action: string,
+    payload: any,
+): Promise<void> {
+    const socket = ws.raw as unknown as MacDataHostSocket;
+    const info = Value.Check(MacDataHostInfoSchema, payload.info) ? payload.info : undefined;
+    switch (action) {
+        case 'register':
+            await macDataRelay.register(context.userId, socket, info);
+            break;
+        case 'heartbeat':
+            await macDataRelay.heartbeat(context.userId, info);
+            break;
+        case 'result':
+            if (typeof payload.requestId === 'string') {
+                macDataRelay.handleResult(
+                    context.userId,
+                    payload.requestId,
+                    payload.result,
+                    typeof payload.error === 'string' ? payload.error : undefined,
+                );
+            }
+            break;
+        case 'changes':
+            await handleMacDataChanges(context.userId, payload);
+            break;
     }
 }
 

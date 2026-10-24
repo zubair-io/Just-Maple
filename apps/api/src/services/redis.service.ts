@@ -185,6 +185,37 @@ class RedisPubSubService {
         await this.unsubscribe(channel, handler);
     }
 
+    // ==================== Named Channels and Keys ====================
+    // For services with their own channel scheme (e.g. the Mac data relay).
+
+    publishTo(channel: string, data: unknown): void {
+        if (!this.publisher) return;
+        this.publisher.publish(channel, JSON.stringify(data));
+    }
+
+    async subscribeTo(channel: string, handler: MessageHandler): Promise<void> {
+        await this.subscribe(channel, handler);
+    }
+
+    async unsubscribeFrom(channel: string, handler: MessageHandler): Promise<void> {
+        await this.unsubscribe(channel, handler);
+    }
+
+    async setKey(key: string, value: string, ttlSeconds: number): Promise<void> {
+        if (!this.publisher) return;
+        await this.publisher.set(key, value, 'EX', ttlSeconds);
+    }
+
+    async getKey(key: string): Promise<string | null> {
+        if (!this.publisher) return null;
+        return this.publisher.get(key);
+    }
+
+    async deleteKey(key: string): Promise<void> {
+        if (!this.publisher) return;
+        await this.publisher.del(key);
+    }
+
     // ==================== Core Pub/Sub Methods ====================
 
     /**

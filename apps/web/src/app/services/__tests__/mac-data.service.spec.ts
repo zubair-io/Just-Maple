@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import type { Route, UrlSegment } from '@angular/router';
 import type { MacDataPage, MacDataSourceStatus } from '@maple/shared';
 import { MacDataService } from '../mac-data.service';
@@ -89,6 +90,20 @@ describe('MacDataService', () => {
     it('drops undefined fields before posting', async () => {
       await service.query({ source: 'mail', search: undefined, limit: 10 });
       expect(postMessage).toHaveBeenLastCalledWith({ action: 'query', source: 'mail', limit: 10 });
+    });
+
+    it('opens a cited item in the matching Mac page of the open notebook', async () => {
+      const router = TestBed.inject(Router);
+      Object.defineProperty(router, 'url', { get: () => '/n1/chat' });
+      const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+      await service.openItem('imessage:guid-1');
+      expect(navigate).toHaveBeenCalledWith(['/', 'n1', 'mac', 'p1'], {
+        queryParams: { item: 'imessage:guid-1' },
+      });
+      // No Mac page for that source: nothing to open.
+      navigate.mockClear();
+      await service.openItem('calendar:x');
+      expect(navigate).not.toHaveBeenCalled();
     });
 
     it('applies status and change events from the Mac', () => {

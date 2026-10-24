@@ -5,12 +5,12 @@
 >
   <!-- Modal Content -->
   <div
-    class="bg-[var(--color-surface)] rounded-xl shadow-2xl max-w-md w-full max-h-[80vh] flex flex-col"
+    class="bg-[var(--color-surface)] rounded-xl shadow-2xl max-w-md w-full max-h-[85vh] flex flex-col overflow-hidden"
     (click)="$event.stopPropagation()"
   >
     <!-- Header -->
     <div class="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
-      <h2 class="text-lg font-semibold text-[var(--color-text-main)]">
+      <h2 class="m-0 text-lg! font-semibold text-[var(--color-text-main)] truncate">
         {{ isLocal() ? 'Bots' : 'Share' }} — "{{ notebook().label }}"
       </h2>
       <button
@@ -21,220 +21,293 @@
       </button>
     </div>
 
-    <!-- Add Member Form (hide for local notebooks) -->
-    @if (!isLocal()) {
-      <div class="p-4 border-b border-[var(--color-border)]">
-        <label class="block text-sm font-medium text-[var(--color-text-main)] mb-2">
-          Share with someone using their account ID
-        </label>
-        <p class="text-xs text-[var(--color-text-muted)] mb-3">
-          They can find their account ID in Settings.
-        </p>
-        <div class="flex gap-2">
-          <input
-            type="text"
-            [(ngModel)]="accountIdInput"
-            placeholder="Enter account ID"
-            class="flex-1 px-3 py-2 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)]"
-            [disabled]="isSharing()"
-            (keyup.enter)="shareNotebook()"
-          />
-          <select
-            [(ngModel)]="selectedAccessLevel"
-            class="px-3 py-2 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)]"
-            [disabled]="isSharing()"
-          >
-            <option value="write">Can edit</option>
-            <option value="read">Can view</option>
-          </select>
-          <button
-            (click)="shareNotebook()"
-            [disabled]="isSharing() || !accountIdInput().trim()"
-            class="px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {{ isSharing() ? 'Sharing...' : 'Share' }}
-          </button>
-        </div>
-
-        @if (shareError()) {
-          <p class="mt-2 text-xs text-red-600">{{ shareError() }}</p>
-        }
-      </div>
-
-      <!-- Members List -->
-      <div class="flex-1 overflow-y-auto p-4">
-        <h3 class="text-sm font-medium text-[var(--color-text-main)] mb-3">
-          People with access ({{ members().length }})
-        </h3>
-
-        <div class="space-y-2">
-          @for (member of members(); track member.userId) {
-            <div
-              class="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors"
+    <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+      <!-- Add Member Form (hide for local notebooks) -->
+      @if (!isLocal()) {
+        <div class="p-4 border-b border-[var(--color-border)]">
+          <label class="block text-sm font-medium text-[var(--color-text-main)] mb-2">
+            Share with someone using their account ID
+          </label>
+          <p class="text-xs text-[var(--color-text-muted)] mb-3">
+            They can find their account ID in Settings.
+          </p>
+          <div class="flex gap-2">
+            <input
+              type="text"
+              [(ngModel)]="accountIdInput"
+              placeholder="Enter account ID"
+              class="flex-1 min-w-0 px-3 py-2 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)]"
+              [disabled]="isSharing()"
+              (keyup.enter)="shareNotebook()"
+            />
+            <select
+              [(ngModel)]="selectedAccessLevel"
+              class="px-3 py-2 text-sm border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)]"
+              [disabled]="isSharing()"
             >
-              <div class="flex items-center gap-3">
-                <app-profile-avatar
-                  [email]="member.email ?? member.userId"
-                  [displayName]="member.displayName"
-                  [profilePictureUrl]="member.profilePictureUrl"
-                  size="sm"
-                />
-                <div>
-                  <div class="text-sm font-medium text-[var(--color-text-main)]">
-                    {{ member.displayName || (member.email ?? '').split('@')[0] || 'Maple user' }}
-                  </div>
-                  <div class="text-xs text-[var(--color-text-muted)]">{{ member.userId }}</div>
-                </div>
-              </div>
-
-              <div class="flex items-center gap-2">
-                <span
-                  class="text-xs text-[var(--color-text-muted)] px-2 py-1 bg-[var(--color-surface-alt)] rounded"
-                >
-                  {{ getAccessLevelLabel(member.accessLevel) }}
-                </span>
-
-                @if (member.accessLevel !== 'owner') {
-                  <button
-                    (click)="removeMember(member.userId)"
-                    class="p-1 text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                    title="Remove access"
-                  >
-                    <span class="material-symbols-rounded text-base">person_remove</span>
-                  </button>
-                }
-              </div>
-            </div>
-          } @empty {
-            <div class="text-center py-8 text-[var(--color-text-muted)] text-sm">
-              <span class="material-symbols-rounded text-4xl mb-2 block opacity-30">group</span>
-              <p>No one has access yet</p>
-              <p class="text-xs mt-1">Share this notebook to collaborate</p>
-            </div>
-          }
-        </div>
-      </div>
-    }
-
-    <!-- Public Access Section (cloud notebooks, owner only) -->
-    @if (!isLocal() && isOwner()) {
-      <div class="p-4 border-t border-[var(--color-border)]">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <span class="material-symbols-rounded text-xl text-[var(--color-text-muted)]"
-              >public</span
-            >
-            <div>
-              <div class="text-sm font-medium text-[var(--color-text-main)]">Public access</div>
-              <div class="text-xs text-[var(--color-text-muted)]">
-                @if (isPublic()) {
-                  Anyone with the link can view this notebook
-                } @else {
-                  Only people with access can view
-                }
-              </div>
-            </div>
-          </div>
-          <button
-            (click)="togglePublic()"
-            [disabled]="isTogglingPublic()"
-            class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-            [class]="isPublic() ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'"
-            role="switch"
-            [attr.aria-checked]="isPublic()"
-          >
-            <span
-              class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-              [class]="isPublic() ? 'translate-x-5' : 'translate-x-0'"
-            ></span>
-          </button>
-        </div>
-
-        @if (publicUrl()) {
-          <div class="mt-3 flex items-center gap-2">
-            <div
-              class="flex-1 flex items-center gap-2 px-3 py-2 bg-[var(--color-surface-alt)] rounded-lg text-xs text-[var(--color-text-muted)] overflow-hidden"
-            >
-              <span class="material-symbols-rounded text-sm">link</span>
-              <span class="truncate">{{ publicUrl() }}</span>
-            </div>
+              <option value="write">Can edit</option>
+              <option value="read">Can view</option>
+            </select>
             <button
-              (click)="copyPublicLink()"
-              class="shrink-0 px-3 py-2 text-xs font-medium rounded-lg transition-colors"
-              [class]="
-                linkCopied()
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-[var(--color-surface-alt)] text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)]'
-              "
+              (click)="shareNotebook()"
+              [disabled]="isSharing() || !accountIdInput().trim()"
+              class="px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {{ linkCopied() ? 'Copied!' : 'Copy' }}
+              {{ isSharing() ? 'Sharing...' : 'Share' }}
             </button>
           </div>
-        }
-      </div>
-    }
 
-    <!-- Shared Bots Section -->
-    <div class="p-4 border-t border-[var(--color-border)]">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-medium text-[var(--color-text-main)]">
-          Shared Bots ({{ sharedBots().length }})
-        </h3>
-        @if (isOwner()) {
-          <button
-            (click)="showAddBotDialog.set(true)"
-            class="text-xs px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white font-medium rounded-lg transition-colors"
-          >
-            Add Bot
-          </button>
-        }
-      </div>
+          @if (shareError()) {
+            <p class="mt-2 text-xs text-red-600">{{ shareError() }}</p>
+          }
+        </div>
 
-      <div class="space-y-2">
-        @if (isLoadingBots()) {
-          <div class="text-center py-4 text-[var(--color-text-muted)] text-sm">Loading bots...</div>
-        } @else if (sharedBots().length === 0) {
-          <div class="text-center py-6 text-[var(--color-text-muted)] text-sm">
-            <span class="material-symbols-rounded text-3xl mb-2 block opacity-30">smart_toy</span>
-            <p>No bots shared yet</p>
-            @if (isOwner()) {
-              <p class="text-xs mt-1">Add bots to use them in this notebook</p>
-            }
-          </div>
-        } @else {
-          @for (bot of sharedBots(); track bot._id) {
-            <div
-              class="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors"
-            >
-              <div class="flex items-center gap-3">
-                <app-profile-avatar
-                  [email]="bot.userId + '@bot'"
-                  [displayName]="bot.ownerName"
-                  [profilePictureUrl]="bot.templateAvatar"
-                  size="sm"
-                />
-                <div>
-                  <div class="text-sm font-medium text-[var(--color-text-main)]">
-                    @{{ bot.handle }}
-                  </div>
-                  <div class="text-xs text-[var(--color-text-muted)]">
-                    by {{ bot.ownerName || 'Unknown' }}
+        <!-- Members List -->
+        <div class="p-4">
+          <h3 class="m-0 mb-3 text-sm! font-medium text-[var(--color-text-main)]">
+            People with access ({{ members().length }})
+          </h3>
+
+          <div class="space-y-2">
+            @for (member of members(); track member.userId) {
+              <div
+                class="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors"
+              >
+                <div class="flex items-center gap-3">
+                  <app-profile-avatar
+                    [email]="member.email ?? member.userId"
+                    [displayName]="member.displayName"
+                    [profilePictureUrl]="member.profilePictureUrl"
+                    size="sm"
+                  />
+                  <div>
+                    <div class="text-sm font-medium text-[var(--color-text-main)]">
+                      {{ member.displayName || (member.email ?? '').split('@')[0] || 'Maple user' }}
+                    </div>
+                    <div class="text-xs text-[var(--color-text-muted)]">{{ member.userId }}</div>
                   </div>
                 </div>
-              </div>
 
-              @if (isOwner()) {
-                <button
-                  (click)="removeBot(bot._id, bot.handle)"
-                  class="p-1 text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                  title="Remove bot"
-                >
-                  <span class="material-symbols-rounded text-base">delete</span>
-                </button>
-              }
+                <div class="flex items-center gap-2">
+                  <span
+                    class="text-xs text-[var(--color-text-muted)] px-2 py-1 bg-[var(--color-surface-alt)] rounded"
+                  >
+                    {{ getAccessLevelLabel(member.accessLevel) }}
+                  </span>
+
+                  @if (member.accessLevel !== 'owner') {
+                    <button
+                      (click)="removeMember(member.userId)"
+                      class="p-1 text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                      title="Remove access"
+                    >
+                      <span class="material-symbols-rounded text-base">person_remove</span>
+                    </button>
+                  }
+                </div>
+              </div>
+            } @empty {
+              <div class="text-center py-8 text-[var(--color-text-muted)] text-sm">
+                <span class="material-symbols-rounded text-4xl mb-2 block opacity-30">group</span>
+                <p>No one has access yet</p>
+                <p class="text-xs mt-1">Share this notebook to collaborate</p>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Public Access Section (cloud notebooks, owner only) -->
+      @if (!isLocal() && isOwner()) {
+        <div class="p-4 border-t border-[var(--color-border)]">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="material-symbols-rounded text-xl text-[var(--color-text-muted)]"
+                >public</span
+              >
+              <div>
+                <div class="text-sm font-medium text-[var(--color-text-main)]">Public access</div>
+                <div class="text-xs text-[var(--color-text-muted)]">
+                  @if (isPublic()) {
+                    Anyone with the link can view this notebook
+                  } @else {
+                    Only people with access can view
+                  }
+                </div>
+              </div>
+            </div>
+            <button
+              (click)="togglePublic()"
+              [disabled]="isTogglingPublic()"
+              class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              [class]="isPublic() ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'"
+              role="switch"
+              [attr.aria-checked]="isPublic()"
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                [class]="isPublic() ? 'translate-x-5' : 'translate-x-0'"
+              ></span>
+            </button>
+          </div>
+
+          @if (publicUrl()) {
+            <div class="mt-3 flex items-center gap-2">
+              <div
+                class="flex-1 flex items-center gap-2 px-3 py-2 bg-[var(--color-surface-alt)] rounded-lg text-xs text-[var(--color-text-muted)] overflow-hidden"
+              >
+                <span class="material-symbols-rounded text-sm">link</span>
+                <span class="truncate">{{ publicUrl() }}</span>
+              </div>
+              <button
+                (click)="copyPublicLink()"
+                class="shrink-0 px-3 py-2 text-xs font-medium rounded-lg transition-colors"
+                [class]="
+                  linkCopied()
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-[var(--color-surface-alt)] text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)]'
+                "
+              >
+                {{ linkCopied() ? 'Copied!' : 'Copy' }}
+              </button>
             </div>
           }
-        }
+        </div>
+      }
+
+      <!-- Shared Bots Section -->
+      <div class="p-4 border-t border-[var(--color-border)]">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="m-0 text-sm! font-medium text-[var(--color-text-main)]">
+            Shared Bots ({{ sharedBots().length }})
+          </h3>
+          @if (chatPages().length > 1 && selectedChat(); as chat) {
+            <label
+              class="ml-auto mr-2 flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]"
+            >
+              Proactive in
+              <select
+                [value]="chat.id"
+                (change)="selectChat($any($event.target).value)"
+                class="h-7 max-w-36 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-1.5 text-xs text-[var(--color-text-main)]"
+              >
+                @for (page of chatPages(); track page.id) {
+                  <option [value]="page.id">{{ page.title || 'Untitled chat' }}</option>
+                }
+              </select>
+            </label>
+          }
+          @if (isOwner()) {
+            <button
+              (click)="showAddBotDialog.set(true)"
+              class="text-xs px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white font-medium rounded-lg transition-colors"
+            >
+              Add Bot
+            </button>
+          }
+        </div>
+
+        <div class="space-y-2">
+          @if (isLoadingBots()) {
+            <div class="text-center py-4 text-[var(--color-text-muted)] text-sm">
+              Loading bots...
+            </div>
+          } @else if (sharedBots().length === 0) {
+            <div class="text-center py-6 text-[var(--color-text-muted)] text-sm">
+              <span class="material-symbols-rounded text-3xl mb-2 block opacity-30">smart_toy</span>
+              <p>No bots shared yet</p>
+              @if (isOwner()) {
+                <p class="text-xs mt-1">Add bots to use them in this notebook</p>
+              }
+            </div>
+          } @else {
+            @for (bot of sharedBots(); track bot._id) {
+              <div
+                class="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--color-surface-hover)] transition-colors"
+              >
+                <div class="flex items-center gap-3">
+                  <app-profile-avatar
+                    [email]="bot.userId + '@bot'"
+                    [displayName]="bot.ownerName"
+                    [profilePictureUrl]="bot.templateAvatar"
+                    size="sm"
+                  />
+                  <div>
+                    <div class="text-sm font-medium text-[var(--color-text-main)]">
+                      @{{ bot.handle }}
+                    </div>
+                    <div class="text-xs text-[var(--color-text-muted)]">
+                      by {{ bot.ownerName || 'Unknown' }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-1">
+                  @if (selectedChat() && canBeProactive(bot) && isProactive(bot)) {
+                    <button
+                      type="button"
+                      (click)="expandedBotId.set(expandedBotId() === bot._id ? null : bot._id)"
+                      class="h-7 cursor-pointer rounded-md border-none bg-transparent px-2 text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)]"
+                    >
+                      Edit
+                    </button>
+                  }
+                  @if (selectedChat() && canBeProactive(bot)) {
+                    <button
+                      type="button"
+                      role="switch"
+                      [attr.aria-checked]="isProactive(bot)"
+                      [title]="
+                        isProactive(bot)
+                          ? 'Proactive in ' +
+                            (selectedChat()?.title || 'this chat') +
+                            '. Click to turn off.'
+                          : 'Make proactive: answers every message and tells you about new Mac data'
+                      "
+                      (click)="toggleProactive(bot)"
+                      [disabled]="proactiveBusy()"
+                      class="flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-transparent px-2 text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] disabled:opacity-60"
+                      [class.text-[var(--color-text-main)]]="isProactive(bot)"
+                    >
+                      <span
+                        class="relative inline-flex h-4 w-7 rounded-full transition-colors"
+                        [class]="
+                          isProactive(bot)
+                            ? 'bg-[var(--color-primary)]'
+                            : 'bg-[var(--color-border)]'
+                        "
+                      >
+                        <span
+                          class="absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform"
+                          [class]="isProactive(bot) ? 'translate-x-3.5' : 'translate-x-0.5'"
+                        ></span>
+                      </span>
+                      Proactive
+                    </button>
+                  }
+                  @if (isOwner()) {
+                    <button
+                      (click)="removeBot(bot._id, bot.handle)"
+                      class="p-1 text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                      title="Remove bot"
+                    >
+                      <span class="material-symbols-rounded text-base">delete</span>
+                    </button>
+                  }
+                </div>
+              </div>
+              @if (expandedBotId() === bot._id && selectedChat(); as chat) {
+                <div class="mx-2 mb-2 rounded-lg border border-[var(--color-border)] p-3">
+                  <app-proactive-bot-panel
+                    [page]="chat"
+                    [botId]="bot._id"
+                    (closed)="expandedBotId.set(null)"
+                  />
+                </div>
+              }
+            }
+          }
+        </div>
       </div>
     </div>
 
@@ -249,7 +322,9 @@
           (click)="$event.stopPropagation()"
         >
           <div class="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
-            <h3 class="text-lg font-semibold text-[var(--color-text-main)]">Add Bot to Notebook</h3>
+            <h3 class="m-0 text-lg! font-semibold text-[var(--color-text-main)]">
+              Add Bot to Notebook
+            </h3>
             <button
               (click)="showAddBotDialog.set(false)"
               class="p-1 hover:bg-[var(--color-surface-hover)] rounded-lg transition-colors text-[var(--color-text-muted)]"

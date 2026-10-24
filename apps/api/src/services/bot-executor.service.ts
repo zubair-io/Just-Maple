@@ -6,6 +6,7 @@ import type {
     Action,
     PageContent,
     Message,
+    Page,
 } from '@maple/shared';
 import { isBotModel } from '@maple/shared';
 import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
@@ -25,14 +26,26 @@ import {
 } from '../repositories/thread.repo';
 import {
     createMessageInThread,
+    createTopLevelBotMessage,
     markMessageHasThread,
     findMessagesByThreadId,
     findMessageById,
 } from '../repositories/message.repo';
+import { sendMessageReceivedNotification } from './notification.service';
 import { broadcastChatEvent } from './realtime.service';
 import { extractTextFromContent } from '../utils/content-utils';
 import { markdownToProseMirror } from '../utils/markdown-to-prosemirror';
 import { buildWebhookPayload, invokeWebhookWithRetry } from './webhook.service';
+import {
+    executeMacDataTool,
+    getMacDataToolContext,
+    macDataSystemPrompt,
+    macDataToolDefinitions,
+    type MacDataToolContext,
+} from './mac-data-tools.service';
+import { runAnthropicWithTools, runOpenAIWithTools, type ChatTurn } from './llm-tool-loop.service';
+import { findPageByIdForBot } from '../repositories/page.repo';
+import { appendProactiveInstruction } from './proactive-settings.service';
 
 // Configuration constants
 const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL || 'claude-sonnet-4-20250514';
@@ -44,6 +57,8 @@ interface ExecutionContext {
     userBot: UserBot;
     config: BotConfig | undefined;
     variables: Record<string, unknown>;
+    /** Local Mac data for this run; undefined until looked up, null when there is none. */
+    macData?: MacDataToolContext | null;
 }
 
 /**
@@ -353,7 +368,12 @@ export class BotExecutorService {
     /**
      * LLM action - calls Claude API or Inception API based on provider
      */
-    private async executeLLM(action: Action, ctx: ExecutionContext): Promise<void> {
+    private async executeLLM(
+        action: Action,
+        ctx: ExecutionContext,
+        // Proactive runs pass prompts directly: their data must not be interpolated or truncated.
+        prompts?: { system?: string; user: string },
+    ): Promise<void> {
         const config = action.config as {
             provider?: string;
             systemPrompt?: string;
@@ -368,10 +388,14 @@ export class BotExecutorService {
             throw new Error('API key not configured');
         }
 
-        const userPrompt = this.interpolate(config.userPrompt, ctx.variables);
-        let systemPrompt = config.systemPrompt
-            ? this.interpolate(config.systemPrompt, ctx.variables)
-            : undefined;
+        const userPrompt = prompts
+            ? prompts.user
+            : this.interpolate(config.userPrompt, ctx.variables);
+        let systemPrompt = prompts
+            ? prompts.system
+            : config.systemPrompt
+              ? this.interpolate(config.systemPrompt, ctx.variables)
+              : undefined;
 
         // Build conversation history from previous messages
         const previousMessages = (
@@ -406,7 +430,41 @@ export class BotExecutorService {
         }
         let response: string;
 
-        if (provider === 'openai') {
+        // iMessage, Mail and Calendar on the user's Mac, when this notebook has Mac pages.
+        const macData = await this.macDataContextFor(ctx);
+        if (macData) {
+            systemPrompt = `${systemPrompt || ''}\n\n${macDataSystemPrompt(macData)}`;
+            if (provider === 'inception') {
+                // No tool calling: search once with the request and include the results.
+                const found = await executeMacDataTool(macData, 'search_local_data', {
+                    query: userPrompt.slice(0, 500),
+                });
+                systemPrompt += `\n\nSearch results for the user's request:\n${found}`;
+            }
+        }
+
+        if (macData && provider !== 'inception') {
+            const isOAuthToken = provider === 'anthropic' && (ctx.config?.isOAuthToken || false);
+            const loop = {
+                apiKey,
+                model,
+                system: isOAuthToken
+                    ? `You are Claude Code, Anthropic's official CLI for Claude.\n\n${systemPrompt}`
+                    : systemPrompt,
+                turns: [
+                    ...this.toTurns(previousMessages),
+                    { role: 'user' as const, content: userPrompt },
+                ],
+                maxTokens: Math.max(config.maxTokens || 1024, 4096),
+                tools: macDataToolDefinitions(macData),
+                execute: (name: string, input: Record<string, unknown>) =>
+                    executeMacDataTool(macData, name, input),
+            };
+            response =
+                provider === 'openai'
+                    ? await runOpenAIWithTools(loop)
+                    : await runAnthropicWithTools({ ...loop, isOAuthToken });
+        } else if (provider === 'openai') {
             response = await this.callOpenAI({
                 apiKey,
                 model,
@@ -460,6 +518,52 @@ export class BotExecutorService {
         }
         // Also set as $response for convenience
         ctx.variables.$response = response;
+    }
+
+    /**
+     * Mac data for this run: preset by proactive runs, otherwise looked up for the user who
+     * invoked the bot. Only that user's own Mac is ever asked.
+     */
+    private async macDataContextFor(ctx: ExecutionContext): Promise<MacDataToolContext | null> {
+        if (ctx.macData !== undefined) return ctx.macData;
+        const { userId, notebookId, sourceType, sourceId } = ctx.invocation;
+        const macData = await getMacDataToolContext(userId, notebookId).catch(() => null);
+        if (macData && sourceType === 'message') {
+            const message = await findMessageById(sourceId).catch(() => null);
+            const page = message ? await findPageByIdForBot(message.pageId) : null;
+            const proactive = page?.proactive;
+            // The proactive bot may save corrections from the person whose Mac it reads.
+            if (
+                page &&
+                proactive?.enabled &&
+                proactive.userBotId === ctx.userBot._id &&
+                proactive.ownerUserId === userId
+            ) {
+                macData.rememberInstruction = (instruction) =>
+                    appendProactiveInstruction(page.id, instruction);
+            }
+        }
+        ctx.macData = macData;
+        return macData;
+    }
+
+    private toTurns(
+        previousMessages: Array<{
+            content?: string | { type: string; content: unknown[] };
+            senderType?: string;
+        }>,
+    ): ChatTurn[] {
+        return previousMessages
+            .map((msg) => ({
+                role: (msg.senderType === 'bot' ? 'assistant' : 'user') as ChatTurn['role'],
+                content:
+                    typeof msg.content === 'string'
+                        ? msg.content
+                        : msg.content
+                          ? extractTextFromContent(msg.content as PageContent)
+                          : '',
+            }))
+            .filter((turn) => turn.content);
     }
 
     /**
@@ -904,9 +1008,16 @@ export class BotExecutorService {
         template: BotTemplate,
         content: PageContent,
         ctx: ExecutionContext,
-    ): Promise<{ threadId: string; messageId: string }> {
+    ): Promise<{ threadId?: string; messageId: string }> {
         const source = await findMessageById(invocation.sourceId);
         if (!source) throw new Error('Source message not found');
+        if (invocation.context.replyTopLevel) {
+            const page = await findPageByIdForBot(source.pageId);
+            if (page) {
+                const message = await this.postTopLevel(page, userBot, template, content, ctx);
+                return { messageId: message.id };
+            }
+        }
         // Get or create thread for the parent message
         const thread = await getOrCreateThread({
             parentMessageId: invocation.sourceId,
@@ -950,6 +1061,101 @@ export class BotExecutorService {
         });
 
         return { threadId: thread._id, messageId: message.id };
+    }
+
+    /**
+     * Post a bot message directly in a page's conversation (proactive pages).
+     * With `notify`, the data owner also gets a push notification.
+     */
+    private async postTopLevel(
+        page: Page,
+        userBot: UserBot,
+        template: BotTemplate,
+        content: PageContent,
+        ctx: ExecutionContext,
+        notify?: { ownerUserId: string },
+    ): Promise<Message> {
+        const message = await createTopLevelBotMessage({
+            pageId: page.id,
+            notebookId: page.notebookId,
+            userId: userBot.userId,
+            userBotId: userBot._id,
+            senderDisplayName: userBot.displayName || template.name,
+            senderProfilePictureUrl: template.avatar,
+            content,
+            botUI: ctx.variables.$botUI as Message['botUI'],
+            botModel: ctx.variables.$model as string | undefined,
+        });
+        if (page.notebookId) {
+            await broadcastChatEvent(page.notebookId, {
+                pageId: page.id,
+                action: 'message',
+                data: message,
+                notebookId: page.notebookId,
+                userId: userBot.userId,
+                timestamp: new Date().toISOString(),
+            });
+            if (notify) {
+                await sendMessageReceivedNotification(
+                    notify.ownerUserId,
+                    page.notebookId,
+                    message._id,
+                    undefined,
+                    userBot.displayName || template.name,
+                    template.avatar,
+                    content,
+                ).catch(() => {});
+            }
+        }
+        return message;
+    }
+
+    /**
+     * One proactive pass for a page: the bot reads new Mac data with its standing
+     * instructions and either posts a message or stays quiet (replies NO_UPDATE).
+     * Returns the posted message, or null when there was nothing worth saying.
+     */
+    async runProactive(params: {
+        page: Page;
+        userBot: UserBot;
+        template: BotTemplate;
+        macData: MacDataToolContext;
+        system: string;
+        prompt: string;
+        previousMessages: Message[];
+    }): Promise<Message | null> {
+        const llm = params.template.definition.actions.find((action) => action.type === 'llm');
+        if (!llm || !params.page.notebookId) return null;
+        const now = new Date().toISOString();
+        const ctx: ExecutionContext = {
+            // Not persisted: proactive runs have no source message to answer.
+            invocation: {
+                _id: `proactive:${params.page.id}`,
+                userBotId: params.userBot._id,
+                templateId: params.template._id,
+                sourceType: 'message',
+                sourceId: '',
+                notebookId: params.page.notebookId,
+                userId: params.macData.userId,
+                context: {},
+                variables: {},
+                status: 'running',
+                createdAt: now,
+                updatedAt: now,
+            },
+            template: params.template,
+            userBot: params.userBot,
+            config: params.userBot.config,
+            variables: { $previousMessages: params.previousMessages },
+            macData: params.macData,
+        };
+        await this.executeLLM(llm, ctx, { system: params.system, user: params.prompt });
+        const raw = String(ctx.variables.$response || '').trim();
+        if (!raw || /^NO_UPDATE\b/i.test(raw)) return null;
+        const content = this.prepareResponse(ctx);
+        return this.postTopLevel(params.page, params.userBot, params.template, content, ctx, {
+            ownerUserId: params.macData.userId,
+        });
     }
 
     /**

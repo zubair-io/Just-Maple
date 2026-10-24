@@ -1,6 +1,7 @@
 import { Type, Static } from '@sinclair/typebox';
 
 const Text = Type.String({ maxLength: 10000 });
+export const MAC_DATA_ITEM_ID_PATTERN = '^(imessage|mail|calendar):[^\\s]{1,390}$';
 export const BotUIBlockSchema = Type.Union([
     Type.Object({ type: Type.Literal('text'), content: Text }),
     Type.Object({ type: Type.Literal('card'), title: Text, content: Text }),
@@ -25,6 +26,12 @@ export const BotUIBlockSchema = Type.Union([
             { maxItems: 12 },
         ),
         submitLabel: Text,
+    }),
+    // Cites an item from the user's Mac data (iMessage, Mail, Calendar)
+    Type.Object({
+        type: Type.Literal('source'),
+        label: Type.String({ maxLength: 200 }),
+        itemId: Type.String({ pattern: MAC_DATA_ITEM_ID_PATTERN, maxLength: 400 }),
     }),
 ]);
 export const BotUIResponseSchema = Type.Object({

@@ -84,3 +84,67 @@ export const MacDataQueryResultSchema = Type.Object({
 });
 
 export type MacDataQueryResult = Static<typeof MacDataQueryResultSchema>;
+
+// ============================================
+// Relay: what the server can ask the user's Mac
+// ============================================
+
+export const MacDataNotebookSourcesSchema = Type.Object({
+    notebookId: Type.String(),
+    sources: Type.Array(MacDataSourceSchema),
+});
+
+export type MacDataNotebookSources = Static<typeof MacDataNotebookSourcesSchema>;
+
+// Sent by the Mac when it connects and every 30 seconds after
+export const MacDataHostInfoSchema = Type.Object({
+    timeZone: Type.String(),
+    now: Type.String(), // The Mac's local time, ISO 8601 with offset
+    notebooks: Type.Array(MacDataNotebookSourcesSchema),
+    pendingEmbeddings: Type.Number(),
+});
+
+export type MacDataHostInfo = Static<typeof MacDataHostInfoSchema>;
+
+// One search result as a bot sees it: enough to answer or cite, never the whole body
+export const MacDataSearchHitSchema = Type.Object({
+    id: Type.String(),
+    source: MacDataSourceSchema,
+    when: Type.String(), // ISO 8601 in the Mac's time zone
+    end: Type.Optional(Type.String()),
+    allDay: Type.Optional(Type.Boolean()),
+    title: Type.Optional(Type.String()),
+    sender: Type.Optional(Type.String()),
+    participants: Type.Optional(Type.Array(Type.String())),
+    location: Type.Optional(Type.String()),
+    calendar: Type.Optional(Type.String()),
+    mailbox: Type.Optional(Type.String()),
+    snippet: Type.String(),
+    score: Type.Number(),
+});
+
+export type MacDataSearchHit = Static<typeof MacDataSearchHitSchema>;
+
+export const MacDataSearchRequestSchema = Type.Object({
+    notebookId: Type.String(),
+    query: Type.Optional(Type.String()),
+    sources: Type.Optional(Type.Array(MacDataSourceSchema)),
+    from: Type.Optional(Type.Number()), // Seconds since 1970
+    to: Type.Optional(Type.Number()),
+    limit: Type.Optional(Type.Number()),
+});
+
+export type MacDataSearchRequest = Static<typeof MacDataSearchRequestSchema>;
+
+// New or changed items the Mac offers a notebook's proactive bot
+export const MacDataChangeBatchSchema = Type.Object({
+    notebookId: Type.String(),
+    entries: Type.Array(
+        Type.Object({
+            kind: Type.String(), // 'added' | 'changed'
+            item: MacDataSearchHitSchema,
+        }),
+    ),
+});
+
+export type MacDataChangeBatch = Static<typeof MacDataChangeBatchSchema>;

@@ -86,7 +86,8 @@ nonisolated final class MacDataSQLite: @unchecked Sendable {
                 uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX, nil)
         } else {
             result = sqlite3_open_v2(
-                path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX, nil)
+                // Serialized mode: a stray call from another thread waits instead of corrupting memory.
+                path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil)
         }
         guard result == SQLITE_OK, let db else {
             let message = db.map { String(cString: sqlite3_errmsg($0)) } ?? "code \(result)"

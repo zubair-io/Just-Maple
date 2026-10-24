@@ -3,7 +3,7 @@
     [response]="source"
     [library]="library"
     (action)="onAction($event)"
-    (error)="renderFailed.set(true)"
+    (error)="onErrors($event)"
   />
 }
 @if (!source() || renderFailed()) {

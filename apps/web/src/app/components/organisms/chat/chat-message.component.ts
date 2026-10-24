@@ -1,13 +1,20 @@
 import { Component, input, output, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
-import type { Message } from '@maple/shared';
+import { isBotUIFallbackContent, type Message } from '@maple/shared';
+import { BotUIComponent } from '../../atoms/bot-ui/bot-ui.component';
 import { ContentRendererComponent } from '../../atoms/content-renderer/content-renderer.component';
 import { ProfileAvatarComponent } from '../../atoms';
 
 @Component({
   selector: 'app-chat-message',
   standalone: true,
-  imports: [CommonModule, DatePipe, ContentRendererComponent, ProfileAvatarComponent],
+  imports: [
+    CommonModule,
+    DatePipe,
+    ContentRendererComponent,
+    ProfileAvatarComponent,
+    BotUIComponent,
+  ],
   template: `
     <div [id]="'message-' + message().id" class="message-wrapper" [class.grouped]="isGrouped()">
       <div class="message-content">
@@ -36,7 +43,12 @@ import { ProfileAvatarComponent } from '../../atoms';
 
           <!-- Bottom row: Message content -->
           <div class="message-body">
-            <app-content-renderer [content]="message().content" />
+            @if (!hideText()) {
+              <app-content-renderer [content]="message().content" />
+            }
+            @if (message().senderType === 'bot' && message().botUI; as ui) {
+              <app-bot-ui [response]="ui" (followUp)="followUp.emit($event)" />
+            }
             @if (message().editedAt) {
               <span class="edited">(edited)</span>
             }
@@ -239,6 +251,12 @@ export class ChatMessageComponent {
 
   readonly threadClicked = output<Message>();
   readonly replyClicked = output<Message>();
+  /** A bot UI button or form was used; its text should be sent as the user's next message. */
+  readonly followUp = output<string>();
+  /** Bot replies made only of UI blocks carry a flattened text copy; show the blocks instead. */
+  readonly hideText = computed(() =>
+    isBotUIFallbackContent(this.message().content, this.message().botUI),
+  );
 
   readonly senderDisplay = computed(() => {
     const msg = this.message();

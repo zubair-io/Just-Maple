@@ -14,7 +14,7 @@ import {
   type ActionEvent,
 } from '@openuidev/angular-lang';
 import { Value } from '@sinclair/typebox/value';
-import { BotUIResponseSchema, type BotUIResponse } from '@maple/shared';
+import { BotUIResponseSchema, MAC_DATA_ITEM_ID_PATTERN, type BotUIResponse } from '@maple/shared';
 import { z } from 'zod/v4';
 import { BOT_UI_DISABLED, MapleUIBlocksComponent } from './maple-ui-blocks.component';
 
@@ -55,6 +55,11 @@ const library = createLibrary({
                   .max(12),
                 submitLabel: text,
               }),
+              z.object({
+                type: z.literal('source'),
+                label: z.string().max(200),
+                itemId: z.string().regex(new RegExp(MAC_DATA_ITEM_ID_PATTERN)).max(400),
+              }),
             ]),
           )
           .min(1)
@@ -91,6 +96,10 @@ export class BotUIComponent {
       ? `root = MapleResponse(${JSON.stringify(this.response().blocks)})`
       : null,
   );
+  /** The renderer also emits an empty list after a clean render, which is not a failure. */
+  onErrors(errors: unknown[]): void {
+    this.renderFailed.set(errors.length > 0);
+  }
   onAction(event: ActionEvent): void {
     if (!this.disabled() && event.type === 'continue_conversation' && event.humanFriendlyMessage) {
       this.followUp.emit(event.humanFriendlyMessage);

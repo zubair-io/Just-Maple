@@ -23,7 +23,15 @@ import {
 } from '../repositories/page.repo';
 import { otService } from '../services/ot.service';
 import { realtimeWSService } from '../services/realtime-ws.service';
-import { getUsersWithNotebookAccess } from '../repositories/notebook.repo';
+import {
+    getUsersWithNotebookAccess,
+    findNotebookByIdWithAccess,
+} from '../repositories/notebook.repo';
+import {
+    saveProactiveSettings,
+    clearProactiveSettings,
+    ProactiveSettingsError,
+} from '../services/proactive-settings.service';
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
 import { indexPage, removeFromIndex } from '../repositories/search.repo';
 import type { Page } from '@maple/shared';
@@ -503,4 +511,60 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
         }
         const count = await emptyTrash(auth.user._id);
         return { message: `Deleted ${count} pages from trash`, count };
-    });
+    })
+
+    // Set a messages page's proactive bot (one per page). The caller's Mac supplies its data.
+    .put(
+        '/:id/proactive',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+            const page = await findWritableMessagesPage(params.id, auth.user._id);
+            if (!page) {
+                set.status = 404;
+                return { error: 'Not found', message: 'Messages page not found' };
+            }
+            try {
+                return { page: await saveProactiveSettings(page, auth.user._id, body) };
+            } catch (error) {
+                if (error instanceof ProactiveSettingsError) {
+                    set.status = error.status;
+                    return { error: 'Invalid proactive bot', message: error.message };
+                }
+                throw error;
+            }
+        },
+        {
+            params: t.Object({ id: t.String() }),
+            body: t.Object({
+                userBotId: t.String(),
+                instructions: t.String({ maxLength: 8000 }),
+                enabled: t.Boolean(),
+            }),
+        },
+    )
+
+    // Remove a messages page's proactive bot
+    .delete(
+        '/:id/proactive',
+        async ({ auth, params, set }) => {
+            if (!checkAuth(auth, set)) {
+                return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+            const page = await findWritableMessagesPage(params.id, auth.user._id);
+            if (!page) {
+                set.status = 404;
+                return { error: 'Not found', message: 'Messages page not found' };
+            }
+            return { page: await clearProactiveSettings(page) };
+        },
+        { params: t.Object({ id: t.String() }) },
+    );
+
+/** A messages page the user can edit (write access to its notebook). */
+async function findWritableMessagesPage(id: string, userId: string): Promise<Page | null> {
+    const page = await findPageById(id, userId);
+    if (!page || page.type !== 'message' || !page.notebookId) return null;
+    return (await findNotebookByIdWithAccess(page.notebookId, userId, 'write')) ? page : null;
+}
