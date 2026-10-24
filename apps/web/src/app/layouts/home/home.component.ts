@@ -82,6 +82,7 @@ export class HomeComponent implements OnInit, OnDestroy {
       .pipe(filter((event) => event instanceof NavigationEnd))
       .subscribe(() => {
         this.syncFromRoute();
+        if (this.router.url.split('?')[0] === '/recorder') this.closeSidebar();
       });
 
     // Listen for query params to open search modal with filters
@@ -156,6 +157,7 @@ export class HomeComponent implements OnInit, OnDestroy {
     const excludedRoutes = [
       'settings',
       'notifications',
+      'recorder',
       'favorites',
       'trash',
       'login',

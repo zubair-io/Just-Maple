@@ -1,4 +1,6 @@
-import { Injectable } from '@angular/core';
+import type { RecorderRequest } from '../types/recorder.types';
+import { Injectable, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { Subject, Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 import type {
@@ -30,12 +32,14 @@ import type {
   ICloudContainerPathResult,
   ApiRequestPayload,
   ApiResponsePayload,
+  S1CleanResponse,
 } from '../types/native-bridge.types';
 
 @Injectable({
   providedIn: 'root',
 })
 export class NativeBridgeService {
+  private readonly router = inject(Router, { optional: true });
   private readonly _messages$ = new Subject<NativeToWebMessage>();
   private _isNativeApp = false;
   private _initialState: InitialState | null = null;
@@ -95,6 +99,9 @@ export class NativeBridgeService {
   }
 
   private handleIncoming(message: NativeToWebMessage): void {
+    if (message.type === 'recorderOpen') {
+      void this.router?.navigate(['/recorder']);
+    }
     // Store initial state
     if (message.type === 'initialize') {
       this._initialState = message.payload as InitialState;
@@ -243,6 +250,44 @@ export class NativeBridgeService {
     }
 
     handler.postMessage(JSON.stringify(message));
+  }
+
+  recorderRequest(payload: RecorderRequest): void {
+    this.sendMessage({ type: 'recorderRequest', payload });
+  }
+
+  /** Clean note text locally with S1-mini in the Apple app. */
+  cleanTextWithS1(text: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      if (!this._isNativeApp) {
+        reject(new Error('S1 cleanup is only available in the Apple app'));
+        return;
+      }
+
+      const requestId = crypto.randomUUID();
+      const timeoutId = setTimeout(() => {
+        subscription.unsubscribe();
+        reject(new Error('S1 cleanup timed out'));
+      }, 10 * 60_000);
+
+      const subscription = this.messages$
+        .pipe(
+          filter((message) => message.type === 's1CleanResponse'),
+          map((message) => message.payload as S1CleanResponse),
+          filter((response) => response.requestId === requestId),
+        )
+        .subscribe((response) => {
+          clearTimeout(timeoutId);
+          subscription.unsubscribe();
+          if (response.error) {
+            reject(new Error(response.error));
+          } else {
+            resolve(response.text ?? '');
+          }
+        });
+
+      this.sendMessage({ type: 's1CleanRequest', payload: { requestId, text } });
+    });
   }
 
   // MARK: - Token Management
