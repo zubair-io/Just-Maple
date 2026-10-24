@@ -305,7 +305,8 @@ export class BotsComponent implements OnInit, OnDestroy {
     const template = this.selectedTemplate();
     if (!template) return;
 
-    if (template.requiresConfig && !this.apiKey().trim()) {
+    // Custom servers can be open endpoints, so their key is optional.
+    if (template.requiresConfig && !this.apiKey().trim() && !this.usesCustomServer(template._id)) {
       this.registerError.set('API key is required for this bot');
       return;
     }

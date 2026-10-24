@@ -33,7 +33,9 @@ export async function listBotModels(
               : 'Claude';
     const headers: Record<string, string> =
         provider !== 'anthropic'
-            ? { Authorization: `Bearer ${apiKey}` }
+            ? apiKey
+                ? { Authorization: `Bearer ${apiKey}` }
+                : {}
             : {
                   'anthropic-version': '2023-06-01',
                   ...(isOAuthToken

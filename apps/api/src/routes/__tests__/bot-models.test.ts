@@ -197,5 +197,42 @@ describe.runIf(mongoAvailable)('bot model discovery routes', () => {
             expect((await add('intranet', 'https://intranet.example.com/v1')).status).toBe(400);
             expect((await add('nourl', '')).status).toBe(400);
         });
+
+        it('works without an API key for open servers', async () => {
+            const { template, request } = await customSetup();
+            const added = await request(
+                {
+                    templateId: template._id.toString(),
+                    handle: 'open',
+                    config: { baseUrl: 'https://llm.example.com/v1', model: 'some/model' },
+                },
+                undefined,
+                '/api/user-bots',
+            );
+            expect(added.status).toBe(200);
+            fetchMock.mockResolvedValue({
+                ok: true,
+                json: async () => ({ data: [{ id: 'open-model' }] }),
+            });
+            const listed = await request({
+                templateId: template._id.toString(),
+                baseUrl: 'https://llm.example.com/v1',
+            });
+            expect(listed.status).toBe(200);
+            expect(fetchMock.mock.calls[0]![1].headers.Authorization).toBeUndefined();
+        });
+
+        it('still requires a key for other AI bots', async () => {
+            const { template, request } = await setup('openai');
+            await testDb!
+                .collection('bot_templates')
+                .updateOne({ _id: template._id }, { $set: { requiresConfig: true } });
+            const added = await request(
+                { templateId: template._id.toString(), handle: 'nokey' },
+                undefined,
+                '/api/user-bots',
+            );
+            expect(added.status).toBe(400);
+        });
     });
 });
