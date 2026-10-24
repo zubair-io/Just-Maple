@@ -49,7 +49,8 @@ import { appendProactiveInstruction } from './proactive-settings.service';
 
 // Configuration constants
 const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL || 'claude-sonnet-4-20250514';
-const BOT_EXECUTION_TIMEOUT_MS = parseInt(process.env.BOT_EXECUTION_TIMEOUT_MS || '60000', 10);
+// Generous enough for local-data tool runs: several model rounds plus Mac round trips.
+const BOT_EXECUTION_TIMEOUT_MS = parseInt(process.env.BOT_EXECUTION_TIMEOUT_MS || '180000', 10);
 
 interface ExecutionContext {
     invocation: BotInvocation;

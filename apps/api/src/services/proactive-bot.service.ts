@@ -60,6 +60,9 @@ export async function maybeAutoReply(params: {
     const { page, message, userId } = params;
     const proactive = page.proactive;
     if (!proactive?.enabled || !page.notebookId || message.senderType === 'bot') return;
+    // Only the person whose bot (and API key) and Mac it is gets automatic answers;
+    // other members can still @mention the bot.
+    if (userId !== proactive.ownerUserId) return;
 
     const userBot = await findUserBotByIdInternal(proactive.userBotId);
     if (!userBot || userBot.isEnabled === false) return;

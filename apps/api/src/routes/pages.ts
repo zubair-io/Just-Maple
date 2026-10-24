@@ -526,7 +526,11 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 return { error: 'Not found', message: 'Messages page not found' };
             }
             try {
-                return { page: await saveProactiveSettings(page, auth.user._id, body) };
+                return {
+                    page: await saveProactiveSettings(page, auth.user._id, body, {
+                        isNotebookOwner: await isNotebookOwner(page, auth.user._id),
+                    }),
+                };
             } catch (error) {
                 if (error instanceof ProactiveSettingsError) {
                     set.status = error.status;
@@ -557,10 +561,28 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 set.status = 404;
                 return { error: 'Not found', message: 'Messages page not found' };
             }
-            return { page: await clearProactiveSettings(page) };
+            try {
+                return {
+                    page: await clearProactiveSettings(page, auth.user._id, {
+                        isNotebookOwner: await isNotebookOwner(page, auth.user._id),
+                    }),
+                };
+            } catch (error) {
+                if (error instanceof ProactiveSettingsError) {
+                    set.status = error.status;
+                    return { error: 'Not allowed', message: error.message };
+                }
+                throw error;
+            }
         },
         { params: t.Object({ id: t.String() }) },
     );
+
+async function isNotebookOwner(page: Page, userId: string): Promise<boolean> {
+    return (
+        !!page.notebookId && !!(await findNotebookByIdWithAccess(page.notebookId, userId, 'owner'))
+    );
+}
 
 /** A messages page the user can edit (write access to its notebook). */
 async function findWritableMessagesPage(id: string, userId: string): Promise<Page | null> {

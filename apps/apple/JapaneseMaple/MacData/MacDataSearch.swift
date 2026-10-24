@@ -171,10 +171,19 @@ extension MacDataStore {
         return result
     }
 
-    func items(sources: [MacDataSource], from: Double?, to: Double?) throws -> [MacDataItem] {
+    /// Light rows for ranking: id, time and searchable text, without decoding each item.
+    struct SearchRow {
+        var id: String
+        var occurredAt: Double
+        var text: String
+    }
+
+    func searchRows(sources: [MacDataSource], from: Double?, to: Double?) throws -> [SearchRow] {
         guard !sources.isEmpty else { return [] }
-        var sql =
-            "SELECT json FROM items WHERE source IN (\(sources.map { _ in "?" }.joined(separator: ",")))"
+        var sql = """
+            SELECT id, occurred_at, coalesce(title, '') || ' ' || coalesce(sender, '') || ' ' || body AS text
+            FROM items WHERE source IN (\(sources.map { _ in "?" }.joined(separator: ",")))
+            """
         var bindings: [Any?] = sources.map(\.rawValue)
         if let from {
             sql += " AND occurred_at >= ?"
@@ -185,7 +194,8 @@ extension MacDataStore {
             bindings.append(to)
         }
         return try db.rows(sql, bindings).compactMap { row in
-            row["json"]?.string.flatMap { try? JSONDecoder().decode(MacDataItem.self, from: Data($0.utf8)) }
+            guard let id = row["id"]?.string, let at = row["occurred_at"]?.double else { return nil }
+            return SearchRow(id: id, occurredAt: at, text: row["text"]?.string ?? "")
         }
     }
 
@@ -260,28 +270,25 @@ nonisolated final class MacDataSearchIndex: @unchecked Sendable {
         let allowed = try store.sourcesByNotebook()[request.notebookId] ?? []
         let sources = (request.sources ?? MacDataSource.allCases).filter(allowed.contains)
         let limit = min(max(request.limit ?? 12, 1), 25)
-        let candidates = try store.items(sources: sources, from: request.from, to: request.to)
         let query = request.query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let terms = MacDataRanking.keywordTerms(query)
+        // Rank on light rows; only the returned items are decoded.
+        let rows = try store.searchRows(sources: sources, from: request.from, to: request.to)
 
         // No query: list what falls in the date range, soonest first.
         guard !query.isEmpty else {
-            return
-                candidates
-                .sorted { $0.occurredAt < $1.occurredAt }
-                .prefix(limit)
-                .map { hit($0, score: 0, terms: [], timeZone: timeZone) }
+            return try rows.sorted { $0.occurredAt < $1.occurredAt }.prefix(limit).compactMap { row in
+                try store.item(id: row.id).map { hit($0, score: 0, terms: [], timeZone: timeZone) }
+            }
         }
 
         if vectors == nil { vectors = try store.allVectors() }
         let queryVector = MacDataEmbedding.vector(query)
-        var scored: [(MacDataItem, Double)] = []
-        for item in candidates {
-            let keyword = MacDataRanking.keywordScore(
-                terms: terms,
-                text: MacDataEmbedding.text(for: item) + " " + item.participants.joined(separator: " "))
+        var scored: [(SearchRowScore)] = []
+        for row in rows {
+            let keyword = MacDataRanking.keywordScore(terms: terms, text: row.text)
             var semantic = 0.0
-            if let queryVector, let itemVectors = vectors?[item.id] {
+            if let queryVector, let itemVectors = vectors?[row.id] {
                 for vector in itemVectors where vector.count == queryVector.count {
                     var dot: Float = 0
                     for index in 0..<vector.count { dot += vector[index] * queryVector[index] }
@@ -289,15 +296,21 @@ nonisolated final class MacDataSearchIndex: @unchecked Sendable {
                 }
             }
             // Keywords dominate for names and numbers; meaning catches paraphrases.
-            let score = semantic + keyword * 0.6
             guard keyword > 0 || semantic >= 0.45 else { continue }
-            scored.append((item, score))
+            scored.append(SearchRowScore(id: row.id, occurredAt: row.occurredAt, score: semantic + keyword * 0.6))
         }
-        return
-            scored
-            .sorted { $0.1 == $1.1 ? $0.0.occurredAt > $1.0.occurredAt : $0.1 > $1.1 }
+        return try scored
+            .sorted { $0.score == $1.score ? $0.occurredAt > $1.occurredAt : $0.score > $1.score }
             .prefix(limit)
-            .map { hit($0.0, score: $0.1, terms: terms, timeZone: timeZone) }
+            .compactMap { ranked in
+                try store.item(id: ranked.id).map { hit($0, score: ranked.score, terms: terms, timeZone: timeZone) }
+            }
+    }
+
+    private struct SearchRowScore {
+        var id: String
+        var occurredAt: Double
+        var score: Double
     }
 
     func hit(_ item: MacDataItem, score: Double, terms: [String], timeZone: TimeZone)

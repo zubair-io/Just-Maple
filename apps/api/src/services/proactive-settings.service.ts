@@ -23,10 +23,12 @@ export async function saveProactiveSettings(
     page: Page,
     userId: string,
     input: UpdateProactiveBotInput,
+    options: { isNotebookOwner?: boolean } = {},
 ): Promise<Page> {
     if (page.type !== 'message') {
         throw new ProactiveSettingsError('Only messages pages can have a proactive bot.');
     }
+    assertCanChange(page, userId, options.isNotebookOwner);
     const bot = await findUserBotById(input.userBotId);
     if (!bot || bot.userId !== userId) {
         throw new ProactiveSettingsError('Choose one of your own bots.', 404);
@@ -58,7 +60,12 @@ export async function saveProactiveSettings(
     return updated;
 }
 
-export async function clearProactiveSettings(page: Page): Promise<Page> {
+export async function clearProactiveSettings(
+    page: Page,
+    userId: string,
+    options: { isNotebookOwner?: boolean } = {},
+): Promise<Page> {
+    assertCanChange(page, userId, options.isNotebookOwner);
     const updated = await setPageProactive(page.id, null);
     if (!updated) throw new ProactiveSettingsError('Page not found.', 404);
     await notifyOwners(page.proactive?.ownerUserId);
@@ -92,6 +99,20 @@ export async function appendProactiveInstruction(
         instructions: instructions.slice(0, MAX_PROACTIVE_INSTRUCTIONS),
         updatedAt: new Date().toISOString(),
     });
+}
+
+/**
+ * A chat's proactive bot reads its owner's Mac and spends their API key, so only that
+ * person or the notebook's owner may replace or remove it.
+ */
+function assertCanChange(page: Page, userId: string, isNotebookOwner = false): void {
+    const owner = page.proactive?.ownerUserId;
+    if (owner && owner !== userId && !isNotebookOwner) {
+        throw new ProactiveSettingsError(
+            'Another member set up this chat’s proactive bot. Ask them or the notebook owner to change it.',
+            403,
+        );
+    }
 }
 
 /** Tell affected Macs which notebooks now have proactive bots. */

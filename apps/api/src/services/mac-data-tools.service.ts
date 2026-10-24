@@ -44,30 +44,14 @@ export async function getMacDataToolContext(
     const notebook = host?.notebooks.find((n) => n.notebookId === notebookId);
     if (!host || !notebook || notebook.sources.length === 0) return null;
 
-    const online = await macDataRelay.isOnline(userId);
-    let now = formatInZone(new Date(), host.timeZone);
-    let timeZone = host.timeZone;
-    if (online) {
-        try {
-            const info = await macDataRelay.request<{ now: string; timeZone: string }>(
-                userId,
-                'info',
-                {},
-                3_000,
-            );
-            now = info.now;
-            timeZone = info.timeZone;
-        } catch {
-            // Fall back to the stored time zone; searches will report if the Mac is gone.
-        }
-    }
+    // The Mac reports its time zone with every heartbeat, so no round trip is needed here.
     return {
         userId,
         notebookId,
         sources: notebook.sources,
-        online,
-        timeZone,
-        now,
+        online: await macDataRelay.isOnline(userId),
+        timeZone: host.timeZone,
+        now: formatInZone(new Date(), host.timeZone),
         lastSeenAt: host.lastSeenAt,
     };
 }
