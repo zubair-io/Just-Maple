@@ -23,8 +23,11 @@ test.describe('Passkey-only authentication', () => {
         });
         await page.goto('/login?returnUrl=%2Fsettings');
         await expect(page.getByRole('button', { name: 'Sign in with a passkey' })).toBeVisible();
-        await expect(page.locator('input[type="email"]')).toHaveCount(0);
+        // The collapsed development token form has an email field; passkey login does not.
+        await expect(page.locator('input[type="email"]:visible')).toHaveCount(0);
         await page.getByRole('button', { name: 'New to Just Maple? Create an account' }).click();
+        const signupForm = page.locator('form').filter({ has: page.locator('input#displayName') });
+        await expect(signupForm.locator('input[type="email"]')).toHaveCount(0);
         await page.locator('input#displayName').fill('Passkey reader');
         const signupResponse = page.waitForResponse((r) =>
             r.url().endsWith('/api/auth/passkey/signup/finish'),
