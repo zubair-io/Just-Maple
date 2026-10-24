@@ -1,4 +1,4 @@
-import { Component, input, computed } from '@angular/core';
+import { Component, input, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type TimestampFormat = 'relative' | 'date' | 'time' | 'datetime';
@@ -8,6 +8,7 @@ export type TimestampFormat = 'relative' | 'date' | 'time' | 'datetime';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './timestamp.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './timestamp.component.scss',
 })
 export class TimestampComponent {

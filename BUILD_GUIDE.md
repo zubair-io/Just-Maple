@@ -296,3 +296,35 @@ bun run build:native     # Builds for iOS/macOS app
 - All scripts automatically build `@maple/shared` first
 - No manual dependency management needed
 - Just run `bun run dev` or `bun run build`! 🚀
+
+## Angular 22 messaging UI
+
+The web app uses Angular 22.1.5 and TypeScript 6.0. Use Node 24.15.0
+(`.node-version`) with Bun; the supported Node range is also in `package.json`.
+CI and the container builder provision this runtime. Run `bun install`, then
+`bun run build` from the repository root.
+
+Bot settings provide a default model and automatic UI or text-only replies.
+Choose the reply model in the bot registration or edit dialog. Claude and OpenAI
+model options are fetched from the provider using the API key entered in the dialog
+or the bot’s saved key. Saved keys remain on the server.
+Interactive replies appear in the bot's thread; buttons and forms send explicit
+follow-up messages using that bot's saved model setting.
+
+OpenUI's Angular renderer (`@openuidev/angular-lang` 0.4.2) currently uses
+`@openuidev/lang-core` 0.4.1 rather than Lang 1.0. The server validates model
+output into versioned blocks. The client reconstructs static renderer input from
+those blocks, preserving previously saved replies and preventing execution of
+raw model-generated expressions. Components use Maple theme tokens.
+See [the upstream Angular renderer](https://github.com/thesysdev/openui/tree/main/packages/angular-lang).
+
+Focused checks:
+
+```sh
+bun run --cwd apps/api test src/services/__tests__/bot-ui.service.test.ts src/services/__tests__/bot-executor-ui.test.ts src/repositories/__tests__/message-bot-ui.repo.test.ts
+cd apps/web
+bunx vitest run src/app/components/atoms/bot-ui/bot-ui.component.spec.ts src/app/components/organisms/chat/thread-panel/thread-panel.component.spec.ts
+```
+
+Provider tests mock network responses. Live generation requires the user's
+provider API key in bot settings.

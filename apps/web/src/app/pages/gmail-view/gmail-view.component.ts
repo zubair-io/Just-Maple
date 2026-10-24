@@ -1,4 +1,13 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  OnInit,
+  OnDestroy,
+  effect,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -16,6 +25,7 @@ import type { CachedEmail, GmailFilter } from '@maple/shared';
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './gmail-view.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './gmail-view.component.scss',
 })
 export class GmailViewComponent implements OnInit, OnDestroy {

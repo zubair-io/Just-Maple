@@ -8,6 +8,7 @@ import {
   ViewChild,
   NgZone,
   HostListener,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -28,6 +29,7 @@ import { NoteHeaderComponent, type ExportFormat, DialogService } from '../../com
   standalone: true,
   imports: [CommonModule, NotebookEditorComponent, NoteHeaderComponent],
   templateUrl: './notebook.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './notebook.component.scss',
 })
 export class NotebookComponent implements OnDestroy {

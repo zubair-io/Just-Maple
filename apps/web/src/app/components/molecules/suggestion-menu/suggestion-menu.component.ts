@@ -10,6 +10,7 @@ import {
   ElementRef,
   AfterViewInit,
   input,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
@@ -35,6 +36,7 @@ export interface SuggestionItem {
   standalone: true,
   imports: [CommonModule],
   templateUrl: './suggestion-menu.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './suggestion-menu.component.scss',
 })
 export class SuggestionMenuComponent implements AfterViewInit {

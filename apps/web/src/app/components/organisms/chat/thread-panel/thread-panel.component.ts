@@ -11,8 +11,10 @@ import {
   OnDestroy,
   DestroyRef,
   HostListener,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { BotUIComponent } from '../../../atoms/bot-ui/bot-ui.component';
 import { CommonModule, DatePipe } from '@angular/common';
 import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -32,6 +34,7 @@ import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of 
   selector: 'app-thread-panel',
   standalone: true,
   imports: [
+    BotUIComponent,
     CommonModule,
     DatePipe,
     ContentRendererComponent,
@@ -39,6 +42,7 @@ import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of 
     MentionSuggestionComponent,
   ],
   templateUrl: './thread-panel.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './thread-panel.component.scss',
 })
 export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
@@ -59,6 +63,8 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
   readonly threadMessages = signal<Message[]>([]);
   readonly thread = signal<Thread | null>(null);
   readonly isLoading = signal(false);
+  readonly actionPending = signal(false);
+  readonly actionError = signal<string | null>(null);
   readonly isClosing = signal(false);
 
   // Mention autocomplete state
@@ -380,6 +386,51 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
           if (message && mentions.length > 0) {
             this.invokeMentionedBots(message, mentions, content);
           }
+        },
+      });
+  }
+
+  continueBot(message: Message, text: string): void {
+    const bot = this.allNotebookBots().find((bot) => bot.id === message.userBotId);
+    if (!bot || this.actionPending()) return;
+    const content: PageContent = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'mention', attrs: { id: bot.id, handle: bot.handle, type: 'bot' } },
+            { type: 'text', text: ' ' + text.slice(0, 9000) },
+          ],
+        },
+      ],
+    };
+    this.actionPending.set(true);
+    this.actionError.set(null);
+    this.messageService
+      .sendMessage(this.notebookId(), content, {
+        parentMessageId: this.parentMessage().id,
+        forceHttp: true,
+      })
+      .pipe(
+        switchMap(() =>
+          this.botService.invokeBot(
+            this.notebookId(),
+            bot.handle,
+            'message',
+            this.parentMessage().id,
+            {
+              mentionText: text.slice(0, 10000),
+              fullContent: text.slice(0, 10000),
+            },
+          ),
+        ),
+      )
+      .subscribe({
+        next: () => this.actionPending.set(false),
+        error: (err) => {
+          this.actionPending.set(false);
+          this.actionError.set(err.message || 'Could not send follow-up');
         },
       });
   }

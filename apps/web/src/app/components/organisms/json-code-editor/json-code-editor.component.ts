@@ -9,6 +9,7 @@ import {
   OnDestroy,
   AfterViewInit,
   ViewEncapsulation,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
@@ -42,6 +43,7 @@ import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
   imports: [CommonModule],
   templateUrl: './json-code-editor.component.html',
   styleUrl: './json-code-editor.component.scss',
+  changeDetection: ChangeDetectionStrategy.Eager,
   encapsulation: ViewEncapsulation.None,
 })
 export class JsonCodeEditorComponent implements AfterViewInit, OnDestroy {

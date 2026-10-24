@@ -1,4 +1,13 @@
-import { Component, input, output, signal, inject, effect, computed } from '@angular/core';
+import {
+  Component,
+  input,
+  output,
+  signal,
+  inject,
+  effect,
+  computed,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -17,6 +26,7 @@ import { toDisplaySlug } from '@maple/shared/utils/slug';
   standalone: true,
   imports: [CommonModule, FormsModule, ProfileAvatarComponent],
   templateUrl: './share-modal.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './share-modal.component.scss',
 })
 export class ShareModalComponent {

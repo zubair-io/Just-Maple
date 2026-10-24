@@ -1,4 +1,4 @@
-import { Component, input, output, signal, inject } from '@angular/core';
+import { Component, input, output, signal, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import {
@@ -19,6 +19,7 @@ interface DropdownItem {
   standalone: true,
   imports: [CommonModule, CdkOverlayOrigin, CdkConnectedOverlay],
   templateUrl: './new-page-button.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './new-page-button.component.scss',
 })
 export class NewPageButtonComponent {

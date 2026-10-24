@@ -1,4 +1,4 @@
-import { Component, input, output, signal } from '@angular/core';
+import { Component, input, output, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -6,6 +6,7 @@ import { CommonModule } from '@angular/common';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './canvas-prompt-bar.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './canvas-prompt-bar.component.scss',
 })
 export class CanvasPromptBarComponent {

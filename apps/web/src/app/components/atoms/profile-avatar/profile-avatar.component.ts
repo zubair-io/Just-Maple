@@ -1,4 +1,4 @@
-import { Component, input, computed } from '@angular/core';
+import { Component, input, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -8,6 +8,7 @@ export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './profile-avatar.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './profile-avatar.component.scss',
 })
 export class ProfileAvatarComponent {

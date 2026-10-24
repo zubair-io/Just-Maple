@@ -1,4 +1,12 @@
-import { Component, signal, inject, OnInit, OnDestroy, computed } from '@angular/core';
+import {
+  Component,
+  signal,
+  inject,
+  OnInit,
+  OnDestroy,
+  computed,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -14,6 +22,7 @@ import type { SearchModalOptions } from '../../../services/ui-state.service';
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './search-modal.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './search-modal.component.scss',
 })
 export class SearchModalComponent implements OnInit, OnDestroy {

@@ -9,6 +9,7 @@ import {
   QueryList,
   ElementRef,
   AfterViewInit,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { SlashCommandItem } from '../../organisms/notebook-editor/extensions/slash-commands';
@@ -18,6 +19,7 @@ import type { SlashCommandItem } from '../../organisms/notebook-editor/extension
   standalone: true,
   imports: [CommonModule],
   templateUrl: './slash-command-menu.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './slash-command-menu.component.scss',
 })
 export class SlashCommandMenuComponent implements AfterViewInit {

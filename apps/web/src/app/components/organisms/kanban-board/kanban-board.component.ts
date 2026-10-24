@@ -10,6 +10,7 @@ import {
   OnDestroy,
   effect,
   viewChild,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -33,6 +34,7 @@ import { DEFAULT_LANE_IDS } from '@maple/shared';
   standalone: true,
   imports: [CommonModule, FormsModule, CdkDropListGroup, CdkDropList, CdkDrag],
   templateUrl: './kanban-board.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './kanban-board.component.scss',
 })
 export class KanbanBoardComponent implements OnInit, OnDestroy {

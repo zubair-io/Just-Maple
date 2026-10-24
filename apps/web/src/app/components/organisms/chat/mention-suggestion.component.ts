@@ -8,6 +8,7 @@ import {
   ElementRef,
   inject,
   HostListener,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { BotSuggestion } from '../../../services/bot.service';
@@ -67,6 +68,7 @@ import { ProfileAvatarComponent } from '../../atoms/profile-avatar/profile-avata
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       :host {

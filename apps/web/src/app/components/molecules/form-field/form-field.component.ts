@@ -1,4 +1,4 @@
-import { Component, input, contentChild } from '@angular/core';
+import { Component, input, contentChild, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { InputComponent } from '../../atoms';
 
@@ -6,6 +6,7 @@ import { InputComponent } from '../../atoms';
   selector: 'ui-form-field',
   standalone: true,
   imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <div class="space-y-2">
       @if (label()) {

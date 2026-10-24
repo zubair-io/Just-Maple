@@ -1,4 +1,13 @@
-import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  effect,
+  OnInit,
+  OnDestroy,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -16,6 +25,7 @@ import type { Collectable, CollectibleRegistry, RegistryTag } from '@maple/share
   standalone: true,
   imports: [CommonModule, FormsModule, PaperListComponent],
   templateUrl: './lego-view.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './lego-view.component.scss',
 })
 export class LegoViewComponent implements OnInit, OnDestroy {
