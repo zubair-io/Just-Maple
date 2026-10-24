@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { RecorderWorkspaceService } from '../../../services/recorder-workspace.service';
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 @Component({
@@ -21,12 +22,20 @@ import { RouterLink } from '@angular/router';
         @if (!home()) {
           <div class="navigation"><ng-content select="[headerNavigation]" /></div>
         }
-        <div class="actions"><ng-content select="[headerActions]" /></div>
+        <div class="actions">
+          @if (recorder.state()?.isRecording || recorder.state()?.busy) {
+            <a routerLink="/recorder" class="recorder-status" aria-label="Open active recorder">{{
+              recorder.state()?.isRecording ? '● Recording' : '◌ Processing'
+            }}</a>
+          }
+          <ng-content select="[headerActions]" />
+        </div>
       </div>
     </header>
   `,
   styleUrl: './app-header.component.scss',
 })
 export class AppHeaderComponent {
+  readonly recorder = inject(RecorderWorkspaceService);
   readonly home = input(false);
 }

@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { BrowserTestingModule, platformBrowserTesting } from '@angular/platform-browser/testing';
+import { provideZonelessChangeDetection } from '@angular/core';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { RecordingService } from '../recording.service';
@@ -7,6 +9,10 @@ import { firstValueFrom, Subject } from 'rxjs';
 import type { Recording } from '@maple/shared';
 
 describe('RecordingService', () => {
+  beforeAll(() => {
+    TestBed.resetTestEnvironment();
+    TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
+  });
   let service: RecordingService;
   let httpMock: HttpTestingController;
   let nativeBridgeMock: {
@@ -43,7 +49,11 @@ describe('RecordingService', () => {
 
     TestBed.configureTestingModule({
       imports: [HttpClientTestingModule],
-      providers: [RecordingService, { provide: NativeBridgeService, useValue: nativeBridgeMock }],
+      providers: [
+        provideZonelessChangeDetection(),
+        RecordingService,
+        { provide: NativeBridgeService, useValue: nativeBridgeMock },
+      ],
     });
 
     service = TestBed.inject(RecordingService);
@@ -115,12 +125,13 @@ describe('RecordingService', () => {
     });
 
     it('should set error on failure', async () => {
-      const promise = service.createRecording('uuid-123', false);
+      const promise = firstValueFrom(service.createRecording('uuid-123', false));
+      const rejection = expect(promise).rejects.toThrow('Failed to create');
 
       const req = httpMock.expectOne('/api/recordings');
       req.flush({ error: 'Failed to create' }, { status: 500, statusText: 'Server Error' });
 
-      await expect(firstValueFrom(promise)).rejects.toThrow('Failed to create');
+      await rejection;
       expect(service.error()).toBe('Failed to create');
     });
   });
@@ -231,12 +242,13 @@ describe('RecordingService', () => {
     });
 
     it('should set error on failure', async () => {
-      const promise = service.deleteRecording('uuid-123');
+      const promise = firstValueFrom(service.deleteRecording('uuid-123'));
+      const rejection = expect(promise).rejects.toThrow('Failed to delete');
 
       const req = httpMock.expectOne('/api/recordings/uuid-123');
       req.flush({ error: 'Failed to delete' }, { status: 500, statusText: 'Server Error' });
 
-      await expect(firstValueFrom(promise)).rejects.toThrow('Failed to delete');
+      await rejection;
       expect(service.error()).toBe('Failed to delete');
     });
   });

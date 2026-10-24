@@ -1,3 +1,4 @@
+import type { RecorderRequest, RecorderResponse } from './recorder.types';
 // Native Bridge TypeScript Types
 // These types mirror the Swift types in JapaneseMaple/NativeBridge.swift
 
@@ -72,6 +73,11 @@ export interface ShareFilePayload {
   data: string; // base64-encoded file content
 }
 
+export interface S1CleanRequestPayload {
+  requestId: string;
+  text: string;
+}
+
 // MARK: - API Request Payloads
 
 export interface ApiRequestPayload {
@@ -93,6 +99,7 @@ export interface ApiResponsePayload {
 
 export type WebToNativeMessageType =
   | { type: 'test'; payload: TestPayload }
+  | { type: 'recorderRequest'; payload: RecorderRequest }
   | { type: 'startRecording'; payload?: StartRecordingPayload }
   | { type: 'stopRecording' }
   | { type: 'cancelRecording' }
@@ -111,6 +118,7 @@ export type WebToNativeMessageType =
   | { type: 'openAuthSession'; payload: OpenAuthSessionPayload }
   | { type: 'gmailOAuthResult'; payload: GmailOAuthResultPayload }
   | { type: 'shareFile'; payload: ShareFilePayload }
+  | { type: 's1CleanRequest'; payload: S1CleanRequestPayload }
   | { type: 'apiRequest'; payload: ApiRequestPayload }
   | { type: 'getICloudContainerPath' };
 
@@ -266,9 +274,17 @@ export interface ICloudContainerPathResult {
   folders: Array<{ name: string; path: string }>;
 }
 
+export interface S1CleanResponse {
+  requestId: string;
+  text?: string;
+  error?: string;
+}
+
 export type NativeToWebMessageType =
   | { type: 'initialize'; payload: InitialState }
   | { type: 'testResponse'; payload: TestResponse }
+  | { type: 'recorderOpen'; payload: Record<string, never> }
+  | { type: 'recorderResponse'; payload: RecorderResponse }
   | { type: 'recordingStarted'; payload: RecordingStarted }
   | { type: 'recordingStopped'; payload: RecordingStopped }
   | { type: 'recordingCancelled' }
@@ -291,6 +307,7 @@ export type NativeToWebMessageType =
   | { type: 'fileDeleteResult'; payload: FileDeleteResult }
   | { type: 'authSessionResult'; payload: AuthSessionResult }
   | { type: 'apiResponse'; payload: ApiResponsePayload }
+  | { type: 's1CleanResponse'; payload: S1CleanResponse }
   | { type: 'icloudContainerPath'; payload: ICloudContainerPathResult }
   | { type: 'error'; payload: ErrorMessage };
 
