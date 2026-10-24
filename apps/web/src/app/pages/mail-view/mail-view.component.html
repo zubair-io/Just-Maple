@@ -1,0 +1,43 @@
+<app-mac-data-panel
+  source="mail"
+  icon="mail"
+  [title]="list.page()?.title ?? 'Email'"
+  [status]="list.status()"
+  [total]="list.total()"
+  [shown]="list.items().length"
+  [loading]="list.loading()"
+  [error]="list.error()"
+  [canLoadMore]="list.canLoadMore()"
+  [(search)]="list.search"
+  (loadMore)="list.loadMore()"
+  (requestAccess)="list.requestAccess()"
+  (remove)="list.remove()"
+>
+  @if (list.items().length) {
+    <table class="mac-data-table">
+      <thead>
+        <tr>
+          <th scope="col">Received</th>
+          <th scope="col">From</th>
+          <th scope="col">Subject</th>
+          <th scope="col">Mailbox</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (item of list.items(); track item.id) {
+          <tr [class.font-semibold]="item.isRead === false">
+            <td class="nowrap muted">{{ item.occurredAt * 1000 | date: 'MMM d, h:mm a' }}</td>
+            <td class="max-w-[14rem]">
+              <span class="clamp">{{ item.sender }}</span>
+            </td>
+            <td class="w-1/2">
+              <div>{{ item.title }}</div>
+              <div class="clamp muted font-normal">{{ preview(item.body) }}</div>
+            </td>
+            <td class="nowrap muted">{{ item.mailbox }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</app-mac-data-panel>

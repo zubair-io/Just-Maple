@@ -325,6 +325,10 @@ declare global {
         nativeBridge?: {
           postMessage: (message: string) => void;
         };
+        /** macOS only: iMessage, Mail and Calendar data kept on this Mac. Replies with a Promise. */
+        macData?: {
+          postMessage: (message: { action: string; [key: string]: unknown }) => Promise<unknown>;
+        };
       };
     };
   }
