@@ -231,6 +231,18 @@ describe('bots with Mac data', () => {
             vi.unstubAllGlobals();
         });
 
+        it('calls an open server without a key or auth header', async () => {
+            delete userBot.config.apiKey;
+            const fetchMock = vi
+                .fn()
+                .mockResolvedValue(reply({ role: 'assistant', content: 'Hi' }));
+            vi.stubGlobal('fetch', fetchMock);
+            await new BotExecutorService().execute('invocation');
+            expect(fetchMock.mock.calls[0]![1].headers.Authorization).toBeUndefined();
+            expect(createMessageInThread).toHaveBeenCalled();
+            vi.unstubAllGlobals();
+        });
+
         it('refuses a server on a private network', async () => {
             userBot.config.baseUrl = 'https://10.0.0.5/v1';
             const fetchMock = vi.fn();

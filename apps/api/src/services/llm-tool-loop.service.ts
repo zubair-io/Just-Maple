@@ -203,7 +203,7 @@ async function postChatCompletions(
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${params.apiKey}`,
+            ...(params.apiKey ? { Authorization: `Bearer ${params.apiKey}` } : {}),
         },
         // The URL was checked before the call; a redirect could lead somewhere it wasn't.
         redirect: 'error',

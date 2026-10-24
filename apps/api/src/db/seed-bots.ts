@@ -204,9 +204,9 @@ export async function seedBotTemplates(): Promise<void> {
             type: 'object',
             properties: {
                 baseUrl: { type: 'string', title: 'Server URL' },
-                apiKey: { type: 'string', title: 'API Key' },
+                apiKey: { type: 'string', title: 'API Key (optional)' },
             },
-            required: ['baseUrl', 'apiKey'],
+            required: ['baseUrl'],
         },
     });
     // Hello World Bot

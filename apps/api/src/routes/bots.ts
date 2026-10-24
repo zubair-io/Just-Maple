@@ -134,8 +134,8 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 set.status = 400;
                 return { error: 'Model discovery is not available for this bot' };
             }
-            const apiKey = body.apiKey?.trim() || bot?.config?.apiKey;
-            if (!apiKey || apiKey === '***REDACTED***') {
+            const apiKey = body.apiKey?.trim() || bot?.config?.apiKey || '';
+            if ((!apiKey && provider !== 'openai-compatible') || apiKey === '***REDACTED***') {
                 set.status = 400;
                 return { error: 'Enter an API key to load available models' };
             }
@@ -143,7 +143,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             if (provider === 'openai-compatible') {
                 const draftUrl = body.baseUrl?.trim();
                 // A saved key only goes to the saved server, never to a URL typed in a draft.
-                if (draftUrl && !body.apiKey?.trim() && bot) {
+                if (draftUrl && !body.apiKey?.trim() && bot?.config?.apiKey) {
                     set.status = 400;
                     return { error: 'Enter the API key again to use a different server' };
                 }
@@ -200,7 +200,8 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
 
             // Check if template requires config
-            if (template.requiresConfig && !body.config?.apiKey) {
+            // Custom servers may not need a key (an open endpoint); every other AI bot does.
+            if (template.requiresConfig && !body.config?.apiKey && !usesCustomServer(template)) {
                 set.status = 400;
                 return { error: 'This bot requires an API key' };
             }
@@ -280,6 +281,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                     // A saved key only goes to the saved server.
                     if (
                         merged.baseUrl !== existing.config?.baseUrl &&
+                        existing.config?.apiKey &&
                         !body.config.apiKey?.trim()
                     ) {
                         set.status = 400;

@@ -394,9 +394,9 @@ export class BotExecutorService {
             maxTokens?: number;
         };
 
-        // Get API key from user's bot config
-        const apiKey = ctx.config?.apiKey;
-        if (!apiKey) {
+        // Get API key from user's bot config. Custom servers may be open and need none.
+        const apiKey = ctx.config?.apiKey ?? '';
+        if (!apiKey && config.provider !== 'openai-compatible') {
             throw new Error('API key not configured');
         }
 

@@ -292,7 +292,9 @@
 
           @if (template.requiresConfig) {
             <div class="form-field">
-              <label for="apiKey">API Key</label>
+              <label for="apiKey">
+                API Key{{ usesCustomServer(template._id) ? ' (optional)' : '' }}
+              </label>
               <input
                 type="password"
                 id="apiKey"
@@ -302,7 +304,11 @@
                 placeholder="Enter your API key"
               />
               <p class="field-hint">
-                This bot requires an API key to function. Your key is stored securely.
+                {{
+                  usesCustomServer(template._id)
+                    ? "Leave blank if the server doesn't need one. Your key is stored securely."
+                    : 'This bot requires an API key to function. Your key is stored securely.'
+                }}
               </p>
             </div>
           }
@@ -310,14 +316,25 @@
           @if (usesCustomServer(template._id)) {
             <div class="form-field">
               <label for="model">Model</label>
-              <input
-                type="text"
-                id="model"
-                list="registerModelOptions"
-                [ngModel]="model()"
-                (ngModelChange)="model.set($event)"
-                placeholder="e.g. meta-llama/llama-3.3-70b-instruct"
-              />
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  id="model"
+                  list="registerModelOptions"
+                  class="min-w-0 flex-1"
+                  [ngModel]="model()"
+                  (ngModelChange)="model.set($event)"
+                  placeholder="e.g. meta-llama/llama-3.3-70b-instruct"
+                />
+                <button
+                  type="button"
+                  class="btn secondary small shrink-0"
+                  (click)="loadRegisterModels()"
+                  [disabled]="registerModelsLoading() || !baseUrl().trim()"
+                >
+                  {{ registerModelsLoading() ? 'Loading…' : 'Load models' }}
+                </button>
+              </div>
               <datalist id="registerModelOptions">
                 @for (option of registerModels(); track option.id) {
                   <option [value]="option.id">{{ option.name }}</option>
@@ -334,7 +351,7 @@
                       ? 'Loading models…'
                       : registerModels().length
                         ? "Pick from the server's models or type one."
-                        : 'Type the model name, or enter the URL and key to load the list.'
+                        : 'Type the model name, or enter the server URL and press Load models.'
                   }}
                 </p>
               }
@@ -504,13 +521,24 @@
           @if (usesCustomServer(bot.templateId)) {
             <div class="form-field">
               <label for="editModel">Model</label>
-              <input
-                type="text"
-                id="editModel"
-                list="editModelOptions"
-                [ngModel]="editModel()"
-                (ngModelChange)="editModel.set($event)"
-              />
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  id="editModel"
+                  list="editModelOptions"
+                  class="min-w-0 flex-1"
+                  [ngModel]="editModel()"
+                  (ngModelChange)="editModel.set($event)"
+                />
+                <button
+                  type="button"
+                  class="btn secondary small shrink-0"
+                  (click)="loadEditModels()"
+                  [disabled]="editModelsLoading() || !editBaseUrl().trim()"
+                >
+                  {{ editModelsLoading() ? 'Loading…' : 'Load models' }}
+                </button>
+              </div>
               <datalist id="editModelOptions">
                 @for (option of editModels(); track option.id) {
                   <option [value]="option.id">{{ option.name }}</option>

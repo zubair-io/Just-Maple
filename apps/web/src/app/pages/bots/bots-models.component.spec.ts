@@ -178,4 +178,40 @@ describe('provider models in bot settings', () => {
     service.templates.set([template]);
     fixture.destroy();
   });
+  it('adds a custom provider without a key and loads its models from the button', () => {
+    const custom = {
+      _id: 'custom',
+      name: 'Custom AI provider',
+      handle: 'openai-compatible',
+      requiresConfig: true,
+      definition: { actions: [{ type: 'llm', config: { provider: 'openai-compatible' } }] },
+    } as unknown as BotTemplate;
+    service.templates.set([template, custom]);
+    const fixture = TestBed.createComponent(BotsComponent);
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+    component.selectTemplate(custom);
+    component.changeBaseUrl('register', 'https://llm.example.com/v1');
+    fixture.detectChanges();
+    const load = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (b: HTMLButtonElement) => b.textContent?.trim() === 'Load models',
+    ) as HTMLButtonElement;
+    expect(load.disabled).toBe(false);
+    load.click();
+    expect(service.loadModels).toHaveBeenLastCalledWith({
+      templateId: 'custom',
+      apiKey: undefined,
+      baseUrl: 'https://llm.example.com/v1',
+    });
+    component.model.set('open-model');
+    component.registerBot();
+    expect(component.registerError()).toBeNull();
+    expect(service.registerBot).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({ apiKey: '', baseUrl: 'https://llm.example.com/v1' }),
+      }),
+    );
+    service.templates.set([template]);
+    fixture.destroy();
+  });
 });
