@@ -9,6 +9,7 @@
 
 #if os(macOS)
 import Foundation
+import os
 
 nonisolated struct MacDataHostInfo: Codable, Sendable {
     struct NotebookSources: Codable, Sendable {
@@ -34,6 +35,7 @@ nonisolated struct MacDataChangeBatch: Codable, Sendable {
 }
 
 extension MacDataEngine {
+    static let log = Logger(subsystem: "com.just.maple.JapaneseMaple", category: "MacData")
     static let proactiveCursorKey = "proactive_seq"
     /// Older items are backlog (first import, catch-up after sleep), not news.
     static let proactiveFreshness: TimeInterval = 24 * 60 * 60
@@ -55,6 +57,7 @@ extension MacDataEngine {
             // Items that failed to save would come back forever; stop instead of spinning.
             guard batch.contains(where: { !attempted.contains($0.id) }) else { break }
             attempted.formUnion(batch.map(\.id))
+            let started = Date()
             // The model runs off the actor so searches aren't blocked behind it.
             let vectors = await Task.detached(priority: .utility) {
                 batch.map { item in
@@ -67,6 +70,10 @@ extension MacDataEngine {
                 searchIndex.update(itemId: item.id, vectors: itemVectors)
             }
             embedded += batch.count
+            let words = batch.reduce(0) { $0 + MacDataEmbedding.text(for: $1).split(whereSeparator: \.isWhitespace).count }
+            Self.log.info(
+                "Embedded \(batch.count) items (\(words) words) in \(Date().timeIntervalSince(started), format: .fixed(precision: 1))s; \((try? store.pendingEmbeddingCount()) ?? -1) pending"
+            )
         }
         return embedded
     }
