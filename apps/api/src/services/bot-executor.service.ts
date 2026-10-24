@@ -156,7 +156,7 @@ export class BotExecutorService {
         try {
             // Update status to running
             await updateInvocationStatus(invocation._id, 'running');
-            this.broadcastStatus(invocation, 'running');
+            this.broadcastStatus(invocation, userBot, 'running');
 
             // Get thread context - the parent message and any thread messages
             const parentMessage = await findMessageById(invocation.sourceId);
@@ -199,7 +199,7 @@ export class BotExecutorService {
             });
 
             // Broadcast that webhook was sent successfully
-            this.broadcastStatus(invocation, 'running');
+            this.broadcastStatus(invocation, userBot, 'running');
         } catch (error) {
             const executionTimeMs = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -212,7 +212,7 @@ export class BotExecutorService {
                 executionTimeMs,
             });
 
-            this.broadcastStatus(invocation, 'failed', errorMessage);
+            this.broadcastStatus(invocation, userBot, 'failed', undefined, errorMessage);
         }
     }
 
@@ -250,6 +250,8 @@ export class BotExecutorService {
 
         const template = await findBotTemplateById(invocation.templateId);
         if (!template) throw new Error('Bot template not found');
+        // Status events name the bot the way its messages do.
+        const namedBot = { ...userBot, displayName: userBot.displayName || template.name };
 
         const ctx: ExecutionContext = {
             invocation,
@@ -273,7 +275,7 @@ export class BotExecutorService {
         try {
             // Update status to running
             await updateInvocationStatus(invocationId, 'running');
-            this.broadcastStatus(invocation, 'running');
+            this.broadcastStatus(invocation, namedBot, 'running');
 
             // Execute actions sequentially
             for (const action of template.definition.actions) {
@@ -305,7 +307,7 @@ export class BotExecutorService {
                 variables: ctx.variables as Record<string, unknown>,
             });
 
-            this.broadcastStatus(invocation, 'completed', responseContent);
+            this.broadcastStatus(invocation, namedBot, 'completed', responseContent);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             await updateInvocationStatus(invocationId, 'failed', {
@@ -315,7 +317,7 @@ export class BotExecutorService {
                 },
                 executionTimeMs: Date.now() - startTime,
             });
-            this.broadcastStatus(invocation, 'failed', undefined, errorMessage);
+            this.broadcastStatus(invocation, namedBot, 'failed', undefined, errorMessage);
             throw error;
         }
     }
@@ -1277,6 +1279,7 @@ export class BotExecutorService {
      */
     private broadcastStatus(
         invocation: BotInvocation,
+        userBot: UserBot,
         status: string,
         output?: unknown,
         error?: string,
@@ -1294,6 +1297,9 @@ export class BotExecutorService {
             data: {
                 invocationId: invocation._id,
                 userBotId: invocation.userBotId,
+                // Lets clients show "<name> is typing…" where the reply will appear
+                botName: userBot.displayName || userBot.handle,
+                replyTopLevel: invocation.context.replyTopLevel === true,
                 sourceId: invocation.sourceId,
                 status,
                 output,

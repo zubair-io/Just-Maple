@@ -91,6 +91,13 @@ export class MessageViewComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Subscribe to route params
     this.routeSubscription = this.route.params.subscribe((params) => {
+      // A thread belongs to one chat; leaving the chat closes it.
+      if (
+        params['notebookId'] !== this.selectedNotebookId() ||
+        params['id'] !== this.selectedPageId()
+      ) {
+        this.activeThreadMessage.set(null);
+      }
       this.selectedNotebookId.set(params['notebookId'] || null);
       this.selectedPageId.set(params['id'] || null);
     });

@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
@@ -16,6 +17,7 @@ import type { JWTPayload, ChatEvent } from '@maple/shared';
 import {
     findMessagesByPageId,
     findMessageById,
+    findMessageByMongoId,
     createMessage,
     updateMessage,
     softDeleteMessage,
@@ -29,6 +31,7 @@ import { findThreadById } from '../repositories/thread.repo';
 import { broadcastChatEvent } from '../services/realtime.service';
 import { sendMessageReceivedNotification } from '../services/notification.service';
 import { maybeAutoReply } from '../services/proactive-bot.service';
+import { findPageByIdForBot } from '../repositories/page.repo';
 
 export const messageRoutes = new Elysia({ prefix: '/api' })
     .use(jwtPlugin)
@@ -144,6 +147,14 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             let parentMessageId: string | undefined;
 
             if (body.parentMessageId) {
+                // A thread reply must answer a message in this same notebook.
+                if (!(await isMessageInNotebook(body.parentMessageId, page.notebookId))) {
+                    set.status = 400;
+                    return {
+                        error: 'Bad request',
+                        message: 'Parent message is not in this notebook',
+                    };
+                }
                 const { getOrCreateThread } = await import('../repositories/thread.repo');
                 const { markMessageHasThread } = await import('../repositories/message.repo');
                 const thread = await getOrCreateThread({
@@ -365,6 +376,14 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             let parentMessageId: string | undefined;
 
             if (body.parentMessageId) {
+                // A thread reply must answer a message in this same notebook.
+                if (!(await isMessageInNotebook(body.parentMessageId, params.id))) {
+                    set.status = 400;
+                    return {
+                        error: 'Bad request',
+                        message: 'Parent message is not in this notebook',
+                    };
+                }
                 const { getOrCreateThread } = await import('../repositories/thread.repo');
                 const { markMessageHasThread } = await import('../repositories/message.repo');
                 const thread = await getOrCreateThread({
@@ -400,6 +419,16 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 timestamp: new Date().toISOString(),
             };
             broadcastChatEvent(params.id, chatEvent).catch(console.error);
+
+            // A proactive bot answers messages in its chat without an @mention.
+            if (messagesPage.proactive?.enabled) {
+                maybeAutoReply({
+                    page: messagesPage,
+                    message,
+                    userId: auth.user._id,
+                    parentMessageId,
+                }).catch((error) => console.error('[Proactive] Auto-reply failed:', error));
+            }
 
             if (parentMessageId && body.parentMessageId) {
                 const threadFlagEvent: ChatEvent = {
@@ -646,3 +675,20 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             }),
         },
     );
+
+/** True when the message exists and belongs to `notebookId`. */
+async function isMessageInNotebook(
+    messageId: string,
+    notebookId: string | undefined,
+): Promise<boolean> {
+    if (!notebookId) return false;
+    // Parents can be referenced by message id or, for older messages, by Mongo _id.
+    const message =
+        (await findMessageById(messageId)) ??
+        (ObjectId.isValid(messageId) ? await findMessageByMongoId(messageId) : null);
+    if (!message) return false;
+    if (message.notebookId) return message.notebookId === notebookId;
+    // Older messages only record their page.
+    const page = await findPageByIdForBot(message.pageId);
+    return page?.notebookId === notebookId;
+}

@@ -35,6 +35,9 @@ import type { Message, PageContent, UnreadCount, Page } from '@maple/shared';
 
 const STORE_NAME = DB_STORES.MESSAGE;
 
+/** How long a socket send may go unconfirmed before it's shown as not sent. */
+const SEND_CONFIRM_TIMEOUT_MS = 15_000;
+
 @Injectable({ providedIn: 'root' })
 export class MessageService {
   private readonly http = inject(HttpClient);
@@ -174,14 +177,19 @@ export class MessageService {
     const isCurrentNotebook = message.notebookId === currentNotebookId;
 
     if (isCurrentPage || isCurrentNotebook) {
-      // If this is the current user's message, remove any temp messages first
-      // This handles optimistic updates from WebSocket sends
-      if (message.userId === currentUserId) {
-        const allMessages = this.store.query(getAllEntities());
-        const tempIds = allMessages.filter((m) => m.id.startsWith('temp-')).map((m) => m.id);
-        if (tempIds.length > 0) {
-          this.store.update(deleteEntities(tempIds));
-        }
+      // Your own message came back: it replaces the placeholder with the same content
+      // (only that one, so other messages still sending keep theirs). Bot posts are
+      // stored under their owner's id and never replace placeholders.
+      if (message.userId === currentUserId && message.senderType !== 'bot') {
+        const sent = JSON.stringify(message.content);
+        const pending = this.store
+          .query(getAllEntities())
+          .filter((m) => m.id.startsWith('temp-') && !this._failedSends().has(m.id));
+        // Fall back to the oldest pending one in case the server changed the content.
+        const placeholder =
+          pending.find((m) => JSON.stringify(m.content) === sent) ??
+          [...pending].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+        if (placeholder) this.forgetPlaceholder(placeholder.id);
       }
 
       // Use upsert to handle duplicates (e.g., sender's own message)
@@ -461,7 +469,7 @@ export class MessageService {
   ): Observable<Message | null> {
     this._error.set(null);
 
-    const tempId = `temp-${Date.now()}`;
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
     const currentUser = this.authService.user();
     const pageId = this._currentPageId() || '';
@@ -490,8 +498,14 @@ export class MessageService {
 
       // Add optimistic message immediately
       this.store.update(addEntities(tempMessage));
+      this.pendingSends.set(tempId, { notebookId, content, options });
 
       this.realtimeWS.sendChatMessage(notebookId, content);
+      // The socket gives no error reply; if the echo never arrives, offer a retry.
+      this.sendTimers.set(
+        tempId,
+        setTimeout(() => this.markSendFailed(tempId), SEND_CONFIRM_TIMEOUT_MS),
+      );
       // WebSocket doesn't return the message, return null
       // Caller should use forceHttp: true if they need the message ID
       // The real message will arrive via realtime events and upsert will update
@@ -519,6 +533,7 @@ export class MessageService {
       };
 
       this.store.update(addEntities(tempMessage));
+      this.pendingSends.set(tempId, { notebookId, content, options });
     }
 
     const body: { content: PageContent; threadId?: string; parentMessageId?: string } = {
@@ -536,7 +551,7 @@ export class MessageService {
       .pipe(
         tap((response) => {
           if (!isThreadReply) {
-            this.store.update(deleteEntities(tempId));
+            this.forgetPlaceholder(tempId);
           }
           this.store.update(upsertEntities(response.message));
           this.persistToIndexedDB([response.message]);
@@ -554,14 +569,63 @@ export class MessageService {
         }),
         map((response) => response.message),
         catchError((err) => {
+          // Keep the text: the message stays in the list as "Not sent" with Retry.
           if (!isThreadReply) {
-            this.store.update(deleteEntities(tempId));
+            this.markSendFailed(tempId);
           }
           const message = err?.error?.error || err?.error?.message || 'Failed to send message';
           this._error.set(message);
           return throwError(() => new Error(message));
         }),
       );
+  }
+
+  /** Placeholders whose send failed; shown as "Not sent" with Retry and Delete. */
+  private readonly _failedSends = signal<ReadonlySet<string>>(new Set());
+  readonly failedSends = this._failedSends.asReadonly();
+  private readonly pendingSends = new Map<
+    string,
+    {
+      notebookId: string;
+      content: PageContent;
+      options?: { threadId?: string; parentMessageId?: string; forceHttp?: boolean };
+    }
+  >();
+  private readonly sendTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Send a failed message again. */
+  retrySend(tempId: string): void {
+    const pending = this.pendingSends.get(tempId);
+    if (!pending) return;
+    this.forgetPlaceholder(tempId);
+    this.sendMessage(pending.notebookId, pending.content, pending.options).subscribe({
+      error: () => undefined, // shown as "Not sent" again
+    });
+  }
+
+  /** Drop a failed message without sending it. */
+  discardFailedSend(tempId: string): void {
+    this.forgetPlaceholder(tempId);
+  }
+
+  private markSendFailed(tempId: string): void {
+    clearTimeout(this.sendTimers.get(tempId));
+    this.sendTimers.delete(tempId);
+    if (!this.store.query(getEntity(tempId))) return; // already confirmed
+    this._failedSends.update((ids) => new Set([...ids, tempId]));
+  }
+
+  private forgetPlaceholder(tempId: string): void {
+    clearTimeout(this.sendTimers.get(tempId));
+    this.sendTimers.delete(tempId);
+    this.pendingSends.delete(tempId);
+    this._failedSends.update((ids) => {
+      if (!ids.has(tempId)) return ids;
+      const next = new Set(ids);
+      next.delete(tempId);
+      return next;
+    });
+    this.store.update(deleteEntities(tempId));
   }
 
   /**

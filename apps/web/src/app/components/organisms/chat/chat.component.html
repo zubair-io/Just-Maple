@@ -21,6 +21,10 @@
         [isOwn]="isOwnMessage(message)"
         [isGrouped]="message.isGrouped"
         [botError]="hasFailedBot(message.id)"
+        [replyingBots]="replyingInThread().get(message.id) ?? []"
+        [sendFailed]="failedSends().has(message.id)"
+        (retrySend)="retrySend(message.id)"
+        (discardSend)="discardSend(message.id)"
         (threadClicked)="openThread.emit($event)"
         (replyClicked)="openThread.emit($event)"
         (followUp)="sendFollowUp($event)"
@@ -35,8 +39,8 @@
     }
 
     <!-- Typing Indicator -->
-    @if (typingUsers().length > 0) {
-      <app-chat-typing [users]="typingUsers()" />
+    @if (typingNames().length > 0) {
+      <app-chat-typing [names]="typingNames()" />
     }
   </div>
 
@@ -66,7 +70,6 @@
       <app-mention-suggestion
         [items]="mentionSuggestions()"
         [isLoading]="mentionSuggestionsLoading()"
-        [command]="mentionCommand"
         (selected)="onMentionSelected($event)"
         (dismissed)="onMentionDismissed()"
       />

@@ -166,7 +166,8 @@
   }
 }
 
-::ng-deep .editor {
+// Scoped to this component: both chat inputs use the .editor class.
+:host ::ng-deep .editor {
   flex: 1;
   display: flex;
   flex-direction: column;
