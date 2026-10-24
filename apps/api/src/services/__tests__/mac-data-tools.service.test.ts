@@ -43,24 +43,22 @@ describe('getMacDataToolContext', () => {
         expect(await getMacDataToolContext('u1', 'n1')).toBeNull();
     });
 
-    it('uses the Mac’s own clock when it is online', async () => {
+    it('reads local time from the stored time zone, without asking the Mac', async () => {
         vi.mocked(findMacDataHost).mockResolvedValue({
             userId: 'u1',
             notebooks: [{ notebookId: 'n1', sources: ['imessage'] }],
-            timeZone: 'UTC',
+            timeZone: 'America/New_York',
             lastSeenAt: '2026-10-24T00:00:00.000Z',
         });
         vi.mocked(macDataRelay.isOnline).mockResolvedValue(true);
-        vi.mocked(macDataRelay.request).mockResolvedValue({
-            now: '2026-10-24T09:00:00-04:00',
-            timeZone: 'America/New_York',
-        });
-        expect(await getMacDataToolContext('u1', 'n1')).toMatchObject({
+        const ctx = await getMacDataToolContext('u1', 'n1');
+        expect(ctx).toMatchObject({
             sources: ['imessage'],
             online: true,
-            now: '2026-10-24T09:00:00-04:00',
             timeZone: 'America/New_York',
         });
+        expect(ctx?.now).toMatch(/-0[45]:00$/);
+        expect(macDataRelay.request).not.toHaveBeenCalled();
     });
 
     it('still gives offline context so the bot can say the Mac is unreachable', async () => {

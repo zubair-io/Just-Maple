@@ -36,7 +36,9 @@ export function isBotUIFallbackContent(
     ui: BotUIResponse | undefined | null,
 ): boolean {
     if (!ui) return false;
-    const squash = (text: string) => text.replace(/\s+/g, '');
+    // Compare letters and digits only: the stored copy went through Markdown, which
+    // drops markers like ** and _ that the block text still contains.
+    const squash = (text: string) => text.replace(/[^\p{L}\p{N}]+/gu, '');
     const text = squash(extractText(content));
     return !text || text === squash(botUIToText(ui));
 }

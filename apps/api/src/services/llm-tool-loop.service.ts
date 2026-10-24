@@ -131,6 +131,8 @@ export async function runOpenAIWithTools(params: ToolLoopParams): Promise<string
                 tool_choice: lastRound ? 'none' : 'auto',
                 max_output_tokens: params.maxTokens,
                 store: false,
+                // Without storage, reasoning models need their reasoning sent back encrypted.
+                include: ['reasoning.encrypted_content'],
             }),
         });
         if (!response.ok) {

@@ -130,6 +130,8 @@ describe('runOpenAIWithTools', () => {
             { type: 'function_call_output', call_id: 'c1', output: '{"results":[1]}' },
         ]);
         expect(second.tools[0]).toMatchObject({ type: 'function', name: 'search_local_data' });
+        // Reasoning models need their reasoning replayed when nothing is stored.
+        expect(second.include).toEqual(['reasoning.encrypted_content']);
     });
 
     it('forces an answer after the last round', async () => {

@@ -122,6 +122,15 @@ describe('maybeAutoReply', () => {
         expect(botExecutor.invoke).not.toHaveBeenCalled();
     });
 
+    it('only answers the person whose bot and Mac it is', async () => {
+        await maybeAutoReply({
+            page,
+            message: { id: 'm', content: doc('hi from a collaborator') } as any,
+            userId: 'someone-else',
+        });
+        expect(botExecutor.invoke).not.toHaveBeenCalled();
+    });
+
     it('follows up in a thread started from its own post', async () => {
         vi.mocked(findMessageById).mockResolvedValue({ id: 'p', userBotId: 'bot' } as any);
         await maybeAutoReply({
@@ -222,6 +231,26 @@ describe('proactive settings', () => {
             }),
         );
         expect(macDataRelay.pushProactiveNotebooks).toHaveBeenCalledWith('u1');
+    });
+
+    it('stops other members from replacing the owner’s proactive bot', async () => {
+        await expect(
+            saveProactiveSettings(page, 'u2', {
+                userBotId: 'bot',
+                instructions: '',
+                enabled: true,
+            }),
+        ).rejects.toThrow('Another member');
+        vi.mocked(findUserBotById).mockResolvedValueOnce({ ...bot, userId: 'u2' });
+        vi.mocked(setPageProactive).mockResolvedValue(page);
+        // The notebook owner may.
+        await saveProactiveSettings(
+            page,
+            'u2',
+            { userBotId: 'bot', instructions: '', enabled: true },
+            { isNotebookOwner: true },
+        );
+        expect(setPageProactive).toHaveBeenCalled();
     });
 
     it('appends corrections under a remembered section', async () => {
