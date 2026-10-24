@@ -12,6 +12,8 @@
 //                  { channel, action: "result", requestId, result | error }
 //                  { channel, action: "changes", batches, now, timeZone }
 //    server → Mac  { channel, event: { type: "request", requestId, op, params } }
+//                  op "http": a model-list or chat call to an AI server on this Mac's
+//                  own machine or network (Ollama), which the API can't reach
 //                  { channel, event: { type: "proactive", notebookIds } }
 //
 
@@ -192,6 +194,8 @@ final class MacDataConnection {
             }
             item.body = String(item.body.prefix(6_000))
             return try Self.json(item)
+        case "http":
+            return try await MacDataLocalHTTP.perform(params)
         default:
             throw MacDataError.invalid("Unknown request: \(op)")
         }
@@ -245,6 +249,86 @@ final class MacDataConnection {
     private static func json<T: Encodable>(_ value: T) throws -> Any {
         try JSONSerialization.jsonObject(
             with: JSONEncoder().encode(value), options: .fragmentsAllowed)
+    }
+}
+// MARK: - Local AI servers
+
+/// Calls an OpenAI-compatible server on this machine or home network (Ollama, LM Studio)
+/// for a bot whose server the API can't reach. Only model lists and chat requests to
+/// local addresses are allowed, so the server can't use this Mac to reach anything else.
+nonisolated enum MacDataLocalHTTP {
+    static let timeout: TimeInterval = 170
+    static let maxBodyBytes = 4_000_000
+
+    static func perform(_ params: [String: Any]) async throws -> [String: Any] {
+        guard let method = params["method"] as? String,
+            let string = params["url"] as? String,
+            let url = URL(string: string)
+        else { throw MacDataError.invalid("Missing method or url.") }
+        try check(method: method, url: url)
+
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+        request.httpMethod = method
+        for (name, value) in params["headers"] as? [String: String] ?? [:] {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        if method == "POST", let body = params["body"] as? String {
+            request.httpBody = Data(body.utf8)
+        }
+        let session = URLSession(configuration: .ephemeral, delegate: NoRedirects(), delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        return ["status": status, "body": String(decoding: data.prefix(maxBodyBytes), as: UTF8.self)]
+    }
+
+    static func check(method: String, url: URL) throws {
+        guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+            let host = url.host(percentEncoded: false), isLocalHost(host)
+        else { throw MacDataError.invalid("Only AI servers on this Mac or its local network can be called.") }
+        let path = url.path(percentEncoded: false)
+        let allowed =
+            (method == "GET" && path.hasSuffix("/models"))
+            || (method == "POST" && path.hasSuffix("/chat/completions"))
+        guard allowed else { throw MacDataError.invalid("Only model lists and chat requests are allowed.") }
+    }
+
+    /// Matches the API's rule: localhost, private and link-local addresses, and local names.
+    static func isLocalHost(_ hostname: String) -> Bool {
+        let host = hostname.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if let ipv4 = ipv4Octets(host) { return isPrivate(ipv4) }
+        if host.contains(":") {
+            if let mapped = host.split(separator: ":").last.map(String.init), let ipv4 = ipv4Octets(mapped) {
+                return isPrivate(ipv4)
+            }
+            return host == "::1" || host.hasPrefix("fc") || host.hasPrefix("fd")
+                || ["fe8", "fe9", "fea", "feb"].contains { host.hasPrefix($0) }
+        }
+        return host == "localhost" || !host.contains(".")
+            || [".localhost", ".local", ".lan", ".home.arpa", ".internal"].contains { host.hasSuffix($0) }
+    }
+
+    private static func ipv4Octets(_ host: String) -> [Int]? {
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false).compactMap { Int($0) }
+        guard parts.count == 4, host.split(separator: ".").count == 4, parts.allSatisfy({ (0...255).contains($0) })
+        else { return nil }
+        return parts
+    }
+
+    private static func isPrivate(_ ip: [Int]) -> Bool {
+        let (a, b) = (ip[0], ip[1])
+        return a == 0 || a == 10 || a == 127 || (a == 100 && (64...127).contains(b))
+            || (a == 169 && b == 254) || (a == 172 && (16...31).contains(b)) || (a == 192 && b == 168)
+    }
+
+    /// The URL was checked; a redirect could lead somewhere it wasn't.
+    private final class NoRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(
+            _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+            newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void
+        ) {
+            completionHandler(nil)
+        }
     }
 }
 #endif

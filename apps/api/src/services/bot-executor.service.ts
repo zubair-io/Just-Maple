@@ -52,7 +52,8 @@ import {
     type ChatCompletionsTarget,
     type ChatTurn,
 } from './llm-tool-loop.service';
-import { assertPublicHost, normalizeEndpointBaseUrl, validateUrl } from '../utils/url-safety';
+import { resolveEndpoint, validateUrl } from '../utils/url-safety';
+import { macHttpSend } from './mac-data-relay.service';
 import { findPageByIdForBot } from '../repositories/page.repo';
 import { appendProactiveInstruction } from './proactive-settings.service';
 
@@ -571,9 +572,13 @@ export class BotExecutorService {
             return { baseUrl: 'https://api.inceptionlabs.ai/v1', label: 'Inception API' };
         if (provider !== 'openai-compatible') return null;
         if (!ctx.config?.baseUrl) throw new Error('Add the server URL in bot settings');
-        const baseUrl = normalizeEndpointBaseUrl(ctx.config.baseUrl);
-        await assertPublicHost(baseUrl);
-        return { baseUrl, label: ctx.userBot?.displayName || new URL(baseUrl).hostname };
+        const { baseUrl, local } = await resolveEndpoint(ctx.config.baseUrl);
+        return {
+            baseUrl,
+            label: ctx.userBot?.displayName || new URL(baseUrl).hostname,
+            // Servers on the owner's machine or network are called from their Mac.
+            ...(local ? { send: macHttpSend(ctx.userBot.userId) } : {}),
+        };
     }
 
     /**

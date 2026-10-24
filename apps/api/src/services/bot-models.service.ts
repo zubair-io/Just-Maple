@@ -1,4 +1,5 @@
 import { isBotModel, type BotModelOption, type BotProvider } from '@maple/shared';
+import type { HttpSend } from './llm-tool-loop.service';
 
 export class BotModelsError extends Error {
     constructor(
@@ -18,6 +19,8 @@ export async function listBotModels(
     apiKey: string,
     isOAuthToken = false,
     baseUrl?: string,
+    /** For servers the API can't reach itself: the request goes out from the owner's Mac. */
+    send?: HttpSend,
 ): Promise<BotModelOption[]> {
     const base =
         provider === 'openai-compatible'
@@ -52,7 +55,13 @@ export async function listBotModels(
                 url.searchParams.set('limit', '1000');
                 if (after) url.searchParams.set('after_id', after);
             }
-            const response = await fetch(url.toString(), { headers, signal, redirect: 'error' });
+            const response = send
+                ? await send({ method: 'GET', url: url.toString(), headers }).then((reply) => ({
+                      ok: reply.status >= 200 && reply.status < 300,
+                      status: reply.status,
+                      json: async () => JSON.parse(reply.body) as unknown,
+                  }))
+                : await fetch(url.toString(), { headers, signal, redirect: 'error' });
             if (!response.ok) {
                 if (response.status === 401 || response.status === 403)
                     throw new BotModelsError(
@@ -98,6 +107,9 @@ export async function listBotModels(
         throw new BotModelsError('The provider returned too many model pages.');
     } catch (error) {
         if (error instanceof BotModelsError) throw error;
+        // A local server's owner Mac is offline: say so instead of a generic error.
+        if (error instanceof Error && error.name === 'MacDataUnavailableError')
+            throw new BotModelsError(error.message, 503);
         throw new BotModelsError('Could not reach the model provider. Try again.');
     }
 }

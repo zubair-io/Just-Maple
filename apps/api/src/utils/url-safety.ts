@@ -65,8 +65,29 @@ export function validateUrl(url: string): void {
 }
 
 /**
+ * True for servers on the user's own machine or home network: localhost, private and
+ * link-local addresses, and names like "nas.local" or a bare "studio". The API never
+ * calls these itself; it asks the owner's Mac app to.
+ */
+export function isLocalHost(hostname: string): boolean {
+    const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (isIP(host)) return isPrivateAddress(host);
+    return (
+        host === 'localhost' ||
+        !host.includes('.') ||
+        /\.(localhost|local|lan|home\.arpa|internal)$/.test(host)
+    );
+}
+
+/** True when this server URL is reached through the owner's Mac instead of the API. */
+export function isLocalEndpoint(baseUrl: string): boolean {
+    return isLocalHost(new URL(baseUrl).hostname);
+}
+
+/**
  * Normalizes the API root of an OpenAI-compatible server ("https://host/v1"). Accepts a
- * pasted ".../chat/completions" URL too. Only https, and no credentials, query or fragment.
+ * pasted ".../chat/completions" URL too. No credentials, query or fragment. Public
+ * servers must use https; local ones (Ollama, LM Studio) may use http.
  */
 export function normalizeEndpointBaseUrl(input: string): string {
     let url: URL;
@@ -75,12 +96,32 @@ export function normalizeEndpointBaseUrl(input: string): string {
     } catch {
         throw new Error('Enter a full URL, like https://openrouter.ai/api/v1');
     }
-    if (url.protocol !== 'https:') throw new Error('The endpoint URL must start with https://');
     if (url.username || url.password) throw new Error('Put the API key in its own field');
     if (url.search || url.hash) throw new Error('The endpoint URL cannot have ? or # parts');
-    validateUrl(url.toString());
+    if (isLocalHost(url.hostname)) {
+        if (!['http:', 'https:'].includes(url.protocol))
+            throw new Error('The endpoint URL must start with http:// or https://');
+    } else {
+        if (url.protocol !== 'https:')
+            throw new Error(
+                'Internet servers must use https://. Local servers like Ollama can use http://.',
+            );
+        validateUrl(url.toString());
+    }
     const path = url.pathname.replace(/\/+$/, '').replace(/\/chat\/completions$/, '');
     return `${url.origin}${path}`;
+}
+
+/**
+ * Normalizes a server URL and checks where it can be reached from. Public servers are
+ * resolved to make sure the name doesn't point into a private network; local servers
+ * are left to the owner's Mac.
+ */
+export async function resolveEndpoint(input: string): Promise<{ baseUrl: string; local: boolean }> {
+    const baseUrl = normalizeEndpointBaseUrl(input);
+    const local = isLocalEndpoint(baseUrl);
+    if (!local) await assertPublicHost(baseUrl);
+    return { baseUrl, local };
 }
 
 /**

@@ -172,11 +172,38 @@ export async function runOpenAIWithTools(params: ToolLoopParams): Promise<string
 // MARK: - OpenAI-compatible chat completions
 
 /** Any server that speaks OpenAI's chat completions API: Inception, OpenRouter, Groq, vLLM… */
+/** One HTTP request and its raw reply, so a call can go out from the API or from a Mac. */
+export interface HttpRequest {
+    method: 'GET' | 'POST';
+    url: string;
+    headers: Record<string, string>;
+    body?: string;
+}
+export interface HttpResponse {
+    status: number;
+    body: string;
+}
+export type HttpSend = (request: HttpRequest) => Promise<HttpResponse>;
+
+/** The API's own fetch. The URL was checked first, so redirects are refused. */
+export const fetchSend: HttpSend = async (request) => {
+    const response = await fetch(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: request.body,
+        redirect: 'error',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    return { status: response.status, body: await response.text() };
+};
+
 export interface ChatCompletionsTarget {
     /** API root, e.g. https://openrouter.ai/api/v1. "/chat/completions" is appended. */
     baseUrl: string;
     /** Shown in errors, e.g. the bot's name. */
     label: string;
+    /** How requests go out; the owner's Mac for local servers. Defaults to the API's fetch. */
+    send?: HttpSend;
 }
 
 export class ChatCompletionsError extends Error {
@@ -199,27 +226,28 @@ async function postChatCompletions(
     params: ChatCompletionsTarget & { apiKey: string },
     body: Record<string, unknown>,
 ): Promise<ChatCompletionsMessage> {
-    const response = await fetch(`${params.baseUrl}/chat/completions`, {
+    const response = await (params.send ?? fetchSend)({
         method: 'POST',
+        url: `${params.baseUrl}/chat/completions`,
         headers: {
             'Content-Type': 'application/json',
             ...(params.apiKey ? { Authorization: `Bearer ${params.apiKey}` } : {}),
         },
-        // The URL was checked before the call; a redirect could lead somewhere it wasn't.
-        redirect: 'error',
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         body: JSON.stringify(body),
     });
-    if (!response.ok) {
-        const detail = (await response.text().catch(() => '')).slice(0, 300);
+    if (response.status < 200 || response.status >= 300) {
+        const detail = response.body.slice(0, 300);
         throw new ChatCompletionsError(
             `${params.label} request failed (${response.status})${detail ? `: ${detail}` : ''}`,
             response.status,
         );
     }
-    const data = (await response.json()) as {
-        choices?: Array<{ message?: ChatCompletionsMessage }>;
-    };
+    let data: { choices?: Array<{ message?: ChatCompletionsMessage }> };
+    try {
+        data = JSON.parse(response.body);
+    } catch {
+        throw new ChatCompletionsError(`${params.label} returned something that isn't JSON`, 502);
+    }
     const message = data.choices?.[0]?.message;
     if (!message) throw new ChatCompletionsError(`${params.label} returned no reply`, 502);
     return message;
