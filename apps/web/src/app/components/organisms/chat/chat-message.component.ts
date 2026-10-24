@@ -71,11 +71,26 @@ import { ProfileAvatarComponent } from '../../atoms';
 
           <!-- Send failed: keep the text and offer to try again -->
           @if (sendFailed()) {
-            <div class="send-failed" role="alert">
-              <span class="material-symbols-rounded">error</span>
+            <div
+              class="mt-1 flex items-center gap-1.5 text-xs text-[var(--color-primary)]"
+              role="alert"
+            >
+              <span class="material-symbols-rounded text-sm">error</span>
               <span>Not sent.</span>
-              <button type="button" (click)="retrySend.emit()">Retry</button>
-              <button type="button" (click)="discardSend.emit()">Delete</button>
+              <button
+                type="button"
+                class="cursor-pointer border-none bg-transparent p-0 text-xs text-[var(--color-text-main)] underline"
+                (click)="retrySend.emit()"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                class="cursor-pointer border-none bg-transparent p-0 text-xs text-[var(--color-text-main)] underline"
+                (click)="discardSend.emit()"
+              >
+                Delete
+              </button>
             </div>
           }
 
@@ -237,29 +252,6 @@ import { ProfileAvatarComponent } from '../../atoms';
 
         .material-symbols-rounded {
           font-size: 16px;
-        }
-      }
-
-      .send-failed {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-top: 4px;
-        font-size: 12px;
-        color: var(--color-primary);
-
-        .material-symbols-rounded {
-          font-size: 14px;
-        }
-
-        button {
-          padding: 0;
-          border: none;
-          background: none;
-          color: var(--color-text-main);
-          font: inherit;
-          text-decoration: underline;
-          cursor: pointer;
         }
       }
 

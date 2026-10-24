@@ -120,7 +120,10 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   readonly failedSends = this.messageService.failedSends;
 
   retrySend(tempId: string): void {
-    this.messageService.retrySend(tempId);
+    const failed = this.messageService.takeFailedSend(tempId);
+    if (!failed) return;
+    // Same path as a fresh send, so bots mentioned in it are invoked.
+    this.sendRegularMessage(failed.content, this.extractMentionsFromContent(failed.content));
   }
 
   discardSend(tempId: string): void {
@@ -599,6 +602,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     // Set timeout to send typing stop
     this.typingTimeout = setTimeout(() => {
       this.messageService.sendTyping(this.notebookId(), false);
+      this.lastTypingSentAt = 0; // resuming should announce typing again right away
     }, 3000);
   }
 
@@ -655,6 +659,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
             this.invokeMentionedBots(message, mentions, content);
           }
         },
+        // Failures are shown on the message itself ("Not sent" with Retry).
+        error: () => undefined,
       });
   }
 

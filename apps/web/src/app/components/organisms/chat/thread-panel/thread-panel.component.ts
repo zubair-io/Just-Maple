@@ -126,6 +126,8 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
     effect(() => {
       const message = this.parentMessage();
       if (message) {
+        // A new thread starts with an empty composer (and gets its own mention prefill).
+        untracked(() => this.editor?.commands.clearContent());
         this.loadThread(message.id);
         this.subscribeToThreadMessages(message.id);
       }
