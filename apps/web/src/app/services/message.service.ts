@@ -32,6 +32,7 @@ import { NotificationService } from './notification.service';
 import { VisibilityService } from './visibility.service';
 import { DB_STORES } from './db-stores';
 import type { Message, PageContent, UnreadCount, Page } from '@maple/shared';
+import { extractText } from '@maple/shared';
 
 const STORE_NAME = DB_STORES.MESSAGE;
 
@@ -176,22 +177,24 @@ export class MessageService {
     const isCurrentPage = message.pageId === currentPageId;
     const isCurrentNotebook = message.notebookId === currentNotebookId;
 
-    if (isCurrentPage || isCurrentNotebook) {
-      // Your own message came back: it replaces the placeholder with the same content
-      // (only that one, so other messages still sending keep theirs). Bot posts are
-      // stored under their owner's id and never replace placeholders.
-      if (message.userId === currentUserId && message.senderType !== 'bot') {
-        const sent = JSON.stringify(message.content);
-        const pending = this.store
-          .query(getAllEntities())
-          .filter((m) => m.id.startsWith('temp-') && !this._failedSends().has(m.id));
-        // Fall back to the oldest pending one in case the server changed the content.
-        const placeholder =
-          pending.find((m) => JSON.stringify(m.content) === sent) ??
-          [...pending].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
-        if (placeholder) this.forgetPlaceholder(placeholder.id);
-      }
+    // Your own message came back: it replaces its placeholder, whichever notebook is open
+    // (you may have switched away before the echo arrived). Only a placeholder with the
+    // same notebook and text is replaced, so other messages still sending keep theirs.
+    // Bot posts are stored under their owner's id and never replace placeholders.
+    if (message.userId === currentUserId && message.senderType !== 'bot') {
+      const sent = extractText(message.content);
+      const placeholder = this.store
+        .query(getAllEntities())
+        .find(
+          (m) =>
+            m.id.startsWith('temp-') &&
+            m.notebookId === message.notebookId &&
+            extractText(m.content) === sent,
+        );
+      if (placeholder) this.forgetPlaceholder(placeholder.id);
+    }
 
+    if (isCurrentPage || isCurrentNotebook) {
       // Use upsert to handle duplicates (e.g., sender's own message)
       this.store.update(upsertEntities(message));
       this.persistToIndexedDB([message]);
@@ -593,14 +596,16 @@ export class MessageService {
   >();
   private readonly sendTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  /** Send a failed message again. */
-  retrySend(tempId: string): void {
+  /**
+   * Take a failed message back to send it again: removes it from the list and returns
+   * what it said. The caller resends it through its normal path, so @mentioned bots
+   * are invoked as usual.
+   */
+  takeFailedSend(tempId: string): { notebookId: string; content: PageContent } | null {
     const pending = this.pendingSends.get(tempId);
-    if (!pending) return;
+    if (!pending) return null;
     this.forgetPlaceholder(tempId);
-    this.sendMessage(pending.notebookId, pending.content, pending.options).subscribe({
-      error: () => undefined, // shown as "Not sent" again
-    });
+    return { notebookId: pending.notebookId, content: pending.content };
   }
 
   /** Drop a failed message without sending it. */
