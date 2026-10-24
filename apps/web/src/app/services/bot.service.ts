@@ -166,6 +166,7 @@ export class BotService {
     userBotId?: string;
     templateId?: string;
     apiKey?: string;
+    baseUrl?: string;
   }): Observable<BotModelOption[]> {
     return this.http.post<{ models: BotModelOption[] }>('/api/bot-models', input).pipe(
       map((response) => response.models),

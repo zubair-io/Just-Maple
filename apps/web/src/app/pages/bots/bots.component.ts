@@ -20,7 +20,12 @@ import {
 import { Clipboard } from '@angular/cdk/clipboard';
 import { ProfileAvatarComponent } from '../../components/atoms/profile-avatar/profile-avatar.component';
 import { SettingsHeaderComponent, DialogService } from '../../components';
-import { type BotModelOption, type BotTemplate, type CreateCustomBotInput } from '@maple/shared';
+import {
+  type BotModelOption,
+  type BotTemplate,
+  type CreateCustomBotInput,
+  type UpdateUserBotInput,
+} from '@maple/shared';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -67,6 +72,8 @@ export class BotsComponent implements OnInit, OnDestroy {
   readonly showRegisterDialog = signal(false);
   readonly selectedTemplate = signal<BotTemplate | null>(null);
   readonly customHandle = signal('');
+  readonly displayName = signal('');
+  readonly baseUrl = signal('');
   readonly apiKey = signal('');
   readonly model = signal('');
   readonly responseMode = signal<'auto' | 'text'>('auto');
@@ -82,20 +89,45 @@ export class BotsComponent implements OnInit, OnDestroy {
   private registerModelsRequest?: Subscription;
   private editModelsRequest?: Subscription;
 
-  supportsModelSelection(templateId?: string): boolean {
+  /** The template for any OpenAI-compatible server; added from the AI Providers "New" button. */
+  readonly customProviderTemplate = computed(() =>
+    this.templates().find((t) => this.providerOf(t._id) === 'openai-compatible'),
+  );
+  /** Every other template, shown as cards. */
+  readonly providerTemplates = computed(() =>
+    this.templates().filter((t) => t._id !== this.customProviderTemplate()?._id),
+  );
+
+  private providerOf(templateId?: string): string | null {
     const action = this.templates()
       .find((t) => t._id === templateId)
       ?.definition.actions.find((a) => a.type === 'llm');
-    return (
-      !!action && ['anthropic', 'openai'].includes(String(action.config['provider'] || 'anthropic'))
-    );
+    return action ? String(action.config['provider'] || 'anthropic') : null;
+  }
+  supportsModelSelection(templateId?: string): boolean {
+    return ['anthropic', 'openai', 'openai-compatible'].includes(this.providerOf(templateId) ?? '');
+  }
+  /** Custom-server bots take a server URL and a typed model name. */
+  usesCustomServer(templateId?: string): boolean {
+    return this.providerOf(templateId) === 'openai-compatible';
+  }
+  /** AI bots can be added again with another handle, key or model. */
+  canAddAgain(template: BotTemplate): boolean {
+    return this.providerOf(template._id) !== null;
   }
   ngOnDestroy(): void {
     this.registerModelsRequest?.unsubscribe();
     this.editModelsRequest?.unsubscribe();
   }
+  changeBaseUrl(mode: 'register' | 'edit', value: string): void {
+    (mode === 'edit' ? this.editBaseUrl : this.baseUrl).set(value);
+    this.resetModels(mode);
+  }
   changeApiKey(mode: 'register' | 'edit', value: string): void {
     (mode === 'edit' ? this.editApiKey : this.apiKey).set(value);
+    this.resetModels(mode);
+  }
+  private resetModels(mode: 'register' | 'edit'): void {
     (mode === 'edit' ? this.editModelsRequest : this.registerModelsRequest)?.unsubscribe();
     (mode === 'edit' ? this.editModels : this.registerModels).set([]);
     (mode === 'edit' ? this.editModelsLoading : this.registerModelsLoading).set(false);
@@ -112,6 +144,8 @@ export class BotsComponent implements OnInit, OnDestroy {
     const bot = this.editingBot();
     const templateId = editing ? bot?.templateId : this.selectedTemplate()?._id;
     if (!this.supportsModelSelection(templateId)) return;
+    const baseUrl = (editing ? this.editBaseUrl() : this.baseUrl()).trim();
+    if (this.usesCustomServer(templateId) && !baseUrl) return;
     const options = editing ? this.editModels : this.registerModels;
     const loading = editing ? this.editModelsLoading : this.registerModelsLoading;
     const error = editing ? this.editModelsError : this.registerModelsError;
@@ -122,12 +156,22 @@ export class BotsComponent implements OnInit, OnDestroy {
       .loadModels({
         ...(editing ? { userBotId: bot!._id } : { templateId }),
         apiKey: (editing ? this.editApiKey() : this.apiKey()).trim() || undefined,
+        // Only send a changed URL; the server uses the saved one otherwise.
+        ...(this.usesCustomServer(templateId) &&
+        (!editing || baseUrl !== (bot?.config?.baseUrl ?? ''))
+          ? { baseUrl }
+          : {}),
       })
       .subscribe({
         next: (models) => {
           options.set(models);
           loading.set(false);
-          if (!editing && !models.some((option) => option.id === this.model())) this.model.set('');
+          if (
+            !editing &&
+            !this.usesCustomServer(templateId) &&
+            !models.some((option) => option.id === this.model())
+          )
+            this.model.set('');
           if (!models.length)
             error.set('No compatible reply models were returned for this account.');
         },
@@ -149,6 +193,8 @@ export class BotsComponent implements OnInit, OnDestroy {
   readonly showEditDialog = signal(false);
   readonly editingBot = signal<EnrichedUserBot | null>(null);
   readonly editApiKey = signal('');
+  readonly editDisplayName = signal('');
+  readonly editBaseUrl = signal('');
   readonly editEnabled = signal(true);
   readonly editError = signal<string | null>(null);
   readonly isUpdating = signal(false);
@@ -218,13 +264,30 @@ export class BotsComponent implements OnInit, OnDestroy {
       String(template.definition.actions.find((a) => a.type === 'llm')?.config['model'] || ''),
     );
     this.responseMode.set('auto');
-    this.customHandle.set(template.handle);
+    this.customHandle.set(
+      this.freeHandle(this.usesCustomServer(template._id) ? 'ai' : template.handle),
+    );
+    this.displayName.set('');
+    this.baseUrl.set('');
     this.apiKey.set('');
 
     this.registerError.set(null);
     this.registerModels.set([]);
     this.registerModelsError.set(null);
     this.showRegisterDialog.set(true);
+  }
+
+  /** Opens the dialog for a new OpenAI-compatible provider. */
+  newProvider(): void {
+    const template = this.customProviderTemplate();
+    if (template) this.selectTemplate(template);
+  }
+
+  /** "claude", then "claude2", "claude3"… so the same template can be added again. */
+  private freeHandle(base: string): string {
+    const taken = new Set(this.allBots().map((bot) => bot.handle.toLowerCase()));
+    if (!taken.has(base)) return base;
+    for (let n = 2; ; n++) if (!taken.has(`${base}${n}`)) return `${base}${n}`;
   }
 
   closeRegisterDialog(): void {
@@ -247,6 +310,10 @@ export class BotsComponent implements OnInit, OnDestroy {
       return;
     }
 
+    if (this.usesCustomServer(template._id) && !this.baseUrl().trim()) {
+      this.registerError.set('Enter the server URL');
+      return;
+    }
     if (this.supportsModelSelection(template._id) && !this.model().trim()) {
       this.registerError.set('Select a model for this bot');
       return;
@@ -258,9 +325,11 @@ export class BotsComponent implements OnInit, OnDestroy {
       .registerBot({
         templateId: template._id,
         handle: this.customHandle().trim() || undefined,
+        displayName: this.displayName().trim() || undefined,
         config: template.requiresConfig
           ? {
               apiKey: this.apiKey().trim(),
+              ...(this.usesCustomServer(template._id) ? { baseUrl: this.baseUrl().trim() } : {}),
               model: this.model().trim() || undefined,
               responseMode: this.responseMode(),
             }
@@ -294,6 +363,8 @@ export class BotsComponent implements OnInit, OnDestroy {
     );
     this.editResponseMode.set(bot.config?.responseMode || 'auto');
     this.editApiKey.set('');
+    this.editDisplayName.set(bot.displayName ?? '');
+    this.editBaseUrl.set(bot.config?.baseUrl ?? '');
     this.editEnabled.set(bot.isEnabled);
     this.editError.set(null);
     this.editModels.set([]);
@@ -318,17 +389,16 @@ export class BotsComponent implements OnInit, OnDestroy {
     this.isUpdating.set(true);
     this.editError.set(null);
 
-    const updateData: {
-      isEnabled?: boolean;
-      config?: { apiKey?: string; model?: string; responseMode?: 'auto' | 'text' };
-    } = {
+    const updateData: UpdateUserBotInput = {
       isEnabled: this.editEnabled(),
+      displayName: this.editDisplayName().trim() || undefined,
     };
 
     updateData.config = {
       model: this.editModel().trim() || undefined,
       responseMode: this.editResponseMode(),
       ...(this.editApiKey().trim() ? { apiKey: this.editApiKey().trim() } : {}),
+      ...(this.usesCustomServer(bot.templateId) ? { baseUrl: this.editBaseUrl().trim() } : {}),
     };
 
     this.botService.updateBot(bot._id, updateData).subscribe({

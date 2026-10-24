@@ -9,18 +9,30 @@ export class BotModelsError extends Error {
     }
 }
 
-/** Discover models using only fixed provider endpoints; never expose credentials or raw upstream errors. */
+/**
+ * Discover models from the provider, or from a custom bot's server (`baseUrl`, already
+ * checked by the caller). Never exposes credentials or raw upstream errors.
+ */
 export async function listBotModels(
     provider: BotProvider,
     apiKey: string,
     isOAuthToken = false,
+    baseUrl?: string,
 ): Promise<BotModelOption[]> {
     const base =
-        provider === 'openai'
-            ? 'https://api.openai.com/v1/models'
-            : 'https://api.anthropic.com/v1/models';
+        provider === 'openai-compatible'
+            ? `${baseUrl}/models`
+            : provider === 'openai'
+              ? 'https://api.openai.com/v1/models'
+              : 'https://api.anthropic.com/v1/models';
+    const providerName =
+        provider === 'openai-compatible'
+            ? 'the server'
+            : provider === 'openai'
+              ? 'OpenAI'
+              : 'Claude';
     const headers: Record<string, string> =
-        provider === 'openai'
+        provider !== 'anthropic'
             ? { Authorization: `Bearer ${apiKey}` }
             : {
                   'anthropic-version': '2023-06-01',
@@ -46,7 +58,7 @@ export async function listBotModels(
                         400,
                     );
                 throw new BotModelsError(
-                    `Could not load models from ${provider === 'openai' ? 'OpenAI' : 'Claude'} (${response.status}). Try again.`,
+                    `Could not load models from ${providerName} (${response.status}). Try again.`,
                 );
             }
             const body = (await response.json()) as {
