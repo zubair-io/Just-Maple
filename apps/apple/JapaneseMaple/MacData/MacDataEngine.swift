@@ -2,11 +2,13 @@
 //  MacDataEngine.swift
 //  JapaneseMaple
 //
-//  Runs the readers off the main thread and owns the local database.
-//  A source is only read after a page asks for it.
+//  Runs the readers off the main thread and owns the local staging database.
+//  A source is only read after the web app enables it (a device data page for it
+//  was created or opened). What's read is uploaded to the cloud afterwards.
 //
 
 #if os(macOS)
+import Contacts
 import EventKit
 import Foundation
 
@@ -15,18 +17,41 @@ actor MacDataEngine {
     private let imessage = IMessageReader()
     private let mail = MailReader()
     private let calendar = CalendarReader()
+    private let contacts = ContactsReader()
     private let eventStore = EKEventStore()
+    private let contactStore = CNContactStore()
+    /// Phone/email → name from the stored contacts; nil until first needed or after contacts change.
+    private var contactNames: MacDataContactNames?
 
     private var running: Set<MacDataSource> = []
     private var rerun: Set<MacDataSource> = []
     /// One embedding pass at a time; a running pass picks up items added while it works.
     var isEmbedding = false
     private var failures: [MacDataSource: MacDataError] = [:]
-    let searchIndex = MacDataSearchIndex()
     private let storePath: String
 
-    init(storePath: String = MacDataPaths.store.path) {
+    // Upload state, used by MacDataEngine+Upload.
+    let client: DeviceDataClient
+    let deviceName: @Sendable () -> String
+    /// Retries failed uploads on a timer. Tests turn it off and call `uploadPending` directly.
+    let retriesUploads: Bool
+    var isUploading = false
+    var uploadAgain = false
+    var registration: MacDataUploadRegistration?
+    var uploadError: String?
+    var retryDelay: TimeInterval = MacDataEngine.firstRetryDelay
+    var retryTask: Task<Void, Never>?
+
+    init(
+        storePath: String = MacDataPaths.store.path,
+        client: DeviceDataClient = .shared,
+        deviceName: @escaping @Sendable () -> String = { Host.current().localizedName ?? "Mac" },
+        retriesUploads: Bool = true
+    ) {
         self.storePath = storePath
+        self.client = client
+        self.deviceName = deviceName
+        self.retriesUploads = retriesUploads
     }
 
     /// Only use the store from inside this actor; its connection isn't shared safely elsewhere.
@@ -42,10 +67,17 @@ actor MacDataEngine {
     func statuses() throws -> [MacDataSourceStatus] {
         let store = try store()
         let enabled = Set(try store.enabledSources())
+        let active = Set(registration?.activeSources ?? [])
+        let lastUploadAt = try store.value(Self.lastUploadKey).flatMap(Double.init)
         return try MacDataSource.allCases.map { source in
             var status = MacDataSourceStatus(
                 source: source, state: .ready, message: nil,
-                itemCount: try store.itemCount(source), lastSyncAt: try store.lastSync(source))
+                itemCount: try store.itemCount(source), lastSyncAt: try store.lastSync(source),
+                uploadActive: active.contains(source),
+                // Only what this Mac will actually send; inactive sources wait for their collector.
+                pendingUpload: active.contains(source) ? try store.pendingUploadCount(sources: [source]) : 0,
+                lastUploadAt: lastUploadAt,
+                uploadError: enabled.contains(source) ? uploadError : nil)
             if !enabled.contains(source) {
                 status.state = .off
             } else if running.contains(source) {
@@ -62,20 +94,41 @@ actor MacDataEngine {
                 status.state = .needsAccess
                 status.message = CalendarReader.accessProblem
             }
+            if source == .contacts, enabled.contains(source), !ContactsReader.hasAccess {
+                status.state = .needsAccess
+                status.message = ContactsReader.accessProblem
+            }
             return status
         }
     }
 
-    // MARK: - Sync
+    // MARK: - Sources
 
     func enabledSources() throws -> [MacDataSource] {
         try store().enabledSources()
     }
 
+    /// Returns true when the source wasn't enabled before.
+    @discardableResult
+    func enable(_ source: MacDataSource) throws -> Bool {
+        try store().enable(source)
+    }
+
+    /// Stops reading the source and forgets its local copy. Returns true when it was enabled.
+    @discardableResult
+    func disable(_ source: MacDataSource) throws -> Bool {
+        let changed = try store().disable(source)
+        if source == .contacts { contactNames = nil }
+        failures[source] = nil
+        return changed
+    }
+
+    // MARK: - Sync
+
     /// Reads one source into the store. Overlapping calls coalesce into one extra pass.
     /// Returns true when anything was added, changed or removed.
     @discardableResult
-    func sync(_ source: MacDataSource) async -> Bool {
+    func sync(_ source: MacDataSource, now: Date? = nil) async -> Bool {
         if running.contains(source) {
             rerun.insert(source)
             return false
@@ -90,24 +143,34 @@ actor MacDataEngine {
                 let store = try store()
                 guard try store.enabledSources().contains(source) else { return changed }
                 let checkpoint = try store.checkpoint(source)
+                let names = try self.names()
                 let result: MacDataReadResult
                 // File-based reads can take minutes on a first import; run them off
-                // the actor so page lists and table queries stay responsive.
+                // the actor so status and uploads stay responsive.
                 switch source {
                 case .imessage:
                     let reader = imessage
-                    result = try await Task.detached { try reader.read(checkpoint: checkpoint) }
-                        .value
+                    result = try await Task.detached {
+                        try reader.read(checkpoint: checkpoint, names: names)
+                    }.value
                 case .mail:
                     let reader = mail
-                    result = try await Task.detached { try reader.read(checkpoint: checkpoint) }
-                        .value
+                    result = try await Task.detached {
+                        try reader.read(checkpoint: checkpoint, names: names)
+                    }.value
                 case .calendar:
                     // Access may have been granted in System Settings since the last pass.
                     if failures[.calendar] != nil { eventStore.reset() }
                     result = try calendar.read(store: eventStore)
+                case .contacts:
+                    let reader = contacts
+                    result = try await Task.detached { try reader.read() }.value
                 }
-                changed = try store.apply(result, source: source) > 0 || changed
+                let date = now ?? Date()
+                let applied = try store.apply(result, source: source, now: date)
+                if applied > 0, source == .contacts { contactNames = nil }
+                try store.pruneExpired(now: date)
+                changed = applied > 0 || changed
                 failures[source] = nil
             } catch let error as MacDataError {
                 failures[source] = error
@@ -116,6 +179,14 @@ actor MacDataEngine {
             }
         } while rerun.contains(source)
         return changed
+    }
+
+    /// The contact name lookup, rebuilt from the store after contacts change.
+    private func names() throws -> MacDataContactNames {
+        if let contactNames { return contactNames }
+        let names = MacDataContactNames(contacts: try store().items(source: .contacts))
+        contactNames = names
+        return names
     }
 
     // MARK: - Access
@@ -134,57 +205,26 @@ actor MacDataEngine {
         }
     }
 
-    // MARK: - Pages
+    /// Shows the system Contacts prompt the first time; returns whether access is granted.
+    func requestContactsAccess() async -> Bool {
+        if ContactsReader.hasAccess { return true }
+        do {
+            return try await contactStore.requestAccess(for: .contacts)
+        } catch {
+            failures[.contacts] = .accessDenied(error.localizedDescription)
+            return false
+        }
+    }
 
+    // MARK: - Legacy pages
+
+    /// Pages from before they moved to the cloud. The web app migrates and deletes them.
     func pages(notebookId: String?) throws -> [MacDataPage] {
         try store().pages(notebookId: notebookId)
-    }
-
-    func page(id: String) throws -> MacDataPage? {
-        try store().page(id: id)
-    }
-
-    func createPage(notebookId: String, source: MacDataSource, title: String?) throws
-        -> MacDataPage
-    {
-        let store = try store()
-        let page = MacDataPage(
-            id: UUID().uuidString.lowercased(),
-            notebookId: notebookId,
-            source: source,
-            title: title?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                ?? Self.defaultTitle(source),
-            createdAt: Date().timeIntervalSince1970)
-        try store.enable(source)
-        try store.insert(page)
-        return page
-    }
-
-    func renamePage(id: String, title: String) throws {
-        guard let title = title.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty else {
-            throw MacDataError.invalid("A page needs a title.")
-        }
-        try store().rename(pageId: id, title: title)
     }
 
     func deletePage(id: String) throws {
         try store().delete(pageId: id)
     }
-
-    func query(_ query: MacDataQuery) throws -> MacDataQueryResult {
-        try store().query(query)
-    }
-
-    static func defaultTitle(_ source: MacDataSource) -> String {
-        switch source {
-        case .imessage: return "iMessage"
-        case .mail: return "Email"
-        case .calendar: return "Calendar"
-        }
-    }
-}
-
-nonisolated extension String {
-    fileprivate var nonEmpty: String? { isEmpty ? nil : self }
 }
 #endif

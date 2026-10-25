@@ -27,7 +27,10 @@ nonisolated struct IMessageReader {
         self.databaseURL = databaseURL
     }
 
-    func read(checkpoint: String?, now: Date = Date()) throws -> MacDataReadResult {
+    /// `names` turns phone numbers and emails into contact names for senders and thread titles.
+    func read(checkpoint: String?, now: Date = Date(), names: MacDataContactNames = .empty) throws
+        -> MacDataReadResult
+    {
         let db = try MacDataSQLite(path: databaseURL.path, readOnly: true)
         let columns = try db.columns("message")
         for required in ["ROWID", "guid", "text", "date", "is_from_me", "handle_id"]
@@ -73,7 +76,7 @@ nonisolated struct IMessageReader {
                 "\(select) AND m.ROWID <= ? AND (\(edited)) LIMIT 5000",
                 [windowStart, state.lastRowId] + editColumns.map { _ in state.lastScan })
             for row in rows {
-                if let item = try makeItem(row, db: db, participantsByChat: &participantsByChat) {
+                if let item = try makeItem(row, db: db, names: names, participantsByChat: &participantsByChat) {
                     items.append(item)
                 }
             }
@@ -88,7 +91,7 @@ nonisolated struct IMessageReader {
             for row in rows {
                 guard let rowid = row["rowid"]?.int else { continue }
                 cursor = max(cursor, rowid)
-                if let item = try makeItem(row, db: db, participantsByChat: &participantsByChat) {
+                if let item = try makeItem(row, db: db, names: names, participantsByChat: &participantsByChat) {
                     items.append(item)
                 }
             }
@@ -104,7 +107,8 @@ nonisolated struct IMessageReader {
     }
 
     private func makeItem(
-        _ row: MacDataSQLite.Row, db: MacDataSQLite, participantsByChat: inout [Int64: [String]]
+        _ row: MacDataSQLite.Row, db: MacDataSQLite, names: MacDataContactNames,
+        participantsByChat: inout [Int64: [String]]
     ) throws -> MacDataItem? {
         guard let guid = row["guid"]?.string, let rawDate = row["date"]?.int else { return nil }
         let retracted = (row["date_retracted"]?.int ?? 0) > 0
@@ -139,9 +143,12 @@ nonisolated struct IMessageReader {
         let isFromMe = (row["is_from_me"]?.int ?? 0) != 0
         let handle = row["handle"]?.string
         let displayName = row["display_name"]?.string?.trimmingCharacters(in: .whitespaces)
+        let named = { (handle: String) in names.name(for: handle) ?? handle }
         let thread =
             (displayName?.isEmpty == false ? displayName : nil)
-            ?? (participants.isEmpty ? row["chat_identifier"]?.string ?? handle : participants.joined(separator: ", "))
+            ?? (participants.isEmpty
+                ? (row["chat_identifier"]?.string ?? handle).map(named)
+                : participants.map(named).joined(separator: ", "))
         let edited = row["date_edited"]?.int ?? 0
         let revision = "\(edited)-\(retracted ? 1 : 0)-\(macDataStableHash(text))"
 
@@ -152,7 +159,7 @@ nonisolated struct IMessageReader {
             occurredAt: Self.unixSeconds(rawDate),
             endAt: nil,
             title: thread,
-            sender: isFromMe ? "Me" : handle,
+            sender: isFromMe ? "Me" : handle.map(named),
             participants: participants,
             thread: thread,
             body: String(text.prefix(20_000)),

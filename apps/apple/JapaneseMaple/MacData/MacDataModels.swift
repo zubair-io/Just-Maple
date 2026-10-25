@@ -2,8 +2,9 @@
 //  MacDataModels.swift
 //  JapaneseMaple
 //
-//  Shared types for the Mac-only data sources (iMessage, Mail, Calendar).
-//  The web app sees these as JSON through the `macData` script handler.
+//  Shared types for the Mac-only data sources (iMessage, Mail, Calendar, Contacts).
+//  The Mac collects them into a local staging database and uploads them to the
+//  cloud (see MacDataEngine+Upload); the web app reads the cloud copy.
 //
 
 #if os(macOS)
@@ -13,6 +14,17 @@ nonisolated enum MacDataSource: String, Codable, CaseIterable, Sendable {
     case imessage
     case mail
     case calendar
+    case contacts
+
+    /// The same source as the upload API names it.
+    var deviceSource: DeviceSource {
+        switch self {
+        case .imessage: .imessage
+        case .mail: .mail
+        case .calendar: .calendar
+        case .contacts: .contacts
+        }
+    }
 }
 
 /// One message, email or calendar occurrence, normalized across sources.
@@ -35,9 +47,21 @@ nonisolated struct MacDataItem: Codable, Equatable, Sendable {
     var allDay: Bool?
     var mailbox: String?
     var isRead: Bool?
+    /// Source-specific fields, such as a contact's phones, emails and relations.
+    var extra: [String: JSONValue]? = nil
+
+    /// The item as the upload API stores it.
+    var deviceItem: DeviceItem {
+        DeviceItem(
+            id: id, source: source.deviceSource, revision: revision, occurredAt: occurredAt,
+            endAt: endAt, title: title, sender: sender, participants: participants, thread: thread,
+            body: body, isFromMe: isFromMe, location: location, calendar: calendar, allDay: allDay,
+            mailbox: mailbox, isRead: isRead, extra: extra)
+    }
 }
 
-/// A local-only page that shows one source inside a notebook. Never synced.
+/// A page record from before pages moved to the cloud. The web app reads these once,
+/// creates a cloud page for each, then deletes them.
 nonisolated struct MacDataPage: Codable, Equatable, Sendable {
     var id: String
     var notebookId: String
@@ -60,6 +84,13 @@ nonisolated struct MacDataSourceStatus: Codable, Equatable, Sendable {
     var message: String?
     var itemCount: Int
     var lastSyncAt: Double?
+    /// Whether the server takes this source from this Mac. Another device may collect it.
+    var uploadActive: Bool = false
+    /// Items read but not yet uploaded (text or vectors).
+    var pendingUpload: Int = 0
+    /// When this Mac last uploaded anything, for any source.
+    var lastUploadAt: Double?
+    var uploadError: String?
 }
 
 nonisolated struct MacDataQuery: Codable, Sendable {
@@ -126,6 +157,7 @@ nonisolated func macDataStableHash(_ value: String) -> String {
     return String(hash, radix: 16)
 }
 
-/// Initial import reaches back this far. Later syncs keep everything already stored.
+/// Initial import reaches back this far, and the same window is kept locally and in the
+/// cloud: older items are pruned, except contacts and calendar events that haven't ended.
 nonisolated let macDataInitialWindow: TimeInterval = 30 * 24 * 60 * 60
 #endif

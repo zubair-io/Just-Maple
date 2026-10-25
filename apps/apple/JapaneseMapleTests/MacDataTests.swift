@@ -3,10 +3,12 @@
 //  JapaneseMapleTests
 //
 //  Exercises the Mac data readers against small synthetic copies of the
-//  Messages and Mail databases. No real user data is read.
+//  Messages and Mail databases, contacts built in memory, and the uploader
+//  against a stubbed server. No real user data is read or sent.
 //
 
 #if os(macOS)
+import Contacts
 import Foundation
 import Testing
 
@@ -266,8 +268,6 @@ private func attributedBody(_ text: String) -> Data {
         try store.insert(MacDataPage(id: "p1", notebookId: "n1", source: .mail, title: "Email", createdAt: 1))
         try store.insert(MacDataPage(id: "p2", notebookId: "n2", source: .calendar, title: "Calendar", createdAt: 2))
         #expect(try store.pages(notebookId: "n1").map(\.id) == ["p1"])
-        try store.rename(pageId: "p1", title: "Inbox")
-        #expect(try store.page(id: "p1")?.title == "Inbox")
         try store.delete(pageId: "p1")
         #expect(try store.pages(notebookId: nil).map(\.id) == ["p2"])
     }
@@ -303,146 +303,478 @@ private func attributedBody(_ text: String) -> Data {
 }
 #endif
 
-// MARK: - Search and proactive batches
+// MARK: - Shared helpers
 
 #if os(macOS)
-@Suite struct MacDataRelayTests {
-    let now = Date(timeIntervalSince1970: 1_790_000_000)
+private func makeItem(
+    _ id: String, _ source: MacDataSource, at time: Double, revision: String = "1",
+    body: String = "Body", end: Double? = nil
+) -> MacDataItem {
+    MacDataItem(
+        id: id, source: source, revision: revision, occurredAt: time, endAt: end, title: "Title \(id)",
+        sender: "Coach", participants: [], thread: nil, body: body, isFromMe: false, location: nil,
+        calendar: nil, allDay: nil, mailbox: nil, isRead: nil)
+}
 
-    private func item(
-        _ id: String, _ source: MacDataSource, _ title: String, _ body: String, at time: Double,
-        fromMe: Bool = false, end: Double? = nil
-    ) -> MacDataItem {
-        MacDataItem(
-            id: id, source: source, revision: "1", occurredAt: time, endAt: end, title: title,
-            sender: source == .imessage ? (fromMe ? "Me" : "coach@example.com") : "notices@example.com",
-            participants: [], thread: nil, body: body, isFromMe: source == .imessage ? fromMe : nil,
-            location: nil, calendar: nil, allDay: nil, mailbox: nil, isRead: nil)
+private func readResult(_ items: [MacDataItem], removed: [String] = []) -> MacDataReadResult {
+    MacDataReadResult(items: items, removedIds: removed, presentIds: nil, reconcileWindow: nil, checkpoint: "cp")
+}
+
+// MARK: - Upload
+
+/// Answers the upload API from memory and records what was sent.
+final class StubServer: URLProtocol, @unchecked Sendable {
+    struct Request {
+        var path: String
+        var json: [String: Any]
     }
 
-    /// An engine over a temporary store with pages in notebook "n1" for iMessage and Calendar.
-    private func makeEngine(_ items: [MacDataItem]) async throws -> (MacDataEngine, MacDataStore) {
-        let path = try tempDirectory().appendingPathComponent("store.sqlite").path
-        let engine = MacDataEngine(storePath: path)
-        _ = try await engine.createPage(notebookId: "n1", source: .imessage, title: nil)
-        _ = try await engine.createPage(notebookId: "n1", source: .calendar, title: nil)
-        _ = try await engine.createPage(notebookId: "n2", source: .mail, title: nil)
-        let store = try await engine.store()
-        for source in MacDataSource.allCases {
-            let batch = items.filter { $0.source == source }
-            guard !batch.isEmpty else { continue }
-            try store.apply(
-                MacDataReadResult(items: batch, removedIds: [], presentIds: nil, reconcileWindow: nil, checkpoint: "cp"),
-                source: source, now: now)
+    nonisolated(unsafe) private static var requests: [Request] = []
+    nonisolated(unsafe) private static var activeSources = ["imessage", "calendar"]
+    nonisolated(unsafe) private static var uploadCount = 0
+    /// The upload request (1-based) that fails with a 500.
+    nonisolated(unsafe) private static var failingUpload: Int?
+    private static let lock = NSLock()
+
+    static func reset(activeSources: [String] = ["imessage", "calendar"], failingUpload: Int? = nil) {
+        lock.withLock {
+            requests = []
+            uploadCount = 0
+            self.activeSources = activeSources
+            self.failingUpload = failingUpload
         }
-        return (engine, store)
     }
 
-    @Test func searchIsScopedToTheNotebooksMacPages() async throws {
-        let t = now.timeIntervalSince1970
-        let (engine, _) = try await makeEngine([
-            item("imessage:1", .imessage, "Soccer parents", "No practice Friday", at: t - 3600),
-            item("mail:1", .mail, "UPS delivery", "Your package arrives Friday", at: t - 1800),
-        ])
-        let n1 = try await engine.search(MacDataSearchRequest(notebookId: "n1", query: "friday"))
-        #expect(n1.map(\.id) == ["imessage:1"])  // mail has no page in n1
-        let n2 = try await engine.search(MacDataSearchRequest(notebookId: "n2", query: "friday"))
-        #expect(n2.map(\.id) == ["mail:1"])
-        let none = try await engine.search(MacDataSearchRequest(notebookId: "other", query: "friday"))
-        #expect(none.isEmpty)
-        #expect(try await engine.item(id: "mail:1", notebookId: "n1") == nil)
-        #expect(try await engine.item(id: "mail:1", notebookId: "n2")?.title == "UPS delivery")
+    static var requestCount: Int { lock.withLock { requests.count } }
+
+    static func uploads() -> [[String: Any]] {
+        lock.withLock { requests.filter { $0.path == "/api/device-data/items" }.map(\.json) }
     }
 
-    @Test func searchRanksByMeaningAfterEmbedding() async throws {
-        let t = now.timeIntervalSince1970
-        let (engine, _) = try await makeEngine([
-            item("imessage:1", .imessage, "Coach", "Lacrosse practice is 2:30 to 4:30 at DiCaprio Park field 4", at: t - 7200),
-            item("imessage:2", .imessage, "Julia", "Can you pick up milk on the way home", at: t - 3600),
-        ])
-        #expect(await engine.embedPending() == 2)
-        let hits = try await engine.search(
-            MacDataSearchRequest(notebookId: "n1", query: "when does lacrosse start", limit: 1))
-        #expect(hits.first?.id == "imessage:1")
-        #expect(hits.first?.when.hasPrefix("20") == true)
-        // A date range without a query lists items in time order.
-        let listed = try await engine.search(
-            MacDataSearchRequest(notebookId: "n1", from: t - 10_000, to: t))
-        #expect(listed.map(\.id) == ["imessage:1", "imessage:2"])
+    static func registrations() -> [[String: Any]] {
+        lock.withLock { requests.filter { $0.path == "/api/collectors" }.map(\.json) }
     }
 
-    @Test func overlappingEmbeddingPassesEmbedEachItemOnce() async throws {
-        let t = now.timeIntervalSince1970
-        let (engine, store) = try await makeEngine(
-            (1...80).map { item("imessage:\($0)", .imessage, "Friend", "Message number \($0)", at: t - Double($0)) })
-        // Every Mail change starts a sync and an embedding pass; they used to redo each other's work.
-        async let first = engine.embedPending()
-        async let second = engine.embedPending()
-        async let third = engine.embedPending()
-        let total = await first + second + third
-        #expect(total == 80)
-        #expect(try store.pendingEmbeddingCount() == 0)
-        #expect(await engine.embedPending() == 0)
+    static func session() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubServer.self]
+        return URLSession(configuration: configuration)
     }
 
-    @Test func proactiveBatchesOnlyCarryFreshNewsForProactiveNotebooks() async throws {
-        let t = now.timeIntervalSince1970
-        let (engine, _) = try await makeEngine([
-            item("imessage:new", .imessage, "Coach", "Purple socks tomorrow", at: t - 600),
-            item("imessage:mine", .imessage, "Coach", "Thanks!", at: t - 500, fromMe: true),
-            item("imessage:old", .imessage, "Coach", "Last week's news", at: t - 3 * 86_400),
-            item("calendar:soon", .calendar, "Game vs LaSalle", "", at: t + 86_400, end: t + 90_000),
-            item("calendar:past", .calendar, "Old game", "", at: t - 86_400, end: t - 80_000),
-            item("mail:1", .mail, "UPS", "Signature required", at: t - 100),
-        ])
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func stopLoading() {}
 
-        // Without proactive notebooks nothing is sent, and the cursor skips ahead.
-        let idle = try await engine.proactiveBatches(for: [], now: now)
-        #expect(idle.batches.isEmpty)
-
-        let result = try await engine.proactiveBatches(for: ["n1", "n2"], now: now)
-        let n1 = try #require(result.batches.first { $0.notebookId == "n1" })
-        #expect(Set(n1.entries.map(\.item.id)) == ["imessage:new", "calendar:soon"])
-        let n2 = try #require(result.batches.first { $0.notebookId == "n2" })
-        #expect(n2.entries.map(\.item.id) == ["mail:1"])
-
-        try await engine.commitProactiveCursor(result.cursor)
-        let again = try await engine.proactiveBatches(for: ["n1", "n2"], now: now)
-        #expect(again.batches.isEmpty)
+    override func startLoading() {
+        var body = request.httpBody ?? Data()
+        if body.isEmpty, let stream = request.httpBodyStream {
+            stream.open()
+            var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+            while stream.hasBytesAvailable {
+                let read = stream.read(&buffer, maxLength: buffer.count)
+                guard read > 0 else { break }
+                body.append(buffer, count: read)
+            }
+            stream.close()
+        }
+        let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
+        let path = request.url?.path ?? ""
+        let (status, reply) = Self.lock.withLock { () -> (Int, [String: Any]) in
+            Self.requests.append(Request(path: path, json: json))
+            if path == "/api/collectors" {
+                let collector: [String: Any] = [
+                    "deviceId": json["deviceId"] ?? "", "platform": "macos", "name": json["name"] ?? "",
+                    "sources": json["sources"] ?? [], "activeSources": Self.activeSources,
+                ]
+                return (200, ["collector": collector])
+            }
+            Self.uploadCount += 1
+            if Self.uploadCount == Self.failingUpload { return (500, ["error": "Try again"]) }
+            let active = Set(Self.activeSources)
+            let upserts = json["upserts"] as? [[String: Any]] ?? []
+            let stored = upserts.filter { active.contains($0["source"] as? String ?? "") }.count
+            var result: [String: Any] = [
+                "stored": stored, "removed": (json["removals"] as? [Any])?.count ?? 0,
+                "vectors": (json["vectors"] as? [Any])?.count ?? 0, "skipped": upserts.count - stored,
+            ]
+            result["cursor"] = json["cursor"]
+            return (200, result)
+        }
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: status, httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: reply))
+        client?.urlProtocolDidFinishLoading(self)
     }
 }
-#endif
 
-#if os(macOS)
-@Suite struct MacDataLocalHTTPTests {
-    @Test func onlyLocalAddressesCountAsLocal() {
-        for host in ["localhost", "127.0.0.1", "192.168.1.20", "10.0.0.5", "172.20.1.1", "[::1]", "fd00::1",
-                     "nas.local", "studio", "box.lan"] {
-            #expect(MacDataLocalHTTP.isLocalHost(host), "\(host)")
-        }
-        for host in ["openrouter.ai", "8.8.8.8", "172.32.0.1", "example.com", "2606:4700::1111"] {
-            #expect(!MacDataLocalHTTP.isLocalHost(host), "\(host)")
-        }
+@Suite(.serialized) struct MacDataUploadTests {
+    let now = Date(timeIntervalSince1970: 1_790_000_000)
+
+    private func makeEngine(path: String? = nil) throws -> MacDataEngine {
+        let client = DeviceDataClient(
+            session: StubServer.session(), baseURL: { "https://api.example.test" }, token: { "token" })
+        return MacDataEngine(
+            storePath: try path ?? tempDirectory().appendingPathComponent("store.sqlite").path,
+            client: client, deviceName: { "Test Mac" }, retriesUploads: false)
     }
 
-    @Test func onlyModelListsAndChatsToLocalServersAreAllowed() throws {
-        let ok: [(String, String)] = [
-            ("GET", "http://localhost:11434/v1/models"),
-            ("POST", "http://localhost:11434/v1/chat/completions"),
-            ("POST", "https://192.168.1.20/v1/chat/completions"),
+    private func upsertIds(_ uploads: [[String: Any]]) -> [String] {
+        uploads.flatMap { ($0["upserts"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String } }
+    }
+
+    @Test func uploadsChangedItemsOnceWithRemovalsAndVectors() async throws {
+        StubServer.reset()
+        let engine = try makeEngine()
+        let store = try await engine.store()
+        let t = now.timeIntervalSince1970
+        for source in [MacDataSource.imessage, .mail, .calendar] { try store.enable(source) }
+        try store.apply(
+            readResult([makeItem("imessage:1", .imessage, at: t - 60), makeItem("imessage:2", .imessage, at: t - 30)]),
+            source: .imessage, now: now)
+        try store.apply(readResult([makeItem("mail:1", .mail, at: t - 10)]), source: .mail, now: now)
+        try store.apply(
+            readResult([makeItem("calendar:1", .calendar, at: t + 3600, end: t + 7200)]), source: .calendar, now: now)
+
+        // First pass: registers, then uploads only the sources the server takes from this Mac.
+        #expect(await engine.uploadPending(now: now))
+        let registration = try #require(StubServer.registrations().first)
+        #expect(registration["name"] as? String == "Test Mac")
+        #expect(registration["platform"] as? String == "macos")
+        #expect(registration["sources"] as? [String] == ["calendar", "imessage", "mail"])
+        #expect(upsertIds(StubServer.uploads()) == ["calendar:1", "imessage:2", "imessage:1"])  // newest first, no mail
+        let uploaded = try #require((StubServer.uploads().first?["upserts"] as? [[String: Any]])?.first)
+        #expect(uploaded["source"] as? String == "calendar")
+        #expect(uploaded["endAt"] as? Double == t + 7200)
+        #expect(uploaded["participants"] as? [String] == [])
+        #expect(try store.pendingUploadCount(sources: [.imessage, .calendar]) == 0)
+        #expect(try await engine.uploadStatus().activeSources == [.calendar, .imessage])
+        #expect(try await engine.uploadStatus().lastUploadAt == t)
+
+        // Nothing changed: nothing is sent, and registration isn't repeated.
+        let before = StubServer.requestCount
+        #expect(await engine.uploadPending(now: now))
+        #expect(StubServer.requestCount == before)
+
+        // One message edited, one deleted: only those go up.
+        StubServer.reset()
+        try store.apply(
+            readResult([makeItem("imessage:1", .imessage, at: t - 60, revision: "2")], removed: ["imessage:2"]),
+            source: .imessage, now: now)
+        #expect(await engine.uploadPending(now: now))
+        #expect(upsertIds(StubServer.uploads()) == ["imessage:1"])
+        let removals = StubServer.uploads().filter { ($0["removals"] as? [String])?.isEmpty == false }
+        #expect(removals.count == 1)
+        #expect(removals.first?["removals"] as? [String] == ["imessage:2"])
+        #expect(removals.first?["cursor"] as? String == String(try store.latestChangeSeq()))
+        #expect(StubServer.registrations().isEmpty)
+
+        // Embedded since the last upload: vectors follow, once.
+        StubServer.reset()
+        let vectors: [[Float]] = [[0.6, 0.8, 0], [0, 0, 1]]
+        try store.saveEmbedding(itemId: "imessage:1", revision: "2", vectors: vectors)
+        try store.saveEmbedding(itemId: "mail:1", revision: "1", vectors: vectors)  // mail isn't active
+        #expect(await engine.uploadPending(now: now))
+        let sent = StubServer.uploads().flatMap { $0["vectors"] as? [[String: Any]] ?? [] }
+        #expect(sent.count == 1)
+        let entry = try #require(sent.first)
+        #expect(entry["id"] as? String == "imessage:1")
+        #expect(entry["revision"] as? String == "2")
+        #expect(entry["dimensions"] as? Int == 3)
+        let data = try #require(Data(base64Encoded: entry["vectors"] as? String ?? ""))
+        #expect(DeviceEmbedding.decode(data) == vectors.flatMap { $0 })
+
+        StubServer.reset()
+        #expect(await engine.uploadPending(now: now))
+        #expect(StubServer.uploads().isEmpty)
+    }
+
+    @Test func failedUploadResumesAfterRelaunch() async throws {
+        // The second batch fails: the first stays uploaded, the rest waits.
+        StubServer.reset(failingUpload: 2)
+        let path = try tempDirectory().appendingPathComponent("store.sqlite").path
+        let engine = try makeEngine(path: path)
+        let store = try await engine.store()
+        let t = now.timeIntervalSince1970
+        try store.enable(.imessage)
+        try store.apply(
+            readResult((1...250).map { makeItem("imessage:\($0)", .imessage, at: t - Double($0)) }),
+            source: .imessage, now: now)
+        #expect(await engine.uploadPending(now: now) == false)
+        let rest = 250 - DeviceDataClient.maxUpserts
+        #expect(try store.pendingUploadCount(sources: [.imessage]) == rest)
+        #expect(try await engine.uploadStatus().error != nil)
+
+        // A new engine over the same store, as after a relaunch, sends only the rest.
+        StubServer.reset()
+        let relaunched = try makeEngine(path: path)
+        #expect(await relaunched.uploadPending(now: now))
+        #expect(upsertIds(StubServer.uploads()).count == rest)
+        #expect(StubServer.registrations().count == 1)  // a new launch registers again
+        #expect(try await relaunched.uploadStatus().error == nil)
+    }
+
+    @Test func sourceTakenByAnotherDeviceUploadsAgainWhenItComesBack() async throws {
+        StubServer.reset()
+        let engine = try makeEngine()
+        let store = try await engine.store()
+        try store.enable(.calendar)
+        try store.apply(
+            readResult([makeItem("calendar:1", .calendar, at: now.timeIntervalSince1970 + 60)]),
+            source: .calendar, now: now)
+        #expect(await engine.uploadPending(now: now))
+        #expect(upsertIds(StubServer.uploads()) == ["calendar:1"])
+
+        // The iPhone now collects calendar, and the server dropped this Mac's copy.
+        StubServer.reset(activeSources: ["imessage"])
+        await engine.registrationChanged()
+        #expect(await engine.uploadPending(now: now))
+        #expect(StubServer.uploads().isEmpty)
+        #expect(try await engine.statuses().first { $0.source == .calendar }?.uploadActive == false)
+
+        StubServer.reset()
+        await engine.registrationChanged()
+        #expect(await engine.uploadPending(now: now))
+        #expect(upsertIds(StubServer.uploads()) == ["calendar:1"])
+    }
+
+    @Test func disablingASourceDropsItsLocalCopy() async throws {
+        StubServer.reset()
+        let engine = try makeEngine()
+        let store = try await engine.store()
+        try store.enable(.mail)
+        try store.apply(
+            readResult([makeItem("mail:1", .mail, at: now.timeIntervalSince1970)]), source: .mail, now: now)
+        #expect(try await engine.disable(.mail))
+        #expect(try store.itemCount(.mail) == 0)
+        #expect(try await engine.enabledSources().isEmpty)
+        #expect(try await engine.disable(.mail) == false)
+    }
+}
+
+// MARK: - Contacts
+
+@Suite struct ContactsTests {
+    let readAt = Date(timeIntervalSince1970: 1_790_000_000)
+
+    private func julia() -> CNMutableContact {
+        let contact = CNMutableContact()
+        contact.givenName = "Julia"
+        contact.familyName = "Lawrence"
+        contact.nickname = "Jules"
+        contact.organizationName = "Albany Med"
+        contact.jobTitle = "Nurse"
+        contact.phoneNumbers = [CNLabeledValue(label: CNLabelPhoneNumberMobile, value: CNPhoneNumber(stringValue: "+1 (518) 555-0100"))]
+        contact.emailAddresses = [CNLabeledValue(label: CNLabelHome, value: "Julia@Example.com" as NSString)]
+        let address = CNMutablePostalAddress()
+        address.street = "1 Main St"
+        address.city = "Albany"
+        address.state = "NY"
+        address.postalCode = "12207"
+        address.country = "USA"
+        contact.postalAddresses = [CNLabeledValue(label: CNLabelHome, value: address)]
+        contact.birthday = DateComponents(year: 1985, month: 4, day: 9)
+        contact.contactRelations = [
+            CNLabeledValue(label: CNLabelContactRelationSpouse, value: CNContactRelation(name: "Zubair")),
+            CNLabeledValue(label: CNLabelContactRelationDaughter, value: CNContactRelation(name: "Emma")),
         ]
-        for (method, url) in ok {
-            #expect(throws: Never.self) { try MacDataLocalHTTP.check(method: method, url: URL(string: url)!) }
+        contact.note = "Private note"
+        return contact
+    }
+
+    @Test func mapsACardToAnItem() throws {
+        let contact = julia()
+        let item = ContactsReader.item(from: contact, isMe: false, readAt: readAt)
+        #expect(item.id == "contacts:\(contact.identifier)")
+        #expect(item.source == .contacts)
+        #expect(item.title == "Julia Lawrence")
+        #expect(item.occurredAt == readAt.timeIntervalSince1970)
+        #expect(item.participants == ["+1 (518) 555-0100", "Julia@Example.com"])
+        #expect(item.body.hasPrefix("Julia Lawrence (Jules)\nNurse, Albany Med\n"))
+        #expect(item.body.contains("Phone (mobile): +1 (518) 555-0100"))
+        #expect(item.body.contains("Email (home): Julia@Example.com"))
+        #expect(item.body.contains("Address (home): 1 Main St, Albany NY 12207"))
+        #expect(item.body.contains("Birthday: 1985-04-09"))
+        #expect(item.body.contains("Spouse: Zubair"))
+        #expect(item.body.contains("Daughter: Emma"))
+        #expect(!item.body.contains("Private note"))
+
+        let extra = try #require(item.extra)
+        #expect(extra["birthday"] == .string("1985-04-09"))
+        #expect(extra["organization"] == .string("Albany Med"))
+        #expect(extra["jobTitle"] == .string("Nurse"))
+        #expect(extra["isMe"] == .bool(false))
+        #expect(extra["phones"] == .array([.object(["label": .string("mobile"), "value": .string("+1 (518) 555-0100")])]))
+        #expect(extra["emails"] == .array([.object(["label": .string("home"), "value": .string("Julia@Example.com")])]))
+        #expect(
+            extra["relations"]
+                == .array([
+                    .object(["label": .string("spouse"), "name": .string("Zubair")]),
+                    .object(["label": .string("daughter"), "name": .string("Emma")]),
+                ]))
+        guard case .array(let addresses) = extra["addresses"], case .object(let home) = addresses.first else {
+            Issue.record("No address")
+            return
         }
-        let refused: [(String, String)] = [
-            ("GET", "https://openrouter.ai/api/v1/models"),  // not local
-            ("GET", "http://localhost:11434/api/delete"),  // not a model list or chat
-            ("POST", "http://localhost:11434/v1/models"),  // wrong method
-            ("GET", "file:///etc/passwd"),
-        ]
-        for (method, url) in refused {
-            #expect(throws: (any Error).self) { try MacDataLocalHTTP.check(method: method, url: URL(string: url)!) }
+        #expect(home["city"] == .string("Albany"))
+        #expect(home["label"] == .string("home"))
+
+        // Reading again later doesn't change the revision, so it isn't uploaded again.
+        let later = ContactsReader.item(from: contact, isMe: false, readAt: readAt.addingTimeInterval(3600))
+        #expect(later.revision == item.revision)
+        // The DeviceItem keeps the extra fields for the server.
+        #expect(item.deviceItem.extra == item.extra)
+        #expect(item.deviceItem.source == .contacts)
+    }
+
+    @Test func marksTheMeCardAndHandlesMissingFields() {
+        let contact = CNMutableContact()
+        contact.organizationName = "UPS Store"
+        contact.birthday = DateComponents(month: 12, day: 25)
+        let item = ContactsReader.item(from: contact, isMe: true, readAt: readAt)
+        #expect(item.title == "UPS Store")
+        #expect(item.extra?["isMe"] == .bool(true))
+        #expect(item.extra?["birthday"] == .string("--12-25"))
+        #expect(item.body.contains("This is me"))
+        #expect(item.participants.isEmpty)
+    }
+}
+
+// MARK: - Sender names
+
+@Suite struct SenderNameTests {
+    let now = Date(timeIntervalSince1970: 1_790_000_000)
+
+    private func names() -> MacDataContactNames {
+        let julia = CNMutableContact()
+        julia.givenName = "Julia"
+        julia.phoneNumbers = [CNLabeledValue(label: nil, value: CNPhoneNumber(stringValue: "(518) 555-0100"))]
+        let coach = CNMutableContact()
+        coach.givenName = "Coach"
+        coach.familyName = "Dan"
+        coach.emailAddresses = [CNLabeledValue(label: nil, value: "Coach@Example.com" as NSString)]
+        return MacDataContactNames(contacts: [
+            ContactsReader.item(from: julia, isMe: false, readAt: now),
+            ContactsReader.item(from: coach, isMe: false, readAt: now),
+        ])
+    }
+
+    @Test func matchesPhonesByLastTenDigitsAndEmailsIgnoringCase() {
+        let names = names()
+        #expect(names.name(for: "+15185550100") == "Julia")
+        #expect(names.name(for: "518.555.0100") == "Julia")
+        #expect(names.name(for: "coach@example.com") == "Coach Dan")
+        #expect(names.name(for: "mailto:COACH@example.com") == "Coach Dan")
+        #expect(names.name(for: "+15185550199") == nil)
+        #expect(names.name(for: "12345") == nil)  // short codes don't match anything
+        #expect(MacDataContactNames.key("+44 20 7946 0958") == "2079460958")
+    }
+
+    @Test func iMessageAndMailShowContactNames() throws {
+        // iMessage: handle 2 is coach@example.com, the chat has a name.
+        let chat = try tempDirectory().appendingPathComponent("chat.db")
+        let db = try MacDataSQLite(path: chat.path, readOnly: false)
+        try db.execute("CREATE TABLE handle(ROWID INTEGER PRIMARY KEY, id TEXT)")
+        try db.execute("CREATE TABLE chat(ROWID INTEGER PRIMARY KEY, chat_identifier TEXT, display_name TEXT)")
+        try db.execute("CREATE TABLE chat_message_join(chat_id INTEGER, message_id INTEGER)")
+        try db.execute("CREATE TABLE chat_handle_join(chat_id INTEGER, handle_id INTEGER)")
+        try db.execute(
+            "CREATE TABLE message(ROWID INTEGER PRIMARY KEY, guid TEXT, text TEXT, date INTEGER, is_from_me INTEGER, handle_id INTEGER)")
+        try db.execute("INSERT INTO handle VALUES (1, '+15185550100'), (2, 'coach@example.com')")
+        try db.execute("INSERT INTO chat VALUES (1, 'chat1', '')")
+        try db.execute("INSERT INTO chat_handle_join VALUES (1, 1), (1, 2)")
+        try db.execute(
+            "INSERT INTO message VALUES (1, 'g1', 'Practice moved', ?, 0, 2)", [IMessageReader.appleNanos(now)])
+        try db.execute("INSERT INTO chat_message_join VALUES (1, 1)")
+
+        let item = try #require(
+            IMessageReader(databaseURL: chat).read(checkpoint: nil, now: now, names: names()).items.first)
+        #expect(item.sender == "Coach Dan")
+        #expect(item.thread == "Julia, Coach Dan")
+        #expect(item.participants == ["+15185550100", "coach@example.com"])  // raw handles stay
+
+        // Mail: the contact's name replaces the header's.
+        let root = try tempDirectory()
+        let data = root.appendingPathComponent("V10/MailData", isDirectory: true)
+        try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
+        let mail = try MacDataSQLite(path: data.appendingPathComponent("Envelope Index").path, readOnly: false)
+        try mail.execute("CREATE TABLE addresses(ROWID INTEGER PRIMARY KEY, address TEXT, comment TEXT)")
+        try mail.execute("CREATE TABLE subjects(ROWID INTEGER PRIMARY KEY, subject TEXT)")
+        try mail.execute("CREATE TABLE summaries(ROWID INTEGER PRIMARY KEY, summary TEXT)")
+        try mail.execute("CREATE TABLE mailboxes(ROWID INTEGER PRIMARY KEY, url TEXT)")
+        try mail.execute(
+            "CREATE TABLE messages(ROWID INTEGER PRIMARY KEY, sender INTEGER, subject INTEGER, summary INTEGER, date_received INTEGER, mailbox INTEGER, read INTEGER, deleted INTEGER)")
+        try mail.execute("INSERT INTO addresses VALUES (1, 'coach@example.com', 'D. Smith'), (2, 'other@example.com', 'Other')")
+        try mail.execute("INSERT INTO subjects VALUES (1, 'Practice')")
+        try mail.execute("INSERT INTO summaries VALUES (1, 'Moved to 5')")
+        try mail.execute("INSERT INTO mailboxes VALUES (1, 'imap://abc/INBOX')")
+        try mail.execute("INSERT INTO messages VALUES (1, 1, 1, 1, ?, 1, 0, 0), (2, 2, 1, 1, ?, 1, 0, 0)", [Int(now.timeIntervalSince1970), Int(now.timeIntervalSince1970)])
+        let emails = try MailReader(mailRoot: root).read(checkpoint: nil, now: now, names: names()).items
+        #expect(emails.map(\.sender) == ["Coach Dan <coach@example.com>", "Other <other@example.com>"])
+    }
+}
+
+// MARK: - Retention
+
+@Suite struct MacDataRetentionTests {
+    let now = Date(timeIntervalSince1970: 1_790_000_000)
+
+    @Test func prunesOldItemsButKeepsContactsAndEventsThatHaventEnded() throws {
+        let store = try MacDataStore(path: tempDirectory().appendingPathComponent("store.sqlite").path)
+        let t = now.timeIntervalSince1970
+        let day = 86_400.0
+        for source in MacDataSource.allCases { try store.enable(source) }
+        try store.apply(
+            readResult([makeItem("imessage:old", .imessage, at: t - 31 * day), makeItem("imessage:new", .imessage, at: t - 29 * day)]),
+            source: .imessage, now: now)
+        try store.apply(readResult([makeItem("mail:old", .mail, at: t - 45 * day)]), source: .mail, now: now)
+        try store.apply(
+            readResult([
+                makeItem("calendar:ended", .calendar, at: t - 40 * day, end: t - 40 * day + 3600),
+                // A trip that started long ago and ends next week is still on.
+                makeItem("calendar:ongoing", .calendar, at: t - 40 * day, end: t + 7 * day),
+            ]),
+            source: .calendar, now: now)
+        try store.apply(readResult([makeItem("contacts:old", .contacts, at: t - 400 * day)]), source: .contacts, now: now)
+        try store.saveEmbedding(itemId: "imessage:old", revision: "1", vectors: [[1, 0]])
+
+        #expect(try store.pruneExpired(now: now) == 3)
+        let left = try MacDataSource.allCases.flatMap { try store.items(source: $0).map(\.id) }
+        #expect(Set(left) == ["imessage:new", "calendar:ongoing", "contacts:old"])
+        #expect(try store.vectors(itemId: "imessage:old").isEmpty)
+        // Pruning isn't a deletion to upload: the server applies the same rule itself.
+        #expect(try store.changes(after: 0, limit: 100).allSatisfy { $0.kind != "removed" })
+        #expect(try store.pruneExpired(now: now) == 0)
+    }
+}
+
+// MARK: - Relay
+
+@Suite struct MacDataRelayTests {
+    @Test func answersEmbedWithANormalizedVector() async throws {
+        let answer = try await MacDataConnection.answer("embed", ["text": "when does lacrosse practice start"])
+        if DeviceEmbedding.isAvailable {
+            let vector = try #require(answer as? [Double])
+            #expect(vector.count == DeviceEmbedding.dimensions)
+            let norm = vector.reduce(0) { $0 + $1 * $1 }.squareRoot()
+            #expect(abs(norm - 1) < 0.001)
+        } else {
+            #expect(answer is NSNull)
         }
+        #expect(try await MacDataConnection.answer("embed", ["text": "   "]) is NSNull)
+        #expect(try await MacDataConnection.answer("embed", [:]) is NSNull)
+        await #expect(throws: (any Error).self) { try await MacDataConnection.answer("search", [:]) }
+    }
+
+    @Test func heartbeatInfoStillMatchesTheServerSchema() async throws {
+        let engine = MacDataEngine(storePath: try tempDirectory().appendingPathComponent("store.sqlite").path)
+        let info = try await engine.hostInfo()
+        let json = try #require(
+            try JSONSerialization.jsonObject(with: JSONEncoder().encode(info)) as? [String: Any])
+        #expect(Set(json.keys) == ["timeZone", "now", "notebooks", "pendingEmbeddings"])
+        #expect((json["notebooks"] as? [Any])?.isEmpty == true)
+        #expect(json["pendingEmbeddings"] as? Int == 0)
     }
 }
 #endif

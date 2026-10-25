@@ -2,8 +2,9 @@
 //  MacDataStore.swift
 //  JapaneseMaple
 //
-//  The Mac's private database of imported messages, emails and events,
-//  plus the registry of local-only pages. Nothing here is uploaded.
+//  The Mac's staging database of imported messages, emails, events and contacts.
+//  Items are uploaded from here (tracked per item and through the change log), and
+//  the old local-only page records wait here until the web app moves them to the cloud.
 //
 
 #if os(macOS)
@@ -27,6 +28,7 @@ nonisolated final class MacDataStore: @unchecked Sendable {
         let version = try db.rows("PRAGMA user_version").first?["user_version"]?.int ?? 0
         if version < 1 { try migrateV1() }
         if version < 2 { try migrateV2() }
+        if version < 3 { try migrateV3() }
     }
 
     private func migrateV1() throws {
@@ -93,6 +95,15 @@ nonisolated final class MacDataStore: @unchecked Sendable {
         }
     }
 
+    /// Cloud upload: which revision of each item, and of its vectors, the server has.
+    private func migrateV3() throws {
+        try db.transaction {
+            try db.execute("ALTER TABLE items ADD COLUMN uploaded_revision TEXT")
+            try db.execute("ALTER TABLE items ADD COLUMN uploaded_embedding_revision TEXT")
+            try db.execute("PRAGMA user_version = 3")
+        }
+    }
+
     // MARK: - Sources
 
     /// A source is enabled once any page asks for it; disabled sources are never read.
@@ -102,9 +113,29 @@ nonisolated final class MacDataStore: @unchecked Sendable {
         }
     }
 
-    func enable(_ source: MacDataSource) throws {
+    /// Returns true when the source wasn't enabled before.
+    @discardableResult
+    func enable(_ source: MacDataSource) throws -> Bool {
+        let wasEnabled = try enabledSources().contains(source)
         try db.execute(
             "INSERT OR IGNORE INTO checkpoints(source, value) VALUES (?, '')", [source.rawValue])
+        return !wasEnabled
+    }
+
+    /// Stops reading a source and drops its local copy. Nothing is logged as removed:
+    /// the cloud copy belongs to the server's collector settings, not to this switch.
+    /// Returns true when the source was enabled before.
+    @discardableResult
+    func disable(_ source: MacDataSource) throws -> Bool {
+        let wasEnabled = try enabledSources().contains(source)
+        try db.transaction {
+            try db.execute("DELETE FROM checkpoints WHERE source=?", [source.rawValue])
+            try db.execute(
+                "DELETE FROM chunks WHERE item_id IN (SELECT id FROM items WHERE source=?)",
+                [source.rawValue])
+            try db.execute("DELETE FROM items WHERE source=?", [source.rawValue])
+        }
+        return wasEnabled
     }
 
     func checkpoint(_ source: MacDataSource) throws -> String? {
@@ -233,6 +264,31 @@ nonisolated final class MacDataStore: @unchecked Sendable {
             .replacingOccurrences(of: "_", with: "\\_")
     }
 
+    // MARK: - Retention
+
+    /// Drops items that aged out of the 30-day window, matching the server's retention so
+    /// they aren't uploaded again: contacts are kept, and calendar events until they end.
+    /// Nothing is logged as removed, since the server drops them on its own.
+    @discardableResult
+    func pruneExpired(now: Date = Date()) throws -> Int {
+        let cutoff = now.timeIntervalSince1970 - macDataInitialWindow
+        let expired = """
+            source != 'contacts' AND occurred_at < ?
+            AND (source != 'calendar' OR coalesce(json_extract(json, '$.endAt'), 0) < ?)
+            """
+        return try db.transaction {
+            let count = Int(
+                try db.rows("SELECT COUNT(*) AS n FROM items WHERE \(expired)", [cutoff, cutoff])
+                    .first?["n"]?.int ?? 0)
+            guard count > 0 else { return 0 }
+            try db.execute(
+                "DELETE FROM chunks WHERE item_id IN (SELECT id FROM items WHERE \(expired))",
+                [cutoff, cutoff])
+            try db.execute("DELETE FROM items WHERE \(expired)", [cutoff, cutoff])
+            return count
+        }
+    }
+
     // MARK: - Pages
 
     func pages(notebookId: String?) throws -> [MacDataPage] {
@@ -254,11 +310,7 @@ nonisolated final class MacDataStore: @unchecked Sendable {
             [page.id, page.notebookId, page.source.rawValue, page.title, page.createdAt])
     }
 
-    func rename(pageId: String, title: String) throws {
-        try db.execute("UPDATE pages SET title=? WHERE id=?", [title, pageId])
-    }
-
-    /// Removes the page only. Imported data stays, since other pages and bots may use it.
+    /// Removes the page record only. Imported data stays; cloud pages use it.
     func delete(pageId: String) throws {
         try db.execute("DELETE FROM pages WHERE id=?", [pageId])
     }
