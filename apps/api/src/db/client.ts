@@ -99,6 +99,10 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('device_items').createIndex({ userId: 1, source: 1 });
     await database.collection('device_items').createIndex({ occurredAt: 1 }); // Retention
     await database.collection('collectors').createIndex({ userId: 1 });
+    // About me
+    await database.collection('profile_entities').createIndex({ userId: 1 });
+    await database.collection('profile_relations').createIndex({ userId: 1 });
+    await database.collection('profile_facts').createIndex({ userId: 1 });
 
     // Messages collection
     await database.collection('messages').createIndex({ notebookId: 1, _id: -1 }); // For paginated queries

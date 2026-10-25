@@ -4,7 +4,15 @@ vi.mock('../mac-data-relay.service', () => ({
     macDataRelay: { isOnline: vi.fn().mockResolvedValue(false), request: vi.fn() },
 }));
 vi.mock('../../repositories/page.repo', () => ({ findDeviceDataPages: vi.fn() }));
-vi.mock('../../repositories/collector.repo', () => ({ collectorTimeZone: vi.fn() }));
+vi.mock('../../repositories/collector.repo', () => ({
+    collectorTimeZone: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../about-me.service', () => ({
+    aboutMeSummary: vi.fn().mockResolvedValue('## About the user\nName: Zubair'),
+    recallAboutMe: vi.fn().mockResolvedValue('{"facts":[]}'),
+    rememberAboutMe: vi.fn().mockResolvedValue('Saved (f1).'),
+    updateAboutMe: vi.fn().mockResolvedValue('Updated.'),
+}));
 vi.mock('../../repositories/device-item.repo', () => ({ findDeviceItem: vi.fn() }));
 vi.mock('../device-search.service', () => ({ searchDeviceData: vi.fn() }));
 
@@ -54,6 +62,57 @@ describe('getMacDataToolContext', () => {
         expect(context?.now).toMatch(/-0[45]:00$/);
         expect(findDeviceDataPages).toHaveBeenCalledWith('u1', 'n1');
         expect(macDataSystemPrompt(context!)).toContain('places visited');
+    });
+});
+
+describe('About me in bot context', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("gives the profile only to the user's own bots", async () => {
+        vi.mocked(findDeviceDataPages).mockResolvedValue([]);
+        const own = await getMacDataToolContext('u1', 'n1', {
+            id: 'b1',
+            name: 'Maple',
+            ownerId: 'u1',
+        });
+        expect(own?.sources).toEqual([]);
+        expect(macDataToolDefinitions(own!).map((t) => t.name)).toEqual([
+            'recall_about_me',
+            'remember_about_me',
+            'update_about_me',
+        ]);
+        expect(macDataSystemPrompt(own!)).toContain('Name: Zubair');
+        // A bot someone else shared into the notebook: no profile, no tools.
+        expect(
+            await getMacDataToolContext('u1', 'n1', { id: 'b2', name: 'Theirs', ownerId: 'u2' }),
+        ).toBeNull();
+    });
+
+    it('saves what the bot learned with the bot as its source', async () => {
+        const { rememberAboutMe } = await import('../about-me.service');
+        const context = {
+            ...ctx,
+            aboutMe: { summary: '', source: { type: 'bot' as const, botId: 'b1' } },
+        };
+        await executeMacDataTool(context, 'remember_about_me', {
+            about: 'me',
+            key: 'travel',
+            value: 'In Denver',
+            kind: 'current',
+            until: '2026-10-30',
+        });
+        expect(rememberAboutMe).toHaveBeenCalledWith(
+            'u1',
+            expect.objectContaining({
+                key: 'travel',
+                kind: 'current',
+                until: '2026-10-30',
+                sensitive: false,
+            }),
+            { type: 'bot', botId: 'b1' },
+        );
+        // Without a profile in context, the tools don't exist.
+        expect(await executeMacDataTool(ctx, 'remember_about_me', {})).toContain('Unknown tool');
     });
 });
 

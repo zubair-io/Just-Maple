@@ -452,7 +452,7 @@ export class BotExecutorService {
         if (macData) systemPrompt = `${systemPrompt || ''}\n\n${macDataSystemPrompt(macData)}`;
         // Without tool calling, search once with the request and include the results.
         const withSearchResults = async () =>
-            macData
+            macData?.sources.length
                 ? `${systemPrompt}\n\nSearch results for the user's request:\n${await executeMacDataTool(
                       macData,
                       'search_local_data',
@@ -582,7 +582,11 @@ export class BotExecutorService {
     private async macDataContextFor(ctx: ExecutionContext): Promise<MacDataToolContext | null> {
         if (ctx.macData !== undefined) return ctx.macData;
         const { userId, notebookId, sourceType, sourceId } = ctx.invocation;
-        const macData = await getMacDataToolContext(userId, notebookId).catch(() => null);
+        const macData = await getMacDataToolContext(userId, notebookId, {
+            id: ctx.userBot._id,
+            name: ctx.userBot.displayName || ctx.template.name,
+            ownerId: ctx.userBot.userId,
+        }).catch(() => null);
         if (macData && sourceType === 'message') {
             const message = await findMessageById(sourceId).catch(() => null);
             const page = message ? await findPageByIdForBot(message.pageId) : null;
