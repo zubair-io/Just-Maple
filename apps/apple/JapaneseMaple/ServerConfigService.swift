@@ -21,9 +21,12 @@ class ServerConfigService {
             url: ProcessInfo.processInfo.environment["MAPLE_DEV_SERVER_URL"] ?? "http://localhost:4200"
         )
         #else
+        // Set at build time to reach a dev server on the Mac over Wi-Fi, e.g.
+        // `xcodebuild … MAPLE_DEV_SERVER_URL=http://192.168.0.91:4301`.
+        let configured = Bundle.main.object(forInfoDictionaryKey: "MapleDevServerURL") as? String
         return ServerConfig(
             name: "Development",
-            url: "http://192.168.1.123:4200"
+            url: configured?.isEmpty == false ? configured! : "http://192.168.1.123:4200"
         )
         #endif
         #else
