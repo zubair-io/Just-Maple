@@ -23,6 +23,7 @@ export const PAGE_TYPE_LABELS: Record<string, string> = {
   kanban: 'Kanban Boards',
   recording: 'Recordings',
   json: 'JSON Documents',
+  devicedata: 'Device Data',
 };
 
 /**
@@ -36,6 +37,7 @@ export const PAGE_TYPE_ICONS: Record<string, string> = {
   kanban: 'view_kanban',
   recording: 'mic',
   json: 'data_object',
+  devicedata: 'devices',
 };
 
 /**

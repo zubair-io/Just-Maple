@@ -17,6 +17,7 @@ import { RealtimeService } from '../../services/realtime.service';
 import { UiStateService } from '../../services/ui-state.service';
 import { RealtimeWSService } from '../../services/realtime-ws.service';
 import { LastVisitedService } from '../../services/last-visited.service';
+import { MacDataService } from '../../services/mac-data.service';
 import { SidebarComponent, DialogService } from '../../components';
 
 @Component({
@@ -38,6 +39,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   private readonly realtimeWS = inject(RealtimeWSService);
   private readonly lastVisitedService = inject(LastVisitedService);
   private readonly dialogService = inject(DialogService);
+  private readonly macData = inject(MacDataService);
 
   readonly selectedPageId = signal<string | null>(null);
   readonly selectedNotebookId = signal<string | null>(null);
@@ -80,6 +82,9 @@ export class HomeComponent implements OnInit, OnDestroy {
 
         // Connect to unified WebSocket for real-time updates
         this.realtimeWS.connect();
+
+        // Mac app only: move pages from the old local registry to the cloud, once.
+        void this.macData.migrateLocalPages();
       });
     }
 

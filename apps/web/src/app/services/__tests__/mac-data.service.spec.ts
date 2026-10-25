@@ -1,23 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
-import type { Route, UrlSegment } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { of, throwError } from 'rxjs';
 import type { MacDataPage, MacDataSourceStatus } from '@maple/shared';
 import { MacDataService } from '../mac-data.service';
-import { IMessagePageGuard, MailPageGuard } from '../../guards/mac-data-page.guard';
+import { PageService } from '../page.service';
 
-const page: MacDataPage = {
-  id: 'p1',
-  notebookId: 'n1',
-  source: 'imessage',
-  title: 'iMessage',
-  createdAt: 1,
-};
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const oldPages: MacDataPage[] = [
+  { id: 'p-msgs', notebookId: 'n1', source: 'imessage', title: 'Family texts', createdAt: 1 },
+  { id: 'p-mail', notebookId: 'n2', source: 'mail', title: 'Email', createdAt: 2 },
+];
 
 const statuses: MacDataSourceStatus[] = [
-  { source: 'imessage', state: 'syncing', itemCount: 4 },
+  { source: 'imessage', state: 'ready', itemCount: 4 },
   { source: 'mail', state: 'needsAccess', itemCount: 0, message: 'denied' },
-  { source: 'calendar', state: 'off', itemCount: 0 },
 ];
 
 /** Stands in for the Mac app's `macData` script handler. */
@@ -30,11 +29,20 @@ function installHandler(responses: Record<string, unknown>) {
   return postMessage;
 }
 
-function emit(detail: unknown) {
-  window.dispatchEvent(new CustomEvent('maple:mac-data', { detail }));
-}
-
 describe('MacDataService', () => {
+  const createPage = vi.fn();
+
+  beforeEach(() => {
+    createPage.mockReset();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: PageService, useValue: { createPage } },
+      ],
+    });
+  });
+
   afterEach(() => {
     delete window.webkit;
     TestBed.resetTestingModule();
@@ -43,105 +51,143 @@ describe('MacDataService', () => {
   it('does nothing outside the Mac app', async () => {
     const service = TestBed.inject(MacDataService);
     expect(service.isAvailable()).toBe(false);
-    await service.loadPages();
-    expect(service.pages()).toEqual([]);
-    expect(await service.getPage('p1')).toBeNull();
-    await expect(service.query({ source: 'mail' })).rejects.toThrow('only available');
+    expect(await service.migrateLocalPages()).toBe(0);
+    await service.enableSource('mail'); // no-op, no throw
+    await expect(service.syncNow()).rejects.toThrow('only available');
   });
 
-  describe('in the Mac app', () => {
-    let postMessage: ReturnType<typeof installHandler>;
-    let service: MacDataService;
+  it('reads status and turns sources on and off through the bridge', async () => {
+    const postMessage = installHandler({
+      status: statuses,
+      relayStatus: 'Connected',
+      enableSource: true,
+      disableSource: true,
+    });
+    const service = TestBed.inject(MacDataService);
+    await service.refreshStatus();
+    expect(service.statusBySource().mail?.state).toBe('needsAccess');
+    expect(service.relay()).toBe('Connected');
 
-    beforeEach(async () => {
-      postMessage = installHandler({
-        listPages: [page],
-        status: statuses,
-        createPage: { ...page, id: 'p2', source: 'mail', title: 'Email' },
-        query: { items: [], total: 0 },
-        deletePage: true,
-      });
-      service = TestBed.inject(MacDataService);
-      await service.loadPages();
-      await service.refreshStatus();
+    await service.enableSource('contacts');
+    expect(postMessage).toHaveBeenCalledWith({ action: 'enableSource', source: 'contacts' });
+    // iPhone sources are never sent to the Mac.
+    await service.enableSource('health');
+    expect(postMessage).not.toHaveBeenCalledWith({ action: 'enableSource', source: 'health' });
+
+    await service.disableSource('mail');
+    expect(postMessage).toHaveBeenCalledWith({ action: 'disableSource', source: 'mail' });
+  });
+
+  describe('moving old local pages to the cloud', () => {
+    let http: HttpTestingController;
+
+    beforeEach(() => {
+      http = TestBed.inject(HttpTestingController);
     });
 
-    it('loads pages and status on start', () => {
-      expect(service.isAvailable()).toBe(true);
-      expect(service.pagesForNotebook('n1')).toEqual([page]);
-      expect(service.pagesForNotebook('other')).toEqual([]);
-      expect(service.statusBySource().mail?.state).toBe('needsAccess');
-      // Loading twice reuses the first result.
+    afterEach(() => http.verify());
+
+    /** Answers the "does this cloud page already exist?" checks. */
+    async function answerExistenceChecks(existing: string[] = []) {
+      for (let i = 0; i < 20; i++) {
+        await flush();
+        const open = http.match((r) => r.url.startsWith('/api/pages/'));
+        if (!open.length) continue;
+        for (const request of open) {
+          const id = request.request.url.split('/').pop()!;
+          if (existing.includes(id)) request.flush({ page: { id } });
+          else request.flush({ error: 'Not found' }, { status: 404, statusText: 'Not Found' });
+        }
+      }
+    }
+
+    it('creates each page in the cloud, then deletes the local record', async () => {
+      const postMessage = installHandler({
+        status: statuses,
+        relayStatus: 'Connected',
+        listPages: oldPages,
+        deletePage: true,
+        enableSource: true,
+      });
+      createPage.mockImplementation((data) => of({ ...data, userId: 'temp' }, { ...data }));
+      const service = TestBed.inject(MacDataService);
+
+      const moving = service.migrateLocalPages();
+      await answerExistenceChecks();
+      expect(await moving).toBe(2);
+
+      expect(createPage).toHaveBeenCalledWith({
+        id: 'p-msgs',
+        type: 'devicedata',
+        deviceSource: 'imessage',
+        title: 'Family texts',
+        notebookId: 'n1',
+      });
+      expect(createPage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'p-mail', deviceSource: 'mail', notebookId: 'n2' }),
+      );
+      const actions = postMessage.mock.calls.map(([m]) => m);
+      expect(actions).toContainEqual({ action: 'deletePage', id: 'p-msgs' });
+      expect(actions).toContainEqual({ action: 'deletePage', id: 'p-mail' });
+      expect(actions).toContainEqual({ action: 'enableSource', source: 'imessage' });
+
+      // Once per launch.
+      expect(await service.migrateLocalPages()).toBe(2);
       expect(postMessage.mock.calls.filter(([m]) => m.action === 'listPages')).toHaveLength(1);
     });
 
-    it('adds and removes local pages without a server call', async () => {
-      const created = await service.createPage('n1', 'mail');
-      expect(postMessage).toHaveBeenCalledWith({
-        action: 'createPage',
-        notebookId: 'n1',
-        source: 'mail',
+    it('skips creating a page an interrupted run already created', async () => {
+      const postMessage = installHandler({
+        status: statuses,
+        relayStatus: 'Connected',
+        listPages: [oldPages[0]],
+        deletePage: true,
+        enableSource: true,
       });
-      expect(service.pagesForNotebook('n1').map((p) => p.id)).toEqual(['p1', 'p2']);
-      await service.deletePage(created.id);
-      expect(service.pages().map((p) => p.id)).toEqual(['p1']);
+      const service = TestBed.inject(MacDataService);
+      const moving = service.migrateLocalPages();
+      await answerExistenceChecks(['p-msgs']);
+      expect(await moving).toBe(1);
+      expect(createPage).not.toHaveBeenCalled();
+      expect(postMessage).toHaveBeenCalledWith({ action: 'deletePage', id: 'p-msgs' });
     });
 
-    it('drops undefined fields before posting', async () => {
-      await service.query({ source: 'mail', search: undefined, limit: 10 });
-      expect(postMessage).toHaveBeenLastCalledWith({ action: 'query', source: 'mail', limit: 10 });
-    });
-
-    it('opens a cited item in the matching Mac page of the open notebook', async () => {
-      const router = TestBed.inject(Router);
-      Object.defineProperty(router, 'url', { get: () => '/n1/chat' });
-      const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
-      await service.openItem('imessage:guid-1');
-      expect(navigate).toHaveBeenCalledWith(['/', 'n1', 'mac', 'p1'], {
-        queryParams: { item: 'imessage:guid-1' },
+    it('keeps the local record when the cloud page could not be created', async () => {
+      const postMessage = installHandler({
+        status: statuses,
+        relayStatus: 'Connected',
+        listPages: oldPages,
+        deletePage: true,
+        enableSource: true,
       });
-      // No Mac page for that source: nothing to open.
-      navigate.mockClear();
-      await service.openItem('calendar:x');
-      expect(navigate).not.toHaveBeenCalled();
+      createPage.mockImplementation((data) =>
+        data.id === 'p-msgs' ? throwError(() => new Error('offline')) : of(data),
+      );
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const service = TestBed.inject(MacDataService);
+      const moving = service.migrateLocalPages();
+      await answerExistenceChecks();
+      expect(await moving).toBe(1);
+      const deleted = postMessage.mock.calls
+        .map(([m]) => m as { action: string; id?: string })
+        .filter((m) => m.action === 'deletePage')
+        .map((m) => m.id);
+      expect(deleted).toEqual(['p-mail']);
     });
 
-    it('applies status and change events from the Mac', () => {
-      emit({ type: 'status', statuses: [{ source: 'mail', state: 'ready', itemCount: 9 }] });
-      expect(service.statusBySource().mail?.itemCount).toBe(9);
-
-      emit({ type: 'changed', source: 'mail' });
-      emit({ type: 'changed', source: 'mail' });
-      expect(service.versions().mail).toBe(2);
-      expect(service.versions().imessage).toBeUndefined();
+    it('leaves pages of notebooks stored in local files alone', async () => {
+      const postMessage = installHandler({
+        status: statuses,
+        relayStatus: 'Connected',
+        listPages: [{ ...oldPages[0], notebookId: 'local-notebook-abc' }],
+        deletePage: true,
+      });
+      const service = TestBed.inject(MacDataService);
+      expect(await service.migrateLocalPages()).toBe(0);
+      expect(createPage).not.toHaveBeenCalled();
+      expect(postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'deletePage' }),
+      );
     });
-  });
-});
-
-describe('Mac data page guards', () => {
-  const route = {} as Route;
-  const segments = (...paths: string[]) => paths.map((path) => ({ path }) as UrlSegment);
-
-  afterEach(() => {
-    delete window.webkit;
-    TestBed.resetTestingModule();
-  });
-
-  it('matches only the page source it guards', async () => {
-    installHandler({ listPages: [page], status: statuses });
-    const run = (guard: typeof IMessagePageGuard, s: UrlSegment[]) =>
-      TestBed.runInInjectionContext(() => guard(route, s));
-
-    expect(await run(IMessagePageGuard, segments('mac', 'p1'))).toBe(true);
-    expect(await run(MailPageGuard, segments('mac', 'p1'))).toBe(false);
-    expect(await run(IMessagePageGuard, segments('mac', 'missing'))).toBe(false);
-    expect(await run(IMessagePageGuard, segments('p1', 'x'))).toBe(false);
-  });
-
-  it('never matches outside the Mac app', async () => {
-    const result = await TestBed.runInInjectionContext(() =>
-      IMessagePageGuard(route, segments('mac', 'p1')),
-    );
-    expect(result).toBe(false);
   });
 });

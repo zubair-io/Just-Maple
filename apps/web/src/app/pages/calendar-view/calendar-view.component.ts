@@ -1,16 +1,16 @@
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import type { MacDataItem } from '@maple/shared';
-import { MacDataPanelComponent } from '../../components/organisms/mac-data-panel/mac-data-panel.component';
-import { injectMacDataList } from '../../components/organisms/mac-data-panel/mac-data-list';
+import { DeviceDataPanelComponent } from '../../components/organisms/device-data-panel/device-data-panel.component';
+import { injectDeviceDataList } from '../../components/organisms/device-data-panel/device-data-list';
 
 type CalendarRange = 'upcoming' | 'past';
 
-/** Mac-only table of events from every calendar account on this Mac. */
+/** Table of the owner's events from every calendar account, uploaded by their Mac. */
 @Component({
   selector: 'app-calendar-view',
   standalone: true,
-  imports: [DatePipe, MacDataPanelComponent],
+  imports: [DatePipe, DeviceDataPanelComponent],
   templateUrl: './calendar-view.component.html',
   styleUrl: './calendar-view.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -18,7 +18,7 @@ type CalendarRange = 'upcoming' | 'past';
 export class CalendarViewComponent {
   readonly range = signal<CalendarRange>('upcoming');
 
-  readonly list = injectMacDataList('calendar', {
+  readonly list = injectDeviceDataList('calendar', {
     // Upcoming: soonest first from the start of today. Past: most recent first.
     order: () => (this.range() === 'upcoming' ? 'asc' : 'desc'),
     range: () => {

@@ -1,17 +1,17 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { MacDataPanelComponent } from '../../components/organisms/mac-data-panel/mac-data-panel.component';
-import { injectMacDataList } from '../../components/organisms/mac-data-panel/mac-data-list';
+import { DeviceDataPanelComponent } from '../../components/organisms/device-data-panel/device-data-panel.component';
+import { injectDeviceDataList } from '../../components/organisms/device-data-panel/device-data-list';
 
-/** Mac-only table of iMessage history. */
+/** Table of the owner's iMessage history, uploaded by their Mac. */
 @Component({
   selector: 'app-imessage-view',
   standalone: true,
-  imports: [DatePipe, MacDataPanelComponent],
+  imports: [DatePipe, DeviceDataPanelComponent],
   templateUrl: './imessage-view.component.html',
   styleUrl: './imessage-view.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class IMessageViewComponent {
-  readonly list = injectMacDataList('imessage');
+  readonly list = injectDeviceDataList('imessage');
 }

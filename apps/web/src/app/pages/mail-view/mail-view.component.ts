@@ -1,19 +1,19 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { MacDataPanelComponent } from '../../components/organisms/mac-data-panel/mac-data-panel.component';
-import { injectMacDataList } from '../../components/organisms/mac-data-panel/mac-data-list';
+import { DeviceDataPanelComponent } from '../../components/organisms/device-data-panel/device-data-panel.component';
+import { injectDeviceDataList } from '../../components/organisms/device-data-panel/device-data-list';
 
-/** Mac-only table of email from every account in the Mail app. */
+/** Table of the owner's email from every account in Mail, uploaded by their Mac. */
 @Component({
   selector: 'app-mail-view',
   standalone: true,
-  imports: [DatePipe, MacDataPanelComponent],
+  imports: [DatePipe, DeviceDataPanelComponent],
   templateUrl: './mail-view.component.html',
   styleUrl: './mail-view.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MailViewComponent {
-  readonly list = injectMacDataList('mail');
+  readonly list = injectDeviceDataList('mail');
 
   /** First lines of the body, for the preview under the subject. */
   preview(body: string): string {
