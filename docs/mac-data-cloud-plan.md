@@ -6,7 +6,8 @@
     - **Mac:** iMessage, Mail, Calendar and Contacts.
     - **iPhone:** Location (places and visits) and Health (summaries).
 
-   Devices build the search vectors themselves, for free, and upload them with each item. Bots search the server copy, so they work from any device **while that device is asleep**.
+    Devices build the search vectors themselves, for free, and upload them with each item. Bots search the server copy, so they work from any device **while that device is asleep**.
+
 2. **What's kept: the last 30 days of everything.** That covers messages, mail and past events. Contacts and future calendar events are kept for as long as they exist. Older items are removed as they age out, and anything deleted on the Mac is deleted in the cloud too.
 3. **The pages work everywhere.** Messages, Mail, Calendar and Contacts pages become normal notebook pages, so you can open them on your phone. In a shared notebook only you see your data; other members see that the page exists, nothing more.
 4. **Custom AI bots run only on the server, over http or https.** The Mac hand-off for local servers is removed. The server can call any internet address it can reach. Your own machine and home-network addresses are refused, so Ollama needs a public or tunnel URL (for example Tailscale Funnel or a Cloudflare Tunnel).
@@ -41,18 +42,18 @@ The Mac's details are below. The iPhone uploads the same way, with its own stagi
 
 - The Mac keeps its local database as a **staging area and change log**. It already records every add, change and removal with an increasing number.
 - After each read pass, the Mac sends the changes since its last confirmed number to `POST /api/mac-data/items`:
-  - `{ upserts: [item…], removals: [id…], cursor }`, in batches of about 200
-  - the server writes them, then confirms the cursor
-  - an interrupted upload resumes from the last confirmed number
+    - `{ upserts: [item…], removals: [id…], cursor }`, in batches of about 200
+    - the server writes them, then confirms the cursor
+    - an interrupted upload resumes from the last confirmed number
 - **Vectors follow the text.** An item is uploaded as soon as it's read, so keyword search works right away. Its vectors, about 2 KB each as compact binary, follow once the Mac has embedded it.
 - On first run, the full 30-day window is uploaded, along with all contacts and upcoming events. The upload shows progress on the Mac page.
 
 ### Storage (server)
 
 - New collection **`mac_items`**, one document per item:
-  - `userId`, `id` (`mail:…`, `imessage:…`), `source`, `revision`
-  - `occurredAt`, `endAt`, `title`, `sender`, `participants`, `body`, plus the source-specific fields
-  - `vectors` (base64 float32), `embeddedRevision`, `updatedAt`
+    - `userId`, `id` (`mail:…`, `imessage:…`), `source`, `revision`
+    - `occurredAt`, `endAt`, `title`, `sender`, `participants`, `body`, plus the source-specific fields
+    - `vectors` (base64 float32), `embeddedRevision`, `updatedAt`
 - Lookups are by `userId`, `source` and time, with sorting done in code, following the Cosmos DB rules in CLAUDE.md.
 - **Retention job** (hourly): removes items older than 30 days, except contacts and events that haven't ended. The Mac applies the same rule locally, so it doesn't re-upload them.
 - **"Remove my Mac data from the cloud"** button: deletes everything, and the Mac stops uploading until you turn it back on.
@@ -63,10 +64,10 @@ The Mac's details are below. The iPhone uploads the same way, with its own stagi
 - Search moves from the Mac to the API. It's the same ranking as today, keyword matches plus meaning, done in code.
 - Loading a user's items for each search would be slow and costly on Cosmos DB. So each API instance keeps a **per-user in-memory index** that refreshes when new uploads arrive, using Redis to tell the other instances. A typical month is about 3,000 items and 6 MB of vectors per user.
 - **The query's own vector.** Item vectors come from Apple's on-device model, so the query has to be embedded the same way. Two options, decided during the build:
-  1. If any of your collectors is online, Mac or iPhone, it embeds the query (quick). Both have the same Apple model.
-  2. Otherwise, search falls back to keyword-only ranking. That still works well for names, places and dates.
+    1. If any of your collectors is online, Mac or iPhone, it embeds the query (quick). Both have the same Apple model.
+    2. Otherwise, search falls back to keyword-only ranking. That still works well for names, places and dates.
 
-  A hosted embedding model for both sides would remove this gap, at a small cost per item. It's noted as a later option.
+    A hosted embedding model for both sides would remove this gap, at a small cost per item. It's noted as a later option.
 
 ### Bots and proactive
 
@@ -86,9 +87,9 @@ The Mac's details are below. The iPhone uploads the same way, with its own stagi
 - `http://` is allowed for internet hosts. The dialog warns that the key travels unencrypted, and suggests https or a tunnel.
 - Localhost, private, link-local and `.local` addresses are refused, with a hint: "The server can't reach your own machine. Expose Ollama with a tunnel and use that URL."
 - Removed:
-  - the Mac `http` relay request and `macHttpSend`
-  - `MacDataLocalHTTP` in the Mac app
-  - the local-server branch in the executor and the model list
+    - the Mac `http` relay request and `macHttpSend`
+    - `MacDataLocalHTTP` in the Mac app
+    - the local-server branch in the executor and the model list
 
 ## What goes away
 
