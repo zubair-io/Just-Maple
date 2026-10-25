@@ -95,6 +95,11 @@ async function createIndexes(database: Db): Promise<void> {
     await createUniqueIndex(database, 'memos', { id: 1 }, 'id');
     await database.collection('memos').createIndex({ pageId: 1 }); // Non-unique: parent page lookup
 
+    // Device data uploaded by the user's Mac and iPhone
+    await database.collection('device_items').createIndex({ userId: 1, source: 1 });
+    await database.collection('device_items').createIndex({ occurredAt: 1 }); // Retention
+    await database.collection('collectors').createIndex({ userId: 1 });
+
     // Messages collection
     await database.collection('messages').createIndex({ notebookId: 1, _id: -1 }); // For paginated queries
     await database.collection('messages').createIndex({ notebookId: 1, createdAt: -1 }); // For unread counts

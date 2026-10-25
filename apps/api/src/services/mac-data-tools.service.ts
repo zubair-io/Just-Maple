@@ -1,25 +1,29 @@
-import type { MacDataItem, MacDataSearchHit, MacDataSource } from '@maple/shared';
-import { findMacDataHost } from '../repositories/mac-data-host.repo';
-import { macDataRelay, MacDataUnavailableError } from './mac-data-relay.service';
+import type { MacDataSource } from '@maple/shared';
+import { collectorTimeZone } from '../repositories/collector.repo';
+import { findDeviceItem } from '../repositories/device-item.repo';
+import { findDeviceDataPages } from '../repositories/page.repo';
+import { macDataRelay } from './mac-data-relay.service';
+import { searchDeviceData } from './device-search.service';
+import { formatInZone, toEpochSeconds } from '../utils/time-zone';
+
+export { formatInZone, toEpochSeconds };
 
 /**
- * Local-data tools for bots.
+ * Personal-data tools for bots.
  *
- * When a bot runs in a notebook that has Mac pages (iMessage, Email, Calendar) on the
- * invoking user's Mac, it gets tools that search that Mac through the relay. Results
- * are short snippets; the full database never leaves the Mac.
+ * When a bot runs in a notebook that has device data pages (Messages, Mail, Calendar,
+ * Contacts, Places, Health) belonging to the user it answers, it gets tools that search
+ * that user's uploaded data. Results are short snippets with ids.
  */
 
 export interface MacDataToolContext {
-    /** Whose Mac holds the data: the user who invoked the bot, or the proactive page's owner. */
+    /** Whose data: the user who invoked the bot, or the proactive page's owner. */
     userId: string;
     notebookId: string;
     sources: MacDataSource[];
-    online: boolean;
     timeZone: string;
-    /** The Mac's local time, or the server's time rendered in the Mac's time zone. */
+    /** The current time in the user's time zone. */
     now: string;
-    lastSeenAt?: string;
     /** Set when the bot may append to a proactive page's instructions. */
     rememberInstruction?: (instruction: string) => Promise<void>;
 }
@@ -40,20 +44,33 @@ export async function getMacDataToolContext(
     userId: string,
     notebookId: string,
 ): Promise<MacDataToolContext | null> {
-    const host = await findMacDataHost(userId).catch(() => null);
-    const notebook = host?.notebooks.find((n) => n.notebookId === notebookId);
-    if (!host || !notebook || notebook.sources.length === 0) return null;
+    const pages = await findDeviceDataPages(userId, notebookId).catch(() => []);
+    const sources = [
+        ...new Set(pages.map((page) => page.deviceSource).filter(Boolean)),
+    ] as MacDataSource[];
+    if (sources.length === 0) return null;
+    const timeZone = (await collectorTimeZone(userId).catch(() => undefined)) ?? 'UTC';
+    return { userId, notebookId, sources, timeZone, now: formatInZone(new Date(), timeZone) };
+}
 
-    // The Mac reports its time zone with every heartbeat, so no round trip is needed here.
-    return {
-        userId,
-        notebookId,
-        sources: notebook.sources,
-        online: await macDataRelay.isOnline(userId),
-        timeZone: host.timeZone,
-        now: formatInZone(new Date(), host.timeZone),
-        lastSeenAt: host.lastSeenAt,
-    };
+/**
+ * The query's vector, from one of the user's devices: items were embedded with Apple's
+ * on-device model, so the query must be too. Null when no device answers quickly; search
+ * then ranks by keywords alone.
+ */
+async function embedQuery(userId: string, query: string): Promise<number[] | null> {
+    if (!query.trim() || !(await macDataRelay.isOnline(userId))) return null;
+    try {
+        const vector = await macDataRelay.request<number[] | null>(
+            userId,
+            'embed',
+            { text: query.slice(0, 500) },
+            3_000,
+        );
+        return Array.isArray(vector) && vector.every((n) => typeof n === 'number') ? vector : null;
+    } catch {
+        return null;
+    }
 }
 
 export function macDataToolDefinitions(ctx: MacDataToolContext): ToolDefinition[] {
@@ -62,7 +79,7 @@ export function macDataToolDefinitions(ctx: MacDataToolContext): ToolDefinition[
         {
             name: 'search_local_data',
             description:
-                `Search the user's ${describeSources(sources)} stored on their Mac. ` +
+                `Search the user's ${describeSources(sources)}, collected by their devices. ` +
                 'Combines meaning and keyword matching. Omit query to list everything in a date range, ' +
                 'sorted by time (useful for "what is happening this week"). Returns short snippets with ids.',
             parameters: {
@@ -121,13 +138,9 @@ export function macDataToolDefinitions(ctx: MacDataToolContext): ToolDefinition[
 
 /** System prompt section that explains the user's local data and how to cite it. */
 export function macDataSystemPrompt(ctx: MacDataToolContext): string {
-    const status = ctx.online
-        ? 'The Mac is online.'
-        : `The Mac is offline or asleep${ctx.lastSeenAt ? ` (last seen ${ctx.lastSeenAt})` : ''}. ` +
-          "Tools will fail; if the question needs the user's data, say you can't reach their Mac right now.";
     return [
-        `## The user's data on their Mac`,
-        `You can read the user's ${describeSources(ctx.sources)} from their Mac with the local-data tools. ${status}`,
+        `## The user's personal data`,
+        `You can read the user's ${describeSources(ctx.sources)} with the local-data tools. Their devices collect it; it covers about the last 30 days, plus all contacts and upcoming events.`,
         `The user's current local time is ${ctx.now} (${ctx.timeZone}). Interpret "today", "tomorrow" and weekdays in that time zone, and give times in it.`,
         "Search before answering questions about the user's plans, messages, deliveries, schedules or accounts. Prefer specific facts (times, places, deadlines, amounts) and say when something is not confirmed.",
         'Never invent details. If the data does not answer the question, say what you found and what is missing.',
@@ -150,22 +163,26 @@ export async function executeMacDataTool(
                           ctx.sources.includes(s as MacDataSource),
                       )
                     : undefined;
-                const hits = await macDataRelay.request<MacDataSearchHit[]>(ctx.userId, 'search', {
-                    notebookId: ctx.notebookId,
-                    query: typeof input.query === 'string' ? input.query.slice(0, 500) : undefined,
-                    sources,
-                    from: toEpochSeconds(input.from, ctx.timeZone, 'start'),
-                    to: toEpochSeconds(input.to, ctx.timeZone, 'end'),
-                    limit: typeof input.limit === 'number' ? input.limit : undefined,
-                });
+                const query = typeof input.query === 'string' ? input.query.slice(0, 500) : '';
+                const hits = await searchDeviceData(
+                    ctx.userId,
+                    {
+                        sources: sources?.length ? sources : ctx.sources,
+                        query,
+                        from: toEpochSeconds(input.from, ctx.timeZone, 'start'),
+                        to: toEpochSeconds(input.to, ctx.timeZone, 'end'),
+                        limit: typeof input.limit === 'number' ? input.limit : undefined,
+                    },
+                    ctx.timeZone,
+                    await embedQuery(ctx.userId, query),
+                );
                 return clip(JSON.stringify({ results: hits }));
             }
             case 'get_local_item': {
-                const item = await macDataRelay.request<MacDataItem>(ctx.userId, 'get', {
-                    notebookId: ctx.notebookId,
-                    id: String(input.id ?? ''),
-                });
-                return clip(JSON.stringify(item));
+                const item = await findDeviceItem(ctx.userId, String(input.id ?? ''));
+                // Only sources this notebook has pages for.
+                if (!item || !ctx.sources.includes(item.source)) return 'No item with that id.';
+                return clip(JSON.stringify({ ...item, body: item.body.slice(0, 6_000) }));
             }
             case 'remember_instruction': {
                 const instruction = String(input.instruction ?? '')
@@ -179,77 +196,20 @@ export async function executeMacDataTool(
                 return `Unknown tool: ${name}`;
         }
     } catch (error) {
-        if (error instanceof MacDataUnavailableError) return `Unavailable: ${error.message}`;
         return `Error: ${error instanceof Error ? error.message : 'the tool failed'}`;
     }
 }
 
-/**
- * Accepts ISO dates or date-times. A bare date is read in the Mac's time zone, as the
- * start or end of that day.
- */
-export function toEpochSeconds(
-    value: unknown,
-    timeZone: string,
-    edge: 'start' | 'end',
-): number | undefined {
-    if (typeof value !== 'string' || !value.trim()) return undefined;
-    const text = value.trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-        const [y, m, d] = text.split('-').map(Number) as [number, number, number];
-        const local =
-            edge === 'start' ? Date.UTC(y, m - 1, d, 0, 0, 0) : Date.UTC(y, m - 1, d, 23, 59, 59);
-        return Math.floor((local - zoneOffsetMs(new Date(local), timeZone)) / 1000);
-    }
-    const parsed = Date.parse(text);
-    return Number.isNaN(parsed) ? undefined : Math.floor(parsed / 1000);
-}
-
-/** Offset of `timeZone` from UTC at `date`, in milliseconds (e.g. -4h for New York in October). */
-function zoneOffsetMs(date: Date, timeZone: string): number {
-    try {
-        const parts = new Intl.DateTimeFormat('en-US', {
-            timeZone,
-            hourCycle: 'h23',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-        }).formatToParts(date);
-        const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-        const asUTC = Date.UTC(
-            get('year'),
-            get('month') - 1,
-            get('day'),
-            get('hour'),
-            get('minute'),
-            get('second'),
-        );
-        return asUTC - Math.floor(date.getTime() / 1000) * 1000;
-    } catch {
-        return 0;
-    }
-}
-
-export function formatInZone(date: Date, timeZone: string): string {
-    const offset = zoneOffsetMs(date, timeZone);
-    const local = new Date(date.getTime() + offset).toISOString().slice(0, 19);
-    const minutes = Math.round(offset / 60000);
-    const sign = minutes >= 0 ? '+' : '-';
-    const abs = Math.abs(minutes);
-    return `${local}${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
-}
-
 function describeSources(sources: MacDataSource[]): string {
-    const names = sources.map((s) =>
-        s === 'imessage'
-            ? 'iMessages'
-            : s === 'mail'
-              ? 'email (from the Mail app)'
-              : 'calendar events',
-    );
+    const label: Record<MacDataSource, string> = {
+        imessage: 'iMessages',
+        mail: 'email (from the Mail app)',
+        calendar: 'calendar events',
+        contacts: 'contacts',
+        location: 'places visited (from their iPhone)',
+        health: 'daily health and workout summaries',
+    };
+    const names = sources.map((s) => label[s]);
     return names.length <= 1
         ? (names[0] ?? 'data')
         : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;

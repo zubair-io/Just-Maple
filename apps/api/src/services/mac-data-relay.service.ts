@@ -2,14 +2,14 @@ import { randomUUID } from 'crypto';
 import type { MacDataHostInfo } from '@maple/shared';
 import { redisPubSub } from './redis.service';
 import { upsertMacDataHost } from '../repositories/mac-data-host.repo';
-import { findProactivePages } from '../repositories/page.repo';
 
 /**
  * Mac Data Relay
  *
- * A user's Mac keeps iMessage, Mail and Calendar data in a local database. The Mac app
- * opens its own realtime socket and registers as that user's data host. Bots running
- * on the server ask it questions through this relay:
+ * The user's devices upload their personal data to the cloud (see device-data.service),
+ * so bots don't need the Mac to answer. The Mac app still keeps a realtime socket so the
+ * server knows it's online and can ask it to embed a search query with the same
+ * on-device model its items were embedded with:
  *
  * 1. `request()` sends `{ type: 'request', requestId, op, params }` to the Mac.
  * 2. The Mac answers with a `result` message carrying the same requestId.
@@ -82,7 +82,6 @@ export class MacDataRelayService {
             await redisPubSub.subscribeTo(requestChannel(userId), handler).catch(() => {});
         }
         await this.heartbeat(userId, info);
-        await this.pushProactiveNotebooks(userId);
     }
 
     async heartbeat(userId: string, info?: MacDataHostInfo): Promise<void> {
@@ -109,18 +108,11 @@ export class MacDataRelayService {
         return (await redisPubSub.getKey(presenceKey(userId)).catch(() => null)) !== null;
     }
 
-    /** Tells the Mac which notebooks have a proactive bot, so it only sends batches for those. */
-    async pushProactiveNotebooks(userId: string): Promise<void> {
-        const pages = await findProactivePages(userId).catch(() => []);
-        const notebookIds = [...new Set(pages.map((p) => p.notebookId).filter(Boolean))];
-        this.sendToHost(userId, { type: 'proactive', notebookIds });
-    }
-
     // MARK: - Requests
 
     async request<T>(
         userId: string,
-        op: 'info' | 'search' | 'get' | 'http',
+        op: 'embed',
         params: Record<string, unknown>,
         timeoutMs = DEFAULT_TIMEOUT_MS,
     ): Promise<T> {
@@ -217,38 +209,3 @@ export class MacDataRelayService {
 }
 
 export const macDataRelay = new MacDataRelayService();
-
-/** Local AI servers can take a while to load a model and answer. */
-const MAC_HTTP_TIMEOUT_MS = 170_000;
-
-/**
- * Sends an HTTP request from the user's Mac, for AI servers on their own machine or
- * network (Ollama, LM Studio) that the API can't reach. The Mac only allows model-list
- * and chat requests to local addresses.
- */
-export function macHttpSend(
-    userId: string,
-    timeoutMs = MAC_HTTP_TIMEOUT_MS,
-): (request: {
-    method: 'GET' | 'POST';
-    url: string;
-    headers: Record<string, string>;
-    body?: string;
-}) => Promise<{ status: number; body: string }> {
-    return async (request) => {
-        try {
-            return await macDataRelay.request<{ status: number; body: string }>(
-                userId,
-                'http',
-                request,
-                timeoutMs,
-            );
-        } catch (error) {
-            if (error instanceof MacDataUnavailableError)
-                throw new MacDataUnavailableError(
-                    "This AI server runs on its owner's Mac, which is offline or asleep. Open the Maple app on that Mac and try again.",
-                );
-            throw error;
-        }
-    };
-}

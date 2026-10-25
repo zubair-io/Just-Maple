@@ -2,7 +2,6 @@ import type { Page, ProactiveBotSettings, UpdateProactiveBotInput } from '@maple
 import { findPageByIdForBot, setPageProactive } from '../repositories/page.repo';
 import { findUserBotById } from '../repositories/user-bot.repo';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
-import { macDataRelay } from './mac-data-relay.service';
 
 export const MAX_PROACTIVE_INSTRUCTIONS = 8000;
 
@@ -46,7 +45,6 @@ export async function saveProactiveSettings(
         );
     }
 
-    const previousOwner = page.proactive?.ownerUserId;
     const settings: ProactiveBotSettings = {
         userBotId: bot._id,
         instructions: input.instructions.slice(0, MAX_PROACTIVE_INSTRUCTIONS),
@@ -56,7 +54,6 @@ export async function saveProactiveSettings(
     };
     const updated = await setPageProactive(page.id, settings);
     if (!updated) throw new ProactiveSettingsError('Page not found.', 404);
-    await notifyOwners(userId, previousOwner);
     return updated;
 }
 
@@ -68,7 +65,6 @@ export async function clearProactiveSettings(
     assertCanChange(page, userId, options.isNotebookOwner);
     const updated = await setPageProactive(page.id, null);
     if (!updated) throw new ProactiveSettingsError('Page not found.', 404);
-    await notifyOwners(page.proactive?.ownerUserId);
     return updated;
 }
 
@@ -112,12 +108,5 @@ function assertCanChange(page: Page, userId: string, isNotebookOwner = false): v
             'Another member set up this chat’s proactive bot. Ask them or the notebook owner to change it.',
             403,
         );
-    }
-}
-
-/** Tell affected Macs which notebooks now have proactive bots. */
-async function notifyOwners(...userIds: Array<string | undefined>): Promise<void> {
-    for (const id of new Set(userIds.filter((u): u is string => !!u))) {
-        await macDataRelay.pushProactiveNotebooks(id).catch(() => {});
     }
 }
