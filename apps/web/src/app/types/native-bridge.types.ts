@@ -325,8 +325,15 @@ declare global {
         nativeBridge?: {
           postMessage: (message: string) => void;
         };
-        /** macOS only: iMessage, Mail and Calendar data kept on this Mac. Replies with a Promise. */
+        /**
+         * macOS only: the Mac's collector for iMessage, Mail, Calendar and Contacts (status,
+         * access, which sources it uploads, and the old local pages). Replies with a Promise.
+         */
         macData?: {
+          postMessage: (message: { action: string; [key: string]: unknown }) => Promise<unknown>;
+        };
+        /** iPhone only: the collector for Location and Health. Replies with a Promise. */
+        deviceCollectors?: {
           postMessage: (message: { action: string; [key: string]: unknown }) => Promise<unknown>;
         };
       };

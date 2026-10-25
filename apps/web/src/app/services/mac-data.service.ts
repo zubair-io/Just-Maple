@@ -1,62 +1,60 @@
 import { Injectable, NgZone, computed, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
-import type {
-  MacDataItem,
-  MacDataPage,
-  MacDataQuery,
-  MacDataQueryResult,
-  MacDataSource,
-  MacDataSourceStatus,
-} from '@maple/shared';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { firstValueFrom, lastValueFrom } from 'rxjs';
+import type { MacDataPage, MacDataSource, MacDataSourceStatus } from '@maple/shared';
+import { PageService } from './page.service';
+import { isLocalNotebook } from '../providers/data-provider.interface';
+import { deviceSourceInfo, isMacSource } from '../utils/device-sources';
+
+/**
+ * One source's state on this Mac. Besides reading, the Mac now reports its uploads;
+ * those fields are optional because older builds don't send them.
+ */
+export interface MacSourceStatus extends MacDataSourceStatus {
+  /** Whether this Mac collects and uploads the source. */
+  enabled?: boolean;
+  /** Last confirmed upload (seconds since 1970, or ISO). */
+  lastUploadAt?: number | string;
+  /** Items read but not uploaded yet. */
+  pendingUpload?: number;
+}
 
 interface MacDataEventDetail {
   type: 'changed' | 'status';
   source?: MacDataSource;
-  statuses?: MacDataSourceStatus[];
+  statuses?: MacSourceStatus[];
   relay?: string;
 }
 
-export const MAC_DATA_SOURCES: ReadonlyArray<{
-  source: MacDataSource;
-  label: string;
-  icon: string;
-}> = [
-  { source: 'imessage', label: 'iMessage', icon: 'sms' },
-  { source: 'mail', label: 'Email', icon: 'mail' },
-  { source: 'calendar', label: 'Calendar', icon: 'calendar_month' },
-];
-
 /**
- * iMessage, Mail and Calendar data that lives only on this Mac.
- *
- * The Mac app reads the sources into its own database; this service talks to it
- * through the `macData` script message handler. Pages created here are local-only:
- * they never create a cloud record and don't exist on other devices.
+ * The Mac app's side of device data: what this Mac collects, its access prompts, and the
+ * one-time move of the old local pages to the cloud. Page data itself comes from the API
+ * (see DeviceDataService); this service only talks to the `macData` script handler.
  */
 @Injectable({ providedIn: 'root' })
 export class MacDataService {
   private readonly zone = inject(NgZone);
-  private readonly router = inject(Router);
+  private readonly http = inject(HttpClient);
+  private readonly pageService = inject(PageService);
 
   /** True only inside the native macOS app. */
   readonly isAvailable = signal(!!window.webkit?.messageHandlers?.macData);
 
-  readonly pages = signal<MacDataPage[]>([]);
-  readonly statuses = signal<MacDataSourceStatus[]>([]);
-  /** Whether bots on other devices can reach this Mac, e.g. "Connected". */
+  readonly statuses = signal<MacSourceStatus[]>([]);
+  /** Whether this Mac is connected to the server, e.g. "Connected". */
   readonly relay = signal<string | null>(null);
 
-  /** Bumped per source whenever the Mac imports, changes or removes items. */
+  /** Bumped per source whenever the Mac reads or uploads new items. */
   private readonly _versions = signal<Partial<Record<MacDataSource, number>>>({});
   readonly versions = this._versions.asReadonly();
 
   readonly statusBySource = computed(() => {
-    const map: Partial<Record<MacDataSource, MacDataSourceStatus>> = {};
+    const map: Partial<Record<MacDataSource, MacSourceStatus>> = {};
     for (const status of this.statuses()) map[status.source] = status;
     return map;
   });
 
-  private pagesLoaded: Promise<void> | null = null;
+  private migration: Promise<number> | null = null;
 
   constructor() {
     if (!this.isAvailable()) return;
@@ -64,87 +62,93 @@ export class MacDataService {
       const detail = (event as CustomEvent<MacDataEventDetail>).detail;
       this.zone.run(() => this.handleEvent(detail));
     });
-    void this.loadPages();
-    void this.refreshStatus();
+    void this.refreshStatus().catch(() => undefined);
   }
 
-  // MARK: - Pages
+  // MARK: - Status and access
 
-  /** Loads the page registry once; later calls reuse the same result. */
-  loadPages(): Promise<void> {
-    if (!this.isAvailable()) return Promise.resolve();
-    this.pagesLoaded ??= this.call<MacDataPage[]>('listPages').then(
-      (pages) => this.pages.set([...pages]),
-      (error: unknown) => {
-        this.pagesLoaded = null; // allow a retry
-        throw error;
-      },
-    );
-    return this.pagesLoaded;
-  }
-
-  pagesForNotebook(notebookId: string): MacDataPage[] {
-    return this.pages().filter((page) => page.notebookId === notebookId);
-  }
-
-  async getPage(id: string): Promise<MacDataPage | null> {
-    if (!this.isAvailable()) return null;
-    await this.loadPages();
-    return this.pages().find((page) => page.id === id) ?? null;
-  }
-
-  async createPage(notebookId: string, source: MacDataSource): Promise<MacDataPage> {
-    const page = await this.call<MacDataPage>('createPage', { notebookId, source });
-    this.pages.update((pages) => [...pages.filter((p) => p.id !== page.id), page]);
-    void this.refreshStatus();
-    return page;
-  }
-
-  async renamePage(id: string, title: string): Promise<void> {
-    await this.call('renamePage', { id, title });
-    this.pages.update((pages) => pages.map((page) => (page.id === id ? { ...page, title } : page)));
-  }
-
-  async deletePage(id: string): Promise<void> {
-    await this.call('deletePage', { id });
-    this.pages.update((pages) => pages.filter((page) => page.id !== id));
-  }
-
-  // MARK: - Data
-
-  query(query: MacDataQuery): Promise<MacDataQueryResult> {
-    return this.call<MacDataQueryResult>('query', { ...query });
-  }
-
-  async getItem(id: string): Promise<MacDataItem | null> {
-    return (await this.call<MacDataItem | null>('getItem', { id })) ?? null;
-  }
-
-  /**
-   * Opens a cited item (from a bot's Source block) in the matching Mac page, preferring
-   * the notebook currently open.
-   */
-  async openItem(itemId: string): Promise<void> {
+  async refreshStatus(): Promise<void> {
     if (!this.isAvailable()) return;
-    const source = itemId.split(':')[0] as MacDataSource;
-    await this.loadPages();
-    const notebookId = this.router.url.split(/[/?#]/)[1];
-    const candidates = this.pages().filter((page) => page.source === source);
-    const page = candidates.find((p) => p.notebookId === notebookId) ?? candidates[0];
-    if (!page) return;
-    await this.router.navigate(['/', page.notebookId, 'mac', page.id], {
-      queryParams: { item: itemId },
-    });
+    this.statuses.set(await this.call<MacSourceStatus[]>('status'));
+    this.relay.set(await this.call<string>('relayStatus').catch(() => null));
   }
 
   async requestAccess(source: MacDataSource): Promise<void> {
     await this.call('requestAccess', { source });
   }
 
-  async refreshStatus(): Promise<void> {
+  async syncNow(): Promise<void> {
+    await this.call('syncNow');
+  }
+
+  /** Starts collecting and uploading a source on this Mac. No-op outside the Mac app. */
+  async enableSource(source: MacDataSource): Promise<void> {
+    if (!this.isAvailable() || !isMacSource(source)) return;
+    await this.call('enableSource', { source });
+    void this.refreshStatus().catch(() => undefined);
+  }
+
+  async disableSource(source: MacDataSource): Promise<void> {
     if (!this.isAvailable()) return;
-    this.statuses.set(await this.call<MacDataSourceStatus[]>('status'));
-    this.relay.set(await this.call<string>('relayStatus').catch(() => null));
+    await this.call('disableSource', { source });
+    void this.refreshStatus().catch(() => undefined);
+  }
+
+  // MARK: - Migration
+
+  /**
+   * Moves pages from the Mac's old local registry to the cloud, once per launch.
+   * Each local page becomes a cloud page with the same id, title, notebook and source;
+   * the local record is removed only after the cloud page exists, so an interrupted
+   * run picks up where it left off. Resolves to the number of pages moved.
+   */
+  migrateLocalPages(): Promise<number> {
+    if (!this.isAvailable()) return Promise.resolve(0);
+    this.migration ??= this.runMigration().catch((error: unknown) => {
+      console.error('[MacData] Moving local pages to the cloud failed:', error);
+      this.migration = null; // try again on the next call
+      return 0;
+    });
+    return this.migration;
+  }
+
+  private async runMigration(): Promise<number> {
+    const pages = await this.call<MacDataPage[]>('listPages');
+    let moved = 0;
+    for (const page of pages ?? []) {
+      // Pages in a notebook kept in local files have no cloud to move to.
+      if (!page.notebookId || isLocalNotebook(page.notebookId)) continue;
+      try {
+        if (!(await this.cloudPageExists(page.id))) {
+          await lastValueFrom(
+            this.pageService.createPage({
+              id: page.id,
+              type: 'devicedata',
+              deviceSource: page.source,
+              title: page.title || deviceSourceInfo(page.source).label,
+              notebookId: page.notebookId,
+            }),
+          );
+        }
+        await this.call('deletePage', { id: page.id });
+        await this.enableSource(page.source).catch(() => undefined);
+        moved++;
+      } catch (error) {
+        // Leave this one for the next launch; keep moving the rest.
+        console.error(`[MacData] Could not move page ${page.id}:`, error);
+      }
+    }
+    return moved;
+  }
+
+  private async cloudPageExists(id: string): Promise<boolean> {
+    try {
+      await firstValueFrom(this.http.get(`/api/pages/${id}`));
+      return true;
+    } catch (error) {
+      if (error instanceof HttpErrorResponse && error.status === 404) return false;
+      throw error;
+    }
   }
 
   // MARK: - Private
@@ -161,7 +165,7 @@ export class MacDataService {
 
   private async call<T>(action: string, params: Record<string, unknown> = {}): Promise<T> {
     const handler = window.webkit?.messageHandlers?.macData;
-    if (!handler) throw new Error('Mac data is only available in the Just Maple Mac app.');
+    if (!handler) throw new Error('This is only available in the Just Maple Mac app.');
     // Drop undefined values: WebKit can't bridge them.
     const message = Object.fromEntries(
       Object.entries({ action, ...params }).filter(([, value]) => value !== undefined),

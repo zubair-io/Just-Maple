@@ -1,0 +1,71 @@
+<app-device-data-panel [list]="list" [searchable]="false">
+  @if (days().length) {
+    <h2
+      class="m-0 mt-5 font-sans text-xs! font-semibold uppercase tracking-wider text-[var(--color-text-muted)]"
+    >
+      Days
+    </h2>
+    <table class="device-data-table" aria-label="Daily summaries">
+      <thead>
+        <tr>
+          <th scope="col">Day</th>
+          <th scope="col">Steps</th>
+          <th scope="col">Exercise</th>
+          <th scope="col">Sleep</th>
+          <th scope="col">Resting HR</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of days(); track row.id) {
+          <tr>
+            <td class="nowrap">{{ row.day | date: 'EEE, MMM d' }}</td>
+            <td class="nowrap">{{ row.steps === null ? '–' : (row.steps | number: '1.0-0') }}</td>
+            <td class="nowrap">
+              {{ row.exerciseMinutes === null ? '–' : formatDuration(row.exerciseMinutes) }}
+            </td>
+            <td class="nowrap">
+              {{ row.sleepHours === null ? '–' : (row.sleepHours | number: '1.0-1') + ' h' }}
+            </td>
+            <td class="nowrap">
+              {{ row.restingHeartRate === null ? '–' : row.restingHeartRate + ' bpm' }}
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+
+  @if (workouts().length) {
+    <h2
+      class="m-0 mt-6 font-sans text-xs! font-semibold uppercase tracking-wider text-[var(--color-text-muted)]"
+    >
+      Workouts
+    </h2>
+    <table class="device-data-table" aria-label="Workouts">
+      <thead>
+        <tr>
+          <th scope="col">When</th>
+          <th scope="col">Workout</th>
+          <th scope="col">Duration</th>
+          <th scope="col">Energy</th>
+          <th scope="col">Distance</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of workouts(); track row.id) {
+          <tr>
+            <td class="nowrap">{{ row.start | date: 'EEE, MMM d, h:mm a' }}</td>
+            <td class="font-semibold">{{ row.activity }}</td>
+            <td class="nowrap muted">{{ formatDuration(row.durationMinutes) }}</td>
+            <td class="nowrap muted">
+              {{ row.energy === null ? '' : (row.energy | number: '1.0-0') + ' kcal' }}
+            </td>
+            <td class="nowrap muted">
+              {{ row.distanceKm === null ? '' : (row.distanceKm | number: '1.0-2') + ' km' }}
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</app-device-data-panel>

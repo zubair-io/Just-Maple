@@ -1,12 +1,19 @@
 import { DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { debounceTime, map } from 'rxjs';
+import { debounceTime, firstValueFrom, map } from 'rxjs';
 import type { MacDataItem, MacDataSource } from '@maple/shared';
+import {
+  DeviceDataService,
+  OwnerOnlyError,
+  type DeviceDataCollector,
+} from '../../../services/device-data.service';
 import { MacDataService } from '../../../services/mac-data.service';
+import { PageService } from '../../../services/page.service';
 import { DialogService } from '../../molecules/dialog/dialog.service';
+import { isMacSource } from '../../../utils/device-sources';
 
-export interface MacDataListOptions {
+export interface DeviceDataListOptions {
   pageSize?: number;
   /** Extra query constraints; re-read whenever the signals they read change. */
   order?: () => 'asc' | 'desc';
@@ -14,11 +21,14 @@ export interface MacDataListOptions {
 }
 
 /**
- * State for a Mac data table page: the page record, search, paging and live refresh.
- * Must be called in an injection context (a component field initializer).
+ * State for a device data page: the page record, search, paging, the owner-only check
+ * and which device collects the source. Data comes from the API, so it works on every
+ * device. Must be called in an injection context (a component field initializer).
  */
-export function injectMacDataList(source: MacDataSource, options: MacDataListOptions = {}) {
+export function injectDeviceDataList(source: MacDataSource, options: DeviceDataListOptions = {}) {
+  const deviceData = inject(DeviceDataService);
   const macData = inject(MacDataService);
+  const pageService = inject(PageService);
   const route = inject(ActivatedRoute);
   const router = inject(Router);
   const dialog = inject(DialogService);
@@ -28,7 +38,7 @@ export function injectMacDataList(source: MacDataSource, options: MacDataListOpt
   const pageId = toSignal(route.paramMap.pipe(map((params) => params.get('id'))), {
     initialValue: route.snapshot.paramMap.get('id'),
   });
-  const page = computed(() => macData.pages().find((p) => p.id === pageId()) ?? null);
+  const page = computed(() => pageService.pages().find((p) => p.id === pageId()) ?? null);
 
   // ?item=<id>: an item a bot cited, shown in full above the table.
   const focusedId = toSignal(route.queryParamMap.pipe(map((params) => params.get('item'))), {
@@ -39,13 +49,19 @@ export function injectMacDataList(source: MacDataSource, options: MacDataListOpt
     const id = focusedId();
     focused.set(null);
     if (id) {
-      macData.getItem(id).then(
+      deviceData.getItem(id).then(
         (item) => focusedId() === id && focused.set(item),
         () => undefined,
       );
     }
   });
-  const status = computed(() => macData.statusBySource()[source] ?? null);
+
+  /** This Mac's own status for the source, inside the Mac app only. */
+  const macStatus = computed(() =>
+    macData.isAvailable() && isMacSource(source)
+      ? (macData.statusBySource()[source] ?? null)
+      : null,
+  );
 
   const search = signal('');
   const debouncedSearch = toSignal(toObservable(search).pipe(debounceTime(250)), {
@@ -53,20 +69,25 @@ export function injectMacDataList(source: MacDataSource, options: MacDataListOpt
   });
   const items = signal<MacDataItem[]>([]);
   const total = signal(0);
+  const collector = signal<DeviceDataCollector | null>(null);
+  const ownerOnly = signal(false);
   const loading = signal(false);
+  const loaded = signal(false);
   const error = signal<string | null>(null);
   const canLoadMore = computed(() => items().length < total());
 
   let destroyed = false;
   destroyRef.onDestroy(() => (destroyed = true));
   let latestRequest = 0;
+  let enabledOnMac = false;
 
   async function load(offset: number, limit: number): Promise<void> {
     const request = ++latestRequest;
     loading.set(true);
     try {
-      const result = await macData.query({
+      const result = await deviceData.listItems({
         source,
+        pageId: pageId() ?? undefined,
         search: debouncedSearch().trim() || undefined,
         order: options.order?.() ?? 'desc',
         limit,
@@ -77,18 +98,34 @@ export function injectMacDataList(source: MacDataSource, options: MacDataListOpt
       if (destroyed || request !== latestRequest) return;
       items.set(offset === 0 ? result.items : [...items(), ...result.items]);
       total.set(result.total);
+      collector.set(result.collector);
+      ownerOnly.set(false);
       error.set(null);
+      // Opening your own page in the Mac app makes sure this Mac collects its source.
+      if (!enabledOnMac) {
+        enabledOnMac = true;
+        void deviceData.enableOnThisMac(source);
+      }
     } catch (err) {
-      if (request === latestRequest) {
-        error.set(err instanceof Error ? err.message : 'Could not read data on this Mac.');
+      if (destroyed || request !== latestRequest) return;
+      if (err instanceof OwnerOnlyError) {
+        ownerOnly.set(true);
+        items.set([]);
+        total.set(0);
+      } else {
+        error.set(err instanceof Error ? err.message : 'Could not load this data.');
       }
     } finally {
-      if (request === latestRequest) loading.set(false);
+      if (request === latestRequest) {
+        loading.set(false);
+        loaded.set(true);
+      }
     }
   }
 
-  // Reload when the search, the query options, or the Mac's data change.
+  // Reload when the page, the search, the query options, or this Mac's uploads change.
   effect(() => {
+    pageId();
     debouncedSearch();
     macData.versions()[source];
     options.order?.();
@@ -98,16 +135,19 @@ export function injectMacDataList(source: MacDataSource, options: MacDataListOpt
   });
 
   return {
+    source,
     page,
-    status,
+    macStatus,
     search,
     items: items.asReadonly(),
     total: total.asReadonly(),
+    collector: collector.asReadonly(),
+    ownerOnly: ownerOnly.asReadonly(),
     loading: loading.asReadonly(),
+    loaded: loaded.asReadonly(),
     error: error.asReadonly(),
     canLoadMore,
     focused: focused.asReadonly(),
-    relay: macData.relay.asReadonly(),
 
     clearFocus(): void {
       router.navigate([], { relativeTo: route, queryParams: { item: null } });
@@ -131,14 +171,18 @@ export function injectMacDataList(source: MacDataSource, options: MacDataListOpt
       const confirmed = await dialog.confirm({
         title: `Remove ${current.title}?`,
         message:
-          'This removes the page from the notebook. Data already imported stays on this Mac.',
+          'This moves the page to the trash. Data your devices uploaded stays in your account; remove it in Settings → Devices.',
         confirmLabel: 'Remove',
       });
       if (!confirmed) return;
-      await macData.deletePage(current.id);
-      router.navigate(['/', current.notebookId]);
+      try {
+        await firstValueFrom(pageService.moveToTrash(current.id));
+        router.navigate(['/', current.notebookId]);
+      } catch (err) {
+        error.set(err instanceof Error ? err.message : 'Could not remove the page.');
+      }
     },
   };
 }
 
-export type MacDataList = ReturnType<typeof injectMacDataList>;
+export type DeviceDataList = ReturnType<typeof injectDeviceDataList>;

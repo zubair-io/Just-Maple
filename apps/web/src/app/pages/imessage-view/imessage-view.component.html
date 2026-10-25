@@ -1,23 +1,6 @@
-<app-mac-data-panel
-  source="imessage"
-  icon="sms"
-  [title]="list.page()?.title ?? 'iMessage'"
-  [status]="list.status()"
-  [total]="list.total()"
-  [shown]="list.items().length"
-  [loading]="list.loading()"
-  [error]="list.error()"
-  [canLoadMore]="list.canLoadMore()"
-  [(search)]="list.search"
-  (loadMore)="list.loadMore()"
-  (requestAccess)="list.requestAccess()"
-  (remove)="list.remove()"
-  [focused]="list.focused()"
-  [relay]="list.relay()"
-  (clearFocus)="list.clearFocus()"
->
+<app-device-data-panel [list]="list">
   @if (list.items().length) {
-    <table class="mac-data-table">
+    <table class="device-data-table">
       <thead>
         <tr>
           <th scope="col">Time</th>
@@ -40,4 +23,4 @@
       </tbody>
     </table>
   }
-</app-mac-data-panel>
+</app-device-data-panel>

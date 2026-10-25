@@ -9,7 +9,8 @@ import {
 import { FormsModule } from '@angular/forms';
 import { injectTriggerAction } from '@openuidev/angular-lang';
 import type { BotUIResponse, BotUIBlock } from '@maple/shared';
-import { MacDataService } from '../../../services/mac-data.service';
+import { DeviceDataService } from '../../../services/device-data.service';
+import { DEVICE_DATA_SOURCES } from '../../../utils/device-sources';
 
 export const BOT_UI_DISABLED = new InjectionToken<() => boolean>('BOT_UI_DISABLED');
 
@@ -28,10 +29,14 @@ export class MapleUIBlocksComponent {
   readonly disabled = inject(BOT_UI_DISABLED);
   private readonly triggerAction = injectTriggerAction();
   readonly values = signal<Record<string, string>>({});
-  /** Sources open the cited iMessage, email or event, which only exists on the Mac. */
-  readonly macData = inject(MacDataService);
+  /** Sources open the cited message, email, event or other item in its device data page. */
+  private readonly deviceData = inject(DeviceDataService);
   openSource(itemId: string): void {
-    void this.macData.openItem(itemId);
+    void this.deviceData.openItem(itemId);
+  }
+  sourceIcon(itemId: string): string {
+    const source = DEVICE_DATA_SOURCES.find((info) => itemId.startsWith(info.source + ':'));
+    return source?.icon ?? 'description';
   }
   send(message: string): void {
     if (!this.disabled()) void this.triggerAction(message);

@@ -1,0 +1,52 @@
+<app-device-data-panel [list]="list" searchPlaceholder="Search contacts">
+  @if (rows().length) {
+    <table class="device-data-table">
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Phone</th>
+          <th scope="col">Email</th>
+          <th scope="col">Relations</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.id) {
+          <tr>
+            <td class="max-w-[16rem]">
+              <div class="font-semibold">
+                {{ row.name }}
+                @if (row.isMe) {
+                  <span
+                    class="ml-1 rounded bg-[var(--color-surface-hover)] px-1.5 py-0.5 text-[0.6875rem] font-semibold text-[var(--color-text-muted)]"
+                    >Me</span
+                  >
+                }
+              </div>
+              @if (row.subtitle) {
+                <div class="muted">{{ row.subtitle }}</div>
+              }
+              @if (row.birthday) {
+                <div class="muted">Birthday {{ row.birthday }}</div>
+              }
+            </td>
+            <td>
+              @for (phone of row.phones; track $index) {
+                <div class="nowrap">{{ phone }}</div>
+              }
+            </td>
+            <td>
+              @for (email of row.emails; track $index) {
+                <div class="break-all">{{ email }}</div>
+              }
+            </td>
+            <td>
+              @for (relation of row.relations; track $index) {
+                <div>{{ relation }}</div>
+              }
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</app-device-data-panel>

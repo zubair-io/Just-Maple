@@ -28,7 +28,8 @@ import { NotebookService } from '../../services/notebook.service';
 import { NotificationService } from '../../services/notification.service';
 import { PageService } from '../../services/page.service';
 import { MessageService } from '../../services/message.service';
-import { MAC_DATA_SOURCES, MacDataService } from '../../services/mac-data.service';
+import { DeviceDataService } from '../../services/device-data.service';
+import { DEVICE_DATA_SOURCES, deviceSourceInfo } from '../../utils/device-sources';
 import {
   ShareModalComponent,
   NotebookHeaderComponent,
@@ -82,7 +83,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   private readonly pageService = inject(PageService);
   private readonly messageService = inject(MessageService);
   private readonly dialogService = inject(DialogService);
-  private readonly macData = inject(MacDataService);
+  private readonly deviceData = inject(DeviceDataService);
 
   private routeSubscription?: Subscription;
 
@@ -302,18 +303,19 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     this.navigationPages().filter((page) => page.type === 'message'),
   );
 
-  /** iMessage, Email and Calendar pages that exist only on this Mac. */
-  readonly macDataAvailable = this.macData.isAvailable;
-  readonly macSources = MAC_DATA_SOURCES;
-  readonly macPages = computed(() => {
-    const notebookId = this.selectedNotebookId();
-    if (!notebookId) return [];
-    return this.macData.pages().filter((page) => page.notebookId === notebookId);
-  });
+  /** Device data sources offered in "+ New" on every device (Mac and iPhone sources). */
+  readonly deviceSources = DEVICE_DATA_SOURCES;
 
   // Delegate to shared utilities
   getPageTypeLabel = getLabel;
   getPageTypeIcon = getIcon;
+
+  /** A device data page shows its source's icon; other pages their type's. */
+  pageIcon(page: Page): string {
+    return page.type === 'devicedata' && page.deviceSource
+      ? deviceSourceInfo(page.deviceSource).icon
+      : getIcon(page.type);
+  }
 
   ngOnInit(): void {
     this.routeSubscription = combineLatest([
@@ -527,26 +529,20 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       });
   }
 
-  async createMacDataPage(source: MacDataSource): Promise<void> {
+  /** Creates a cloud page for one source of the user's device data and opens it. */
+  async createDeviceDataPage(source: MacDataSource): Promise<void> {
     const notebookId = this.selectedNotebookId();
     if (!notebookId) return;
     try {
-      const page = await this.macData.createPage(notebookId, source);
-      this.openMacDataPage(page.id);
+      const page = await this.deviceData.createPage(notebookId, source);
+      await this.router.navigate(['/', notebookId, page.id]);
     } catch (error) {
-      console.error('Failed to create Mac data page:', error);
+      console.error('Failed to create device data page:', error);
+      await this.dialogService.alert({
+        title: 'Could not add the page',
+        message: 'Check your connection and try again.',
+      });
     }
-  }
-
-  openMacDataPage(pageId: string): void {
-    const notebookId = this.selectedNotebookId();
-    if (notebookId) {
-      this.router.navigate(['/', notebookId, 'mac', pageId]);
-    }
-  }
-
-  macSourceIcon(source: MacDataSource): string {
-    return this.macSources.find((item) => item.source === source)?.icon ?? 'laptop_mac';
   }
 
   toggleNewPageDropdown(event: Event): void {
