@@ -131,6 +131,11 @@ export const routes: Routes = [
             path: 'bots',
             loadComponent: () => import('./pages/bots/bots.component').then((m) => m.BotsComponent),
           },
+          {
+            path: 'devices',
+            loadComponent: () =>
+              import('./pages/devices/devices.component').then((m) => m.DevicesComponent),
+          },
         ],
       },
       // Notifications route
