@@ -20,7 +20,9 @@ export class NotificationListComponent {
   private readonly notificationService = inject(NotificationService);
 
   readonly notifications = this.notificationService.notifications;
+  readonly unreadCount = this.notificationService.unreadNotificationCount;
   readonly isLoading = signal(false);
+  readonly isMarkingAll = signal(false);
   readonly filters = signal<NotificationFilters>({
     type: null,
     showUnreadOnly: false,
@@ -61,6 +63,17 @@ export class NotificationListComponent {
   onNotificationClicked(notification: Notification): void {
     // Navigate based on notification type
     // This will be handled in the page component
+  }
+
+  onMarkAllAsRead(): void {
+    this.isMarkingAll.set(true);
+    this.notificationService.markAllAsRead().subscribe({
+      next: () => this.isMarkingAll.set(false),
+      error: (error) => {
+        console.error('Failed to mark all notifications as read:', error);
+        this.isMarkingAll.set(false);
+      },
+    });
   }
 
   onMarkAsRead(id: string): void {

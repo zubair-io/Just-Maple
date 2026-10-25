@@ -686,6 +686,11 @@ export class NotificationService {
         break;
     }
 
+    // A tapped push isn't in the store yet; add it so markAsRead knows its chat
+    if (!this.notifications().some((n) => n._id === notification._id)) {
+      this.store.update(upsertEntities(notification));
+    }
+
     // Mark as read after navigation
     this.markAsRead(notification._id).subscribe();
   }

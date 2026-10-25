@@ -153,7 +153,14 @@ async function sendDirectApns(
         }
 
         if (error.reason === 'BadDeviceToken') {
-            await send(!device.production);
+            try {
+                await send(!device.production);
+            } catch (retryError) {
+                if (retryError instanceof ApnsPushError && retryError.reason === 'Unregistered') {
+                    await notificationRepo.deleteDeviceRegistrationByToken(device.deviceToken);
+                }
+                throw retryError;
+            }
             await notificationRepo.setDeviceRegistrationEnvironment(device._id, !device.production);
             console.log(
                 `[Notification] Device ${device.deviceToken.substring(0, 8)}... belongs to the ${device.production ? 'sandbox' : 'production'} environment; updated its registration`,
@@ -414,9 +421,11 @@ export async function markNotificationAsRead(
 /** Mark every notification as read, and every chat they point at. */
 export async function markAllNotificationsAsRead(userId: string): Promise<number> {
     const chats = await notificationRepo.findChatsWithUnreadMessageNotifications(userId);
-    for (const data of chats) {
-        const chat = await resolveChat(data);
-        if (chat) await markAsReadByPageId(userId, chat.pageId);
-    }
+    await Promise.all(
+        chats.map(async (data) => {
+            const chat = await resolveChat(data);
+            if (chat) await markAsReadByPageId(userId, chat.pageId);
+        }),
+    );
     return notificationRepo.markAllNotificationsAsRead(userId);
 }
