@@ -12,6 +12,7 @@ import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
 import { macDataRoutes } from './routes/mac-data';
 import { deviceDataRoutes } from './routes/device-data';
+import { aboutMeRoutes } from './routes/about-me';
 import { startDeviceDataRetention } from './services/device-data.service';
 import { legoRoutes } from './routes/lego';
 import { collabRoutes } from './routes/collab';
@@ -93,6 +94,7 @@ async function main() {
         .use(botRoutes)
         .use(macDataRoutes)
         .use(deviceDataRoutes)
+        .use(aboutMeRoutes)
         .use(legoRoutes)
         .use(collabRoutes)
         .use(memoRoutes)

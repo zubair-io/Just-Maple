@@ -127,7 +127,11 @@ async function runProactivePass(
     const userBot = await findUserBotByIdInternal(proactive.userBotId);
     if (!userBot?.templateId || userBot.isEnabled === false) return;
     const template = await findBotTemplateById(userBot.templateId);
-    const macData = await getMacDataToolContext(userId, page.notebookId);
+    const macData = await getMacDataToolContext(userId, page.notebookId, {
+        id: userBot._id,
+        name: userBot.displayName || template?.name || userBot.handle,
+        ownerId: userBot.userId,
+    });
     if (!template || !macData) return;
 
     const entries = batch.entries.slice(0, MAX_ENTRIES);

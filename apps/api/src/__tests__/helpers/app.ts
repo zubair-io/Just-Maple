@@ -6,6 +6,7 @@ import { pageRoutes } from '../../routes/pages';
 import { messageRoutes } from '../../routes/messages';
 import { botRoutes } from '../../routes/bots';
 import { deviceDataRoutes } from '../../routes/device-data';
+import { aboutMeRoutes } from '../../routes/about-me';
 import { aiRoutes } from '../../routes/ai';
 import { templateRoutes } from '../../routes/templates';
 import { linkRoutes } from '../../routes/links';
@@ -28,6 +29,7 @@ export function createTestApp() {
         .use(notificationRoutes)
         .use(botRoutes)
         .use(deviceDataRoutes)
+        .use(aboutMeRoutes)
         .use(aiRoutes)
         .use(templateRoutes)
         .use(linkRoutes)

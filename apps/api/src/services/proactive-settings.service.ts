@@ -2,6 +2,7 @@ import type { Page, ProactiveBotSettings, UpdateProactiveBotInput } from '@maple
 import { findPageByIdForBot, setPageProactive } from '../repositories/page.repo';
 import { findUserBotById } from '../repositories/user-bot.repo';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
+import { ensureProfile } from './about-me.service';
 
 export const MAX_PROACTIVE_INSTRUCTIONS = 8000;
 
@@ -54,6 +55,12 @@ export async function saveProactiveSettings(
     };
     const updated = await setPageProactive(page.id, settings);
     if (!updated) throw new ProactiveSettingsError('Page not found.', 404);
+    // The first proactive bot starts the user's About me profile.
+    if (input.enabled) {
+        void ensureProfile(userId).catch((error) =>
+            console.error('[AboutMe] Could not create the profile:', error),
+        );
+    }
     return updated;
 }
 
