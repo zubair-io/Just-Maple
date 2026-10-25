@@ -1,0 +1,43 @@
+<app-mac-data-panel
+  source="imessage"
+  icon="sms"
+  [title]="list.page()?.title ?? 'iMessage'"
+  [status]="list.status()"
+  [total]="list.total()"
+  [shown]="list.items().length"
+  [loading]="list.loading()"
+  [error]="list.error()"
+  [canLoadMore]="list.canLoadMore()"
+  [(search)]="list.search"
+  (loadMore)="list.loadMore()"
+  (requestAccess)="list.requestAccess()"
+  (remove)="list.remove()"
+  [focused]="list.focused()"
+  [relay]="list.relay()"
+  (clearFocus)="list.clearFocus()"
+>
+  @if (list.items().length) {
+    <table class="mac-data-table">
+      <thead>
+        <tr>
+          <th scope="col">Time</th>
+          <th scope="col">Conversation</th>
+          <th scope="col">From</th>
+          <th scope="col">Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (item of list.items(); track item.id) {
+          <tr>
+            <td class="nowrap muted">{{ item.occurredAt * 1000 | date: 'MMM d, h:mm a' }}</td>
+            <td class="max-w-[14rem]">
+              <span class="clamp">{{ item.thread }}</span>
+            </td>
+            <td class="nowrap" [class.muted]="item.isFromMe">{{ item.sender }}</td>
+            <td class="w-1/2 whitespace-pre-line">{{ item.body }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</app-mac-data-panel>

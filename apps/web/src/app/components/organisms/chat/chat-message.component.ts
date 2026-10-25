@@ -1,13 +1,22 @@
-import { Component, input, output, computed } from '@angular/core';
+import { Component, input, output, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
-import type { Message } from '@maple/shared';
+import { isBotUIFallbackContent, type Message } from '@maple/shared';
+import { BotUIComponent } from '../../atoms/bot-ui/bot-ui.component';
+import { ChatTypingComponent } from './chat-typing.component';
 import { ContentRendererComponent } from '../../atoms/content-renderer/content-renderer.component';
 import { ProfileAvatarComponent } from '../../atoms';
 
 @Component({
   selector: 'app-chat-message',
   standalone: true,
-  imports: [CommonModule, DatePipe, ContentRendererComponent, ProfileAvatarComponent],
+  imports: [
+    CommonModule,
+    DatePipe,
+    ContentRendererComponent,
+    ProfileAvatarComponent,
+    BotUIComponent,
+    ChatTypingComponent,
+  ],
   template: `
     <div [id]="'message-' + message().id" class="message-wrapper" [class.grouped]="isGrouped()">
       <div class="message-content">
@@ -36,11 +45,21 @@ import { ProfileAvatarComponent } from '../../atoms';
 
           <!-- Bottom row: Message content -->
           <div class="message-body">
-            <app-content-renderer [content]="message().content" />
+            @if (!hideText()) {
+              <app-content-renderer [content]="message().content" />
+            }
+            @if (message().senderType === 'bot' && message().botUI; as ui) {
+              <app-bot-ui [response]="ui" (followUp)="followUp.emit($event)" />
+            }
             @if (message().editedAt) {
               <span class="edited">(edited)</span>
             }
           </div>
+
+          <!-- A bot is writing its reply in this message's thread -->
+          @if (replyingBots().length > 0) {
+            <app-chat-typing [names]="replyingBots()" verb="replying in thread" />
+          }
 
           <!-- Thread replies link -->
           @if (message().hasThread) {
@@ -48,6 +67,31 @@ import { ProfileAvatarComponent } from '../../atoms';
               <span class="material-symbols-rounded thread-icon">forum</span>
               <span>View thread</span>
             </button>
+          }
+
+          <!-- Send failed: keep the text and offer to try again -->
+          @if (sendFailed()) {
+            <div
+              class="mt-1 flex items-center gap-1.5 text-xs text-[var(--color-primary)]"
+              role="alert"
+            >
+              <span class="material-symbols-rounded text-sm">error</span>
+              <span>Not sent.</span>
+              <button
+                type="button"
+                class="cursor-pointer border-none bg-transparent p-0 text-xs text-[var(--color-text-main)] underline"
+                (click)="retrySend.emit()"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                class="cursor-pointer border-none bg-transparent p-0 text-xs text-[var(--color-text-main)] underline"
+                (click)="discardSend.emit()"
+              >
+                Delete
+              </button>
+            </div>
           }
 
           <!-- Bot error -->
@@ -74,6 +118,7 @@ import { ProfileAvatarComponent } from '../../atoms';
       </div>
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       .message-wrapper {
@@ -235,9 +280,19 @@ export class ChatMessageComponent {
   readonly isOwn = input<boolean>(false);
   readonly isGrouped = input<boolean>(false);
   readonly botError = input<string | undefined>(undefined);
+  readonly replyingBots = input<string[]>([]);
+  readonly sendFailed = input(false);
+  readonly retrySend = output<void>();
+  readonly discardSend = output<void>();
 
   readonly threadClicked = output<Message>();
   readonly replyClicked = output<Message>();
+  /** A bot UI button or form was used; its text should be sent as the user's next message. */
+  readonly followUp = output<string>();
+  /** Bot replies made only of UI blocks carry a flattened text copy; show the blocks instead. */
+  readonly hideText = computed(() =>
+    isBotUIFallbackContent(this.message().content, this.message().botUI),
+  );
 
   readonly senderDisplay = computed(() => {
     const msg = this.message();

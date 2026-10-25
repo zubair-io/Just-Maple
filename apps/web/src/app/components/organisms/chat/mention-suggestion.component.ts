@@ -8,6 +8,7 @@ import {
   ElementRef,
   inject,
   HostListener,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { BotSuggestion } from '../../../services/bot.service';
@@ -67,6 +68,7 @@ import { ProfileAvatarComponent } from '../../atoms/profile-avatar/profile-avata
       }
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       :host {
@@ -84,7 +86,6 @@ import { ProfileAvatarComponent } from '../../atoms/profile-avatar/profile-avata
 export class MentionSuggestionComponent {
   readonly items = input<BotSuggestion[]>([]);
   readonly isLoading = input<boolean>(false);
-  readonly command = input<((props: Record<string, unknown>) => void) | null>(null);
 
   readonly selectedIndex = signal(0);
 
@@ -135,15 +136,8 @@ export class MentionSuggestionComponent {
     }
   }
 
+  /** The parent inserts the mention; this list only reports the choice. */
   selectItem(item: BotSuggestion): void {
-    const cmd = this.command();
-    if (cmd) {
-      cmd({
-        id: item.id,
-        handle: item.handle,
-        type: item.type,
-      });
-    }
     this.selected.emit(item);
   }
 }

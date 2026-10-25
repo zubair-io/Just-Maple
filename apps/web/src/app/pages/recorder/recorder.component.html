@@ -1,0 +1,807 @@
+<app-header>
+  <span headerContext class="page-label">Recorder</span>
+  <a headerNavigation routerLink="/">Back to Maple</a>
+  <div headerActions class="actions">
+    <button
+      type="button"
+      (click)="act({ operation: 'refresh' })"
+      [disabled]="!recorder.connected || actionPending()"
+      aria-label="Refresh recordings"
+    >
+      ↻
+    </button>
+    <button type="button" (click)="openSettings()" [disabled]="!state()">Settings</button>
+  </div>
+</app-header>
+
+@if (!recorder.connected) {
+  <div class="empty standalone">
+    <span class="material-symbols-rounded hero-icon" aria-hidden="true">mic</span>
+    <h1>Your recordings, processed on your device.</h1>
+    <p>
+      Open this workspace in the Just Maple Apple app to record, transcribe, identify speakers, and
+      work with your local recording library.
+    </p>
+    <a routerLink="/">Back to notebooks</a>
+  </div>
+} @else {
+  @if (recorder.error() || state()?.error) {
+    <div class="notice error" role="alert">
+      <span>{{ recorder.error() || state()?.error }}</span>
+      <button type="button" (click)="recorder.error.set(null); act({ operation: 'dismissError' })">
+        Dismiss
+      </button>
+    </div>
+  }
+  @if (state(); as s) {
+    @if (s.busy) {
+      <div class="notice" role="status" aria-live="polite">
+        <span class="activity-dot"></span><span>{{ s.status || 'Processing…' }}</span>
+        @if (!s.modelsReady) {
+          <progress
+            [value]="s.modelProgress"
+            max="1"
+            aria-label="Model download progress"
+          ></progress>
+        }
+      </div>
+    }
+    @if (s.warning) {
+      <div class="notice" role="status">{{ s.warning }}</div>
+    }
+    <div class="workspace">
+      <aside class="library" aria-label="Recording library">
+        <div class="library-heading">
+          <h1>
+            Recordings <span>{{ s.recordings.length }}</span>
+          </h1>
+          <span class="device-badge">On device</span>
+        </div>
+        <section class="capture" [class.recording]="s.isRecording" aria-label="Recording controls">
+          <div class="capture-heading">
+            <span>{{ s.isRecording ? 'Recording' : 'Ready when you are' }}</span
+            ><strong>{{ time(s.elapsed) }}</strong>
+          </div>
+          @if (s.isRecording) {
+            <meter min="0" max="1" [value]="s.audioLevel" aria-label="Microphone level"></meter>
+            <button type="button" class="record-stop" [disabled]="actionPending()" (click)="stop()">
+              <span class="stop-square"></span> Stop & save
+            </button>
+            <p>You can move between notebooks while recording.</p>
+          } @else {
+            <button
+              type="button"
+              class="primary"
+              [disabled]="actionPending()"
+              (click)="act({ operation: 'start', includeSystemAudio })"
+            >
+              <span aria-hidden="true">●</span> New recording
+            </button>
+            @if (s.systemAudioSupported) {
+              <label class="check"
+                ><input type="checkbox" [(ngModel)]="includeSystemAudio" /> Include system
+                audio</label
+              >
+            }
+            <p>
+              {{
+                s.systemAudioSupported
+                  ? 'Microphone, with optional Mac audio.'
+                  : 'Microphone audio on this device.'
+              }}
+            </p>
+          }
+        </section>
+        @if (s.isRecording && s.systemAudioSupported) {
+          <section class="live-assist" aria-label="Live recording notes and Assist">
+            <label class="field"
+              >Live notes<textarea
+                rows="4"
+                [ngModel]="liveNotes"
+                (ngModelChange)="updateLiveNotes($event)"
+                placeholder="Your notes for this recording"
+              ></textarea>
+            </label>
+            <button
+              type="button"
+              [disabled]="s.assist?.busy || s.settings.provider === 'none'"
+              (click)="act({ operation: 'liveAssist' })"
+            >
+              {{ s.assist?.busy ? 'Thinking…' : 'Ask presentation Assist' }}
+            </button>
+            <label class="check"
+              ><input
+                type="checkbox"
+                [checked]="$safeNavigationMigration(s.assist?.automatic)"
+                (change)="act({ operation: 'autoAssist', flag: $any($event.target).checked })"
+              />
+              Assist automatically on screen changes</label
+            >
+            <p class="muted">
+              {{
+                s.settings.provider === 'claude' || s.settings.provider === 'openai'
+                  ? 'Screen text and notes are sent to your cloud AI provider when Assist is requested or automatic Assist is enabled.'
+                  : 'Assist uses screen text and notes with on-device Apple AI.'
+              }}
+            </p>
+            @if (s.assist?.error) {
+              <p class="muted" role="alert">{{ s.assist?.error }}</p>
+            }
+            @if (s.assist?.response) {
+              <div class="prose live-response" aria-live="polite">{{ s.assist?.response }}</div>
+            }
+          </section>
+        }
+        @if (!s.modelsReady && !s.busy) {
+          <div class="model-card">
+            <strong>Set up local processing</strong>
+            <p>
+              Download the speech, speaker, and transcript cleanup models once. Recordings can be
+              saved while models prepare.
+            </p>
+            <button
+              type="button"
+              (click)="act({ operation: 'prepareModels' })"
+              [disabled]="locked()"
+            >
+              Prepare models
+            </button>
+          </div>
+        }
+        <label class="search"
+          ><span class="sr-only">Search recordings</span
+          ><input
+            type="search"
+            placeholder="Search recordings or tags"
+            [ngModel]="search()"
+            (ngModelChange)="search.set($event)"
+        /></label>
+        <label class="tag-filter"
+          ><span>Filter by tag</span
+          ><select [ngModel]="tag()" (ngModelChange)="tag.set($event)">
+            <option value="">All tags</option>
+            @for (item of tags(); track item) {
+              <option [value]="item">{{ item }}</option>
+            }
+          </select></label
+        >
+        <div class="recording-list">
+          @for (record of records(); track record.id) {
+            <button
+              type="button"
+              class="recording-row"
+              [class.selected]="s.selected?.id === record.id"
+              [attr.aria-pressed]="s.selected?.id === record.id"
+              (click)="select(record.id)"
+            >
+              <span class="row-title">{{ record.title }}</span>
+              <span class="row-meta"
+                >{{ record.createdAt | date: 'MMM d, h:mm a' }}
+                <span>· {{ time(record.duration) }}</span></span
+              >
+              <span class="row-status"
+                >{{ record.hasTranscript ? 'Transcribed' : 'Audio saved'
+                }}{{ record.hasSystemAudio ? ' · Mic + system' : '' }}</span
+              >
+              @if (record.tags.length) {
+                <span class="row-tags">{{ record.tags.slice(0, 3).join(' · ') }}</span>
+              }
+            </button>
+          } @empty {
+            <div class="empty small">
+              <h2>{{ s.recordings.length ? 'No matches' : 'Start with a recording' }}</h2>
+              <p>
+                {{
+                  s.recordings.length
+                    ? 'Try another search or tag.'
+                    : 'Your audio, transcript, and notes will appear here.'
+                }}
+              </p>
+            </div>
+          }
+        </div>
+      </aside>
+      <main class="detail" aria-label="Recording details">
+        @if (!selecting() ? s.selected : null; as record) {
+          <div class="detail-heading">
+            <div>
+              <span class="eyebrow"
+                >{{ record.created_at | date: 'longDate' }} · {{ time(record.duration) }}</span
+              >
+              <h2>{{ record.title }}</h2>
+            </div>
+            <div class="actions wrap">
+              <button
+                type="button"
+                [disabled]="locked()"
+                (click)="startEdit('title', record.title)"
+              >
+                Rename</button
+              ><button type="button" (click)="export()">Export Markdown</button
+              ><button
+                type="button"
+                class="danger"
+                [disabled]="locked()"
+                (click)="deleteConfirm.set(record.id)"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+          @if (deleteConfirm() === record.id) {
+            <div class="notice error" role="alert">
+              <span>Delete this recording and its saved audio? This cannot be undone.</span
+              ><button type="button" class="danger" (click)="remove()" [disabled]="locked()">
+                Delete recording</button
+              ><button type="button" (click)="deleteConfirm.set(null)">Keep</button>
+            </div>
+          }
+          <div class="tags">
+            <button
+              type="button"
+              class="subtle"
+              [disabled]="locked()"
+              (click)="startEdit('tags', record.tags.join(', '))"
+            >
+              {{ record.tags.length ? record.tags.join(' · ') : '+ Add tags' }}
+            </button>
+          </div>
+          <section class="playback" aria-label="Audio playback">
+            <div class="actions">
+              <button
+                type="button"
+                (click)="
+                  act({
+                    operation: 'seek',
+                    number: (s.playback.recordingId === record.id ? s.playback.time : 0) - 10,
+                  })
+                "
+                aria-label="Back ten seconds"
+              >
+                −10s</button
+              ><button
+                type="button"
+                class="play-button"
+                (click)="act({ operation: 'play' })"
+                [attr.aria-label]="
+                  s.playback.playing && s.playback.recordingId === record.id
+                    ? 'Pause recording'
+                    : 'Play recording'
+                "
+              >
+                {{
+                  s.playback.playing && s.playback.recordingId === record.id ? 'Pause' : 'Play'
+                }}</button
+              ><button
+                type="button"
+                (click)="
+                  act({
+                    operation: 'seek',
+                    number: (s.playback.recordingId === record.id ? s.playback.time : 0) + 10,
+                  })
+                "
+                aria-label="Forward ten seconds"
+              >
+                +10s
+              </button>
+            </div>
+            <div class="scrubber">
+              <input
+                type="range"
+                min="0"
+                [max]="record.duration"
+                step="0.1"
+                [value]="s.playback.recordingId === record.id ? s.playback.time : 0"
+                (change)="act({ operation: 'seek', number: +$any($event.target).value })"
+                aria-label="Playback position"
+              />
+              <div>
+                <span>{{ time(s.playback.recordingId === record.id ? s.playback.time : 0) }}</span
+                ><span>{{ time(record.duration) }}</span>
+              </div>
+            </div>
+            <label class="speed"
+              ><span class="sr-only">Playback speed</span
+              ><select
+                [ngModel]="s.playback.rate"
+                (ngModelChange)="act({ operation: 'rate', number: $event })"
+              >
+                @for (rate of [0.5, 0.75, 1, 1.25, 1.5, 2]; track rate) {
+                  <option [ngValue]="rate">{{ rate }}×</option>
+                }
+              </select></label
+            >
+          </section>
+          <div class="processing-actions actions wrap">
+            <button
+              type="button"
+              [disabled]="locked() || s.isRecording"
+              (click)="act({ operation: 'process' })"
+            >
+              {{
+                record.transcript.length ? 'Reprocess audio' : 'Transcribe & detect speakers'
+              }}</button
+            ><button
+              type="button"
+              [disabled]="locked() || !record.transcript.length"
+              (click)="act({ operation: 'clean' })"
+            >
+              Clean transcript</button
+            ><button
+              type="button"
+              [disabled]="locked() || !record.transcript.length || s.settings.provider === 'none'"
+              (click)="act({ operation: 'summarize' })"
+            >
+              Generate summary
+            </button>
+          </div>
+          <nav class="tabs" aria-label="Recording sections">
+            @for (item of ['transcript', 'notes', 'summary', 'prompts', 'timeline']; track item) {
+              <button
+                type="button"
+                [attr.aria-current]="tab() === item ? 'page' : null"
+                [class.active]="tab() === item"
+                (click)="tab.set($any(item))"
+              >
+                {{ item === 'prompts' ? 'AI & Prompts' : (item | titlecase) }}
+              </button>
+            }
+          </nav>
+          <section class="tab-content">
+            @switch (tab()) {
+              @case ('transcript') {
+                <div class="section-heading">
+                  <h3>
+                    Transcript <span>{{ record.transcript.length }} segments</span>
+                  </h3>
+                  <label
+                    ><span class="sr-only">Search transcript</span
+                    ><input
+                      type="search"
+                      [(ngModel)]="transcriptSearch"
+                      placeholder="Find in transcript"
+                  /></label>
+                </div>
+                @if (record.speakers.length) {
+                  <div class="speakers">
+                    @for (speaker of record.speakers; track speaker.id) {
+                      <button
+                        type="button"
+                        [disabled]="locked()"
+                        (click)="startEdit('speaker', speaker.display_name, speaker.id)"
+                        title="Rename speaker"
+                      >
+                        <span class="speaker-dot" [style.background]="speaker.color"></span
+                        >{{ speaker.display_name }} <span aria-hidden="true">✎</span>
+                      </button>
+                    }
+                  </div>
+                }
+                @for (segment of record.transcript; track $index; let index = $index) {
+                  @if (
+                    !transcriptSearch ||
+                    segment.text.toLowerCase().includes(transcriptSearch.toLowerCase())
+                  ) {
+                    <article
+                      class="segment"
+                      [class.current]="
+                        s.playback.recordingId === record.id &&
+                        s.playback.time >= segment.start &&
+                        s.playback.time < segment.end
+                      "
+                    >
+                      <button
+                        type="button"
+                        class="timestamp"
+                        (click)="act({ operation: 'seek', number: segment.start })"
+                        [attr.aria-label]="'Seek to ' + time(segment.start)"
+                      >
+                        {{ time(segment.start) }}
+                      </button>
+                      <div>
+                        <strong>{{ speakerName(segment.speaker_id) }}</strong>
+                        <p>{{ segment.text }}</p>
+                      </div>
+                      <button
+                        type="button"
+                        class="subtle"
+                        [disabled]="locked()"
+                        (click)="startEdit('segment', segment.text, undefined, index)"
+                        aria-label="Edit transcript segment"
+                      >
+                        Edit
+                      </button>
+                    </article>
+                  }
+                } @empty {
+                  <div class="empty">
+                    <h3>Audio is ready</h3>
+                    <p>
+                      Choose “Transcribe & detect speakers” to create a timed transcript and
+                      identify speakers on your device.
+                    </p>
+                  </div>
+                }
+              }
+              @case ('notes') {
+                <div class="section-heading">
+                  <h3>Clean transcript</h3>
+                  <button
+                    type="button"
+                    [disabled]="locked()"
+                    (click)="startEdit('notes', record.notes)"
+                  >
+                    Edit
+                  </button>
+                </div>
+                <div class="prose">
+                  {{
+                    record.notes || 'Clean the transcript to create readable notes with S1-mini.'
+                  }}
+                </div>
+                <div class="section-heading">
+                  <h3>Your notes</h3>
+                  <button
+                    type="button"
+                    [disabled]="locked()"
+                    (click)="startEdit('userNotes', record.user_notes)"
+                  >
+                    Edit
+                  </button>
+                </div>
+                <div class="prose">
+                  {{ record.user_notes || 'Add your own context and observations here.' }}
+                </div>
+              }
+              @case ('summary') {
+                <div class="section-heading">
+                  <h3>Summary</h3>
+                  <button
+                    type="button"
+                    [disabled]="locked()"
+                    (click)="startEdit('summary', record.summary)"
+                  >
+                    Edit
+                  </button>
+                </div>
+                <div class="prose">
+                  {{
+                    record.summary || 'Choose an AI provider in Settings, then generate a summary.'
+                  }}
+                </div>
+              }
+              @case ('prompts') {
+                <div class="section-heading">
+                  <h3>Ask about this recording</h3>
+                  <span class="device-badge">{{
+                    s.settings.provider === 'claude' || s.settings.provider === 'openai'
+                      ? 'Cloud AI'
+                      : 'On-device AI'
+                  }}</span>
+                </div>
+                <p class="muted">
+                  {{
+                    s.settings.provider === 'claude' || s.settings.provider === 'openai'
+                      ? 'Transcript text and any context you add are sent to your chosen provider.'
+                      : 'Apple AI runs locally on supported devices. Choose a provider in Settings.'
+                  }}
+                </p>
+                <label class="field"
+                  >Question<textarea
+                    rows="3"
+                    [(ngModel)]="question"
+                    placeholder="What decisions were made, and what should I do next?"
+                  ></textarea></label
+                ><label class="field"
+                  >Additional context (optional)<textarea
+                    rows="2"
+                    [(ngModel)]="context"
+                  ></textarea></label
+                ><button
+                  type="button"
+                  class="primary"
+                  [disabled]="
+                    locked() ||
+                    !question.trim() ||
+                    !record.transcript.length ||
+                    s.settings.provider === 'none'
+                  "
+                  (click)="act({ operation: 'ask', body: question, context })"
+                >
+                  Ask AI
+                </button>
+                <div class="section-heading">
+                  <h3>Saved prompts</h3>
+                  <button type="button" (click)="editPrompt()">New prompt</button>
+                </div>
+                <div class="prompt-grid">
+                  @for (prompt of s.prompts; track prompt.id) {
+                    <article class="prompt-card">
+                      <strong>{{ prompt.name }}</strong>
+                      <p>{{ prompt.system_prompt }}</p>
+                      <div class="actions">
+                        <button
+                          type="button"
+                          [disabled]="
+                            locked() || !record.transcript.length || s.settings.provider === 'none'
+                          "
+                          (click)="act({ operation: 'runPrompt', promptId: prompt.id, context })"
+                        >
+                          Run</button
+                        ><button type="button" (click)="editPrompt(prompt)">Edit</button
+                        ><button
+                          type="button"
+                          class="subtle danger"
+                          (click)="act({ operation: 'deletePrompt', promptId: prompt.id })"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </article>
+                  }
+                </div>
+                <h3>Saved responses</h3>
+                @for (result of record.prompt_results; track result.id) {
+                  <article class="result">
+                    <div class="section-heading">
+                      <h4>{{ result.prompt_name }}</h4>
+                      <button
+                        type="button"
+                        class="subtle"
+                        [disabled]="locked()"
+                        (click)="act({ operation: 'deleteResult', value: result.id })"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <span class="eyebrow"
+                      >{{ result.created_at | date: 'short' }} · {{ result.llm_provider }}</span
+                    >
+                    <div class="prose">{{ result.result }}</div>
+                  </article>
+                } @empty {
+                  <p class="muted">AI responses are saved with this recording.</p>
+                }
+              }
+              @case ('timeline') {
+                <h3>Captured screens</h3>
+                <p class="muted">
+                  Mac recordings can capture a timeline of the presentation window. Select a frame
+                  to view it or jump to that moment.
+                </p>
+                <div class="timeline">
+                  @for (frame of record.screenshots; track frame.id) {
+                    <article>
+                      <strong>{{ time(frame.timestamp) }}</strong>
+                      <div class="actions">
+                        <button type="button" (click)="preview(frame.file_name)">View frame</button
+                        ><button
+                          type="button"
+                          (click)="act({ operation: 'seek', number: frame.timestamp })"
+                        >
+                          Jump to audio
+                        </button>
+                      </div>
+                    </article>
+                  } @empty {
+                    <p>No screenshots were captured for this recording.</p>
+                  }
+                </div>
+              }
+            }
+          </section>
+        } @else {
+          <div class="empty standalone">
+            <span class="material-symbols-rounded hero-icon" aria-hidden="true">graphic_eq</span>
+            <h2>A little room to listen.</h2>
+            <p>Select a recording to explore its transcript, notes, and ideas.</p>
+          </div>
+        }
+      </main>
+    </div>
+  } @else {
+    <div class="empty standalone" role="status">
+      <h1>Opening your recording library…</h1>
+      <p>Connecting to the Apple recorder.</p>
+    </div>
+  }
+}
+
+@if (editing(); as edit) {
+  <div class="modal-backdrop">
+    <section
+      class="modal"
+      cdkTrapFocus
+      [cdkTrapFocusAutoCapture]="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-title"
+    >
+      <h2 id="edit-title">Edit {{ edit.field === 'userNotes' ? 'your notes' : edit.field }}</h2>
+      <label class="field"
+        >{{ edit.field === 'tags' ? 'Tags, separated by commas' : 'Text'
+        }}<textarea rows="7" [(ngModel)]="editValue" autofocus></textarea>
+      </label>
+      @if (recorder.error()) {
+        <p role="alert">{{ recorder.error() }}</p>
+      }
+      <div class="actions">
+        <button type="button" (click)="editing.set(null)">Cancel</button
+        ><button type="button" class="primary" [disabled]="actionPending()" (click)="saveEdit()">
+          Save changes
+        </button>
+      </div>
+    </section>
+  </div>
+}
+@if (settingsOpen() && draftSettings; as settings) {
+  <div class="modal-backdrop">
+    <section
+      class="modal wide"
+      cdkTrapFocus
+      [cdkTrapFocusAutoCapture]="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+    >
+      <div class="section-heading">
+        <h2 id="settings-title">Recorder settings</h2>
+        <button type="button" (click)="settingsOpen.set(false)">Close</button>
+      </div>
+      <label class="field"
+        >AI provider<select [(ngModel)]="draftSettings!.provider">
+          @for (provider of state()?.providers ?? []; track provider.id) {
+            <option [value]="provider.id">
+              {{ provider.name
+              }}{{
+                !provider.available && provider.id !== 'claude' && provider.id !== 'openai'
+                  ? ' — unavailable on this device'
+                  : ''
+              }}
+            </option>
+          }
+        </select></label
+      >
+      <p class="muted">
+        Speech recognition, speaker detection, and S1 cleanup run locally. Claude and OpenAI send
+        transcript text to the selected provider. Apple AI requires a supported device with OS 26 or
+        later.
+      </p>
+      <label class="field"
+        >Recording chunk length (minutes)<input
+          type="number"
+          min="1"
+          max="120"
+          [(ngModel)]="draftSettings!.chunkMinutes"
+      /></label>
+      <fieldset>
+        <legend>Provider keys</legend>
+        <p class="muted">
+          Stored in the device Keychain. Existing keys are never sent back to this page. Enable a
+          field to replace its key, or save it empty to remove the key.
+        </p>
+        <label class="check"
+          ><input type="checkbox" [(ngModel)]="saveClaudeKey" /> Update Claude key
+          {{ state()?.settings?.hasClaudeKey ? '(saved)' : '' }}</label
+        ><input
+          type="password"
+          [(ngModel)]="claudeKey"
+          [disabled]="!saveClaudeKey"
+          autocomplete="off"
+          aria-label="Claude API key"
+        /><label class="check"
+          ><input type="checkbox" [(ngModel)]="saveOpenAIKey" /> Update OpenAI key
+          {{ state()?.settings?.hasOpenAIKey ? '(saved)' : '' }}</label
+        ><input
+          type="password"
+          [(ngModel)]="openAIKey"
+          [disabled]="!saveOpenAIKey"
+          autocomplete="off"
+          aria-label="OpenAI API key"
+        />
+      </fieldset>
+      <fieldset>
+        <legend>Calendar titles</legend>
+        <button type="button" (click)="act({ operation: 'calendarAccess' })">
+          Connect calendars</button
+        ><label class="check"
+          ><input type="checkbox" [(ngModel)]="draftSettings!.calendarEnabled" /> Name recordings
+          using my current event</label
+        ><label class="field"
+          >Title style<select [(ngModel)]="draftSettings!.calendarTitleMode">
+            <option value="hint">Event name + Recording</option>
+            <option value="exactName">Exact event name</option>
+            <option value="off">Off</option>
+          </select></label
+        >
+        <p class="muted">Select calendars to use, or leave all unchecked to use all calendars.</p>
+        @for (calendarItem of state()?.calendars ?? []; track calendarItem.id) {
+          <label class="check"
+            ><input
+              type="checkbox"
+              [checked]="draftSettings!.calendarIds.includes(calendarItem.id)"
+              (change)="calendar(calendarItem.id, $any($event.target).checked)"
+            />
+            {{ calendarItem.title }} · {{ calendarItem.source }}</label
+          >
+        }
+      </fieldset>
+      @if (state()?.systemAudioSupported) {
+        <fieldset>
+          <legend>Mac presentation Assist</legend>
+          <p class="muted">
+            While recording, the presentation helper can use screen text and your notes. Live notes
+            and Assist responses appear in the web recording controls.
+          </p>
+          <label class="field"
+            >Assist instructions<textarea
+              rows="4"
+              [(ngModel)]="draftSettings!.assistPrompt"
+            ></textarea></label
+          ><label class="check"
+            ><input type="checkbox" [(ngModel)]="draftSettings!.shareScreenshots" /> Include
+            screenshots when using cloud AI Assist</label
+          >
+        </fieldset>
+      }
+      @if (recorder.error()) {
+        <p role="alert">{{ recorder.error() }}</p>
+      }
+      <div class="actions">
+        <button type="button" (click)="settingsOpen.set(false)">Cancel</button
+        ><button
+          type="button"
+          class="primary"
+          [disabled]="actionPending()"
+          (click)="saveSettings()"
+        >
+          Save settings
+        </button>
+      </div>
+    </section>
+  </div>
+}
+@if (promptEditorOpen()) {
+  <div class="modal-backdrop">
+    <section
+      class="modal"
+      cdkTrapFocus
+      [cdkTrapFocusAutoCapture]="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="prompt-title"
+    >
+      <h2 id="prompt-title">{{ promptId ? 'Edit prompt' : 'New prompt' }}</h2>
+      <label class="field">Name<input [(ngModel)]="promptName" /></label
+      ><label class="field"
+        >Instructions<textarea rows="7" [(ngModel)]="promptBody"></textarea>
+      </label>
+      <div class="actions">
+        <button type="button" (click)="promptEditorOpen.set(false)">Cancel</button
+        ><button
+          type="button"
+          class="primary"
+          [disabled]="actionPending() || !promptName.trim() || !promptBody.trim()"
+          (click)="savePrompt()"
+        >
+          Save prompt
+        </button>
+      </div>
+    </section>
+  </div>
+}
+@if (image(); as source) {
+  <div class="modal-backdrop">
+    <section
+      class="modal wide"
+      cdkTrapFocus
+      [cdkTrapFocusAutoCapture]="true"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Timeline screenshot"
+    >
+      <button type="button" (click)="image.set(null)">Close preview</button
+      ><img class="frame-preview" [src]="source" alt="Captured presentation window" />
+    </section>
+  </div>
+}

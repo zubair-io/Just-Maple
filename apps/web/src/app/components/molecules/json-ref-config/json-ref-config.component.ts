@@ -1,4 +1,12 @@
-import { Component, inject, input, output, signal, OnInit } from '@angular/core';
+import {
+  Component,
+  inject,
+  input,
+  output,
+  signal,
+  OnInit,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PageService } from '../../../services/page.service';
@@ -31,6 +39,7 @@ export interface JsonLoopConfig {
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './json-ref-config.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './json-ref-config.component.scss',
 })
 export class JsonRefConfigComponent implements OnInit {

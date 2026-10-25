@@ -22,6 +22,7 @@ describe('MessageService', () => {
   let mockNotificationService: Partial<NotificationService>;
   let messageNotificationReadCallback: ((notebookId: string, pageId?: string) => void) | null =
     null;
+  let allNotificationsReadCallback: (() => void) | null = null;
 
   const mockMessage: Message = {
     _id: 'msg-1',
@@ -61,8 +62,12 @@ describe('MessageService', () => {
       onMessageNotificationRead: vi.fn((callback) => {
         messageNotificationReadCallback = callback;
       }),
-      markNotebookMessagesAsRead: vi.fn(),
-      markPageMessagesAsRead: vi.fn(),
+      onAllNotificationsRead: vi.fn((callback) => {
+        allNotificationsReadCallback = callback;
+      }),
+      markChatNotificationsRead: vi.fn(),
+      scheduleUnreadRefresh: vi.fn(),
+      refreshUnreadCount: vi.fn(),
       showToast: vi.fn(),
       activeNotebookId: vi.fn(() => null),
     };
@@ -393,33 +398,25 @@ describe('MessageService', () => {
       expect(service.hasUnreadByNotebookId('tag-unknown')).toBe(false);
     });
 
-    it('should skip API call when marking as read with no unread messages', () => {
-      // Don't load any unread counts (empty)
-      service.loadUnreadCounts().subscribe();
-      const countsReq = httpMock.expectOne('/api/unread');
-      countsReq.flush({ counts: [] });
-
-      // Try to mark as read when there are no unread
+    it('should tell the server a notebook was read even when the local count is zero', () => {
+      // Opening a chat before the counts have loaded used to skip the call, so the
+      // server never learned the chat was read and the count came back.
       service.markAsRead('tag-1').subscribe();
 
-      // Should not make any API call
-      httpMock.expectNone('/api/notebooks/tag-1/read');
+      const req = httpMock.expectOne('/api/notebooks/tag-1/read');
+      expect(req.request.method).toBe('POST');
+      req.flush({ lastReadAt: new Date().toISOString() });
     });
 
-    it('should skip API call when marking page as read with no unread messages', () => {
-      // Don't load any unread counts (empty)
-      service.loadUnreadCounts().subscribe();
-      const countsReq = httpMock.expectOne('/api/unread');
-      countsReq.flush({ counts: [] });
-
-      // Try to mark as read when there are no unread
+    it('should tell the server a page was read even when the local count is zero', () => {
       service.markAsReadByPageId('page-1').subscribe();
 
-      // Should not make any API call
-      httpMock.expectNone('/api/pages/page-1/read');
+      const req = httpMock.expectOne('/api/pages/page-1/read');
+      expect(req.request.method).toBe('POST');
+      req.flush({ lastReadAt: new Date().toISOString() });
     });
 
-    it('should call NotificationService.markNotebookMessagesAsRead when marking notebook as read', () => {
+    it('should clear the chat notifications and take the server badge count when marking notebook as read', () => {
       // Load unread counts
       service.loadUnreadCounts().subscribe();
       const countsReq = httpMock.expectOne('/api/unread');
@@ -430,13 +427,20 @@ describe('MessageService', () => {
       // Mark notebook as read
       service.markAsRead('tag-1').subscribe();
       const req = httpMock.expectOne('/api/notebooks/tag-1/read');
-      req.flush({ lastReadAt: new Date().toISOString() });
+      req.flush({
+        lastReadAt: new Date().toISOString(),
+        pageId: 'page-1',
+        unreadNotificationCount: 2,
+      });
 
       // Should sync with notification service
-      expect(mockNotificationService.markNotebookMessagesAsRead).toHaveBeenCalledWith('tag-1');
+      expect(mockNotificationService.markChatNotificationsRead).toHaveBeenCalledWith(
+        { notebookId: 'tag-1', pageId: 'page-1' },
+        2,
+      );
     });
 
-    it('should call NotificationService.markPageMessagesAsRead when marking page as read', () => {
+    it('should clear the chat notifications and take the server badge count when marking page as read', () => {
       // Load unread counts
       service.loadUnreadCounts().subscribe();
       const countsReq = httpMock.expectOne('/api/unread');
@@ -447,10 +451,21 @@ describe('MessageService', () => {
       // Mark page as read
       service.markAsReadByPageId('page-1').subscribe();
       const req = httpMock.expectOne('/api/pages/page-1/read');
-      req.flush({ lastReadAt: new Date().toISOString() });
+      req.flush({ lastReadAt: new Date().toISOString(), unreadNotificationCount: 0 });
 
       // Should sync with notification service
-      expect(mockNotificationService.markPageMessagesAsRead).toHaveBeenCalledWith('page-1');
+      expect(mockNotificationService.markChatNotificationsRead).toHaveBeenCalledWith(
+        { pageId: 'page-1', notebookId: 'tag-1' },
+        0,
+      );
+    });
+
+    it('should reload unread counts after "mark all as read"', () => {
+      allNotificationsReadCallback?.();
+
+      const req = httpMock.expectOne('/api/unread');
+      req.flush({ counts: [] });
+      expect(service.totalMessageUnreadCount()).toBe(0);
     });
 
     it('should clear unread count when notification callback is triggered for page', () => {
@@ -518,6 +533,81 @@ describe('MessageService', () => {
 
       // Total should decrease
       expect(service.totalMessageUnreadCount()).toBe(3);
+    });
+  });
+
+  describe('unread tracking for arriving messages', () => {
+    function emit(action: 'message' | 'thread_message', message: Message) {
+      realtimeEventsSubject.next({
+        action,
+        data: action === 'message' ? message : { message, parentMessageId: 'parent' },
+        notebookId: message.notebookId,
+        pageId: message.pageId,
+        userId: message.userId,
+        timestamp: new Date().toISOString(),
+      } as ChatEvent);
+    }
+
+    const fromOther: Message = { ...mockMessage, id: 'other-1', userId: 'user-2' };
+
+    it('does not count your own messages (e.g. sent from another device)', () => {
+      emit('message', { ...mockMessage, id: 'mine-1', userId: 'user-1' });
+
+      expect(service.totalMessageUnreadCount()).toBe(0);
+      httpMock.expectNone('/api/pages/page-1/read');
+    });
+
+    it('counts a message from someone else and refreshes the badge', () => {
+      emit('message', fromOther);
+
+      expect(service.getUnreadCountByPageId('page-1')).toBe(1);
+      expect(mockNotificationService.scheduleUnreadRefresh).toHaveBeenCalled();
+    });
+
+    it('counts your bot’s posts even though they carry your user id', () => {
+      emit('message', { ...mockMessage, id: 'bot-1', userId: 'user-1', senderType: 'bot' });
+
+      expect(service.getUnreadCountByPageId('page-1')).toBe(1);
+    });
+
+    it('counts thread replies like the server does', () => {
+      emit('thread_message', { ...fromOther, id: 'reply-1', threadId: 'thread-1' });
+      emit('thread_message', { ...fromOther, id: 'reply-1', threadId: 'thread-1' }); // duplicate
+
+      expect(service.getUnreadCountByPageId('page-1')).toBe(1);
+    });
+
+    it('treats a bot-API thread reply (no notebookId on the message) as in its open chat', () => {
+      vi.mocked(mockNotificationService.activeNotebookId!).mockReturnValue('tag-1');
+      const { notebookId: _omit, ...reply } = {
+        ...fromOther,
+        id: 'bot-reply',
+        threadId: 'thread-1',
+        senderType: 'bot' as const,
+      };
+
+      realtimeEventsSubject.next({
+        action: 'thread_message',
+        data: { message: reply, parentMessageId: 'parent' },
+        notebookId: 'tag-1',
+        pageId: 'page-1',
+        userId: 'user-2',
+        timestamp: new Date().toISOString(),
+      } as ChatEvent);
+
+      const req = httpMock.expectOne('/api/pages/page-1/read');
+      req.flush({ lastReadAt: new Date().toISOString(), unreadNotificationCount: 0 });
+      expect(service.totalMessageUnreadCount()).toBe(0);
+    });
+
+    it('marks a thread reply read when its chat is open', () => {
+      vi.mocked(mockNotificationService.activeNotebookId!).mockReturnValue('tag-1');
+
+      emit('thread_message', { ...fromOther, id: 'reply-2', threadId: 'thread-1' });
+
+      const req = httpMock.expectOne('/api/pages/page-1/read');
+      req.flush({ lastReadAt: new Date().toISOString(), unreadNotificationCount: 0 });
+      expect(service.totalMessageUnreadCount()).toBe(0);
     });
   });
 });

@@ -1,5 +1,14 @@
 import { AppHeaderComponent } from '../../components/organisms/app-header/app-header.component';
-import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  OnInit,
+  OnDestroy,
+  effect,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -19,6 +28,7 @@ import { NotebookService } from '../../services/notebook.service';
 import { NotificationService } from '../../services/notification.service';
 import { PageService } from '../../services/page.service';
 import { MessageService } from '../../services/message.service';
+import { MAC_DATA_SOURCES, MacDataService } from '../../services/mac-data.service';
 import {
   ShareModalComponent,
   NotebookHeaderComponent,
@@ -32,7 +42,7 @@ import {
 } from '../../components';
 import { getPageTypeLabel as getLabel, getPageTypeIcon as getIcon } from '../../utils/page-types';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
-import type { NotebookMember, Page, Message } from '@maple/shared';
+import type { NotebookMember, Page, Message, MacDataSource } from '@maple/shared';
 
 interface NotebookSummary {
   pageCounts: Record<string, number>;
@@ -61,6 +71,7 @@ interface ConnectionGraphData {
     MemberAvatarGroupComponent,
   ],
   templateUrl: './chat-view.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './chat-view.component.scss',
 })
 export class ChatViewComponent implements OnInit, OnDestroy {
@@ -71,6 +82,7 @@ export class ChatViewComponent implements OnInit, OnDestroy {
   private readonly pageService = inject(PageService);
   private readonly messageService = inject(MessageService);
   private readonly dialogService = inject(DialogService);
+  private readonly macData = inject(MacDataService);
 
   private routeSubscription?: Subscription;
 
@@ -283,6 +295,20 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     const pages = this.navigationPages();
     const query = this.pageSearchQuery().trim().toLowerCase();
     return pages.filter((p) => !query || p.title.toLowerCase().includes(query));
+  });
+
+  /** This notebook's chats, for choosing where a bot is proactive. */
+  readonly chatPages = computed(() =>
+    this.navigationPages().filter((page) => page.type === 'message'),
+  );
+
+  /** iMessage, Email and Calendar pages that exist only on this Mac. */
+  readonly macDataAvailable = this.macData.isAvailable;
+  readonly macSources = MAC_DATA_SOURCES;
+  readonly macPages = computed(() => {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return [];
+    return this.macData.pages().filter((page) => page.notebookId === notebookId);
   });
 
   // Delegate to shared utilities
@@ -499,6 +525,28 @@ export class ChatViewComponent implements OnInit, OnDestroy {
           console.error('Failed to create page:', error);
         },
       });
+  }
+
+  async createMacDataPage(source: MacDataSource): Promise<void> {
+    const notebookId = this.selectedNotebookId();
+    if (!notebookId) return;
+    try {
+      const page = await this.macData.createPage(notebookId, source);
+      this.openMacDataPage(page.id);
+    } catch (error) {
+      console.error('Failed to create Mac data page:', error);
+    }
+  }
+
+  openMacDataPage(pageId: string): void {
+    const notebookId = this.selectedNotebookId();
+    if (notebookId) {
+      this.router.navigate(['/', notebookId, 'mac', pageId]);
+    }
+  }
+
+  macSourceIcon(source: MacDataSource): string {
+    return this.macSources.find((item) => item.source === source)?.icon ?? 'laptop_mac';
   }
 
   toggleNewPageDropdown(event: Event): void {

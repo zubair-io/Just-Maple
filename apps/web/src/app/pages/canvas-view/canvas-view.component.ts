@@ -1,4 +1,12 @@
-import { Component, computed, inject, signal, Signal, OnDestroy } from '@angular/core';
+import {
+  Component,
+  computed,
+  inject,
+  signal,
+  Signal,
+  OnDestroy,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -14,6 +22,7 @@ import type { CanvasWidget, CanvasConnector } from '@maple/shared';
   standalone: true,
   imports: [CommonModule, NoteHeaderComponent, WidgetRendererComponent, CanvasPromptBarComponent],
   templateUrl: './canvas-view.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './canvas-view.component.scss',
 })
 export class CanvasViewComponent implements OnDestroy {

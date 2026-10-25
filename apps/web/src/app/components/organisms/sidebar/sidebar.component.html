@@ -591,8 +591,8 @@
     >
       <app-profile-avatar
         [email]="authService.user()?.email ?? ''"
-        [displayName]="authService.user()?.displayName"
-        [profilePictureUrl]="authService.user()?.profilePictureUrl"
+        [displayName]="$safeNavigationMigration(authService.user()?.displayName)"
+        [profilePictureUrl]="$safeNavigationMigration(authService.user()?.profilePictureUrl)"
         size="sm"
       />
       <div class="flex flex-col">
@@ -604,6 +604,14 @@
       </div>
     </div>
     <div class="flex items-center gap-1">
+      <a
+        routerLink="/recorder"
+        class="text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] p-1.5"
+        title="Recorder"
+        aria-label="Open recorder"
+      >
+        <span class="material-symbols-rounded text-xl">mic</span>
+      </a>
       <button
         (click)="onNotifications()"
         class="relative text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] transition-colors p-1.5"

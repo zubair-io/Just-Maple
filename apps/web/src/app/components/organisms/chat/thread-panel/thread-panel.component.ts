@@ -1,5 +1,7 @@
 import {
   Component,
+  untracked,
+  computed,
   input,
   output,
   signal,
@@ -11,8 +13,10 @@ import {
   OnDestroy,
   DestroyRef,
   HostListener,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { BotUIComponent } from '../../../atoms/bot-ui/bot-ui.component';
 import { CommonModule, DatePipe } from '@angular/common';
 import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -22,8 +26,11 @@ import { MessageService } from '../../../../services/message.service';
 import { RealtimeService } from '../../../../services/realtime.service';
 import { ContentRendererComponent } from '../../../atoms/content-renderer/content-renderer.component';
 import { ProfileAvatarComponent } from '../../../atoms/profile-avatar/profile-avatar.component';
+import { ChatTypingComponent } from '../chat-typing.component';
+import { BotActivityService } from '../../../../services/bot-activity.service';
 import { MentionSuggestionComponent } from '../mention-suggestion.component';
 import { Mention, type MentionNodeAttrs } from '../extensions/mention';
+import { isBotUIFallbackContent } from '@maple/shared';
 import type { Message, Thread, PageContent } from '@maple/shared';
 import { extractMentions, extractText } from '@maple/shared';
 import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of } from 'rxjs';
@@ -32,16 +39,24 @@ import { Subscription, Subject, takeUntil, filter, combineLatest, switchMap, of 
   selector: 'app-thread-panel',
   standalone: true,
   imports: [
+    BotUIComponent,
     CommonModule,
     DatePipe,
     ContentRendererComponent,
     ProfileAvatarComponent,
     MentionSuggestionComponent,
+    ChatTypingComponent,
   ],
   templateUrl: './thread-panel.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './thread-panel.component.scss',
+  host: {
+    '[class.fullscreen]': 'isFullscreen()',
+    '[style.--thread-width.px]': 'width()',
+  },
 })
 export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
+  readonly isBotUIFallbackContent = isBotUIFallbackContent;
   @ViewChild('threadMessageList') private messageListRef?: ElementRef<HTMLElement>;
   @ViewChild('threadEditorElement', { static: false })
   private editorRef?: ElementRef<HTMLElement>;
@@ -50,6 +65,15 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
   private readonly messageService = inject(MessageService);
   private readonly realtimeService = inject(RealtimeService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly botActivity = inject(BotActivityService);
+  /** Bots writing a reply in this thread right now. */
+  readonly replyingBots = computed(
+    () => this.botActivity.inThreadBySource().get(this.parentMessage().id) ?? [],
+  );
+  // Keep the "typing…" line in view when a bot starts replying.
+  private readonly scrollToTyping = effect(() => {
+    if (this.replyingBots().length > 0) untracked(() => setTimeout(() => this.scrollToBottom()));
+  });
 
   readonly parentMessage = input.required<Message>();
   readonly notebookId = input.required<string>();
@@ -59,7 +83,16 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
   readonly threadMessages = signal<Message[]>([]);
   readonly thread = signal<Thread | null>(null);
   readonly isLoading = signal(false);
+  readonly actionPending = signal(false);
+  readonly actionError = signal<string | null>(null);
   readonly isClosing = signal(false);
+
+  // Size: drag the left edge to resize (remembered), or fill the chat area.
+  private static readonly widthKey = 'maple.threadPanelWidth';
+  private static readonly minWidth = 320;
+  readonly width = signal(ThreadPanelComponent.savedWidth());
+  readonly isFullscreen = signal(false);
+  readonly isResizing = signal(false);
 
   // Mention autocomplete state
   readonly showMentionSuggestions = signal(false);
@@ -86,12 +119,15 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
 
   private editor: Editor | null = null;
   private realtimeSubscription: Subscription | null = null;
+  private threadLoad: Subscription | null = null;
 
   constructor() {
     // Load thread when parentMessage changes
     effect(() => {
       const message = this.parentMessage();
       if (message) {
+        // A new thread starts with an empty composer (and gets its own mention prefill).
+        untracked(() => this.editor?.commands.clearContent());
         this.loadThread(message.id);
         this.subscribeToThreadMessages(message.id);
       }
@@ -117,19 +153,91 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
     this.prefillBotMentions();
   }
 
+  /** The parent message the mention prefill already ran for. */
+  private prefilledFor: string | null = null;
+  // The bot list can arrive after the thread does; try the prefill again then.
+  private readonly prefillWhenBotsLoad = effect(() => {
+    this.allNotebookBots();
+    untracked(() => this.prefillBotMentions());
+  });
+
   ngOnDestroy(): void {
     this.editor?.destroy();
     this.realtimeSubscription?.unsubscribe();
+    this.threadLoad?.unsubscribe();
   }
 
-  @HostListener('document:keydown.escape')
-  onEscapeKey(): void {
-    if (!this.showMentionSuggestions()) {
+  @HostListener('document:keydown.escape', ['$event'])
+  onEscapeKey(event: Event): void {
+    if (event.defaultPrevented || this.showMentionSuggestions()) return;
+    // Escape leaves full screen first, then closes the thread.
+    if (this.isFullscreen()) {
+      this.isFullscreen.set(false);
+    } else {
       this.close();
     }
   }
 
+  toggleFullscreen(): void {
+    this.isFullscreen.update((full) => !full);
+  }
+
+  /** Drag the left edge; the panel grows to the left. Arrow keys resize from the keyboard. */
+  startResize(event: PointerEvent): void {
+    if (this.isFullscreen()) return;
+    event.preventDefault();
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startWidth = this.width();
+    this.isResizing.set(true);
+    const move = (e: PointerEvent) => this.setWidth(startWidth + (startX - e.clientX));
+    const end = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      this.isResizing.set(false);
+      this.saveWidth();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }
+
+  resizeWithKeyboard(event: KeyboardEvent): void {
+    const step = event.shiftKey ? 80 : 20;
+    if (event.key === 'ArrowLeft') this.setWidth(this.width() + step);
+    else if (event.key === 'ArrowRight') this.setWidth(this.width() - step);
+    else return;
+    event.preventDefault();
+    this.saveWidth();
+  }
+
+  private setWidth(width: number): void {
+    const max = Math.max(ThreadPanelComponent.minWidth, window.innerWidth * 0.7);
+    this.width.set(Math.round(Math.min(Math.max(width, ThreadPanelComponent.minWidth), max)));
+  }
+
+  private saveWidth(): void {
+    try {
+      localStorage.setItem(ThreadPanelComponent.widthKey, String(this.width()));
+    } catch {
+      // Storage unavailable (private mode); the width just isn't remembered.
+    }
+  }
+
+  private static savedWidth(): number {
+    try {
+      const saved = Number(localStorage.getItem(ThreadPanelComponent.widthKey));
+      return saved >= ThreadPanelComponent.minWidth ? saved : 380;
+    } catch {
+      return 380;
+    }
+  }
+
   close(): void {
+    // Closing plays the slide-out animation, which full screen turns off.
+    this.isFullscreen.set(false);
     this.isClosing.set(true);
   }
 
@@ -204,6 +312,11 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
                   this.showMentionSuggestions.set(false);
                   return true;
                 }
+                // With nothing to pick, Enter closes the list and sends as usual.
+                if (key === 'Enter' && this.mentionSuggestions().length === 0) {
+                  this.showMentionSuggestions.set(false);
+                  return false;
+                }
                 if (key === 'Enter' || key === 'ArrowUp' || key === 'ArrowDown') {
                   return true;
                 }
@@ -223,51 +336,27 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  /**
+   * Start the reply with @mentions of the bots already in this thread, so following up
+   * reaches them. Uses the loaded thread, and never replaces text the user typed.
+   */
   private prefillBotMentions(): void {
-    const message = this.parentMessage();
-    if (!message.hasThread) return;
-
-    const botSuggestionMap = new Map(this.allNotebookBots().map((s) => [s.id, s]));
-
-    this.botService.getThreadForMessage(message.id).subscribe((result) => {
-      if (result && this.editor) {
-        const botHandles = new Map<string, { id: string; handle: string }>();
-
-        for (const msg of result.messages) {
-          if (msg.senderType === 'bot' && msg.userBotId) {
-            const botSuggestion = botSuggestionMap.get(msg.userBotId);
-            if (botSuggestion) {
-              botHandles.set(msg.userBotId, {
-                id: msg.userBotId,
-                handle: botSuggestion.handle,
-              });
-            }
-          }
-        }
-
-        if (botHandles.size > 0) {
-          const mentions = Array.from(botHandles.values()).map((bot) => ({
-            type: 'mention',
-            attrs: {
-              id: bot.id,
-              handle: bot.handle,
-              type: 'bot',
-            },
-          }));
-
-          const content: any[] = [];
-          mentions.forEach((mention, index) => {
-            content.push(mention);
-            if (index < mentions.length - 1) {
-              content.push({ type: 'text', text: ' ' });
-            }
-          });
-          content.push({ type: 'text', text: ' ' });
-
-          this.editor.chain().focus().clearContent().insertContentAt(0, content).run();
-        }
-      }
-    });
+    const parentId = this.parentMessage().id;
+    if (!this.editor || this.prefilledFor === parentId || !this.editor.isEmpty) return;
+    const bots = new Map(this.allNotebookBots().map((bot) => [bot.id, bot]));
+    const handles = new Map<string, string>();
+    for (const message of this.threadMessages()) {
+      const bot = message.senderType === 'bot' && message.userBotId && bots.get(message.userBotId);
+      if (bot) handles.set(bot.id, bot.handle);
+    }
+    if (handles.size === 0) return;
+    this.prefilledFor = parentId;
+    const content: Array<Record<string, unknown>> = [];
+    for (const [id, handle] of handles) {
+      content.push({ type: 'mention', attrs: { id, handle, type: 'bot' } });
+      content.push({ type: 'text', text: ' ' });
+    }
+    this.editor.chain().focus().insertContentAt(0, content).run();
   }
 
   private updateMentionPosition(clientRect: (() => DOMRect | null) | null | undefined): void {
@@ -318,7 +407,8 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
     this.threadMessages.set([]);
     this.thread.set(null);
 
-    this.botService.getThreadForMessage(messageId).subscribe({
+    this.threadLoad?.unsubscribe();
+    this.threadLoad = this.botService.getThreadForMessage(messageId).subscribe({
       next: (result) => {
         if (result) {
           this.thread.set(result.thread);
@@ -326,6 +416,7 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
         }
         this.isLoading.set(false);
         this.scrollToBottom();
+        this.prefillBotMentions();
       },
       error: () => {
         this.isLoading.set(false);
@@ -373,41 +464,74 @@ export class ThreadPanelComponent implements AfterViewInit, OnDestroy {
 
     const parentMsg = this.parentMessage();
 
+    this.actionError.set(null);
     this.messageService
       .sendMessage(this.notebookId(), content, { parentMessageId: parentMsg.id })
       .subscribe({
         next: (message) => {
-          if (message && mentions.length > 0) {
-            this.invokeMentionedBots(message, mentions, content);
-          }
+          if (!message) return;
+          this.threadMessages.update((messages) =>
+            messages.some((m) => m.id === message.id) ? messages : [...messages, message],
+          );
+          this.scrollToBottom();
+          if (mentions.length > 0) this.invokeMentionedBots(mentions, content);
+        },
+        error: (err: Error) => {
+          // Put the text back so nothing is lost, and say what happened.
+          if (this.editor?.isEmpty) this.editor.commands.setContent(content);
+          this.actionError.set(`Not sent: ${err.message}`);
         },
       });
   }
 
-  private invokeMentionedBots(
-    message: Message,
-    mentions: MentionNodeAttrs[],
-    content: PageContent,
-  ): void {
-    const fullText = extractText(content, { includeNewlines: false });
-    const parentMsg = this.parentMessage();
-
-    if (message.threadId) {
-      this.botService.getThreadById(message.threadId).subscribe({
-        next: (thread) => {
-          if (thread) {
-            this.invokeBots(mentions, fullText, thread.parentMessageId);
-          } else {
-            this.invokeBots(mentions, fullText, parentMsg.id);
-          }
+  continueBot(message: Message, text: string): void {
+    const bot = this.allNotebookBots().find((bot) => bot.id === message.userBotId);
+    if (!bot || this.actionPending()) return;
+    const content: PageContent = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'mention', attrs: { id: bot.id, handle: bot.handle, type: 'bot' } },
+            { type: 'text', text: ' ' + text.slice(0, 9000) },
+          ],
         },
-        error: () => {
-          this.invokeBots(mentions, fullText, parentMsg.id);
+      ],
+    };
+    this.actionPending.set(true);
+    this.actionError.set(null);
+    this.messageService
+      .sendMessage(this.notebookId(), content, {
+        parentMessageId: this.parentMessage().id,
+        forceHttp: true,
+      })
+      .pipe(
+        switchMap(() =>
+          this.botService.invokeBot(
+            this.notebookId(),
+            bot.handle,
+            'message',
+            this.parentMessage().id,
+            {
+              mentionText: text.slice(0, 10000),
+              fullContent: text.slice(0, 10000),
+            },
+          ),
+        ),
+      )
+      .subscribe({
+        next: () => this.actionPending.set(false),
+        error: (err) => {
+          this.actionPending.set(false);
+          this.actionError.set(err.message || 'Could not send follow-up');
         },
       });
-    } else {
-      this.invokeBots(mentions, fullText, parentMsg.id);
-    }
+  }
+
+  private invokeMentionedBots(mentions: MentionNodeAttrs[], content: PageContent): void {
+    const fullText = extractText(content, { includeNewlines: false });
+    this.invokeBots(mentions, fullText, this.parentMessage().id);
   }
 
   private invokeBots(mentions: MentionNodeAttrs[], fullText: string, sourceId: string): void {

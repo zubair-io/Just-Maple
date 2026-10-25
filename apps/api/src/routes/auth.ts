@@ -70,6 +70,39 @@ export const authRoutes = new Elysia({ prefix: '/api/auth' })
         }),
     )
 
+    // Local development can import an existing signed session without WebAuthn.
+    .post(
+        '/dev-token',
+        async ({ body, jwt, request, set }) => {
+            let hostname: string;
+            try {
+                hostname = new URL(request.headers.get('origin') || request.url).hostname;
+            } catch {
+                set.status = 404;
+                return { error: 'Not found' };
+            }
+            if (!config.isDev || !['localhost', '127.0.0.1', '[::1]'].includes(hostname)) {
+                set.status = 404;
+                return { error: 'Not found' };
+            }
+            const user = await verifyAndGetUser(
+                (token) => jwt.verify(token) as Promise<JWTPayload | false>,
+                `Bearer ${body.token.trim()}`,
+            );
+            if (!user?.email || user.email.toLowerCase() !== body.email.trim().toLowerCase()) {
+                set.status = 401;
+                return { error: 'Email or development token is invalid or expired' };
+            }
+            return { accessToken: await jwt.sign({ sub: user._id }), user };
+        },
+        {
+            body: t.Object({
+                email: t.String({ minLength: 1, maxLength: 254 }),
+                token: t.String({ minLength: 1, maxLength: 8192 }),
+            }),
+        },
+    )
+
     // New accounts have no email identity. Create the user only after WebAuthn verification.
     .post(
         '/passkey/signup/start',

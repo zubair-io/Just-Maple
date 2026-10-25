@@ -30,6 +30,10 @@ import {
 } from '../services/realtime.service';
 import { customAlphabet } from 'nanoid';
 import type { ChatEvent, TypingEvent, PageContent, Page } from '@maple/shared';
+import { Value } from '@sinclair/typebox/value';
+import { MacDataHostInfoSchema } from '@maple/shared';
+import { macDataRelay, type MacDataHostSocket } from '../services/mac-data-relay.service';
+import { handleMacDataChanges, maybeAutoReply } from '../services/proactive-bot.service';
 
 /** Minimal page context for authorization of embedded/card memos */
 interface SyntheticPageContext {
@@ -91,66 +95,76 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
     )
     .ws('/realtime', {
         async open(ws) {
-            // Authenticate user
-            const auth = await authenticateWebSocket(ws);
-            if (!auth) {
-                return; // Connection already closed by authenticateWebSocket
-            }
-
+            // Messages that arrive while setup is still running wait for it (see message()).
+            const setup = ws.data as unknown as { ready?: Promise<void> };
+            let markReady = () => {};
+            setup.ready = new Promise<void>((resolve) => (markReady = resolve));
             try {
-                const { userId, email } = auth;
-
-                // Get user info
-                const user = await findUserById(userId);
-                const userName = user?.displayName || email || 'Anonymous';
-                const userColor = getUserColor(userId);
-
-                // Auto-subscribe to user's notebooks for chat
-                const notebooks = await findNotebooksByUserId(userId);
-                const notebookIds = notebooks.map((n) => n._id);
-
-                // Register connection with service (including subscribed notebooks)
-                const connection = realtimeWSService.registerConnection(
-                    userId,
-                    ws.raw as unknown as WebSocket,
-                    notebookIds,
-                );
-
-                // Store connection context
-                (ws.data as unknown as { context: WSContext }).context = {
-                    userId,
-                    email,
-                    userName,
-                    userColor,
-                    connection,
-                    subscribedNotebooks: new Set(notebookIds),
-                    memoClients: new Map(),
-                };
-
-                // Subscribe to Redis channels for user's notebooks (for cross-replica sync)
-                for (const notebookId of notebookIds) {
-                    subscribeToNotebookChat(notebookId).catch(() => {});
+                // Authenticate user
+                const auth = await authenticateWebSocket(ws);
+                if (!auth) {
+                    return; // Connection already closed by authenticateWebSocket
                 }
 
-                // Send connection confirmation
-                ws.send(
-                    JSON.stringify({
-                        channel: 'system',
-                        event: {
-                            type: 'connected',
-                            userId,
-                            subscribedNotebooks: notebooks.map((n) => n._id),
-                        },
-                    }),
-                );
-            } catch (error) {
-                console.error('WebSocket connection error:', error);
-                ws.close(4001, 'Connection setup failed');
+                try {
+                    const { userId, email } = auth;
+
+                    // Get user info
+                    const user = await findUserById(userId);
+                    const userName = user?.displayName || email || 'Anonymous';
+                    const userColor = getUserColor(userId);
+
+                    // Auto-subscribe to user's notebooks for chat
+                    const notebooks = await findNotebooksByUserId(userId);
+                    const notebookIds = notebooks.map((n) => n._id);
+
+                    // Register connection with service (including subscribed notebooks)
+                    const connection = realtimeWSService.registerConnection(
+                        userId,
+                        ws.raw as unknown as WebSocket,
+                        notebookIds,
+                    );
+
+                    // Store connection context
+                    (ws.data as unknown as { context: WSContext }).context = {
+                        userId,
+                        email,
+                        userName,
+                        userColor,
+                        connection,
+                        subscribedNotebooks: new Set(notebookIds),
+                        memoClients: new Map(),
+                    };
+
+                    // Subscribe to Redis channels for user's notebooks (for cross-replica sync)
+                    for (const notebookId of notebookIds) {
+                        subscribeToNotebookChat(notebookId).catch(() => {});
+                    }
+
+                    // Send connection confirmation
+                    ws.send(
+                        JSON.stringify({
+                            channel: 'system',
+                            event: {
+                                type: 'connected',
+                                userId,
+                                subscribedNotebooks: notebooks.map((n) => n._id),
+                            },
+                        }),
+                    );
+                } catch (error) {
+                    console.error('WebSocket connection error:', error);
+                    ws.close(4001, 'Connection setup failed');
+                }
+            } finally {
+                markReady();
             }
         },
 
         async message(ws, message) {
-            const context = (ws.data as unknown as { context: WSContext }).context;
+            const connection = ws.data as unknown as { context?: WSContext; ready?: Promise<void> };
+            if (!connection.context) await connection.ready;
+            const context = connection.context;
             if (!context) return;
 
             try {
@@ -174,6 +188,10 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
                         handleSystemMessage(ws, context, action, payload);
                         break;
 
+                    case 'macData':
+                        await handleMacDataMessage(ws, context, action, payload);
+                        break;
+
                     default:
                         break;
                 }
@@ -193,6 +211,7 @@ export const realtimeWebSocket = new Elysia({ prefix: '/ws' })
 
             // Unregister connection
             realtimeWSService.unregisterConnection(context.userId, context.connection);
+            void macDataRelay.unregister(context.userId, ws.raw as unknown as MacDataHostSocket);
 
             // Check if we should unsubscribe from Redis channels
             for (const notebookId of context.subscribedNotebooks) {
@@ -489,6 +508,13 @@ async function handleChatMessage(
 
             broadcastChatEvent(notebookId, chatEvent).catch(console.error);
 
+            // A proactive bot answers messages in its chat without an @mention.
+            if (messagesPage.proactive?.enabled) {
+                maybeAutoReply({ page: messagesPage, message, userId: context.userId }).catch(
+                    (error) => console.error('[Proactive] Auto-reply failed:', error),
+                );
+            }
+
             // Send push notifications to all notebook members except the author
             getNotebookMembers(notebookId, context.userId)
                 .then((notebookMembers) => {
@@ -499,6 +525,7 @@ async function handleChatMessage(
                                 sendMessageReceivedNotification(
                                     member.userId,
                                     notebookId,
+                                    messagesPage.id,
                                     message._id,
                                     user?.email || context.email,
                                     user?.displayName,
@@ -558,6 +585,41 @@ async function handleChatMessage(
             }
             break;
         }
+    }
+}
+
+/**
+ * Handle messages from a Mac data host (the Mac app's own connection).
+ * See MacDataConnection.swift for the other side of this protocol.
+ */
+async function handleMacDataMessage(
+    ws: { raw: unknown },
+    context: WSContext,
+    action: string,
+    payload: Record<string, unknown>,
+): Promise<void> {
+    const socket = ws.raw as MacDataHostSocket;
+    const info = Value.Check(MacDataHostInfoSchema, payload.info) ? payload.info : undefined;
+    switch (action) {
+        case 'register':
+            await macDataRelay.register(context.userId, socket, info);
+            break;
+        case 'heartbeat':
+            await macDataRelay.heartbeat(context.userId, info);
+            break;
+        case 'result':
+            if (typeof payload.requestId === 'string') {
+                macDataRelay.handleResult(
+                    context.userId,
+                    payload.requestId,
+                    payload.result,
+                    typeof payload.error === 'string' ? payload.error : undefined,
+                );
+            }
+            break;
+        case 'changes':
+            await handleMacDataChanges(context.userId, payload);
+            break;
     }
 }
 

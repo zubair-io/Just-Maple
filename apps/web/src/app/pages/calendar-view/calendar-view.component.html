@@ -1,0 +1,82 @@
+<app-mac-data-panel
+  source="calendar"
+  icon="calendar_month"
+  [title]="list.page()?.title ?? 'Calendar'"
+  [status]="list.status()"
+  [total]="list.total()"
+  [shown]="list.items().length"
+  [loading]="list.loading()"
+  [error]="list.error()"
+  [canLoadMore]="list.canLoadMore()"
+  [(search)]="list.search"
+  (loadMore)="list.loadMore()"
+  (requestAccess)="list.requestAccess()"
+  (remove)="list.remove()"
+  [focused]="list.focused()"
+  [relay]="list.relay()"
+  (clearFocus)="list.clearFocus()"
+>
+  <div class="flex gap-1 pt-4" role="tablist" aria-label="Time range">
+    @for (option of ranges; track option.id) {
+      <button
+        type="button"
+        role="tab"
+        [attr.aria-selected]="range() === option.id"
+        (click)="range.set(option.id)"
+        class="h-8 cursor-pointer rounded-lg border px-3 font-sans text-xs font-semibold transition-colors"
+        [class]="
+          range() === option.id
+            ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
+            : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-main)] hover:border-[var(--color-text-muted)]'
+        "
+      >
+        {{ option.label }}
+      </button>
+    }
+  </div>
+
+  @if (list.items().length) {
+    <table class="mac-data-table">
+      <thead>
+        <tr>
+          <th scope="col">When</th>
+          <th scope="col">Event</th>
+          <th scope="col">Location</th>
+          <th scope="col">Calendar</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (item of list.items(); track item.id) {
+          <tr [class.line-through]="item.mailbox === 'Canceled'">
+            <td class="nowrap">
+              <div>{{ item.occurredAt * 1000 | date: 'EEE, MMM d' }}</div>
+              <div class="muted">
+                @if (item.allDay) {
+                  All day
+                } @else if (item.endAt && sameDay(item)) {
+                  {{ item.occurredAt * 1000 | date: 'h:mm a' }} –
+                  {{ item.endAt * 1000 | date: 'h:mm a' }}
+                } @else if (item.endAt) {
+                  {{ item.occurredAt * 1000 | date: 'h:mm a' }} –
+                  {{ item.endAt * 1000 | date: 'MMM d, h:mm a' }}
+                } @else {
+                  {{ item.occurredAt * 1000 | date: 'h:mm a' }}
+                }
+              </div>
+            </td>
+            <td class="w-1/2">
+              <div class="font-semibold">{{ item.title || '(no title)' }}</div>
+              @if (item.body) {
+                <div class="clamp muted">{{ item.body }}</div>
+              }
+            </td>
+            <td class="max-w-[14rem]">
+              <span class="clamp">{{ item.location }}</span>
+            </td>
+            <td class="nowrap muted">{{ item.calendar }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  }
+</app-mac-data-panel>

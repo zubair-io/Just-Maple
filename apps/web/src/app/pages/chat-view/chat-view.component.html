@@ -218,6 +218,20 @@
                 >
                 <span>New Chat</span>
               </button>
+              @if (macDataAvailable()) {
+                <div class="h-px bg-[var(--color-border)] my-1 mx-1.5"></div>
+                @for (item of macSources; track item.source) {
+                  <button
+                    (click)="newPageDropdownOpen.set(false); createMacDataPage(item.source)"
+                    class="flex items-center gap-2 w-full h-8 px-2 box-border font-sans text-xs text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] border-none bg-transparent rounded-lg cursor-pointer text-left transition-colors"
+                  >
+                    <span class="material-symbols-rounded text-sm text-[var(--color-text-muted)]">{{
+                      item.icon
+                    }}</span>
+                    <span>New {{ item.label }}</span>
+                  </button>
+                }
+              }
             </div>
           }
         </div>
@@ -326,6 +340,40 @@
                     }
                   </div>
                 </div>
+
+                <!-- Mac-only data pages: shown only in the Mac app, never synced -->
+                @if (macPages().length) {
+                  <div
+                    class="p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-sm"
+                  >
+                    <h3
+                      class="m-0 mb-4 font-sans font-bold text-sm text-[var(--color-text-main)] flex items-center gap-1.5"
+                    >
+                      <span class="material-symbols-rounded text-base text-[var(--color-primary)]"
+                        >laptop_mac</span
+                      >
+                      <span>On this Mac</span>
+                    </h3>
+                    <div class="flex flex-col gap-2">
+                      @for (page of macPages(); track page.id) {
+                        <button
+                          (click)="openMacDataPage(page.id)"
+                          class="flex items-center gap-3 w-full h-11 px-3 box-border font-sans font-semibold text-sm text-[var(--color-text-main)] bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-text-muted)] rounded-lg cursor-pointer text-left transition-colors"
+                        >
+                          <span
+                            class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                            aria-hidden="true"
+                            >{{ macSourceIcon(page.source) }}</span
+                          >
+                          <span class="flex-1 truncate">{{ page.title }}</span>
+                          <span class="font-sans font-bold text-sm text-[var(--color-primary)]"
+                            >→</span
+                          >
+                        </button>
+                      }
+                    </div>
+                  </div>
+                }
 
                 <!-- Recent messages Dialogue preview -->
                 @if (!isLocal()) {
@@ -515,6 +563,8 @@
   <app-share-modal
     [notebook]="selectedNotebook()!"
     [members]="members()"
+    [chatPages]="chatPages()"
+    [currentChatId]="routePageId()"
     (closed)="closeShareModal()"
     (membersChanged)="onMembersChanged()"
   />

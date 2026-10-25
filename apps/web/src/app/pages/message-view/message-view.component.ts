@@ -1,4 +1,13 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy, effect } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  OnInit,
+  OnDestroy,
+  effect,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
@@ -18,6 +27,7 @@ import type { NotebookMember, Message } from '@maple/shared';
   standalone: true,
   imports: [CommonModule, ShareModalComponent, ChatComponent, ThreadPanelComponent],
   templateUrl: './message-view.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './message-view.component.scss',
 })
 export class MessageViewComponent implements OnInit, OnDestroy {
@@ -81,6 +91,13 @@ export class MessageViewComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Subscribe to route params
     this.routeSubscription = this.route.params.subscribe((params) => {
+      // A thread belongs to one chat; leaving the chat closes it.
+      if (
+        params['notebookId'] !== this.selectedNotebookId() ||
+        params['id'] !== this.selectedPageId()
+      ) {
+        this.activeThreadMessage.set(null);
+      }
       this.selectedNotebookId.set(params['notebookId'] || null);
       this.selectedPageId.set(params['id'] || null);
     });

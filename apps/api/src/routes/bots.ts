@@ -1,3 +1,7 @@
+import { listBotModels, BotModelsError } from '../services/bot-models.service';
+import { isBotModel, type BotConfig, type BotProvider, type BotTemplate } from '@maple/shared';
+import { resolveEndpoint } from '../utils/url-safety';
+import { macHttpSend } from '../services/mac-data-relay.service';
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
@@ -11,6 +15,7 @@ import {
 import {
     findUserBotsByUserId,
     findUserBotById,
+    findUserBotByIdInternal,
     findUserBotByHandle,
     findUserBotByHandleForNotebook,
     createUserBot,
@@ -112,6 +117,78 @@ export const botRoutes = new Elysia({ prefix: '/api' })
         return { userBots: enrichedBots };
     })
 
+    // Load available models for a draft or an owned bot. Saved keys stay on the server.
+    .post(
+        '/bot-models',
+        async ({ auth, body, set }) => {
+            if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+            const bot = body.userBotId ? await findUserBotByIdInternal(body.userBotId) : null;
+            if (body.userBotId && (!bot || bot.userId !== auth.user._id)) {
+                set.status = 404;
+                return { error: 'Bot not found' };
+            }
+            const templateId = bot?.templateId || body.templateId;
+            const template = templateId ? await findBotTemplateById(templateId) : null;
+            const action = template?.definition.actions.find((action) => action.type === 'llm');
+            const provider = String(action?.config.provider || 'anthropic');
+            if (!action || !['anthropic', 'openai', 'openai-compatible'].includes(provider)) {
+                set.status = 400;
+                return { error: 'Model discovery is not available for this bot' };
+            }
+            const apiKey = body.apiKey?.trim() || bot?.config?.apiKey || '';
+            if ((!apiKey && provider !== 'openai-compatible') || apiKey === '***REDACTED***') {
+                set.status = 400;
+                return { error: 'Enter an API key to load available models' };
+            }
+            let baseUrl: string | undefined;
+            let send: ReturnType<typeof macHttpSend> | undefined;
+            if (provider === 'openai-compatible') {
+                const draftUrl = body.baseUrl?.trim();
+                // A saved key only goes to the saved server, never to a URL typed in a draft.
+                if (draftUrl && !body.apiKey?.trim() && bot?.config?.apiKey) {
+                    set.status = 400;
+                    return { error: 'Enter the API key again to use a different server' };
+                }
+                try {
+                    const endpoint = await resolveEndpoint(draftUrl || bot?.config?.baseUrl || '');
+                    baseUrl = endpoint.baseUrl;
+                    // Local servers (Ollama) are asked from the user's own Mac.
+                    if (endpoint.local) send = macHttpSend(auth.user._id, 15_000);
+                } catch (error) {
+                    set.status = 400;
+                    return { error: (error as Error).message };
+                }
+            }
+            try {
+                return {
+                    models: await listBotModels(
+                        provider as BotProvider,
+                        apiKey,
+                        body.apiKey?.trim() ? false : bot?.config?.isOAuthToken,
+                        baseUrl,
+                        send,
+                    ),
+                };
+            } catch (error) {
+                set.status = error instanceof BotModelsError ? error.status : 502;
+                return {
+                    error:
+                        error instanceof BotModelsError
+                            ? error.message
+                            : 'Could not load provider models',
+                };
+            }
+        },
+        {
+            body: t.Object({
+                userBotId: t.Optional(t.String()),
+                templateId: t.Optional(t.String()),
+                apiKey: t.Optional(t.String({ maxLength: 8192 })),
+                baseUrl: t.Optional(t.String({ maxLength: 2048 })),
+            }),
+        },
+    )
+
     // Register a new bot
     .post(
         '/user-bots',
@@ -128,9 +205,16 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
 
             // Check if template requires config
-            if (template.requiresConfig && !body.config?.apiKey) {
+            // Custom servers may not need a key (an open endpoint); every other AI bot does.
+            if (template.requiresConfig && !body.config?.apiKey && !usesCustomServer(template)) {
                 set.status = 400;
                 return { error: 'This bot requires an API key' };
+            }
+
+            const endpointError = await checkEndpointConfig(template, body.config);
+            if (endpointError) {
+                set.status = 400;
+                return { error: endpointError };
             }
 
             // Check handle uniqueness for this user
@@ -158,8 +242,11 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 displayName: t.Optional(t.String()),
                 config: t.Optional(
                     t.Object({
+                        model: t.Optional(t.String({ minLength: 1, maxLength: 128 })),
+                        responseMode: t.Optional(t.Union([t.Literal('auto'), t.Literal('text')])),
                         apiKey: t.Optional(t.String()),
                         isOAuthToken: t.Optional(t.Boolean()),
+                        baseUrl: t.Optional(t.String({ maxLength: 2048 })),
                         customSettings: t.Optional(t.Record(t.String(), t.Any())),
                     }),
                 ),
@@ -173,6 +260,40 @@ export const botRoutes = new Elysia({ prefix: '/api' })
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized' };
+            }
+
+            if (body.config?.baseUrl !== undefined) {
+                const existing = await findUserBotByIdInternal(params.id);
+                if (!existing || existing.userId !== auth.user._id) {
+                    set.status = 404;
+                    return { error: 'Bot not found' };
+                }
+                const template = existing.templateId
+                    ? await findBotTemplateById(existing.templateId)
+                    : null;
+                const merged = { ...existing.config, ...body.config };
+                const endpointError = template
+                    ? await checkEndpointConfig(template, merged)
+                    : 'Invalid bot template';
+                if (endpointError) {
+                    set.status = 400;
+                    return { error: endpointError };
+                }
+                if (!template || !usesCustomServer(template)) {
+                    // Not a custom-server bot: there is no URL to save.
+                    delete body.config.baseUrl;
+                } else {
+                    // A saved key only goes to the saved server.
+                    if (
+                        merged.baseUrl !== existing.config?.baseUrl &&
+                        existing.config?.apiKey &&
+                        !body.config.apiKey?.trim()
+                    ) {
+                        set.status = 400;
+                        return { error: 'Enter the API key again to use a different server' };
+                    }
+                    body.config.baseUrl = merged.baseUrl;
+                }
             }
 
             const userBot = await updateUserBot(params.id, auth.user._id, body);
@@ -189,8 +310,11 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 displayName: t.Optional(t.String()),
                 config: t.Optional(
                     t.Object({
+                        model: t.Optional(t.String({ minLength: 1, maxLength: 128 })),
+                        responseMode: t.Optional(t.Union([t.Literal('auto'), t.Literal('text')])),
                         apiKey: t.Optional(t.String()),
                         isOAuthToken: t.Optional(t.Boolean()),
+                        baseUrl: t.Optional(t.String({ maxLength: 2048 })),
                         customSettings: t.Optional(t.Record(t.String(), t.Any())),
                     }),
                 ),
@@ -239,17 +363,30 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             const enrichedBots = await findUserBotsForNotebook(params.id);
 
             // Map to BotSuggestion format with owner info
-            const suggestions = enrichedBots.map((bot: any) => ({
-                id: bot._id,
-                handle: bot.handle,
-                displayName: bot.displayName || bot.templateName || bot.handle,
-                avatar: bot.templateAvatar,
-                description: bot.templateDescription,
-                type: 'bot' as const,
-                ownerId: bot.userId,
-                ownerName: bot.ownerName,
-                ownerAvatar: bot.ownerAvatar,
-            }));
+            const suggestions = await Promise.all(
+                enrichedBots.map(async (bot: any) => {
+                    const template = bot.templateId
+                        ? await findBotTemplateById(bot.templateId)
+                        : null;
+                    const llm = template?.definition.actions.find((a) => a.type === 'llm');
+                    const provider = llm
+                        ? (String(llm.config.provider || 'anthropic') as BotProvider)
+                        : undefined;
+                    return {
+                        id: bot._id,
+                        handle: bot.handle,
+                        displayName: bot.displayName || bot.templateName || bot.handle,
+                        avatar: bot.templateAvatar,
+                        description: bot.templateDescription,
+                        type: 'bot' as const,
+                        provider,
+                        defaultModel: bot.config?.model || llm?.config.model,
+                        ownerId: bot.userId,
+                        ownerName: bot.ownerName,
+                        ownerAvatar: bot.ownerAvatar,
+                    };
+                }),
+            );
 
             return { bots: suggestions };
         },
@@ -281,6 +418,18 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }
             console.log(`[BotInvoke] Found bot: ${userBot._id}, type: ${userBot.botType}`);
 
+            const template = userBot.templateId
+                ? await findBotTemplateById(userBot.templateId)
+                : null;
+            const llm = template?.definition.actions.find((a) => a.type === 'llm');
+            if (
+                body.context.model &&
+                (!llm ||
+                    !isBotModel(body.context.model, String(llm.config.provider || 'anthropic')))
+            ) {
+                set.status = 400;
+                return { error: 'The selected model does not match this bot provider' };
+            }
             // Build context with conversation history if this is a thread
             const context: any = { ...body.context };
 
@@ -290,7 +439,16 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 const { findThreadByParentMessage } = await import('../repositories/thread.repo');
                 const { findMessagesByThreadId } = await import('../repositories/message.repo');
 
-                const sourceMessage = await findMessageById(body.sourceId);
+                const sourceMessage = await findMessageById(body.sourceId, auth.user._id);
+                const { findPageById } = await import('../repositories/page.repo');
+                const sourcePage = sourceMessage
+                    ? await findPageById(sourceMessage.pageId, auth.user._id)
+                    : null;
+                if (!sourceMessage || sourcePage?.notebookId !== params.id) {
+                    set.status = 404;
+                    return { error: 'Source message not found in this notebook' };
+                }
+                context.pageId = sourceMessage.pageId;
 
                 // Check if this message has a thread
                 if (sourceMessage?.hasThread) {
@@ -330,6 +488,7 @@ export const botRoutes = new Elysia({ prefix: '/api' })
                 sourceType: t.Union([t.Literal('message'), t.Literal('note')]),
                 sourceId: t.String(),
                 context: t.Object({
+                    model: t.Optional(t.String({ minLength: 1, maxLength: 128 })),
                     mentionText: t.Optional(t.String()),
                     fullContent: t.Optional(t.String()),
                     documentTitle: t.Optional(t.String()),
@@ -634,3 +793,28 @@ export const botRoutes = new Elysia({ prefix: '/api' })
             }),
         },
     );
+
+/**
+ * OpenAI-compatible bots need a public https server URL; it is stored normalized.
+ * Returns an error message, or null when the config is fine.
+ */
+async function checkEndpointConfig(
+    template: BotTemplate,
+    config: Partial<BotConfig> | undefined,
+): Promise<string | null> {
+    if (!usesCustomServer(template)) return null;
+    if (!config?.baseUrl?.trim()) return 'Enter the server URL for this bot';
+    try {
+        config.baseUrl = (await resolveEndpoint(config.baseUrl)).baseUrl;
+    } catch (error) {
+        return (error as Error).message;
+    }
+    if (config.model && !isBotModel(config.model, 'openai-compatible'))
+        return 'That model name has characters that are not allowed';
+    return null;
+}
+
+function usesCustomServer(template: BotTemplate): boolean {
+    const llm = template.definition.actions.find((action) => action.type === 'llm');
+    return llm?.config.provider === 'openai-compatible';
+}

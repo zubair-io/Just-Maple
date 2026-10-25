@@ -1,13 +1,12 @@
-import { Component, input } from '@angular/core';
+import { Component, computed, input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { TypingEvent } from '@maple/shared';
 
 @Component({
   selector: 'app-chat-typing',
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="typing-indicator">
+    <div class="typing-indicator" role="status" aria-live="polite">
       <div class="dots">
         <span></span>
         <span></span>
@@ -16,6 +15,7 @@ import type { TypingEvent } from '@maple/shared';
       <span class="text">{{ typingText() }}</span>
     </div>
   `,
+  changeDetection: ChangeDetectionStrategy.Eager,
   styles: [
     `
       .typing-indicator {
@@ -62,12 +62,17 @@ import type { TypingEvent } from '@maple/shared';
   ],
 })
 export class ChatTypingComponent {
-  readonly users = input<TypingEvent[]>([]);
+  /** Who is typing: people, or bots writing a reply. */
+  readonly names = input<string[]>([]);
+  /** Bots in a thread are "replying"; people and bots in the chat are "typing". */
+  readonly verb = input<'typing' | 'replying in thread'>('typing');
 
-  typingText(): string {
-    const count = this.users().length;
-    if (count === 0) return '';
-    if (count === 1) return 'Someone is typing...';
-    return `${count} people are typing...`;
-  }
+  readonly typingText = computed(() => {
+    const names = this.names();
+    const verb = this.verb();
+    if (names.length === 0) return '';
+    if (names.length === 1) return `${names[0]} is ${verb}…`;
+    if (names.length === 2) return `${names[0]} and ${names[1]} are ${verb}…`;
+    return `${names[0]} and ${names.length - 1} others are ${verb}…`;
+  });
 }

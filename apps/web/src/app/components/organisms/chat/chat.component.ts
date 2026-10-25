@@ -11,6 +11,7 @@ import {
   AfterViewInit,
   OnDestroy,
   DestroyRef,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
@@ -24,6 +25,7 @@ import { UiStateService } from '../../../services/ui-state.service';
 import { BotService, type BotSuggestion } from '../../../services/bot.service';
 import { ChatMessageComponent } from './chat-message.component';
 import { ChatTypingComponent } from './chat-typing.component';
+import { BotActivityService } from '../../../services/bot-activity.service';
 import { MentionSuggestionComponent } from './mention-suggestion.component';
 import { Mention, type MentionNodeAttrs } from './extensions/mention';
 import type { Message, PageContent, TypingEvent, ChatEvent } from '@maple/shared';
@@ -49,6 +51,7 @@ interface MessageWithGrouping extends Message {
   standalone: true,
   imports: [CommonModule, ChatMessageComponent, ChatTypingComponent, MentionSuggestionComponent],
   templateUrl: './chat.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './chat.component.scss',
 })
 export class ChatComponent implements AfterViewInit, OnDestroy {
@@ -61,6 +64,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private readonly uiStateService = inject(UiStateService);
   private readonly botService = inject(BotService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly botActivity = inject(BotActivityService);
 
   readonly notebookId = input.required<string>();
 
@@ -102,6 +106,33 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   // Thread panel
   readonly openThread = output<Message>();
 
+  /** People typing (named when they've posted here) plus bots answering in the chat itself. */
+  readonly typingNames = computed(() => {
+    const messages = this.messageService.messagesForTag();
+    const people = this.typingUsers().map(
+      (typing) =>
+        messages.find((m) => m.userId === typing.userId && m.senderType !== 'bot')
+          ?.senderDisplayName || 'Someone',
+    );
+    return [...people, ...(this.botActivity.topLevelByNotebook().get(this.notebookId()) ?? [])];
+  });
+  /** Messages that failed to send, shown with Retry and Delete. */
+  readonly failedSends = this.messageService.failedSends;
+
+  retrySend(tempId: string): void {
+    const failed = this.messageService.takeFailedSend(tempId);
+    if (!failed) return;
+    // Same path as a fresh send, so bots mentioned in it are invoked.
+    this.sendRegularMessage(failed.content, this.extractMentionsFromContent(failed.content));
+  }
+
+  discardSend(tempId: string): void {
+    this.messageService.discardFailedSend(tempId);
+  }
+
+  /** Bots writing a reply in each message's thread. */
+  readonly replyingInThread = this.botActivity.inThreadBySource;
+
   // Compute messages with grouping information
   readonly messagesWithGrouping = computed(() => {
     const messages = this.messages();
@@ -113,7 +144,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       }
 
       const prevMessage = messages[index - 1];
-      const isSameUser = message.userId === prevMessage.userId;
+      const isSameUser = senderKey(message) === senderKey(prevMessage);
       const timeDiff =
         new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime();
       const isWithinFiveMinutes = timeDiff < FIVE_MINUTES;
@@ -130,7 +161,10 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private typingTimeout: ReturnType<typeof setTimeout> | null = null;
   private lastTagId: string | null = null;
   private isAtBottom = true;
-  private lastMessageCount = 0;
+  private lastNewestId: string | null = null;
+  private botEventsSubscription: Subscription | null = null;
+  private readonly typingExpiry = new Map<string, ReturnType<typeof setTimeout>>();
+  private lastTypingSentAt = 0;
 
   constructor() {
     effect(() => {
@@ -151,11 +185,15 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     // Watch for new messages and handle scroll behavior
     effect(() => {
       const currentMessages = this.messages();
-      const currentCount = currentMessages.length;
+      const newest = currentMessages.at(-1)?.id ?? null;
 
-      // Check if new messages arrived (not initial load or load more)
-      if (this.lastMessageCount > 0 && currentCount > this.lastMessageCount) {
-        const newCount = currentCount - this.lastMessageCount;
+      // Only messages after the previous newest are new; older history loaded
+      // at the top (load more) never counts.
+      const previousIndex = this.lastNewestId
+        ? currentMessages.findIndex((m) => m.id === this.lastNewestId)
+        : -1;
+      const newCount = previousIndex >= 0 ? currentMessages.length - 1 - previousIndex : 0;
+      if (newCount > 0) {
         // New message(s) came in
         if (this.isAtBottom) {
           // User was at bottom, auto-scroll
@@ -167,11 +205,13 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
         }
       }
 
-      this.lastMessageCount = currentCount;
+      this.lastNewestId = newest;
     });
 
     this.destroyRef.onDestroy(() => {
       this.typingSubscription?.unsubscribe();
+      this.botEventsSubscription?.unsubscribe();
+      this.typingExpiry.forEach((timer) => clearTimeout(timer));
       if (this.typingTimeout) {
         clearTimeout(this.typingTimeout);
       }
@@ -258,6 +298,11 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
                     this.showMentionSuggestions.set(false);
                     return true;
                   }
+                  // With nothing to pick, Enter closes the list and sends as usual.
+                  if (key === 'Enter' && this.mentionSuggestions().length === 0) {
+                    this.showMentionSuggestions.set(false);
+                    return false;
+                  }
                   // Consume Enter and arrow keys so ProseMirror doesn't handle them
                   if (key === 'Enter' || key === 'ArrowUp' || key === 'ArrowDown') {
                     return true;
@@ -340,9 +385,15 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   }
 
   private loadMessages(notebookId: string): void {
-    // Reset state for new tag
-    this.lastMessageCount = 0;
+    // Reset state for the new notebook
+    this.lastNewestId = null;
     this.isAtBottom = true;
+    this.typingUsers.set([]);
+    this.typingExpiry.forEach((timer) => clearTimeout(timer));
+    this.typingExpiry.clear();
+    this.pendingBotInvocations.set([]);
+    this.showScrollButton.set(false);
+    this.newMessageCount.set(0);
 
     this.messageService.loadMessages(notebookId).subscribe({
       next: () => {
@@ -362,8 +413,9 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   }
 
   private subscribeToBotEvents(notebookId: string): void {
-    // Subscribe to bot invocation events for this tag
-    this.realtimeService
+    // One subscription per open notebook; switching notebooks replaces it.
+    this.botEventsSubscription?.unsubscribe();
+    this.botEventsSubscription = this.realtimeService
       .messagesForTag(notebookId)
       .pipe(
         filter((event) => this.isBotEvent(event)),
@@ -500,13 +552,6 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  // Check if a message has a pending bot invocation
-  hasPendingBot(messageId: string): boolean {
-    return this.pendingBotInvocations().some(
-      (i) => i.messageId === messageId && i.status === 'running',
-    );
-  }
-
   // Check if a message has a failed bot invocation
   hasFailedBot(messageId: string): string | undefined {
     const failed = this.pendingBotInvocations().find(
@@ -530,10 +575,15 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       this.typingUsers.set(current.filter((t) => t.userId !== event.userId));
     }
 
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-      this.typingUsers.set(this.typingUsers().filter((t) => t.userId !== event.userId));
-    }, 5000);
+    // Expire 5 seconds after the latest event from this person (not the first one).
+    clearTimeout(this.typingExpiry.get(event.userId));
+    this.typingExpiry.set(
+      event.userId,
+      setTimeout(() => {
+        this.typingExpiry.delete(event.userId);
+        this.typingUsers.update((users) => users.filter((t) => t.userId !== event.userId));
+      }, 5000),
+    );
   }
 
   private handleTyping(): void {
@@ -542,12 +592,17 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       clearTimeout(this.typingTimeout);
     }
 
-    // Send typing start
-    this.messageService.sendTyping(this.notebookId(), true);
+    // Announce typing at most every 3 seconds, not on every keystroke.
+    const now = Date.now();
+    if (now - this.lastTypingSentAt > 3000) {
+      this.lastTypingSentAt = now;
+      this.messageService.sendTyping(this.notebookId(), true);
+    }
 
     // Set timeout to send typing stop
     this.typingTimeout = setTimeout(() => {
       this.messageService.sendTyping(this.notebookId(), false);
+      this.lastTypingSentAt = 0; // resuming should announce typing again right away
     }, 3000);
   }
 
@@ -577,6 +632,18 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
       clearTimeout(this.typingTimeout);
     }
     this.messageService.sendTyping(this.notebookId(), false);
+    this.lastTypingSentAt = 0;
+  }
+
+  /** Sends a bot UI button's or form's text as a plain message in this chat. */
+  sendFollowUp(text: string): void {
+    const content: PageContent = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: text.slice(0, 9000) }] }],
+    };
+    this.isAtBottom = true;
+    this.scrollToBottom();
+    this.sendRegularMessage(content, []);
   }
 
   private sendRegularMessage(content: PageContent, mentions: MentionNodeAttrs[]): void {
@@ -592,6 +659,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
             this.invokeMentionedBots(message, mentions, content);
           }
         },
+        // Failures are shown on the message itself ("Not sent" with Retry).
+        error: () => undefined,
       });
   }
 
@@ -685,9 +754,15 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
   loadMore(): void {
     if (!this.hasMore() || this.isLoading()) return;
-    // Don't auto-scroll when loading older messages
-    this.isAtBottom = false;
-    this.messageService.loadMore().subscribe();
+    // Keep the reader's place: older messages are added above what they're reading.
+    const el = this.messageListRef?.nativeElement;
+    const fromBottom = el ? el.scrollHeight - el.scrollTop : 0;
+    this.messageService.loadMore().subscribe({
+      next: () =>
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop = el.scrollHeight - fromBottom;
+        }),
+    });
   }
 
   trackByMessage(_index: number, message: Message): string {
@@ -733,6 +808,11 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   }
 
   isOwnMessage(message: Message): boolean {
-    return message.userId === this.currentUserId();
+    return message.senderType !== 'bot' && message.userId === this.currentUserId();
   }
+}
+
+/** Who sent a message: a bot (posted under its owner's user id) or the person. */
+function senderKey(message: Message): string {
+  return message.senderType === 'bot' ? `bot:${message.userBotId}` : `user:${message.userId}`;
 }

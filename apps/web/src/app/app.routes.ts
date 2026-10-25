@@ -12,6 +12,7 @@ import {
   CanvasPageGuard,
 } from './guards/page-type.guard';
 import { swUpdateGuard } from './guards/sw-update.guard';
+import { CalendarPageGuard, IMessagePageGuard, MailPageGuard } from './guards/mac-data-page.guard';
 
 export const routes: Routes = [
   {
@@ -104,6 +105,11 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./pages/welcome/welcome.component').then((m) => m.WelcomeComponent),
       },
+      {
+        path: 'recorder',
+        loadComponent: () =>
+          import('./pages/recorder/recorder.component').then((m) => m.RecorderComponent),
+      },
       // Settings route - must come before the home route
       {
         path: 'settings',
@@ -159,6 +165,29 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/collectible-registry-view/collectible-registry-view.component').then(
                 (m) => m.CollectibleRegistryViewComponent,
+              ),
+          },
+          // Mac-only data pages (local registry, never synced)
+          {
+            path: 'mac/:id',
+            canMatch: [IMessagePageGuard],
+            loadComponent: () =>
+              import('./pages/imessage-view/imessage-view.component').then(
+                (m) => m.IMessageViewComponent,
+              ),
+          },
+          {
+            path: 'mac/:id',
+            canMatch: [MailPageGuard],
+            loadComponent: () =>
+              import('./pages/mail-view/mail-view.component').then((m) => m.MailViewComponent),
+          },
+          {
+            path: 'mac/:id',
+            canMatch: [CalendarPageGuard],
+            loadComponent: () =>
+              import('./pages/calendar-view/calendar-view.component').then(
+                (m) => m.CalendarViewComponent,
               ),
           },
           // Kanban card memo route - opens modal over kanban board

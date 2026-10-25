@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures';
+import { createBoard, drawStroke, whiteboardElementCount } from './document-fixtures';
 
 test.describe('Whiteboard', () => {
     test('should create a new whiteboard', async ({ authenticatedPage }) => {
@@ -600,73 +601,110 @@ test.describe('Whiteboard', () => {
 
     test('should sync whiteboard in real-time with collaborators', async ({
         authenticatedPage,
+        testUser,
+        browser,
     }) => {
-        await authenticatedPage.goto('/');
-        await authenticatedPage.waitForLoadState('networkidle');
-
-        const newWhiteboardBtn = authenticatedPage
-            .locator('button:has-text("New Whiteboard"), button:has-text("Whiteboard")')
-            .first();
-        if (!(await newWhiteboardBtn.isVisible({ timeout: 3000 }).catch(() => false))) {
-            return;
-        }
-        await newWhiteboardBtn.click();
-        await authenticatedPage.waitForTimeout(1000);
-
-        const whiteboardUrl = authenticatedPage.url();
-        const canvas1 = authenticatedPage.locator('canvas').first();
-        await expect(canvas1).toBeVisible({ timeout: 5000 });
-
-        // Open second page in same authenticated context
-        const page2 = await authenticatedPage.context().newPage();
+        const board = await createBoard(authenticatedPage.request, testUser.token, 'whiteboard');
+        await authenticatedPage.goto(board.url);
+        await expect(authenticatedPage.locator('canvas.drawing-canvas')).toBeVisible();
+        // Separate contexts have separate IndexedDB stores: pixels must arrive through the server.
+        const context = await browser.newContext({
+            storageState: await authenticatedPage.context().storageState(),
+            baseURL: 'http://localhost:7072',
+        });
+        const second = await context.newPage();
         try {
-            await page2.goto(whiteboardUrl);
-            await page2.waitForLoadState('networkidle');
-            const canvas2 = page2.locator('canvas').first();
-            await expect(canvas2).toBeVisible({ timeout: 5000 });
-
-            // Draw on canvas1
-            const box1 = await canvas1.boundingBox();
-            if (box1) {
-                await authenticatedPage.mouse.move(box1.x + 100, box1.y + 100);
-                await authenticatedPage.mouse.down();
-                await authenticatedPage.mouse.move(box1.x + 200, box1.y + 200, { steps: 5 });
-                await authenticatedPage.mouse.up();
-            }
-
-            await page2.waitForTimeout(1000);
-            await expect(canvas2).toBeVisible();
+            await second.goto(board.url);
+            const remote = second.locator('canvas.drawing-canvas');
+            await expect(remote).toBeVisible();
+            const before = await remote.evaluate((canvas) =>
+                (canvas as HTMLCanvasElement).toDataURL(),
+            );
+            await drawStroke(authenticatedPage);
+            await expect
+                .poll(() =>
+                    whiteboardElementCount(authenticatedPage.request, testUser.token, board.id),
+                )
+                .toBe(1);
+            await second.bringToFront();
+            await expect
+                .poll(() => remote.evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL()))
+                .not.toBe(before);
+            // Reopening the isolated client must also restore the persisted drawing.
+            await second.reload();
+            await expect(remote).toBeVisible();
+            await expect
+                .poll(() => remote.evaluate((canvas) => (canvas as HTMLCanvasElement).toDataURL()))
+                .not.toBe(before);
         } finally {
-            await page2.close();
+            await context.close();
         }
     });
 
-    test('should support keyboard shortcuts', async ({ authenticatedPage }) => {
-        await authenticatedPage.goto('/');
-        await authenticatedPage.waitForLoadState('networkidle');
-
-        const newWhiteboardButton = authenticatedPage
-            .locator('button:has-text("New Whiteboard"), button:has-text("Whiteboard")')
-            .first();
-
-        if (!(await newWhiteboardButton.isVisible({ timeout: 3000 }).catch(() => false))) {
-            return;
-        }
-
-        await newWhiteboardButton.click();
-        await authenticatedPage.waitForTimeout(1000);
-
-        const canvas = authenticatedPage.locator('canvas').first();
-        await expect(canvas).toBeVisible({ timeout: 5000 });
-
-        // Press shortcut keys
-        await authenticatedPage.keyboard.press('v');
-        await authenticatedPage.waitForTimeout(200);
-        await authenticatedPage.keyboard.press('p');
-        await authenticatedPage.waitForTimeout(200);
-        await authenticatedPage.keyboard.press('e');
-        await authenticatedPage.waitForTimeout(200);
-
+    test('should support keyboard shortcuts', async ({ authenticatedPage: page, testUser }) => {
+        const board = await createBoard(page.request, testUser.token, 'whiteboard');
+        await page.goto(board.url);
+        const canvas = page.locator('canvas.drawing-canvas');
         await expect(canvas).toBeVisible();
+        for (const [key, title] of [
+            ['v', 'Select (V)'],
+            ['p', 'Pen (P)'],
+            ['l', 'Line (L)'],
+            ['r', 'Rectangle (R)'],
+            ['o', 'Ellipse (O)'],
+            ['a', 'Arrow (A)'],
+        ]) {
+            await page.keyboard.press(key!);
+            await expect(page.getByTitle(title!, { exact: true })).toHaveClass(/active/);
+        }
+        await drawStroke(page);
+        await expect
+            .poll(() => whiteboardElementCount(page.request, testUser.token, board.id))
+            .toBe(1);
+        // A text editor elsewhere in the document retains native undo.
+        const interceptedTextUndo = await page.evaluate(() => {
+            const editor = document.createElement('div');
+            editor.contentEditable = 'true';
+            document.body.append(editor);
+            editor.focus();
+            const event = new KeyboardEvent('keydown', {
+                key: 'z',
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true,
+            });
+            editor.dispatchEvent(event);
+            editor.remove();
+            return event.defaultPrevented;
+        });
+        expect(interceptedTextUndo).toBe(false);
+        await expect
+            .poll(() => whiteboardElementCount(page.request, testUser.token, board.id))
+            .toBe(1);
+        await page.locator('app-whiteboard').focus();
+        await page.keyboard.press('ControlOrMeta+z');
+        await expect
+            .poll(() => whiteboardElementCount(page.request, testUser.token, board.id))
+            .toBe(0);
+        await page.keyboard.press('ControlOrMeta+Shift+z');
+        await expect
+            .poll(() => whiteboardElementCount(page.request, testUser.token, board.id))
+            .toBe(1);
+        const before = await canvas.evaluate((c) => (c as HTMLCanvasElement).toDataURL());
+        await page.keyboard.down('Space');
+        await expect(page.locator('.canvas-container')).toHaveCSS('cursor', 'grab');
+        const box = await canvas.boundingBox();
+        expect(box).not.toBeNull();
+        await page.mouse.move(box!.x + 80, box!.y + 100);
+        await page.mouse.down();
+        await page.mouse.move(box!.x + 117, box!.y + 119, { steps: 5 });
+        await page.mouse.up();
+        await page.keyboard.up('Space');
+        await expect
+            .poll(() => canvas.evaluate((c) => (c as HTMLCanvasElement).toDataURL()))
+            .not.toBe(before);
+        await expect
+            .poll(() => whiteboardElementCount(page.request, testUser.token, board.id))
+            .toBe(1);
     });
 });

@@ -56,7 +56,7 @@
                   type="button"
                   class="option-button"
                   [class.active]="btn.isActive?.()"
-                  [disabled]="btn.disabled?.()"
+                  [disabled]="$safeNavigationMigration(btn.disabled?.())"
                   [attr.aria-pressed]="btn.isActive ? !!btn.isActive() : null"
                   (click)="btn.action()"
                 >

@@ -29,18 +29,19 @@
     "e2e": "bun run build:e2e && playwright test",
     "e2e:ui": "bun run build:e2e && playwright test --ui",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "dev:token": "bun run --cwd apps/api dev:token"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",
     "@socketsecurity/bun-security-scanner": "1.1.2",
     "@vitest/coverage-v8": "^4.0.15",
     "playwright": "^1.57.0",
-    "typescript": "^5.3.0",
+    "typescript": "~6.0.2",
     "vitest": "^4.0.15"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
   },
   "overrides": {
     "@tiptap/pm": "3.15.3"

@@ -1,0 +1,68 @@
+<section class="flex flex-col gap-3" aria-label="Proactive bot settings">
+  <p class="m-0 font-sans text-xs leading-relaxed text-[var(--color-text-muted)]">
+    Answers every message in this chat without an &#64;mention, and tells you about new things in
+    your iMessage, Email and Calendar.
+  </p>
+
+  <div
+    class="rounded-lg bg-[var(--color-bg)] px-3 py-2 font-sans text-xs text-[var(--color-text-muted)]"
+    role="status"
+  >
+    @if (status(); as s) {
+      @if (s.sources.length === 0) {
+        This notebook has no Mac pages yet. On your Mac, use + to add iMessage, Email or Calendar so
+        the bot has something to watch.
+      } @else {
+        Watching {{ sourceNames() }} on your Mac ·
+        @if (s.online) {
+          <span class="text-[var(--color-text-main)]">Mac connected</span>
+        } @else {
+          Mac offline{{ s.lastSeenAt ? ', last seen ' : ''
+          }}{{ s.lastSeenAt ? (s.lastSeenAt | date: 'MMM d, h:mm a') : '' }}
+        }
+      }
+    } @else {
+      Checking your Mac…
+    }
+  </div>
+
+  <label
+    class="flex flex-col gap-1.5 font-sans text-xs font-semibold text-[var(--color-text-main)]"
+  >
+    Instructions
+    <textarea
+      rows="5"
+      maxlength="8000"
+      [value]="instructions()"
+      (input)="instructions.set($any($event.target).value)"
+      placeholder="For example: Keep track of the kids' school and sports schedules, deliveries and anything that needs a reply. Skip marketing email."
+      class="resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-2 font-sans text-sm font-normal leading-relaxed text-[var(--color-text-main)]"
+    ></textarea>
+    <span class="font-normal text-[var(--color-text-muted)]">
+      When you correct the bot in conversation, it adds the correction here.
+    </span>
+  </label>
+
+  @if (error()) {
+    <p class="m-0 font-sans text-xs text-[var(--color-primary)]" role="alert">{{ error() }}</p>
+  }
+
+  <footer class="flex items-center justify-end gap-2">
+    <button
+      type="button"
+      (click)="closed.emit()"
+      [disabled]="saving()"
+      class="h-8 cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-3 font-sans text-xs font-semibold text-[var(--color-text-main)] hover:bg-[var(--color-surface-hover)] disabled:opacity-60"
+    >
+      Cancel
+    </button>
+    <button
+      type="button"
+      (click)="save()"
+      [disabled]="saving()"
+      class="h-8 cursor-pointer rounded-lg border-none bg-[var(--color-primary)] px-3 font-sans text-xs font-semibold text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-60"
+    >
+      {{ saving() ? 'Saving…' : isOn() ? 'Save' : 'Turn on' }}
+    </button>
+  </footer>
+</section>

@@ -32,8 +32,12 @@ import { NotificationService } from './notification.service';
 import { VisibilityService } from './visibility.service';
 import { DB_STORES } from './db-stores';
 import type { Message, PageContent, UnreadCount, Page } from '@maple/shared';
+import { extractText } from '@maple/shared';
 
 const STORE_NAME = DB_STORES.MESSAGE;
+
+/** How long a socket send may go unconfirmed before it's shown as not sent. */
+const SEND_CONFIRM_TIMEOUT_MS = 15_000;
 
 @Injectable({ providedIn: 'root' })
 export class MessageService {
@@ -101,7 +105,10 @@ export class MessageService {
       this.visibilityService.becameVisible$
         .pipe(
           takeUntilDestroyed(this.destroyRef),
-          switchMap(() => this.loadUnreadCounts()),
+          switchMap(() => {
+            this.notificationService.refreshUnreadCount();
+            return this.loadUnreadCounts();
+          }),
         )
         .subscribe();
 
@@ -120,6 +127,11 @@ export class MessageService {
           // Clear unread count for notebook
           this._unreadCounts.update((counts) => counts.filter((c) => c.notebookId !== notebookId));
         }
+      });
+
+      // "Mark all as read" read every chat on the server; reload the real counts
+      this.notificationService.onAllNotificationsRead(() => {
+        this.loadUnreadCounts().subscribe();
       });
     }
 
@@ -141,6 +153,19 @@ export class MessageService {
         case 'message':
           this.handleNewMessage(event.data as Message);
           break;
+        case 'thread_message': {
+          // Thread replies count as unread on the server too; keep the local count in step
+          const reply = (event.data as { message?: Message }).message;
+          // Bot-API replies leave the chat out of the message; take it from the event
+          if (reply) {
+            this.trackUnread({
+              ...reply,
+              notebookId: reply.notebookId ?? event.notebookId,
+              pageId: reply.pageId ?? event.pageId,
+            });
+          }
+          break;
+        }
         case 'edited':
           this.handleEditedMessage(event.data as Message);
           break;
@@ -167,33 +192,68 @@ export class MessageService {
     const currentPageId = this._currentPageId();
     const currentNotebookId = this._currentNotebookId();
     const currentUserId = this.authService.user()?._id;
-    const activeNotebookId = this.notificationService.activeNotebookId();
 
     // Only add to store if for current page (or current notebook for backward compat)
     const isCurrentPage = message.pageId === currentPageId;
     const isCurrentNotebook = message.notebookId === currentNotebookId;
 
-    if (isCurrentPage || isCurrentNotebook) {
-      // If this is the current user's message, remove any temp messages first
-      // This handles optimistic updates from WebSocket sends
-      if (message.userId === currentUserId) {
-        const allMessages = this.store.query(getAllEntities());
-        const tempIds = allMessages.filter((m) => m.id.startsWith('temp-')).map((m) => m.id);
-        if (tempIds.length > 0) {
-          this.store.update(deleteEntities(tempIds));
-        }
-      }
+    // Your own message came back: it replaces its placeholder, whichever notebook is open
+    // (you may have switched away before the echo arrived). Only a placeholder with the
+    // same notebook and text is replaced, so other messages still sending keep theirs.
+    // Bot posts are stored under their owner's id and never replace placeholders.
+    if (message.userId === currentUserId && message.senderType !== 'bot') {
+      const sent = extractText(message.content);
+      const placeholder = this.store
+        .query(getAllEntities())
+        .find(
+          (m) =>
+            m.id.startsWith('temp-') &&
+            m.notebookId === message.notebookId &&
+            extractText(m.content) === sent,
+        );
+      if (placeholder) this.forgetPlaceholder(placeholder.id);
+    }
 
+    if (isCurrentPage || isCurrentNotebook) {
       // Use upsert to handle duplicates (e.g., sender's own message)
       this.store.update(upsertEntities(message));
       this.persistToIndexedDB([message]);
     }
 
-    // If user is viewing this notebook, mark as read immediately
-    if (message.notebookId === activeNotebookId && message.pageId) {
-      this.markAsReadByPageId(message.pageId).subscribe();
-      this.notificationService.markNotebookMessagesAsRead(message.notebookId);
-    } else if (message.userId !== currentUserId) {
+    this.trackUnread(message);
+  }
+
+  /**
+   * Keep unread state in step with a message that just arrived (top level or thread
+   * reply): mark it read if its chat is open, otherwise count it and show a toast.
+   * Your own messages are never unread; bot posts are stored under the owner's id
+   * but still count.
+   */
+  private trackUnread(message: Message): void {
+    const currentUserId = this.authService.user()?._id;
+    if (message.userId === currentUserId && message.senderType !== 'bot') {
+      return;
+    }
+
+    // Thread replies are deduplicated here; top-level messages already were
+    if (message.threadId) {
+      if (this.processedMessageIds.has(message.id)) return;
+      if (this.processedMessageIds.size >= this.MAX_PROCESSED_IDS) {
+        this.processedMessageIds.clear();
+      }
+      this.processedMessageIds.add(message.id);
+    }
+
+    const activeNotebookId = this.notificationService.activeNotebookId();
+    const currentPageId = this._currentPageId();
+    const chatIsOpen =
+      !!message.pageId &&
+      message.notebookId === activeNotebookId &&
+      (!currentPageId || message.pageId === currentPageId);
+
+    if (chatIsOpen) {
+      this.markAsReadByPageId(message.pageId, message.notebookId).subscribe();
+    } else {
       // Show toast notification if message is from another user
       const senderName = message.senderDisplayName || message.senderEmail || 'Someone';
       const messagePreview = this.extractTextFromContent(message.content);
@@ -219,6 +279,9 @@ export class MessageService {
           return [...counts, { pageId: message.pageId, notebookId: message.notebookId, count: 1 }];
         }
       });
+
+      // The server adds a notification for this message; pick up the new badge count
+      this.notificationService.scheduleUnreadRefresh();
     }
   }
 
@@ -461,7 +524,7 @@ export class MessageService {
   ): Observable<Message | null> {
     this._error.set(null);
 
-    const tempId = `temp-${Date.now()}`;
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
     const currentUser = this.authService.user();
     const pageId = this._currentPageId() || '';
@@ -490,8 +553,14 @@ export class MessageService {
 
       // Add optimistic message immediately
       this.store.update(addEntities(tempMessage));
+      this.pendingSends.set(tempId, { notebookId, content, options });
 
       this.realtimeWS.sendChatMessage(notebookId, content);
+      // The socket gives no error reply; if the echo never arrives, offer a retry.
+      this.sendTimers.set(
+        tempId,
+        setTimeout(() => this.markSendFailed(tempId), SEND_CONFIRM_TIMEOUT_MS),
+      );
       // WebSocket doesn't return the message, return null
       // Caller should use forceHttp: true if they need the message ID
       // The real message will arrive via realtime events and upsert will update
@@ -519,6 +588,7 @@ export class MessageService {
       };
 
       this.store.update(addEntities(tempMessage));
+      this.pendingSends.set(tempId, { notebookId, content, options });
     }
 
     const body: { content: PageContent; threadId?: string; parentMessageId?: string } = {
@@ -536,7 +606,7 @@ export class MessageService {
       .pipe(
         tap((response) => {
           if (!isThreadReply) {
-            this.store.update(deleteEntities(tempId));
+            this.forgetPlaceholder(tempId);
           }
           this.store.update(upsertEntities(response.message));
           this.persistToIndexedDB([response.message]);
@@ -554,14 +624,65 @@ export class MessageService {
         }),
         map((response) => response.message),
         catchError((err) => {
+          // Keep the text: the message stays in the list as "Not sent" with Retry.
           if (!isThreadReply) {
-            this.store.update(deleteEntities(tempId));
+            this.markSendFailed(tempId);
           }
           const message = err?.error?.error || err?.error?.message || 'Failed to send message';
           this._error.set(message);
           return throwError(() => new Error(message));
         }),
       );
+  }
+
+  /** Placeholders whose send failed; shown as "Not sent" with Retry and Delete. */
+  private readonly _failedSends = signal<ReadonlySet<string>>(new Set());
+  readonly failedSends = this._failedSends.asReadonly();
+  private readonly pendingSends = new Map<
+    string,
+    {
+      notebookId: string;
+      content: PageContent;
+      options?: { threadId?: string; parentMessageId?: string; forceHttp?: boolean };
+    }
+  >();
+  private readonly sendTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /**
+   * Take a failed message back to send it again: removes it from the list and returns
+   * what it said. The caller resends it through its normal path, so @mentioned bots
+   * are invoked as usual.
+   */
+  takeFailedSend(tempId: string): { notebookId: string; content: PageContent } | null {
+    const pending = this.pendingSends.get(tempId);
+    if (!pending) return null;
+    this.forgetPlaceholder(tempId);
+    return { notebookId: pending.notebookId, content: pending.content };
+  }
+
+  /** Drop a failed message without sending it. */
+  discardFailedSend(tempId: string): void {
+    this.forgetPlaceholder(tempId);
+  }
+
+  private markSendFailed(tempId: string): void {
+    clearTimeout(this.sendTimers.get(tempId));
+    this.sendTimers.delete(tempId);
+    if (!this.store.query(getEntity(tempId))) return; // already confirmed
+    this._failedSends.update((ids) => new Set([...ids, tempId]));
+  }
+
+  private forgetPlaceholder(tempId: string): void {
+    clearTimeout(this.sendTimers.get(tempId));
+    this.sendTimers.delete(tempId);
+    this.pendingSends.delete(tempId);
+    this._failedSends.update((ids) => {
+      if (!ids.has(tempId)) return ids;
+      const next = new Set(ids);
+      next.delete(tempId);
+      return next;
+    });
+    this.store.update(deleteEntities(tempId));
   }
 
   /**
@@ -645,17 +766,17 @@ export class MessageService {
   }
 
   /**
-   * Mark notebook as read (finds messages page automatically)
-   * Only makes API call if there are unread messages
+   * Mark notebook as read (finds messages page automatically).
+   * Always tells the server: the local count can be stale (not loaded yet, or
+   * changed on another device), and the server also clears the chat's notifications.
    */
   markAsRead(notebookId: string): Observable<void> {
-    // Skip API call if no unread messages for this notebook
-    if (!this.hasUnreadByNotebookId(notebookId)) {
-      return of(undefined);
-    }
-
     return this.http
-      .post<{ lastReadAt: string; pageId?: string }>(`/api/notebooks/${notebookId}/read`, {})
+      .post<{
+        lastReadAt: string;
+        pageId?: string;
+        unreadNotificationCount?: number;
+      }>(`/api/notebooks/${notebookId}/read`, {})
       .pipe(
         tap((response) => {
           // Update local unread count by pageId or notebookId
@@ -663,8 +784,10 @@ export class MessageService {
           this._unreadCounts.update((counts) =>
             counts.filter((c) => (pageId ? c.pageId !== pageId : c.notebookId !== notebookId)),
           );
-          // Also mark related notifications as read
-          this.notificationService.markNotebookMessagesAsRead(notebookId);
+          this.notificationService.markChatNotificationsRead(
+            { notebookId, pageId },
+            response.unreadNotificationCount,
+          );
         }),
         map(() => undefined),
         catchError(() => of(undefined)),
@@ -672,24 +795,33 @@ export class MessageService {
   }
 
   /**
-   * Mark page as read by pageId
-   * Only makes API call if there are unread messages
+   * Mark page as read by pageId.
+   * Always tells the server: the local count can be stale (not loaded yet, or
+   * changed on another device), and the server also clears the chat's notifications.
    */
-  markAsReadByPageId(pageId: string): Observable<void> {
-    // Skip API call if no unread messages for this page
-    if (!this.hasUnreadByPageId(pageId)) {
-      return of(undefined);
-    }
+  markAsReadByPageId(pageId: string, knownNotebookId?: string): Observable<void> {
+    // The notebook matches older notifications that were saved without a pageId
+    const notebookId =
+      knownNotebookId ??
+      this._unreadCounts().find((c) => c.pageId === pageId)?.notebookId ??
+      (this._currentPage()?.id === pageId ? this._currentPage()?.notebookId : undefined);
 
-    return this.http.post<{ lastReadAt: string }>(`/api/pages/${pageId}/read`, {}).pipe(
-      tap(() => {
-        this._unreadCounts.update((counts) => counts.filter((c) => c.pageId !== pageId));
-        // Also mark related notifications as read
-        this.notificationService.markPageMessagesAsRead(pageId);
-      }),
-      map(() => undefined),
-      catchError(() => of(undefined)),
-    );
+    return this.http
+      .post<{
+        lastReadAt: string;
+        unreadNotificationCount?: number;
+      }>(`/api/pages/${pageId}/read`, {})
+      .pipe(
+        tap((response) => {
+          this._unreadCounts.update((counts) => counts.filter((c) => c.pageId !== pageId));
+          this.notificationService.markChatNotificationsRead(
+            { pageId, notebookId },
+            response.unreadNotificationCount,
+          );
+        }),
+        map(() => undefined),
+        catchError(() => of(undefined)),
+      );
   }
 
   /**

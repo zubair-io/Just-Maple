@@ -6,7 +6,10 @@ import type {
     Action,
     PageContent,
     Message,
+    Page,
 } from '@maple/shared';
+import { isBotModel } from '@maple/shared';
+import { botUIPrompt, parseBotResponse, botUIToText } from './bot-ui.service';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKAssistantMessage } from '@anthropic-ai/claude-agent-sdk';
 import { findBotTemplateById } from '../repositories/bot-template.repo';
@@ -23,18 +26,41 @@ import {
 } from '../repositories/thread.repo';
 import {
     createMessageInThread,
+    createTopLevelBotMessage,
     markMessageHasThread,
     findMessagesByThreadId,
     findMessageById,
 } from '../repositories/message.repo';
+import { sendMessageReceivedNotification } from './notification.service';
 import { broadcastChatEvent } from './realtime.service';
 import { extractTextFromContent } from '../utils/content-utils';
 import { markdownToProseMirror } from '../utils/markdown-to-prosemirror';
 import { buildWebhookPayload, invokeWebhookWithRetry } from './webhook.service';
+import {
+    executeMacDataTool,
+    getMacDataToolContext,
+    macDataSystemPrompt,
+    macDataToolDefinitions,
+    type MacDataToolContext,
+} from './mac-data-tools.service';
+import {
+    ChatCompletionsError,
+    runAnthropicWithTools,
+    runChatCompletions,
+    runChatCompletionsWithTools,
+    runOpenAIWithTools,
+    type ChatCompletionsTarget,
+    type ChatTurn,
+} from './llm-tool-loop.service';
+import { resolveEndpoint, validateUrl } from '../utils/url-safety';
+import { macHttpSend } from './mac-data-relay.service';
+import { findPageByIdForBot } from '../repositories/page.repo';
+import { appendProactiveInstruction } from './proactive-settings.service';
 
 // Configuration constants
 const DEFAULT_LLM_MODEL = process.env.DEFAULT_LLM_MODEL || 'claude-sonnet-4-20250514';
-const BOT_EXECUTION_TIMEOUT_MS = parseInt(process.env.BOT_EXECUTION_TIMEOUT_MS || '60000', 10);
+// Generous enough for local-data tool runs: several model rounds plus Mac round trips.
+const BOT_EXECUTION_TIMEOUT_MS = parseInt(process.env.BOT_EXECUTION_TIMEOUT_MS || '180000', 10);
 
 interface ExecutionContext {
     invocation: BotInvocation;
@@ -42,6 +68,8 @@ interface ExecutionContext {
     userBot: UserBot;
     config: BotConfig | undefined;
     variables: Record<string, unknown>;
+    /** Local Mac data for this run; undefined until looked up, null when there is none. */
+    macData?: MacDataToolContext | null;
 }
 
 /**
@@ -138,7 +166,7 @@ export class BotExecutorService {
         try {
             // Update status to running
             await updateInvocationStatus(invocation._id, 'running');
-            this.broadcastStatus(invocation, 'running');
+            this.broadcastStatus(invocation, userBot, 'running');
 
             // Get thread context - the parent message and any thread messages
             const parentMessage = await findMessageById(invocation.sourceId);
@@ -181,7 +209,7 @@ export class BotExecutorService {
             });
 
             // Broadcast that webhook was sent successfully
-            this.broadcastStatus(invocation, 'running');
+            this.broadcastStatus(invocation, userBot, 'running');
         } catch (error) {
             const executionTimeMs = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -194,7 +222,7 @@ export class BotExecutorService {
                 executionTimeMs,
             });
 
-            this.broadcastStatus(invocation, 'failed', errorMessage);
+            this.broadcastStatus(invocation, userBot, 'failed', undefined, errorMessage);
         }
     }
 
@@ -204,15 +232,20 @@ export class BotExecutorService {
     async execute(invocationId: string): Promise<void> {
         const startTime = Date.now();
 
+        let timer: ReturnType<typeof setTimeout> | undefined;
         // Create timeout promise for overall execution
         const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => {
+            timer = setTimeout(() => {
                 reject(new Error(`Bot execution timed out after ${BOT_EXECUTION_TIMEOUT_MS}ms`));
             }, BOT_EXECUTION_TIMEOUT_MS);
         });
 
         // Race execution against timeout
-        await Promise.race([this.executeWithContext(invocationId, startTime), timeoutPromise]);
+        try {
+            await Promise.race([this.executeWithContext(invocationId, startTime), timeoutPromise]);
+        } finally {
+            clearTimeout(timer);
+        }
     }
 
     /**
@@ -227,6 +260,8 @@ export class BotExecutorService {
 
         const template = await findBotTemplateById(invocation.templateId);
         if (!template) throw new Error('Bot template not found');
+        // Status events name the bot the way its messages do.
+        const namedBot = { ...userBot, displayName: userBot.displayName || template.name };
 
         const ctx: ExecutionContext = {
             invocation,
@@ -235,11 +270,11 @@ export class BotExecutorService {
             config: userBot.config,
             variables: {
                 // Built-in context variables with size limits to prevent memory issues
-                $mentionText: (invocation.context.mentionText || '').slice(0, 1000),
+                $mentionText: (invocation.context.mentionText || '').slice(0, 10000),
                 $content: (invocation.context.fullContent || '').slice(0, 50000), // 50KB limit
                 $documentTitle: (invocation.context.documentTitle || '').slice(0, 200),
                 $selection: (invocation.context.selection || '').slice(0, 10000),
-                $previousMessages: (invocation.context.previousMessages || []).slice(0, 10), // Max 10 messages
+                $previousMessages: (invocation.context.previousMessages || []).slice(-10), // Max 10 messages
                 $userId: invocation.userId,
                 $notebookId: invocation.notebookId,
                 $sourceType: invocation.sourceType,
@@ -250,7 +285,7 @@ export class BotExecutorService {
         try {
             // Update status to running
             await updateInvocationStatus(invocationId, 'running');
-            this.broadcastStatus(invocation, 'running');
+            this.broadcastStatus(invocation, namedBot, 'running');
 
             // Execute actions sequentially
             for (const action of template.definition.actions) {
@@ -266,6 +301,7 @@ export class BotExecutorService {
                 userBot,
                 template,
                 responseContent,
+                ctx,
             );
 
             // Calculate execution time
@@ -281,7 +317,7 @@ export class BotExecutorService {
                 variables: ctx.variables as Record<string, unknown>,
             });
 
-            this.broadcastStatus(invocation, 'completed', responseContent);
+            this.broadcastStatus(invocation, namedBot, 'completed', responseContent);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             await updateInvocationStatus(invocationId, 'failed', {
@@ -291,7 +327,7 @@ export class BotExecutorService {
                 },
                 executionTimeMs: Date.now() - startTime,
             });
-            this.broadcastStatus(invocation, 'failed', undefined, errorMessage);
+            this.broadcastStatus(invocation, namedBot, 'failed', undefined, errorMessage);
             throw error;
         }
     }
@@ -343,9 +379,14 @@ export class BotExecutorService {
     }
 
     /**
-     * LLM action - calls Claude API or Inception API based on provider
+     * LLM action - calls Claude, OpenAI, or an OpenAI-compatible server based on provider
      */
-    private async executeLLM(action: Action, ctx: ExecutionContext): Promise<void> {
+    private async executeLLM(
+        action: Action,
+        ctx: ExecutionContext,
+        // Proactive runs pass prompts directly: their data must not be interpolated or truncated.
+        prompts?: { system?: string; user: string },
+    ): Promise<void> {
         const config = action.config as {
             provider?: string;
             systemPrompt?: string;
@@ -354,34 +395,135 @@ export class BotExecutorService {
             maxTokens?: number;
         };
 
-        // Get API key from user's bot config
-        const apiKey = ctx.config?.apiKey;
-        if (!apiKey) {
+        // Get API key from user's bot config. Custom servers may be open and need none.
+        const apiKey = ctx.config?.apiKey ?? '';
+        if (!apiKey && config.provider !== 'openai-compatible') {
             throw new Error('API key not configured');
         }
 
-        const userPrompt = this.interpolate(config.userPrompt, ctx.variables);
-        const systemPrompt = config.systemPrompt
-            ? this.interpolate(config.systemPrompt, ctx.variables)
-            : undefined;
+        const userPrompt = prompts
+            ? prompts.user
+            : this.interpolate(config.userPrompt, ctx.variables);
+        let systemPrompt = prompts
+            ? prompts.system
+            : config.systemPrompt
+              ? this.interpolate(config.systemPrompt, ctx.variables)
+              : undefined;
 
         // Build conversation history from previous messages
-        const previousMessages = (ctx.variables.$previousMessages || []) as Array<{
-            role?: string;
-            content?: string | { type: string; content: unknown[] };
-            senderType?: string;
-        }>;
+        const previousMessages = (
+            (ctx.variables.$previousMessages || []) as Array<{
+                role?: string;
+                content?: string | { type: string; content: unknown[] };
+                senderType?: string;
+                botUI?: Message['botUI'];
+            }>
+        ).map((message) => {
+            if (!message.botUI) return message;
+            const content =
+                typeof message.content === 'string'
+                    ? message.content
+                    : message.content
+                      ? extractTextFromContent(message.content as PageContent)
+                      : '';
+            return {
+                ...message,
+                content: `${content}\n\n${botUIToText(message.botUI)}`.slice(0, 50000),
+            };
+        });
 
+        const provider = config.provider || 'anthropic';
+        const model =
+            ctx.invocation.context.model ||
+            ctx.config?.model ||
+            config.model ||
+            (provider === 'openai-compatible' ? '' : DEFAULT_LLM_MODEL);
+        if (!model) throw new Error('Choose a model for this bot in bot settings');
+        if (!isBotModel(model, provider))
+            throw new Error('The selected model does not match this bot provider');
+        ctx.variables.$model = model;
+        if (ctx.config?.responseMode !== 'text' && provider !== 'inception') {
+            systemPrompt = `${systemPrompt || ''}\n\n${botUIPrompt}`;
+        }
         let response: string;
+        const endpoint = await this.chatCompletionsTarget(provider, ctx);
 
-        if (config.provider === 'inception') {
-            response = await this.callInceptionAPI({
+        // iMessage, Mail and Calendar on the user's Mac, when this notebook has Mac pages.
+        const macData = await this.macDataContextFor(ctx);
+        if (macData) systemPrompt = `${systemPrompt || ''}\n\n${macDataSystemPrompt(macData)}`;
+        // Without tool calling, search once with the request and include the results.
+        const withSearchResults = async () =>
+            macData
+                ? `${systemPrompt}\n\nSearch results for the user's request:\n${await executeMacDataTool(
+                      macData,
+                      'search_local_data',
+                      { query: userPrompt.slice(0, 500) },
+                  )}`
+                : systemPrompt;
+
+        if (endpoint) {
+            const call = {
+                ...endpoint,
                 apiKey,
-                model: config.model || 'mercury-2',
+                model,
+                turns: [
+                    ...this.toTurns(previousMessages),
+                    { role: 'user' as const, content: userPrompt },
+                ],
+                maxTokens: Math.max(
+                    config.maxTokens || 1024,
+                    ctx.config?.responseMode === 'text' ? 1024 : 4096,
+                ),
+            };
+            if (macData && provider === 'openai-compatible') {
+                try {
+                    response = await runChatCompletionsWithTools({
+                        ...call,
+                        system: systemPrompt,
+                        tools: macDataToolDefinitions(macData),
+                        execute: (name, input) => executeMacDataTool(macData, name, input),
+                    });
+                } catch (error) {
+                    // Many servers or models reject tools; answer from one search instead.
+                    if (!(error instanceof ChatCompletionsError) || error.status >= 500)
+                        throw error;
+                    response = await runChatCompletions({
+                        ...call,
+                        system: await withSearchResults(),
+                    });
+                }
+            } else {
+                response = await runChatCompletions({ ...call, system: await withSearchResults() });
+            }
+        } else if (macData) {
+            const isOAuthToken = provider === 'anthropic' && (ctx.config?.isOAuthToken || false);
+            const loop = {
+                apiKey,
+                model,
+                system: isOAuthToken
+                    ? `You are Claude Code, Anthropic's official CLI for Claude.\n\n${systemPrompt}`
+                    : systemPrompt,
+                turns: [
+                    ...this.toTurns(previousMessages),
+                    { role: 'user' as const, content: userPrompt },
+                ],
+                maxTokens: Math.max(config.maxTokens || 1024, 4096),
+                tools: macDataToolDefinitions(macData),
+                execute: (name: string, input: Record<string, unknown>) =>
+                    executeMacDataTool(macData, name, input),
+            };
+            response =
+                provider === 'openai'
+                    ? await runOpenAIWithTools(loop)
+                    : await runAnthropicWithTools({ ...loop, isOAuthToken });
+        } else if (provider === 'openai') {
+            response = await this.callOpenAI({
+                apiKey,
+                model,
                 systemPrompt,
                 userPrompt,
                 previousMessages,
-                maxTokens: config.maxTokens || 1024,
+                maxTokens: config.maxTokens || 4096,
             });
         } else {
             const isOAuthToken = ctx.config?.isOAuthToken || false;
@@ -399,11 +541,14 @@ export class BotExecutorService {
             response = await this.callClaudeAPI({
                 apiKey,
                 isOAuthToken,
-                model: config.model || DEFAULT_LLM_MODEL,
+                model,
                 systemPrompt: finalSystemPrompt,
                 userPrompt,
                 previousMessages,
-                maxTokens: config.maxTokens || 1024,
+                maxTokens: Math.max(
+                    config.maxTokens || 1024,
+                    ctx.config?.responseMode === 'text' ? 1024 : 4096,
+                ),
             });
         }
 
@@ -413,6 +558,73 @@ export class BotExecutorService {
         }
         // Also set as $response for convenience
         ctx.variables.$response = response;
+    }
+
+    /**
+     * Where OpenAI-compatible providers send chat completions: Inception's fixed server, or
+     * the URL saved on a custom bot (checked again on every call). Null for other providers.
+     */
+    private async chatCompletionsTarget(
+        provider: string,
+        ctx: ExecutionContext,
+    ): Promise<ChatCompletionsTarget | null> {
+        if (provider === 'inception')
+            return { baseUrl: 'https://api.inceptionlabs.ai/v1', label: 'Inception API' };
+        if (provider !== 'openai-compatible') return null;
+        if (!ctx.config?.baseUrl) throw new Error('Add the server URL in bot settings');
+        const { baseUrl, local } = await resolveEndpoint(ctx.config.baseUrl);
+        return {
+            baseUrl,
+            label: ctx.userBot?.displayName || new URL(baseUrl).hostname,
+            // Servers on the owner's machine or network are called from their Mac.
+            ...(local ? { send: macHttpSend(ctx.userBot.userId) } : {}),
+        };
+    }
+
+    /**
+     * Mac data for this run: preset by proactive runs, otherwise looked up for the user who
+     * invoked the bot. Only that user's own Mac is ever asked.
+     */
+    private async macDataContextFor(ctx: ExecutionContext): Promise<MacDataToolContext | null> {
+        if (ctx.macData !== undefined) return ctx.macData;
+        const { userId, notebookId, sourceType, sourceId } = ctx.invocation;
+        const macData = await getMacDataToolContext(userId, notebookId).catch(() => null);
+        if (macData && sourceType === 'message') {
+            const message = await findMessageById(sourceId).catch(() => null);
+            const page = message ? await findPageByIdForBot(message.pageId) : null;
+            const proactive = page?.proactive;
+            // The proactive bot may save corrections from the person whose Mac it reads.
+            if (
+                page &&
+                proactive?.enabled &&
+                proactive.userBotId === ctx.userBot._id &&
+                proactive.ownerUserId === userId
+            ) {
+                macData.rememberInstruction = (instruction) =>
+                    appendProactiveInstruction(page.id, instruction);
+            }
+        }
+        ctx.macData = macData;
+        return macData;
+    }
+
+    private toTurns(
+        previousMessages: Array<{
+            content?: string | { type: string; content: unknown[] };
+            senderType?: string;
+        }>,
+    ): ChatTurn[] {
+        return previousMessages
+            .map((msg) => ({
+                role: (msg.senderType === 'bot' ? 'assistant' : 'user') as ChatTurn['role'],
+                content:
+                    typeof msg.content === 'string'
+                        ? msg.content
+                        : msg.content
+                          ? extractTextFromContent(msg.content as PageContent)
+                          : '',
+            }))
+            .filter((turn) => turn.content);
     }
 
     /**
@@ -436,55 +648,6 @@ export class BotExecutorService {
     }
 
     /**
-     * Validate URL to prevent SSRF attacks
-     */
-    private validateUrl(url: string): void {
-        const parsedUrl = new URL(url);
-        const hostname = parsedUrl.hostname.toLowerCase();
-
-        // Only allow HTTP and HTTPS protocols
-        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-            throw new Error('Only HTTP and HTTPS protocols are allowed');
-        }
-
-        // Block localhost and loopback addresses
-        if (
-            hostname === 'localhost' ||
-            hostname === '127.0.0.1' ||
-            hostname === '0.0.0.0' ||
-            hostname === '::1' ||
-            hostname === '[::1]'
-        ) {
-            throw new Error('Access to localhost is not allowed');
-        }
-
-        // Block private IPv4 ranges
-        // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
-        if (
-            hostname.match(/^10\./) ||
-            hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./) ||
-            hostname.match(/^192\.168\./) ||
-            hostname.match(/^169\.254\./)
-        ) {
-            throw new Error('Access to private networks is not allowed');
-        }
-
-        // Block AWS/cloud metadata endpoints
-        if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') {
-            throw new Error('Access to cloud metadata endpoints is not allowed');
-        }
-
-        // Block internal domain patterns (common in enterprises)
-        if (
-            hostname.endsWith('.internal') ||
-            hostname.endsWith('.local') ||
-            hostname.endsWith('.localhost')
-        ) {
-            throw new Error('Access to internal domains is not allowed');
-        }
-    }
-
-    /**
      * HTTP action - makes external API calls
      */
     private async executeHTTP(action: Action, ctx: ExecutionContext): Promise<void> {
@@ -499,7 +662,7 @@ export class BotExecutorService {
         const url = this.interpolate(config.url, ctx.variables);
 
         // SECURITY: Validate URL to prevent SSRF attacks
-        this.validateUrl(url);
+        validateUrl(url);
 
         const headers = config.headers
             ? Object.fromEntries(
@@ -604,7 +767,7 @@ export class BotExecutorService {
         const prompt = conversationParts.join('\n\n');
 
         let fullContent = '';
-        process.env.ANTHROPIC_API_KEY = params.apiKey;
+
         // Use env option to pass API key without modifying global process.env (prevents race conditions)
         const result = query({
             prompt,
@@ -616,10 +779,7 @@ export class BotExecutorService {
                           type: 'preset',
                           preset: 'claude_code',
                       },
-                // env: {
-                // ...process.env,
-                //     ANTHROPIC_API_KEY: params.apiKey,
-                // },
+                env: { ...process.env, ANTHROPIC_API_KEY: params.apiKey },
                 permissionMode: 'bypassPermissions',
                 allowDangerouslySkipPermissions: true,
             },
@@ -721,67 +881,61 @@ export class BotExecutorService {
         return textContent?.text || '';
     }
 
-    /**
-     * Call Inception Labs API (Mercury-2) using OpenAI-compatible chat completions
-     */
-    private async callInceptionAPI(params: {
+    private async callOpenAI(params: {
         apiKey: string;
         model: string;
         systemPrompt?: string;
         userPrompt: string;
         previousMessages?: Array<{
-            role?: string;
             content?: string | { type: string; content: unknown[] };
             senderType?: string;
         }>;
         maxTokens: number;
     }): Promise<string> {
-        const messages: Array<{ role: string; content: string }> = [];
-
-        if (params.systemPrompt) {
-            messages.push({ role: 'system', content: params.systemPrompt });
-        }
-
-        if (params.previousMessages && params.previousMessages.length > 0) {
-            for (const msg of params.previousMessages) {
-                let textContent = '';
-                if (typeof msg.content === 'object' && msg.content && 'content' in msg.content) {
-                    textContent = extractTextFromContent(msg.content as any);
-                } else if (typeof msg.content === 'string') {
-                    textContent = msg.content;
-                }
-
-                if (textContent) {
-                    const role = msg.senderType === 'bot' ? 'assistant' : 'user';
-                    messages.push({ role, content: textContent });
-                }
-            }
-        }
-
-        messages.push({ role: 'user', content: params.userPrompt });
-
-        const response = await fetch('https://api.inceptionlabs.ai/v1/chat/completions', {
+        const input = (params.previousMessages || [])
+            .map((msg) => ({
+                role: msg.senderType === 'bot' ? 'assistant' : 'user',
+                content:
+                    typeof msg.content === 'string'
+                        ? msg.content
+                        : msg.content
+                          ? extractTextFromContent(msg.content as PageContent)
+                          : '',
+            }))
+            .filter((msg) => msg.content);
+        input.push({ role: 'user', content: params.userPrompt });
+        const response = await fetch('https://api.openai.com/v1/responses', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${params.apiKey}`,
             },
+            signal: AbortSignal.timeout(55000),
             body: JSON.stringify({
                 model: params.model,
-                messages,
-                max_tokens: params.maxTokens,
+                instructions: params.systemPrompt,
+                input,
+                max_output_tokens: params.maxTokens,
+                store: false,
             }),
         });
-
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Inception API error: ${response.status} - ${error}`);
-        }
-
+        if (!response.ok)
+            throw new Error(
+                `OpenAI request failed (${response.status}). Check the model and API key in bot settings.`,
+            );
         const data = (await response.json()) as {
-            choices: Array<{ message: { content: string } }>;
+            output?: Array<{ content?: Array<{ type: string; text?: string }> }>;
         };
-        return data.choices[0]?.message?.content || '';
+        const text = (data.output || [])
+            .flatMap((item) => item.content || [])
+            .filter((block) => block.type === 'output_text')
+            .map((block) => block.text || '')
+            .join('');
+        if (!text)
+            throw new Error(
+                'OpenAI returned no text. Try a larger output budget or a different model.',
+            );
+        return text;
     }
 
     /**
@@ -789,9 +943,9 @@ export class BotExecutorService {
      */
     private prepareResponse(ctx: ExecutionContext): PageContent {
         const response = String(ctx.variables.$response || '');
-
-        // Convert markdown to ProseMirror JSON
-        return markdownToProseMirror(response);
+        const parsed = parseBotResponse(response);
+        ctx.variables.$botUI = parsed.ui;
+        return markdownToProseMirror(parsed.markdown || (parsed.ui ? botUIToText(parsed.ui) : ''));
     }
 
     /**
@@ -802,7 +956,17 @@ export class BotExecutorService {
         userBot: UserBot,
         template: BotTemplate,
         content: PageContent,
-    ): Promise<{ threadId: string; messageId: string }> {
+        ctx: ExecutionContext,
+    ): Promise<{ threadId?: string; messageId: string }> {
+        const source = await findMessageById(invocation.sourceId);
+        if (!source) throw new Error('Source message not found');
+        if (invocation.context.replyTopLevel) {
+            const page = await findPageByIdForBot(source.pageId);
+            if (page) {
+                const message = await this.postTopLevel(page, userBot, template, content, ctx);
+                return { messageId: message.id };
+            }
+        }
         // Get or create thread for the parent message
         const thread = await getOrCreateThread({
             parentMessageId: invocation.sourceId,
@@ -815,6 +979,9 @@ export class BotExecutorService {
 
         // Create the bot's response message in the thread
         const message = await createMessageInThread({
+            pageId: source.pageId,
+            botUI: ctx.variables.$botUI as Message['botUI'],
+            botModel: ctx.variables.$model as string | undefined,
             notebookId: invocation.notebookId,
             threadId: thread._id,
             userId: userBot.userId,
@@ -830,6 +997,7 @@ export class BotExecutorService {
 
         // Broadcast thread message event
         await broadcastChatEvent(invocation.notebookId, {
+            pageId: source.pageId,
             action: 'thread_message',
             data: {
                 threadId: thread._id,
@@ -841,7 +1009,103 @@ export class BotExecutorService {
             timestamp: new Date().toISOString(),
         });
 
-        return { threadId: thread._id, messageId: message._id };
+        return { threadId: thread._id, messageId: message.id };
+    }
+
+    /**
+     * Post a bot message directly in a page's conversation (proactive pages).
+     * With `notify`, the data owner also gets a push notification.
+     */
+    private async postTopLevel(
+        page: Page,
+        userBot: UserBot,
+        template: BotTemplate,
+        content: PageContent,
+        ctx: ExecutionContext,
+        notify?: { ownerUserId: string },
+    ): Promise<Message> {
+        const message = await createTopLevelBotMessage({
+            pageId: page.id,
+            notebookId: page.notebookId,
+            userId: userBot.userId,
+            userBotId: userBot._id,
+            senderDisplayName: userBot.displayName || template.name,
+            senderProfilePictureUrl: template.avatar,
+            content,
+            botUI: ctx.variables.$botUI as Message['botUI'],
+            botModel: ctx.variables.$model as string | undefined,
+        });
+        if (page.notebookId) {
+            await broadcastChatEvent(page.notebookId, {
+                pageId: page.id,
+                action: 'message',
+                data: message,
+                notebookId: page.notebookId,
+                userId: userBot.userId,
+                timestamp: new Date().toISOString(),
+            });
+            if (notify) {
+                await sendMessageReceivedNotification(
+                    notify.ownerUserId,
+                    page.notebookId,
+                    page.id,
+                    message._id,
+                    undefined,
+                    userBot.displayName || template.name,
+                    template.avatar,
+                    content,
+                ).catch(() => {});
+            }
+        }
+        return message;
+    }
+
+    /**
+     * One proactive pass for a page: the bot reads new Mac data with its standing
+     * instructions and either posts a message or stays quiet (replies NO_UPDATE).
+     * Returns the posted message, or null when there was nothing worth saying.
+     */
+    async runProactive(params: {
+        page: Page;
+        userBot: UserBot;
+        template: BotTemplate;
+        macData: MacDataToolContext;
+        system: string;
+        prompt: string;
+        previousMessages: Message[];
+    }): Promise<Message | null> {
+        const llm = params.template.definition.actions.find((action) => action.type === 'llm');
+        if (!llm || !params.page.notebookId) return null;
+        const now = new Date().toISOString();
+        const ctx: ExecutionContext = {
+            // Not persisted: proactive runs have no source message to answer.
+            invocation: {
+                _id: `proactive:${params.page.id}`,
+                userBotId: params.userBot._id,
+                templateId: params.template._id,
+                sourceType: 'message',
+                sourceId: '',
+                notebookId: params.page.notebookId,
+                userId: params.macData.userId,
+                context: {},
+                variables: {},
+                status: 'running',
+                createdAt: now,
+                updatedAt: now,
+            },
+            template: params.template,
+            userBot: params.userBot,
+            config: params.userBot.config,
+            variables: { $previousMessages: params.previousMessages },
+            macData: params.macData,
+        };
+        await this.executeLLM(llm, ctx, { system: params.system, user: params.prompt });
+        const raw = String(ctx.variables.$response || '').trim();
+        if (!raw || /^NO_UPDATE\b/i.test(raw)) return null;
+        const content = this.prepareResponse(ctx);
+        return this.postTopLevel(params.page, params.userBot, params.template, content, ctx, {
+            ownerUserId: params.macData.userId,
+        });
     }
 
     /**
@@ -962,6 +1226,7 @@ export class BotExecutorService {
      */
     private broadcastStatus(
         invocation: BotInvocation,
+        userBot: UserBot,
         status: string,
         output?: unknown,
         error?: string,
@@ -974,10 +1239,14 @@ export class BotExecutorService {
                   : 'bot_invocation_failed';
 
         broadcastChatEvent(invocation.notebookId, {
+            pageId: invocation.context.pageId || invocation.notebookId,
             action,
             data: {
                 invocationId: invocation._id,
                 userBotId: invocation.userBotId,
+                // Lets clients show "<name> is typing…" where the reply will appear
+                botName: userBot.displayName || userBot.handle,
+                replyTopLevel: invocation.context.replyTopLevel === true,
                 sourceId: invocation.sourceId,
                 status,
                 output,

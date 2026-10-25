@@ -120,8 +120,12 @@ export type BotDefinition = Static<typeof BotDefinitionSchema>;
 
 // Settings that users provide when registering a bot that requires configuration
 export const BotConfigSchema = Type.Object({
+    model: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+    responseMode: Type.Optional(Type.Union([Type.Literal('auto'), Type.Literal('text')])),
     apiKey: Type.Optional(Type.String()), // For bots that need external API keys (e.g., Claude)
     isOAuthToken: Type.Optional(Type.Boolean()), // Whether apiKey is an OAuth token (vs API key)
+    // OpenAI-compatible bots: the server's API root, e.g. https://openrouter.ai/api/v1
+    baseUrl: Type.Optional(Type.String({ maxLength: 2048 })),
     customSettings: Type.Optional(Type.Record(Type.String(), Type.Any())),
 });
 
@@ -298,11 +302,15 @@ export const BotInvocationSchema = Type.Object({
     notebookId: Type.String(),
     userId: Type.String(), // Who triggered the bot
     context: Type.Object({
+        pageId: Type.Optional(Type.String()),
+        model: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
         mentionText: Type.Optional(Type.String()),
         fullContent: Type.Optional(Type.String()),
         documentTitle: Type.Optional(Type.String()),
         selection: Type.Optional(Type.String()),
         previousMessages: Type.Optional(Type.Array(Type.Any())),
+        // Proactive pages: answer in the conversation itself rather than in a thread
+        replyTopLevel: Type.Optional(Type.Boolean()),
     }),
     variables: Type.Record(Type.String(), Type.Any()),
     // Output is PageContent (ProseMirror JSON) for consistent rendering with TipTap

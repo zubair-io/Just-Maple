@@ -6,6 +6,7 @@ import {
   ViewChild,
   OnDestroy,
   AfterViewInit,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Editor } from '@tiptap/core';
@@ -32,6 +33,7 @@ import type { PageContent } from '@maple/shared';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './content-renderer.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './content-renderer.component.scss',
 })
 export class ContentRendererComponent implements AfterViewInit, OnDestroy {

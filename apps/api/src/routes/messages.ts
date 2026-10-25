@@ -1,3 +1,4 @@
+import { ObjectId } from 'mongodb';
 import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
@@ -16,18 +17,20 @@ import type { JWTPayload, ChatEvent } from '@maple/shared';
 import {
     findMessagesByPageId,
     findMessageById,
+    findMessageByMongoId,
     createMessage,
     updateMessage,
     softDeleteMessage,
 } from '../repositories/message.repo';
 import {
-    markAsReadByPageId,
     getUnreadCountsForUserByPageIds,
     getUnreadCountForPage,
 } from '../repositories/unread.repo';
 import { findThreadById } from '../repositories/thread.repo';
 import { broadcastChatEvent } from '../services/realtime.service';
-import { sendMessageReceivedNotification } from '../services/notification.service';
+import { markChatAsRead, sendMessageReceivedNotification } from '../services/notification.service';
+import { maybeAutoReply } from '../services/proactive-bot.service';
+import { findPageByIdForBot } from '../repositories/page.repo';
 
 export const messageRoutes = new Elysia({ prefix: '/api' })
     .use(jwtPlugin)
@@ -143,6 +146,14 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             let parentMessageId: string | undefined;
 
             if (body.parentMessageId) {
+                // A thread reply must answer a message in this same notebook.
+                if (!(await isMessageInNotebook(body.parentMessageId, page.notebookId))) {
+                    set.status = 400;
+                    return {
+                        error: 'Bad request',
+                        message: 'Parent message is not in this notebook',
+                    };
+                }
                 const { getOrCreateThread } = await import('../repositories/thread.repo');
                 const { markMessageHasThread } = await import('../repositories/message.repo');
                 const thread = await getOrCreateThread({
@@ -195,6 +206,16 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 broadcastChatEvent(page.notebookId, threadFlagEvent).catch(console.error);
             }
 
+            // A proactive bot answers messages in its page without an @mention.
+            if (page.proactive?.enabled) {
+                maybeAutoReply({
+                    page,
+                    message,
+                    userId: auth.user._id,
+                    parentMessageId,
+                }).catch((error) => console.error('[Proactive] Auto-reply failed:', error));
+            }
+
             // Send push notifications
             if (page.notebookId) {
                 const tagMembers = await getNotebookMembers(page.notebookId, auth.user._id);
@@ -205,6 +226,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                             sendMessageReceivedNotification(
                                 member.userId,
                                 page.notebookId!,
+                                page.id,
                                 message._id,
                                 auth.user.email,
                                 auth.user.displayName,
@@ -247,9 +269,12 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 };
             }
 
-            const tracking = await markAsReadByPageId(auth.user._id, params.id);
+            const { lastReadAt, unreadNotificationCount } = await markChatAsRead(auth.user._id, {
+                pageId: params.id,
+                notebookId: page.notebookId,
+            });
 
-            return { lastReadAt: tracking.lastReadAt, pageId: params.id };
+            return { lastReadAt, pageId: params.id, unreadNotificationCount };
         },
         {
             params: t.Object({
@@ -354,6 +379,14 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             let parentMessageId: string | undefined;
 
             if (body.parentMessageId) {
+                // A thread reply must answer a message in this same notebook.
+                if (!(await isMessageInNotebook(body.parentMessageId, params.id))) {
+                    set.status = 400;
+                    return {
+                        error: 'Bad request',
+                        message: 'Parent message is not in this notebook',
+                    };
+                }
                 const { getOrCreateThread } = await import('../repositories/thread.repo');
                 const { markMessageHasThread } = await import('../repositories/message.repo');
                 const thread = await getOrCreateThread({
@@ -390,6 +423,16 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             };
             broadcastChatEvent(params.id, chatEvent).catch(console.error);
 
+            // A proactive bot answers messages in its chat without an @mention.
+            if (messagesPage.proactive?.enabled) {
+                maybeAutoReply({
+                    page: messagesPage,
+                    message,
+                    userId: auth.user._id,
+                    parentMessageId,
+                }).catch((error) => console.error('[Proactive] Auto-reply failed:', error));
+            }
+
             if (parentMessageId && body.parentMessageId) {
                 const threadFlagEvent: ChatEvent = {
                     action: 'message_updated',
@@ -411,6 +454,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                         sendMessageReceivedNotification(
                             member.userId,
                             params.id,
+                            messagesPage.id,
                             message._id,
                             auth.user.email,
                             auth.user.displayName,
@@ -458,9 +502,12 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 return { lastReadAt: new Date().toISOString() };
             }
 
-            const tracking = await markAsReadByPageId(auth.user._id, messagesPage.id);
+            const { lastReadAt, unreadNotificationCount } = await markChatAsRead(auth.user._id, {
+                pageId: messagesPage.id,
+                notebookId: params.id,
+            });
 
-            return { lastReadAt: tracking.lastReadAt, pageId: messagesPage.id };
+            return { lastReadAt, pageId: messagesPage.id, unreadNotificationCount };
         },
         {
             params: t.Object({
@@ -635,3 +682,20 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
             }),
         },
     );
+
+/** True when the message exists and belongs to `notebookId`. */
+async function isMessageInNotebook(
+    messageId: string,
+    notebookId: string | undefined,
+): Promise<boolean> {
+    if (!notebookId) return false;
+    // Parents can be referenced by message id or, for older messages, by Mongo _id.
+    const message =
+        (await findMessageById(messageId)) ??
+        (ObjectId.isValid(messageId) ? await findMessageByMongoId(messageId) : null);
+    if (!message) return false;
+    if (message.notebookId) return message.notebookId === notebookId;
+    // Older messages only record their page.
+    const page = await findPageByIdForBot(message.pageId);
+    return page?.notebookId === notebookId;
+}

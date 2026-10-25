@@ -1,8 +1,10 @@
-import type { NotificationType } from '@maple/shared';
+import type { DeviceRegistration, NotificationType } from '@maple/shared';
 import * as notificationRepo from '../repositories/notification.repo';
 import { countUnreadNotifications } from '../repositories/notification.repo';
+import { markAsReadByPageId } from '../repositories/unread.repo';
+import { findMessagesPageByNotebookId } from '../repositories/page.repo';
 import { config } from '../config';
-import { sendApnsPush } from './apns.service';
+import { ApnsPushError, sendApnsPush } from './apns.service';
 
 // Paperbark API client
 interface PaperbarkPushRequest {
@@ -10,11 +12,30 @@ interface PaperbarkPushRequest {
     notification: {
         title: string;
         body: string;
+        badge: number;
         data: {
             notificationId: string;
             type: string;
         };
     };
+}
+
+/**
+ * How this server sends push notifications, and what is missing when it can't.
+ * Direct APNs is used only on https://justmaple.app; every other server relays
+ * through Paperbark, which needs PAPERBARK_API_KEY.
+ */
+export function describePushSetup(): { method: 'direct APNs' | 'Paperbark'; missing: string[] } {
+    if (config.useDirectApns) {
+        return {
+            method: 'direct APNs',
+            missing: config.apnsKey || config.apnsKeyPath ? [] : ['APNS_KEY or APNS_KEY_PATH'],
+        };
+    }
+    const missing: string[] = [];
+    if (!config.paperbarkUrl) missing.push('PAPERBARK_URL');
+    if (!config.paperbarkApiKey) missing.push('PAPERBARK_API_KEY');
+    return { method: 'Paperbark', missing };
 }
 
 /**
@@ -42,18 +63,19 @@ function extractTextFromTipTap(content: any): string {
     return text.trim();
 }
 
+/** Relay a push through Paperbark. Throws when it isn't configured or the relay refuses. */
 async function callPaperbark(
     serverUrl: string,
     notificationId: string,
     type: NotificationType,
     title: string,
     body: string,
-) {
+    badge: number,
+): Promise<void> {
     if (!config.paperbarkUrl || !config.paperbarkApiKey) {
-        console.warn(
-            `[Notification] Paperbark not configured (url: ${!!config.paperbarkUrl}, apiKey: ${!!config.paperbarkApiKey}), skipping push`,
+        throw new Error(
+            `Paperbark not configured (missing ${describePushSetup().missing.join(', ')})`,
         );
-        return;
     }
 
     console.log(
@@ -65,6 +87,7 @@ async function callPaperbark(
         notification: {
             title,
             body,
+            badge,
             data: {
                 notificationId,
                 type,
@@ -72,24 +95,80 @@ async function callPaperbark(
         },
     };
 
-    try {
-        const response = await fetch(`${config.paperbarkUrl}/push/send`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${config.paperbarkApiKey}`,
-            },
-            body: JSON.stringify(payload),
-        });
+    const response = await fetch(`${config.paperbarkUrl}/push/send`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.paperbarkApiKey}`,
+        },
+        body: JSON.stringify(payload),
+    });
 
-        if (!response.ok) {
-            const error = await response.text();
-            console.error('[Notification] Paperbark push failed:', error);
-        } else {
-            console.log('[Notification] Push sent successfully:', notificationId);
-        }
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Paperbark push failed (${response.status}): ${error}`);
+    }
+    console.log('[Notification] Push sent successfully:', notificationId);
+}
+
+/**
+ * Send one push straight to Apple. A token from the other APNs environment
+ * (a TestFlight build registered as sandbox, or a debug build as production)
+ * is retried there and the device record corrected; a token Apple says is no
+ * longer active is forgotten.
+ */
+async function sendDirectApns(
+    device: DeviceRegistration,
+    notificationId: string,
+    type: NotificationType,
+    title: string,
+    body: string,
+    data: Record<string, any>,
+    badge: number,
+): Promise<void> {
+    const send = (production: boolean) =>
+        sendApnsPush(
+            device.deviceToken,
+            notificationId,
+            type,
+            title,
+            body,
+            production,
+            device.serverUrl,
+            data,
+            badge,
+        );
+
+    try {
+        await send(device.production);
     } catch (error) {
-        console.error('[Notification] Failed to call Paperbark:', error);
+        if (!(error instanceof ApnsPushError)) throw error;
+
+        if (error.reason === 'Unregistered') {
+            await notificationRepo.deleteDeviceRegistrationByToken(device.deviceToken);
+            console.warn(
+                `[Notification] Removed device ${device.deviceToken.substring(0, 8)}...: Apple says the app was uninstalled or push was turned off`,
+            );
+            throw error;
+        }
+
+        if (error.reason === 'BadDeviceToken') {
+            try {
+                await send(!device.production);
+            } catch (retryError) {
+                if (retryError instanceof ApnsPushError && retryError.reason === 'Unregistered') {
+                    await notificationRepo.deleteDeviceRegistrationByToken(device.deviceToken);
+                }
+                throw retryError;
+            }
+            await notificationRepo.setDeviceRegistrationEnvironment(device._id, !device.production);
+            console.log(
+                `[Notification] Device ${device.deviceToken.substring(0, 8)}... belongs to the ${device.production ? 'sandbox' : 'production'} environment; updated its registration`,
+            );
+            return;
+        }
+
+        throw error;
     }
 }
 
@@ -153,43 +232,38 @@ export async function sendNotification(
     const title = customTitle || fallback.title;
     const body = customBody || fallback.body;
 
-    // Get the current unread count for badge (includes the notification we just created)
+    // The app icon badge is the unread notification count (includes the one just created)
     const badgeCount = await countUnreadNotifications(userId);
     console.log(`[Notification] Badge count for user ${userId}: ${badgeCount}`);
 
-    // Send push to each registered device
+    const { method } = describePushSetup();
+    // Add senderProfilePictureUrl to data if iconUrl is provided
+    const payloadData = iconUrl ? { ...data, senderProfilePictureUrl: iconUrl } : data;
+
     const results = await Promise.allSettled(
-        devices.map(async (device) => {
-            if (config.useDirectApns) {
-                // Use direct APNs with device-specific environment (production or sandbox)
-                console.log(
-                    `[Notification] Using direct APNs (${device.production ? 'production' : 'sandbox'}) for device ${device.deviceToken.substring(0, 8)}...`,
-                );
-                // Add senderProfilePictureUrl to data if iconUrl is provided
-                const payloadData = iconUrl ? { ...data, senderProfilePictureUrl: iconUrl } : data;
-                return sendApnsPush(
-                    device.deviceToken,
-                    notification._id,
-                    type,
-                    title,
-                    body,
-                    device.production,
-                    device.serverUrl, // Pass serverUrl for multi-server support
-                    payloadData, // Pass notification data with senderProfilePictureUrl
-                    badgeCount, // Pass badge count for app icon
-                );
-            } else {
-                // Use Paperbark relay in dev/test
-                return callPaperbark(device.serverUrl, notification._id, type, title, body);
-            }
-        }),
+        devices.map((device) =>
+            method === 'direct APNs'
+                ? sendDirectApns(
+                      device,
+                      notification._id,
+                      type,
+                      title,
+                      body,
+                      payloadData,
+                      badgeCount,
+                  )
+                : callPaperbark(device.serverUrl, notification._id, type, title, body, badgeCount),
+        ),
     );
 
-    // Log results
     const succeeded = results.filter((r) => r.status === 'fulfilled').length;
-    const failed = results.filter((r) => r.status === 'rejected').length;
+    const failures = results.flatMap((r) =>
+        r.status === 'rejected'
+            ? [r.reason instanceof Error ? r.reason.message : String(r.reason)]
+            : [],
+    );
     console.log(
-        `[Notification] Push results: ${succeeded} succeeded, ${failed} failed (method: ${config.useDirectApns ? 'direct APNs' : 'Paperbark'})`,
+        `[Notification] Push results: ${succeeded} delivered to ${method}, ${failures.length} failed${failures.length ? ` (${[...new Set(failures)].join('; ')})` : ''}`,
     );
 
     return notification._id;
@@ -255,6 +329,7 @@ export async function sendExportReadyNotification(
 export async function sendMessageReceivedNotification(
     userId: string,
     notebookId: string,
+    pageId: string | undefined,
     messageId: string,
     senderEmail: string | undefined,
     senderName: string | undefined,
@@ -277,6 +352,8 @@ export async function sendMessageReceivedNotification(
         'message_received',
         {
             notebookId,
+            // The chat the message is in, so reading that chat clears this notification
+            ...(pageId ? { pageId } : {}),
             messageId,
             senderEmail,
             senderName,
@@ -287,4 +364,68 @@ export async function sendMessageReceivedNotification(
         messagePreview || 'New message', // Use message text as body
         senderProfilePictureUrl, // Use profile picture as icon
     );
+}
+
+// ============================================
+// Reading
+// ============================================
+
+/**
+ * A chat has been read: move its read marker to now and clear its "new message"
+ * notifications, so the chat's unread count and the app badge drop together.
+ * Returns the user's remaining unread notification count (the badge).
+ */
+export async function markChatAsRead(
+    userId: string,
+    chat: { pageId: string; notebookId?: string },
+): Promise<{ lastReadAt: string; unreadNotificationCount: number }> {
+    const tracking = await markAsReadByPageId(userId, chat.pageId);
+    await notificationRepo.markMessageNotificationsAsRead(userId, chat);
+    return {
+        lastReadAt: tracking.lastReadAt,
+        unreadNotificationCount: await countUnreadNotifications(userId),
+    };
+}
+
+/** Find the chat a "new message" notification points at. */
+async function resolveChat(data: {
+    pageId?: string;
+    notebookId?: string;
+}): Promise<{ pageId: string; notebookId?: string } | null> {
+    if (data.pageId) return { pageId: data.pageId, notebookId: data.notebookId };
+    if (!data.notebookId) return null;
+    const page = await findMessagesPageByNotebookId(data.notebookId);
+    return page ? { pageId: page.id, notebookId: data.notebookId } : null;
+}
+
+/**
+ * Mark one notification as read. Reading a "new message" notification reads
+ * its chat too, so the chat's other notifications and unread count clear with it.
+ * Returns null when the notification isn't the user's.
+ */
+export async function markNotificationAsRead(
+    userId: string,
+    id: string,
+): Promise<{ unreadNotificationCount: number } | null> {
+    const notification = await notificationRepo.findNotificationById(id);
+    if (!notification || notification.userId !== userId) return null;
+
+    await notificationRepo.markNotificationAsRead(id, userId);
+    if (notification.type === 'message_received') {
+        const chat = await resolveChat(notification.data);
+        if (chat) await markChatAsRead(userId, chat);
+    }
+    return { unreadNotificationCount: await countUnreadNotifications(userId) };
+}
+
+/** Mark every notification as read, and every chat they point at. */
+export async function markAllNotificationsAsRead(userId: string): Promise<number> {
+    const chats = await notificationRepo.findChatsWithUnreadMessageNotifications(userId);
+    await Promise.all(
+        chats.map(async (data) => {
+            const chat = await resolveChat(data);
+            if (chat) await markAsReadByPageId(userId, chat.pageId);
+        }),
+    );
+    return notificationRepo.markAllNotificationsAsRead(userId);
 }

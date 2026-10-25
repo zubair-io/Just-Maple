@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type BadgeColor = 'red' | 'amber' | 'blue' | 'green' | 'gray';
@@ -8,6 +8,7 @@ export type BadgeColor = 'red' | 'amber' | 'blue' | 'green' | 'gray';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './badge.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './badge.component.scss',
 })
 export class BadgeComponent {

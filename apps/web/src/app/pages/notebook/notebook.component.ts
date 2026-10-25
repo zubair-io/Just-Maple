@@ -8,6 +8,7 @@ import {
   ViewChild,
   NgZone,
   HostListener,
+  ChangeDetectionStrategy,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -19,6 +20,7 @@ import { isLocalNotebook } from '../../providers/data-provider.interface';
 import { UiStateService } from '../../services/ui-state.service';
 import { MemoVersionService } from '../../services/memo-version.service';
 import { NotificationService } from '../../services/notification.service';
+import { NativeBridgeService } from '../../services/native-bridge.service';
 import { NotebookEditorComponent } from '../../components/organisms/notebook-editor/notebook-editor.component';
 import { NoteHeaderComponent, type ExportFormat, DialogService } from '../../components';
 
@@ -27,6 +29,7 @@ import { NoteHeaderComponent, type ExportFormat, DialogService } from '../../com
   standalone: true,
   imports: [CommonModule, NotebookEditorComponent, NoteHeaderComponent],
   templateUrl: './notebook.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './notebook.component.scss',
 })
 export class NotebookComponent implements OnDestroy {
@@ -40,6 +43,7 @@ export class NotebookComponent implements OnDestroy {
   private readonly uiStateService = inject(UiStateService);
   private readonly memoVersionService = inject(MemoVersionService);
   private readonly notificationService = inject(NotificationService);
+  private readonly nativeBridge = inject(NativeBridgeService);
   private readonly ngZone = inject(NgZone);
   private readonly dialogService = inject(DialogService);
 
@@ -57,6 +61,7 @@ export class NotebookComponent implements OnDestroy {
   readonly canRedo = signal(false);
   readonly isFullWidth = signal(false);
   readonly contentDirty = signal(false);
+  readonly isCleaningWithS1 = signal(false);
 
   readonly footerPageActions = computed<EditorPageAction[]>(() => [
     {
@@ -69,6 +74,17 @@ export class NotebookComponent implements OnDestroy {
       label: 'Version history',
       action: () => this.noteActions?.toggleVersionHistory(),
     },
+    ...(this.nativeBridge.isNativeApp()
+      ? [
+          {
+            icon: this.isCleaningWithS1() ? 'progress_activity' : 'auto_fix_high',
+            label: this.isCleaningWithS1() ? 'Cleaning with S1…' : 'Clean with S1',
+            action: () => {
+              void this.handleCleanWithS1();
+            },
+          },
+        ]
+      : []),
     { icon: 'description', label: 'Export Markdown', action: () => this.handleExport('markdown') },
     { icon: 'code', label: 'Export HTML', action: () => this.handleExport('html') },
     ...(this.selectedNotebook()?.sharing?.isPublic
@@ -193,6 +209,70 @@ export class NotebookComponent implements OnDestroy {
       this.editorComponent?.exportAsMarkdown(title);
     } else if (format === 'html') {
       this.editorComponent?.exportAsHtml(title);
+    }
+  }
+
+  async handleCleanWithS1(): Promise<void> {
+    const editor = this.editorComponent?.getEditor();
+    if (!editor || this.isCleaningWithS1()) return;
+
+    const { from, to, empty } = editor.state.selection;
+    const range = empty ? { from: 0, to: editor.state.doc.content.size } : { from, to };
+    const originalDoc = editor.state.doc;
+    const text = editor.state.doc.textBetween(range.from, range.to, '\n\n', ' ').trim();
+    if (!text) {
+      this.notificationService.showToast({
+        title: 'Nothing to clean',
+        message: 'Add text to the note or select some text first.',
+        type: 'info',
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (empty) {
+      const confirmed = await this.dialogService.confirm({
+        title: 'Clean note with S1?',
+        message:
+          'This replaces the note body with cleaned plain text. Existing formatting will be removed, and you can undo the change afterward.',
+        confirmLabel: 'Clean note',
+      });
+      if (!confirmed) return;
+    }
+
+    this.isCleaningWithS1.set(true);
+    try {
+      const cleaned = (await this.nativeBridge.cleanTextWithS1(text)).trim();
+      if (!cleaned) throw new Error('S1 returned no text');
+      if (!editor.state.doc.eq(originalDoc)) {
+        throw new Error('The note changed while S1 was running. Run the cleanup again.');
+      }
+
+      const content = cleaned
+        .split(/\n{2,}/)
+        .map((paragraph) => paragraph.replace(/\s*\n\s*/g, ' ').trim())
+        .filter(Boolean)
+        .map((paragraph) => ({
+          type: 'paragraph',
+          content: [{ type: 'text', text: paragraph }],
+        }));
+
+      editor.chain().focus().insertContentAt(range, content).run();
+      this.notificationService.showToast({
+        title: empty ? 'Note cleaned' : 'Selection cleaned',
+        message: 'S1-mini finished locally. Use Undo to restore the previous text.',
+        type: 'success',
+        duration: 4000,
+      });
+    } catch (error) {
+      this.notificationService.showToast({
+        title: 'S1 cleanup failed',
+        message: error instanceof Error ? error.message : 'The note could not be cleaned.',
+        type: 'error',
+        duration: 5000,
+      });
+    } finally {
+      this.isCleaningWithS1.set(false);
     }
   }
 

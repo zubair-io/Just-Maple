@@ -1,4 +1,4 @@
-import { Component, inject, input, computed } from '@angular/core';
+import { Component, inject, input, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ConnectivityService } from '../../../services/connectivity.service';
 import { MemoDocumentService } from '../../../services/memo-document.service';
@@ -9,6 +9,7 @@ import { OfflineQueueService } from '../../../services/offline-queue.service';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './sync-status.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './sync-status.component.scss',
 })
 export class SyncStatusComponent {

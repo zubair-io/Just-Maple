@@ -146,25 +146,39 @@
       }
     </section>
 
-    <!-- Available Bots Section -->
+    <!-- AI Providers Section -->
     <section class="section">
-      <h2 class="section-title">Available Bots</h2>
-      <p class="section-description">Add bots to use with @mentions in chat</p>
+      <div class="section-header-row">
+        <div>
+          <h2 class="section-title">AI Providers</h2>
+          <p class="section-description">
+            Add an AI to @mention in chat. Add as many as you like, each with its own key and model.
+          </p>
+        </div>
+        @if (customProviderTemplate()) {
+          <button type="button" class="btn primary small" (click)="newProvider()">
+            <span class="material-symbols-rounded">add</span>
+            New
+          </button>
+        }
+      </div>
 
       @if (templatesLoading()) {
-        <div class="loading-state">Loading available bots...</div>
-      } @else if (templates().length === 0) {
+        <div class="loading-state">Loading AI providers...</div>
+      } @else if (providerTemplates().length === 0) {
         <div class="empty-state">
           <span class="material-symbols-rounded">inventory_2</span>
           <p>No bot templates available.</p>
         </div>
       } @else {
         <div class="template-grid">
-          @for (template of templates(); track template._id) {
+          @for (template of providerTemplates(); track template._id) {
             <div
               class="template-card"
-              [class.registered]="isBotRegistered(template)"
-              (click)="!isBotRegistered(template) && selectTemplate(template)"
+              [class.registered]="isBotRegistered(template) && !canAddAgain(template)"
+              (click)="
+                (!isBotRegistered(template) || canAddAgain(template)) && selectTemplate(template)
+              "
             >
               <app-profile-avatar
                 [email]="'system@' + template.handle"
@@ -180,7 +194,7 @@
                   <div class="template-description">{{ template.description }}</div>
                 }
               </div>
-              @if (template.requiresConfig) {
+              @if (template.requiresConfig && !isBotRegistered(template)) {
                 <span class="config-badge" title="Requires API key">
                   <span class="material-symbols-rounded">key</span>
                 </span>
@@ -204,7 +218,7 @@
   <div class="dialog-backdrop" (click)="closeRegisterDialog()">
     <div class="dialog" (click)="$event.stopPropagation()">
       <header class="dialog-header">
-        <h2>Add Bot</h2>
+        <h2>{{ usesCustomServer(selectedTemplate()?._id) ? 'New AI provider' : 'Add Bot' }}</h2>
         <button
           type="button"
           class="close-btn"
@@ -248,22 +262,158 @@
             <p class="field-hint">Customize the handle used to mention this bot</p>
           </div>
 
-          @if (template.requiresConfig) {
+          <div class="form-field">
+            <label for="displayName">Name</label>
+            <input
+              type="text"
+              id="displayName"
+              [ngModel]="displayName()"
+              (ngModelChange)="displayName.set($event)"
+              [placeholder]="usesCustomServer(template._id) ? 'e.g. OpenRouter' : template.name"
+            />
+          </div>
+
+          @if (usesCustomServer(template._id)) {
             <div class="form-field">
-              <label for="apiKey">API Key</label>
+              <label for="baseUrl">Server URL</label>
               <input
-                type="password"
-                id="apiKey"
-                [ngModel]="apiKey()"
-                (ngModelChange)="apiKey.set($event)"
-                placeholder="Enter your API key"
+                type="url"
+                id="baseUrl"
+                [ngModel]="baseUrl()"
+                (ngModelChange)="changeBaseUrl('register', $event)"
+                (change)="loadRegisterModels()"
+                placeholder="https://openrouter.ai/api/v1"
               />
               <p class="field-hint">
-                This bot requires an API key to function. Your key is stored securely.
+                The API root of any OpenAI-compatible server. "/chat/completions" is added for you.
+                Local servers like Ollama (http://localhost:11434/v1) are reached through your Mac's
+                Maple app, which needs to be open.
               </p>
             </div>
           }
 
+          @if (template.requiresConfig) {
+            <div class="form-field">
+              <label for="apiKey">
+                API Key{{ usesCustomServer(template._id) ? ' (optional)' : '' }}
+              </label>
+              <input
+                type="password"
+                id="apiKey"
+                [ngModel]="apiKey()"
+                (ngModelChange)="changeApiKey('register', $event)"
+                (change)="loadRegisterModels()"
+                placeholder="Enter your API key"
+              />
+              <p class="field-hint">
+                {{
+                  usesCustomServer(template._id)
+                    ? "Leave blank if the server doesn't need one. Your key is stored securely."
+                    : 'This bot requires an API key to function. Your key is stored securely.'
+                }}
+              </p>
+            </div>
+          }
+
+          @if (usesCustomServer(template._id)) {
+            <div class="form-field">
+              <label for="model">Model</label>
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  id="model"
+                  list="registerModelOptions"
+                  class="min-w-0 flex-1"
+                  [ngModel]="model()"
+                  (ngModelChange)="model.set($event)"
+                  placeholder="e.g. meta-llama/llama-3.3-70b-instruct"
+                />
+                <button
+                  type="button"
+                  class="btn secondary small shrink-0"
+                  (click)="loadRegisterModels()"
+                  [disabled]="registerModelsLoading() || !baseUrl().trim()"
+                >
+                  {{ registerModelsLoading() ? 'Loading…' : 'Load models' }}
+                </button>
+              </div>
+              <datalist id="registerModelOptions">
+                @for (option of registerModels(); track option.id) {
+                  <option [value]="option.id">{{ option.name }}</option>
+                }
+              </datalist>
+              @if (registerModelsError()) {
+                <p role="alert" class="field-hint text-[var(--color-error)]">
+                  {{ registerModelsError() }}
+                </p>
+              } @else {
+                <p class="field-hint">
+                  {{
+                    registerModelsLoading()
+                      ? 'Loading models…'
+                      : registerModels().length
+                        ? "Pick from the server's models or type one."
+                        : 'Type the model name, or enter the server URL and press Load models.'
+                  }}
+                </p>
+              }
+            </div>
+          }
+
+          @if (supportsModelSelection(template._id) && !usesCustomServer(template._id)) {
+            <div class="form-field">
+              <label for="model">Model</label>
+              <select
+                id="model"
+                [ngModel]="model()"
+                (ngModelChange)="model.set($event)"
+                [disabled]="registerModelsLoading()"
+                class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-main)] px-3 py-2.5"
+              >
+                <option value="" disabled>
+                  {{ registerModelsLoading() ? 'Loading models…' : 'Choose a model' }}
+                </option>
+                @if (model() && !hasModel(registerModels(), model())) {
+                  <option [value]="model()">{{ model() }} (current)</option>
+                }
+                @for (option of registerModels(); track option.id) {
+                  <option [value]="option.id">
+                    {{ option.name }}{{ option.name !== option.id ? ' (' + option.id + ')' : '' }}
+                  </option>
+                }
+              </select>
+              <button
+                type="button"
+                class="mt-2 text-sm text-[var(--color-primary)] hover:underline disabled:opacity-50"
+                (click)="loadRegisterModels()"
+                [disabled]="registerModelsLoading() || !apiKey().trim()"
+              >
+                {{ registerModelsLoading() ? 'Loading…' : 'Refresh models from provider' }}
+              </button>
+              @if (registerModelsError()) {
+                <p role="alert" class="field-hint text-[var(--color-error)]">
+                  {{ registerModelsError() }}
+                </p>
+              } @else {
+                <p class="field-hint">
+                  Enter your API key to load the models available to your account.
+                </p>
+              }
+            </div>
+          }
+          @if (supportsModelSelection(template._id)) {
+            <div class="form-field">
+              <label for="responseMode">Replies</label>
+              <select
+                id="responseMode"
+                [ngModel]="responseMode()"
+                (ngModelChange)="responseMode.set($event)"
+              >
+                <option value="auto">Text and interactive UI</option>
+                <option value="text">Text only</option>
+              </select>
+            </div>
+          }
           @if (registerError()) {
             <div class="error-message">{{ registerError() }}</div>
           }
@@ -332,17 +482,132 @@
           </div>
 
           <div class="form-field">
+            <label for="editDisplayName">Name</label>
+            <input
+              type="text"
+              id="editDisplayName"
+              [ngModel]="editDisplayName()"
+              (ngModelChange)="editDisplayName.set($event)"
+              [placeholder]="bot.templateName || bot.handle"
+            />
+          </div>
+
+          @if (usesCustomServer(bot.templateId)) {
+            <div class="form-field">
+              <label for="editBaseUrl">Server URL</label>
+              <input
+                type="url"
+                id="editBaseUrl"
+                [ngModel]="editBaseUrl()"
+                (ngModelChange)="changeBaseUrl('edit', $event)"
+                (change)="loadEditModels()"
+                placeholder="https://openrouter.ai/api/v1"
+              />
+              <p class="field-hint">Changing the server needs the API key entered again.</p>
+            </div>
+          }
+
+          <div class="form-field">
             <label for="editApiKey">Update API Key</label>
             <input
               type="password"
               id="editApiKey"
               [ngModel]="editApiKey()"
-              (ngModelChange)="editApiKey.set($event)"
+              (ngModelChange)="changeApiKey('edit', $event)"
+              (change)="loadEditModels()"
               placeholder="Leave blank to keep current key"
             />
             <p class="field-hint">Only fill this if you want to change the API key</p>
           </div>
 
+          @if (usesCustomServer(bot.templateId)) {
+            <div class="form-field">
+              <label for="editModel">Model</label>
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  id="editModel"
+                  list="editModelOptions"
+                  class="min-w-0 flex-1"
+                  [ngModel]="editModel()"
+                  (ngModelChange)="editModel.set($event)"
+                />
+                <button
+                  type="button"
+                  class="btn secondary small shrink-0"
+                  (click)="loadEditModels()"
+                  [disabled]="editModelsLoading() || !editBaseUrl().trim()"
+                >
+                  {{ editModelsLoading() ? 'Loading…' : 'Load models' }}
+                </button>
+              </div>
+              <datalist id="editModelOptions">
+                @for (option of editModels(); track option.id) {
+                  <option [value]="option.id">{{ option.name }}</option>
+                }
+              </datalist>
+              @if (editModelsError()) {
+                <p role="alert" class="field-hint text-[var(--color-error)]">
+                  {{ editModelsError() }}
+                </p>
+              }
+            </div>
+          }
+
+          @if (supportsModelSelection(bot.templateId) && !usesCustomServer(bot.templateId)) {
+            <div class="form-field">
+              <label for="editModel">Model</label>
+              <select
+                id="editModel"
+                [ngModel]="editModel()"
+                (ngModelChange)="editModel.set($event)"
+                [disabled]="editModelsLoading()"
+                class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-main)] px-3 py-2.5"
+              >
+                <option value="" disabled>
+                  {{ editModelsLoading() ? 'Loading models…' : 'Choose a model' }}
+                </option>
+                @if (editModel() && !hasModel(editModels(), editModel())) {
+                  <option [value]="editModel()">{{ editModel() }} (current)</option>
+                }
+                @for (option of editModels(); track option.id) {
+                  <option [value]="option.id">
+                    {{ option.name }}{{ option.name !== option.id ? ' (' + option.id + ')' : '' }}
+                  </option>
+                }
+              </select>
+              <button
+                type="button"
+                class="mt-2 text-sm text-[var(--color-primary)] hover:underline disabled:opacity-50"
+                (click)="loadEditModels()"
+                [disabled]="editModelsLoading()"
+              >
+                {{ editModelsLoading() ? 'Loading…' : 'Refresh models from provider' }}
+              </button>
+              @if (editModelsError()) {
+                <p role="alert" class="field-hint text-[var(--color-error)]">
+                  {{ editModelsError() }}
+                </p>
+              } @else {
+                <p class="field-hint">
+                  Models are loaded using your saved API key, or the replacement key above.
+                </p>
+              }
+            </div>
+          }
+          @if (supportsModelSelection(bot.templateId)) {
+            <div class="form-field">
+              <label for="editResponseMode">Replies</label>
+              <select
+                id="editResponseMode"
+                [ngModel]="editResponseMode()"
+                (ngModelChange)="editResponseMode.set($event)"
+              >
+                <option value="auto">Text and interactive UI</option>
+                <option value="text">Text only</option>
+              </select>
+            </div>
+          }
           @if (editError()) {
             <div class="error-message">{{ editError() }}</div>
           }

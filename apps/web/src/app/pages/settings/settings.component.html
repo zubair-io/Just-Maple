@@ -13,8 +13,8 @@
         <div class="flex items-center gap-4">
           <app-profile-avatar
             [email]="authService.user()?.email ?? ''"
-            [displayName]="authService.user()?.displayName"
-            [profilePictureUrl]="authService.user()?.profilePictureUrl"
+            [displayName]="$safeNavigationMigration(authService.user()?.displayName)"
+            [profilePictureUrl]="$safeNavigationMigration(authService.user()?.profilePictureUrl)"
             size="lg"
           />
           <div>

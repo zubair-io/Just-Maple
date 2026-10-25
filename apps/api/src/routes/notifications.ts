@@ -3,14 +3,17 @@ import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
 import type { JWTPayload } from '@maple/shared';
 import {
+    countUnreadNotifications,
     findNotificationById,
     findNotificationsByUserId,
-    markNotificationAsRead,
-    markAllNotificationsAsRead,
     registerDevice,
     unregisterDevice,
     findDeviceRegistrationsByUserId,
 } from '../repositories/notification.repo';
+import {
+    markAllNotificationsAsRead,
+    markNotificationAsRead,
+} from '../services/notification.service';
 
 export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
     .use(jwtPlugin)
@@ -117,6 +120,15 @@ export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
         },
     )
 
+    // Unread notification count (the app icon badge)
+    .get('/unread-count', async ({ auth, set }) => {
+        if (!checkAuth(auth, set)) {
+            return { error: 'Unauthorized', message: 'Valid authentication required' };
+        }
+
+        return { unreadCount: await countUnreadNotifications(auth.user._id) };
+    })
+
     // Get a single notification by ID
     .get(
         '/:id',
@@ -158,7 +170,11 @@ export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
 
         const count = await markAllNotificationsAsRead(auth.user._id);
 
-        return { message: `Marked ${count} notifications as read`, count };
+        return {
+            message: `Marked ${count} notifications as read`,
+            count,
+            unreadNotificationCount: await countUnreadNotifications(auth.user._id),
+        };
     })
 
     // Mark notification as read
@@ -169,14 +185,17 @@ export const notificationRoutes = new Elysia({ prefix: '/api/notifications' })
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
 
-            const updated = await markNotificationAsRead(params.id, auth.user._id);
+            const result = await markNotificationAsRead(auth.user._id, params.id);
 
-            if (!updated) {
+            if (!result) {
                 set.status = 404;
                 return { error: 'Notification not found' };
             }
 
-            return { message: 'Notification marked as read' };
+            return {
+                message: 'Notification marked as read',
+                unreadNotificationCount: result.unreadNotificationCount,
+            };
         },
         {
             params: t.Object({

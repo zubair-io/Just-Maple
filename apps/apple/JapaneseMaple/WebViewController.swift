@@ -89,6 +89,11 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
         bridge = NativeBridge(webView: webView)
         contentController.add(bridge!, name: "nativeBridge")
 
+        #if os(macOS)
+        // iMessage, Mail and Calendar data that stays on this Mac.
+        MacDataHost.shared.attach(to: webView)
+        #endif
+
         webView.navigationDelegate = self
         webView.uiDelegate = self
 

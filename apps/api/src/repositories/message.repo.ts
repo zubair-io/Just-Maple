@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { getDb } from '../db/client';
 import type {
     Message,
+    BotUIResponse,
     PageContent,
     CreateMessageInput,
     UpdateMessageInput,
@@ -31,6 +32,8 @@ interface MessageDocument {
     senderDisplayName?: string;
     senderProfilePictureUrl?: string;
     content: PageContent;
+    botUI?: BotUIResponse;
+    botModel?: string;
     mentions?: Mention[];
     hasThread?: boolean;
     createdAt: Date;
@@ -63,6 +66,8 @@ function toMessageResponse(
         senderDisplayName: senderDisplayName || doc.senderDisplayName,
         senderProfilePictureUrl: senderProfilePictureUrl || doc.senderProfilePictureUrl,
         content: doc.content,
+        botUI: doc.botUI,
+        botModel: doc.botModel,
         mentions: doc.mentions,
         hasThread: doc.hasThread,
         createdAt: doc.createdAt.toISOString(),
@@ -251,6 +256,8 @@ export async function createMessage(
         senderDisplayName,
         senderProfilePictureUrl,
         content: doc.content,
+        botUI: doc.botUI,
+        botModel: doc.botModel,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
     };
@@ -310,12 +317,24 @@ export async function softDeleteMessage(id: string, userId: string): Promise<boo
     }
 }
 
-export async function countMessagesSinceByPageId(pageId: string, since: Date): Promise<number> {
+/**
+ * Count a page's messages (thread replies included) newer than `since`.
+ * With `readerId`, the reader's own messages are left out: what you wrote is
+ * never unread. Bot posts are stored under their owner's id but still count.
+ */
+export async function countMessagesSinceByPageId(
+    pageId: string,
+    since: Date,
+    readerId?: string,
+): Promise<number> {
     try {
         return await getCollection().countDocuments({
             pageId: pageId,
             deletedAt: { $exists: false },
             createdAt: { $gt: since },
+            ...(readerId
+                ? { $or: [{ userId: { $ne: new ObjectId(readerId) } }, { senderType: 'bot' }] }
+                : {}),
         });
     } catch {
         return 0;
@@ -432,6 +451,8 @@ export async function createMessageInThread(data: {
     senderDisplayName?: string;
     senderProfilePictureUrl?: string;
     content: PageContent;
+    botUI?: BotUIResponse;
+    botModel?: string;
 }): Promise<Message> {
     const now = new Date();
     const messageId = generateMessageId();
@@ -448,6 +469,8 @@ export async function createMessageInThread(data: {
         senderDisplayName: isBot ? data.senderDisplayName : undefined,
         senderProfilePictureUrl: isBot ? data.senderProfilePictureUrl : undefined,
         content: data.content,
+        botUI: data.botUI,
+        botModel: data.botModel,
         createdAt: now,
         updatedAt: now,
     };
@@ -466,6 +489,8 @@ export async function createMessageInThread(data: {
         senderDisplayName: data.senderDisplayName,
         senderProfilePictureUrl: data.senderProfilePictureUrl,
         content: data.content,
+        botUI: data.botUI,
+        botModel: data.botModel,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
     };
@@ -480,4 +505,57 @@ export async function markMessageHasThread(messageId: string): Promise<void> {
     } catch {
         // Ignore errors
     }
+}
+
+/**
+ * Create a top-level bot message in a page (not in a thread). Used by proactive bots,
+ * which post updates and answers directly in the conversation.
+ */
+export async function createTopLevelBotMessage(data: {
+    pageId: string;
+    notebookId?: string;
+    userId: string;
+    userBotId: string;
+    senderDisplayName?: string;
+    senderProfilePictureUrl?: string;
+    content: PageContent;
+    botUI?: BotUIResponse;
+    botModel?: string;
+}): Promise<Message> {
+    const now = new Date();
+    const messageId = generateMessageId();
+    const doc: Omit<MessageDocument, '_id'> = {
+        id: messageId,
+        pageId: data.pageId,
+        notebookId: data.notebookId ? new ObjectId(data.notebookId) : undefined,
+        userId: new ObjectId(data.userId),
+        userBotId: new ObjectId(data.userBotId),
+        senderType: 'bot',
+        senderDisplayName: data.senderDisplayName,
+        senderProfilePictureUrl: data.senderProfilePictureUrl,
+        content: data.content,
+        botUI: data.botUI,
+        botModel: data.botModel,
+        createdAt: now,
+        updatedAt: now,
+    };
+
+    const result = await getCollection().insertOne(doc as MessageDocument);
+
+    return {
+        _id: result.insertedId.toString(),
+        id: messageId,
+        pageId: data.pageId,
+        notebookId: data.notebookId,
+        userId: data.userId,
+        userBotId: data.userBotId,
+        senderType: 'bot',
+        senderDisplayName: data.senderDisplayName,
+        senderProfilePictureUrl: data.senderProfilePictureUrl,
+        content: data.content,
+        botUI: data.botUI,
+        botModel: data.botModel,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+    };
 }

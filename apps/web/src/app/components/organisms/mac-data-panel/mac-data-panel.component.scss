@@ -1,0 +1,56 @@
+// Shared styling for the tables projected into the panel. Tables can't be
+// styled per-cell with Tailwind from here because the markup is projected.
+:host {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
+.mac-data-scroll ::ng-deep table.mac-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-sans, inherit);
+  font-size: 0.8125rem;
+  color: var(--color-text-main);
+
+  th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.75rem 0.75rem 0.5rem;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0.625rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: top;
+  }
+
+  tbody tr:hover td {
+    background: var(--color-surface-hover);
+  }
+
+  .nowrap {
+    white-space: nowrap;
+  }
+
+  .muted {
+    color: var(--color-text-muted);
+  }
+
+  .clamp {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}

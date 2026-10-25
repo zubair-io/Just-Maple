@@ -14,7 +14,8 @@ vi.mock('../../services/realtime.service', () => ({
     broadcastChatEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../../services/notification.service', () => ({
+vi.mock('../../services/notification.service', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../../services/notification.service')>()),
     sendMessageReceivedNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -150,6 +151,33 @@ describe.runIf(mongoAvailable)('Message Routes', () => {
             expect(data.message.content).toEqual(messageContent);
             expect(data.message.userId).toBe(user._id.toString());
             expect(data.message.notebookId).toBe(tag._id.toString());
+        });
+
+        it('rejects a thread reply to a message from another notebook', async () => {
+            const user = await createUserFixture();
+            const mine = await createNotebookFixture({ createdBy: user._id.toString() });
+            const other = await createNotebookFixture({ createdBy: user._id.toString() });
+            const foreignParent = await createMessageFixture({
+                notebookId: other._id.toString(),
+                userId: user._id.toString(),
+            });
+            const token = await getAuthToken(user._id.toString(), user.email);
+
+            const response = await app.handle(
+                new Request(`http://localhost/api/notebooks/${mine._id.toString()}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        content: { type: 'doc', content: [] },
+                        parentMessageId: foreignParent._id.toString(),
+                    }),
+                }),
+            );
+
+            expect(response.status).toBe(400);
         });
 
         it('should create thread when replying to message', async () => {

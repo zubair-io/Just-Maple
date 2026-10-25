@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export type StatSize = 'sm' | 'md' | 'lg';
@@ -8,6 +8,7 @@ export type StatSize = 'sm' | 'md' | 'lg';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './stat.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './stat.component.scss',
 })
 export class StatComponent {

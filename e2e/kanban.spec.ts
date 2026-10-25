@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures';
+import { createBoard } from './document-fixtures';
 
 test.describe('Kanban Boards', () => {
     test('should create a new kanban board', async ({ authenticatedPage }) => {
@@ -950,37 +951,24 @@ test.describe('Kanban Boards', () => {
         await expect(secondCard).toBeVisible();
     });
 
-    test('should display kanban in list view', async ({ authenticatedPage }) => {
-        await authenticatedPage.goto('/');
-        await authenticatedPage.waitForLoadState('networkidle');
-
-        const newKanbanButton = authenticatedPage
-            .locator('button:has-text("New Kanban"), button:has-text("Kanban")')
-            .first();
-
-        if (!(await newKanbanButton.isVisible({ timeout: 3000 }).catch(() => false))) {
-            return;
-        }
-
-        await newKanbanButton.click();
-        await authenticatedPage.waitForTimeout(1000);
-
-        // Look for view toggle button if available
-        const viewToggle = authenticatedPage
-            .locator(
-                'button:has-text("List"), button:has-text("List View"), button[aria-label*="list" i]',
-            )
-            .first();
-
-        if (await viewToggle.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await viewToggle.click();
-            await authenticatedPage.waitForTimeout(500);
-        }
-
-        // Verify board/kanban container is visible
-        const kanbanContainer = authenticatedPage
-            .locator('.kanban-board, .kanban-container, [role="region"], .kanban-list')
-            .first();
-        await expect(kanbanContainer).toBeVisible({ timeout: 5000 });
+    test('should display kanban in list view', async ({ authenticatedPage: page, testUser }) => {
+        const board = await createBoard(page.request, testUser.token, 'kanban');
+        await page.goto(board.url);
+        const view = page.getByRole('group', { name: 'Board view', exact: true });
+        await expect(view).toBeVisible();
+        const lanes = page.locator('.lanes-container');
+        const titles = await page.locator('.lane-title').allTextContents();
+        expect(titles.length).toBeGreaterThan(1);
+        await view.getByRole('button', { name: 'List', exact: true }).click();
+        await expect(view.getByRole('button', { name: 'List', exact: true })).toHaveAttribute(
+            'aria-pressed',
+            'true',
+        );
+        await expect(lanes).toHaveAttribute('data-view', 'list');
+        await expect(lanes).toHaveCSS('flex-direction', 'column');
+        expect(await page.locator('.lane-title').allTextContents()).toEqual(titles);
+        await view.getByRole('button', { name: 'Board', exact: true }).click();
+        await expect(lanes).toHaveAttribute('data-view', 'board');
+        await expect(lanes).toHaveCSS('flex-direction', 'row');
     });
 });

@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ToastComponent, type ToastData } from '../../atoms/toast/toast.component';
 import { NotificationService } from '../../../services/notification.service';
@@ -8,6 +8,7 @@ import { NotificationService } from '../../../services/notification.service';
   standalone: true,
   imports: [CommonModule, ToastComponent],
   templateUrl: './toast-container.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './toast-container.component.scss',
 })
 export class ToastContainerComponent {

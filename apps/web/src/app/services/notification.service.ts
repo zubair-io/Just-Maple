@@ -50,18 +50,23 @@ export class NotificationService {
 
   // Public signals
   readonly notifications = computed(() => this._notificationsSignal() ?? []);
+
+  // The server's count of ALL unread notifications. The store only holds the
+  // newest page, so the count can't be derived from it. Null until first loaded.
+  private readonly _serverUnreadCount = signal<number | null>(null);
+
   readonly unreadNotificationCount = computed(
-    () => this.notifications().filter((n) => !n.read).length,
+    () => this._serverUnreadCount() ?? this.notifications().filter((n) => !n.read).length,
   );
 
   // Message unread count (set by MessageService to avoid circular dependency)
   private readonly _messageUnreadCount = signal(0);
   readonly messageUnreadCount = this._messageUnreadCount.asReadonly();
 
-  // Total unread count (notifications + messages) for badge
-  readonly totalUnreadCount = computed(
-    () => this.unreadNotificationCount() + this._messageUnreadCount(),
-  );
+  // Badge count. Every message from someone else creates a notification, and
+  // reading a chat clears its notifications, so unread notifications already
+  // cover unread messages. Adding the message count on top counted each one twice.
+  readonly totalUnreadCount = this.unreadNotificationCount;
 
   // Legacy alias for backward compatibility
   readonly unreadCount = this.unreadNotificationCount;
@@ -79,6 +84,10 @@ export class NotificationService {
 
   // Callback for when message_received notifications are marked as read
   private _onMessageNotificationRead: ((notebookId: string, pageId?: string) => void) | null = null;
+  // Callback for when "mark all as read" also read every chat on the server
+  private _onAllNotificationsRead: (() => void) | null = null;
+
+  private unreadRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.init();
@@ -165,7 +174,6 @@ export class NotificationService {
    */
   setMessageUnreadCount(count: number): void {
     this._messageUnreadCount.set(count);
-    this.syncBadgeCount();
   }
 
   /**
@@ -174,6 +182,49 @@ export class NotificationService {
    */
   onMessageNotificationRead(callback: (notebookId: string, pageId?: string) => void): void {
     this._onMessageNotificationRead = callback;
+  }
+
+  /**
+   * Register callback for when "mark all as read" finishes. The server reads every
+   * chat that had notifications, including ones not loaded here.
+   */
+  onAllNotificationsRead(callback: () => void): void {
+    this._onAllNotificationsRead = callback;
+  }
+
+  // MARK: - Unread Count
+
+  /**
+   * Take the unread count the server reported (after a read, or on refresh)
+   */
+  private setUnreadCount(count: number | undefined): void {
+    if (typeof count !== 'number') return;
+    this._serverUnreadCount.set(count);
+    this.syncBadgeCount();
+  }
+
+  /**
+   * Fetch the unread notification count from the server
+   */
+  refreshUnreadCount(): void {
+    this.http.get<{ unreadCount: number }>('/api/notifications/unread-count').subscribe({
+      next: (response) => this.setUnreadCount(response.unreadCount),
+      error: () => {
+        // Non-critical - keep the current count
+      },
+    });
+  }
+
+  /**
+   * Refresh the count shortly after a message arrives from someone else; the
+   * server creates the notification just after broadcasting the message.
+   */
+  scheduleUnreadRefresh(delayMs = 1500): void {
+    if (this.unreadRefreshTimer) clearTimeout(this.unreadRefreshTimer);
+    this.unreadRefreshTimer = setTimeout(() => {
+      this.unreadRefreshTimer = null;
+      this.refreshUnreadCount();
+    }, delayMs);
   }
 
   // MARK: - Push Notification Registration
@@ -273,6 +324,9 @@ export class NotificationService {
         tap((response) => {
           this.store.update(setEntities(response.notifications));
           this.persistToIndexedDB(response.notifications);
+          if (typeof response.unreadCount === 'number') {
+            this._serverUnreadCount.set(response.unreadCount);
+          }
           // Sync badge count with native app
           this.syncBadgeCount();
         }),
@@ -301,30 +355,39 @@ export class NotificationService {
       return of(void 0);
     }
 
-    return this.http.patch<{ message: string }>(`/api/notifications/${id}/read`, {}).pipe(
-      tap(() => {
-        // Update local state
-        this.store.update(updateEntities(id, { read: true }));
+    return this.http
+      .patch<{
+        message: string;
+        unreadNotificationCount?: number;
+      }>(`/api/notifications/${id}/read`, {})
+      .pipe(
+        tap((response) => {
+          // Update local state
+          this.store.update(updateEntities(id, { read: true }));
 
-        // If this is a message_received notification, notify MessageService to sync
-        if (notification?.type === 'message_received' && this._onMessageNotificationRead) {
-          const notebookId = notification.data['notebookId'];
-          const pageId = notification.data['pageId'];
-          if (notebookId) {
-            this._onMessageNotificationRead(notebookId, pageId);
+          // A message notification reads its chat on the server, which clears the
+          // chat's other notifications too. Mirror that and tell MessageService.
+          if (notification?.type === 'message_received') {
+            const notebookId = notification.data['notebookId'];
+            const pageId = notification.data['pageId'];
+            this.markLocalChatNotificationsRead({ notebookId, pageId });
+            if (notebookId && this._onMessageNotificationRead) {
+              this._onMessageNotificationRead(notebookId, pageId);
+            }
           }
-        }
 
-        // Sync badge count with native app
-        this.syncBadgeCount();
-      }),
-      map(() => void 0),
-    );
+          if (typeof response?.unreadNotificationCount === 'number') {
+            this.setUnreadCount(response.unreadNotificationCount);
+          } else {
+            this.adjustUnreadCount(notification && !notification.read ? -1 : 0);
+          }
+        }),
+        map(() => void 0),
+      );
   }
 
   /**
    * Sync the badge count with the native app
-   * Uses total unread count (notifications + messages)
    */
   syncBadgeCount(): void {
     if (this.nativeBridge.isNativeApp()) {
@@ -347,106 +410,102 @@ export class NotificationService {
   markAllAsRead(): Observable<void> {
     const unreadNotifications = this.notifications().filter((n) => !n.read);
 
-    // Skip if no unread notifications
-    if (unreadNotifications.length === 0) {
+    // Skip only when nothing is unread anywhere; the server may hold unread
+    // notifications older than the ones loaded here.
+    if (this.unreadNotificationCount() === 0) {
       return of(void 0);
     }
 
     return this.http
-      .patch<{ message: string; count: number }>('/api/notifications/read-all', {})
+      .patch<{
+        message: string;
+        count: number;
+        unreadNotificationCount?: number;
+      }>('/api/notifications/read-all', {})
       .pipe(
-        tap(() => {
+        tap((response) => {
           // Update local state - mark all as read
           const allIds = this.notifications().map((n) => n._id);
-          allIds.forEach((id) => {
-            this.store.update(updateEntities(id, { read: true }));
-          });
+          this.store.update(updateEntities(allIds, { read: true }));
 
           // Notify MessageService about all message_received notifications that were marked read
           if (this._onMessageNotificationRead) {
             const messageNotifications = unreadNotifications.filter(
               (n) => n.type === 'message_received',
             );
-            const processedNotebooks = new Set<string>();
+            const processedChats = new Set<string>();
 
             messageNotifications.forEach((n) => {
               const notebookId = n.data['notebookId'];
               const pageId = n.data['pageId'];
-              if (notebookId && !processedNotebooks.has(notebookId)) {
-                processedNotebooks.add(notebookId);
+              const chatKey = pageId || notebookId;
+              if (notebookId && !processedChats.has(chatKey)) {
+                processedChats.add(chatKey);
                 this._onMessageNotificationRead!(notebookId, pageId);
               }
             });
           }
 
-          // Sync badge - will include message unread count
-          this.syncBadgeCount();
+          this._onAllNotificationsRead?.();
+
+          this.setUnreadCount(response?.unreadNotificationCount ?? 0);
         }),
         map(() => void 0),
       );
   }
 
   /**
-   * Mark all message_received notifications for a specific notebook as read
-   * Called when user views a chat to sync notification state with viewed messages
+   * A chat was read (the server cleared its notifications as part of the read):
+   * mark its message notifications read here and take the server's new count.
+   * Older notifications carry only a notebookId, so those match by notebook.
    */
-  markNotebookMessagesAsRead(notebookId: string): void {
-    const unreadMessageNotifications = this.notifications().filter(
-      (n) => !n.read && n.type === 'message_received' && n.data['notebookId'] === notebookId,
-    );
-
-    // Skip if no unread message notifications for this notebook
-    if (unreadMessageNotifications.length === 0) {
-      return;
+  markChatNotificationsRead(
+    chat: { notebookId?: string; pageId?: string },
+    unreadNotificationCount?: number,
+  ): void {
+    const marked = this.markLocalChatNotificationsRead(chat);
+    if (typeof unreadNotificationCount === 'number') {
+      this.setUnreadCount(unreadNotificationCount);
+    } else {
+      this.adjustUnreadCount(-marked);
     }
-
-    // Mark all at once in store, then make API calls
-    unreadMessageNotifications.forEach((n) => {
-      this.store.update(updateEntities(n._id, { read: true }));
-    });
-
-    // Sync badge immediately
-    this.syncBadgeCount();
-
-    // Fire API calls in background
-    unreadMessageNotifications.forEach((n) => {
-      this.http.patch(`/api/notifications/${n._id}/read`, {}).subscribe();
-    });
   }
 
-  /**
-   * Mark all message_received notifications for a specific page as read
-   */
-  markPageMessagesAsRead(pageId: string): void {
-    const unreadMessageNotifications = this.notifications().filter(
-      (n) => !n.read && n.type === 'message_received' && n.data['pageId'] === pageId,
-    );
-
-    if (unreadMessageNotifications.length === 0) {
-      return;
+  private markLocalChatNotificationsRead(chat: { notebookId?: string; pageId?: string }): number {
+    const matches = this.notifications().filter((n) => {
+      if (n.read || n.type !== 'message_received') return false;
+      const pageId = n.data['pageId'];
+      if (pageId) return !!chat.pageId && pageId === chat.pageId;
+      return !!chat.notebookId && n.data['notebookId'] === chat.notebookId;
+    });
+    if (matches.length > 0) {
+      this.store.update(
+        updateEntities(
+          matches.map((n) => n._id),
+          { read: true },
+        ),
+      );
     }
+    return matches.length;
+  }
 
-    // Mark all at once in store
-    unreadMessageNotifications.forEach((n) => {
-      this.store.update(updateEntities(n._id, { read: true }));
-    });
-
-    // Sync badge immediately
+  private adjustUnreadCount(delta: number): void {
+    const current = this._serverUnreadCount();
+    if (current !== null && delta !== 0) {
+      this._serverUnreadCount.set(Math.max(0, current + delta));
+    }
     this.syncBadgeCount();
-
-    // Fire API calls in background
-    unreadMessageNotifications.forEach((n) => {
-      this.http.patch(`/api/notifications/${n._id}/read`, {}).subscribe();
-    });
   }
 
   /**
    * Add a notification to the store (for real-time updates)
    */
   addNotification(notification: Notification): void {
+    const isNewUnread =
+      !notification.read && !this.notifications().some((n) => n._id === notification._id);
     this.store.update(upsertEntities(notification));
     this.persistToIndexedDB([notification]);
-    this.syncBadgeCount();
+    this.adjustUnreadCount(isNewUnread ? 1 : 0);
   }
 
   /**
@@ -625,6 +684,11 @@ export class NotificationService {
       default:
         // No navigation for these types
         break;
+    }
+
+    // A tapped push isn't in the store yet; add it so markAsRead knows its chat
+    if (!this.notifications().some((n) => n._id === notification._id)) {
+      this.store.update(upsertEntities(notification));
     }
 
     // Mark as read after navigation

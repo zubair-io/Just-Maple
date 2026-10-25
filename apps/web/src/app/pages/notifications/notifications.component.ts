@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { NotificationListComponent } from '../../components/organisms/notification-list/notification-list.component';
@@ -11,6 +11,7 @@ import type { Notification } from '@maple/shared';
   standalone: true,
   imports: [CommonModule, NotificationListComponent, SettingsHeaderComponent],
   templateUrl: './notifications.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './notifications.component.scss',
 })
 export class NotificationsComponent {

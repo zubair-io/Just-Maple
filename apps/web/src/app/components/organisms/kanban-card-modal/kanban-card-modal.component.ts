@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NotebookEditorComponent } from '../notebook-editor/notebook-editor.component';
 
@@ -7,6 +7,7 @@ import { NotebookEditorComponent } from '../notebook-editor/notebook-editor.comp
   standalone: true,
   imports: [CommonModule, NotebookEditorComponent],
   templateUrl: './kanban-card-modal.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './kanban-card-modal.component.scss',
 })
 export class KanbanCardModalComponent {

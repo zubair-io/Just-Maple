@@ -104,7 +104,7 @@ export async function getUnreadCountForPage(userId: string, pageId: string): Pro
     const lastReadAt = await getLastReadAtByPageId(userId, pageId);
     const since = lastReadAt || new Date(0); // If never read, count all messages
 
-    return countMessagesSinceByPageId(pageId, since);
+    return countMessagesSinceByPageId(pageId, since, userId);
 }
 
 export async function getUnreadCountsForUserByPageIds(

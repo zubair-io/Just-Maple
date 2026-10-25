@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, tap, map, catchError, of, throwError, from, switchMap } from 'rxjs';
 import type {
   BotTemplate,
+  BotModelOption,
   UserBot,
   BotInvocation,
   CreateUserBotInput,
@@ -24,6 +25,8 @@ export interface BotSuggestion {
   avatar?: string;
   description?: string;
   type: 'bot';
+  provider?: 'anthropic' | 'openai';
+  defaultModel?: string;
   // Owner info for disambiguation
   ownerId: string;
   ownerName: string;
@@ -156,6 +159,20 @@ export class BotService {
         const message = err?.error?.error || 'Failed to register bot';
         return throwError(() => new Error(message));
       }),
+    );
+  }
+
+  loadModels(input: {
+    userBotId?: string;
+    templateId?: string;
+    apiKey?: string;
+    baseUrl?: string;
+  }): Observable<BotModelOption[]> {
+    return this.http.post<{ models: BotModelOption[] }>('/api/bot-models', input).pipe(
+      map((response) => response.models),
+      catchError((err) =>
+        throwError(() => new Error(err?.error?.error || 'Could not load provider models')),
+      ),
     );
   }
 
@@ -478,6 +495,7 @@ export class BotService {
     sourceType: 'message' | 'page',
     sourceId: string,
     context: {
+      model?: string;
       mentionText?: string;
       fullContent?: string;
       documentTitle?: string;

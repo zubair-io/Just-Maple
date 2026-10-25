@@ -1,4 +1,4 @@
-import { Component, input, output, computed } from '@angular/core';
+import { Component, input, output, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ProfileAvatarComponent } from '../../atoms';
 import type { NotebookMember } from '@maple/shared';
@@ -8,6 +8,7 @@ import type { NotebookMember } from '@maple/shared';
   standalone: true,
   imports: [CommonModule, ProfileAvatarComponent],
   templateUrl: './member-avatar-group.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './member-avatar-group.component.scss',
 })
 export class MemberAvatarGroupComponent {

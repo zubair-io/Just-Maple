@@ -1,4 +1,13 @@
-import { Component, input, output, signal, inject, effect, computed } from '@angular/core';
+import {
+  Component,
+  input,
+  output,
+  signal,
+  inject,
+  effect,
+  computed,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -9,14 +18,18 @@ import { DialogService } from '../../molecules';
 import { NotebookService } from '../../../services/notebook.service';
 import { BotService, type EnrichedUserBot } from '../../../services/bot.service';
 import { isLocalNotebook } from '../../../providers/data-provider.interface';
-import type { NotebookMember, Notebook } from '@maple/shared';
+import type { NotebookMember, Notebook, Page } from '@maple/shared';
+import { AuthService } from '../../../services/auth.service';
+import { ProactiveBotService } from '../../../services/proactive-bot.service';
+import { ProactiveBotPanelComponent } from '../proactive-bot-panel/proactive-bot-panel.component';
 import { toDisplaySlug } from '@maple/shared/utils/slug';
 
 @Component({
   selector: 'app-share-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule, ProfileAvatarComponent],
+  imports: [CommonModule, FormsModule, ProfileAvatarComponent, ProactiveBotPanelComponent],
   templateUrl: './share-modal.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './share-modal.component.scss',
 })
 export class ShareModalComponent {
@@ -24,9 +37,14 @@ export class ShareModalComponent {
   private readonly notebookService = inject(NotebookService);
   private readonly botService = inject(BotService);
   private readonly dialogService = inject(DialogService);
+  private readonly authService = inject(AuthService);
 
   readonly notebook = input.required<Notebook>();
   readonly members = input.required<NotebookMember[]>();
+  /** The notebook's chats (messages pages); each can have one proactive bot. */
+  readonly chatPages = input<Page[]>([]);
+  /** The chat open behind the dialog, preselected for the proactive bot. */
+  readonly currentChatId = input<string | null>(null);
   readonly closed = output<void>();
   readonly membersChanged = output<void>();
 
@@ -42,6 +60,51 @@ export class ShareModalComponent {
   private readonly sharedBotsRefreshTrigger = signal<number>(0);
 
   readonly isTogglingPublic = signal(false);
+
+  // Proactive bots: any of your AI bots shared here can be a chat's proactive bot
+  private readonly proactiveService = inject(ProactiveBotService);
+  private readonly pickedChatId = signal<string | null>(null);
+  readonly expandedBotId = signal<string | null>(null);
+  readonly proactiveBusy = signal(false);
+  readonly selectedChat = computed(() => {
+    const chats = this.chatPages();
+    const id = this.pickedChatId() ?? this.currentChatId();
+    return chats.find((page) => page.id === id) ?? chats[0] ?? null;
+  });
+
+  /** Your own built-in AI bots; webhook bots never get Mac data. */
+  canBeProactive(bot: EnrichedUserBot): boolean {
+    return (
+      bot.userId === this.authService.user()?._id && bot.botType !== 'custom' && !!bot.templateId
+    );
+  }
+
+  isProactive(bot: EnrichedUserBot): boolean {
+    const proactive = this.selectedChat()?.proactive;
+    return !!proactive?.enabled && proactive.userBotId === bot._id;
+  }
+
+  /** On: open its instructions to confirm. Off: turn it off right away. */
+  async toggleProactive(bot: EnrichedUserBot): Promise<void> {
+    const chat = this.selectedChat();
+    if (!chat) return;
+    if (!this.isProactive(bot)) {
+      this.expandedBotId.set(this.expandedBotId() === bot._id ? null : bot._id);
+      return;
+    }
+    this.proactiveBusy.set(true);
+    try {
+      await this.proactiveService.remove(chat.id);
+      this.expandedBotId.set(null);
+    } finally {
+      this.proactiveBusy.set(false);
+    }
+  }
+
+  selectChat(id: string): void {
+    this.pickedChatId.set(id);
+    this.expandedBotId.set(null);
+  }
 
   readonly notebookId = computed(() => this.notebook()?._id);
   readonly isLocal = computed(() => isLocalNotebook(this.notebook()?._id ?? ''));
