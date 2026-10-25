@@ -13,6 +13,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>MapleDevServerURL</key>
+	<string>$(MAPLE_DEV_SERVER_URL)</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Just Maple records system audio when you enable system audio recording.</string>
 	<key>NSHealthShareUsageDescription</key>
