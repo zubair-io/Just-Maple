@@ -1,0 +1,297 @@
+<div class="h-screen overflow-y-auto bg-[var(--color-bg)] pt-[env(safe-area-inset-top)]">
+  <app-settings-header title="Devices" (backClicked)="goBack()" />
+
+  <main
+    class="mx-auto box-border flex max-w-[800px] flex-col gap-8 p-6 pb-[calc(6rem+env(safe-area-inset-bottom))] max-md:p-4"
+  >
+    <p class="m-0 text-sm leading-relaxed text-[var(--color-text-muted)]">
+      Your Mac uploads Messages, Mail, Calendar and Contacts; your iPhone uploads Places and Health.
+      Each source comes from one device, so nothing is stored twice. Only you can see this data,
+      even in shared notebooks.
+    </p>
+
+    @if (error(); as message) {
+      <p
+        class="m-0 rounded-lg bg-[var(--color-error-bg)] p-3 text-sm text-[var(--color-error)]"
+        role="alert"
+      >
+        {{ message }}
+      </p>
+    }
+
+    <!-- This Mac (Mac app only) -->
+    @if (macData.isAvailable()) {
+      <section aria-labelledby="this-mac-title">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <h2
+            id="this-mac-title"
+            class="m-0 text-sm font-semibold uppercase tracking-wider text-[var(--color-text-muted)]"
+          >
+            On this Mac
+          </h2>
+          <button
+            type="button"
+            (click)="macSyncNow()"
+            [disabled]="!!busy()"
+            class="h-8 cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-semibold text-[var(--color-text-main)] hover:border-[var(--color-text-muted)] disabled:opacity-60"
+          >
+            Sync now
+          </button>
+        </div>
+        <div
+          class="flex flex-col divide-y divide-[var(--color-border)] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
+        >
+          @for (source of macSources; track source) {
+            @let status = macStatus(source);
+            <div class="flex items-center gap-3 p-4" data-testid="mac-source">
+              <span
+                class="material-symbols-rounded text-[var(--color-text-muted)]"
+                aria-hidden="true"
+                >{{ sourceInfo(source).icon }}</span
+              >
+              <div class="min-w-0 flex-1">
+                <p class="m-0 font-medium text-[var(--color-text-main)]">
+                  {{ sourceInfo(source).label }}
+                </p>
+                <p class="m-0 text-xs text-[var(--color-text-muted)]">
+                  {{ macStateLabel(status) }}
+                  @if (status && status.itemCount) {
+                    · {{ status.itemCount }} items on this Mac
+                  }
+                </p>
+              </div>
+              @if (!macEnabled(status)) {
+                <button
+                  type="button"
+                  (click)="macTurnOn(source)"
+                  [disabled]="!!busy()"
+                  class="h-8 cursor-pointer rounded-lg border-none bg-[var(--color-primary)] px-3 text-xs font-semibold text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-60"
+                >
+                  Turn on
+                </button>
+              } @else if (status?.state === 'needsAccess') {
+                <button
+                  type="button"
+                  (click)="macRequestAccess(source)"
+                  [disabled]="!!busy()"
+                  class="h-8 cursor-pointer rounded-lg border-none bg-[var(--color-primary)] px-3 text-xs font-semibold text-white hover:bg-[var(--color-primary-hover)] disabled:opacity-60"
+                >
+                  Allow access
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  (click)="macTurnOff(source)"
+                  [disabled]="!!busy()"
+                  class="h-8 cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-3 text-xs font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] disabled:opacity-60"
+                >
+                  Turn off
+                </button>
+              }
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- This iPhone (iPhone app only) -->
+    @if (iphone.isAvailable()) {
+      <section aria-labelledby="this-iphone-title">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <h2
+            id="this-iphone-title"
+            class="m-0 text-sm font-semibold uppercase tracking-wider text-[var(--color-text-muted)]"
+          >
+            On this iPhone
+          </h2>
+          <button
+            type="button"
+            (click)="iphoneSyncNow()"
+            [disabled]="!!busy()"
+            class="h-8 cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-semibold text-[var(--color-text-main)] hover:border-[var(--color-text-muted)] disabled:opacity-60"
+          >
+            Sync now
+          </button>
+        </div>
+        <div
+          class="flex flex-col divide-y divide-[var(--color-border)] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
+        >
+          @for (source of iphoneSources; track source) {
+            @let status = iphoneStatus(source);
+            <label class="flex cursor-pointer items-center gap-3 p-4" data-testid="iphone-source">
+              <span
+                class="material-symbols-rounded text-[var(--color-text-muted)]"
+                aria-hidden="true"
+                >{{ sourceInfo(source).icon }}</span
+              >
+              <span class="min-w-0 flex-1">
+                <span class="block font-medium text-[var(--color-text-main)]">{{
+                  sourceInfo(source).label
+                }}</span>
+                <span class="block text-xs text-[var(--color-text-muted)]">
+                  @if (status && !status.available) {
+                    Not available on this iPhone
+                  } @else if (status?.enabled && !status?.authorized) {
+                    Needs permission: allow it when iOS asks, or in the Settings app
+                  } @else if (status?.enabled) {
+                    {{
+                      timeAgo(status?.lastUploadAt)
+                        ? 'Uploaded ' + timeAgo(status?.lastUploadAt)
+                        : 'On'
+                    }}
+                    @if (status?.pending) {
+                      · {{ status?.pending }} to upload
+                    }
+                  } @else {
+                    Off
+                  }
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                class="h-5 w-5 cursor-pointer accent-[var(--color-primary)]"
+                [checked]="!!status?.enabled"
+                [disabled]="!!busy() || (!!status && !status.available)"
+                (change)="iphoneToggle(source, $any($event.target).checked)"
+                [attr.aria-label]="'Collect ' + sourceInfo(source).label + ' on this iPhone'"
+              />
+            </label>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- Every collector the account has -->
+    <section aria-labelledby="devices-title">
+      <h2
+        id="devices-title"
+        class="m-0 mb-4 text-sm font-semibold uppercase tracking-wider text-[var(--color-text-muted)]"
+      >
+        Your devices
+      </h2>
+
+      @if (loading() && !collectors().length) {
+        <p class="m-0 text-sm text-[var(--color-text-muted)]">Loading your devices…</p>
+      } @else if (!collectors().length) {
+        <div
+          class="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 text-center"
+        >
+          <span
+            class="material-symbols-rounded text-3xl text-[var(--color-text-muted)]"
+            aria-hidden="true"
+            >devices</span
+          >
+          <p class="m-0 mt-2 text-sm text-[var(--color-text-muted)]">
+            No devices yet. Open Maple on your Mac or iPhone and sign in to start collecting.
+          </p>
+        </div>
+      } @else {
+        <div class="flex flex-col gap-4">
+          @for (collector of collectors(); track collector.deviceId) {
+            <article
+              class="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
+              data-testid="collector"
+            >
+              <header class="flex items-center gap-4 p-4">
+                <div
+                  class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface-alt)]"
+                >
+                  <span
+                    class="material-symbols-rounded text-[var(--color-text-muted)]"
+                    aria-hidden="true"
+                    >{{ platformIcon(collector.platform) }}</span
+                  >
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="m-0 truncate font-medium text-[var(--color-text-main)]">
+                    {{ collector.name }}
+                  </p>
+                  <p class="m-0 text-xs text-[var(--color-text-muted)]">
+                    {{ platformLabel(collector.platform) }} · last upload
+                    {{ timeAgo(collector.lastUploadAt) ?? 'never' }} · last seen
+                    {{ timeAgo(collector.lastSeenAt) ?? 'never' }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  (click)="removeDevice(collector)"
+                  [disabled]="!!busy()"
+                  class="h-8 cursor-pointer rounded-lg border-none bg-transparent px-3 text-xs font-semibold text-[var(--color-error)] hover:bg-[var(--color-error-bg)] disabled:opacity-60"
+                >
+                  Remove device
+                </button>
+              </header>
+              <ul class="m-0 list-none border-t border-[var(--color-border)] p-0">
+                @for (source of collector.sources; track source) {
+                  <li class="flex items-center gap-3 px-4 py-3" [attr.data-source]="source">
+                    <span
+                      class="material-symbols-rounded text-base text-[var(--color-text-muted)]"
+                      aria-hidden="true"
+                      >{{ sourceInfo(source).icon }}</span
+                    >
+                    <span class="min-w-0 flex-1">
+                      <span class="block text-sm text-[var(--color-text-main)]">{{
+                        sourceInfo(source).label
+                      }}</span>
+                      <span class="block text-xs text-[var(--color-text-muted)]">
+                        @if (isActive(collector, source)) {
+                          Collected here · {{ itemCount(collector, source) }} items
+                        } @else if (activeCollector()[source]; as other) {
+                          Collected by {{ other.name }}
+                        } @else {
+                          Not collected
+                        }
+                      </span>
+                    </span>
+                    @if (isActive(collector, source)) {
+                      <span
+                        class="rounded-full bg-[var(--color-success-bg)] px-2 py-0.5 text-xs font-semibold text-[var(--color-success)]"
+                        >Active</span
+                      >
+                    } @else {
+                      <button
+                        type="button"
+                        (click)="collectHere(collector, source)"
+                        [disabled]="!!busy()"
+                        class="h-8 cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-3 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] disabled:opacity-60"
+                      >
+                        Collect here
+                      </button>
+                    }
+                  </li>
+                }
+              </ul>
+            </article>
+          }
+        </div>
+      }
+    </section>
+
+    <!-- Danger zone -->
+    <section aria-labelledby="remove-data-title">
+      <h2
+        id="remove-data-title"
+        class="m-0 mb-4 text-sm font-semibold uppercase tracking-wider text-[var(--color-text-muted)]"
+      >
+        Remove data
+      </h2>
+      <div
+        class="flex items-center gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 max-md:flex-col max-md:items-start"
+      >
+        <p class="m-0 flex-1 text-sm text-[var(--color-text-muted)]">
+          Deletes everything your devices uploaded. They stop uploading until you turn sources back
+          on.
+        </p>
+        <button
+          type="button"
+          (click)="removeAll()"
+          [disabled]="!!busy() || (!hasData() && !collectors().length)"
+          class="h-9 cursor-pointer rounded-lg border-none bg-[var(--color-error)] px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+        >
+          Remove all my device data from the cloud
+        </button>
+      </div>
+    </section>
+  </main>
+</div>
