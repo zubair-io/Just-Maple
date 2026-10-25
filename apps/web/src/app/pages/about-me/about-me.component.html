@@ -1,0 +1,281 @@
+<div class="page-wrapper">
+  <app-settings-header title="About me" (backClicked)="goBack()" />
+
+  <main class="page-content">
+    <p class="intro">
+      What your bots know about you and your people. They keep it up to date as they learn, and use
+      it to make better calls. You can change or undo anything here.
+    </p>
+
+    @if (aboutMe.error()) {
+      <div role="alert" class="error-message">{{ aboutMe.error() }}</div>
+    }
+
+    @if (aboutMe.loading() && !profile()) {
+      <div class="loading-state">Loading…</div>
+    } @else if (!me()) {
+      <section class="empty-state">
+        <span class="material-symbols-rounded">person_heart</span>
+        <p>About me starts when you turn on your first proactive bot.</p>
+        <p class="hint">
+          It begins with your own contact card, the people on it, and your weekly routines.
+        </p>
+        <button type="button" class="btn primary" (click)="start()" [disabled]="aboutMe.loading()">
+          Start now
+        </button>
+      </section>
+    } @else {
+      <!-- Waiting for approval -->
+      @if (profile()!.pending.length) {
+        <section class="section">
+          <h2 class="section-title">Waiting for your approval</h2>
+          <p class="section-description">
+            Sensitive things a bot noticed. Nothing is saved until you approve it.
+          </p>
+          <ul class="fact-list">
+            @for (fact of profile()!.pending; track fact.id) {
+              <li class="fact-row">
+                <div class="fact-text">
+                  <span class="fact-key">{{ nameOf(fact.about) }} · {{ label(fact.key) }}</span>
+                  <span>{{ fact.value }}</span>
+                  <span class="fact-meta">{{ sourceLabel(fact) }}</span>
+                </div>
+                <div class="fact-actions">
+                  <button type="button" class="btn primary small" (click)="aboutMe.approve(fact)">
+                    Approve
+                  </button>
+                  <button type="button" class="btn secondary small" (click)="aboutMe.remove(fact)">
+                    Dismiss
+                  </button>
+                </div>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+
+      <!-- Right now -->
+      <section class="section">
+        <h2 class="section-title">Right now</h2>
+        <p class="section-description">
+          Things that are true for a while and then end on their own.
+        </p>
+        <ul class="fact-list">
+          @for (fact of rightNow(); track fact.id) {
+            <li class="fact-row">
+              <div class="fact-text">
+                <span class="fact-key">{{ label(fact.key) }}</span>
+                <span>{{ fact.value }}</span>
+                <span class="fact-meta">
+                  {{ sourceLabel(fact) }}
+                  @if (fact.validUntil) {
+                    · until {{ fact.validUntil | date: 'EEE MMM d, h:mm a' }}
+                  }
+                </span>
+              </div>
+              <div class="fact-actions">
+                <button
+                  type="button"
+                  class="icon-btn"
+                  title="Remove"
+                  aria-label="Remove"
+                  (click)="aboutMe.remove(fact)"
+                >
+                  <span class="material-symbols-rounded">close</span>
+                </button>
+              </div>
+            </li>
+          } @empty {
+            <li class="fact-empty">Nothing noted right now.</li>
+          }
+        </ul>
+        <form class="add-row" (ngSubmit)="addRightNow()">
+          <input
+            name="now"
+            type="text"
+            placeholder="e.g. Traveling to Denver"
+            [ngModel]="newNow()"
+            (ngModelChange)="newNow.set($event)"
+          />
+          <input
+            name="until"
+            type="date"
+            aria-label="Until"
+            [ngModel]="newNowUntil()"
+            (ngModelChange)="newNowUntil.set($event)"
+          />
+          <button type="submit" class="btn secondary small" [disabled]="!newNow().trim()">
+            Add
+          </button>
+        </form>
+      </section>
+
+      <!-- You and your people -->
+      <section class="section">
+        <h2 class="section-title">You and your people</h2>
+        <div class="me-card">
+          <span class="material-symbols-rounded">person</span>
+          <strong>{{ me()!.name }}</strong>
+        </div>
+        <div class="people-grid">
+          @for (person of people(); track person.entity.id) {
+            <div class="person-card">
+              <div class="person-head">
+                <span class="material-symbols-rounded">
+                  {{
+                    person.entity.kind === 'pet'
+                      ? 'pets'
+                      : person.entity.kind === 'place'
+                        ? 'place'
+                        : 'person'
+                  }}
+                </span>
+                <div>
+                  <div class="person-name">{{ person.entity.name }}</div>
+                  @if (person.relation) {
+                    <div class="person-relation">{{ person.relation }}</div>
+                  }
+                </div>
+                <button
+                  type="button"
+                  class="icon-btn"
+                  title="Remove"
+                  [attr.aria-label]="'Remove ' + person.entity.name"
+                  (click)="removePerson(person)"
+                >
+                  <span class="material-symbols-rounded">close</span>
+                </button>
+              </div>
+              @for (fact of person.facts; track fact.id) {
+                <div class="person-fact">{{ label(fact.key) }}: {{ fact.value }}</div>
+              }
+            </div>
+          }
+        </div>
+        <form class="add-row" (ngSubmit)="addPerson()">
+          <input
+            name="personName"
+            type="text"
+            placeholder="Name"
+            [ngModel]="newPersonName()"
+            (ngModelChange)="newPersonName.set($event)"
+          />
+          <input
+            name="personRelation"
+            type="text"
+            placeholder="Who they are to you (daughter, dog, coach)"
+            [ngModel]="newPersonRelation()"
+            (ngModelChange)="newPersonRelation.set($event)"
+          />
+          <button type="submit" class="btn secondary small" [disabled]="!newPersonName().trim()">
+            Add
+          </button>
+        </form>
+      </section>
+
+      <!-- Lasting facts -->
+      <section class="section">
+        <h2 class="section-title">About you</h2>
+        <ul class="fact-list">
+          @for (fact of lasting(); track fact.id) {
+            <li class="fact-row">
+              <div class="fact-text">
+                <span class="fact-key">{{ label(fact.key) }}</span>
+                @if (editingId() === fact.id) {
+                  <input
+                    type="text"
+                    [ngModel]="editingValue()"
+                    (ngModelChange)="editingValue.set($event)"
+                    (keydown.enter)="saveEdit(fact)"
+                    (blur)="saveEdit(fact)"
+                    aria-label="Edit fact"
+                  />
+                } @else {
+                  <span>{{ fact.value }}</span>
+                }
+                <span class="fact-meta">{{ sourceLabel(fact) }}</span>
+              </div>
+              <div class="fact-actions">
+                <button
+                  type="button"
+                  class="icon-btn"
+                  title="Edit"
+                  aria-label="Edit"
+                  (click)="startEdit(fact)"
+                >
+                  <span class="material-symbols-rounded">edit</span>
+                </button>
+                <button
+                  type="button"
+                  class="icon-btn"
+                  title="Remove"
+                  aria-label="Remove"
+                  (click)="aboutMe.remove(fact)"
+                >
+                  <span class="material-symbols-rounded">close</span>
+                </button>
+              </div>
+            </li>
+          } @empty {
+            <li class="fact-empty">Nothing yet.</li>
+          }
+        </ul>
+        <form class="add-row" (ngSubmit)="addLasting()">
+          <input
+            name="factKey"
+            type="text"
+            placeholder="What (e.g. Workout time)"
+            [ngModel]="newFactKey()"
+            (ngModelChange)="newFactKey.set($event)"
+          />
+          <input
+            name="factValue"
+            type="text"
+            placeholder="e.g. Afternoons, around 4"
+            [ngModel]="newFactValue()"
+            (ngModelChange)="newFactValue.set($event)"
+          />
+          <button
+            type="submit"
+            class="btn secondary small"
+            [disabled]="!newFactKey().trim() || !newFactValue().trim()"
+          >
+            Add
+          </button>
+        </form>
+      </section>
+
+      <!-- Recently learned -->
+      <section class="section">
+        <h2 class="section-title">Recently learned</h2>
+        <p class="section-description">
+          What bots saved in the last two weeks. Undo anything that's wrong.
+        </p>
+        <ul class="fact-list">
+          @for (fact of profile()!.recentlyLearned; track fact.id) {
+            <li class="fact-row">
+              <div class="fact-text">
+                <span class="fact-key">{{ nameOf(fact.about) }} · {{ label(fact.key) }}</span>
+                <span>{{ fact.value }}</span>
+                <span class="fact-meta"
+                  >{{ sourceLabel(fact) }} · {{ fact.createdAt | date: 'MMM d, h:mm a' }}</span
+                >
+              </div>
+              <div class="fact-actions">
+                <button type="button" class="btn secondary small" (click)="aboutMe.remove(fact)">
+                  Undo
+                </button>
+              </div>
+            </li>
+          } @empty {
+            <li class="fact-empty">Nothing learned recently.</li>
+          }
+        </ul>
+      </section>
+
+      <section class="section danger-zone">
+        <button type="button" class="btn danger" (click)="deleteAll()">Delete About me</button>
+      </section>
+    }
+  </main>
+</div>
