@@ -39,11 +39,11 @@ Photos and notes are left out. Notes can hold sensitive text and need extra perm
 
 Three collections, all scoped to one user:
 
-| Collection         | Holds                                                    | Example                                                           |
-| ------------------ | -------------------------------------------------------- | ----------------------------------------------------------------- |
-| `profile_entities` | People, pets, places and organizations, with you as the root | `{ kind: 'person', name: 'Emma', aliases: ['Em'], contactId? }`   |
-| `profile_relations`| Edges between entities                                   | `{ from: me, to: Emma, type: 'child' }`, `{ from: Emma, to: Hawks, type: 'plays_on' }` |
-| `profile_facts`    | Facts about one entity                                   | `{ about: me, key: 'home_address', value: '…', kind: 'lasting' }` |
+| Collection          | Holds                                                        | Example                                                                                |
+| ------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `profile_entities`  | People, pets, places and organizations, with you as the root | `{ kind: 'person', name: 'Emma', aliases: ['Em'], contactId? }`                        |
+| `profile_relations` | Edges between entities                                       | `{ from: me, to: Emma, type: 'child' }`, `{ from: Emma, to: Hawks, type: 'plays_on' }` |
+| `profile_facts`     | Facts about one entity                                       | `{ about: me, key: 'home_address', value: '…', kind: 'lasting' }`                      |
 
 Each fact records:
 
@@ -65,7 +65,8 @@ Cosmos DB notes: these are plain per-user documents queried by `userId`, with fi
     - its related names, with each matching card
     - recurring calendar events, such as "Soccer practice, Tuesdays at 4"
 
-   That's enough to create you, your family, your home and your routines.
+    That's enough to create you, your family, your home and your routines.
+
 2. **Learning while bots work.** A new bot tool, `remember_about_me(fact)`, joins `remember_instruction`. A bot calls it when it notices something worth keeping: "I'm in Denver until Friday" becomes a current fact that ends on Friday. A second tool, `update_about_me`, changes or ends an existing fact.
 3. **Proactive runs.** When new Mac data arrives, the proactive prompt also asks: "Did anything here change what you know about the user or their people?" The answers go through the same tools.
 4. **You.** The About me page lets you add, edit and remove facts and people directly.
