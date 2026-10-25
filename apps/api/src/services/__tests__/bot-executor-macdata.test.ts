@@ -332,6 +332,7 @@ describe('runProactive', () => {
         expect(sendMessageReceivedNotification).toHaveBeenCalledWith(
             'owner',
             'notebook',
+            'page',
             'mongo',
             undefined,
             'Claude',

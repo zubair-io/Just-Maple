@@ -525,6 +525,7 @@ async function handleChatMessage(
                                 sendMessageReceivedNotification(
                                     member.userId,
                                     notebookId,
+                                    messagesPage.id,
                                     message._id,
                                     user?.email || context.email,
                                     user?.displayName,

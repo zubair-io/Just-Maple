@@ -40,6 +40,7 @@ import { customDomainRoutes } from './routes/custom-domains';
 import { redisPubSub } from './services/redis.service';
 import { createSsrRoutes } from './routes/ssr';
 import { config } from './config';
+import { describePushSetup } from './services/notification.service';
 
 function getStaticDir(): string {
     // Path to frontend static files (computed at runtime)
@@ -221,6 +222,10 @@ async function main() {
     console.log(`   Redis: ${redisPubSub.connected ? config.redisUrl : 'not connected'}`);
     console.log(`   WebSocket: ws://localhost:${config.port}/ws/realtime`);
     console.log(`   Frontend: ${frontendAvailable ? 'serving from ' + STATIC_DIR : 'not built'}`);
+    const push = describePushSetup();
+    console.log(
+        `   Push: ${push.method}${push.missing.length ? ` - NOT SENDING, missing ${push.missing.join(', ')}` : ''}`,
+    );
 }
 
 main().catch((error) => {

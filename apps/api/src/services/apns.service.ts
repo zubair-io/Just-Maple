@@ -2,6 +2,17 @@ import apn from '@parse/node-apn';
 import { config } from '../config';
 import type { NotificationType } from '@maple/shared';
 
+/** APNs rejected a push; `reason` is Apple's code, e.g. BadDeviceToken or Unregistered. */
+export class ApnsPushError extends Error {
+    constructor(
+        readonly reason: string,
+        readonly status?: number,
+    ) {
+        super(`APNs push failed: ${reason}`);
+        this.name = 'ApnsPushError';
+    }
+}
+
 let apnProviderProduction: apn.Provider | null = null;
 let apnProviderSandbox: apn.Provider | null = null;
 
@@ -109,10 +120,11 @@ export async function sendApnsPush(
 
         if (result.failed.length > 0) {
             const failure = result.failed[0];
+            const reason = failure.response?.reason || failure.error?.message || 'unknown error';
             console.error(
-                `[APNs] Failed to send push to ${deviceToken.substring(0, 8)}...: ${failure.response?.reason || 'unknown error'}`,
+                `[APNs] Failed to send ${production ? 'production' : 'sandbox'} push to ${deviceToken.substring(0, 8)}...: ${reason}`,
             );
-            throw new Error(failure.response?.reason || 'APNs push failed');
+            throw new ApnsPushError(reason, failure.status);
         }
 
         console.log(

@@ -367,6 +367,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                             sendMessageReceivedNotification(
                                 member.userId,
                                 notebookId,
+                                message.pageId,
                                 message._id,
                                 botDisplayName,
                                 botDisplayName,
@@ -501,6 +502,7 @@ export const botMessagesRoutes = new Elysia({ prefix: '/api/bots' })
                             sendMessageReceivedNotification(
                                 member.userId,
                                 notebookId,
+                                message.pageId,
                                 message._id,
                                 botDisplayName,
                                 botDisplayName,

@@ -123,34 +123,43 @@ describe('NotificationService', () => {
       req.flush({ notifications });
     });
 
-    it('should compute totalUnreadCount including messages', () => {
-      const notifications = [mockNotification]; // 1 unread notification
-
-      service.fetchNotifications().subscribe(() => {
-        // Set message unread count
-        service.setMessageUnreadCount(5);
-
-        // Total should be notifications + messages
-        expect(service.totalUnreadCount()).toBe(6);
-      });
-
-      const req = httpMock.expectOne('/api/notifications?limit=50&skip=0');
-      req.flush({ notifications });
-    });
-
-    it('should update totalUnreadCount when message count changes', () => {
+    it('should not add unread messages on top of notifications (each message has one)', () => {
       service.fetchNotifications().subscribe();
       const req = httpMock.expectOne('/api/notifications?limit=50&skip=0');
-      req.flush({ notifications: [] });
+      req.flush({ notifications: [mockNotification] }); // 1 unread notification
 
-      service.setMessageUnreadCount(3);
-      expect(service.totalUnreadCount()).toBe(3);
+      service.setMessageUnreadCount(5);
 
-      service.setMessageUnreadCount(7);
-      expect(service.totalUnreadCount()).toBe(7);
+      expect(service.totalUnreadCount()).toBe(1);
+      expect(service.messageUnreadCount()).toBe(5);
+    });
 
-      service.setMessageUnreadCount(0);
-      expect(service.totalUnreadCount()).toBe(0);
+    it('should use the server total, which includes notifications not loaded here', () => {
+      service.fetchNotifications().subscribe();
+      const req = httpMock.expectOne('/api/notifications?limit=50&skip=0');
+      req.flush({ notifications: [mockNotification], unreadCount: 98 });
+
+      expect(service.unreadNotificationCount()).toBe(98);
+      expect(service.totalUnreadCount()).toBe(98);
+    });
+
+    it('should refresh the count from the server', () => {
+      service.refreshUnreadCount();
+
+      const req = httpMock.expectOne('/api/notifications/unread-count');
+      req.flush({ unreadCount: 4 });
+
+      expect(service.unreadNotificationCount()).toBe(4);
+    });
+
+    it('should count a newly added unread notification once', () => {
+      service.refreshUnreadCount();
+      httpMock.expectOne('/api/notifications/unread-count').flush({ unreadCount: 2 });
+
+      service.addNotification({ ...mockNotification, _id: 'notif-new' });
+      service.addNotification({ ...mockNotification, _id: 'notif-new' });
+
+      expect(service.unreadNotificationCount()).toBe(3);
     });
   });
 
@@ -184,6 +193,22 @@ describe('NotificationService', () => {
 
       // Should not make API call
       httpMock.expectNone('/api/notifications/notif-2/read');
+    });
+
+    it('should take the server count and clear the chat’s other notifications', () => {
+      service.fetchNotifications().subscribe();
+      httpMock.expectOne('/api/notifications?limit=50&skip=0').flush({
+        notifications: [mockNotification, { ...mockNotification, _id: 'notif-3' }],
+        unreadCount: 10,
+      });
+
+      service.markAsRead('notif-1').subscribe();
+      httpMock
+        .expectOne('/api/notifications/notif-1/read')
+        .flush({ message: 'OK', unreadNotificationCount: 8 });
+
+      expect(service.unreadNotificationCount()).toBe(8);
+      expect(service.notifications().find((n) => n._id === 'notif-3')?.read).toBe(true);
     });
 
     it('should trigger callback when message_received notification is marked as read', () => {
@@ -228,86 +253,72 @@ describe('NotificationService', () => {
     it('should skip markAllAsRead API call if no unread notifications', () => {
       service.fetchNotifications().subscribe();
       const fetchReq = httpMock.expectOne('/api/notifications?limit=50&skip=0');
-      fetchReq.flush({ notifications: [mockReadNotification] });
+      fetchReq.flush({ notifications: [mockReadNotification], unreadCount: 0 });
 
       service.markAllAsRead().subscribe();
 
       // Should not make API call
       httpMock.expectNone('/api/notifications/read-all');
     });
+
+    it('should call markAllAsRead when only older, unloaded notifications are unread', () => {
+      const onAllRead = vi.fn();
+      service.onAllNotificationsRead(onAllRead);
+      service.fetchNotifications().subscribe();
+      httpMock
+        .expectOne('/api/notifications?limit=50&skip=0')
+        .flush({ notifications: [mockReadNotification], unreadCount: 40 });
+
+      service.markAllAsRead().subscribe();
+      httpMock
+        .expectOne('/api/notifications/read-all')
+        .flush({ message: 'OK', count: 40, unreadNotificationCount: 0 });
+
+      expect(service.unreadNotificationCount()).toBe(0);
+      expect(onAllRead).toHaveBeenCalled();
+    });
   });
 
-  describe('notebook/page messages mark as read', () => {
-    it('should mark notebook message notifications as read', () => {
-      const notebookNotifications = [
-        mockNotification,
-        {
-          ...mockNotification,
-          _id: 'notif-3',
-          data: { notebookId: 'notebook-1', pageId: 'page-2' },
-        },
-        {
-          ...mockNotification,
-          _id: 'notif-4',
-          data: { notebookId: 'notebook-2', pageId: 'page-3' },
-        },
-      ];
+  describe('reading a chat', () => {
+    const chatNotifications: Notification[] = [
+      mockNotification, // notebook-1 / page-1
+      { ...mockNotification, _id: 'notif-3', data: { notebookId: 'notebook-1', pageId: 'page-2' } },
+      { ...mockNotification, _id: 'notif-4', data: { notebookId: 'notebook-1' } }, // older: no pageId
+      { ...mockNotification, _id: 'notif-5', data: { notebookId: 'notebook-2', pageId: 'page-3' } },
+    ];
 
+    function load() {
       service.fetchNotifications().subscribe();
-      const fetchReq = httpMock.expectOne('/api/notifications?limit=50&skip=0');
-      fetchReq.flush({ notifications: notebookNotifications });
+      httpMock
+        .expectOne('/api/notifications?limit=50&skip=0')
+        .flush({ notifications: chatNotifications, unreadCount: 4 });
+    }
 
-      expect(service.unreadNotificationCount()).toBe(3);
+    const readIds = () =>
+      service
+        .notifications()
+        .filter((n) => n.read)
+        .map((n) => n._id)
+        .sort();
 
-      // Mark notebook-1 messages as read
-      service.markNotebookMessagesAsRead('notebook-1');
+    it('marks that chat’s notifications read and takes the server count, without extra API calls', () => {
+      load();
 
-      // Should mark 2 notifications (notif-1 and notif-3) as read
-      expect(service.unreadNotificationCount()).toBe(1);
+      service.markChatNotificationsRead({ notebookId: 'notebook-1', pageId: 'page-1' }, 2);
 
-      // Should fire API calls in background
-      const req1 = httpMock.expectOne('/api/notifications/notif-1/read');
-      const req3 = httpMock.expectOne('/api/notifications/notif-3/read');
-      req1.flush({ message: 'OK' });
-      req3.flush({ message: 'OK' });
-    });
-
-    it('should mark page message notifications as read', () => {
-      const pageNotifications = [
-        mockNotification, // page-1
-        {
-          ...mockNotification,
-          _id: 'notif-3',
-          data: { notebookId: 'notebook-1', pageId: 'page-2' },
-        },
-      ];
-
-      service.fetchNotifications().subscribe();
-      const fetchReq = httpMock.expectOne('/api/notifications?limit=50&skip=0');
-      fetchReq.flush({ notifications: pageNotifications });
-
+      expect(readIds()).toEqual(['notif-1', 'notif-4']);
       expect(service.unreadNotificationCount()).toBe(2);
-
-      // Mark page-1 messages as read
-      service.markPageMessagesAsRead('page-1');
-
-      // Should mark 1 notification as read
-      expect(service.unreadNotificationCount()).toBe(1);
-
-      // Should fire API call in background
-      const req = httpMock.expectOne('/api/notifications/notif-1/read');
-      req.flush({ message: 'OK' });
+      // The server already cleared them as part of the read; no per-notification calls
+      httpMock.expectNone((req) => req.url.includes('/read'));
     });
 
-    it('should skip if no unread notifications for notebook', () => {
-      service.fetchNotifications().subscribe();
-      const fetchReq = httpMock.expectOne('/api/notifications?limit=50&skip=0');
-      fetchReq.flush({ notifications: [mockReadNotification] });
+    it('lowers the count by what it marked when the server sent no count', () => {
+      load();
 
-      service.markNotebookMessagesAsRead('notebook-1');
+      service.markChatNotificationsRead({ pageId: 'page-3' });
 
-      // Should not make any API calls
-      httpMock.expectNone('/api/notifications/notif-2/read');
+      expect(readIds()).toEqual(['notif-5']);
+      expect(service.unreadNotificationCount()).toBe(3);
     });
   });
 
@@ -325,18 +336,14 @@ describe('NotificationService', () => {
       expect(mockNativeBridge.setBadge).toHaveBeenCalledWith(1);
     });
 
-    it('should sync badge count including message unread count', () => {
+    it('should set the badge to the server count after a chat is read', () => {
       service.fetchNotifications().subscribe();
       const req = httpMock.expectOne('/api/notifications?limit=50&skip=0');
-      req.flush({ notifications: [mockNotification] }); // 1 notification
+      req.flush({ notifications: [mockNotification], unreadCount: 7 });
 
-      // Reset mock to check next call
       vi.clearAllMocks();
+      service.markChatNotificationsRead({ notebookId: 'notebook-1', pageId: 'page-1' }, 6);
 
-      // Add message unread count
-      service.setMessageUnreadCount(5);
-
-      // Badge should include both: 1 notification + 5 messages = 6
       expect(mockNativeBridge.setBadge).toHaveBeenCalledWith(6);
     });
 

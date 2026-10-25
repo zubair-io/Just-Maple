@@ -178,6 +178,7 @@ export class SidebarComponent implements OnInit, AfterViewChecked {
   ngOnInit(): void {
     // Load unread counts when sidebar initializes
     this.messageService.loadUnreadCounts().subscribe();
+    this.notificationService.refreshUnreadCount();
   }
 
   ngAfterViewChecked(): void {

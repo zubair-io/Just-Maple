@@ -317,12 +317,24 @@ export async function softDeleteMessage(id: string, userId: string): Promise<boo
     }
 }
 
-export async function countMessagesSinceByPageId(pageId: string, since: Date): Promise<number> {
+/**
+ * Count a page's messages (thread replies included) newer than `since`.
+ * With `readerId`, the reader's own messages are left out: what you wrote is
+ * never unread. Bot posts are stored under their owner's id but still count.
+ */
+export async function countMessagesSinceByPageId(
+    pageId: string,
+    since: Date,
+    readerId?: string,
+): Promise<number> {
     try {
         return await getCollection().countDocuments({
             pageId: pageId,
             deletedAt: { $exists: false },
             createdAt: { $gt: since },
+            ...(readerId
+                ? { $or: [{ userId: { $ne: new ObjectId(readerId) } }, { senderType: 'bot' }] }
+                : {}),
         });
     } catch {
         return 0;
