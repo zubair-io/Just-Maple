@@ -168,6 +168,10 @@ export class SettingsComponent implements OnInit {
     this.router.navigate(['/settings/bots']);
   }
 
+  goToAboutMe(): void {
+    this.router.navigate(['/settings/about-me']);
+  }
+
   goToDevices(): void {
     this.router.navigate(['/settings/devices']);
   }
