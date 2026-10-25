@@ -11,6 +11,12 @@
 		<string>applinks:justmaple.app</string>
 		<string>webcredentials:justmaple.app</string>
 	</array>
+	<key>com.apple.developer.healthkit</key>
+	<true/>
+	<key>com.apple.developer.healthkit.access</key>
+	<array/>
+	<key>com.apple.developer.healthkit.background-delivery</key>
+	<true/>
 	<key>com.apple.developer.icloud-container-identifiers</key>
 	<array>
 		<string>iCloud.com.just.maple.JapaneseMaple</string>

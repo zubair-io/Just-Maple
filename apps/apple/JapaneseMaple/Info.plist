@@ -15,6 +15,12 @@
 	</array>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Just Maple records system audio when you enable system audio recording.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Just Maple reads only the Health data you choose (steps, exercise, sleep, resting heart rate and workouts) to keep a daily summary that Maple’s assistant can use to answer questions about your activity. It never writes to Health.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Just Maple notes the places you visit, even when the app is closed, so Maple’s assistant can remind you when it’s time to leave. It uses Apple’s low-power visit detection, not continuous GPS.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Just Maple notes the places you visit so Maple’s assistant can remind you when it’s time to leave.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>INSendMessageIntent</string>
