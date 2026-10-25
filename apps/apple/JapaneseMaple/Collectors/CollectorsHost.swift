@@ -37,7 +37,7 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
     private(set) lazy var location = LocationCollector(client: client)
     private(set) lazy var health = HealthCollector(client: client)
     private var resumed = false
-    private var registered: (sources: [DeviceSource], at: Date)?
+    private var registered: (sources: [DeviceSource], active: Set<DeviceSource>, at: Date)?
     private var observers: [NSObjectProtocol] = []
 
     // MARK: - Enabled flags
@@ -61,8 +61,8 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
         guard !resumed else { return }
         resumed = true
 
-        location.beforeUpload = { [weak self] in try await self?.ensureRegistered() }
-        health.beforeUpload = { [weak self] in try await self?.ensureRegistered() }
+        location.beforeUpload = { [weak self] in try await self?.ensureRegistered(.location) ?? false }
+        health.beforeUpload = { [weak self] in try await self?.ensureRegistered(.health) ?? false }
 
         if isEnabled(.location) { location.start() }
         if isEnabled(.health), HealthCollector.isAvailable { health.start() }
@@ -99,24 +99,33 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
     }
 
     /// Registers before uploading when the sources changed or it's been a while.
-    private func ensureRegistered() async throws {
+    /// Returns whether this phone is the device collecting `source`.
+    private func ensureRegistered(_ source: DeviceSource) async throws -> Bool {
         let sources = await collectingSources()
         if let registered, registered.sources == sources,
             Date().timeIntervalSince(registered.at) < Self.registrationInterval
         {
-            return
+            return registered.active.contains(source)
         }
-        try await register(sources)
+        return try await register(sources).contains(source)
     }
 
-    private func register(_ sources: [DeviceSource]) async throws {
+    @discardableResult
+    private func register(_ sources: [DeviceSource]) async throws -> Set<DeviceSource> {
         let collector = try await client.register(name: UIDevice.current.name, sources: sources)
-        registered = (sources, Date())
-        let inactive = sources.filter { !collector.activeSources.contains($0) }
+        let active = Set(collector.activeSources)
+        // A source that moved to another device: the server dropped this phone's copy.
+        for source in registered?.active ?? [] where !active.contains(source) {
+            if source == .location { location.uploadsMovedAway() }
+            if source == .health { health.uploadsMovedAway() }
+        }
+        registered = (sources, active, Date())
+        let inactive = sources.filter { !active.contains($0) }
         if !inactive.isEmpty {
-            // Another device collects these; the server skips our uploads for them.
+            // Another device collects these; uploads wait until this phone collects them.
             print("[Collectors] Another device collects: \(inactive.map(\.rawValue))")
         }
+        return active
     }
 
     /// After a switch is flipped: tell the server now, even with nothing to upload.
@@ -174,7 +183,7 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
             await registerNow()
             return await status()
         case "syncNow":
-            try? await ensureRegistered()
+            await registerNow()
             if isEnabled(.location) { await location.flush() }
             if isEnabled(.health) { await health.sync(force: true) }
             return await status()

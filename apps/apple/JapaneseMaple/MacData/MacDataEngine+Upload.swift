@@ -26,6 +26,8 @@ nonisolated struct MacDataUploadRegistration: Codable, Equatable, Sendable {
     /// The ones the server takes from this Mac.
     var activeSources: [MacDataSource]
     var at: Double
+    /// The signed-in account it was made for; another account starts from scratch.
+    var account: String?
 }
 
 /// Upload progress for the web app's Mac data status.
@@ -85,8 +87,9 @@ extension MacDataEngine {
                 uploadError = error.localizedDescription
                 Self.log.error("Upload failed: \(error.localizedDescription, privacy: .public)")
                 if case DeviceDataError.server(404, _) = error {
-                    // The server forgot this device (removed from Settings → Devices).
-                    registration = nil
+                    // The server forgot this device (removed from Settings → Devices) and
+                    // deleted what it had uploaded: start over so everything goes up again.
+                    try? forgetUploads()
                 }
                 scheduleRetry(after: error)
                 return false
@@ -187,6 +190,11 @@ extension MacDataEngine {
             // Saved from an earlier launch: good for comparing, not for skipping registration.
             registration?.at = 0
         }
+        // Signed in as someone else: that account has none of this Mac's data yet.
+        let account = client.account
+        if let saved = registration, saved.account != account {
+            try forgetUploads()
+        }
         if !force, let registration, registration.sources == enabled,
             now.timeIntervalSince1970 - registration.at < Self.registrationRefresh
         {
@@ -202,11 +210,22 @@ extension MacDataEngine {
             try store.resetUploads(source: source)
         }
         let next = MacDataUploadRegistration(
-            sources: enabled, activeSources: active, at: now.timeIntervalSince1970)
+            sources: enabled, activeSources: active, at: now.timeIntervalSince1970,
+            account: account)
         registration = next
         try store.setValue(
             String(decoding: try JSONEncoder().encode(next), as: UTF8.self), for: Self.registrationKey)
         return Set(active)
+    }
+
+    /// Starts over as if this Mac had never uploaded: every item is sent again, and
+    /// removals from before now aren't sent (the server has nothing to remove).
+    func forgetUploads() throws {
+        let store = try store()
+        for source in MacDataSource.allCases { try store.resetUploads(source: source) }
+        try store.setValue(String(try store.latestChangeSeq()), for: Self.removalCursorKey)
+        try store.setValue("", for: Self.registrationKey)
+        registration = nil
     }
 
     private func noteUpload(_ now: Date) throws {

@@ -21,7 +21,17 @@ final class HealthCollector {
     /// Automatic refreshes (foreground) at most this often; observers and "Sync now" always run.
     static let minimumInterval: TimeInterval = 5 * 60
 
-    var beforeUpload: () async throws -> Void = {}
+    /// Registers if needed and says whether this device is the one collecting this
+    /// source; if another device is, items stay queued instead of being marked uploaded.
+    var beforeUpload: () async throws -> Bool = { true }
+
+    /// Another device took this source over and the server dropped this phone's copy:
+    /// forget what was uploaded, so it all goes up again if the source comes back.
+    func uploadsMovedAway() {
+        state.uploaded = [:]
+        state.pendingRemovals = []
+        file.save(state)
+    }
     var onChange: () -> Void = {}
 
     private let client: DeviceDataClient
@@ -165,7 +175,7 @@ final class HealthCollector {
         }
         guard state.pendingCount > 0 else { return }
         do {
-            try await beforeUpload()
+            guard try await beforeUpload() else { return }
             state = try await CollectorUploader.flush(state, client: client)
             file.save(state)
         } catch {

@@ -146,6 +146,22 @@ actor DeviceDataClient {
         self.token = token
     }
 
+    /// The signed-in account (the sign-in token's subject), nil when signed out. Uploads
+    /// are tracked per account, so another account starts from scratch.
+    nonisolated var account: String? { Self.subject(of: token()) }
+
+    nonisolated static func subject(of token: String?) -> String? {
+        let parts = token?.split(separator: ".") ?? []
+        guard parts.count == 3 else { return nil }
+        var payload = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: payload),
+            let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return claims["sub"] as? String
+    }
+
     /// Records this device and what it can collect. Returns which sources it should upload.
     func register(name: String, sources: [DeviceSource]) async throws -> DeviceCollector {
         struct Body: Encodable {

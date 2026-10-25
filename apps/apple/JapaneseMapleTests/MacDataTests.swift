@@ -412,9 +412,13 @@ final class StubServer: URLProtocol, @unchecked Sendable {
 @Suite(.serialized) struct MacDataUploadTests {
     let now = Date(timeIntervalSince1970: 1_790_000_000)
 
-    private func makeEngine(path: String? = nil) throws -> MacDataEngine {
+    private func makeEngine(path: String? = nil, account: String = "user-a") throws -> MacDataEngine {
+        // A sign-in token whose subject is `account`.
+        let claims = Data(#"{"sub":"\#(account)"}"#.utf8).base64EncodedString()
+            .replacingOccurrences(of: "=", with: "")
+        let token = "header.\(claims).signature"
         let client = DeviceDataClient(
-            session: StubServer.session(), baseURL: { "https://api.example.test" }, token: { "token" })
+            session: StubServer.session(), baseURL: { "https://api.example.test" }, token: { token })
         return MacDataEngine(
             storePath: try path ?? tempDirectory().appendingPathComponent("store.sqlite").path,
             client: client, deviceName: { "Test Mac" }, retriesUploads: false)
@@ -422,6 +426,34 @@ final class StubServer: URLProtocol, @unchecked Sendable {
 
     private func upsertIds(_ uploads: [[String: Any]]) -> [String] {
         uploads.flatMap { ($0["upserts"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String } }
+    }
+
+    @Test func anotherAccountOrARemovedDeviceGetsEverythingAgain() async throws {
+        StubServer.reset()
+        let path = try tempDirectory().appendingPathComponent("store.sqlite").path
+        let first = try makeEngine(path: path, account: "user-a")
+        let store = try await first.store()
+        let t = now.timeIntervalSince1970
+        try store.enable(.imessage)
+        try store.apply(
+            readResult([makeItem("imessage:1", .imessage, at: t - 60), makeItem("imessage:2", .imessage, at: t - 30)]),
+            source: .imessage, now: now)
+        #expect(await first.uploadPending(now: now))
+        #expect(Set(upsertIds(StubServer.uploads())) == ["imessage:1", "imessage:2"])
+
+        // Same Mac, signed in as someone else: their account has none of it yet.
+        StubServer.reset()
+        let second = try makeEngine(path: path, account: "user-b")
+        #expect(await second.uploadPending(now: now))
+        #expect(Set(upsertIds(StubServer.uploads())) == ["imessage:1", "imessage:2"])
+
+        // Removed in Settings → Devices (the server answers 404): start over too.
+        StubServer.reset()
+        try await second.forgetUploads()
+        #expect(await second.uploadPending(now: now))
+        #expect(Set(upsertIds(StubServer.uploads())) == ["imessage:1", "imessage:2"])
+        let removals = StubServer.uploads().compactMap { $0["removals"] as? [String] }.flatMap { $0 }
+        #expect(removals.isEmpty)
     }
 
     @Test func uploadsChangedItemsOnceWithRemovalsAndVectors() async throws {
