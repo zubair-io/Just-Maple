@@ -55,6 +55,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         UNUserNotificationCenter.current().delegate = self
         print("[AppDelegate] ✅ Set UNUserNotificationCenter delegate to AppDelegate")
 
+        // Resume the Location and Health collectors. iOS relaunches the app in the
+        // background to deliver visits and new Health data, so this must run at launch.
+        CollectorsHost.shared.resume()
+
         // Check if app was launched from notification tap
         if let notificationOption = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             print("[AppDelegate] 🚀 App launched from notification tap!")

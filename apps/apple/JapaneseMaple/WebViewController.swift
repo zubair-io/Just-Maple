@@ -92,6 +92,9 @@ class WebViewController: NSObject, ObservableObject, WKNavigationDelegate, WKUID
         #if os(macOS)
         // iMessage, Mail and Calendar data that stays on this Mac.
         MacDataHost.shared.attach(to: webView)
+        #else
+        // Location and Health collectors, switched on from the Devices page.
+        CollectorsHost.shared.attach(to: webView)
         #endif
 
         webView.navigationDelegate = self
