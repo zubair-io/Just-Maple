@@ -21,6 +21,15 @@ import {
  * instructions, plus whether the user's Mac is connected and what it watches.
  * Saving turns it on (replacing any other proactive bot in that chat).
  */
+const SOURCE_NAMES: Record<string, string> = {
+  imessage: 'Messages',
+  mail: 'Mail',
+  calendar: 'Calendar',
+  contacts: 'Contacts',
+  location: 'Places',
+  health: 'Health',
+};
+
 @Component({
   selector: 'app-proactive-bot-panel',
   standalone: true,
@@ -47,9 +56,7 @@ export class ProactiveBotPanelComponent {
     return !!proactive?.enabled && proactive.userBotId === this.botId();
   });
   readonly sourceNames = computed(() =>
-    (this.status()?.sources ?? [])
-      .map((s) => (s === 'imessage' ? 'iMessage' : s === 'mail' ? 'Email' : 'Calendar'))
-      .join(', '),
+    (this.status()?.sources ?? []).map((s) => SOURCE_NAMES[s] ?? s).join(', '),
   );
 
   constructor() {

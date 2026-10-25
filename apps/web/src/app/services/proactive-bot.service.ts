@@ -5,16 +5,18 @@ import type { MacDataSource, Page, UpdateProactiveBotInput } from '@maple/shared
 import { PageService } from './page.service';
 
 export interface MacDataHostStatus {
+  /** One of the user's devices checked in recently. */
   online: boolean;
   lastSeenAt?: string;
+  lastUploadAt?: string;
   timeZone?: string;
-  /** Sources this notebook has Mac pages for, on the signed-in user's Mac. */
+  /** Sources this notebook has device data pages for (the signed-in user's own). */
   sources: MacDataSource[];
 }
 
 /**
  * A messages page's proactive bot: the one bot that answers every message there and
- * posts on its own when new iMessage, Mail or Calendar data arrives on the user's Mac.
+ * posts on its own when the user's devices upload new messages, mail, events, places or health.
  */
 @Injectable({ providedIn: 'root' })
 export class ProactiveBotService {

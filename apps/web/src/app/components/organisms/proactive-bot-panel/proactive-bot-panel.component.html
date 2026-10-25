@@ -1,7 +1,7 @@
 <section class="flex flex-col gap-3" aria-label="Proactive bot settings">
   <p class="m-0 font-sans text-xs leading-relaxed text-[var(--color-text-muted)]">
-    Answers every message in this chat without an &#64;mention, and tells you about new things in
-    your iMessage, Email and Calendar.
+    Answers every message in this chat without an &#64;mention, and tells you about new things your
+    devices collect: messages, mail, calendar, places and health.
   </p>
 
   <div
@@ -10,19 +10,18 @@
   >
     @if (status(); as s) {
       @if (s.sources.length === 0) {
-        This notebook has no Mac pages yet. On your Mac, use + to add iMessage, Email or Calendar so
-        the bot has something to watch.
+        This notebook has no Messages, Mail, Calendar, Places or Health pages yet. Add them with +
+        New so the bot has something to watch.
       } @else {
-        Watching {{ sourceNames() }} on your Mac ·
-        @if (s.online) {
-          <span class="text-[var(--color-text-main)]">Mac connected</span>
+        Watching {{ sourceNames() }}
+        @if (s.lastUploadAt) {
+          · last upload {{ s.lastUploadAt | date: 'MMM d, h:mm a' }}
         } @else {
-          Mac offline{{ s.lastSeenAt ? ', last seen ' : ''
-          }}{{ s.lastSeenAt ? (s.lastSeenAt | date: 'MMM d, h:mm a') : '' }}
+          · nothing uploaded yet: open Maple on your Mac or iPhone
         }
       }
     } @else {
-      Checking your Mac…
+      Checking your devices…
     }
   </div>
 
