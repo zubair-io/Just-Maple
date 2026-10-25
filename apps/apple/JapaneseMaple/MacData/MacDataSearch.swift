@@ -11,46 +11,10 @@
 import Foundation
 import NaturalLanguage
 
-/// Apple's on-device sentence embeddings, normalized so a dot product is cosine similarity.
-nonisolated enum MacDataEmbedding {
-    static let maxChunks = 4
-    static let wordsPerChunk = 160
+/// The Mac's items are embedded with the shared on-device model (see DeviceEmbedding).
+typealias MacDataEmbedding = DeviceEmbedding
 
-    private static let model = NLEmbedding.sentenceEmbedding(for: .english)
-    /// NLEmbedding crashes when two threads use it at once (a search during background
-    /// embedding), so every call goes through this lock.
-    private static let lock = NSLock()
-
-    static var isAvailable: Bool { model != nil }
-
-    static func vector(_ text: String) -> [Float]? {
-        guard let model else { return nil }
-        let raw = lock.withLock { model.vector(for: text) }
-        guard let raw, !raw.isEmpty else { return nil }
-        let norm = sqrt(raw.reduce(0) { $0 + $1 * $1 })
-        guard norm.isFinite, norm > 0 else { return nil }
-        return raw.map { Float($0 / norm) }
-    }
-
-    /// Overlapping word windows so long emails are searchable past their first lines.
-    static func chunks(_ text: String) -> [String] {
-        let words = text.split(whereSeparator: \.isWhitespace)
-        guard !words.isEmpty else { return [] }
-        let step = wordsPerChunk - 30
-        return stride(from: 0, to: words.count, by: step).prefix(maxChunks).map {
-            words[$0..<min($0 + wordsPerChunk, words.count)].joined(separator: " ")
-        }
-    }
-
-    static func encode(_ vector: [Float]) -> Data {
-        vector.withUnsafeBufferPointer { Data(buffer: $0) }
-    }
-
-    static func decode(_ data: Data) -> [Float] {
-        guard data.count % MemoryLayout<Float>.size == 0 else { return [] }
-        return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-    }
-
+extension DeviceEmbedding {
     /// Text that represents an item for embedding: who, what, and the body.
     static func text(for item: MacDataItem) -> String {
         [item.title, item.sender, item.location, item.calendar, item.body]
