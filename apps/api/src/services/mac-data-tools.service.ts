@@ -3,6 +3,7 @@ import { aboutMeSummary, recallAboutMe, rememberAboutMe, updateAboutMe } from '.
 import { collectorTimeZone } from '../repositories/collector.repo';
 import { findDeviceItem } from '../repositories/device-item.repo';
 import { findDeviceDataPages } from '../repositories/page.repo';
+import { findNotebookByIdWithAccess } from '../repositories/notebook.repo';
 import { macDataRelay } from './mac-data-relay.service';
 import { searchDeviceData } from './device-search.service';
 import { formatInZone, toEpochSeconds } from '../utils/time-zone';
@@ -28,7 +29,17 @@ export interface MacDataToolContext {
     /** Set when the bot may append to a proactive page's instructions. */
     rememberInstruction?: (instruction: string) => Promise<void>;
     /** The user's About me profile, only for bots that belong to that user. */
-    aboutMe?: { summary: string; source: ProfileFactSource };
+    aboutMe?: {
+        summary: string;
+        source: ProfileFactSource;
+        /**
+         * Proactive runs read text other people wrote, so whatever the bot saves waits
+         * for the user's approval (a message could try to plant "facts").
+         */
+        pendingWrites?: boolean;
+    };
+    /** Set once the bot has read the user's messages or mail in this run (see above). */
+    readThirdPartyText?: boolean;
 }
 
 export interface ToolDefinition {
@@ -46,18 +57,21 @@ const MAX_TOOL_RESULT_CHARS = 12_000;
 export async function getMacDataToolContext(
     userId: string,
     notebookId: string,
-    bot?: { id: string; name: string; ownerId: string },
+    bot: { id: string; name: string; ownerId: string },
+    options: { proactive?: boolean } = {},
 ): Promise<MacDataToolContext | null> {
+    // Only the user's own bots read their data: a bot someone else shared into the
+    // notebook could send it to a server they control.
+    if (bot.ownerId !== userId) return null;
     const pages = await findDeviceDataPages(userId, notebookId).catch(() => []);
     const sources = [
         ...new Set(pages.map((page) => page.deviceSource).filter(Boolean)),
     ] as MacDataSource[];
     const timeZone = (await collectorTimeZone(userId).catch(() => undefined)) ?? 'UTC';
-    // A bot someone else shared into the notebook never sees the user's profile.
-    const summary =
-        bot && bot.ownerId === userId
-            ? await aboutMeSummary(userId, timeZone).catch(() => null)
-            : null;
+    // About me stays out of notebooks shared with other people: replies there are read by everyone.
+    const summary = (await isSharedNotebook(notebookId, userId))
+        ? null
+        : await aboutMeSummary(userId, timeZone).catch(() => null);
     if (sources.length === 0 && !summary) return null;
     return {
         userId,
@@ -65,10 +79,21 @@ export async function getMacDataToolContext(
         sources,
         timeZone,
         now: formatInZone(new Date(), timeZone),
-        ...(summary && bot
-            ? { aboutMe: { summary, source: { type: 'bot', botId: bot.id, botName: bot.name } } }
+        ...(summary
+            ? {
+                  aboutMe: {
+                      summary,
+                      source: { type: 'bot', botId: bot.id, botName: bot.name },
+                      ...(options.proactive ? { pendingWrites: true } : {}),
+                  },
+              }
             : {}),
     };
+}
+
+async function isSharedNotebook(notebookId: string, userId: string): Promise<boolean> {
+    const notebook = await findNotebookByIdWithAccess(notebookId, userId, 'read').catch(() => null);
+    return !notebook || (notebook.sharing?.sharedWith?.length ?? 0) > 0;
 }
 
 /**
@@ -270,12 +295,14 @@ export async function executeMacDataTool(
                     ctx.timeZone,
                     await embedQuery(ctx.userId, query),
                 );
+                ctx.readThirdPartyText = true;
                 return clip(JSON.stringify({ results: hits }));
             }
             case 'get_local_item': {
                 const item = await findDeviceItem(ctx.userId, String(input.id ?? ''));
                 // Only sources this notebook has pages for.
                 if (!item || !ctx.sources.includes(item.source)) return 'No item with that id.';
+                ctx.readThirdPartyText = true;
                 return clip(JSON.stringify({ ...item, body: item.body.slice(0, 6_000) }));
             }
             case 'recall_about_me':
@@ -293,19 +320,31 @@ export async function executeMacDataTool(
                         value: String(input.value ?? ''),
                         kind,
                         ...(typeof input.until === 'string' ? { until: input.until } : {}),
-                        sensitive: input.sensitive === true,
+                        // After reading messages or mail, a save could be planted by
+                        // someone else's text: hold it for the user's approval.
+                        sensitive:
+                            input.sensitive === true ||
+                            !!ctx.aboutMe.pendingWrites ||
+                            !!ctx.readThirdPartyText,
                     },
                     ctx.aboutMe.source,
+                    ctx.timeZone,
                 );
             }
             case 'update_about_me':
                 if (!ctx.aboutMe) return 'Unknown tool: update_about_me';
-                return updateAboutMe(ctx.userId, {
-                    factId: String(input.fact_id ?? ''),
-                    ...(typeof input.value === 'string' ? { value: input.value } : {}),
-                    ...(typeof input.until === 'string' ? { until: input.until } : {}),
-                    remove: input.remove === true,
-                });
+                return updateAboutMe(
+                    ctx.userId,
+                    {
+                        factId: String(input.fact_id ?? ''),
+                        ...(typeof input.value === 'string' ? { value: input.value } : {}),
+                        ...(typeof input.until === 'string' ? { until: input.until } : {}),
+                        remove: input.remove === true,
+                    },
+                    ctx.aboutMe.source,
+                    ctx.timeZone,
+                    !!ctx.aboutMe.pendingWrites || !!ctx.readThirdPartyText,
+                );
             case 'remember_instruction': {
                 const instruction = String(input.instruction ?? '')
                     .trim()

@@ -128,15 +128,30 @@ export async function setDeviceItemVectors(
     return stored;
 }
 
-export async function removeDeviceItems(userId: string, ids: string[]): Promise<number> {
-    if (ids.length === 0) return 0;
+/**
+ * Removes items a device deleted. Only that device's own items for sources it still
+ * collects: a device that hasn't heard yet that a source moved can't delete the new
+ * collector's copy (calendar ids are shared across Macs).
+ */
+export async function removeDeviceItems(
+    userId: string,
+    ids: string[],
+    scope: { deviceId: string; sources: MacDataSource[] },
+): Promise<number> {
+    if (ids.length === 0 || scope.sources.length === 0) return 0;
     const result = await getCollection().deleteMany({
         _id: { $in: ids.map((id) => docId(userId, id)) },
+        deviceId: scope.deviceId,
+        source: { $in: scope.sources },
     });
     return result.deletedCount;
 }
 
-/** Items for a page or a bot listing, newest first by default. Sorting is done in code (Cosmos DB). */
+/**
+ * Items for a page or a bot listing, newest first by default. Without a search the
+ * database sorts and pages; with one, only the small search text is scanned and just
+ * the page's items are loaded.
+ */
 export async function findDeviceItems(
     userId: string,
     query: DeviceItemQuery,
@@ -149,21 +164,63 @@ export async function findDeviceItems(
             ...(query.to !== undefined ? { $lte: query.to } : {}),
         };
     }
-    const docs = await getCollection()
-        .find(filter, { projection: { item: 1, occurredAt: 1, searchText: 1 } })
-        .toArray();
-    const words = (query.search ?? '').toLowerCase().split(/\s+/).filter(Boolean);
-    const matching = words.length
-        ? docs.filter((doc) => words.every((word) => doc.searchText.includes(word)))
-        : docs;
     const direction = query.order === 'asc' ? 1 : -1;
-    matching.sort((a, b) => (a.occurredAt - b.occurredAt) * direction);
     const offset = Math.max(0, query.offset ?? 0);
     const limit = Math.min(Math.max(1, query.limit ?? 100), 500);
+    const words = (query.search ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+
+    if (words.length === 0) {
+        const [docs, total] = await Promise.all([
+            getCollection()
+                .find(filter, { projection: { item: 1 } })
+                .sort({ occurredAt: direction })
+                .skip(offset)
+                .limit(limit)
+                .toArray(),
+            getCollection().countDocuments(filter),
+        ]);
+        return { items: docs.map((doc) => doc.item), total };
+    }
+
+    const rows = await getCollection()
+        .find(filter, { projection: { _id: 1, occurredAt: 1, searchText: 1 } })
+        .toArray();
+    const matching = rows
+        .filter((row) => words.every((word) => row.searchText.includes(word)))
+        .sort((a, b) => (a.occurredAt - b.occurredAt) * direction);
+    const pageIds = matching.slice(offset, offset + limit).map((row) => row._id);
+    const docs = pageIds.length
+        ? await getCollection()
+              .find({ _id: { $in: pageIds } }, { projection: { item: 1 } })
+              .toArray()
+        : [];
+    const byId = new Map(docs.map((doc) => [doc._id, doc.item]));
     return {
-        items: matching.slice(offset, offset + limit).map((doc) => doc.item),
+        items: pageIds.map((id) => byId.get(id)).filter((item): item is MacDataItem => !!item),
         total: matching.length,
     };
+}
+
+/** The user's own contact card, if their Mac uploaded one. */
+export async function findMyContactCard(userId: string): Promise<MacDataItem | null> {
+    const doc = await getCollection().findOne({
+        userId,
+        source: 'contacts',
+        'item.extra.isMe': true,
+    });
+    return doc?.item ?? null;
+}
+
+/** Contact cards with these names (exact, as stored). */
+export async function findContactsByName(userId: string, names: string[]): Promise<MacDataItem[]> {
+    if (names.length === 0) return [];
+    const docs = await getCollection()
+        .find(
+            { userId, source: 'contacts', 'item.title': { $in: names } },
+            { projection: { item: 1 } },
+        )
+        .toArray();
+    return docs.map((doc) => doc.item);
 }
 
 export async function findDeviceItem(userId: string, id: string): Promise<MacDataItem | null> {
@@ -180,12 +237,24 @@ export async function countDeviceItems(
     userId: string,
     deviceId?: string,
 ): Promise<Record<string, number>> {
-    const docs = await getCollection()
-        .find({ userId, ...(deviceId ? { deviceId } : {}) }, { projection: { source: 1 } })
-        .toArray();
-    const counts: Record<string, number> = {};
-    for (const doc of docs) counts[doc.source] = (counts[doc.source] ?? 0) + 1;
-    return counts;
+    const sources: MacDataSource[] = [
+        'imessage',
+        'mail',
+        'calendar',
+        'contacts',
+        'location',
+        'health',
+    ];
+    const counts = await Promise.all(
+        sources.map((source) =>
+            getCollection().countDocuments({ userId, source, ...(deviceId ? { deviceId } : {}) }),
+        ),
+    );
+    return Object.fromEntries(
+        sources
+            .map((source, i) => [source, counts[i]!])
+            .filter(([, count]) => (count as number) > 0),
+    );
 }
 
 /** Removes a user's items: everything, one device's, or one source's. */

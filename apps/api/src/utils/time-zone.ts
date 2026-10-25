@@ -17,6 +17,13 @@ export function toEpochSeconds(
             edge === 'start' ? Date.UTC(y, m - 1, d, 0, 0, 0) : Date.UTC(y, m - 1, d, 23, 59, 59);
         return Math.floor((local - zoneOffsetMs(new Date(local), timeZone)) / 1000);
     }
+    // A date-time without an offset is the user's wall-clock time, not the server's.
+    const local = text.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (local) {
+        const [, y, mo, d, h, mi, sec] = local.map(Number) as number[];
+        const wall = Date.UTC(y!, mo! - 1, d!, h!, mi!, sec || 0);
+        return Math.floor((wall - zoneOffsetMs(new Date(wall), timeZone)) / 1000);
+    }
     const parsed = Date.parse(text);
     return Number.isNaN(parsed) ? undefined : Math.floor(parsed / 1000);
 }

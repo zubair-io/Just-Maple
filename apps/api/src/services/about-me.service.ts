@@ -9,6 +9,7 @@ import {
     addRelation,
     createEntity,
     endCurrentFacts,
+    findFact,
     findMe,
     listEntities,
     listFacts,
@@ -17,10 +18,14 @@ import {
     saveFact,
     updateFact,
 } from '../repositories/profile.repo';
-import { findDeviceItems } from '../repositories/device-item.repo';
+import {
+    findContactsByName,
+    findDeviceItems,
+    findMyContactCard,
+} from '../repositories/device-item.repo';
 import { findUserById } from '../repositories/user.repo';
 import { collectorTimeZone } from '../repositories/collector.repo';
-import { formatInZone } from '../utils/time-zone';
+import { formatInZone, toEpochSeconds } from '../utils/time-zone';
 
 /**
  * About me: what bots know about the user and their people.
@@ -102,7 +107,9 @@ export async function aboutMeSummary(
     const lasting = profile.facts.filter((fact) => fact.kind === 'lasting');
     const line = (fact: ProfileFact) =>
         `- [${fact.id}] ${name(fact.about)}: ${fact.key.replace(/_/g, ' ')} = ${fact.value}` +
-        (fact.validUntil ? ` (until ${formatInZone(new Date(fact.validUntil), timeZone)})` : '');
+        (fact.validUntil ? ` (until ${formatInZone(new Date(fact.validUntil), timeZone)})` : '') +
+        // Things bots picked up are less certain than what the user said.
+        (fact.source.type === 'bot' ? ' (learned by a bot)' : '');
 
     return [
         `## About the user (from their About me profile)`,
@@ -182,16 +189,17 @@ export async function rememberAboutMe(
     userId: string,
     input: RememberInput,
     source: ProfileFactSource,
+    timeZone = 'UTC',
 ): Promise<string> {
     const me = await ensureProfile(userId);
     const entity = await resolveEntity(userId, me, input.about, input.relation);
-    const until = input.until ? new Date(input.until) : undefined;
+    const validUntil = untilIso(input.until, timeZone);
     const fact = await saveFact(userId, {
         about: entity.id,
         key: input.key,
         value: input.value.slice(0, 1000),
         kind: input.kind,
-        ...(until && !Number.isNaN(until.getTime()) ? { validUntil: until.toISOString() } : {}),
+        ...(validUntil ? { validUntil } : {}),
         source,
         sensitive: input.sensitive,
     });
@@ -200,17 +208,47 @@ export async function rememberAboutMe(
         : `Saved (${fact.id}). The user can see and undo it in About me.`;
 }
 
-/** Changes or ends a fact the model saw (by id). */
+/**
+ * Changes or ends a fact the model saw (by id). Bots may only change what bots learned;
+ * a change to something the user entered or that came from their contacts is saved as
+ * a suggestion for them to approve. Every change is a new fact, so it shows up in
+ * Recently learned with undo and the old value stays in the history.
+ */
 export async function updateAboutMe(
     userId: string,
     input: { factId: string; value?: string; until?: string; remove?: boolean },
+    source: ProfileFactSource,
+    timeZone = 'UTC',
+    pending = false,
 ): Promise<string> {
-    const fact = await updateFact(userId, input.factId, {
-        ...(input.value ? { value: input.value } : {}),
-        ...(input.until ? { validUntil: new Date(input.until).toISOString() } : {}),
-        ...(input.remove ? { status: 'removed' as const } : {}),
+    const fact = await findFact(userId, input.factId);
+    if (!fact || fact.status !== 'active') return 'No fact with that id.';
+    const learned = fact.source.type === 'bot' || fact.source.type === 'location';
+    if (input.remove) {
+        if (!learned || pending)
+            return 'Only the user can remove that. Tell them it may be wrong instead.';
+        await updateFact(userId, fact.id, { status: 'removed' });
+        return 'Removed.';
+    }
+    const validUntil = untilIso(input.until, timeZone) ?? fact.validUntil;
+    const saved = await saveFact(userId, {
+        about: fact.about,
+        key: fact.key,
+        value: (input.value ?? fact.value).slice(0, 1000),
+        kind: fact.kind,
+        ...(validUntil ? { validUntil } : {}),
+        source,
+        sensitive: pending || !learned || fact.sensitive,
     });
-    return fact ? 'Updated.' : 'No fact with that id.';
+    return saved.status === 'pending'
+        ? 'Suggested; it changes once the user approves it in About me.'
+        : `Updated (${saved.id}).`;
+}
+
+/** An end date or time as the user meant it: bare dates end that day in their time zone. */
+function untilIso(value: string | undefined, timeZone: string): string | undefined {
+    const seconds = toEpochSeconds(value, timeZone, 'end');
+    return seconds === undefined ? undefined : new Date(seconds * 1000).toISOString();
 }
 
 async function resolveEntity(
@@ -253,8 +291,13 @@ export async function seedProfile(
     now = Date.now(),
     timeZone = 'UTC',
 ): Promise<ProfileEntity> {
-    const contacts = (await findDeviceItems(userId, { sources: ['contacts'], limit: 500 })).items;
-    const card = contacts.find((item) => item.extra?.isMe === true);
+    const card = await findMyContactCard(userId);
+    const contacts = card
+        ? await findContactsByName(
+              userId,
+              relationsOf(card).map((related) => related.name),
+          )
+        : [];
     const user = await findUserById(userId).catch(() => null);
     let me: ProfileEntity;
     try {

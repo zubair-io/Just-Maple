@@ -15,6 +15,9 @@ vi.mock('../about-me.service', () => ({
 }));
 vi.mock('../../repositories/device-item.repo', () => ({ findDeviceItem: vi.fn() }));
 vi.mock('../device-search.service', () => ({ searchDeviceData: vi.fn() }));
+vi.mock('../../repositories/notebook.repo', () => ({
+    findNotebookByIdWithAccess: vi.fn().mockResolvedValue({ sharing: { sharedWith: [] } }),
+}));
 
 import {
     executeMacDataTool,
@@ -30,6 +33,9 @@ import { findDeviceDataPages } from '../../repositories/page.repo';
 import { collectorTimeZone } from '../../repositories/collector.repo';
 import { findDeviceItem } from '../../repositories/device-item.repo';
 import { searchDeviceData } from '../device-search.service';
+import { findNotebookByIdWithAccess } from '../../repositories/notebook.repo';
+
+const ownBot = { id: 'b1', name: 'Maple', ownerId: 'u1' };
 
 const ctx: MacDataToolContext = {
     userId: 'u1',
@@ -44,7 +50,9 @@ describe('getMacDataToolContext', () => {
 
     it("is null when the notebook has none of the user's device data pages", async () => {
         vi.mocked(findDeviceDataPages).mockResolvedValue([]);
-        expect(await getMacDataToolContext('u1', 'n1')).toBeNull();
+        const { aboutMeSummary } = await import('../about-me.service');
+        vi.mocked(aboutMeSummary).mockResolvedValueOnce(null); // and no About me profile yet
+        expect(await getMacDataToolContext('u1', 'n1', ownBot)).toBeNull();
     });
 
     it("uses the sources of the user's pages and their devices' time zone", async () => {
@@ -54,7 +62,7 @@ describe('getMacDataToolContext', () => {
             { deviceSource: 'location' },
         ] as never);
         vi.mocked(collectorTimeZone).mockResolvedValue('America/New_York');
-        const context = await getMacDataToolContext('u1', 'n1');
+        const context = await getMacDataToolContext('u1', 'n1', ownBot);
         expect(context).toMatchObject({
             sources: ['imessage', 'location'],
             timeZone: 'America/New_York',
@@ -70,11 +78,7 @@ describe('About me in bot context', () => {
 
     it("gives the profile only to the user's own bots", async () => {
         vi.mocked(findDeviceDataPages).mockResolvedValue([]);
-        const own = await getMacDataToolContext('u1', 'n1', {
-            id: 'b1',
-            name: 'Maple',
-            ownerId: 'u1',
-        });
+        const own = await getMacDataToolContext('u1', 'n1', ownBot);
         expect(own?.sources).toEqual([]);
         expect(macDataToolDefinitions(own!).map((t) => t.name)).toEqual([
             'recall_about_me',
@@ -82,10 +86,39 @@ describe('About me in bot context', () => {
             'update_about_me',
         ]);
         expect(macDataSystemPrompt(own!)).toContain('Name: Zubair');
-        // A bot someone else shared into the notebook: no profile, no tools.
+        // A bot someone else shared into the notebook: no data, no profile, no tools,
+        // even when the user has device data pages there.
+        vi.mocked(findDeviceDataPages).mockResolvedValue([{ deviceSource: 'imessage' }] as never);
         expect(
             await getMacDataToolContext('u1', 'n1', { id: 'b2', name: 'Theirs', ownerId: 'u2' }),
         ).toBeNull();
+    });
+
+    it('keeps the profile out of notebooks shared with other people', async () => {
+        vi.mocked(findDeviceDataPages).mockResolvedValue([{ deviceSource: 'imessage' }] as never);
+        vi.mocked(findNotebookByIdWithAccess).mockResolvedValueOnce({
+            sharing: { sharedWith: [{ userId: 'u2' }] },
+        } as never);
+        const shared = await getMacDataToolContext('u1', 'n1', ownBot);
+        expect(shared?.sources).toEqual(['imessage']);
+        expect(shared?.aboutMe).toBeUndefined();
+    });
+
+    it('holds what a bot saves for approval once it has read messages or mail', async () => {
+        const { rememberAboutMe } = await import('../about-me.service');
+        vi.mocked(searchDeviceData).mockResolvedValue([]);
+        const context: MacDataToolContext = {
+            ...ctx,
+            aboutMe: { summary: '', source: { type: 'bot', botId: 'b1' } },
+        };
+        await executeMacDataTool(context, 'search_local_data', { query: 'new address' });
+        await executeMacDataTool(context, 'remember_about_me', {
+            about: 'me',
+            key: 'home_address',
+            value: '1 Phish Way',
+            kind: 'lasting',
+        });
+        expect(vi.mocked(rememberAboutMe).mock.calls.at(-1)![1].sensitive).toBe(true);
     });
 
     it('saves what the bot learned with the bot as its source', async () => {
@@ -110,6 +143,7 @@ describe('About me in bot context', () => {
                 sensitive: false,
             }),
             { type: 'bot', botId: 'b1' },
+            'America/New_York',
         );
         // Without a profile in context, the tools don't exist.
         expect(await executeMacDataTool(ctx, 'remember_about_me', {})).toContain('Unknown tool');

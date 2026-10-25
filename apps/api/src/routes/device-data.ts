@@ -10,6 +10,7 @@ import {
 } from '@maple/shared';
 import {
     deleteCollector,
+    disableAllSources,
     listCollectors,
     registerCollector,
     setActiveSources,
@@ -226,9 +227,8 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
     .delete('/device-data', async ({ auth, set }) => {
         if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
         const removed = await deleteDeviceItems(auth.user._id);
-        for (const collector of await listCollectors(auth.user._id)) {
-            await setActiveSources(auth.user._id, collector.deviceId, []);
-        }
+        // Devices stay off until the user picks "Collect here" again.
+        await disableAllSources(auth.user._id);
         await bumpDeviceDataVersion(auth.user._id);
         return { removed };
     });

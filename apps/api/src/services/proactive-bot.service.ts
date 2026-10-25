@@ -77,7 +77,11 @@ export async function maybeAutoReply(params: {
         const replies = thread ? await findMessagesByThreadId(thread._id) : [];
         previousMessages = [parent, ...replies.filter((m) => m.id !== message.id)];
     } else {
-        previousMessages = await recentConversation(page.id, message.id);
+        // Only the owner's side of the conversation: other members' messages in a shared
+        // notebook aren't part of what the owner's assistant answers.
+        previousMessages = (await recentConversation(page.id, message.id)).filter(
+            (m) => m.userBotId === userBot._id || (m.senderType !== 'bot' && m.userId === userId),
+        );
     }
 
     await botExecutor.invoke({
@@ -127,11 +131,16 @@ async function runProactivePass(
     const userBot = await findUserBotByIdInternal(proactive.userBotId);
     if (!userBot?.templateId || userBot.isEnabled === false) return;
     const template = await findBotTemplateById(userBot.templateId);
-    const macData = await getMacDataToolContext(userId, page.notebookId, {
-        id: userBot._id,
-        name: userBot.displayName || template?.name || userBot.handle,
-        ownerId: userBot.userId,
-    });
+    const macData = await getMacDataToolContext(
+        userId,
+        page.notebookId,
+        {
+            id: userBot._id,
+            name: userBot.displayName || template?.name || userBot.handle,
+            ownerId: userBot.userId,
+        },
+        { proactive: true },
+    );
     if (!template || !macData) return;
 
     const entries = batch.entries.slice(0, MAX_ENTRIES);
