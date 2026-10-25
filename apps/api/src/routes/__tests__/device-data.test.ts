@@ -335,6 +335,37 @@ describe.runIf(mongoAvailable)('device data routes', () => {
         ).toBe(1);
     });
 
+    it("tells the proactive panel what a notebook's bot can watch", async () => {
+        const notebook = await createNotebookFixture({ userId });
+        const notebookId = notebook._id.toString();
+        const status = () =>
+            request(null, `/api/mac-data/status?notebookId=${notebookId}`, 'GET').then((r) =>
+                r.json(),
+            );
+        expect(await status()).toMatchObject({ sources: [], online: false });
+
+        await register('mac-device-1', ['mail']);
+        await request(
+            { deviceId: 'mac-device-1', upserts: [item('mail:1', 'mail')], removals: [] },
+            '/api/device-data/items',
+        );
+        const mailPage = await createPageFixture({
+            userId,
+            notebookId,
+            type: 'devicedata' as never,
+        });
+        await testDb!
+            .collection('pages')
+            .updateOne({ _id: mailPage._id }, { $set: { deviceSource: 'mail' } });
+        const now = await status();
+        expect(now).toMatchObject({
+            sources: ['mail'],
+            online: true,
+            timeZone: 'America/New_York',
+        });
+        expect(typeof now.lastUploadAt).toBe('string');
+    });
+
     it('requires sign-in and a registered device', async () => {
         expect((await request(null, '/api/collectors', 'GET', '')).status).toBe(401);
         const unknown = await request(
