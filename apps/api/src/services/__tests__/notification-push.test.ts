@@ -106,6 +106,18 @@ describe('push sending', () => {
         expect(pushResultLog(log)).toContain('1 failed (APNs push failed: Unregistered)');
     });
 
+    it('forgets a device when the retry in the other environment says Unregistered', async () => {
+        config.useDirectApns = true;
+        vi.mocked(sendApnsPush)
+            .mockRejectedValueOnce(new ApnsPushError('BadDeviceToken', 400))
+            .mockRejectedValueOnce(new ApnsPushError('Unregistered', 410));
+
+        await sendNotification('u1', 'reminder', {});
+
+        expect(repo.deleteDeviceRegistrationByToken).toHaveBeenCalledWith(device.deviceToken);
+        expect(repo.setDeviceRegistrationEnvironment).not.toHaveBeenCalled();
+    });
+
     it('reports a missing APNs key', () => {
         config.useDirectApns = true;
         config.apnsKey = undefined;

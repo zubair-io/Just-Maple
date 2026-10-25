@@ -1,6 +1,19 @@
 <div class="notification-list">
   <app-notification-filters [filters]="filters()" (filtersChanged)="onFiltersChanged($event)" />
 
+  @if (unreadCount() > 0) {
+    <div class="flex justify-end px-4 py-2 border-b border-[var(--color-border)]">
+      <button
+        type="button"
+        class="text-sm font-medium text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] disabled:opacity-50"
+        [disabled]="isMarkingAll()"
+        (click)="onMarkAllAsRead()"
+      >
+        Mark all as read ({{ unreadCount() }})
+      </button>
+    </div>
+  }
+
   @if (isLoading()) {
     <div class="notification-list__loading">
       <p>Loading notifications...</p>

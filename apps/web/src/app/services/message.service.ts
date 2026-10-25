@@ -156,7 +156,14 @@ export class MessageService {
         case 'thread_message': {
           // Thread replies count as unread on the server too; keep the local count in step
           const reply = (event.data as { message?: Message }).message;
-          if (reply) this.trackUnread(reply);
+          // Bot-API replies leave the chat out of the message; take it from the event
+          if (reply) {
+            this.trackUnread({
+              ...reply,
+              notebookId: reply.notebookId ?? event.notebookId,
+              pageId: reply.pageId ?? event.pageId,
+            });
+          }
           break;
         }
         case 'edited':
@@ -245,7 +252,7 @@ export class MessageService {
       (!currentPageId || message.pageId === currentPageId);
 
     if (chatIsOpen) {
-      this.markAsReadByPageId(message.pageId).subscribe();
+      this.markAsReadByPageId(message.pageId, message.notebookId).subscribe();
     } else {
       // Show toast notification if message is from another user
       const senderName = message.senderDisplayName || message.senderEmail || 'Someone';
@@ -792,8 +799,12 @@ export class MessageService {
    * Always tells the server: the local count can be stale (not loaded yet, or
    * changed on another device), and the server also clears the chat's notifications.
    */
-  markAsReadByPageId(pageId: string): Observable<void> {
-    const notebookId = this._unreadCounts().find((c) => c.pageId === pageId)?.notebookId;
+  markAsReadByPageId(pageId: string, knownNotebookId?: string): Observable<void> {
+    // The notebook matches older notifications that were saved without a pageId
+    const notebookId =
+      knownNotebookId ??
+      this._unreadCounts().find((c) => c.pageId === pageId)?.notebookId ??
+      (this._currentPage()?.id === pageId ? this._currentPage()?.notebookId : undefined);
 
     return this.http
       .post<{

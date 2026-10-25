@@ -95,9 +95,13 @@ export async function findNotificationById(id: string): Promise<Notification | n
     }
 }
 
-/** Notifications past their expiry date are hidden and no longer count as unread. */
+/**
+ * Notifications past their expiry date are hidden and no longer count as unread.
+ * Every notification gets an expiresAt when created; no $or, since Cosmos DB
+ * can't combine $or with .sort().
+ */
 function notExpired() {
-    return { $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: new Date() } }] };
+    return { expiresAt: { $gt: new Date() } };
 }
 
 export async function findNotificationsByUserId(

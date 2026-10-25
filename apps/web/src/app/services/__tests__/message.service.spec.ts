@@ -577,6 +577,29 @@ describe('MessageService', () => {
       expect(service.getUnreadCountByPageId('page-1')).toBe(1);
     });
 
+    it('treats a bot-API thread reply (no notebookId on the message) as in its open chat', () => {
+      vi.mocked(mockNotificationService.activeNotebookId!).mockReturnValue('tag-1');
+      const { notebookId: _omit, ...reply } = {
+        ...fromOther,
+        id: 'bot-reply',
+        threadId: 'thread-1',
+        senderType: 'bot' as const,
+      };
+
+      realtimeEventsSubject.next({
+        action: 'thread_message',
+        data: { message: reply, parentMessageId: 'parent' },
+        notebookId: 'tag-1',
+        pageId: 'page-1',
+        userId: 'user-2',
+        timestamp: new Date().toISOString(),
+      } as ChatEvent);
+
+      const req = httpMock.expectOne('/api/pages/page-1/read');
+      req.flush({ lastReadAt: new Date().toISOString(), unreadNotificationCount: 0 });
+      expect(service.totalMessageUnreadCount()).toBe(0);
+    });
+
     it('marks a thread reply read when its chat is open', () => {
       vi.mocked(mockNotificationService.activeNotebookId!).mockReturnValue('tag-1');
 
