@@ -285,10 +285,17 @@
                 placeholder="https://openrouter.ai/api/v1"
               />
               <p class="field-hint">
-                The API root of any OpenAI-compatible server. "/chat/completions" is added for you.
-                Local servers like Ollama (http://localhost:11434/v1) are reached through your Mac's
-                Maple app, which needs to be open.
+                The API root of any OpenAI-compatible server on the internet. "/chat/completions" is
+                added for you. http:// works, but sends your API key unencrypted. For a server on
+                your own machine, like Ollama, use a tunnel URL such as Tailscale Funnel or
+                Cloudflare Tunnel.
               </p>
+              @if (isInsecureUrl(baseUrl())) {
+                <div class="warning-box url-warning" role="alert">
+                  <span class="material-symbols-rounded" aria-hidden="true">warning</span>
+                  <p>This URL uses http://, so your API key and messages travel unencrypted.</p>
+                </div>
+              }
             </div>
           }
 
@@ -503,7 +510,17 @@
                 (change)="loadEditModels()"
                 placeholder="https://openrouter.ai/api/v1"
               />
-              <p class="field-hint">Changing the server needs the API key entered again.</p>
+              <p class="field-hint">
+                Internet servers only. For a server on your own machine, like Ollama, use a tunnel
+                URL such as Tailscale Funnel or Cloudflare Tunnel. Changing the server needs the API
+                key entered again.
+              </p>
+              @if (isInsecureUrl(editBaseUrl())) {
+                <div class="warning-box url-warning" role="alert">
+                  <span class="material-symbols-rounded" aria-hidden="true">warning</span>
+                  <p>This URL uses http://, so your API key and messages travel unencrypted.</p>
+                </div>
+              }
             </div>
           }
 

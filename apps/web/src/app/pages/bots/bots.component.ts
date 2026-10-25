@@ -119,6 +119,10 @@ export class BotsComponent implements OnInit, OnDestroy {
     this.registerModelsRequest?.unsubscribe();
     this.editModelsRequest?.unsubscribe();
   }
+  /** Plain http sends the API key unencrypted; the dialog warns about it. */
+  isInsecureUrl(url: string): boolean {
+    return url.trim().toLowerCase().startsWith('http://');
+  }
   changeBaseUrl(mode: 'register' | 'edit', value: string): void {
     (mode === 'edit' ? this.editBaseUrl : this.baseUrl).set(value);
     this.resetModels(mode);
