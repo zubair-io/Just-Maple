@@ -95,21 +95,29 @@ export async function findNotificationById(id: string): Promise<Notification | n
     }
 }
 
+/** Notifications past their expiry date are hidden and no longer count as unread. */
+function notExpired() {
+    return { $or: [{ expiresAt: { $exists: false } }, { expiresAt: { $gt: new Date() } }] };
+}
+
 export async function findNotificationsByUserId(
     userId: string,
     limit = 50,
     skip = 0,
-): Promise<{ notifications: Notification[]; total: number }> {
+): Promise<{ notifications: Notification[]; total: number; unreadCount: number }> {
     const collection = getNotificationCollection();
+    const filter = { userId, ...notExpired() };
 
-    const [notifications, total] = await Promise.all([
-        collection.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
-        collection.countDocuments({ userId }),
+    const [notifications, total, unreadCount] = await Promise.all([
+        collection.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
+        collection.countDocuments(filter),
+        countUnreadNotifications(userId),
     ]);
 
     return {
         notifications: notifications.map(toNotificationResponse),
         total,
+        unreadCount,
     };
 }
 
@@ -141,7 +149,53 @@ export async function deleteExpiredNotifications(): Promise<number> {
 }
 
 export async function countUnreadNotifications(userId: string): Promise<number> {
-    return await getNotificationCollection().countDocuments({ userId, read: false });
+    return await getNotificationCollection().countDocuments({
+        userId,
+        read: false,
+        ...notExpired(),
+    });
+}
+
+/**
+ * Mark every unread "new message" notification for one chat as read.
+ * Older notifications carry only a notebookId, so those are matched by notebook.
+ */
+export async function markMessageNotificationsAsRead(
+    userId: string,
+    chat: { pageId: string; notebookId?: string },
+): Promise<number> {
+    const match: Record<string, unknown>[] = [{ 'data.pageId': chat.pageId }];
+    if (chat.notebookId) {
+        match.push({ 'data.pageId': { $exists: false }, 'data.notebookId': chat.notebookId });
+    }
+    const result = await getNotificationCollection().updateMany(
+        { userId, type: 'message_received', read: false, $or: match },
+        { $set: { read: true } },
+    );
+    return result.modifiedCount;
+}
+
+/** The chats that have unread "new message" notifications. */
+export async function findChatsWithUnreadMessageNotifications(
+    userId: string,
+): Promise<{ pageId?: string; notebookId?: string }[]> {
+    const docs = await getNotificationCollection()
+        .find(
+            { userId, type: 'message_received', read: false },
+            { projection: { 'data.pageId': 1, 'data.notebookId': 1 } },
+        )
+        .toArray();
+    const seen = new Set<string>();
+    const chats: { pageId?: string; notebookId?: string }[] = [];
+    for (const doc of docs) {
+        const pageId = doc.data?.['pageId'] as string | undefined;
+        const notebookId = doc.data?.['notebookId'] as string | undefined;
+        const key = pageId ? `page:${pageId}` : `notebook:${notebookId}`;
+        if ((!pageId && !notebookId) || seen.has(key)) continue;
+        seen.add(key);
+        chats.push({ pageId, notebookId });
+    }
+    return chats;
 }
 
 // Device registration operations
@@ -210,6 +264,28 @@ export async function findDeviceRegistrationsByUserId(
 ): Promise<DeviceRegistration[]> {
     const docs = await getDeviceRegistrationCollection().find({ userId }).toArray();
     return docs.map(toDeviceRegistrationResponse);
+}
+
+/** Forget a device whose push token Apple no longer accepts. */
+export async function deleteDeviceRegistrationByToken(deviceToken: string): Promise<number> {
+    const result = await getDeviceRegistrationCollection().deleteMany({ deviceToken });
+    return result.deletedCount;
+}
+
+/** Record which APNs environment (production or sandbox) a device token belongs to. */
+export async function setDeviceRegistrationEnvironment(
+    id: string,
+    production: boolean,
+): Promise<void> {
+    try {
+        await getDeviceRegistrationCollection().updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { production } },
+        );
+    } catch (error) {
+        // The unique index (userId, serverUrl, production) may already hold the other entry.
+        console.warn('[Notification] Could not update device environment:', error);
+    }
 }
 
 export async function findServerUrlsByUserId(userId: string): Promise<string[]> {

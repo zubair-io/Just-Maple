@@ -10,6 +10,7 @@ import { templateRoutes } from '../../routes/templates';
 import { linkRoutes } from '../../routes/links';
 import { jsonDocumentRoutes } from '../../routes/json-documents';
 import { canvasRoutes } from '../../routes/canvases';
+import { notificationRoutes } from '../../routes/notifications';
 
 export function createTestApp() {
     return new Elysia()
@@ -23,6 +24,7 @@ export function createTestApp() {
         .use(notebookRoutes)
         .use(pageRoutes)
         .use(messageRoutes)
+        .use(notificationRoutes)
         .use(botRoutes)
         .use(aiRoutes)
         .use(templateRoutes)

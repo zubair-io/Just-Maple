@@ -870,8 +870,11 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             )))
 
         case .setBadge(let payload):
-            // macOS doesn't have app icon badges like iOS
-            print("[Bridge] Badge not supported on macOS (requested: \(payload.count))")
+            // macOS shows the unread count on the Dock icon
+            Task { @MainActor in
+                NSApplication.shared.dockTile.badgeLabel = payload.count > 0 ? "\(payload.count)" : nil
+                print("[Bridge] Set Dock badge to \(payload.count)")
+            }
 
         case .openAuthSession(let payload):
             Task { @MainActor in
@@ -1123,7 +1126,9 @@ class NativeBridge: NSObject, WKScriptMessageHandler {
             print("[Bridge] Push notifications not supported on macOS")
 
         case .setBadge(let payload):
-            print("[Bridge] Badge not supported on macOS (requested: \(payload.count))")
+            Task { @MainActor in
+                NSApplication.shared.dockTile.badgeLabel = payload.count > 0 ? "\(payload.count)" : nil
+            }
         #endif
 
         case .openAuthSession(let payload):

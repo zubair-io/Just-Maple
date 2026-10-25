@@ -23,13 +23,12 @@ import {
     softDeleteMessage,
 } from '../repositories/message.repo';
 import {
-    markAsReadByPageId,
     getUnreadCountsForUserByPageIds,
     getUnreadCountForPage,
 } from '../repositories/unread.repo';
 import { findThreadById } from '../repositories/thread.repo';
 import { broadcastChatEvent } from '../services/realtime.service';
-import { sendMessageReceivedNotification } from '../services/notification.service';
+import { markChatAsRead, sendMessageReceivedNotification } from '../services/notification.service';
 import { maybeAutoReply } from '../services/proactive-bot.service';
 import { findPageByIdForBot } from '../repositories/page.repo';
 
@@ -227,6 +226,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                             sendMessageReceivedNotification(
                                 member.userId,
                                 page.notebookId!,
+                                page.id,
                                 message._id,
                                 auth.user.email,
                                 auth.user.displayName,
@@ -269,9 +269,12 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 };
             }
 
-            const tracking = await markAsReadByPageId(auth.user._id, params.id);
+            const { lastReadAt, unreadNotificationCount } = await markChatAsRead(auth.user._id, {
+                pageId: params.id,
+                notebookId: page.notebookId,
+            });
 
-            return { lastReadAt: tracking.lastReadAt, pageId: params.id };
+            return { lastReadAt, pageId: params.id, unreadNotificationCount };
         },
         {
             params: t.Object({
@@ -451,6 +454,7 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                         sendMessageReceivedNotification(
                             member.userId,
                             params.id,
+                            messagesPage.id,
                             message._id,
                             auth.user.email,
                             auth.user.displayName,
@@ -498,9 +502,12 @@ export const messageRoutes = new Elysia({ prefix: '/api' })
                 return { lastReadAt: new Date().toISOString() };
             }
 
-            const tracking = await markAsReadByPageId(auth.user._id, messagesPage.id);
+            const { lastReadAt, unreadNotificationCount } = await markChatAsRead(auth.user._id, {
+                pageId: messagesPage.id,
+                notebookId: params.id,
+            });
 
-            return { lastReadAt: tracking.lastReadAt, pageId: messagesPage.id };
+            return { lastReadAt, pageId: messagesPage.id, unreadNotificationCount };
         },
         {
             params: t.Object({

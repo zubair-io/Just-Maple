@@ -105,7 +105,10 @@ export class MessageService {
       this.visibilityService.becameVisible$
         .pipe(
           takeUntilDestroyed(this.destroyRef),
-          switchMap(() => this.loadUnreadCounts()),
+          switchMap(() => {
+            this.notificationService.refreshUnreadCount();
+            return this.loadUnreadCounts();
+          }),
         )
         .subscribe();
 
@@ -124,6 +127,11 @@ export class MessageService {
           // Clear unread count for notebook
           this._unreadCounts.update((counts) => counts.filter((c) => c.notebookId !== notebookId));
         }
+      });
+
+      // "Mark all as read" read every chat on the server; reload the real counts
+      this.notificationService.onAllNotificationsRead(() => {
+        this.loadUnreadCounts().subscribe();
       });
     }
 
@@ -145,6 +153,12 @@ export class MessageService {
         case 'message':
           this.handleNewMessage(event.data as Message);
           break;
+        case 'thread_message': {
+          // Thread replies count as unread on the server too; keep the local count in step
+          const reply = (event.data as { message?: Message }).message;
+          if (reply) this.trackUnread(reply);
+          break;
+        }
         case 'edited':
           this.handleEditedMessage(event.data as Message);
           break;
@@ -171,7 +185,6 @@ export class MessageService {
     const currentPageId = this._currentPageId();
     const currentNotebookId = this._currentNotebookId();
     const currentUserId = this.authService.user()?._id;
-    const activeNotebookId = this.notificationService.activeNotebookId();
 
     // Only add to store if for current page (or current notebook for backward compat)
     const isCurrentPage = message.pageId === currentPageId;
@@ -200,11 +213,40 @@ export class MessageService {
       this.persistToIndexedDB([message]);
     }
 
-    // If user is viewing this notebook, mark as read immediately
-    if (message.notebookId === activeNotebookId && message.pageId) {
+    this.trackUnread(message);
+  }
+
+  /**
+   * Keep unread state in step with a message that just arrived (top level or thread
+   * reply): mark it read if its chat is open, otherwise count it and show a toast.
+   * Your own messages are never unread; bot posts are stored under the owner's id
+   * but still count.
+   */
+  private trackUnread(message: Message): void {
+    const currentUserId = this.authService.user()?._id;
+    if (message.userId === currentUserId && message.senderType !== 'bot') {
+      return;
+    }
+
+    // Thread replies are deduplicated here; top-level messages already were
+    if (message.threadId) {
+      if (this.processedMessageIds.has(message.id)) return;
+      if (this.processedMessageIds.size >= this.MAX_PROCESSED_IDS) {
+        this.processedMessageIds.clear();
+      }
+      this.processedMessageIds.add(message.id);
+    }
+
+    const activeNotebookId = this.notificationService.activeNotebookId();
+    const currentPageId = this._currentPageId();
+    const chatIsOpen =
+      !!message.pageId &&
+      message.notebookId === activeNotebookId &&
+      (!currentPageId || message.pageId === currentPageId);
+
+    if (chatIsOpen) {
       this.markAsReadByPageId(message.pageId).subscribe();
-      this.notificationService.markNotebookMessagesAsRead(message.notebookId);
-    } else if (message.userId !== currentUserId) {
+    } else {
       // Show toast notification if message is from another user
       const senderName = message.senderDisplayName || message.senderEmail || 'Someone';
       const messagePreview = this.extractTextFromContent(message.content);
@@ -230,6 +272,9 @@ export class MessageService {
           return [...counts, { pageId: message.pageId, notebookId: message.notebookId, count: 1 }];
         }
       });
+
+      // The server adds a notification for this message; pick up the new badge count
+      this.notificationService.scheduleUnreadRefresh();
     }
   }
 
@@ -714,17 +759,17 @@ export class MessageService {
   }
 
   /**
-   * Mark notebook as read (finds messages page automatically)
-   * Only makes API call if there are unread messages
+   * Mark notebook as read (finds messages page automatically).
+   * Always tells the server: the local count can be stale (not loaded yet, or
+   * changed on another device), and the server also clears the chat's notifications.
    */
   markAsRead(notebookId: string): Observable<void> {
-    // Skip API call if no unread messages for this notebook
-    if (!this.hasUnreadByNotebookId(notebookId)) {
-      return of(undefined);
-    }
-
     return this.http
-      .post<{ lastReadAt: string; pageId?: string }>(`/api/notebooks/${notebookId}/read`, {})
+      .post<{
+        lastReadAt: string;
+        pageId?: string;
+        unreadNotificationCount?: number;
+      }>(`/api/notebooks/${notebookId}/read`, {})
       .pipe(
         tap((response) => {
           // Update local unread count by pageId or notebookId
@@ -732,8 +777,10 @@ export class MessageService {
           this._unreadCounts.update((counts) =>
             counts.filter((c) => (pageId ? c.pageId !== pageId : c.notebookId !== notebookId)),
           );
-          // Also mark related notifications as read
-          this.notificationService.markNotebookMessagesAsRead(notebookId);
+          this.notificationService.markChatNotificationsRead(
+            { notebookId, pageId },
+            response.unreadNotificationCount,
+          );
         }),
         map(() => undefined),
         catchError(() => of(undefined)),
@@ -741,24 +788,29 @@ export class MessageService {
   }
 
   /**
-   * Mark page as read by pageId
-   * Only makes API call if there are unread messages
+   * Mark page as read by pageId.
+   * Always tells the server: the local count can be stale (not loaded yet, or
+   * changed on another device), and the server also clears the chat's notifications.
    */
   markAsReadByPageId(pageId: string): Observable<void> {
-    // Skip API call if no unread messages for this page
-    if (!this.hasUnreadByPageId(pageId)) {
-      return of(undefined);
-    }
+    const notebookId = this._unreadCounts().find((c) => c.pageId === pageId)?.notebookId;
 
-    return this.http.post<{ lastReadAt: string }>(`/api/pages/${pageId}/read`, {}).pipe(
-      tap(() => {
-        this._unreadCounts.update((counts) => counts.filter((c) => c.pageId !== pageId));
-        // Also mark related notifications as read
-        this.notificationService.markPageMessagesAsRead(pageId);
-      }),
-      map(() => undefined),
-      catchError(() => of(undefined)),
-    );
+    return this.http
+      .post<{
+        lastReadAt: string;
+        unreadNotificationCount?: number;
+      }>(`/api/pages/${pageId}/read`, {})
+      .pipe(
+        tap((response) => {
+          this._unreadCounts.update((counts) => counts.filter((c) => c.pageId !== pageId));
+          this.notificationService.markChatNotificationsRead(
+            { pageId, notebookId },
+            response.unreadNotificationCount,
+          );
+        }),
+        map(() => undefined),
+        catchError(() => of(undefined)),
+      );
   }
 
   /**

@@ -1048,6 +1048,7 @@ export class BotExecutorService {
                 await sendMessageReceivedNotification(
                     notify.ownerUserId,
                     page.notebookId,
+                    page.id,
                     message._id,
                     undefined,
                     userBot.displayName || template.name,

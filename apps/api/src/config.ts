@@ -28,7 +28,7 @@ export const config = {
         process.env.PAPERBARK_URL ||
         process.env['paperbark-url'] ||
         'https://paperbark.justmaple.app',
-    paperbarkApiKey: process.env.PAPERBARK_API_KEY,
+    paperbarkApiKey: process.env.PAPERBARK_API_KEY || process.env['paperbark-api-key'],
 
     // APNs config (for direct push in production)
     apnsKeyId: process.env.APNS_KEY_ID,
@@ -41,12 +41,6 @@ export const config = {
 
     // Use direct APNs if origin is production
     get useDirectApns() {
-        console.warn(
-            'useDirectApns',
-            this.origin === 'https://justmaple.app',
-            !!this.apnsKeyId,
-            !!this.apnsTeamId,
-        );
         return this.origin === 'https://justmaple.app' && !!this.apnsKeyId && !!this.apnsTeamId;
     },
 

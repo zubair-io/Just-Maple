@@ -83,6 +83,7 @@ export type RegisterDeviceRequest = Static<typeof RegisterDeviceRequestSchema>;
 export const NotificationListResponseSchema = Type.Object({
     notifications: Type.Array(NotificationSchema),
     total: Type.Number(),
+    unreadCount: Type.Optional(Type.Number()), // All unread notifications, not just this page
 });
 
 export type NotificationListResponse = Static<typeof NotificationListResponseSchema>;

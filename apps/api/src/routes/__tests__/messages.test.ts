@@ -14,7 +14,8 @@ vi.mock('../../services/realtime.service', () => ({
     broadcastChatEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('../../services/notification.service', () => ({
+vi.mock('../../services/notification.service', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../../services/notification.service')>()),
     sendMessageReceivedNotification: vi.fn().mockResolvedValue(undefined),
 }));
 
