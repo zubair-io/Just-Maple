@@ -3,6 +3,7 @@ import { ProactiveBotSettingsSchema } from './proactive';
 import { PageTodoMetaSchema } from './todo';
 import { PageLinksMetaSchema } from './link';
 import { GmailConfigSchema } from './gmail';
+import { MacDataSourceSchema } from './mac-data';
 
 export const PageContentSchema = Type.Object({
     type: Type.String(),
@@ -34,6 +35,7 @@ export const PageTypeSchema = Type.Union([
     Type.Literal('gmail'), // Gmail integration - owner-only, local email storage
     Type.Literal('json'), // JSON data document - API-editable structured data
     Type.Literal('canvas'), // Widget canvas - AI-generated reactive widgets
+    Type.Literal('devicedata'), // A table of one source of the owner's device data (Messages, Mail…)
 ]);
 
 export type PageType = Static<typeof PageTypeSchema>;
@@ -61,6 +63,8 @@ export const PageSchema = Type.Object({
     gmailConfig: Type.Optional(GmailConfigSchema),
     // Messages pages only: the bot that answers every message and posts proactively
     proactive: Type.Optional(ProactiveBotSettingsSchema),
+    // Device data pages only: which of the owner's sources the page shows
+    deviceSource: Type.Optional(MacDataSourceSchema),
     // Public publishing fields
     isPublished: Type.Optional(Type.Boolean()),
     publishedSlug: Type.Optional(Type.String()),
@@ -80,6 +84,7 @@ export const CreatePageSchema = Type.Object({
     content: Type.Optional(PageContentSchema),
     notebookId: Type.Optional(Type.String()),
     id: Type.Optional(Type.String()), // UUID v4 for routing (was documentId)
+    deviceSource: Type.Optional(MacDataSourceSchema), // Required for type 'devicedata'
 });
 
 export type CreatePageInput = Static<typeof CreatePageSchema>;

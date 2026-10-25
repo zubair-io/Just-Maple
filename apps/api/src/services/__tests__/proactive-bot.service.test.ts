@@ -7,9 +7,6 @@ vi.mock('../bot-executor.service', () => ({
     },
 }));
 vi.mock('../mac-data-tools.service', () => ({ getMacDataToolContext: vi.fn() }));
-vi.mock('../mac-data-relay.service', () => ({
-    macDataRelay: { pushProactiveNotebooks: vi.fn().mockResolvedValue(undefined) },
-}));
 vi.mock('../../repositories/page.repo', () => ({
     findProactivePages: vi.fn(),
     findPageByIdForBot: vi.fn(),
@@ -28,7 +25,7 @@ vi.mock('../../repositories/message.repo', () => ({
 }));
 vi.mock('../../repositories/thread.repo', () => ({ findThreadById: vi.fn() }));
 
-import { maybeAutoReply, handleMacDataChanges } from '../proactive-bot.service';
+import { maybeAutoReply, handleDeviceDataChanges } from '../proactive-bot.service';
 import {
     appendProactiveInstruction,
     saveProactiveSettings,
@@ -36,7 +33,6 @@ import {
 } from '../proactive-settings.service';
 import { botExecutor } from '../bot-executor.service';
 import { getMacDataToolContext } from '../mac-data-tools.service';
-import { macDataRelay } from '../mac-data-relay.service';
 import {
     findPageByIdForBot,
     findProactivePages,
@@ -148,7 +144,7 @@ describe('maybeAutoReply', () => {
     });
 });
 
-describe('handleMacDataChanges', () => {
+describe('handleDeviceDataChanges', () => {
     const entry = {
         kind: 'added',
         item: {
@@ -160,7 +156,7 @@ describe('handleMacDataChanges', () => {
         },
     };
 
-    it('runs each proactive page the Mac owner can access', async () => {
+    it('runs each proactive page the data owner can access', async () => {
         vi.mocked(findNotebookByIdWithAccess).mockImplementation(async (id) =>
             id === 'n1' ? ({ _id: 'n1' } as any) : null,
         );
@@ -176,13 +172,10 @@ describe('handleMacDataChanges', () => {
             },
         ] as any);
 
-        await handleMacDataChanges('u1', {
-            batches: [
-                { notebookId: 'n1', entries: [entry] },
-                { notebookId: 'no-access', entries: [entry] },
-                { notebookId: 'n1', entries: 'not an array' },
-            ],
-        });
+        await handleDeviceDataChanges('u1', [
+            { notebookId: 'n1', entries: [entry] },
+            { notebookId: 'no-access', entries: [entry] },
+        ] as never);
         await vi.waitFor(() => expect(botExecutor.runProactive).toHaveBeenCalledTimes(1));
         expect(findProactivePages).toHaveBeenCalledTimes(1);
         const call = vi.mocked(botExecutor.runProactive).mock.calls[0]![0];
@@ -215,7 +208,7 @@ describe('proactive settings', () => {
         ).rejects.toThrow('webhook');
     });
 
-    it('saves the caller as owner and refreshes their Mac’s proactive list', async () => {
+    it('saves the caller as owner', async () => {
         vi.mocked(setPageProactive).mockResolvedValue(page);
         await saveProactiveSettings({ ...page, proactive: undefined }, 'u1', {
             userBotId: 'bot',
@@ -230,7 +223,6 @@ describe('proactive settings', () => {
                 instructions: 'Be brief',
             }),
         );
-        expect(macDataRelay.pushProactiveNotebooks).toHaveBeenCalledWith('u1');
     });
 
     it('stops other members from replacing the owner’s proactive bot', async () => {

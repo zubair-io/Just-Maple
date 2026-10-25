@@ -33,7 +33,7 @@ import type { ChatEvent, TypingEvent, PageContent, Page } from '@maple/shared';
 import { Value } from '@sinclair/typebox/value';
 import { MacDataHostInfoSchema } from '@maple/shared';
 import { macDataRelay, type MacDataHostSocket } from '../services/mac-data-relay.service';
-import { handleMacDataChanges, maybeAutoReply } from '../services/proactive-bot.service';
+import { maybeAutoReply } from '../services/proactive-bot.service';
 
 /** Minimal page context for authorization of embedded/card memos */
 interface SyntheticPageContext {
@@ -616,9 +616,6 @@ async function handleMacDataMessage(
                     typeof payload.error === 'string' ? payload.error : undefined,
                 );
             }
-            break;
-        case 'changes':
-            await handleMacDataChanges(context.userId, payload);
             break;
     }
 }

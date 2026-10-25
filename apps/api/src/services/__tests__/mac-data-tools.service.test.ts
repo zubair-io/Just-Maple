@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../mac-data-relay.service', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('../mac-data-relay.service')>();
-    return {
-        ...actual,
-        macDataRelay: { isOnline: vi.fn(), request: vi.fn() },
-    };
-});
-vi.mock('../../repositories/mac-data-host.repo', () => ({ findMacDataHost: vi.fn() }));
+vi.mock('../mac-data-relay.service', () => ({
+    macDataRelay: { isOnline: vi.fn().mockResolvedValue(false), request: vi.fn() },
+}));
+vi.mock('../../repositories/page.repo', () => ({ findDeviceDataPages: vi.fn() }));
+vi.mock('../../repositories/collector.repo', () => ({ collectorTimeZone: vi.fn() }));
+vi.mock('../../repositories/device-item.repo', () => ({ findDeviceItem: vi.fn() }));
+vi.mock('../device-search.service', () => ({ searchDeviceData: vi.fn() }));
 
 import {
     executeMacDataTool,
@@ -18,14 +17,16 @@ import {
     toEpochSeconds,
     type MacDataToolContext,
 } from '../mac-data-tools.service';
-import { macDataRelay, MacDataUnavailableError } from '../mac-data-relay.service';
-import { findMacDataHost } from '../../repositories/mac-data-host.repo';
+import { macDataRelay } from '../mac-data-relay.service';
+import { findDeviceDataPages } from '../../repositories/page.repo';
+import { collectorTimeZone } from '../../repositories/collector.repo';
+import { findDeviceItem } from '../../repositories/device-item.repo';
+import { searchDeviceData } from '../device-search.service';
 
 const ctx: MacDataToolContext = {
     userId: 'u1',
     notebookId: 'n1',
     sources: ['imessage', 'calendar'],
-    online: true,
     timeZone: 'America/New_York',
     now: '2026-10-24T09:00:00-04:00',
 };
@@ -33,46 +34,26 @@ const ctx: MacDataToolContext = {
 describe('getMacDataToolContext', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('is null when the notebook has no Mac pages', async () => {
-        vi.mocked(findMacDataHost).mockResolvedValue({
-            userId: 'u1',
-            notebooks: [{ notebookId: 'other', sources: ['mail'] }],
-            timeZone: 'UTC',
-            lastSeenAt: '2026-10-24T00:00:00.000Z',
-        });
+    it("is null when the notebook has none of the user's device data pages", async () => {
+        vi.mocked(findDeviceDataPages).mockResolvedValue([]);
         expect(await getMacDataToolContext('u1', 'n1')).toBeNull();
     });
 
-    it('reads local time from the stored time zone, without asking the Mac', async () => {
-        vi.mocked(findMacDataHost).mockResolvedValue({
-            userId: 'u1',
-            notebooks: [{ notebookId: 'n1', sources: ['imessage'] }],
-            timeZone: 'America/New_York',
-            lastSeenAt: '2026-10-24T00:00:00.000Z',
-        });
-        vi.mocked(macDataRelay.isOnline).mockResolvedValue(true);
-        const ctx = await getMacDataToolContext('u1', 'n1');
-        expect(ctx).toMatchObject({
-            sources: ['imessage'],
-            online: true,
+    it("uses the sources of the user's pages and their devices' time zone", async () => {
+        vi.mocked(findDeviceDataPages).mockResolvedValue([
+            { deviceSource: 'imessage' },
+            { deviceSource: 'imessage' },
+            { deviceSource: 'location' },
+        ] as never);
+        vi.mocked(collectorTimeZone).mockResolvedValue('America/New_York');
+        const context = await getMacDataToolContext('u1', 'n1');
+        expect(context).toMatchObject({
+            sources: ['imessage', 'location'],
             timeZone: 'America/New_York',
         });
-        expect(ctx?.now).toMatch(/-0[45]:00$/);
-        expect(macDataRelay.request).not.toHaveBeenCalled();
-    });
-
-    it('still gives offline context so the bot can say the Mac is unreachable', async () => {
-        vi.mocked(findMacDataHost).mockResolvedValue({
-            userId: 'u1',
-            notebooks: [{ notebookId: 'n1', sources: ['calendar'] }],
-            timeZone: 'America/New_York',
-            lastSeenAt: '2026-10-23T22:00:00.000Z',
-        });
-        vi.mocked(macDataRelay.isOnline).mockResolvedValue(false);
-        const offline = await getMacDataToolContext('u1', 'n1');
-        expect(offline?.online).toBe(false);
-        expect(offline?.now).toMatch(/-0[45]:00$/);
-        expect(macDataSystemPrompt(offline!)).toContain("can't reach their Mac");
+        expect(context?.now).toMatch(/-0[45]:00$/);
+        expect(findDeviceDataPages).toHaveBeenCalledWith('u1', 'n1');
+        expect(macDataSystemPrompt(context!)).toContain('places visited');
     });
 });
 
@@ -90,8 +71,8 @@ describe('local-data tools', () => {
         );
     });
 
-    it('searches the Mac with dates in its time zone and only allowed sources', async () => {
-        vi.mocked(macDataRelay.request).mockResolvedValue([{ id: 'imessage:1' }]);
+    it("searches the cloud copy with dates in the user's time zone and only allowed sources", async () => {
+        vi.mocked(searchDeviceData).mockResolvedValue([{ id: 'imessage:1' }] as never);
         const result = await executeMacDataTool(ctx, 'search_local_data', {
             query: 'lacrosse',
             sources: ['imessage', 'mail'],
@@ -99,25 +80,57 @@ describe('local-data tools', () => {
             to: '2026-10-25',
         });
         expect(JSON.parse(result)).toEqual({ results: [{ id: 'imessage:1' }] });
-        expect(macDataRelay.request).toHaveBeenCalledWith('u1', 'search', {
-            notebookId: 'n1',
-            query: 'lacrosse',
-            sources: ['imessage'],
-            from: Date.parse('2026-10-19T00:00:00-04:00') / 1000,
-            to: Date.parse('2026-10-25T23:59:59-04:00') / 1000,
-            limit: undefined,
-        });
+        expect(searchDeviceData).toHaveBeenCalledWith(
+            'u1',
+            {
+                sources: ['imessage'],
+                query: 'lacrosse',
+                from: Date.parse('2026-10-19T00:00:00-04:00') / 1000,
+                to: Date.parse('2026-10-25T23:59:59-04:00') / 1000,
+                limit: undefined,
+            },
+            'America/New_York',
+            null, // no device online to embed the query: keyword ranking
+        );
+    });
+
+    it('embeds the query on an online device', async () => {
+        vi.mocked(macDataRelay.isOnline).mockResolvedValueOnce(true);
+        vi.mocked(macDataRelay.request).mockResolvedValueOnce([0.6, 0.8]);
+        vi.mocked(searchDeviceData).mockResolvedValue([]);
+        await executeMacDataTool(ctx, 'search_local_data', { query: 'practice' });
+        expect(macDataRelay.request).toHaveBeenCalledWith(
+            'u1',
+            'embed',
+            { text: 'practice' },
+            3000,
+        );
+        expect(vi.mocked(searchDeviceData).mock.calls[0]![3]).toEqual([0.6, 0.8]);
+    });
+
+    it('only reads items from sources the notebook has pages for', async () => {
+        vi.mocked(findDeviceItem).mockResolvedValueOnce({
+            id: 'mail:1',
+            source: 'mail',
+            body: 'secret',
+        } as never);
+        expect(await executeMacDataTool(ctx, 'get_local_item', { id: 'mail:1' })).toBe(
+            'No item with that id.',
+        );
+        vi.mocked(findDeviceItem).mockResolvedValueOnce({
+            id: 'imessage:1',
+            source: 'imessage',
+            body: 'x'.repeat(7000),
+        } as never);
+        const item = JSON.parse(
+            await executeMacDataTool(ctx, 'get_local_item', { id: 'imessage:1' }),
+        );
+        expect(item.body).toHaveLength(6000);
     });
 
     it('turns failures into text the model can read', async () => {
-        vi.mocked(macDataRelay.request).mockRejectedValueOnce(new MacDataUnavailableError());
-        expect(await executeMacDataTool(ctx, 'get_local_item', { id: 'x' })).toMatch(
-            /^Unavailable:/,
-        );
-        vi.mocked(macDataRelay.request).mockRejectedValueOnce(new Error('No item x'));
-        expect(await executeMacDataTool(ctx, 'get_local_item', { id: 'x' })).toBe(
-            'Error: No item x',
-        );
+        vi.mocked(findDeviceItem).mockRejectedValueOnce(new Error('db down'));
+        expect(await executeMacDataTool(ctx, 'get_local_item', { id: 'x' })).toBe('Error: db down');
         expect(await executeMacDataTool(ctx, 'remember_instruction', { instruction: 'x' })).toBe(
             'Nothing was saved.',
         );

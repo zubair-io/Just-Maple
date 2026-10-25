@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    isLocalEndpoint,
+    isLocalHost,
     isPrivateAddress,
     normalizeEndpointBaseUrl,
     validateUrl,
@@ -43,34 +43,27 @@ describe('url safety', () => {
         expect(normalizeEndpointBaseUrl('https://api.groq.com/openai/v1/chat/completions')).toBe(
             'https://api.groq.com/openai/v1',
         );
-        expect(() => normalizeEndpointBaseUrl('http://openrouter.ai/api/v1')).toThrow('https');
-        // Local servers like Ollama may use http; they're reached through the owner's Mac.
-        expect(normalizeEndpointBaseUrl('http://localhost:11434/v1/')).toBe(
+        // The server calls custom AI servers itself: http is allowed for internet hosts…
+        expect(normalizeEndpointBaseUrl('http://openrouter.ai/api/v1')).toBe(
+            'http://openrouter.ai/api/v1',
+        );
+        // …but it can't reach the user's own machine or network.
+        for (const local of [
             'http://localhost:11434/v1',
-        );
-        expect(normalizeEndpointBaseUrl('http://192.168.1.20:1234/v1')).toBe(
             'http://192.168.1.20:1234/v1',
-        );
-        expect(normalizeEndpointBaseUrl('http://studio.local:11434/v1')).toBe(
             'http://studio.local:11434/v1',
-        );
-        expect(() => normalizeEndpointBaseUrl('ftp://localhost/v1')).toThrow();
+            'http://studio:1234/v1',
+        ])
+            expect(() => normalizeEndpointBaseUrl(local)).toThrow('tunnel');
+        expect(() => normalizeEndpointBaseUrl('ftp://example.com/v1')).toThrow();
         expect(() => normalizeEndpointBaseUrl('https://user:pw@host.com/v1')).toThrow();
         expect(() => normalizeEndpointBaseUrl('https://host.com/v1?key=1')).toThrow();
         expect(() => normalizeEndpointBaseUrl('not a url')).toThrow();
     });
 
-    it('tells local servers from internet ones', () => {
-        for (const url of [
-            'http://localhost:11434/v1',
-            'http://127.0.0.1:11434/v1',
-            'http://[::1]:11434/v1',
-            'http://10.0.0.5/v1',
-            'http://nas.local/v1',
-            'http://studio:1234/v1',
-        ])
-            expect(isLocalEndpoint(url)).toBe(true);
-        for (const url of ['https://openrouter.ai/api/v1', 'https://8.8.8.8/v1'])
-            expect(isLocalEndpoint(url)).toBe(false);
+    it('tells local hosts from internet ones', () => {
+        for (const host of ['localhost', '127.0.0.1', '[::1]', '10.0.0.5', 'nas.local', 'studio'])
+            expect(isLocalHost(host)).toBe(true);
+        for (const host of ['openrouter.ai', '8.8.8.8']) expect(isLocalHost(host)).toBe(false);
     });
 });

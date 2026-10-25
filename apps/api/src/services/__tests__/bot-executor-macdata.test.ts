@@ -44,9 +44,6 @@ vi.mock('../llm-tool-loop.service', async (importOriginal) => ({
     runAnthropicWithTools: vi.fn().mockResolvedValue('Practice is at 2:30.'),
     runOpenAIWithTools: vi.fn().mockResolvedValue('From OpenAI.'),
 }));
-vi.mock('../mac-data-relay.service', () => ({
-    macHttpSend: vi.fn(),
-}));
 vi.mock('node:dns/promises', () => ({
     lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34' }]),
 }));
@@ -64,7 +61,6 @@ import { findPageByIdForBot } from '../../repositories/page.repo';
 import { sendMessageReceivedNotification } from '../notification.service';
 import { getMacDataToolContext, executeMacDataTool } from '../mac-data-tools.service';
 import { runAnthropicWithTools } from '../llm-tool-loop.service';
-import { macHttpSend } from '../mac-data-relay.service';
 
 const macData = {
     userId: 'owner',
@@ -250,27 +246,12 @@ describe('bots with Mac data', () => {
             vi.unstubAllGlobals();
         });
 
-        it("asks the owner's Mac to call a local server, never the API itself", async () => {
+        it("refuses a server on the user's own machine instead of calling it", async () => {
             userBot.config.baseUrl = 'http://localhost:11434/v1';
-            delete userBot.config.apiKey;
-            const send = vi.fn().mockResolvedValue({
-                status: 200,
-                body: JSON.stringify({ choices: [{ message: { content: 'From Ollama' } }] }),
-            });
-            vi.mocked(macHttpSend).mockReturnValue(send);
             const fetchMock = vi.fn();
             vi.stubGlobal('fetch', fetchMock);
-            vi.mocked(getMacDataToolContext).mockResolvedValue(null);
-            await new BotExecutorService().execute('invocation');
+            await expect(new BotExecutorService().execute('invocation')).rejects.toThrow('tunnel');
             expect(fetchMock).not.toHaveBeenCalled();
-            expect(macHttpSend).toHaveBeenCalledWith('owner');
-            expect(send).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    method: 'POST',
-                    url: 'http://localhost:11434/v1/chat/completions',
-                }),
-            );
-            expect(createMessageInThread).toHaveBeenCalled();
             vi.unstubAllGlobals();
         });
 

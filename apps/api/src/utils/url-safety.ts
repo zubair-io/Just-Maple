@@ -66,8 +66,8 @@ export function validateUrl(url: string): void {
 
 /**
  * True for servers on the user's own machine or home network: localhost, private and
- * link-local addresses, and names like "nas.local" or a bare "studio". The API never
- * calls these itself; it asks the owner's Mac app to.
+ * link-local addresses, and names like "nas.local" or a bare "studio". The API can't
+ * reach these, and must never try.
  */
 export function isLocalHost(hostname: string): boolean {
     const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
@@ -79,15 +79,10 @@ export function isLocalHost(hostname: string): boolean {
     );
 }
 
-/** True when this server URL is reached through the owner's Mac instead of the API. */
-export function isLocalEndpoint(baseUrl: string): boolean {
-    return isLocalHost(new URL(baseUrl).hostname);
-}
-
 /**
  * Normalizes the API root of an OpenAI-compatible server ("https://host/v1"). Accepts a
- * pasted ".../chat/completions" URL too. No credentials, query or fragment. Public
- * servers must use https; local ones (Ollama, LM Studio) may use http.
+ * pasted ".../chat/completions" URL too. The server calls it, so it must be an internet
+ * address; http is allowed (the key then travels unencrypted, which the UI warns about).
  */
 export function normalizeEndpointBaseUrl(input: string): string {
     let url: URL;
@@ -98,30 +93,22 @@ export function normalizeEndpointBaseUrl(input: string): string {
     }
     if (url.username || url.password) throw new Error('Put the API key in its own field');
     if (url.search || url.hash) throw new Error('The endpoint URL cannot have ? or # parts');
-    if (isLocalHost(url.hostname)) {
-        if (!['http:', 'https:'].includes(url.protocol))
-            throw new Error('The endpoint URL must start with http:// or https://');
-    } else {
-        if (url.protocol !== 'https:')
-            throw new Error(
-                'Internet servers must use https://. Local servers like Ollama can use http://.',
-            );
-        validateUrl(url.toString());
-    }
+    if (!['http:', 'https:'].includes(url.protocol))
+        throw new Error('The endpoint URL must start with http:// or https://');
+    if (isLocalHost(url.hostname))
+        throw new Error(
+            "The server can't reach your own machine or home network. Expose the AI server with a tunnel (for example Tailscale Funnel or Cloudflare Tunnel) and use that URL.",
+        );
+    validateUrl(url.toString());
     const path = url.pathname.replace(/\/+$/, '').replace(/\/chat\/completions$/, '');
     return `${url.origin}${path}`;
 }
 
-/**
- * Normalizes a server URL and checks where it can be reached from. Public servers are
- * resolved to make sure the name doesn't point into a private network; local servers
- * are left to the owner's Mac.
- */
-export async function resolveEndpoint(input: string): Promise<{ baseUrl: string; local: boolean }> {
+/** Normalizes a server URL and checks its name doesn't point into a private network. */
+export async function resolveEndpoint(input: string): Promise<string> {
     const baseUrl = normalizeEndpointBaseUrl(input);
-    const local = isLocalEndpoint(baseUrl);
-    if (!local) await assertPublicHost(baseUrl);
-    return { baseUrl, local };
+    await assertPublicHost(baseUrl);
+    return baseUrl;
 }
 
 /**

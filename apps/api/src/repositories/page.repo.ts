@@ -2,7 +2,7 @@ import { ObjectId, Collection } from 'mongodb';
 import { randomUUID } from 'crypto';
 import { customAlphabet } from 'nanoid';
 import { getDb } from '../db/client';
-import type { ProactiveBotSettings } from '@maple/shared';
+import type { MacDataSource, ProactiveBotSettings } from '@maple/shared';
 import type {
     Page,
     PageContent,
@@ -47,6 +47,8 @@ interface PageDocument {
     tags?: string[];
     // Messages pages only: proactive bot settings
     proactive?: Omit<ProactiveBotSettings, 'updatedAt'> & { updatedAt: Date };
+    // Device data pages only: which of the owner's sources the page shows
+    deviceSource?: MacDataSource;
     // Public publishing fields
     isPublished?: boolean;
     publishedSlug?: string;
@@ -77,6 +79,7 @@ function toPageResponse(doc: PageDocument): Page {
         trashedAt: doc.trashedAt?.toISOString(),
         todoMeta: doc.todoMeta, // Todo metadata
         tags: doc.tags, // Tags extracted from content
+        ...(doc.deviceSource ? { deviceSource: doc.deviceSource } : {}),
         proactive: doc.proactive
             ? { ...doc.proactive, updatedAt: doc.proactive.updatedAt.toISOString() }
             : undefined,
@@ -241,6 +244,9 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
         title: title,
         content: data.content || defaultContent,
         notebookId: data.notebookId ? new ObjectId(data.notebookId) : undefined,
+        ...(pageType === 'devicedata' && data.deviceSource
+            ? { deviceSource: data.deviceSource }
+            : {}),
         isFavorite: false,
         isArchived: false,
         isTrashed: false,
@@ -258,6 +264,7 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
         title: doc.title,
         content: doc.content,
         notebookId: data.notebookId,
+        ...(doc.deviceSource ? { deviceSource: doc.deviceSource } : {}),
         isFavorite: doc.isFavorite,
         isArchived: doc.isArchived,
         isTrashed: doc.isTrashed,
@@ -1226,5 +1233,27 @@ export async function findProactivePages(
         filter.notebookId = new ObjectId(notebookId);
     }
     const docs = await getCollection().find(filter).limit(200).toArray();
+    return docs.map(toPageResponse);
+}
+
+/**
+ * A user's device data pages (Messages, Mail…), optionally in one notebook. Each page
+ * opens its owner's data only, so only pages the user created count.
+ */
+export async function findDeviceDataPages(
+    ownerUserId: string,
+    notebookId?: string,
+): Promise<Page[]> {
+    if (!ObjectId.isValid(ownerUserId)) return [];
+    const filter: Record<string, unknown> = {
+        type: 'devicedata',
+        userId: new ObjectId(ownerUserId),
+        isTrashed: { $ne: true },
+    };
+    if (notebookId) {
+        if (!ObjectId.isValid(notebookId)) return [];
+        filter.notebookId = new ObjectId(notebookId);
+    }
+    const docs = await getCollection().find(filter).limit(500).toArray();
     return docs.map(toPageResponse);
 }

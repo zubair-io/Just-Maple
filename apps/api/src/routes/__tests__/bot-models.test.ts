@@ -9,11 +9,6 @@ import {
 import { mongoAvailable, testDb } from '../../__tests__/setup';
 
 vi.mock('../../services/bot-executor.service', () => ({ botExecutor: { invoke: vi.fn() } }));
-const macSend = vi.fn();
-vi.mock('../../services/mac-data-relay.service', async (importOriginal) => ({
-    ...(await importOriginal<typeof import('../../services/mac-data-relay.service')>()),
-    macHttpSend: vi.fn(() => macSend),
-}));
 vi.mock('node:dns/promises', () => ({
     lookup: vi.fn(async (host: string) => [
         { address: host === 'intranet.example.com' ? '10.1.2.3' : '93.184.216.34' },
@@ -182,7 +177,7 @@ describe.runIf(mongoAvailable)('bot model discovery routes', () => {
             ).toBe('https://groq.example.com/openai/v1');
         });
 
-        it('adds many providers from one template, each with its own public https server', async () => {
+        it('adds many providers from one template, each with its own internet server', async () => {
             const { template, request } = await customSetup();
             const add = (handle: string, baseUrl: string) =>
                 request(
@@ -197,31 +192,12 @@ describe.runIf(mongoAvailable)('bot model discovery routes', () => {
                 );
             expect((await add('groq', 'https://api.groq.com/openai/v1')).status).toBe(200);
             expect((await add('router', 'https://openrouter.ai/api/v1')).status).toBe(200);
-            expect((await add('plain', 'http://openrouter.ai/api/v1')).status).toBe(400);
-            // Home-network servers are allowed; the owner's Mac calls them.
-            expect((await add('lan', 'http://192.168.1.20:11434/v1')).status).toBe(200);
+            expect((await add('plain', 'http://openrouter.ai/api/v1')).status).toBe(200);
+            // The server calls these itself: http works for internet hosts, home networks don't.
+            expect((await add('plainhttp', 'http://203.0.113.10:11434/v1')).status).toBe(200);
+            expect((await add('lan', 'http://192.168.1.20:11434/v1')).status).toBe(400);
             expect((await add('intranet', 'https://intranet.example.com/v1')).status).toBe(400);
             expect((await add('nourl', '')).status).toBe(400);
-        });
-
-        it("lists a local server's models through the Mac, not the API", async () => {
-            const { template, request } = await customSetup();
-            macSend.mockResolvedValue({
-                status: 200,
-                body: JSON.stringify({ data: [{ id: 'gemma4:12b' }] }),
-            });
-            const result = await request({
-                templateId: template._id.toString(),
-                baseUrl: 'http://localhost:11434/v1',
-            });
-            expect(result.status).toBe(200);
-            expect(await result.json()).toEqual({
-                models: [{ id: 'gemma4:12b', name: 'gemma4:12b' }],
-            });
-            expect(macSend).toHaveBeenCalledWith(
-                expect.objectContaining({ method: 'GET', url: 'http://localhost:11434/v1/models' }),
-            );
-            expect(fetchMock).not.toHaveBeenCalled();
         });
 
         it('works without an API key for open servers', async () => {

@@ -11,6 +11,8 @@ import { collectibleRegistryRoutes } from './routes/collectible-registry';
 import { notificationRoutes } from './routes/notifications';
 import { botRoutes } from './routes/bots';
 import { macDataRoutes } from './routes/mac-data';
+import { deviceDataRoutes } from './routes/device-data';
+import { startDeviceDataRetention } from './services/device-data.service';
 import { legoRoutes } from './routes/lego';
 import { collabRoutes } from './routes/collab';
 import { memoRoutes } from './routes/memo';
@@ -64,6 +66,8 @@ async function main() {
 
     // Connect to MongoDB
     await connectToDatabase();
+    // Hourly: drop device data older than the retention window
+    startDeviceDataRetention();
 
     // Connect to Redis for cross-replica pub/sub
     try {
@@ -88,6 +92,7 @@ async function main() {
         .use(notificationRoutes)
         .use(botRoutes)
         .use(macDataRoutes)
+        .use(deviceDataRoutes)
         .use(legoRoutes)
         .use(collabRoutes)
         .use(memoRoutes)

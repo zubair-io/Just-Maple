@@ -151,6 +151,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
+            if (body.type === 'devicedata' && !body.deviceSource) {
+                set.status = 400;
+                return { error: 'Invalid page', message: 'Choose which data the page shows' };
+            }
             const sanitizedBody = {
                 ...body,
                 title: body.title ? sanitizeName(body.title) : undefined,
@@ -190,12 +194,23 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('gmail'),
                         t.Literal('json'),
                         t.Literal('canvas'),
+                        t.Literal('devicedata'),
                     ]),
                 ),
                 title: t.Optional(t.String({ maxLength: 255 })),
                 content: t.Optional(t.Any()),
                 notebookId: t.Optional(t.String()),
                 id: t.Optional(t.String()),
+                deviceSource: t.Optional(
+                    t.Union([
+                        t.Literal('imessage'),
+                        t.Literal('mail'),
+                        t.Literal('calendar'),
+                        t.Literal('contacts'),
+                        t.Literal('location'),
+                        t.Literal('health'),
+                    ]),
+                ),
             }),
         },
     )

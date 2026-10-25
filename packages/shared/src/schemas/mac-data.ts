@@ -1,14 +1,17 @@
 import { Type } from '@sinclair/typebox';
 import type { Static } from '@sinclair/typebox';
 
-// Data that lives only on the user's Mac (iMessage, Mail, Calendar).
-// The Mac app owns the database; the web app reads it through the
-// `macData` script message handler. Nothing here is stored in the cloud.
+// Personal data collected by the user's devices: the Mac reads iMessage, Mail,
+// Calendar and Contacts; the iPhone records Location visits and Health summaries.
+// Each device ("collector") uploads what it reads; bots and pages use the cloud copy.
 
 export const MacDataSourceSchema = Type.Union([
     Type.Literal('imessage'),
     Type.Literal('mail'),
     Type.Literal('calendar'),
+    Type.Literal('contacts'),
+    Type.Literal('location'),
+    Type.Literal('health'),
 ]);
 
 export type MacDataSource = Static<typeof MacDataSourceSchema>;
@@ -31,6 +34,9 @@ export const MacDataItemSchema = Type.Object({
     allDay: Type.Optional(Type.Boolean()),
     mailbox: Type.Optional(Type.String()), // Mailbox for email; service for iMessage
     isRead: Type.Optional(Type.Boolean()),
+    // Source-specific fields: a contact's phones and relations, a visit's coordinates,
+    // a day's health totals. Small, flat JSON.
+    extra: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
 
 export type MacDataItem = Static<typeof MacDataItemSchema>;
@@ -148,3 +154,67 @@ export const MacDataChangeBatchSchema = Type.Object({
 });
 
 export type MacDataChangeBatch = Static<typeof MacDataChangeBatchSchema>;
+
+// ============================================
+// Collectors: devices that upload personal data
+// ============================================
+
+export const CollectorPlatformSchema = Type.Union([Type.Literal('macos'), Type.Literal('ios')]);
+export type CollectorPlatform = Static<typeof CollectorPlatformSchema>;
+
+// One signed-in device. `sources` is what it can collect; `activeSources` is what it
+// actually uploads. Each source has one active collector per user, so data isn't duplicated.
+export const CollectorSchema = Type.Object({
+    deviceId: Type.String(),
+    platform: CollectorPlatformSchema,
+    name: Type.String(),
+    sources: Type.Array(MacDataSourceSchema),
+    activeSources: Type.Array(MacDataSourceSchema),
+    timeZone: Type.Optional(Type.String()),
+    lastSeenAt: Type.Optional(Type.String()),
+    lastUploadAt: Type.Optional(Type.String()),
+    itemCounts: Type.Optional(Type.Record(Type.String(), Type.Number())),
+});
+export type Collector = Static<typeof CollectorSchema>;
+
+export const RegisterCollectorSchema = Type.Object({
+    deviceId: Type.String({ minLength: 8, maxLength: 128 }),
+    platform: CollectorPlatformSchema,
+    name: Type.String({ minLength: 1, maxLength: 100 }),
+    sources: Type.Array(MacDataSourceSchema, { maxItems: 10 }),
+    timeZone: Type.Optional(Type.String({ maxLength: 64 })),
+});
+export type RegisterCollectorInput = Static<typeof RegisterCollectorSchema>;
+
+// Vectors travel as base64 of little-endian float32 values, chunks back to back.
+export const DeviceItemVectorsSchema = Type.Object({
+    id: Type.String(),
+    revision: Type.String(),
+    dimensions: Type.Number({ minimum: 1, maximum: 4096 }),
+    vectors: Type.String({ maxLength: 200_000 }),
+});
+export type DeviceItemVectors = Static<typeof DeviceItemVectorsSchema>;
+
+// One upload batch. The cursor is the device's own change-log position; the server
+// echoes it back once everything in the batch is stored, and the device resumes from it.
+export const UploadDeviceItemsSchema = Type.Object({
+    deviceId: Type.String(),
+    upserts: Type.Array(MacDataItemSchema, { maxItems: 500 }),
+    removals: Type.Array(Type.String(), { maxItems: 2000 }),
+    vectors: Type.Optional(Type.Array(DeviceItemVectorsSchema, { maxItems: 500 })),
+    cursor: Type.Optional(Type.String({ maxLength: 64 })),
+});
+export type UploadDeviceItemsInput = Static<typeof UploadDeviceItemsSchema>;
+
+export const UploadDeviceItemsResultSchema = Type.Object({
+    stored: Type.Number(),
+    removed: Type.Number(),
+    vectors: Type.Number(),
+    // Items for sources this device isn't the active collector for are skipped.
+    skipped: Type.Number(),
+    cursor: Type.Optional(Type.String()),
+});
+export type UploadDeviceItemsResult = Static<typeof UploadDeviceItemsResultSchema>;
+
+/** Items older than this are removed, except contacts and calendar events that haven't ended. */
+export const DEVICE_DATA_RETENTION_DAYS = 30;
