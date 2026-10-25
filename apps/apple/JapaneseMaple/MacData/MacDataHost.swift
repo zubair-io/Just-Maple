@@ -5,12 +5,18 @@
 //  Connects the Mac data engine to the web app:
 //  - answers `window.webkit.messageHandlers.macData.postMessage({ action, ... })`
 //    with a Promise result,
-//  - watches Messages, Mail and Calendar for changes and re-reads them,
+//  - watches Messages, Mail, Calendar and Contacts for changes and re-reads them,
+//  - uploads what changed to the cloud, where pages (type `devicedata`) and bots read it,
 //  - tells the page what changed with a `maple:mac-data` window event.
+//
+//  Actions: status, relayStatus, requestAccess {source}, syncNow {source?},
+//  enableSource {source}, disableSource {source}, and listPages / deletePage for
+//  moving the old local-only pages to the cloud.
 //
 
 #if os(macOS)
 import AppKit
+import Contacts
 import EventKit
 import Foundation
 import WebKit
@@ -59,6 +65,23 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
             ) { [weak self] _ in
                 Task { @MainActor in self?.sync(.calendar) }
             })
+        observers.append(
+            NotificationCenter.default.addObserver(
+                forName: .CNContactStoreDidChange, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.sync(.contacts) }
+            })
+        // A new sign-in may be a different account: register again, then upload.
+        observers.append(
+            NotificationCenter.default.addObserver(
+                forName: ServerConfigService.tokenDidChange, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    await self.engine.registrationChanged()
+                    self.upload()
+                }
+            })
         // Full Disk Access is granted in System Settings; re-check when the user comes back.
         observers.append(
             NotificationCenter.default.addObserver(
@@ -72,6 +95,8 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
             Task { @MainActor in self?.syncAll() }
         }
         syncAll()
+        // Registers this Mac and resumes an upload a previous launch didn't finish.
+        upload()
         connection.onStateChange = { [weak self] _ in
             Task { @MainActor in await self?.emitStatus() }
         }
@@ -94,8 +119,36 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
                 self.emit(["type": "changed", "source": source.rawValue])
             }
             await self.emitStatus()
-            // Make new items searchable by bots; cheap when nothing is pending.
-            await engine.embedPending()
+            // Text first, so keyword search works right away; vectors follow once embedded.
+            await engine.uploadPending()
+            if await engine.embedPending() > 0 {
+                await engine.uploadPending()
+            }
+            await self.emitStatus()
+        }
+    }
+
+    private func upload() {
+        Task {
+            await engine.uploadPending()
+            await self.emitStatus()
+        }
+    }
+
+    /// Calendar and Contacts ask for permission in a system prompt; Messages and Mail
+    /// need Full Disk Access, which only System Settings can grant.
+    private func requestAccess(_ source: MacDataSource, openSettingsIfDenied: Bool) async {
+        switch source {
+        case .calendar:
+            if !(await engine.requestCalendarAccess()), openSettingsIfDenied, CalendarReader.accessDenied {
+                Self.openPrivacySettings("Privacy_Calendars")
+            }
+        case .contacts:
+            if !(await engine.requestContactsAccess()), openSettingsIfDenied, ContactsReader.accessDenied {
+                Self.openPrivacySettings("Privacy_Contacts")
+            }
+        case .imessage, .mail:
+            if openSettingsIfDenied { Self.openPrivacySettings("Privacy_AllFiles") }
         }
     }
 
@@ -127,52 +180,39 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
         case "relayStatus":
             return connection.state
 
+        case "enableSource":
+            // A device data page for this source was created or opened.
+            let source = try Self.source(body)
+            if try await engine.enable(source) {
+                await engine.registrationChanged()
+            }
+            // The page shouldn't wait on a system prompt the user may leave open.
+            Task {
+                await self.requestAccess(source, openSettingsIfDenied: false)
+                self.sync(source)
+            }
+            return true
+
+        case "disableSource":
+            let source = try Self.source(body)
+            if try await engine.disable(source) {
+                await engine.registrationChanged()
+            }
+            upload()
+            await emitStatus()
+            return true
+
+        // The old local-only pages, read once by the web app to move them to the cloud.
         case "listPages":
             return try Self.json(await engine.pages(notebookId: body["notebookId"] as? String))
 
-        case "getPage":
-            let id = try Self.string(body, "id")
-            return try await engine.page(id: id).map(Self.json) ?? NSNull()
-
-        case "createPage":
-            let notebookId = try Self.string(body, "notebookId")
-            let source = try Self.source(body)
-            let page = try await engine.createPage(
-                notebookId: notebookId, source: source, title: body["title"] as? String)
-            if source == .calendar {
-                _ = await engine.requestCalendarAccess()
-            }
-            sync(source)
-            connection.announce()
-            return try Self.json(page)
-
-        case "renamePage":
-            try await engine.renamePage(id: try Self.string(body, "id"), title: try Self.string(body, "title"))
-            return true
-
         case "deletePage":
             try await engine.deletePage(id: try Self.string(body, "id"))
-            connection.announce()
             return true
-
-        case "getItem":
-            let id = try Self.string(body, "id")
-            return try await engine.localItem(id: id).map(Self.json) ?? NSNull()
-
-        case "query":
-            let data = try JSONSerialization.data(withJSONObject: body)
-            let query = try JSONDecoder().decode(MacDataQuery.self, from: data)
-            return try Self.json(await engine.query(query))
 
         case "requestAccess":
             let source = try Self.source(body)
-            if source == .calendar {
-                if !(await engine.requestCalendarAccess()), CalendarReader.accessDenied {
-                    Self.openPrivacySettings("Privacy_Calendars")
-                }
-            } else {
-                Self.openPrivacySettings("Privacy_AllFiles")
-            }
+            await requestAccess(source, openSettingsIfDenied: true)
             sync(source)
             return true
 
@@ -194,7 +234,11 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
     private func emitStatus() async {
         guard let statuses = try? await engine.statuses(), let json = try? Self.json(statuses)
         else { return }
-        emit(["type": "status", "statuses": json, "relay": connection.state])
+        var detail: [String: Any] = ["type": "status", "statuses": json, "relay": connection.state]
+        if let upload = try? await engine.uploadStatus(), let uploadJSON = try? Self.json(upload) {
+            detail["upload"] = uploadJSON
+        }
+        emit(detail)
     }
 
     private func emit(_ detail: [String: Any]) {

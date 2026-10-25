@@ -51,7 +51,10 @@ nonisolated final class MailReader: @unchecked Sendable {
         return newest.1
     }
 
-    func read(checkpoint: String?, now: Date = Date()) throws -> MacDataReadResult {
+    /// `names` replaces sender names with the matching contact's name.
+    func read(checkpoint: String?, now: Date = Date(), names: MacDataContactNames = .empty) throws
+        -> MacDataReadResult
+    {
         let version = try versionFolder()
         let indexURL = version.appendingPathComponent("MailData/Envelope Index")
         let db = try MacDataSQLite(path: indexURL.path, readOnly: true)
@@ -90,7 +93,7 @@ nonisolated final class MailReader: @unchecked Sendable {
             state.lastRowId = max(state.lastRowId, rowid)
             let (item, hasFullBody) = try makeItem(
                 row, rowid: rowid, db: db, hasRecipients: hasRecipients,
-                isNew: rowid > previousLastRowId)
+                isNew: rowid > previousLastRowId, names: names)
             items.append(item)
             if !hasFullBody { stillAwaiting.append(rowid) }
         }
@@ -139,12 +142,12 @@ nonisolated final class MailReader: @unchecked Sendable {
 
     private func makeItem(
         _ row: MacDataSQLite.Row, rowid: Int64, db: MacDataSQLite, hasRecipients: Bool,
-        isNew: Bool
+        isNew: Bool, names: MacDataContactNames
     ) throws -> (MacDataItem, hasFullBody: Bool) {
         let subject = [row["subject_prefix"]?.string, row["subject"]?.string]
             .compactMap { $0?.isEmpty == false ? $0 : nil }.joined()
         let address = row["address"]?.string
-        let name = row["sender_name"]?.string
+        let name = address.flatMap(names.name(for:)) ?? row["sender_name"]?.string
         let sender =
             if let name, !name.isEmpty, let address { "\(name) <\(address)>" } else { address ?? name }
         let summary = row["summary"]?.string ?? ""

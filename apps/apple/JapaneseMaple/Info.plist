@@ -17,6 +17,8 @@
 	<string>$(MAPLE_DEV_SERVER_URL)</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>Just Maple records system audio when you enable system audio recording.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Maple reads your contacts so bots know who people are.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Just Maple reads only the Health data you choose (steps, exercise, sleep, resting heart rate and workouts) to keep a daily summary that Maple’s assistant can use to answer questions about your activity. It never writes to Health.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
