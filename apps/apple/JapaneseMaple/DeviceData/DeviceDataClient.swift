@@ -146,9 +146,12 @@ actor DeviceDataClient {
         self.token = token
     }
 
-    /// The signed-in account (the sign-in token's subject), nil when signed out. Uploads
-    /// are tracked per account, so another account starts from scratch.
-    nonisolated var account: String? { Self.subject(of: token()) }
+    /// The signed-in account on this server (the server plus the sign-in token's subject),
+    /// nil when signed out. Uploads are tracked per account, so another account, or the
+    /// same account on another server (dev vs production), starts from scratch.
+    nonisolated var account: String? {
+        Self.subject(of: token()).map { "\(baseURL().trimmingCharacters(in: CharacterSet(charactersIn: "/")))|\($0)" }
+    }
 
     nonisolated static func subject(of token: String?) -> String? {
         let parts = token?.split(separator: ".") ?? []
