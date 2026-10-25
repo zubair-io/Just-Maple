@@ -17,6 +17,7 @@ vi.mock('../../services/proactive-bot.service', () => ({
 }));
 
 import { handleDeviceDataChanges } from '../../services/proactive-bot.service';
+import { flushDeviceNews } from '../../services/device-data.service';
 import { purgeExpiredDeviceItems } from '../../repositories/device-item.repo';
 import { searchDeviceData } from '../../services/device-search.service';
 
@@ -179,6 +180,20 @@ describe.runIf(mongoAvailable)('device data routes', () => {
             .collection('pages')
             .updateOne({ _id: mailPage._id }, { $set: { deviceSource: 'mail' } });
 
+        // The first upload after a source starts on a device is backlog: no proactive run.
+        await request(
+            { deviceId: 'mac-device-1', upserts: [item('mail:backlog', 'mail')], removals: [] },
+            '/api/device-data/items',
+        );
+        await flushDeviceNews(userId);
+        expect(handleDeviceDataChanges).not.toHaveBeenCalled();
+        // Half an hour later, new mail is news.
+        await testDb!
+            .collection('collectors')
+            .updateOne(
+                { deviceId: 'mac-device-1' },
+                { $set: { 'activeSince.mail': new Date(Date.now() - 3600_000) } },
+            );
         await request(
             {
                 deviceId: 'mac-device-1',
@@ -192,7 +207,8 @@ describe.runIf(mongoAvailable)('device data routes', () => {
             },
             '/api/device-data/items',
         );
-        await vi.waitFor(() => expect(handleDeviceDataChanges).toHaveBeenCalled());
+        await flushDeviceNews(userId);
+        expect(handleDeviceDataChanges).toHaveBeenCalledTimes(1);
         const [owner, batches] = vi.mocked(handleDeviceDataChanges).mock.calls[0]!;
         expect(owner).toBe(userId);
         expect(batches).toEqual([
@@ -278,6 +294,45 @@ describe.runIf(mongoAvailable)('device data routes', () => {
             .map((doc) => doc.id)
             .sort();
         expect(ids).toEqual(['calendar:long', 'contacts:1', 'mail:new']);
+    });
+
+    it('keeps sources off after "remove all", even when devices register again', async () => {
+        await register('mac-device-1', ['imessage', 'mail']);
+        await request(null, '/api/device-data', 'DELETE');
+        const again = await register('mac-device-1', ['imessage', 'mail']);
+        expect(again.collector.activeSources).toEqual([]);
+        // Choosing "Collect here" turns a source back on.
+        const back = await request(
+            { activeSources: ['mail'] },
+            '/api/collectors/mac-device-1',
+            'PATCH',
+        ).then((r) => r.json());
+        expect(back.collector.activeSources).toEqual(['mail']);
+        expect(
+            (await register('mac-device-1', ['imessage', 'mail'])).collector.activeSources,
+        ).toEqual(['mail']);
+    });
+
+    it("never lets a device delete another device's items", async () => {
+        await register('mac-device-1', ['calendar']);
+        await register('mac-device-2', ['calendar']);
+        await request(
+            {
+                deviceId: 'mac-device-1',
+                upserts: [item('calendar:shared', 'calendar')],
+                removals: [],
+            },
+            '/api/device-data/items',
+        );
+        // Mac 2 hasn't been told it doesn't collect calendar; its removal must not land.
+        const result = await request(
+            { deviceId: 'mac-device-2', upserts: [], removals: ['calendar:shared'] },
+            '/api/device-data/items',
+        ).then((r) => r.json());
+        expect(result.removed).toBe(0);
+        expect(
+            await testDb!.collection('device_items').countDocuments({ id: 'calendar:shared' }),
+        ).toBe(1);
     });
 
     it('requires sign-in and a registered device', async () => {

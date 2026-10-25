@@ -15,6 +15,7 @@ import {
     noteLocationVisits,
     recallAboutMe,
     rememberAboutMe,
+    updateAboutMe,
 } from '../../services/about-me.service';
 
 const now = Date.now();
@@ -188,6 +189,42 @@ describe.runIf(mongoAvailable)('About me', () => {
         expect(summary).toContain('Their people: ');
         expect(summary).toContain('Julia (spouse)');
         expect(await recallAboutMe(userId, 'coach')).toContain('555-0100');
+    });
+
+    it("lets bots change only what bots learned, and reads dates in the user's zone", async () => {
+        const { aboutMe } = (await call('/api/about-me', 'POST')) as { aboutMe: AboutMe };
+        const address = aboutMe.facts.find((f) => f.key === 'home_address')!;
+        const source = { type: 'bot' as const, botId: 'b1' };
+        // A fact from the user's contact card: the bot can only suggest a change.
+        expect(
+            await updateAboutMe(userId, { factId: address.id, value: '1 Phish Way' }, source),
+        ).toContain('approves');
+        expect(await updateAboutMe(userId, { factId: address.id, remove: true }, source)).toContain(
+            'Only the user',
+        );
+        let profile = ((await call('/api/about-me')) as { aboutMe: AboutMe }).aboutMe;
+        expect(profile.facts.find((f) => f.key === 'home_address')?.value).toBe(
+            '12 Maple St, Springfield',
+        );
+        expect(profile.pending.map((f) => f.value)).toContain('1 Phish Way');
+
+        // "Until 2026-10-30" means the end of that day in New York, not UTC midnight.
+        await rememberAboutMe(
+            userId,
+            {
+                about: 'me',
+                key: 'travel',
+                value: 'In Denver',
+                kind: 'current',
+                until: '2099-10-30',
+            },
+            source,
+            'America/New_York',
+        );
+        profile = ((await call('/api/about-me')) as { aboutMe: AboutMe }).aboutMe;
+        expect(profile.facts.find((f) => f.key === 'travel')?.validUntil).toBe(
+            '2099-10-31T03:59:59.000Z',
+        );
     });
 
     it('keeps where you are now from iPhone visits', async () => {

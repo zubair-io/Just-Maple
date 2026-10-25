@@ -4,8 +4,14 @@ import type {
     UploadDeviceItemsInput,
     UploadDeviceItemsResult,
 } from '@maple/shared';
-import { findCollector, touchCollector, collectorTimeZone } from '../repositories/collector.repo';
 import {
+    collectorTimeZone,
+    findCollector,
+    sourceActiveSince,
+    touchCollector,
+} from '../repositories/collector.repo';
+import {
+    deleteDeviceItems,
     findDeviceItemRevisions,
     purgeExpiredDeviceItems,
     removeDeviceItems,
@@ -25,6 +31,12 @@ import { noteLocationVisits } from './about-me.service';
 
 /** Older items are backlog (first upload, catch-up after sleep), not news. */
 const FRESHNESS_SECONDS = 24 * 60 * 60;
+/** New calendar events are news only if they start within this window. */
+const UPCOMING_SECONDS = 14 * 24 * 60 * 60;
+/** Items uploaded this soon after a source starts on a device are its backlog. */
+const BACKFILL_MS = 30 * 60 * 1000;
+
+type NewsEntry = { kind: 'added' | 'changed'; item: MacDataItem };
 const MAX_PROACTIVE_ENTRIES = 40;
 
 export class DeviceUploadError extends Error {
@@ -53,8 +65,19 @@ export async function applyDeviceUpload(
     );
     const changed = upserts.filter((item) => previous.get(item.id) !== item.revision);
     const stored = await upsertDeviceItems(userId, input.deviceId, changed);
-    const removed = await removeDeviceItems(userId, input.removals);
+    const removed = await removeDeviceItems(userId, input.removals, {
+        deviceId: input.deviceId,
+        sources: collector.activeSources,
+    });
     const vectors = input.vectors?.length ? await setDeviceItemVectors(userId, input.vectors) : 0;
+
+    // A source can move to another device while this upload is in flight ("Collect
+    // here"); anything written for a source this device no longer collects goes again.
+    const after = await findCollector(userId, input.deviceId);
+    for (const source of collector.activeSources) {
+        if (!after?.activeSources.includes(source))
+            await deleteDeviceItems(userId, { deviceId: input.deviceId, source });
+    }
 
     await touchCollector(userId, input.deviceId, true);
     if (stored || removed || vectors) await bumpDeviceDataVersion(userId);
@@ -66,31 +89,83 @@ export async function applyDeviceUpload(
         );
     }
 
-    const news = changed
-        .filter((item) => isNews(item, now))
-        .map((item) => ({ kind: previous.has(item.id) ? 'changed' : 'added', item }));
-    if (news.length) {
-        void notifyProactive(userId, news).catch((error) =>
-            console.error('[DeviceData] Proactive dispatch failed:', error),
-        );
+    const news: NewsEntry[] = [];
+    for (const item of changed) {
+        const kind = previous.has(item.id) ? 'changed' : 'added';
+        if (!isNews(item, kind, now)) continue;
+        // The first upload after a source starts here is backlog, not news.
+        const since = await sourceActiveSince(userId, input.deviceId, item.source);
+        if (!since || now - since.getTime() < BACKFILL_MS) continue;
+        news.push({ kind, item });
     }
+    if (news.length) queueNews(userId, news);
 
     return { stored, removed, vectors, skipped, ...(input.cursor ? { cursor: input.cursor } : {}) };
 }
 
-/** Recent items worth a proactive look. Your own messages and contact edits aren't news. */
-export function isNews(item: MacDataItem, now = Date.now()): boolean {
+/**
+ * Recent items worth a proactive look. Your own messages and contact edits aren't news.
+ * A new calendar event counts if it starts soon; a changed one if it hasn't ended.
+ */
+export function isNews(item: MacDataItem, kind: 'added' | 'changed', now = Date.now()): boolean {
     if (item.source === 'contacts' || item.isFromMe) return false;
-    const fresh = now / 1000 - FRESHNESS_SECONDS;
-    if (item.source === 'calendar') return (item.endAt ?? item.occurredAt) >= fresh;
+    const nowSeconds = now / 1000;
+    const fresh = nowSeconds - FRESHNESS_SECONDS;
+    if (item.source === 'calendar') {
+        if ((item.endAt ?? item.occurredAt) < fresh) return false;
+        return kind === 'changed' || item.occurredAt <= nowSeconds + UPCOMING_SECONDS;
+    }
     return item.occurredAt >= fresh;
 }
 
+// MARK: - Batching news
+
+/** Uploads come in batches seconds apart; one proactive run per user per window. */
+const NEWS_WINDOW_MS = 60_000;
+const pendingNews = new Map<
+    string,
+    { entries: NewsEntry[]; timer: ReturnType<typeof setTimeout> }
+>();
+
+function queueNews(userId: string, entries: NewsEntry[]): void {
+    const pending = pendingNews.get(userId);
+    if (pending) {
+        pending.entries.push(...entries);
+        return;
+    }
+    const timer = setTimeout(() => {
+        const batch = pendingNews.get(userId);
+        pendingNews.delete(userId);
+        if (!batch) return;
+        void notifyProactive(userId, latestPerItem(batch.entries)).catch((error) =>
+            console.error('[DeviceData] Proactive dispatch failed:', error),
+        );
+    }, NEWS_WINDOW_MS);
+    timer.unref?.();
+    pendingNews.set(userId, { entries: [...entries], timer });
+}
+
+/** Sends any queued news now (tests, shutdown). */
+export async function flushDeviceNews(userId: string): Promise<void> {
+    const pending = pendingNews.get(userId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingNews.delete(userId);
+    await notifyProactive(userId, latestPerItem(pending.entries));
+}
+
+function latestPerItem(entries: NewsEntry[]): NewsEntry[] {
+    const byId = new Map<string, NewsEntry>();
+    for (const entry of entries) {
+        const earlier = byId.get(entry.item.id);
+        // An item added and then changed in the same window is still new to the user.
+        byId.set(entry.item.id, earlier?.kind === 'added' ? { ...entry, kind: 'added' } : entry);
+    }
+    return [...byId.values()];
+}
+
 /** Groups news by notebook: each proactive notebook only sees sources it has pages for. */
-async function notifyProactive(
-    userId: string,
-    news: Array<{ kind: string; item: MacDataItem }>,
-): Promise<void> {
+async function notifyProactive(userId: string, news: NewsEntry[]): Promise<void> {
     const proactivePages = await findProactivePages(userId);
     const notebookIds = [...new Set(proactivePages.map((page) => page.notebookId).filter(Boolean))];
     if (notebookIds.length === 0) return;

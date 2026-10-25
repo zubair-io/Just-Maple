@@ -13,6 +13,10 @@ interface CollectorDocument {
     name: string;
     sources: MacDataSource[];
     activeSources: MacDataSource[];
+    /** Sources the user turned off (or removed all data for): registering never re-enables them. */
+    disabledSources?: MacDataSource[];
+    /** When each source became active here; its first upload is backlog, not news. */
+    activeSince?: Partial<Record<MacDataSource, Date>>;
     timeZone?: string;
     lastSeenAt: Date;
     lastUploadAt?: Date;
@@ -60,10 +64,14 @@ export async function registerCollector(
     );
     const takenElsewhere = new Set(others.flatMap((doc) => doc.activeSources));
     const existing = await getCollection().findOne({ _id: docId(userId, input.deviceId) });
+    const disabled = new Set(existing?.disabledSources ?? []);
     const sources = [...new Set(input.sources)];
     const activeSources = sources.filter(
-        (source) => existing?.activeSources.includes(source) || !takenElsewhere.has(source),
+        (source) =>
+            !disabled.has(source) &&
+            (existing?.activeSources.includes(source) || !takenElsewhere.has(source)),
     );
+    const activeSince = sinceFor(activeSources, existing);
     await getCollection().updateOne(
         { _id: docId(userId, input.deviceId) },
         {
@@ -74,6 +82,7 @@ export async function registerCollector(
                 name: input.name,
                 sources,
                 activeSources,
+                activeSince,
                 ...(input.timeZone ? { timeZone: input.timeZone } : {}),
                 lastSeenAt: new Date(),
             },
@@ -109,8 +118,53 @@ export async function setActiveSources(
             { $set: { activeSources: other.activeSources.filter((s) => !wanted.includes(s)) } },
         );
     }
-    await getCollection().updateOne({ _id: doc._id }, { $set: { activeSources: wanted } });
+    // Choosing "Collect here" turns these back on; anything left out is turned off.
+    const disabledSources = [
+        ...new Set([
+            ...(doc.disabledSources ?? []).filter((source) => !wanted.includes(source)),
+            ...doc.activeSources.filter((source) => !wanted.includes(source)),
+        ]),
+    ];
+    await getCollection().updateOne(
+        { _id: doc._id },
+        { $set: { activeSources: wanted, disabledSources, activeSince: sinceFor(wanted, doc) } },
+    );
     return { collector: await findCollector(userId, deviceId), movedFrom };
+}
+
+/** Turns every source off on every device, e.g. after "Remove all my device data". */
+export async function disableAllSources(userId: string): Promise<void> {
+    for (const doc of await getCollection().find({ userId }).toArray()) {
+        await getCollection().updateOne(
+            { _id: doc._id },
+            { $set: { activeSources: [], disabledSources: doc.sources, activeSince: {} } },
+        );
+    }
+}
+
+/** When `source` started being collected by this device, if it is. */
+export async function sourceActiveSince(
+    userId: string,
+    deviceId: string,
+    source: MacDataSource,
+): Promise<Date | undefined> {
+    const doc = await getCollection().findOne({ _id: docId(userId, deviceId) });
+    return doc?.activeSources.includes(source) ? doc.activeSince?.[source] : undefined;
+}
+
+function sinceFor(
+    active: MacDataSource[],
+    existing: CollectorDocument | null,
+): Partial<Record<MacDataSource, Date>> {
+    const now = new Date();
+    return Object.fromEntries(
+        active.map((source) => [
+            source,
+            existing?.activeSources.includes(source) && existing.activeSince?.[source]
+                ? existing.activeSince[source]
+                : now,
+        ]),
+    );
 }
 
 export async function touchCollector(

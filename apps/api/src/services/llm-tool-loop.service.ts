@@ -1,4 +1,5 @@
 import type { ToolDefinition } from './mac-data-tools.service';
+import { assertPublicHost } from '../utils/url-safety';
 
 /**
  * Minimal tool-calling loops for the bot providers, using each provider's native
@@ -187,6 +188,9 @@ export type HttpSend = (request: HttpRequest) => Promise<HttpResponse>;
 
 /** The API's own fetch. The URL was checked first, so redirects are refused. */
 export const fetchSend: HttpSend = async (request) => {
+    // Check the name again right before connecting, so a DNS answer that changed since
+    // the bot's URL was saved can't point the request into a private network.
+    await assertPublicHost(request.url);
     const response = await fetch(request.url, {
         method: request.method,
         headers: request.headers,

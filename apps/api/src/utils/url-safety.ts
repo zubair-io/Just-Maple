@@ -9,15 +9,6 @@ import { isIP } from 'node:net';
 /** True for loopback, private, link-local and other non-public addresses. */
 export function isPrivateAddress(address: string): boolean {
     const ip = address.replace(/^\[|\]$/g, '').toLowerCase();
-    const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mapped?.[1]) return isPrivateAddress(mapped[1]);
-    // URLs write IPv4-mapped addresses in hex: ::ffff:7f00:1 is 127.0.0.1.
-    const hex = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-    if (hex?.[1] && hex[2]) {
-        const high = parseInt(hex[1], 16);
-        const low = parseInt(hex[2], 16);
-        return isPrivateAddress(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
-    }
     if (isIP(ip) === 4) {
         const [a = 0, b = 0] = ip.split('.').map(Number);
         return (
@@ -27,19 +18,55 @@ export function isPrivateAddress(address: string): boolean {
             (a === 100 && b >= 64 && b <= 127) ||
             (a === 169 && b === 254) ||
             (a === 172 && b >= 16 && b <= 31) ||
-            (a === 192 && b === 168)
+            (a === 192 && b === 168) ||
+            a >= 224 // multicast and reserved
         );
     }
     if (isIP(ip) === 6) {
+        const groups = ipv6Groups(ip);
+        if (!groups) return true; // unparseable: refuse
+        // IPv6 forms that carry an IPv4 address are judged by that address:
+        // ::a.b.c.d (compatible), ::ffff:a.b.c.d (mapped), 64:ff9b::a.b.c.d (NAT64).
+        const embedsV4 =
+            groups.slice(0, 6).every((g) => g === 0) ||
+            (groups.slice(0, 5).every((g) => g === 0) && groups[5] === 0xffff) ||
+            (groups[0] === 0x64 &&
+                groups[1] === 0xff9b &&
+                groups.slice(2, 6).every((g) => g === 0));
+        if (embedsV4) {
+            if (groups.slice(0, 7).every((g) => g === 0)) return true; // :: and ::1
+            const [high = 0, low = 0] = groups.slice(6);
+            return isPrivateAddress(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
+        }
+        const first = groups[0]!;
         return (
-            ip === '::' ||
-            ip === '::1' ||
-            ip.startsWith('fc') ||
-            ip.startsWith('fd') ||
-            /^fe[89ab]/.test(ip)
+            (first & 0xfe00) === 0xfc00 || // unique local
+            (first & 0xffc0) === 0xfe80 || // link-local
+            (first & 0xff00) === 0xff00 || // multicast
+            (first === 0x64 && groups[1] === 0xff9b) // NAT64 local-use
         );
     }
     return false;
+}
+
+/** The eight 16-bit groups of an IPv6 address, or null if it doesn't parse. */
+function ipv6Groups(ip: string): number[] | null {
+    let text = ip.split('%')[0]!;
+    const v4 = text.match(/(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (v4) {
+        const [a, b, c, d] = v4.slice(1).map(Number) as [number, number, number, number];
+        text =
+            text.slice(0, -v4[0].length) +
+            `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+    }
+    const [head = '', tail] = text.split('::');
+    const left = head ? head.split(':') : [];
+    const right = tail ? tail.split(':') : [];
+    const missing = 8 - left.length - right.length;
+    if (tail === undefined ? left.length !== 8 : missing < 0) return null;
+    const parts = [...left, ...Array(tail === undefined ? 0 : missing).fill('0'), ...right];
+    const groups = parts.map((part) => (/^[0-9a-f]{1,4}$/.test(part) ? parseInt(part, 16) : NaN));
+    return groups.length === 8 && groups.every((g) => !Number.isNaN(g)) ? groups : null;
 }
 
 /** Throws if the URL isn't http(s) or names a local, private or internal host. */

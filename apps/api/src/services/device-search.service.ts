@@ -36,6 +36,14 @@ interface UserIndex {
 
 const SNIPPET_LENGTH = 500;
 const MAX_CACHED_USERS = 50;
+/** Text kept in memory per item; enough for snippets, a fraction of long emails. */
+const INDEX_BODY_CHARS = 4_000;
+const INDEX_TEXT_CHARS = 8_000;
+/**
+ * When another instance stored uploads, reload at most this often: a Mac uploads every
+ * few seconds while Mail is busy, and a reload reads the whole month.
+ */
+const RELOAD_AFTER_MS = 60_000;
 const versionKey = (userId: string) => `devicedata:version:${userId}`;
 const STOP_WORDS = new Set([
     'the',
@@ -137,7 +145,8 @@ export async function searchDeviceData(
 async function loadIndex(userId: string): Promise<UserIndex> {
     const version = (await redisPubSub.getKey(versionKey(userId)).catch(() => null)) ?? '0';
     const cached = indexes.get(userId);
-    if (cached && cached.version === version) return cached;
+    if (cached && (cached.version === version || Date.now() - cached.loadedAt < RELOAD_AFTER_MS))
+        return cached;
     const docs = await findDeviceItemsForIndex(userId);
     const index: UserIndex = { version, items: docs.map(toIndexed), loadedAt: Date.now() };
     indexes.set(userId, index);
@@ -154,7 +163,11 @@ function toIndexed(doc: DeviceItemDocument): IndexedItem {
         doc.vectors && doc.dimensions && doc.embeddedRevision === doc.revision
             ? decodeVectors(doc.vectors, doc.dimensions)
             : [];
-    return { item: doc.item, text: doc.searchText, vectors: usable };
+    return {
+        item: { ...doc.item, body: doc.item.body.slice(0, INDEX_BODY_CHARS) },
+        text: doc.searchText.slice(0, INDEX_TEXT_CHARS),
+        vectors: usable,
+    };
 }
 
 /** Base64 of little-endian float32 values, `dimensions` per chunk. */
