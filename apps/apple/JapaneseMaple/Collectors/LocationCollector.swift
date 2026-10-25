@@ -22,7 +22,17 @@ final class LocationCollector: NSObject, CLLocationManagerDelegate {
     static let retentionDays = 31
 
     /// Called before each upload (registers the device); throws to skip the upload.
-    var beforeUpload: () async throws -> Void = {}
+    /// Registers if needed and says whether this device is the one collecting this
+    /// source; if another device is, items stay queued instead of being marked uploaded.
+    var beforeUpload: () async throws -> Bool = { true }
+
+    /// Another device took this source over and the server dropped this phone's copy:
+    /// forget what was uploaded, so it all goes up again if the source comes back.
+    func uploadsMovedAway() {
+        state.uploaded = [:]
+        state.pendingRemovals = []
+        file.save(state)
+    }
     /// Called when the permission or queue changes.
     var onChange: () -> Void = {}
 
@@ -167,7 +177,7 @@ final class LocationCollector: NSObject, CLLocationManagerDelegate {
         file.save(state)
         guard state.pendingCount > 0 else { return }
         do {
-            try await beforeUpload()
+            guard try await beforeUpload() else { return }
             state = try await CollectorUploader.flush(state, client: client)
             file.save(state)
         } catch {
