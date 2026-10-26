@@ -1,4 +1,7 @@
 <app-device-data-panel [list]="list" searchPlaceholder="Search places">
+  @if (notice()) {
+    <p class="m-0 mb-2 text-xs text-[var(--color-text-muted)]" role="status">{{ notice() }}</p>
+  }
   @if (rows().length) {
     <table class="device-data-table">
       <thead>
@@ -8,6 +11,7 @@
           <th scope="col">Arrived</th>
           <th scope="col">Left</th>
           <th scope="col">Duration</th>
+          <th scope="col"><span class="sr-only">Actions</span></th>
         </tr>
       </thead>
       <tbody>
@@ -26,6 +30,17 @@
               }
             </td>
             <td class="nowrap muted">{{ formatDuration(row.durationMinutes) }}</td>
+            <td class="nowrap">
+              @if (row.lat !== null && row.lon !== null) {
+                <button
+                  type="button"
+                  class="cursor-pointer border-none bg-transparent p-0 text-xs text-[var(--color-primary)] hover:underline"
+                  (click)="namePlace(row)"
+                >
+                  Name
+                </button>
+              }
+            </td>
           </tr>
         }
       </tbody>

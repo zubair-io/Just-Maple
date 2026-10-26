@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import type { Page } from '@maple/shared';
+import { NotebookService } from '../../../services/notebook.service';
 import {
   ProactiveBotService,
   type MacDataHostStatus,
@@ -40,6 +41,7 @@ const SOURCE_NAMES: Record<string, string> = {
 })
 export class ProactiveBotPanelComponent {
   private readonly proactiveService = inject(ProactiveBotService);
+  private readonly notebookService = inject(NotebookService);
 
   readonly page = input.required<Page>();
   readonly botId = input.required<string>();
@@ -49,6 +51,11 @@ export class ProactiveBotPanelComponent {
   readonly saving = signal(false);
   readonly error = signal<string | null>(null);
   readonly status = signal<MacDataHostStatus | null>(null);
+  /** A daily brief at this local time; off when empty. */
+  readonly briefOn = signal(false);
+  readonly briefTime = signal('07:30');
+  /** Other people can see this notebook, so they'll see what the bot posts. */
+  readonly sharedWithOthers = signal(false);
 
   /** This bot is already the chat's proactive bot (editing rather than turning on). */
   readonly isOn = computed(() => {
@@ -65,13 +72,20 @@ export class ProactiveBotPanelComponent {
       const proactive = this.page().proactive;
       const botId = this.botId();
       untracked(() => {
-        this.instructions.set(proactive?.userBotId === botId ? proactive.instructions : '');
+        const same = proactive?.userBotId === botId;
+        this.instructions.set(same ? proactive.instructions : '');
+        this.briefOn.set(same && !!proactive?.briefTime);
+        this.briefTime.set((same && proactive?.briefTime) || '07:30');
         this.error.set(null);
       });
     });
     effect(() => {
       const notebookId = this.page().notebookId;
       if (!notebookId) return;
+      untracked(() => {
+        const notebook = this.notebookService.notebooks().find((n) => n._id === notebookId);
+        this.sharedWithOthers.set((notebook?.sharing?.sharedWith?.length ?? 0) > 0);
+      });
       this.proactiveService.status(notebookId).then(
         (status) => this.status.set(status),
         () => this.status.set(null),
@@ -87,6 +101,7 @@ export class ProactiveBotPanelComponent {
         userBotId: this.botId(),
         instructions: this.instructions().trim(),
         enabled: true,
+        briefTime: this.briefOn() && this.briefTime() ? this.briefTime() : null,
       });
       this.closed.emit();
     } catch (err: unknown) {

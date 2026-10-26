@@ -47,6 +47,15 @@ const profile: AboutMe = {
       updatedAt: '',
     },
     { id: 'emma', kind: 'person', name: 'Emma', aliases: [], createdAt: '', updatedAt: '' },
+    {
+      id: 'home',
+      kind: 'place',
+      name: 'Home',
+      aliases: [],
+      place: { lat: 40.7128, lon: -74.006, radius: 150 },
+      createdAt: '',
+      updatedAt: '',
+    },
   ],
   relations: [{ id: 'r', from: 'me', to: 'emma', type: 'child', createdAt: '' }],
   facts: [
@@ -67,6 +76,7 @@ describe('AboutMeComponent', () => {
     profile: state.asReadonly(),
     loading: signal(false),
     error: signal<string | null>(null),
+    places: computed(() => state()?.entities.filter((e) => e.kind === 'place' && e.place) ?? []),
     entitiesById: computed(() => new Map(state()?.entities.map((e) => [e.id, e]) ?? [])),
     load: vi.fn().mockResolvedValue(undefined),
     start: vi.fn().mockResolvedValue(undefined),
@@ -105,6 +115,9 @@ describe('AboutMeComponent', () => {
     expect(text).toContain('From your contact card');
     expect(text).toContain('Learned by Maple');
     expect(text).toContain('Knee recovery');
+    // Named places get their own section, with where they are.
+    expect(text).toContain('40.7128, -74.0060');
+    expect(text).not.toContain('No named places yet');
   });
 
   it('approves suggestions and undoes learned facts', () => {

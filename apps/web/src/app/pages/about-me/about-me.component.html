@@ -173,6 +173,45 @@
         </form>
       </section>
 
+      <!-- Named places -->
+      <section class="section">
+        <h2 class="section-title">Your places</h2>
+        <p class="section-description">
+          Named places, used for visits and "time to leave" reminders. Name a place from a visit on
+          a Places page.
+        </p>
+        <ul class="fact-list">
+          @for (place of aboutMe.places(); track place.id) {
+            <li class="fact-row">
+              <div class="fact-text">
+                <span>{{ place.name }}</span>
+                <span class="fact-meta">
+                  {{
+                    place.place?.address ||
+                      (place.place?.lat | number: '1.4-4') +
+                        ', ' +
+                        (place.place?.lon | number: '1.4-4')
+                  }}
+                </span>
+              </div>
+              <div class="fact-actions">
+                <button
+                  type="button"
+                  class="icon-btn"
+                  title="Remove"
+                  [attr.aria-label]="'Remove ' + place.name"
+                  (click)="aboutMe.removePerson(place.id)"
+                >
+                  <span class="material-symbols-rounded">close</span>
+                </button>
+              </div>
+            </li>
+          } @empty {
+            <li class="fact-empty">No named places yet.</li>
+          }
+        </ul>
+      </section>
+
       <!-- Lasting facts -->
       <section class="section">
         <h2 class="section-title">About you</h2>

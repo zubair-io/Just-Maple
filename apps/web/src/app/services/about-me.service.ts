@@ -48,6 +48,22 @@ export class AboutMeService {
     await this.load();
   }
 
+  /** Named places (Home, Work…) with coordinates. */
+  readonly places = computed(() =>
+    (this._profile()?.entities ?? []).filter((entity) => entity.kind === 'place' && !!entity.place),
+  );
+
+  /** Names a place, e.g. "Home" at a visit's coordinates. New visits there use the name. */
+  async namePlace(input: {
+    name: string;
+    lat: number;
+    lon: number;
+    address?: string;
+  }): Promise<void> {
+    await firstValueFrom(this.http.post('/api/about-me/places', input));
+    await this.load();
+  }
+
   async removePerson(id: string): Promise<void> {
     await firstValueFrom(this.http.delete(`/api/about-me/entities/${id}`));
     await this.load();

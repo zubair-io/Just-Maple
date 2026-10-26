@@ -6,7 +6,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { CommonModule, DatePipe } from '@angular/common';
+import { CommonModule, DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import type { ProfileEntity, ProfileFact } from '@maple/shared';
@@ -22,7 +22,7 @@ interface PersonView {
 @Component({
   selector: 'app-about-me',
   standalone: true,
-  imports: [CommonModule, FormsModule, DatePipe, SettingsHeaderComponent],
+  imports: [CommonModule, FormsModule, DatePipe, DecimalPipe, SettingsHeaderComponent],
   templateUrl: './about-me.component.html',
   styleUrl: './about-me.component.scss',
   changeDetection: ChangeDetectionStrategy.Eager,
@@ -41,7 +41,7 @@ export class AboutMeComponent implements OnInit {
     const me = profile?.me;
     if (!profile || !me) return [];
     return profile.entities
-      .filter((entity) => !entity.isMe)
+      .filter((entity) => !entity.isMe && entity.kind !== 'place')
       .map((entity) => ({
         entity,
         relation: profile.relations

@@ -25,6 +25,17 @@
     }
   </div>
 
+  @if (sharedWithOthers()) {
+    <div
+      class="rounded-lg border border-[var(--color-primary)] px-3 py-2 font-sans text-xs leading-relaxed text-[var(--color-text-main)]"
+      role="alert"
+    >
+      <strong>Others can see this notebook.</strong> The bot's posts here draw on your messages,
+      mail, calendar, places and health, and everyone in the notebook will see them. Use a notebook
+      only you can see if that's not what you want.
+    </div>
+  }
+
   <label
     class="flex flex-col gap-1.5 font-sans text-xs font-semibold text-[var(--color-text-main)]"
   >
@@ -41,6 +52,26 @@
       When you correct the bot in conversation, it adds the correction here.
     </span>
   </label>
+
+  <div class="flex flex-wrap items-center gap-2 font-sans text-xs text-[var(--color-text-main)]">
+    <label class="flex items-center gap-1.5 font-semibold">
+      <input
+        type="checkbox"
+        [checked]="briefOn()"
+        (change)="briefOn.set($any($event.target).checked)"
+      />
+      Daily brief at
+    </label>
+    <input
+      type="time"
+      aria-label="Daily brief time"
+      [value]="briefTime()"
+      [disabled]="!briefOn()"
+      (input)="briefTime.set($any($event.target).value)"
+      class="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 font-sans text-xs text-[var(--color-text-main)] disabled:opacity-50"
+    />
+    <span class="text-[var(--color-text-muted)]">Today's schedule and what needs you.</span>
+  </div>
 
   @if (error()) {
     <p class="m-0 font-sans text-xs text-[var(--color-primary)]" role="alert">{{ error() }}</p>
