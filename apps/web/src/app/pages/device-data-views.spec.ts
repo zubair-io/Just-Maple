@@ -7,6 +7,8 @@ import type { MacDataItem, Page } from '@maple/shared';
 import { IMessageViewComponent } from './imessage-view/imessage-view.component';
 import { ContactsViewComponent } from './contacts-view/contacts-view.component';
 import { HealthViewComponent } from './health-view/health-view.component';
+import { PlacesViewComponent } from './places-view/places-view.component';
+import { AboutMeService } from '../services/about-me.service';
 import {
   DeviceDataService,
   OwnerOnlyError,
@@ -209,6 +211,43 @@ describe('device data views', () => {
       expect(root.querySelector('[data-testid="collector"]')?.textContent).toContain(
         'Not collected yet: open Maple on your iPhone and turn on Health',
       );
+    });
+  });
+
+  describe('Places', () => {
+    it("names a visit's place, so new visits and reminders use the name", async () => {
+      listItems.mockResolvedValue({
+        items: [
+          item({
+            id: 'location:visit:1',
+            source: 'location',
+            title: '12 Maple St',
+            location: '12 Maple St, Springfield',
+            extra: { lat: 40.7128, lon: -74.006 },
+          }),
+        ],
+        total: 1,
+        collector: { name: 'iPhone', platform: 'ios', lastUploadAt: undefined },
+      } as unknown as DeviceItemsResult);
+      const namePlace = vi.fn(async () => undefined);
+      TestBed.overrideProvider(AboutMeService, { useValue: { namePlace } });
+      TestBed.overrideProvider(DialogService, {
+        useValue: { confirm: vi.fn(async () => true), prompt: vi.fn(async () => ' Home ') },
+      });
+      const { fixture, root } = await render(PlacesViewComponent);
+      const button = [...root.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === 'Name',
+      ) as HTMLButtonElement;
+      button.click();
+      await wait();
+      fixture.detectChanges();
+      expect(namePlace).toHaveBeenCalledWith({
+        name: 'Home',
+        lat: 40.7128,
+        lon: -74.006,
+        address: '12 Maple St, Springfield',
+      });
+      expect(root.textContent).toContain('Saved "Home"');
     });
   });
 });

@@ -138,6 +138,9 @@ export interface VisitRow {
   arrived: number | null;
   departed: number | null;
   durationMinutes: number | null;
+  /** Where the visit was, for naming the place. */
+  lat: number | null;
+  lon: number | null;
 }
 
 export function visitRow(item: MacDataItem): VisitRow {
@@ -155,6 +158,8 @@ export function visitRow(item: MacDataItem): VisitRow {
       arrived !== null && departed !== null && departed > arrived
         ? Math.round((departed - arrived) / 60_000)
         : null,
+    lat: typeof data['lat'] === 'number' ? data['lat'] : null,
+    lon: typeof data['lon'] === 'number' ? data['lon'] : null,
   };
 }
 
