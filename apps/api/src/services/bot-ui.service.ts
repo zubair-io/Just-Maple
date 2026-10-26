@@ -109,8 +109,26 @@ function fenceBareOpenUI(response: string): string {
         .replace(/^```[a-z]*\s*\n([\s\S]*?)\n?```$/i, '$1')
         .trim();
     const isOpenUI =
-        /^[A-Za-z_]\w*\s*=\s*[A-Z]\w*\(/.test(body) && /^\s*root\s*=\s*Response\(/m.test(body);
+        /^[A-Za-z_]\w*\s*=\s*[A-Z]\w*\(/.test(body) && /\broot\s*=\s*Response\(/.test(body);
     return isOpenUI ? '```openui\n' + body + '\n```' : response;
+}
+
+/**
+ * Puts each OpenUI statement on its own line. Models sometimes run them together
+ * (`root = Response([a])a = Text("…")`), which the parser can't read.
+ */
+function splitStatements(source: string): string {
+    // Blank out string contents (same length) so brackets inside text don't count.
+    const masked = source.replace(
+        /"(?:\\.|[^"\\])*"/g,
+        (s) => '"' + 'x'.repeat(s.length - 2) + '"',
+    );
+    const breaks = [...masked.matchAll(/[)\]](?=[ \t]*[A-Za-z_]\w*\s*=\s*[A-Z]\w*\()/g)].map(
+        (m) => m.index! + 1,
+    );
+    let out = source;
+    for (const at of breaks.reverse()) out = out.slice(0, at) + '\n' + out.slice(at).trimStart();
+    return out;
 }
 
 export function parseBotResponse(response: string): { markdown: string; ui?: BotUIResponse } {
@@ -118,7 +136,7 @@ export function parseBotResponse(response: string): { markdown: string; ui?: Bot
     const fences = [...response.matchAll(/```openui\s*\n([\s\S]*?)```/g)];
     if (fences.length !== 1 || response.length > 100000) return { markdown: response };
     const match = fences[0]!;
-    const source = match[1]!;
+    const source = splitStatements(match[1]!);
     const markdown = response.replace(match[0], '').trim();
     const fallback = {
         markdown:
