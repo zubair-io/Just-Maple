@@ -7,6 +7,7 @@ import {
   OnDestroy,
   effect,
   ChangeDetectionStrategy,
+  untracked,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
@@ -65,13 +66,16 @@ export class MessageViewComponent implements OnInit, OnDestroy {
     effect(() => {
       const notebookId = this.selectedNotebookId();
       const pageId = this.selectedPageId();
-      this.notificationService.setActiveNotebook(notebookId);
-      if (pageId) {
-        // Load messages for this page
-        this.messageService.loadMessagesByPageId(pageId).subscribe();
-        // Mark messages as read
-        this.messageService.markAsReadByPageId(pageId).subscribe();
-      }
+      // Runs only when the open chat changes. The calls below read and update message
+      // state; tracking those reads re-ran this effect on every reply, an endless loop
+      // of loading and marking read.
+      untracked(() => {
+        this.notificationService.setActiveNotebook(notebookId);
+        if (pageId) {
+          this.messageService.loadMessagesByPageId(pageId).subscribe();
+          this.messageService.markAsReadByPageId(pageId).subscribe();
+        }
+      });
     });
   }
 
