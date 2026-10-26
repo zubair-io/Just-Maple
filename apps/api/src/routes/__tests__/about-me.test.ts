@@ -287,11 +287,9 @@ describe.runIf(mongoAvailable)('About me', () => {
         const julia = await createUserFixture({ displayName: 'Julia' });
         const juliaId = julia._id.toString();
         const asJulia = await caller(juliaId);
-        await testDb!
-            .collection('notebooks')
-            .updateOne({ _id: new ObjectId(notebookId) }, {
-                $push: { 'sharing.sharedWith': { userId: juliaId, accessLevel: 'write' } },
-            } as never);
+        await testDb!.collection('notebooks').updateOne({ _id: new ObjectId(notebookId) }, {
+            $push: { 'sharing.sharedWith': { userId: juliaId, accessLevel: 'write' } },
+        } as never);
         await addAboutMePage();
         expect((await load(asJulia)).me).toBeNull(); // Julia has none until something is learned
 

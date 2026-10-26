@@ -382,21 +382,17 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
         });
 
         it('never asks in a shared notebook or one without About me', async () => {
-            await testDb!
-                .collection('notebooks')
-                .updateOne({ _id: new ObjectId(notebookId) }, {
-                    $push: { 'sharing.sharedWith': { userId: 'someone', accessLevel: 'read' } },
-                } as never);
+            await testDb!.collection('notebooks').updateOne({ _id: new ObjectId(notebookId) }, {
+                $push: { 'sharing.sharedWith': { userId: 'someone', accessLevel: 'read' } },
+            } as never);
             await tick(at('17:31'));
             expect(askAboutMeQuestion).not.toHaveBeenCalled();
             await testDb!
                 .collection('pages')
                 .deleteMany({ type: 'aboutme', userId: new ObjectId(userId) });
-            await testDb!
-                .collection('notebooks')
-                .updateOne({ _id: new ObjectId(notebookId) }, {
-                    $pull: { 'sharing.sharedWith': { userId: 'someone' } },
-                } as never);
+            await testDb!.collection('notebooks').updateOne({ _id: new ObjectId(notebookId) }, {
+                $pull: { 'sharing.sharedWith': { userId: 'someone' } },
+            } as never);
             await tick(at('17:32'));
             expect(askAboutMeQuestion).not.toHaveBeenCalled();
         });
