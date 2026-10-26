@@ -108,6 +108,38 @@ nonisolated struct CollectorStateFile: Sendable {
     }
 }
 
+/// Loads and saves any small collector value (the named places, travel estimates) as
+/// JSON next to the queues.
+nonisolated struct CollectorJSONFile<Value: Codable & Sendable>: Sendable {
+    let url: URL
+
+    init(url: URL) { self.url = url }
+
+    init(name: String) {
+        self.url = CollectorStateFile(name: name).url
+    }
+
+    func load() -> Value? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(Value.self, from: data)
+    }
+
+    func save(_ value: Value) {
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let data = try JSONEncoder().encode(value)
+            #if os(iOS)
+            try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            #else
+            try data.write(to: url, options: .atomic)
+            #endif
+        } catch {
+            print("[Collectors] Could not save \(url.lastPathComponent): \(error)")
+        }
+    }
+}
+
 /// Uploads one collector's queue: embeds the items on the device, sends them with their
 /// vectors, and records what the server accepted.
 nonisolated enum CollectorUploader {

@@ -124,8 +124,15 @@ nonisolated struct VisitRecord: Codable, Equatable, Sendable {
     var street: String?
     /// Reverse geocoding is retried a few times (it needs the network), then given up.
     var geocodeAttempts: Int = 0
+    /// The named place (Home, Work) this visit was at, from About me.
+    var placeId: String? = nil
+    /// That place's name, shown as the title instead of the geocoded name.
+    var namedPlace: String? = nil
+    /// Recorded by entering and leaving a named place's region, not by `CLVisit`.
+    var fromRegion: Bool? = nil
 
     var isGeocoded: Bool { placeName != nil || address != nil }
+    var isRegionStay: Bool { fromRegion == true }
 }
 
 nonisolated enum LocationMapping {
@@ -163,6 +170,10 @@ nonisolated enum LocationMapping {
             var existing = records[index]
             existing.arrival = existing.arrival ?? visit.arrival
             existing.departure = visit.departure ?? existing.departure
+            if existing.placeId == nil, let placeId = visit.placeId {
+                existing.placeId = placeId
+                existing.namedPlace = visit.namedPlace
+            }
             if visit.accuracy > 0, visit.accuracy < existing.accuracy || existing.accuracy <= 0 {
                 existing.accuracy = visit.accuracy
             }
@@ -216,7 +227,7 @@ nonisolated enum LocationMapping {
     static func item(for visit: VisitRecord, calendar: Calendar = .current) -> DeviceItem {
         let coordinates = String(
             format: "%.4f, %.4f", locale: CollectorFormat.locale, visit.latitude, visit.longitude)
-        let title = visit.placeName ?? visit.address ?? coordinates
+        let title = visit.namedPlace ?? visit.placeName ?? visit.address ?? coordinates
         // Show the street in brackets unless it is the title already.
         let detail = [visit.street, visit.address].compactMap { $0 }.first { $0 != title }
         let place = detail.map { "\(title) (\($0))" } ?? title
@@ -246,7 +257,8 @@ nonisolated enum LocationMapping {
             "arrived": visit.arrival.map { .string(CollectorFormat.iso($0, calendar)) } ?? .null,
             "departed": visit.departure.map { .string(CollectorFormat.iso($0, calendar)) } ?? .null,
         ]
-        if let name = visit.placeName { extra["place"] = .string(name) }
+        if let name = visit.namedPlace ?? visit.placeName { extra["place"] = .string(name) }
+        if let placeId = visit.placeId { extra["placeId"] = .string(placeId) }
 
         return CollectorRevision.stamped(
             DeviceItem(
