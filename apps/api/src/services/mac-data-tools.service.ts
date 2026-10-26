@@ -240,21 +240,25 @@ function aboutMeToolDefinitions(about: NotebookAboutMe, userId: string): ToolDef
         {
             name: 'remember_about_me',
             description:
-                'Save something lasting about the user or their people, or a change in their current situation, to their About me. ' +
+                'Save something lasting about the user or their people to their About me. ' +
                 (others.length
-                    ? 'For another member of this notebook or their people, set "whose" to that member. '
+                    ? 'For another member of this notebook or their people, set "whose" to that member: it waits for them to approve it. '
                     : '') +
-                'Use kind "current" with an "until" date for temporary things (traveling until Friday, sick today). ' +
                 (about.shared
-                    ? 'This notebook is shared, so never save health, money, legal or relationship-trouble facts. '
-                    : 'Set sensitive for health, money, legal or relationship-trouble facts: they are only suggested until the user approves. ') +
+                    ? 'Use kind "current" with an "until" date for temporary things (a school break until Friday). '
+                    : 'Use kind "current" with an "until" date for temporary things (traveling until Friday). ') +
+                'Set sensitive for health, money, legal or relationship-trouble facts' +
+                (about.shared
+                    ? '. This notebook is shared with other people, so those are never saved here, and neither is where anyone is or is traveling. '
+                    : ': they are only suggested until the user approves. ') +
                 'Do not save things already in About me or trivia from a single message.',
             parameters: {
                 type: 'object',
                 properties: {
                     about: {
                         type: 'string',
-                        description: '"me" or the person, pet or place it is about, e.g. "Emma".',
+                        description:
+                            '"me" or the person, pet or place it is about, e.g. "Emma". A name here is always one of the user\'s own people; use "whose" for another member\'s About me.',
                     },
                     ...(others.length
                         ? {
@@ -273,8 +277,7 @@ function aboutMeToolDefinitions(about: NotebookAboutMe, userId: string): ToolDef
                     },
                     key: {
                         type: 'string',
-                        description:
-                            'Short label, e.g. "school", "workout_time", "travel", "allergy".',
+                        description: 'Short label, e.g. "school", "team", "workout_time".',
                     },
                     value: { type: 'string', maxLength: 500 },
                     kind: { type: 'string', enum: ['lasting', 'current'] },
@@ -282,7 +285,10 @@ function aboutMeToolDefinitions(about: NotebookAboutMe, userId: string): ToolDef
                         type: 'string',
                         description: 'For current facts: when it ends, ISO 8601.',
                     },
-                    sensitive: { type: 'boolean' },
+                    sensitive: {
+                        type: 'boolean',
+                        description: 'True for health, money, legal or relationship-trouble facts.',
+                    },
                 },
                 required: ['about', 'key', 'value', 'kind'],
                 additionalProperties: false,
@@ -291,7 +297,7 @@ function aboutMeToolDefinitions(about: NotebookAboutMe, userId: string): ToolDef
         {
             name: 'update_about_me',
             description:
-                'Change or end a fact in About me by its id (shown in [brackets] in About me and returned by recall_about_me), e.g. when a trip ends early or something was wrong.',
+                "Change or end a fact in About me by its id (shown in [brackets] in About me and returned by recall_about_me), e.g. when plans end early or something was wrong. A change to another member's fact waits for them to approve it, and only they can remove it.",
             parameters: {
                 type: 'object',
                 properties: {
@@ -374,6 +380,7 @@ export async function executeMacDataTool(
                 if (!ctx.aboutMe) return 'Unknown tool: update_about_me';
                 return updateAboutMe(
                     ctx.aboutMe.notebook,
+                    ctx.userId,
                     {
                         factId: String(input.fact_id ?? ''),
                         ...(typeof input.value === 'string' ? { value: input.value } : {}),

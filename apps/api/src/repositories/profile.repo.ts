@@ -240,6 +240,7 @@ export async function updateFact(
     scope: ProfileScope,
     id: string,
     changes: { value?: string; validUntil?: string | null; status?: 'active' | 'removed' },
+    options: { shared?: boolean } = {},
 ): Promise<ProfileFact | null> {
     const fact = await findFact(scope, id);
     if (!fact) return null;
@@ -258,10 +259,16 @@ export async function updateFact(
         { _id: id, ...own(scope) },
         { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
     );
-    // Removing (undoing) an active fact brings back the one it replaced, if any.
+    // Removing (undoing) an active fact brings back the one it replaced, if any; in a
+    // shared notebook, never a sensitive one.
     if (changes.status === 'removed' && fact.status === 'active') {
         await facts().updateOne(
-            { ...own(scope), replacedBy: id, status: 'replaced' },
+            {
+                ...own(scope),
+                replacedBy: id,
+                status: 'replaced',
+                ...(options.shared ? { sensitive: { $ne: true } } : {}),
+            },
             { $set: { status: 'active', updatedAt: new Date().toISOString() } },
         );
     }

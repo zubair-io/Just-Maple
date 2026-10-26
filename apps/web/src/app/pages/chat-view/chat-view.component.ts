@@ -45,6 +45,7 @@ import {
 import { getPageTypeLabel as getLabel, getPageTypeIcon as getIcon } from '../../utils/page-types';
 import { isLocalNotebook } from '../../providers/data-provider.interface';
 import type { NotebookMember, Page, Message, MacDataSource } from '@maple/shared';
+import { aboutMePageId } from '@maple/shared';
 
 interface NotebookSummary {
   pageCounts: Record<string, number>;
@@ -558,7 +559,8 @@ export class ChatViewComponent implements OnInit, OnDestroy {
     try {
       const page = await lastValueFrom(
         this.pageService.createPage({
-          id: crypto.randomUUID(),
+          // The server gives each notebook's About me this fixed id.
+          id: aboutMePageId(notebookId),
           type: 'aboutme',
           title: 'About me',
           notebookId,
@@ -569,7 +571,8 @@ export class ChatViewComponent implements OnInit, OnDestroy {
       console.error('Failed to create About me page:', error);
       await this.dialogService.alert({
         title: 'Could not add About me',
-        message: 'This notebook may already have one. Check your connection and try again.',
+        message:
+          'Only members who can edit this notebook can add it. Check your connection and try again.',
       });
     }
   }

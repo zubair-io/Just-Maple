@@ -34,6 +34,7 @@ import {
     ProactiveSettingsError,
 } from '../services/proactive-settings.service';
 import { ensureProfile } from '../services/about-me.service';
+import { aboutMePageId } from '@maple/shared';
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
 import { indexPage, removeFromIndex } from '../repositories/search.repo';
 import type { Page } from '@maple/shared';
@@ -157,31 +158,44 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 set.status = 400;
                 return { error: 'Invalid page', message: 'Choose which data the page shows' };
             }
-            // About me: one per notebook, in a notebook the user can read.
+            // About me: one per notebook (a fixed id), added by a member who can write.
+            // Adding it again returns the one that's there, restoring it from the trash.
             if (body.type === 'aboutme') {
                 const notebookId = body.notebookId;
                 if (
                     !notebookId ||
-                    !(await findNotebookByIdWithAccess(notebookId, auth.user._id, 'read').catch(
+                    !(await findNotebookByIdWithAccess(notebookId, auth.user._id, 'write').catch(
                         () => null,
                     ))
                 ) {
-                    set.status = 400;
-                    return { error: 'Invalid page', message: 'About me needs a notebook' };
-                }
-                if (await findAboutMePage(notebookId)) {
-                    set.status = 409;
+                    set.status = 403;
                     return {
-                        error: 'Already exists',
-                        message: 'This notebook already has an About me page',
+                        error: 'Not allowed',
+                        message: 'Only members who can edit this notebook can add About me',
                     };
                 }
+                const existing =
+                    (await findAboutMePage(notebookId)) ??
+                    (await restoreAboutMePage(aboutMePageId(notebookId), auth.user._id));
+                if (existing) return { page: existing };
+                body.id = aboutMePageId(notebookId);
             }
             const sanitizedBody = {
                 ...body,
                 title: body.title ? sanitizeName(body.title) : undefined,
             };
-            const page = await createPage(auth.user._id, sanitizedBody);
+            let page: Page;
+            try {
+                page = await createPage(auth.user._id, sanitizedBody);
+            } catch (error) {
+                // Another member added About me at the same moment: theirs is the one.
+                const existing =
+                    body.type === 'aboutme' && body.notebookId
+                        ? await findAboutMePage(body.notebookId)
+                        : null;
+                if (existing) return { page: existing };
+                throw error;
+            }
 
             // Broadcast new page creation to all clients viewing this notebook
             if (page.notebookId) {
@@ -256,6 +270,11 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
 
             // Get the page before update to detect notebook changes
             const previousPage = await findPageById(params.id, auth.user._id);
+            const aboutMeError = await aboutMeChangeError(previousPage, body);
+            if (aboutMeError) {
+                set.status = 409;
+                return { error: 'Not allowed', message: aboutMeError };
+            }
 
             const sanitizedBody = {
                 ...body,
@@ -326,6 +345,11 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
 
             // Get the page before update to detect notebook changes
             const previousPage = await findPageById(params.id, auth.user._id);
+            const aboutMeError = await aboutMeChangeError(previousPage, body);
+            if (aboutMeError) {
+                set.status = 409;
+                return { error: 'Not allowed', message: aboutMeError };
+            }
 
             const sanitizedBody = {
                 ...body,
@@ -430,6 +454,14 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+            const aboutMeError = await aboutMeChangeError(
+                await findPageById(params.id, auth.user._id),
+                { isTrashed: false },
+            );
+            if (aboutMeError) {
+                set.status = 409;
+                return { error: 'Not allowed', message: aboutMeError };
             }
             const page = await restorePageFromTrash(params.id, auth.user._id);
 
@@ -627,6 +659,31 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
         },
         { params: t.Object({ id: t.String() }) },
     );
+
+/**
+ * Why a change to an About me page isn't allowed, or null. Its data belongs to its
+ * notebook, so it can't move to another one, and a notebook keeps one: an older copy
+ * can't come back from the trash while another is there.
+ */
+async function aboutMeChangeError(
+    page: Page | null,
+    changes: { notebookId?: string; isTrashed?: boolean },
+): Promise<string | null> {
+    if (page?.type !== 'aboutme' || !page.notebookId) return null;
+    if (changes.notebookId !== undefined && changes.notebookId !== page.notebookId)
+        return 'About me belongs to its notebook and can’t be moved';
+    if (changes.isTrashed === false && page.isTrashed) {
+        const current = await findAboutMePage(page.notebookId);
+        if (current && current.id !== page.id) return 'This notebook already has an About me page';
+    }
+    return null;
+}
+
+/** Brings a notebook's trashed About me page back, if the user may. */
+async function restoreAboutMePage(id: string, userId: string): Promise<Page | null> {
+    const page = await findPageById(id, userId);
+    return page?.isTrashed ? restorePageFromTrash(id, userId) : null;
+}
 
 async function isNotebookOwner(page: Page, userId: string): Promise<boolean> {
     return (

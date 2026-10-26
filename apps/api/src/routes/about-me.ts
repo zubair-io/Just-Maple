@@ -9,6 +9,7 @@ import {
 } from '@maple/shared';
 import {
     deleteRelation,
+    findFact,
     listPlaces,
     savePlace,
     updateFact,
@@ -22,8 +23,10 @@ import { isNotebookShared } from '../utils/notebook-sharing';
 
 /**
  * About me, on a notebook's About me page: read yours, edit facts, approve or undo what
- * bots learned. Each member only ever reaches their own About me in a notebook they can
- * read. Named places (`/places`) belong to the account; the iPhone reads them.
+ * bots learned. Each member only ever reaches their own About me, in a notebook they're a
+ * member of with write access (public read access isn't enough). While the notebook is
+ * shared, sensitive facts are hidden and can't be approved or restored. Named places
+ * (`/places`) belong to the account; the iPhone reads them.
  */
 
 const NotebookQuery = t.Object({ notebookId: t.String() });
@@ -33,7 +36,7 @@ async function scopeFor(
     auth: AuthContext,
     notebookId: string,
 ): Promise<{ scope: ProfileScope; shared: boolean } | null> {
-    const notebook = await findNotebookByIdWithAccess(notebookId, auth.user._id, 'read').catch(
+    const notebook = await findNotebookByIdWithAccess(notebookId, auth.user._id, 'write').catch(
         () => null,
     );
     if (!notebook || !(await findAboutMePage(notebookId))) return null;
@@ -66,9 +69,16 @@ export const aboutMeRoutes = new Elysia({ prefix: '/api/about-me' })
             const found = await scopeFor(auth, query.notebookId);
             if (!found) {
                 set.status = 404;
-                return { error: 'Not found', message: 'This notebook has no About me page' };
+                return {
+                    error: 'Not found',
+                    message:
+                        'About me is only for members who can edit this notebook, once it has an About me page.',
+                };
             }
-            return { aboutMe: await getAboutMe(found.scope), shared: found.shared };
+            return {
+                aboutMe: await getAboutMe(found.scope, Date.now(), { shared: found.shared }),
+                shared: found.shared,
+            };
         },
         { query: NotebookQuery },
     )
@@ -79,7 +89,19 @@ export const aboutMeRoutes = new Elysia({ prefix: '/api/about-me' })
         async ({ auth, params, query, body, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
             const found = await scopeFor(auth, query.notebookId);
-            const fact = found ? await updateFact(found.scope, params.id, body) : null;
+            const current = found ? await findFact(found.scope, params.id) : null;
+            if (current?.sensitive && found?.shared) {
+                set.status = 403;
+                return {
+                    error: 'Not allowed',
+                    message:
+                        'This notebook is shared, so sensitive things can’t be kept in its About me.',
+                };
+            }
+            const fact =
+                found && current
+                    ? await updateFact(found.scope, params.id, body, { shared: found.shared })
+                    : null;
             if (!fact) {
                 set.status = 404;
                 return { error: 'Not found' };

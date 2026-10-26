@@ -52,6 +52,49 @@ const CURRENT_PLACE_HOURS = 12;
 
 const SENSITIVE_IN_SHARED =
     'Not saved: this notebook is shared with other people, so sensitive things (health, money, legal matters, relationship trouble) are never kept in its About me.';
+const WHEREABOUTS_IN_SHARED =
+    "Not saved: this notebook is shared with other people, so where someone is or is traveling isn't kept in its About me.";
+
+/**
+ * Words that mark a fact as health, money, legal or relationship trouble. A backstop for
+ * shared notebooks when the model doesn't flag a fact as sensitive; it errs on refusing.
+ */
+const SENSITIVE_WORDS = new RegExp(
+    '\\b(' +
+        [
+            // health
+            'sick|ill|illness|flu|covid|fever|cancer|tumou?r|diagnos\\w*|surgery|hospital\\w*',
+            'doctor|therap\\w*|medicat\\w*|medicine|prescription\\w*|pregnan\\w*|miscarriage',
+            'injur\\w*|allerg\\w*|disease|disorder|symptoms?|diabet\\w*|depress\\w*|anxiety',
+            'mental|rehab|addict\\w*|health|medical',
+            // money
+            'salary|income|debts?|loans?|mortgage|bank account|credit card|bankrupt\\w*|owes?',
+            'paycheck|taxes|ssn',
+            // legal
+            'lawsuit|lawyer|attorney|court date|court case|arrest\\w*|custody|sued|legal|police',
+            // relationship trouble
+            'divorc\\w*|separated|separation|break ?up|broke up|affair|cheat\\w*|counseling',
+        ].join('|') +
+        ')\\b',
+    'i',
+);
+
+/** Words that say where someone is right now, for current facts. */
+const WHEREABOUTS_WORDS =
+    /\b(location|whereabouts|travel\w*|trip|vacation|holiday|staying|visiting|out of town|abroad|at home|currently (in|at))\b/i;
+
+/** Why a fact can't be saved in a shared notebook, or null when it can. */
+export function sharedRefusal(input: {
+    key: string;
+    value: string;
+    kind: 'lasting' | 'current';
+    sensitive?: boolean;
+}): string | null {
+    const text = `${input.key.replace(/_/g, ' ')} ${input.value}`;
+    if (input.sensitive || SENSITIVE_WORDS.test(text)) return SENSITIVE_IN_SHARED;
+    if (input.kind === 'current' && WHEREABOUTS_WORDS.test(text)) return WHEREABOUTS_IN_SHARED;
+    return null;
+}
 
 // MARK: - Reading
 
@@ -61,14 +104,23 @@ export function isLive(fact: ProfileFact, now = Date.now()): boolean {
     return !fact.validUntil || Date.parse(fact.validUntil) > now;
 }
 
-/** One person's About me in one notebook. */
-export async function getAboutMe(scope: ProfileScope, now = Date.now()): Promise<AboutMe> {
-    const [me, entities, relations, facts] = await Promise.all([
+/**
+ * One person's About me in one notebook. While the notebook is shared, sensitive facts
+ * (and suggestions) saved while it was private are hidden; they come back if it becomes
+ * private again.
+ */
+export async function getAboutMe(
+    scope: ProfileScope,
+    now = Date.now(),
+    options: { shared?: boolean } = {},
+): Promise<AboutMe> {
+    const [me, entities, relations, stored] = await Promise.all([
         findMe(scope),
         listEntities(scope),
         listRelations(scope),
         listFacts(scope),
     ]);
+    const facts = options.shared ? stored.filter((fact) => !fact.sensitive) : stored;
     const since = now - RECENTLY_LEARNED_DAYS * 24 * 60 * 60 * 1000;
     return {
         me,
@@ -117,9 +169,8 @@ export async function loadNotebookAboutMe(
     owners.sort((a, b) => (a === userId ? -1 : b === userId ? 1 : a.localeCompare(b)));
     const people: NotebookAboutMe['people'] = [];
     for (const owner of owners) {
-        const profile = await getAboutMe({ userId: owner, notebookId }, now);
+        const profile = await getAboutMe({ userId: owner, notebookId }, now, { shared });
         if (!profile.me) continue;
-        if (shared) profile.facts = profile.facts.filter((fact) => !fact.sensitive);
         people.push({ userId: owner, profile: profile as AboutMe & { me: ProfileEntity } });
     }
     const named = new Map(people.map((person) => [person.userId, person.profile.me.name]));
@@ -208,10 +259,13 @@ export function aboutMeSummary(
         "Each person's About me is listed under their name. Facts under one person are about them and their people, not about anyone else.",
         ...sections,
         'Use this to make judgment calls (who people are, where they are, routines). Look up more with recall_about_me.',
-        "When you learn something new and lasting about someone here or their people, or their current situation changes (traveling, sick, at a new place), save it with remember_about_me, in the right person's About me. When the user answers a question you asked to fill in their About me, save the answer.",
         about.shared
-            ? 'This notebook is shared, so never save health, money, legal or relationship-trouble facts.'
-            : 'Mark health, money, legal and relationship-trouble facts as sensitive.',
+            ? 'When you learn something new and lasting about someone here or their people (a new school, team or job), save it with remember_about_me. Facts about another member go in their About me (set "whose"); they approve them there.'
+            : 'When you learn something new and lasting about the user or their people (a new school, team or job), or their plans change (traveling until Friday), save it with remember_about_me.',
+        'When the user answers a question you asked to fill in their About me, save the answer.',
+        about.shared
+            ? "Mark health, money, legal and relationship-trouble facts as sensitive. This notebook is shared with other people, so those are never saved here, and neither is where anyone is or is traveling: don't try."
+            : 'Mark health, money, legal and relationship-trouble facts as sensitive: they wait for the user to approve them.',
     ].join('\n\n');
 }
 
@@ -287,13 +341,17 @@ export async function rememberAboutMe(
     source: ProfileFactSource,
     timeZone = 'UTC',
 ): Promise<string> {
-    if (about.shared && input.sensitive) return SENSITIVE_IN_SHARED;
-    // Into another member's About me when it's about them (or the bot said whose).
-    const member = about.members.find(
-        (m) =>
-            m.userId !== userId &&
-            [input.whose, input.about].some((name) => !!name && isNamed(m.name, [], name)),
-    );
+    if (about.shared) {
+        const refusal = sharedRefusal(input);
+        if (refusal) return refusal;
+    }
+    // Another member's About me only when the bot says whose; a name in `about` is
+    // always one of the user's own people.
+    const member = input.whose
+        ? about.members.find((m) => m.userId !== userId && isNamed(m.name, [], input.whose!))
+        : undefined;
+    if (input.whose && !member && !isNamed(nameOf(about, userId), [], input.whose))
+        return `Not saved: nobody named ${input.whose} is in this notebook.`;
     const scope = { userId: member?.userId ?? userId, notebookId: about.notebookId };
     const me = await ensureProfile(scope);
     const subject = member && isNamed(me.name, me.aliases, input.about) ? 'me' : input.about;
@@ -307,7 +365,8 @@ export async function rememberAboutMe(
         ...(validUntil ? { validUntil } : {}),
         source,
         sensitive: input.sensitive,
-        pending: input.pending,
+        // Someone else's About me only changes once they approve it.
+        pending: input.pending || !!member,
     });
     const whose = member ? `${member.name}'s` : 'their';
     return fact.status === 'pending'
@@ -323,6 +382,7 @@ export async function rememberAboutMe(
  */
 export async function updateAboutMe(
     about: NotebookAboutMe,
+    userId: string,
     input: { factId: string; value?: string; until?: string; remove?: boolean },
     source: ProfileFactSource,
     timeZone = 'UTC',
@@ -338,14 +398,23 @@ export async function updateAboutMe(
     const { fact } = found;
     const scope = { userId: found.userId, notebookId: about.notebookId };
     const learned = fact.source.type === 'bot';
+    const theirs = found.userId !== userId;
     if (input.remove) {
-        if (!learned || pending)
+        if (!learned || pending || theirs)
             return 'Only the person can remove that. Tell them it may be wrong instead.';
-        await updateFact(scope, fact.id, { status: 'removed' });
+        await updateFact(scope, fact.id, { status: 'removed' }, { shared: about.shared });
         return 'Removed.';
     }
-    if (about.shared && fact.sensitive) return SENSITIVE_IN_SHARED;
     const validUntil = untilIso(input.until, timeZone) ?? fact.validUntil;
+    if (about.shared) {
+        const refusal = sharedRefusal({
+            key: fact.key,
+            value: input.value ?? fact.value,
+            kind: fact.kind,
+            sensitive: fact.sensitive,
+        });
+        if (refusal) return refusal;
+    }
     const saved = await saveFact(scope, {
         about: fact.about,
         key: fact.key,
@@ -354,11 +423,16 @@ export async function updateAboutMe(
         ...(validUntil ? { validUntil } : {}),
         source,
         sensitive: fact.sensitive,
-        pending: pending || !learned,
+        // Their own About me changes only once they approve it.
+        pending: pending || !learned || theirs,
     });
     return saved.status === 'pending'
         ? 'Suggested; it changes once they approve it in About me.'
         : `Updated (${saved.id}).`;
+}
+
+function nameOf(about: NotebookAboutMe, userId: string): string {
+    return about.members.find((member) => member.userId === userId)?.name ?? '';
 }
 
 /** "Julia" names "Julia Lawrence" (full name, first name or an alias). */

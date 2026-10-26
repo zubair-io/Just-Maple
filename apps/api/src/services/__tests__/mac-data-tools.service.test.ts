@@ -134,7 +134,17 @@ describe('About me in bot context', () => {
         const remember = macDataToolDefinitions(shared!).find(
             (t) => t.name === 'remember_about_me',
         )!;
-        expect(remember.description).toContain('never save health');
+        // `sensitive` is described in every mode; shared ones say those aren't kept, and
+        // no example suggests saving health or whereabouts.
+        expect(remember.description).toContain('Set sensitive for health');
+        expect(remember.description).toContain('never saved here');
+        expect(remember.description).not.toMatch(/sick|traveling until/i);
+        const own = await getMacDataToolContext('u1', 'n1', ownBot);
+        const privateRemember = macDataToolDefinitions(own!).find(
+            (t) => t.name === 'remember_about_me',
+        )!;
+        expect(privateRemember.description).toContain('Set sensitive for health');
+        expect(privateRemember.description).not.toMatch(/sick/i);
     });
 
     it('holds what a bot saves for approval once it has read messages or mail', async () => {

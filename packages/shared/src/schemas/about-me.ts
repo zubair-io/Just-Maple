@@ -146,3 +146,8 @@ export const SaveProfilePlaceSchema = Type.Object({
     address: Type.Optional(Type.String({ maxLength: 300 })),
 });
 export type SaveProfilePlaceInput = Static<typeof SaveProfilePlaceSchema>;
+
+/** A notebook's About me page has a fixed id, so a notebook can only ever have one. */
+export function aboutMePageId(notebookId: string): string {
+    return `aboutme-${notebookId}`;
+}
