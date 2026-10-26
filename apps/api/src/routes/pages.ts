@@ -20,6 +20,7 @@ import {
     restorePageFromTrash,
     emptyTrash,
     publishPage,
+    findAboutMePage,
 } from '../repositories/page.repo';
 import { otService } from '../services/ot.service';
 import { realtimeWSService } from '../services/realtime-ws.service';
@@ -32,6 +33,7 @@ import {
     clearProactiveSettings,
     ProactiveSettingsError,
 } from '../services/proactive-settings.service';
+import { ensureProfile } from '../services/about-me.service';
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
 import { indexPage, removeFromIndex } from '../repositories/search.repo';
 import type { Page } from '@maple/shared';
@@ -155,6 +157,26 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 set.status = 400;
                 return { error: 'Invalid page', message: 'Choose which data the page shows' };
             }
+            // About me: one per notebook, in a notebook the user can read.
+            if (body.type === 'aboutme') {
+                const notebookId = body.notebookId;
+                if (
+                    !notebookId ||
+                    !(await findNotebookByIdWithAccess(notebookId, auth.user._id, 'read').catch(
+                        () => null,
+                    ))
+                ) {
+                    set.status = 400;
+                    return { error: 'Invalid page', message: 'About me needs a notebook' };
+                }
+                if (await findAboutMePage(notebookId)) {
+                    set.status = 409;
+                    return {
+                        error: 'Already exists',
+                        message: 'This notebook already has an About me page',
+                    };
+                }
+            }
             const sanitizedBody = {
                 ...body,
                 title: body.title ? sanitizeName(body.title) : undefined,
@@ -172,6 +194,14 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                     page,
                     notebookId: page.notebookId,
                 });
+            }
+
+            // Adding About me starts the creator's, from their own contacts and calendar.
+            if (page.type === 'aboutme' && page.notebookId) {
+                void ensureProfile(
+                    { userId: auth.user._id, notebookId: page.notebookId },
+                    { seed: true },
+                ).catch((error) => console.error('[AboutMe] Could not seed About me:', error));
             }
 
             // Index page for search (background, don't block response)
@@ -195,6 +225,7 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                         t.Literal('json'),
                         t.Literal('canvas'),
                         t.Literal('devicedata'),
+                        t.Literal('aboutme'),
                     ]),
                 ),
                 title: t.Optional(t.String({ maxLength: 255 })),

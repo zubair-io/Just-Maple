@@ -8,16 +8,17 @@ import type {
 import {
     addRelation,
     createEntity,
-    endCurrentFacts,
-    findFact,
+    findFactInNotebook,
     findMe,
     listPlaces,
     listEntities,
     listFacts,
     listRelations,
     normalizeKey,
+    profileOwnerIds,
     saveFact,
     updateFact,
+    type ProfileScope,
 } from '../repositories/profile.repo';
 import {
     findContactsByName,
@@ -26,23 +27,31 @@ import {
 } from '../repositories/device-item.repo';
 import { findUserById } from '../repositories/user.repo';
 import { collectorTimeZone } from '../repositories/collector.repo';
+import { findNotebookByIdUnsafe } from '../repositories/notebook.repo';
+import { isNotebookShared, notebookMemberIds } from '../utils/notebook-sharing';
 import { formatInZone, toEpochSeconds } from '../utils/time-zone';
 
 /**
- * About me: what bots know about the user and their people.
+ * About me: what bots know about each member of a notebook and their people.
  *
- * 1. It's created the first time the user turns on a proactive bot, seeded from their
- *    own contact card (name, address, birthday, related names) and recurring calendar
- *    events.
- * 2. Bots read a short summary in every prompt, look up more with `recall_about_me`,
- *    and save what they learn with `remember_about_me`. Sensitive facts wait for approval.
- * 3. Visits from the iPhone keep "where you are now" current.
+ * 1. It lives on a notebook's About me page (one per notebook). Each member has their
+ *    own; the page shows each person only theirs. Adding the page seeds the creator's
+ *    from their own contact card (name, address, birthday, related names) and recurring
+ *    calendar events.
+ * 2. Bots in that notebook read a short summary of every member's in each prompt, look
+ *    up more with `recall_about_me`, and save what they learn with `remember_about_me`.
+ *    In a notebook nobody else can see, sensitive facts wait for approval; in a shared
+ *    one they're never saved.
+ * 3. "Where you are now" isn't stored: it's read live from the user's latest visit.
  */
 
 const RECENTLY_LEARNED_DAYS = 14;
 const SUMMARY_MAX_FACTS = 25;
 /** An open visit counts as "where you are" for this long without a departure. */
 const CURRENT_PLACE_HOURS = 12;
+
+const SENSITIVE_IN_SHARED =
+    'Not saved: this notebook is shared with other people, so sensitive things (health, money, legal matters, relationship trouble) are never kept in its About me.';
 
 // MARK: - Reading
 
@@ -52,12 +61,13 @@ export function isLive(fact: ProfileFact, now = Date.now()): boolean {
     return !fact.validUntil || Date.parse(fact.validUntil) > now;
 }
 
-export async function getAboutMe(userId: string, now = Date.now()): Promise<AboutMe> {
+/** One person's About me in one notebook. */
+export async function getAboutMe(scope: ProfileScope, now = Date.now()): Promise<AboutMe> {
     const [me, entities, relations, facts] = await Promise.all([
-        findMe(userId),
-        listEntities(userId),
-        listRelations(userId),
-        listFacts(userId),
+        findMe(scope),
+        listEntities(scope),
+        listRelations(scope),
+        listFacts(scope),
     ]);
     const since = now - RECENTLY_LEARNED_DAYS * 24 * 60 * 60 * 1000;
     return {
@@ -78,96 +88,175 @@ export async function getAboutMe(userId: string, now = Date.now()): Promise<Abou
     };
 }
 
-/**
- * The short version every bot prompt gets: who the user is, their people, what's true
- * right now, and the main lasting facts. Null when there's no profile yet.
- */
-export async function aboutMeSummary(
-    userId: string,
-    timeZone: string,
-    now = Date.now(),
-): Promise<string | null> {
-    const profile = await getAboutMe(userId, now);
-    if (!profile.me) return null;
-    const names = new Map(profile.entities.map((entity) => [entity.id, entity.name]));
-    const name = (id: string) =>
-        id === profile.me!.id ? 'the user' : (names.get(id) ?? 'someone');
-
-    const people = profile.relations
-        .filter((relation) => relation.from === profile.me!.id)
-        .map(
-            (relation) => `${names.get(relation.to) ?? '?'} (${relation.type.replace(/_/g, ' ')})`,
-        );
-    const others = profile.relations
-        .filter((relation) => relation.from !== profile.me!.id)
-        .map(
-            (relation) =>
-                `${name(relation.from)} ${relation.type.replace(/_/g, ' ')} ${name(relation.to)}`,
-        );
-    const current = profile.facts.filter((fact) => fact.kind === 'current');
-    const lasting = profile.facts.filter((fact) => fact.kind === 'lasting');
-    const line = (fact: ProfileFact) =>
-        `- [${fact.id}] ${name(fact.about)}: ${fact.key.replace(/_/g, ' ')} = ${fact.value}` +
-        (fact.validUntil ? ` (until ${formatInZone(new Date(fact.validUntil), timeZone)})` : '') +
-        // Things bots picked up are less certain than what the user said.
-        (fact.source.type === 'bot' ? ' (learned by a bot)' : '');
-
-    return [
-        `## About the user (from their About me profile)`,
-        `Name: ${profile.me.name}`,
-        people.length ? `Their people: ${people.join(', ')}` : '',
-        others.length ? `Also: ${others.join('; ')}` : '',
-        current.length
-            ? `Right now:\n${current.slice(0, 10).map(line).join('\n')}`
-            : 'Right now: nothing noted.',
-        lasting.length
-            ? `Lasting facts:\n${lasting.slice(0, SUMMARY_MAX_FACTS).map(line).join('\n')}`
-            : '',
-        'Use this to make judgment calls (who people are, where the user is, routines). Look up more with recall_about_me.',
-        'When you learn something new and lasting about the user or their people, or their current situation changes (traveling, sick, at a new place), save it with remember_about_me. Mark health, money, legal and relationship-trouble facts as sensitive.',
-    ]
-        .filter(Boolean)
-        .join('\n');
+/** Every member's About me in a notebook, for bots. */
+export interface NotebookAboutMe {
+    notebookId: string;
+    /** Someone besides the owner can read the notebook. */
+    shared: boolean;
+    /** Members with an About me here, the user the bot works for first. */
+    people: Array<{ userId: string; profile: AboutMe & { me: ProfileEntity } }>;
+    /** Everyone in the notebook, with or without an About me, by name. */
+    members: Array<{ userId: string; name: string }>;
 }
 
-/** Facts and people matching a question, for the recall tool. */
-export async function recallAboutMe(
+/**
+ * Loads the About me of every current member of the notebook. In a shared notebook,
+ * sensitive facts (saved while it was private) are left out: bots' replies there are
+ * read by everyone.
+ */
+export async function loadNotebookAboutMe(
+    notebookId: string,
     userId: string,
-    query: string,
     now = Date.now(),
-): Promise<string> {
-    const profile = await getAboutMe(userId, now);
-    if (!profile.me) return 'There is no About me profile yet.';
+): Promise<NotebookAboutMe | null> {
+    const notebook = await findNotebookByIdUnsafe(notebookId);
+    if (!notebook) return null;
+    const shared = isNotebookShared(notebook);
+    const members = new Set(notebookMemberIds(notebook));
+    const owners = (await profileOwnerIds(notebookId)).filter((id) => members.has(id));
+    owners.sort((a, b) => (a === userId ? -1 : b === userId ? 1 : a.localeCompare(b)));
+    const people: NotebookAboutMe['people'] = [];
+    for (const owner of owners) {
+        const profile = await getAboutMe({ userId: owner, notebookId }, now);
+        if (!profile.me) continue;
+        if (shared) profile.facts = profile.facts.filter((fact) => !fact.sensitive);
+        people.push({ userId: owner, profile: profile as AboutMe & { me: ProfileEntity } });
+    }
+    const named = new Map(people.map((person) => [person.userId, person.profile.me.name]));
+    const others = [...members].filter((id) => !named.has(id)).slice(0, 20);
+    for (const id of others) named.set(id, await displayNameOf(id));
+    return {
+        notebookId,
+        shared,
+        people,
+        members: [...named].map(([memberId, name]) => ({ userId: memberId, name })),
+    };
+}
+
+async function displayNameOf(userId: string): Promise<string> {
+    const user = await findUserById(userId).catch(() => null);
+    return user?.displayName || user?.email?.split('@')[0] || 'Me';
+}
+
+/**
+ * The short version every bot prompt gets: for each member, who they are, their people,
+ * what's true right now, and the main lasting facts. `currentPlace` is where the user
+ * the bot works for is now, from their phone.
+ */
+export function aboutMeSummary(
+    about: NotebookAboutMe,
+    userId: string,
+    timeZone: string,
+    currentPlace: string | null = null,
+): string {
+    const sections = about.people.map(({ userId: owner, profile }) => {
+        const me = profile.me;
+        const isUser = owner === userId;
+        const names = new Map(profile.entities.map((entity) => [entity.id, entity.name]));
+        const name = (id: string) => (id === me.id ? me.name : (names.get(id) ?? 'someone'));
+        const people = profile.relations
+            .filter((relation) => relation.from === me.id)
+            .map(
+                (relation) =>
+                    `${names.get(relation.to) ?? '?'} (${relation.type.replace(/_/g, ' ')})`,
+            );
+        const others = profile.relations
+            .filter((relation) => relation.from !== me.id)
+            .map(
+                (relation) =>
+                    `${name(relation.from)} ${relation.type.replace(/_/g, ' ')} ${name(relation.to)}`,
+            );
+        const current = profile.facts.filter((fact) => fact.kind === 'current');
+        const lasting = profile.facts.filter((fact) => fact.kind === 'lasting');
+        const line = (fact: ProfileFact) =>
+            `- [${fact.id}] ${name(fact.about)}: ${fact.key.replace(/_/g, ' ')} = ${fact.value}` +
+            (fact.validUntil
+                ? ` (until ${formatInZone(new Date(fact.validUntil), timeZone)})`
+                : '') +
+            // Things bots picked up are less certain than what the person said.
+            (fact.source.type === 'bot' ? ' (learned by a bot)' : '');
+        return [
+            `### ${me.name}${isUser ? ' (the user you are helping)' : ' (another member of this notebook)'}`,
+            people.length ? `Their people: ${people.join(', ')}` : '',
+            others.length ? `Also: ${others.join('; ')}` : '',
+            isUser && currentPlace ? `Where they are now (from their iPhone): ${currentPlace}` : '',
+            current.length ? `Right now:\n${current.slice(0, 10).map(line).join('\n')}` : '',
+            lasting.length
+                ? `Lasting facts:\n${lasting.slice(0, SUMMARY_MAX_FACTS).map(line).join('\n')}`
+                : '',
+            !current.length && !lasting.length && !people.length ? 'Nothing saved yet.' : '',
+        ]
+            .filter(Boolean)
+            .join('\n');
+    });
+    if (!about.people.some((person) => person.userId === userId)) {
+        const name = about.members.find((member) => member.userId === userId)?.name;
+        sections.unshift(
+            `### ${name ?? 'The user'} (the user you are helping)\n${currentPlace ? `Where they are now (from their iPhone): ${currentPlace}\n` : ''}Nothing saved yet.`,
+        );
+    }
+    const without = about.members.filter(
+        (member) =>
+            member.userId !== userId && !about.people.some((p) => p.userId === member.userId),
+    );
+    if (without.length)
+        sections.push(
+            `Also in this notebook, with nothing saved yet: ${without.map((m) => m.name).join(', ')}`,
+        );
+    return [
+        `## About the people in this notebook (from its About me page)`,
+        "Each person's About me is listed under their name. Facts under one person are about them and their people, not about anyone else.",
+        ...sections,
+        'Use this to make judgment calls (who people are, where they are, routines). Look up more with recall_about_me.',
+        "When you learn something new and lasting about someone here or their people, or their current situation changes (traveling, sick, at a new place), save it with remember_about_me, in the right person's About me. When the user answers a question you asked to fill in their About me, save the answer.",
+        about.shared
+            ? 'This notebook is shared, so never save health, money, legal or relationship-trouble facts.'
+            : 'Mark health, money, legal and relationship-trouble facts as sensitive.',
+    ].join('\n\n');
+}
+
+/** Facts and people matching a question, across every member, for the recall tool. */
+export function recallAboutMe(about: NotebookAboutMe, query: string): string {
     const terms = query
         .toLowerCase()
         .split(/[^\p{L}\p{N}]+/u)
         .filter((t) => t.length > 1);
-    const names = new Map(profile.entities.map((entity) => [entity.id, entity]));
     const matches = (text: string) =>
         terms.length === 0 || terms.some((t) => text.toLowerCase().includes(t));
-    const entities = profile.entities.filter((e) => matches([e.name, ...e.aliases].join(' ')));
-    const facts = profile.facts.filter((fact) =>
-        matches(`${names.get(fact.about)?.name ?? ''} ${fact.key} ${fact.value}`),
-    );
-    return JSON.stringify({
-        people: entities.slice(0, 20).map((e) => ({
-            id: e.id,
-            kind: e.kind,
-            name: e.name,
-            aliases: e.aliases,
-            relations: profile.relations
-                .filter((r) => r.from === e.id || r.to === e.id)
-                .map((r) => `${names.get(r.from)?.name} ${r.type} ${names.get(r.to)?.name}`),
-        })),
-        facts: facts.slice(0, 30).map((fact) => ({
-            id: fact.id,
-            about: names.get(fact.about)?.name,
-            key: fact.key,
-            value: fact.value,
-            kind: fact.kind,
-            validUntil: fact.validUntil,
-        })),
-    });
+    const people: unknown[] = [];
+    const facts: unknown[] = [];
+    for (const { profile } of about.people) {
+        const whose = profile.me.name;
+        const names = new Map(profile.entities.map((entity) => [entity.id, entity]));
+        for (const e of profile.entities) {
+            if (!matches([whose, e.name, ...e.aliases].join(' '))) continue;
+            people.push({
+                id: e.id,
+                whose,
+                kind: e.kind,
+                name: e.name,
+                aliases: e.aliases,
+                relations: profile.relations
+                    .filter((r) => r.from === e.id || r.to === e.id)
+                    .map((r) => `${names.get(r.from)?.name} ${r.type} ${names.get(r.to)?.name}`),
+            });
+        }
+        for (const fact of profile.facts) {
+            if (!matches(`${whose} ${names.get(fact.about)?.name ?? ''} ${fact.key} ${fact.value}`))
+                continue;
+            facts.push({
+                id: fact.id,
+                whose,
+                about: names.get(fact.about)?.name,
+                key: fact.key,
+                value: fact.value,
+                kind: fact.kind,
+                validUntil: fact.validUntil,
+            });
+        }
+    }
+    if (about.people.length === 0) return 'Nobody has anything in About me yet.';
+    return JSON.stringify({ people: people.slice(0, 20), facts: facts.slice(0, 30) });
 }
 
 // MARK: - Learning
@@ -175,27 +264,42 @@ export async function recallAboutMe(
 export interface RememberInput {
     /** Who it's about: "me" or a name. */
     about: string;
-    /** How they relate to the user, when it's someone new: "daughter", "dog", "coach". */
+    /** Whose About me it goes in, when that's another member of the notebook (their name). */
+    whose?: string;
+    /** How they relate to the person, when it's someone new: "daughter", "dog", "coach". */
     relation?: string;
     key: string;
     value: string;
     kind: 'lasting' | 'current';
     /** For current facts: when it stops being true (ISO date or date-time). */
     until?: string;
+    /** Health, money, legal or relationship trouble. */
     sensitive?: boolean;
+    /** Wait for the person's approval (e.g. it came from text someone else wrote). */
+    pending?: boolean;
 }
 
-/** Saves what a bot (or the user) learned. Returns a short note for the model. */
+/** Saves what a bot learned. Returns a short note for the model. */
 export async function rememberAboutMe(
+    about: NotebookAboutMe,
     userId: string,
     input: RememberInput,
     source: ProfileFactSource,
     timeZone = 'UTC',
 ): Promise<string> {
-    const me = await ensureProfile(userId);
-    const entity = await resolveEntity(userId, me, input.about, input.relation);
+    if (about.shared && input.sensitive) return SENSITIVE_IN_SHARED;
+    // Into another member's About me when it's about them (or the bot said whose).
+    const member = about.members.find(
+        (m) =>
+            m.userId !== userId &&
+            [input.whose, input.about].some((name) => !!name && isNamed(m.name, [], name)),
+    );
+    const scope = { userId: member?.userId ?? userId, notebookId: about.notebookId };
+    const me = await ensureProfile(scope);
+    const subject = member && isNamed(me.name, me.aliases, input.about) ? 'me' : input.about;
+    const entity = await resolveEntity(scope, me, subject, input.relation, source);
     const validUntil = untilIso(input.until, timeZone);
-    const fact = await saveFact(userId, {
+    const fact = await saveFact(scope, {
         about: entity.id,
         key: input.key,
         value: input.value.slice(0, 1000),
@@ -203,95 +307,138 @@ export async function rememberAboutMe(
         ...(validUntil ? { validUntil } : {}),
         source,
         sensitive: input.sensitive,
+        pending: input.pending,
     });
+    const whose = member ? `${member.name}'s` : 'their';
     return fact.status === 'pending'
-        ? 'Suggested; it will be saved once the user approves it in About me.'
-        : `Saved (${fact.id}). The user can see and undo it in About me.`;
+        ? `Suggested; it will be saved once they approve it in ${whose} About me.`
+        : `Saved (${fact.id}) in ${whose} About me, where they can see and undo it.`;
 }
 
 /**
- * Changes or ends a fact the model saw (by id). Bots may only change what bots learned;
- * a change to something the user entered or that came from their contacts is saved as
- * a suggestion for them to approve. Every change is a new fact, so it shows up in
- * Recently learned with undo and the old value stays in the history.
+ * Changes or ends a fact the model saw (by id), in any member's About me. Bots may only
+ * change what bots learned; a change to something the person entered or that came from
+ * their contacts is saved as a suggestion for them to approve. Every change is a new
+ * fact, so the old value stays in the history and undo brings it back.
  */
 export async function updateAboutMe(
-    userId: string,
+    about: NotebookAboutMe,
     input: { factId: string; value?: string; until?: string; remove?: boolean },
     source: ProfileFactSource,
     timeZone = 'UTC',
     pending = false,
 ): Promise<string> {
-    const fact = await findFact(userId, input.factId);
-    if (!fact || fact.status !== 'active') return 'No fact with that id.';
-    const learned = fact.source.type === 'bot' || fact.source.type === 'location';
+    const found = await findFactInNotebook(about.notebookId, input.factId);
+    const visible = about.people.some(
+        (person) =>
+            person.userId === found?.userId &&
+            person.profile.facts.some((fact) => fact.id === input.factId),
+    );
+    if (!found || !visible) return 'No fact with that id.';
+    const { fact } = found;
+    const scope = { userId: found.userId, notebookId: about.notebookId };
+    const learned = fact.source.type === 'bot';
     if (input.remove) {
         if (!learned || pending)
-            return 'Only the user can remove that. Tell them it may be wrong instead.';
-        await updateFact(userId, fact.id, { status: 'removed' });
+            return 'Only the person can remove that. Tell them it may be wrong instead.';
+        await updateFact(scope, fact.id, { status: 'removed' });
         return 'Removed.';
     }
+    if (about.shared && fact.sensitive) return SENSITIVE_IN_SHARED;
     const validUntil = untilIso(input.until, timeZone) ?? fact.validUntil;
-    const saved = await saveFact(userId, {
+    const saved = await saveFact(scope, {
         about: fact.about,
         key: fact.key,
         value: (input.value ?? fact.value).slice(0, 1000),
         kind: fact.kind,
         ...(validUntil ? { validUntil } : {}),
         source,
-        sensitive: pending || !learned || fact.sensitive,
+        sensitive: fact.sensitive,
+        pending: pending || !learned,
     });
     return saved.status === 'pending'
-        ? 'Suggested; it changes once the user approves it in About me.'
+        ? 'Suggested; it changes once they approve it in About me.'
         : `Updated (${saved.id}).`;
 }
 
-/** An end date or time as the user meant it: bare dates end that day in their time zone. */
+/** "Julia" names "Julia Lawrence" (full name, first name or an alias). */
+function isNamed(fullName: string, aliases: string[], name: string): boolean {
+    const lower = name.trim().toLowerCase();
+    if (!lower) return false;
+    return (
+        fullName.toLowerCase() === lower ||
+        fullName.split(/\s+/)[0]?.toLowerCase() === lower ||
+        aliases.some((alias) => alias.toLowerCase() === lower)
+    );
+}
+
+/** An end date or time as the person meant it: bare dates end that day in their time zone. */
 function untilIso(value: string | undefined, timeZone: string): string | undefined {
     const seconds = toEpochSeconds(value, timeZone, 'end');
     return seconds === undefined ? undefined : new Date(seconds * 1000).toISOString();
 }
 
 async function resolveEntity(
-    userId: string,
+    scope: ProfileScope,
     me: ProfileEntity,
     about: string,
-    relation?: string,
+    relation: string | undefined,
+    source: ProfileFactSource,
 ): Promise<ProfileEntity> {
     const name = about.trim();
-    if (!name || /^(me|myself|i|the user|user)$/i.test(name)) return me;
+    if (!name || /^(me|myself|i|the user|user)$/i.test(name) || isNamed(me.name, me.aliases, name))
+        return me;
     const lower = name.toLowerCase();
-    const existing = (await listEntities(userId)).find(
+    const existing = (await listEntities(scope)).find(
         (entity) =>
             entity.name.toLowerCase() === lower ||
             entity.aliases.some((alias) => alias.toLowerCase() === lower),
     );
     if (existing) return existing;
     const kind = relation && /\b(dog|cat|pet|horse|bird|fish)\b/i.test(relation) ? 'pet' : 'person';
-    const entity = await createEntity(userId, { kind, name });
-    if (relation) await addRelation(userId, me.id, entity.id, normalizeKey(relation));
+    const entity = await createEntity(scope, { kind, name });
+    if (relation) await addRelation(scope, me.id, entity.id, normalizeKey(relation), source);
     return entity;
 }
 
-// MARK: - Creating the profile
+// MARK: - Creating an About me
 
-/** Returns "me", creating and seeding the profile the first time. */
-export async function ensureProfile(userId: string): Promise<ProfileEntity> {
-    return (
-        (await findMe(userId)) ??
-        seedProfile(userId, Date.now(), (await collectorTimeZone(userId)) ?? 'UTC')
-    );
+/**
+ * Returns the person's "me" in this notebook, creating it the first time. With `seed`
+ * (when they add the About me page), it's filled from their own contacts and calendar.
+ */
+export async function ensureProfile(
+    scope: ProfileScope,
+    options: { seed?: boolean } = {},
+): Promise<ProfileEntity> {
+    const existing = await findMe(scope);
+    if (existing) return existing;
+    if (options.seed)
+        return seedProfile(scope, Date.now(), (await collectorTimeZone(scope.userId)) ?? 'UTC');
+    try {
+        return await createEntity(scope, {
+            kind: 'person',
+            name: await displayNameOf(scope.userId),
+            isMe: true,
+        });
+    } catch (error) {
+        // Created by another request at the same moment.
+        const existing = await findMe(scope);
+        if (existing) return existing;
+        throw error;
+    }
 }
 
 /**
- * Builds the first version from the user's own contact card and calendar:
+ * Builds the first version from the person's own contact card and calendar:
  * name, home address, birthday, the people on their card, and weekly routines.
  */
 export async function seedProfile(
-    userId: string,
+    scope: ProfileScope,
     now = Date.now(),
     timeZone = 'UTC',
 ): Promise<ProfileEntity> {
+    const { userId } = scope;
     const card = await findMyContactCard(userId);
     const contacts = card
         ? await findContactsByName(
@@ -302,7 +449,7 @@ export async function seedProfile(
     const user = await findUserById(userId).catch(() => null);
     let me: ProfileEntity;
     try {
-        me = await createEntity(userId, {
+        me = await createEntity(scope, {
             kind: 'person',
             name: card?.title || user?.displayName || user?.email?.split('@')[0] || 'Me',
             isMe: true,
@@ -310,7 +457,7 @@ export async function seedProfile(
         });
     } catch (error) {
         // Another request seeded it at the same moment; use theirs.
-        const existing = await findMe(userId);
+        const existing = await findMe(scope);
         if (existing) return existing;
         throw error;
     }
@@ -319,7 +466,7 @@ export async function seedProfile(
     if (card) {
         const address = firstAddress(card);
         if (address)
-            await saveFact(userId, {
+            await saveFact(scope, {
                 about: me.id,
                 key: 'home_address',
                 value: address,
@@ -327,7 +474,7 @@ export async function seedProfile(
                 source: fromContacts,
             });
         if (typeof card.extra?.birthday === 'string')
-            await saveFact(userId, {
+            await saveFact(scope, {
                 about: me.id,
                 key: 'birthday',
                 value: card.extra.birthday,
@@ -339,14 +486,17 @@ export async function seedProfile(
                 (c) => c.title?.toLowerCase() === related.name.toLowerCase(),
             );
             const kind = /\b(dog|cat|pet)\b/i.test(related.label) ? 'pet' : 'person';
-            const person = await createEntity(userId, {
+            const person = await createEntity(scope, {
                 kind,
                 name: related.name,
                 ...(contact ? { contactId: contact.id } : {}),
             });
-            await addRelation(userId, me.id, person.id, related.label);
+            await addRelation(scope, me.id, person.id, related.label, {
+                type: 'contacts',
+                ...(contact ? { ref: contact.id } : card ? { ref: card.id } : {}),
+            });
             if (contact && typeof contact.extra?.birthday === 'string')
-                await saveFact(userId, {
+                await saveFact(scope, {
                     about: person.id,
                     key: 'birthday',
                     value: contact.extra.birthday,
@@ -357,7 +507,7 @@ export async function seedProfile(
     }
 
     for (const routine of await weeklyRoutines(userId, now, timeZone)) {
-        await saveFact(userId, {
+        await saveFact(scope, {
             about: me.id,
             key: `routine_${routine.title}`,
             value: routine.description,
@@ -453,41 +603,16 @@ export async function weeklyRoutines(
 // MARK: - Current place
 
 /**
- * Keeps "where you are" current from iPhone visits: an open visit (arrived, not left)
- * becomes the current place; leaving it ends that fact.
+ * Where the user is now, read live from their iPhone's latest visit: an open visit
+ * (arrived, not left) from the last few hours, by its named place ("Home") if it's
+ * inside one. Null when they're between places or the phone hasn't said.
  */
-export async function noteLocationVisits(
-    userId: string,
-    visits: MacDataItem[],
-    now = Date.now(),
-): Promise<void> {
-    const recent = visits
-        .filter((item) => item.source === 'location')
-        .sort((a, b) => b.occurredAt - a.occurredAt)[0];
-    if (!recent) return;
-    const me = await findMe(userId);
-    if (!me) return; // No profile yet: it starts with the first proactive bot.
-    // Inside a named place ("Home"), use its name; otherwise the visit's own name.
-    const named = await namedPlaceAt(userId, recent);
-    const place = named ?? (recent.title || recent.location);
-    if (!place) return;
-    const current = (await listFacts(userId)).find(
-        (fact) => fact.about === me.id && fact.key === 'location' && isLive(fact, now),
-    );
-    if (recent.endAt !== undefined) {
-        if (current?.value === place) await endCurrentFacts(userId, me.id, 'location');
-        return;
-    }
-    if (now / 1000 - recent.occurredAt > CURRENT_PLACE_HOURS * 3600) return;
-    if (current?.value === place) return;
-    await saveFact(userId, {
-        about: me.id,
-        key: 'location',
-        value: place,
-        kind: 'current',
-        validUntil: new Date(now + CURRENT_PLACE_HOURS * 3600 * 1000).toISOString(),
-        source: { type: 'location', ref: recent.id },
-    });
+export async function currentPlace(userId: string, now = Date.now()): Promise<string | null> {
+    const { items } = await findDeviceItems(userId, { sources: ['location'], limit: 1 });
+    const visit = items[0];
+    if (!visit || visit.endAt != null) return null;
+    if (now / 1000 - visit.occurredAt > CURRENT_PLACE_HOURS * 3600) return null;
+    return (await namedPlaceAt(userId, visit)) ?? (visit.title || visit.location || null);
 }
 
 /** The user's named place a visit falls inside, if any. */

@@ -9,9 +9,11 @@ import type {
 } from '@maple/shared';
 
 // "About me" storage: entities, relations and facts, each a small document. An About me
-// belongs to one of the user's notebooks (like a Mail or iMessage page, it's added to a
+// belongs to one person in one notebook (like a Mail or iMessage page, it's added to a
 // notebook), so every lookup is by user and notebook; filtering and sorting happen in
-// code (Cosmos DB).
+// code (Cosmos DB). Records saved before About me moved into notebooks have no
+// notebookId and are never read. Named places are the exception: they belong to the
+// account (the iPhone reads them), stored without a notebookId.
 
 /** Whose About me, and in which notebook. */
 export interface ProfileScope {
@@ -22,6 +24,12 @@ export interface ProfileScope {
 type Stored<T> = T & { _id: string; userId: string; notebookId?: string };
 
 const own = (scope: ProfileScope) => ({ userId: scope.userId, notebookId: scope.notebookId });
+/** The account's named places. */
+const accountPlaces = (userId: string) => ({
+    userId,
+    kind: 'place' as const,
+    notebookId: { $exists: false },
+});
 
 const entities = () => getDb().collection<Stored<ProfileEntity>>('profile_entities');
 const relations = () => getDb().collection<Stored<ProfileRelation>>('profile_relations');
@@ -72,33 +80,41 @@ export async function createEntity(
     return entity;
 }
 
-/** Named places (Home, Work…) with their coordinates. */
-export async function listPlaces(scope: ProfileScope): Promise<ProfileEntity[]> {
-    return (await entities().find({ ...own(scope), kind: 'place' }).toArray())
+/** The account's named places (Home, Work…) with their coordinates. */
+export async function listPlaces(userId: string): Promise<ProfileEntity[]> {
+    return (await entities().find(accountPlaces(userId)).toArray())
         .map(strip)
         .filter((entity) => !!entity.place);
 }
 
 /** Creates a named place, or moves the one with the same name. */
 export async function savePlace(
-    scope: ProfileScope,
+    userId: string,
     name: string,
     place: NonNullable<ProfileEntity['place']>,
 ): Promise<ProfileEntity> {
-    const existing = (await listEntities(scope)).find(
-        (entity) =>
-            entity.kind === 'place' && entity.name.toLowerCase() === name.trim().toLowerCase(),
-    );
+    const now = new Date().toISOString();
+    const existing = (await entities().find(accountPlaces(userId)).toArray())
+        .map(strip)
+        .find((entity) => entity.name.toLowerCase() === name.trim().toLowerCase());
     if (existing) {
         await entities().updateOne(
-            { _id: existing.id, ...own(scope) },
-            { $set: { place, updatedAt: new Date().toISOString() } },
+            { _id: existing.id, userId },
+            { $set: { place, updatedAt: now } },
         );
         return { ...existing, place };
     }
-    const entity = await createEntity(scope, { kind: 'place', name });
-    await entities().updateOne({ _id: entity.id, ...own(scope) }, { $set: { place } });
-    return { ...entity, place };
+    const entity: ProfileEntity = {
+        id: randomUUID(),
+        kind: 'place',
+        name: name.trim(),
+        aliases: [],
+        place,
+        createdAt: now,
+        updatedAt: now,
+    };
+    await entities().insertOne({ ...entity, _id: entity.id, userId });
+    return entity;
 }
 
 export async function updateEntity(
@@ -115,8 +131,7 @@ export async function updateEntity(
 }
 
 /** Removes a person or thing with its relations; its facts are marked removed, not deleted. */
-export async function deleteEntity(
-    scope: ProfileScope, id: string): Promise<boolean> {
+export async function deleteEntity(scope: ProfileScope, id: string): Promise<boolean> {
     const result = await entities().deleteOne({ _id: id, ...own(scope), isMe: { $ne: true } });
     if (!result.deletedCount) return false;
     await relations().deleteMany({ ...own(scope), $or: [{ from: id }, { to: id }] });
@@ -139,6 +154,7 @@ export async function addRelation(
     from: string,
     to: string,
     type: string,
+    source?: ProfileFactSource,
 ): Promise<ProfileRelation> {
     const existing = await relations().findOne({ ...own(scope), from, to, type });
     if (existing) return strip(existing);
@@ -147,14 +163,24 @@ export async function addRelation(
         from,
         to,
         type,
+        ...(source ? { source } : {}),
         createdAt: new Date().toISOString(),
     };
     await relations().insertOne({ ...relation, _id: relation.id, ...own(scope) });
     return relation;
 }
 
-export async function deleteRelation(
-    scope: ProfileScope, id: string): Promise<boolean> {
+export async function updateRelation(
+    scope: ProfileScope,
+    id: string,
+    type: string,
+): Promise<ProfileRelation | null> {
+    await relations().updateOne({ _id: id, ...own(scope) }, { $set: { type } });
+    const doc = await relations().findOne({ _id: id, ...own(scope) });
+    return doc ? strip(doc) : null;
+}
+
+export async function deleteRelation(scope: ProfileScope, id: string): Promise<boolean> {
     return (await relations().deleteOne({ _id: id, ...own(scope) })).deletedCount > 0;
 }
 
@@ -164,8 +190,7 @@ export async function listFacts(scope: ProfileScope): Promise<ProfileFact[]> {
     return (await facts().find(own(scope)).toArray()).map(strip);
 }
 
-export async function findFact(
-    scope: ProfileScope, id: string): Promise<ProfileFact | null> {
+export async function findFact(scope: ProfileScope, id: string): Promise<ProfileFact | null> {
     const doc = await facts().findOne({ _id: id, ...own(scope) });
     return doc ? strip(doc) : null;
 }
@@ -173,7 +198,7 @@ export async function findFact(
 /**
  * Saves a fact. An active fact with the same subject and key is marked replaced, so
  * "traveling to Denver" replaces "traveling to Austin" but both stay in the history.
- * Sensitive facts are saved as pending until the user approves them.
+ * Sensitive facts, and those marked `pending`, wait for the user's approval.
  */
 export async function saveFact(
     scope: ProfileScope,
@@ -185,11 +210,13 @@ export async function saveFact(
         validUntil?: string;
         source: ProfileFactSource;
         sensitive?: boolean;
+        /** Needs the user's approval even though it isn't sensitive. */
+        pending?: boolean;
     },
 ): Promise<ProfileFact> {
     const now = new Date().toISOString();
     const key = normalizeKey(input.key);
-    const status: ProfileFact['status'] = input.sensitive ? 'pending' : 'active';
+    const status: ProfileFact['status'] = input.sensitive || input.pending ? 'pending' : 'active';
     const fact: ProfileFact = {
         id: randomUUID(),
         about: input.about,
@@ -231,21 +258,17 @@ export async function updateFact(
         { _id: id, ...own(scope) },
         { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
     );
+    // Removing (undoing) an active fact brings back the one it replaced, if any.
+    if (changes.status === 'removed' && fact.status === 'active') {
+        await facts().updateOne(
+            { ...own(scope), replacedBy: id, status: 'replaced' },
+            { $set: { status: 'active', updatedAt: new Date().toISOString() } },
+        );
+    }
     return findFact(scope, id);
 }
 
-/** Ends a current fact now, e.g. leaving the place you were at. */
-export async function endCurrentFacts(
-    scope: ProfileScope, about: string, key: string): Promise<void> {
-    const now = new Date().toISOString();
-    await facts().updateMany(
-        { ...own(scope), about, key: normalizeKey(key), status: 'active', kind: 'current' },
-        { $set: { validUntil: now, updatedAt: now } },
-    );
-}
-
-async function replaceActive(
-    scope: ProfileScope, about: string, key: string, by: string) {
+async function replaceActive(scope: ProfileScope, about: string, key: string, by: string) {
     await facts().updateMany(
         { ...own(scope), about, key, status: 'active' },
         { $set: { status: 'replaced', replacedBy: by, updatedAt: new Date().toISOString() } },
@@ -263,17 +286,17 @@ export function normalizeKey(key: string): string {
     );
 }
 
-/** The notebooks where the user has an About me. */
-export async function profileNotebookIds(userId: string): Promise<string[]> {
-    const docs = await entities().find({ userId, isMe: true }).toArray();
-    return [...new Set(docs.map((doc) => doc.notebookId).filter((id): id is string => !!id))];
+/** Who has an About me in a notebook: the users with a "me" there. */
+export async function profileOwnerIds(notebookId: string): Promise<string[]> {
+    const docs = await entities().find({ notebookId, isMe: true }).toArray();
+    return [...new Set(docs.map((doc) => doc.userId))];
 }
 
-/** Removes everything this About me holds. */
-export async function deleteProfile(scope: ProfileScope): Promise<void> {
-    await Promise.all([
-        entities().deleteMany(own(scope)),
-        relations().deleteMany(own(scope)),
-        facts().deleteMany(own(scope)),
-    ]);
+/** A fact in any of a notebook's About me's, with whose it is. */
+export async function findFactInNotebook(
+    notebookId: string,
+    id: string,
+): Promise<{ fact: ProfileFact; userId: string } | null> {
+    const doc = await facts().findOne({ _id: id, notebookId });
+    return doc ? { fact: strip(doc), userId: doc.userId } : null;
 }

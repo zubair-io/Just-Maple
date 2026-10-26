@@ -16,11 +16,16 @@ vi.mock('../../services/proactive-bot.service', () => ({
     maybeAutoReply: vi.fn(),
     runDailyBrief: vi.fn().mockResolvedValue(true),
     sendLeaveReminder: vi.fn().mockResolvedValue(true),
+    askAboutMeQuestion: vi.fn().mockResolvedValue(true),
 }));
 
-import { runDailyBrief, sendLeaveReminder } from '../../services/proactive-bot.service';
+import {
+    askAboutMeQuestion,
+    runDailyBrief,
+    sendLeaveReminder,
+} from '../../services/proactive-bot.service';
 import { tick } from '../../services/proactive-scheduler.service';
-import { aboutMeSummary, noteLocationVisits } from '../../services/about-me.service';
+import { currentPlace } from '../../services/about-me.service';
 
 describe.runIf(mongoAvailable)('scheduled proactive messages and named places', () => {
     let userId: string;
@@ -32,6 +37,7 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
         vi.clearAllMocks();
         vi.mocked(runDailyBrief).mockResolvedValue(true);
         vi.mocked(sendLeaveReminder).mockResolvedValue(true);
+        vi.mocked(askAboutMeQuestion).mockResolvedValue(true);
         const user = await createUserFixture();
         userId = user._id.toString();
         const token = await createAuthToken(userId);
@@ -164,26 +170,31 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
         });
     }
 
-    it('reminds about an event even when its title mentions where the user is', async () => {
-        await testDb!.collection('profile_facts').deleteMany({ userId });
-        await call('/api/about-me', 'POST');
-        await call('/api/about-me/places', 'POST', { name: 'Home', lat: 40.7128, lon: -74.006 });
-        await noteLocationVisits(
-            userId,
-            [
+    /** The iPhone uploads a visit (open unless it has an end). */
+    async function addVisit(visit: Partial<MacDataItem> & { id: string; occurredAt: number }) {
+        await call('/api/device-data/items', 'POST', {
+            deviceId: 'phone-device-1',
+            removals: [],
+            upserts: [
                 {
-                    id: 'location:visit:home',
                     source: 'location',
                     revision: '1',
-                    occurredAt: at('13:00').getTime() / 1000,
-                    title: 'Home',
                     participants: [],
                     body: '',
-                    extra: { lat: 40.7128, lon: -74.006 },
-                },
+                    ...visit,
+                } satisfies MacDataItem,
             ],
-            at('13:00').getTime(),
-        );
+        });
+    }
+
+    it('reminds about an event even when its title mentions where the user is', async () => {
+        await call('/api/about-me/places', 'POST', { name: 'Home', lat: 40.7128, lon: -74.006 });
+        await addVisit({
+            id: 'location:visit:home',
+            occurredAt: at('13:00').getTime() / 1000,
+            title: '12 Maple St',
+            extra: { lat: 40.7128, lon: -74.006 },
+        });
         await addEvent('calendar:homecoming', 'Homecoming game', 'Central High, Springfield');
         await addEvent('calendar:party', 'Party', 'Home');
         await tick(at('14:21'));
@@ -329,8 +340,7 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
         expect(sendLeaveReminder).not.toHaveBeenCalled();
     });
 
-    it("names visits after the user's named places", async () => {
-        await call('/api/about-me', 'POST');
+    it("names visits after the user's named places, on the account", async () => {
         const { place } = await call('/api/about-me/places', 'POST', {
             name: 'Home',
             lat: 40.7128,
@@ -342,18 +352,53 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
         await call('/api/about-me/places', 'POST', { name: 'home', lat: 40.7129, lon: -74.006 });
         expect((await call('/api/about-me/places')).places).toHaveLength(1);
 
-        await noteLocationVisits(userId, [
-            {
-                id: 'location:visit:1',
-                source: 'location',
-                revision: '1',
-                occurredAt: Math.floor(Date.now() / 1000) - 60,
-                title: '12 Maple St',
-                participants: [],
-                body: '',
-                extra: { lat: 40.71295, lon: -74.00605 },
-            },
-        ]);
-        expect(await aboutMeSummary(userId, 'America/New_York')).toContain('location = Home');
+        await addVisit({
+            id: 'location:visit:1',
+            occurredAt: Math.floor(Date.now() / 1000) - 60,
+            title: '12 Maple St',
+            extra: { lat: 40.71295, lon: -74.00605 },
+        });
+        expect(await currentPlace(userId)).toBe('Home');
+        // Places aren't About me facts, and stay on the account.
+        expect(await testDb!.collection('profile_facts').countDocuments({ userId })).toBe(0);
+        const stored = await testDb!.collection('profile_entities').findOne({ userId });
+        expect(stored?.notebookId).toBeUndefined();
+    });
+
+    describe('About me questions', () => {
+        beforeEach(async () => {
+            await createPageFixture({ userId, notebookId, type: 'aboutme' as never });
+        });
+
+        it('asks at most once a day, in the early evening', async () => {
+            await tick(at('12:00'));
+            expect(askAboutMeQuestion).not.toHaveBeenCalled();
+            await tick(at('17:31'));
+            await tick(at('18:15'));
+            expect(askAboutMeQuestion).toHaveBeenCalledTimes(1);
+            expect(vi.mocked(askAboutMeQuestion).mock.calls[0]![0].id).toBe(chatPageId);
+            await tick(new Date('2026-10-27T17:40:00-04:00'));
+            expect(askAboutMeQuestion).toHaveBeenCalledTimes(2);
+        });
+
+        it('never asks in a shared notebook or one without About me', async () => {
+            await testDb!
+                .collection('notebooks')
+                .updateOne({ _id: new ObjectId(notebookId) }, {
+                    $push: { 'sharing.sharedWith': { userId: 'someone', accessLevel: 'read' } },
+                } as never);
+            await tick(at('17:31'));
+            expect(askAboutMeQuestion).not.toHaveBeenCalled();
+            await testDb!
+                .collection('pages')
+                .deleteMany({ type: 'aboutme', userId: new ObjectId(userId) });
+            await testDb!
+                .collection('notebooks')
+                .updateOne({ _id: new ObjectId(notebookId) }, {
+                    $pull: { 'sharing.sharedWith': { userId: 'someone' } },
+                } as never);
+            await tick(at('17:32'));
+            expect(askAboutMeQuestion).not.toHaveBeenCalled();
+        });
     });
 });
