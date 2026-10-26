@@ -218,3 +218,33 @@ export type UploadDeviceItemsResult = Static<typeof UploadDeviceItemsResultSchem
 
 /** Items older than this are removed, except contacts and calendar events that haven't ended. */
 export const DEVICE_DATA_RETENTION_DAYS = 30;
+
+// ============================================
+// Travel time to upcoming events (computed on the iPhone with Apple Maps)
+// ============================================
+
+/** An upcoming calendar event with a location, for the iPhone to estimate travel time. */
+export const UpcomingEventSchema = Type.Object({
+    id: Type.String(),
+    title: Type.Optional(Type.String()),
+    location: Type.String(),
+    start: Type.Number(), // seconds since 1970
+    end: Type.Optional(Type.Number()),
+});
+export type UpcomingEvent = Static<typeof UpcomingEventSchema>;
+
+export const TravelEstimateSchema = Type.Object({
+    eventId: Type.String(),
+    /** Driving time from where the phone is now, in minutes. */
+    minutes: Type.Number({ minimum: 0, maximum: 24 * 60 }),
+    /** Where the estimate starts, e.g. a named place ("Home") or an address. */
+    origin: Type.Optional(Type.String({ maxLength: 200 })),
+    computedAt: Type.String(),
+});
+export type TravelEstimate = Static<typeof TravelEstimateSchema>;
+
+export const UploadTravelEstimatesSchema = Type.Object({
+    deviceId: Type.String(),
+    estimates: Type.Array(TravelEstimateSchema, { maxItems: 50 }),
+});
+export type UploadTravelEstimatesInput = Static<typeof UploadTravelEstimatesSchema>;

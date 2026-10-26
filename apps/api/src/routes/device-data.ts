@@ -4,12 +4,15 @@ import { findUserById } from '../repositories/user.repo';
 import {
     RegisterCollectorSchema,
     UploadDeviceItemsSchema,
+    UploadTravelEstimatesSchema,
     MacDataSourceSchema,
     type JWTPayload,
     type MacDataSource,
 } from '@maple/shared';
+import { saveTravelEstimates } from '../repositories/travel-estimate.repo';
 import {
     deleteCollector,
+    findCollector,
     disableAllSources,
     listCollectors,
     registerCollector,
@@ -151,6 +154,53 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
             }
         },
         { body: UploadDeviceItemsSchema },
+    )
+
+    // Upcoming events with a location, for the iPhone to estimate travel time (owner's own).
+    .get(
+        '/device-data/upcoming',
+        async ({ auth, query, set }) => {
+            if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+            const now = Math.floor(Date.now() / 1000);
+            const hours = Math.min(Math.max(query.hours ?? 12, 1), 48);
+            const { items } = await findDeviceItems(auth.user._id, {
+                sources: ['calendar'],
+                from: now - 3600,
+                to: now + hours * 3600,
+                limit: 200,
+                order: 'asc',
+            });
+            return {
+                events: items
+                    .filter((item) => !!item.location?.trim() && !item.allDay)
+                    .filter((item) => (item.endAt ?? item.occurredAt) >= now)
+                    .slice(0, 30)
+                    .map((item) => ({
+                        id: item.id,
+                        title: item.title,
+                        location: item.location!.trim(),
+                        start: item.occurredAt,
+                        ...(item.endAt !== undefined ? { end: item.endAt } : {}),
+                    })),
+            };
+        },
+        { query: t.Object({ hours: t.Optional(t.Numeric({ minimum: 1, maximum: 48 })) }) },
+    )
+
+    // Driving times to those events, from where the phone is now.
+    .post(
+        '/device-data/travel',
+        async ({ auth, body, set }) => {
+            if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+            if (!(await findCollector(auth.user._id, body.deviceId))) {
+                set.status = 404;
+                return { error: 'Register this device first' };
+            }
+            return {
+                saved: await saveTravelEstimates(auth.user._id, body.deviceId, body.estimates),
+            };
+        },
+        { body: UploadTravelEstimatesSchema },
     )
 
     // Items for a device data page. Only the page's owner sees them, even in a shared notebook.

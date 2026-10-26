@@ -17,6 +17,15 @@ export const ProfileEntityKindSchema = Type.Union([
 ]);
 export type ProfileEntityKind = Static<typeof ProfileEntityKindSchema>;
 
+export const ProfilePlaceSchema = Type.Object({
+    lat: Type.Number({ minimum: -90, maximum: 90 }),
+    lon: Type.Number({ minimum: -180, maximum: 180 }),
+    /** Meters; a visit within this distance counts as being there. */
+    radius: Type.Number({ minimum: 50, maximum: 2000 }),
+    address: Type.Optional(Type.String({ maxLength: 300 })),
+});
+export type ProfilePlace = Static<typeof ProfilePlaceSchema>;
+
 export const ProfileEntitySchema = Type.Object({
     id: Type.String(),
     kind: ProfileEntityKindSchema,
@@ -25,6 +34,8 @@ export const ProfileEntitySchema = Type.Object({
     isMe: Type.Optional(Type.Boolean()),
     /** The contact card this person came from, e.g. "contacts:ABC". */
     contactId: Type.Optional(Type.String()),
+    /** Named places (Home, Work, School): where they are, so visits and reminders use the name. */
+    place: Type.Optional(ProfilePlaceSchema),
     createdAt: Type.String(),
     updatedAt: Type.String(),
 });
@@ -118,3 +129,13 @@ export const SaveProfileEntitySchema = Type.Object({
     relationToMe: Type.Optional(Type.String({ maxLength: 40 })),
 });
 export type SaveProfileEntityInput = Static<typeof SaveProfileEntitySchema>;
+
+// Name a place from a visit, e.g. "Home" at the visit's coordinates.
+export const SaveProfilePlaceSchema = Type.Object({
+    name: Type.String({ minLength: 1, maxLength: 80 }),
+    lat: Type.Number({ minimum: -90, maximum: 90 }),
+    lon: Type.Number({ minimum: -180, maximum: 180 }),
+    radius: Type.Optional(Type.Number({ minimum: 50, maximum: 2000 })),
+    address: Type.Optional(Type.String({ maxLength: 300 })),
+});
+export type SaveProfilePlaceInput = Static<typeof SaveProfilePlaceSchema>;

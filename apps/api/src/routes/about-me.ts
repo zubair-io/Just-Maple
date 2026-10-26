@@ -4,6 +4,7 @@ import { findUserById } from '../repositories/user.repo';
 import {
     SaveProfileEntitySchema,
     SaveProfileFactSchema,
+    SaveProfilePlaceSchema,
     UpdateProfileFactSchema,
     type JWTPayload,
 } from '@maple/shared';
@@ -15,7 +16,9 @@ import {
     deleteRelation,
     findMe,
     listEntities,
+    listPlaces,
     saveFact,
+    savePlace,
     updateEntity,
     updateFact,
 } from '../repositories/profile.repo';
@@ -138,6 +141,30 @@ export const aboutMeRoutes = new Elysia({ prefix: '/api/about-me' })
             return { ok: true };
         },
         { params: t.Object({ id: t.String() }) },
+    )
+
+    // MARK: - Named places
+
+    .get('/places', async ({ auth, set }) => {
+        if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+        return { places: await listPlaces(auth.user._id) };
+    })
+
+    // Name a place (usually from a visit): "Home" here, within this radius.
+    .post(
+        '/places',
+        async ({ auth, body, set }) => {
+            if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+            await ensureProfile(auth.user._id);
+            const place = await savePlace(auth.user._id, body.name, {
+                lat: body.lat,
+                lon: body.lon,
+                radius: body.radius ?? 150,
+                ...(body.address ? { address: body.address } : {}),
+            });
+            return { place };
+        },
+        { body: SaveProfilePlaceSchema },
     )
 
     // MARK: - Facts
