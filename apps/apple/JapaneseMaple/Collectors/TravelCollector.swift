@@ -40,7 +40,7 @@ final class TravelCollector: NSObject, CLLocationManagerDelegate {
     private(set) var state: TravelState
     private var running: Task<Void, Never>?
     private var runAgain = false
-    private var locationWaiters: [CheckedContinuation<CLLocation?, Never>] = []
+    private var locationWaiters: [UUID: CheckedContinuation<CLLocation?, Never>] = [:]
 
     init(client: DeviceDataClient) {
         self.client = client
@@ -144,21 +144,38 @@ final class TravelCollector: NSObject, CLLocationManagerDelegate {
         }
         let status = manager.authorizationStatus
         guard status == .authorizedAlways || status == .authorizedWhenInUse else { return nil }
-        return await withCheckedContinuation { continuation in
-            locationWaiters.append(continuation)
-            guard locationWaiters.count == 1 else { return }
-            manager.requestLocation()
-            Task { @MainActor in
-                try? await Task.sleep(for: Self.locationTimeout)
-                self.resumeLocationWaiters(nil)
+        // Cancelled (the background refresh ran out of time): give up with no location
+        // instead of waiting out the timeout. Each waiter is resumed once: whoever takes
+        // it out of `locationWaiters` first, all on the main actor.
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let first = locationWaiters.isEmpty
+                locationWaiters[id] = continuation
+                guard first else { return }
+                manager.requestLocation()
+                Task { @MainActor in
+                    try? await Task.sleep(for: Self.locationTimeout)
+                    self.resumeLocationWaiters(nil)
+                }
             }
+        } onCancel: {
+            Task { @MainActor in self.resumeLocationWaiter(id, nil) }
         }
     }
 
     private func resumeLocationWaiters(_ location: CLLocation?) {
         let waiters = locationWaiters
-        locationWaiters = []
-        waiters.forEach { $0.resume(returning: location) }
+        locationWaiters = [:]
+        waiters.values.forEach { $0.resume(returning: location) }
+    }
+
+    private func resumeLocationWaiter(_ id: UUID, _ location: CLLocation?) {
+        locationWaiters.removeValue(forKey: id)?.resume(returning: location)
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {

@@ -239,7 +239,7 @@ export const TravelEstimateSchema = Type.Object({
     minutes: Type.Number({ minimum: 0, maximum: 24 * 60 }),
     /** Where the estimate starts, e.g. a named place ("Home") or an address. */
     origin: Type.Optional(Type.String({ maxLength: 200 })),
-    computedAt: Type.String(),
+    computedAt: Type.String({ format: 'date-time' }),
 });
 export type TravelEstimate = Static<typeof TravelEstimateSchema>;
 

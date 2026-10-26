@@ -117,7 +117,8 @@ nonisolated enum PlaceStays {
     static let overlapSlack: TimeInterval = 10 * 60
     /// Leaving and re-entering a place within this long is one stay (GPS jitter at the edge).
     static let reentrySeconds: TimeInterval = 5 * 60
-    /// A stay whose exit never arrived stops absorbing visits after this long.
+    /// A stay whose exit never arrived stops absorbing visits (and repeated entries) after
+    /// this long. Leaving still ends it, whatever its age.
     static let maxOpenStay: TimeInterval = 24 * 60 * 60
 
     static func stayId(placeId: String, at date: Date) -> String {
@@ -188,6 +189,19 @@ nonisolated enum PlaceStays {
     /// Leaving a named place's region.
     static func exit(_ place: NamedPlace, at date: Date, into records: [VisitRecord]) -> [VisitRecord] {
         var records = records
+        // The latest stay that began before leaving is still open: leaving ends it, however
+        // long ago it began (a weekend at home is one stay). `maxOpenStay` doesn't apply.
+        if let index = latestIndex(
+            records, placeId: place.id,
+            where: { $0.arrival.map { $0 <= date.addingTimeInterval(overlapSlack) } ?? false }),
+            records[index].departure == nil
+        {
+            if let arrival = records[index].arrival, arrival > date { return records }
+            records[index].departure = date
+            records[index].fromRegion = true
+            return records
+        }
+        // A stay already closed around now (a repeated exit, or a visit's departure).
         if let index = latestIndex(records, placeId: place.id, where: { contains($0, date) }) {
             if let arrival = records[index].arrival, arrival > date { return records }
             records[index].departure = date

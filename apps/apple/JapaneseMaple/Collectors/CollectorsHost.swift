@@ -26,6 +26,7 @@
 #if os(iOS)
 import BackgroundTasks
 import Foundation
+import os
 import UIKit
 import WebKit
 
@@ -161,10 +162,16 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
             await self.travel.update()
             await self.location.flush()
         }
-        task.expirationHandler = { work.cancel() }
+        let completion = BackgroundTaskCompletion(task)
+        // Out of time: report now, without waiting for the pass to wind down, or iOS
+        // kills the app and runs its refreshes less often.
+        task.expirationHandler = {
+            work.cancel()
+            completion.complete(success: false)
+        }
         Task { @MainActor in
             await work.value
-            task.setTaskCompleted(success: !work.isCancelled)
+            completion.complete(success: !work.isCancelled)
         }
     }
 
@@ -357,6 +364,23 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
+    }
+}
+
+/// Tells iOS a background task finished, once: whichever of the expiration handler and
+/// the normal end comes first wins (`setTaskCompleted` twice is an error).
+nonisolated final class BackgroundTaskCompletion: @unchecked Sendable {
+    private let task: BGTask
+    private let completed = OSAllocatedUnfairLock(initialState: false)
+
+    init(_ task: BGTask) { self.task = task }
+
+    func complete(success: Bool) {
+        let first = completed.withLock { done in
+            defer { done = true }
+            return !done
+        }
+        if first { task.setTaskCompleted(success: success) }
     }
 }
 #endif

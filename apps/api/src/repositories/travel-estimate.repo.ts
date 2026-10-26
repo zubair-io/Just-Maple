@@ -8,6 +8,7 @@ interface TravelEstimateDocument extends TravelEstimate {
     _id: string; // `${userId}:${eventId}`
     userId: string;
     deviceId: string;
+    savedAt: Date;
 }
 
 function getCollection(): Collection<TravelEstimateDocument> {
@@ -22,7 +23,7 @@ export async function saveTravelEstimates(
     for (const estimate of estimates) {
         await getCollection().updateOne(
             { _id: `${userId}:${estimate.eventId}` },
-            { $set: { ...estimate, userId, deviceId } },
+            { $set: { ...estimate, userId, deviceId, savedAt: new Date() } },
             { upsert: true },
         );
     }
@@ -49,4 +50,12 @@ export async function findTravelEstimates(
             },
         ]),
     );
+}
+
+/** Removes estimates the phone hasn't refreshed in two days; their events have passed. */
+export async function purgeOldTravelEstimates(now = new Date()): Promise<number> {
+    const result = await getCollection().deleteMany({
+        savedAt: { $lt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000) },
+    });
+    return result.deletedCount;
 }
