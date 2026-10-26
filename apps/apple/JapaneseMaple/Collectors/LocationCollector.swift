@@ -7,8 +7,12 @@
 //  arrive and again when you leave: the server treats the latest open visit as your
 //  current place.
 //
-//  iOS relaunches the app in the background to deliver visits, so the collector is
-//  started from the app delegate at launch (see CollectorsHost.resume()).
+//  It also watches the places the user named on the web (Home, Work, School): entering
+//  or leaving one records a stay titled with the place name, and a visit inside a named
+//  place is titled with it too (see PlacesMapping.swift).
+//
+//  iOS relaunches the app in the background to deliver visits and region crossings, so
+//  the collector is started from the app delegate at launch (see CollectorsHost.resume()).
 //
 
 #if os(iOS)
@@ -20,6 +24,10 @@ import UIKit
 final class LocationCollector: NSObject, CLLocationManagerDelegate {
     static let maxGeocodeAttempts = 3
     static let retentionDays = 31
+    /// Named places are fetched again at most this often, unless something asks sooner.
+    static let placesRefreshInterval: TimeInterval = 3 * 60 * 60
+    /// A forced refresh (launch, foreground, registration) still skips if this recent.
+    static let placesMinimumInterval: TimeInterval = 60
 
     /// Called before each upload (registers the device); throws to skip the upload.
     /// Registers if needed and says whether this device is the one collecting this
@@ -35,6 +43,8 @@ final class LocationCollector: NSObject, CLLocationManagerDelegate {
     }
     /// Called when the permission or queue changes.
     var onChange: () -> Void = {}
+    /// Called after a visit or a named-place crossing: where you are may have changed.
+    var onMoved: () -> Void = {}
 
     private let client: DeviceDataClient
     private let manager = CLLocationManager()
@@ -45,13 +55,20 @@ final class LocationCollector: NSObject, CLLocationManagerDelegate {
     private var authorizationWaiters: [CheckedContinuation<Void, Never>] = []
     private var flushing: Task<Void, Never>?
     private var flushAgain = false
+    private let placesFile = CollectorJSONFile<NamedPlacesCache>(name: "places")
+    private(set) var placesCache: NamedPlacesCache
+    private var refreshingPlaces: Task<Void, Never>?
 
     init(client: DeviceDataClient) {
         self.client = client
         self.state = file.load()
+        self.placesCache = placesFile.load() ?? NamedPlacesCache()
         super.init()
         manager.delegate = self
     }
+
+    /// The user's named places, as last fetched.
+    var places: [NamedPlace] { placesCache.places }
 
     // MARK: - Permission
 
@@ -103,6 +120,7 @@ final class LocationCollector: NSObject, CLLocationManagerDelegate {
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
             self.resumeAuthorizationWaiters()
+            self.updateRegions()
             self.onChange()
         }
     }
@@ -113,6 +131,7 @@ final class LocationCollector: NSObject, CLLocationManagerDelegate {
         guard !isMonitoring else { return }
         isMonitoring = true
         manager.startMonitoringVisits()
+        updateRegions()
         Task { await flush() }
     }
 
@@ -120,6 +139,7 @@ final class LocationCollector: NSObject, CLLocationManagerDelegate {
         guard isMonitoring else { return }
         isMonitoring = false
         manager.stopMonitoringVisits()
+        updateRegions()
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
@@ -135,9 +155,124 @@ final class LocationCollector: NSObject, CLLocationManagerDelegate {
     }
 
     func record(_ visit: VisitRecord) async {
-        state.visits = LocationMapping.merge(visit, into: state.visits)
+        state.visits = PlaceStays.add(visit, places: places, into: state.visits)
+        file.save(state)
+        updateRegions()
+        onChange()
+        onMoved()
+        await flush()
+    }
+
+    // MARK: - Named places
+
+    /// Fetches the named places if they're older than 3 hours, or with `force` (launch,
+    /// foreground, registration) unless they were fetched in the last minute.
+    func refreshPlaces(force: Bool = false) async {
+        if let refreshingPlaces {
+            await refreshingPlaces.value
+            return
+        }
+        let maxAge = force ? Self.placesMinimumInterval : Self.placesRefreshInterval
+        guard !placesCache.isFresh(maxAge: maxAge) else { return }
+        let task = Task { @MainActor in
+            do {
+                let places = try await self.client.places()
+                self.placesCache = NamedPlacesCache(places: places, fetchedAt: Date())
+                self.placesFile.save(self.placesCache)
+                self.applyPlaces()
+            } catch {
+                print("[Collectors] Couldn't fetch named places: \(error.localizedDescription)")
+            }
+        }
+        refreshingPlaces = task
+        await task.value
+        refreshingPlaces = nil
+    }
+
+    /// Names visits recorded before the places were known, and watches the nearest ones.
+    private func applyPlaces() {
+        let applied = PlaceStays.apply(places, to: state.visits)
+        if applied.records != state.visits {
+            state.visits = applied.records
+            state.enqueueRemovals(applied.removed)
+            file.save(state)
+            // Not awaited: this can run from inside an upload (after registering).
+            Task { await self.flush() }
+        }
+        updateRegions()
+        onChange()
+    }
+
+    /// Watches the 20 named places nearest to where the phone last was. Region
+    /// monitoring needs "Always"; without it, or when stopped, nothing is watched.
+    private func updateRegions() {
+        let ours = manager.monitoredRegions.filter {
+            PlaceMatching.placeId(fromRegion: $0.identifier) != nil
+        }
+        guard isMonitoring, isAuthorized,
+            CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self)
+        else {
+            ours.forEach { manager.stopMonitoring(for: $0) }
+            return
+        }
+        let here = manager.location?.coordinate
+        let wanted = PlaceMatching.regionsToMonitor(
+            places, nearLatitude: here?.latitude, longitude: here?.longitude)
+        let wantedIds = Set(wanted.map(PlaceMatching.regionId))
+        for region in ours where !wantedIds.contains(region.identifier) {
+            manager.stopMonitoring(for: region)
+        }
+        var current: [String: CLCircularRegion] = [:]
+        for case let region as CLCircularRegion in ours { current[region.identifier] = region }
+        for place in wanted {
+            let id = PlaceMatching.regionId(place)
+            let radius = min(place.radius, manager.maximumRegionMonitoringDistance)
+            let center = CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude)
+            if let existing = current[id], existing.radius == radius,
+                existing.center.latitude == center.latitude,
+                existing.center.longitude == center.longitude
+            {
+                continue
+            }
+            let region = CLCircularRegion(center: center, radius: radius, identifier: id)
+            region.notifyOnEntry = true
+            region.notifyOnExit = true
+            manager.startMonitoring(for: region)
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        let identifier = region.identifier
+        let date = Date()
+        Task { @MainActor in await self.crossed(identifier, entered: true, at: date) }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+        let identifier = region.identifier
+        let date = Date()
+        Task { @MainActor in await self.crossed(identifier, entered: false, at: date) }
+    }
+
+    nonisolated func locationManager(
+        _ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error
+    ) {
+        print("[Collectors] Can't watch \(region?.identifier ?? "a place"): \(error.localizedDescription)")
+    }
+
+    private func crossed(_ identifier: String, entered: Bool, at date: Date) async {
+        guard let placeId = PlaceMatching.placeId(fromRegion: identifier) else { return }
+        guard let place = places.first(where: { $0.id == placeId }) else {
+            // The place was deleted on the web since.
+            updateRegions()
+            return
+        }
+        state.visits =
+            entered
+            ? PlaceStays.enter(place, at: date, into: state.visits)
+            : PlaceStays.exit(place, at: date, into: state.visits)
         file.save(state)
         onChange()
+        onMoved()
         await flush()
     }
 
@@ -171,6 +306,7 @@ final class LocationCollector: NSObject, CLLocationManagerDelegate {
     }
 
     private func flushOnce() async {
+        await refreshPlaces()
         await geocodeVisits()
         state.pruneVisits(before: Date().addingTimeInterval(-Double(Self.retentionDays) * 86_400))
         state.enqueue(state.visits.map { LocationMapping.item(for: $0) })
