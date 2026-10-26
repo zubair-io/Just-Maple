@@ -1,7 +1,14 @@
 import { createLibrary, defineComponent, createParser } from '@openuidev/lang-core';
 import { z } from 'zod/v4';
 import { Value } from '@sinclair/typebox/value';
-import { BotUIResponseSchema, MAC_DATA_ITEM_ID_PATTERN, type BotUIResponse } from '@maple/shared';
+import {
+    BotUIResponseSchema,
+    botUIToText,
+    MAC_DATA_ITEM_ID_PATTERN,
+    type BotUIResponse,
+    type PageContent,
+} from '@maple/shared';
+import { markdownToProseMirror } from '../utils/markdown-to-prosemirror';
 
 const text = z.string().max(10000);
 const definitions = [
@@ -109,8 +116,26 @@ function fenceBareOpenUI(response: string): string {
         .replace(/^```[a-z]*\s*\n([\s\S]*?)\n?```$/i, '$1')
         .trim();
     const isOpenUI =
-        /^[A-Za-z_]\w*\s*=\s*[A-Z]\w*\(/.test(body) && /^\s*root\s*=\s*Response\(/m.test(body);
+        /^[A-Za-z_]\w*\s*=\s*[A-Z]\w*\(/.test(body) && /\broot\s*=\s*Response\(/.test(body);
     return isOpenUI ? '```openui\n' + body + '\n```' : response;
+}
+
+/**
+ * Puts each OpenUI statement on its own line. Models sometimes run them together
+ * (`root = Response([a])a = Text("…")`), which the parser can't read.
+ */
+function splitStatements(source: string): string {
+    // Blank out string contents (same length) so brackets inside text don't count.
+    const masked = source.replace(
+        /"(?:\\.|[^"\\])*"/g,
+        (s) => '"' + 'x'.repeat(s.length - 2) + '"',
+    );
+    const breaks = [...masked.matchAll(/[)\]](?=[ \t]*[A-Za-z_]\w*\s*=\s*[A-Z]\w*\()/g)].map(
+        (m) => m.index! + 1,
+    );
+    let out = source;
+    for (const at of breaks.reverse()) out = out.slice(0, at) + '\n' + out.slice(at).trimStart();
+    return out;
 }
 
 export function parseBotResponse(response: string): { markdown: string; ui?: BotUIResponse } {
@@ -118,7 +143,7 @@ export function parseBotResponse(response: string): { markdown: string; ui?: Bot
     const fences = [...response.matchAll(/```openui\s*\n([\s\S]*?)```/g)];
     if (fences.length !== 1 || response.length > 100000) return { markdown: response };
     const match = fences[0]!;
-    const source = match[1]!;
+    const source = splitStatements(match[1]!);
     const markdown = response.replace(match[0], '').trim();
     const fallback = {
         markdown:
@@ -172,3 +197,33 @@ export function parseBotResponse(response: string): { markdown: string; ui?: Bot
 
 /** Keep generated UI details available to text clients and subsequent conversation turns. */
 export { botUIToText } from '@maple/shared';
+
+/**
+ * A bot message saved before the card parser could read it shows its card statements
+ * (`root = Response(...)`) as text. Reads it again so it shows as a card, without
+ * changing what's stored. Null when the message isn't one of those.
+ */
+export function repairRawBotUI(
+    content: PageContent,
+): { content: PageContent; ui: BotUIResponse } | null {
+    const raw = plainText(content);
+    if (!/\broot\s*=\s*Response\(/.test(raw)) return null;
+    const parsed = parseBotResponse(raw);
+    if (!parsed.ui) return null;
+    return {
+        content: markdownToProseMirror(parsed.markdown || botUIToText(parsed.ui)),
+        ui: parsed.ui,
+    };
+}
+
+/** The text of a ProseMirror doc, one line per block. */
+function plainText(node: unknown): string {
+    if (!node || typeof node !== 'object') return '';
+    const { type, text, content } = node as { type?: string; text?: string; content?: unknown[] };
+    if (type === 'text') return text ?? '';
+    if (type === 'hardBreak') return '\n';
+    const inner = (content ?? []).map(plainText);
+    return type === 'doc' || type === 'bulletList' || type === 'orderedList'
+        ? inner.join('\n')
+        : inner.join('');
+}
