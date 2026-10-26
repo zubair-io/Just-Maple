@@ -30,4 +30,27 @@ describe.runIf(mongoAvailable)('saved interactive bot replies', () => {
         });
         expect(await findMessagesByThreadId(threadId)).toEqual([reloaded]);
     });
+
+    it('shows an old bot message saved as raw card text as a card', async () => {
+        const raw =
+            'root = Response([note, src])note = Text("The build failed.")src = Source("CI run failed", "mail:737267")';
+        const message = await createMessageInThread({
+            pageId: 'messages-page',
+            notebookId: new ObjectId().toString(),
+            userId: new ObjectId().toString(),
+            userBotId: new ObjectId().toString(),
+            threadId: new ObjectId().toString(),
+            senderType: 'bot',
+            content: {
+                type: 'doc',
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: raw }] }],
+            },
+        });
+        const reloaded = await findMessageById(message.id);
+        expect(reloaded?.botUI?.blocks).toEqual([
+            { type: 'text', content: 'The build failed.' },
+            { type: 'source', label: 'CI run failed', itemId: 'mail:737267' },
+        ]);
+        expect(JSON.stringify(reloaded?.content)).not.toContain('root = Response');
+    });
 });
