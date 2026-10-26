@@ -117,35 +117,6 @@ export async function savePlace(
     return entity;
 }
 
-/** Named places (Home, Work…) with their coordinates. */
-export async function listPlaces(userId: string): Promise<ProfileEntity[]> {
-    return (await entities().find({ userId, kind: 'place' }).toArray())
-        .map(strip)
-        .filter((entity) => !!entity.place);
-}
-
-/** Creates a named place, or moves the one with the same name. */
-export async function savePlace(
-    userId: string,
-    name: string,
-    place: NonNullable<ProfileEntity['place']>,
-): Promise<ProfileEntity> {
-    const existing = (await listEntities(userId)).find(
-        (entity) =>
-            entity.kind === 'place' && entity.name.toLowerCase() === name.trim().toLowerCase(),
-    );
-    if (existing) {
-        await entities().updateOne(
-            { _id: existing.id, userId },
-            { $set: { place, updatedAt: new Date().toISOString() } },
-        );
-        return { ...existing, place };
-    }
-    const entity = await createEntity(userId, { kind: 'place', name });
-    await entities().updateOne({ _id: entity.id, userId }, { $set: { place } });
-    return { ...entity, place };
-}
-
 export async function updateEntity(
     scope: ProfileScope,
     id: string,
