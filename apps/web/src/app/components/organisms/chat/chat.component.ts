@@ -12,6 +12,7 @@ import {
   OnDestroy,
   DestroyRef,
   ChangeDetectionStrategy,
+  untracked,
 } from '@angular/core';
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
@@ -67,6 +68,10 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private readonly botActivity = inject(BotActivityService);
 
   readonly notebookId = input.required<string>();
+
+  /** The messages page being shown; without it, the notebook's default chat. */
+
+  readonly pageId = input<string | null>(null);
 
   readonly messages = this.messageService.messagesForTag;
   readonly isLoading = this.messageService.isLoading;
@@ -159,7 +164,7 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
   private editor: Editor | null = null;
   private typingSubscription: Subscription | null = null;
   private typingTimeout: ReturnType<typeof setTimeout> | null = null;
-  private lastTagId: string | null = null;
+  private lastLoadedChat: string | null = null;
   private isAtBottom = true;
   private lastNewestId: string | null = null;
   private botEventsSubscription: Subscription | null = null;
@@ -174,11 +179,18 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
 
     effect(() => {
       const notebookId = this.notebookId();
-      if (notebookId && notebookId !== this.lastTagId) {
-        this.lastTagId = notebookId;
-        this.loadMessages(notebookId);
-        this.subscribeToTyping(notebookId);
-        this.subscribeToBotEvents(notebookId);
+      const pageId = this.pageId();
+      const key = `${notebookId}|${pageId ?? ''}`;
+      if (notebookId && key !== this.lastLoadedChat) {
+        const notebookChanged = !this.lastLoadedChat?.startsWith(`${notebookId}|`);
+        this.lastLoadedChat = key;
+        untracked(() => {
+          this.loadMessages(notebookId, pageId);
+          if (notebookChanged) {
+            this.subscribeToTyping(notebookId);
+            this.subscribeToBotEvents(notebookId);
+          }
+        });
       }
     });
 
@@ -384,7 +396,8 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     this.showMentionSuggestions.set(false);
   }
 
-  private loadMessages(notebookId: string): void {
+  /** Loads the open chat: this page's messages, or the notebook's default chat without one. */
+  private loadMessages(notebookId: string, pageId: string | null): void {
     // Reset state for the new notebook
     this.lastNewestId = null;
     this.isAtBottom = true;
@@ -395,7 +408,10 @@ export class ChatComponent implements AfterViewInit, OnDestroy {
     this.showScrollButton.set(false);
     this.newMessageCount.set(0);
 
-    this.messageService.loadMessages(notebookId).subscribe({
+    const load = pageId
+      ? this.messageService.loadMessagesByPageId(pageId)
+      : this.messageService.loadMessages(notebookId);
+    load.subscribe({
       next: () => {
         // Scroll to bottom on initial load with longer delay to ensure rendering
         setTimeout(() => {

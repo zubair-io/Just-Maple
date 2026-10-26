@@ -123,10 +123,12 @@ export class MessageService {
       this.notificationService.onMessageNotificationRead((notebookId, pageId) => {
         if (pageId) {
           // Clear unread count for specific page
-          this._unreadCounts.update((counts) => counts.filter((c) => c.pageId !== pageId));
+          this._unreadCounts.update((counts) => withoutWhere(counts, (c) => c.pageId === pageId));
         } else {
           // Clear unread count for notebook
-          this._unreadCounts.update((counts) => counts.filter((c) => c.notebookId !== notebookId));
+          this._unreadCounts.update((counts) =>
+            withoutWhere(counts, (c) => c.notebookId === notebookId),
+          );
         }
       });
 
@@ -818,7 +820,7 @@ export class MessageService {
       }>(`/api/pages/${pageId}/read`, {})
       .pipe(
         tap((response) => {
-          this._unreadCounts.update((counts) => counts.filter((c) => c.pageId !== pageId));
+          this._unreadCounts.update((counts) => withoutWhere(counts, (c) => c.pageId === pageId));
           this.notificationService.markChatNotificationsRead(
             { pageId, notebookId },
             response.unreadNotificationCount,
@@ -879,4 +881,9 @@ export class MessageService {
     if (!isPlatformBrowser(this.platformId) || messages.length === 0) return;
     await this.indexedDB.putMany(messages, STORE_NAME);
   }
+}
+
+/** The list without matching entries, or the same list when nothing matches (no signal change). */
+function withoutWhere<T>(list: T[], matches: (item: T) => boolean): T[] {
+  return list.some(matches) ? list.filter((item) => !matches(item)) : list;
 }
