@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ObjectId } from 'mongodb';
 import { createTestApp } from '../../__tests__/helpers/app';
 import {
@@ -28,7 +28,14 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
     let chatPageId: string;
     let call: (path: string, method?: string, body?: unknown) => Promise<any>;
 
+    // The tests read the clock (upcoming events, uploads): pin it to the morning of the
+    // test day so they pass at any real time.
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     beforeEach(async () => {
+        vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-26T09:00:00-04:00') });
         vi.clearAllMocks();
         vi.mocked(runDailyBrief).mockResolvedValue(true);
         vi.mocked(sendLeaveReminder).mockResolvedValue(true);
