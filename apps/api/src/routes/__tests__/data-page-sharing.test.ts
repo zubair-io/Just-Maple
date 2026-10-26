@@ -20,6 +20,9 @@ vi.mock('../../services/mac-data-relay.service', () => ({
 }));
 
 import { executeMacDataTool, getMacDataToolContext } from '../../services/mac-data-tools.service';
+import { handleDeviceDataChanges } from '../../services/proactive-bot.service';
+import { flushDeviceNews } from '../../services/device-data.service';
+import { realtimeWSService } from '../../services/realtime-ws.service';
 
 const now = Math.floor(Date.now() / 1000);
 
@@ -80,21 +83,21 @@ describe.runIf(mongoAvailable)('data pages in shared notebooks', () => {
         return { id, token: await createAuthToken(id) };
     }
 
-    /** The creator's device uploads these items. */
-    async function upload(sources: MacDataSource[], items: MacDataItem[]) {
-        await call(creator, '/api/collectors', 'POST', {
-            deviceId: `device-${creator.id}`,
+    /** The creator's (or someone's) device uploads these items. */
+    async function upload(sources: MacDataSource[], items: MacDataItem[], who = creator) {
+        await call(who, '/api/collectors', 'POST', {
+            deviceId: `device-${who.id}`,
             platform: 'macos',
             name: 'Test Mac',
             sources,
             timeZone: 'America/New_York',
         });
-        await call(creator, `/api/collectors/device-${creator.id}`, 'PATCH', {
+        await call(who, `/api/collectors/device-${who.id}`, 'PATCH', {
             activeSources: sources,
         });
         const result = await json(
-            call(creator, '/api/device-data/items', 'POST', {
-                deviceId: `device-${creator.id}`,
+            call(who, '/api/device-data/items', 'POST', {
+                deviceId: `device-${who.id}`,
                 upserts: items,
                 removals: [],
             }),
@@ -113,9 +116,9 @@ describe.runIf(mongoAvailable)('data pages in shared notebooks', () => {
         return doc._id.toString();
     }
 
-    async function addPage(notebookId: string, source: MacDataSource) {
+    async function addPage(notebookId: string, source: MacDataSource, who = creator) {
         const { page } = await json(
-            call(creator, '/api/pages', 'POST', {
+            call(who, '/api/pages', 'POST', {
                 type: 'devicedata',
                 deviceSource: source,
                 title: 'Data',
@@ -196,7 +199,7 @@ describe.runIf(mongoAvailable)('data pages in shared notebooks', () => {
         await upload(['calendar'], [item('calendar:1', 'calendar', { calendar: 'Family' })]);
         const notebookId = await notebook(true);
         const page = await addPage(notebookId, 'calendar');
-        await setFilter(page.id, { calendars: ['Family'] });
+        await setFilter(page.id, { calendars: [{ name: 'Family' }] });
 
         const seen = await view(member, page.id, 'calendar');
         expect(ids(seen)).toEqual(['calendar:1']);
@@ -230,7 +233,7 @@ describe.runIf(mongoAvailable)('data pages in shared notebooks', () => {
         expect(stored).toMatchObject({
             title: 'Data',
             isTrashed: false,
-            deviceFilter: { calendars: ['Family'] },
+            deviceFilter: { calendars: [{ name: 'Family' }] },
             notebookId: new ObjectId(notebookId),
         });
 
@@ -260,9 +263,9 @@ describe.runIf(mongoAvailable)('data pages in shared notebooks', () => {
         const page = await addPage(await notebook(true), 'calendar');
         const { options } = await json(call(creator, `/api/device-data/pages/${page.id}/options`));
         expect(options).toMatchObject({
-            calendars: ['Work', 'Family'],
+            calendars: [{ name: 'Work' }, { name: 'Family' }],
             mailboxes: ['INBOX'],
-            chats: ['Family'],
+            chats: [{ name: 'Family' }],
         });
     });
 
@@ -282,9 +285,9 @@ describe.runIf(mongoAvailable)('data pages in shared notebooks', () => {
         );
         const notebookId = await notebook(true);
         const cases: Array<[MacDataSource, DeviceDataFilter, string]> = [
-            ['calendar', { calendars: ['Family'] }, 'calendar:family'],
+            ['calendar', { calendars: [{ name: 'Family' }] }, 'calendar:family'],
             ['mail', { mailboxes: ['Kids'] }, 'mail:label'],
-            ['imessage', { chats: ['Family'] }, 'imessage:family'],
+            ['imessage', { chats: [{ name: 'Family' }] }, 'imessage:family'],
         ];
         for (const [source, filter, allowed] of cases) {
             const page = await addPage(notebookId, source);
@@ -374,7 +377,7 @@ describe.runIf(mongoAvailable)('data pages in shared notebooks', () => {
         await call(creator, `/api/device-data/pages/${page.id}`, 'PATCH', {
             title: 'Family calendar',
             description: 'School and sports',
-            deviceFilter: { calendars: ['Family'] },
+            deviceFilter: { calendars: [{ name: 'Family' }] },
         });
 
         const ctx = await getMacDataToolContext(member.id, notebookId, {
@@ -441,5 +444,289 @@ describe.runIf(mongoAvailable)('data pages in shared notebooks', () => {
             'calendar:work',
         ]);
         expect(search.results[0].sharedBy).toBeUndefined();
+    });
+
+    // MARK: - Review fixes
+
+    const botOf = (who: { id: string }) => ({ id: `bot-${who.id}`, name: 'Bot', ownerId: who.id });
+    const botSources = async (who: { id: string }, notebookId: string) =>
+        (await getMacDataToolContext(who.id, notebookId, botOf(who)))?.sources ?? [];
+
+    it('shares nothing from a trashed or archived page, while its creator still sees it', async () => {
+        await upload(['calendar'], [item('calendar:1', 'calendar', { calendar: 'Family' })]);
+        const notebookId = await notebook(true);
+        const page = await addPage(notebookId, 'calendar');
+        await setFilter(page.id, { calendars: [{ name: 'Family' }] });
+        expect(ids(await view(member, page.id, 'calendar'))).toEqual(['calendar:1']);
+
+        for (const flag of ['isTrashed', 'isArchived']) {
+            await testDb!
+                .collection('pages')
+                .updateOne({ id: page.id }, { $set: { [flag]: true } });
+            expect(
+                (await call(member, `/api/device-data/items?source=calendar&pageId=${page.id}`))
+                    .status,
+            ).toBe(403);
+            expect(
+                (await call(member, `/api/device-data/items/calendar:1?pageId=${page.id}`)).status,
+            ).toBe(404);
+            expect(await botSources(member, notebookId)).toEqual([]);
+            expect(await botSources(creator, notebookId)).toEqual([]);
+            expect(ids(await view(creator, page.id, 'calendar'))).toEqual(['calendar:1']);
+            await testDb!
+                .collection('pages')
+                .updateOne({ id: page.id }, { $set: { [flag]: false } });
+        }
+    });
+
+    it('names excluded places only to the creator', async () => {
+        await upload(['location'], [item('location:1', 'location', { occurredAt: todayAt(8) })]);
+        const { place } = await json(
+            call(creator, '/api/about-me/places', 'POST', { name: 'Work', lat: 40.7, lon: -74 }),
+        );
+        const page = await addPage(await notebook(true), 'location');
+        await setFilter(page.id, { includeAll: true, excludePlaceIds: [place.id] });
+        expect((await view(creator, page.id, 'location')).access.filterSummary).toBe(
+            'All visits, not at Work',
+        );
+        expect((await view(member, page.id, 'location')).access.filterSummary).toBe(
+            'All visits, not at a place',
+        );
+    });
+
+    it("gives bots nothing from an unfiltered page once its notebook is shared, the creator's too", async () => {
+        await upload(['calendar'], [item('calendar:1', 'calendar', { calendar: 'Family' })]);
+        const notebookId = await notebook(false);
+        const page = await addPage(notebookId, 'calendar');
+        expect(page.deviceFilter).toBeUndefined();
+        expect(await botSources(creator, notebookId)).toEqual(['calendar']);
+
+        // The notebook is shared later: the page has no filter yet.
+        await testDb!.collection('notebooks').updateOne(
+            { _id: new ObjectId(notebookId) },
+            {
+                $push: {
+                    'sharing.sharedWith': { userId: member.id, accessLevel: 'write' },
+                } as never,
+            },
+        );
+        expect(await botSources(creator, notebookId)).toEqual([]);
+        expect(await botSources(member, notebookId)).toEqual([]);
+        // The creator's own view still shows everything, marked as not shared.
+        const own = await view(creator, page.id, 'calendar');
+        expect(ids(own)).toEqual(['calendar:1']);
+        expect(own.access).toMatchObject({ canManage: true, shared: true });
+        expect(own.access.filterSummary).toBeUndefined();
+        expect(
+            (await call(member, `/api/device-data/items?source=calendar&pageId=${page.id}`)).status,
+        ).toBe(403);
+
+        // Proactive news for that notebook stops too.
+        vi.mocked(handleDeviceDataChanges).mockClear();
+        await newsFor(notebookId, [item('calendar:2', 'calendar', { calendar: 'Family' })]);
+        expect(handleDeviceDataChanges).not.toHaveBeenCalled();
+    });
+
+    /** A proactive chat in the notebook, and fresh calendar items as news. */
+    async function newsFor(notebookId: string, items: MacDataItem[]) {
+        const chat = await createPageFixture({ userId: creator.id, notebookId, type: 'message' });
+        await testDb!.collection('pages').updateOne(
+            { _id: chat._id },
+            {
+                $set: {
+                    proactive: {
+                        userBotId: new ObjectId().toString(),
+                        instructions: '',
+                        enabled: true,
+                        ownerUserId: creator.id,
+                        updatedAt: new Date(),
+                    },
+                },
+            },
+        );
+        await testDb!
+            .collection('collectors')
+            .updateOne(
+                { deviceId: `device-${creator.id}` },
+                { $set: { 'activeSince.calendar': new Date(Date.now() - 3600_000) } },
+            );
+        await upload(['calendar'], items);
+        await flushDeviceNews(creator.id);
+    }
+
+    it("sends proactive news only for items the notebook's page shares", async () => {
+        await upload(['calendar'], [item('calendar:0', 'calendar', { calendar: 'Family' })]);
+        const notebookId = await notebook(false);
+        const page = await addPage(notebookId, 'calendar');
+        await setFilter(page.id, { calendars: [{ name: 'Family' }] });
+        vi.mocked(handleDeviceDataChanges).mockClear();
+        await newsFor(notebookId, [
+            item('calendar:family', 'calendar', { calendar: 'Family' }),
+            item('calendar:work', 'calendar', { calendar: 'Work' }),
+        ]);
+        expect(handleDeviceDataChanges).toHaveBeenCalledTimes(1);
+        const [, batches] = vi.mocked(handleDeviceDataChanges).mock.calls[0]!;
+        expect(batches[0]!.entries.map((e) => e.item.id)).toEqual(['calendar:family']);
+    });
+
+    it('hides the pages of someone who left, and lets only them delete those pages', async () => {
+        await upload(
+            ['calendar'],
+            [item('calendar:sam', 'calendar', { calendar: 'Home' })],
+            member,
+        );
+        const notebookId = await notebook(true);
+        const page = await addPage(notebookId, 'calendar', member);
+        await json(
+            call(member, `/api/device-data/pages/${page.id}`, 'PATCH', {
+                deviceFilter: { includeAll: true },
+            }),
+        );
+        expect(ids(await view(creator, page.id, 'calendar'))).toEqual(['calendar:sam']);
+        expect(await botSources(member, notebookId)).toEqual(['calendar']);
+
+        // The notebook's owner removes the member.
+        expect(
+            (await call(creator, `/api/notebooks/${notebookId}/share/${member.id}`, 'DELETE'))
+                .status,
+        ).toBe(200);
+        const listed = await json(call(creator, `/api/pages?notebookId=${notebookId}`));
+        expect(listed.pages.map((p: { id: string }) => p.id)).not.toContain(page.id);
+        expect(
+            (await call(creator, `/api/device-data/items?source=calendar&pageId=${page.id}`))
+                .status,
+        ).toBe(404);
+        expect(await botSources(creator, notebookId)).toEqual([]);
+        // The removed member's own bots get nothing there either.
+        expect(await getMacDataToolContext(member.id, notebookId, botOf(member))).toBeNull();
+        // Nobody else can delete it; they can, wherever it is.
+        expect((await call(creator, `/api/pages/${page.id}`, 'DELETE')).status).not.toBe(200);
+        const left = await json(call(member, '/api/device-data/pages/left'));
+        expect(left.pages.map((p: { id: string }) => p.id)).toEqual([page.id]);
+        expect((await call(member, `/api/pages/${page.id}/trash`, 'POST')).status).toBe(200);
+        expect((await call(member, `/api/pages/${page.id}`, 'DELETE')).status).toBe(200);
+        expect(await testDb!.collection('pages').findOne({ id: page.id })).toBeNull();
+    });
+
+    it('matches calendars and chats by id, and by name for items without one', async () => {
+        await upload(
+            ['calendar', 'imessage'],
+            [
+                item('calendar:a', 'calendar', {
+                    calendar: 'Family',
+                    extra: { calendarId: 'cal-a' },
+                }),
+                item('calendar:b', 'calendar', {
+                    calendar: 'Family',
+                    extra: { calendarId: 'cal-b' },
+                }),
+                item('calendar:old', 'calendar', { calendar: 'Family' }), // before ids
+                item('imessage:new', 'imessage', {
+                    thread: 'Renamed',
+                    extra: { chatId: 'chat-1' },
+                }),
+                item('imessage:old', 'imessage', {
+                    thread: 'Original',
+                    extra: { chatId: 'chat-1' },
+                    occurredAt: now - 3600,
+                }),
+            ],
+        );
+        const notebookId = await notebook(true);
+        const calendar = await addPage(notebookId, 'calendar');
+        const { options } = await json(
+            call(creator, `/api/device-data/pages/${calendar.id}/options`),
+        );
+        expect(options.calendars).toEqual(
+            expect.arrayContaining([
+                { id: 'cal-a', name: 'Family' },
+                { id: 'cal-b', name: 'Family' },
+            ]),
+        );
+        expect(options.calendars).toHaveLength(2); // the id-less copy isn't listed again
+        expect(options.chats).toEqual([{ id: 'chat-1', name: 'Renamed' }]);
+
+        await setFilter(calendar.id, { calendars: [{ id: 'cal-a', name: 'Family' }] });
+        expect(ids(await view(member, calendar.id, 'calendar'))).toEqual([
+            'calendar:a',
+            'calendar:old',
+        ]);
+        const chats = await addPage(notebookId, 'imessage');
+        await setFilter(chats.id, { chats: [{ id: 'chat-1', name: 'Original' }] });
+        expect(ids(await view(member, chats.id, 'imessage'))).toEqual([
+            'imessage:new',
+            'imessage:old',
+        ]);
+    });
+
+    it("never empties someone else's trashed data page", async () => {
+        const notebookId = await notebook(true);
+        const page = await addPage(notebookId, 'calendar');
+        await call(creator, `/api/pages/${page.id}/trash`, 'POST');
+        await call(member, '/api/pages/trash/empty', 'DELETE');
+        expect(await testDb!.collection('pages').findOne({ id: page.id })).not.toBeNull();
+        await call(creator, '/api/pages/trash/empty', 'DELETE');
+        expect(await testDb!.collection('pages').findOne({ id: page.id })).toBeNull();
+    });
+
+    it('never publishes a data page, alone or with its notebook', async () => {
+        const notebookId = await notebook(true);
+        const page = await addPage(notebookId, 'calendar');
+        for (const who of [creator, member]) {
+            expect(
+                (await call(who, `/api/pages/${page.id}/publish`, 'PATCH', { isPublished: true }))
+                    .status,
+            ).toBe(400);
+        }
+        await call(creator, `/api/notebooks/${notebookId}/public`, 'PATCH', { isPublic: true });
+        const stored = await testDb!.collection('pages').findOne({ id: page.id });
+        expect(stored?.isPublished).not.toBe(true);
+    });
+
+    it('resets the filter when a page moves into a shared notebook, and tells open clients', async () => {
+        const send = vi.spyOn(realtimeWSService, 'sendToUsers');
+        const solo = await notebook(false);
+        const page = await addPage(solo, 'calendar');
+        await setFilter(page.id, { includeAll: true });
+        expect(send).toHaveBeenCalledWith(
+            expect.arrayContaining([creator.id]),
+            expect.objectContaining({
+                type: 'page.updated',
+                pageId: page.id,
+                deviceFilter: { includeAll: true },
+                description: '',
+            }),
+        );
+        const shared = await notebook(true);
+        const moved = await json(
+            call(creator, `/api/pages/${page.id}`, 'PATCH', { notebookId: shared }),
+        );
+        expect(moved.page.deviceFilter).toEqual({});
+        expect(send).toHaveBeenLastCalledWith(
+            expect.arrayContaining([member.id]),
+            expect.objectContaining({ type: 'page.updated', deviceFilter: {} }),
+        );
+        send.mockRestore();
+    });
+
+    it('leaves sharing alone when the creator only renames or describes a page', async () => {
+        const notebookId = await notebook(true);
+        const page = await createPageFixture({
+            userId: creator.id,
+            notebookId,
+            type: 'devicedata' as never,
+        });
+        await testDb!
+            .collection('pages')
+            .updateOne({ _id: page._id }, { $set: { deviceSource: 'calendar' } });
+        await json(
+            call(creator, `/api/device-data/pages/${page.id}`, 'PATCH', {
+                title: 'Renamed',
+                description: 'What it is for',
+            }),
+        );
+        const stored = await testDb!.collection('pages').findOne({ id: page.id });
+        expect(stored).toMatchObject({ title: 'Renamed', description: 'What it is for' });
+        expect(stored?.deviceFilter).toBeUndefined();
     });
 });

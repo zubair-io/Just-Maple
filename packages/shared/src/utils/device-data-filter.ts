@@ -1,5 +1,34 @@
-import type { DeviceDataFilter, DeviceDataTimeWindow } from '../schemas/device-data-filter';
+import type {
+    DeviceDataChoice,
+    DeviceDataFilter,
+    DeviceDataTimeWindow,
+} from '../schemas/device-data-filter';
 import type { MacDataItem, MacDataSource } from '../schemas/mac-data';
+import type { Notebook } from '../schemas/notebook';
+
+/** The notebook has members besides its owner, or is public. The owner is listed too. */
+export function isNotebookShared(notebook: Pick<Notebook, 'sharing'> | null | undefined): boolean {
+    return (
+        !!notebook?.sharing?.isPublic ||
+        !!notebook?.sharing?.sharedWith?.some((entry) => entry.accessLevel !== 'owner')
+    );
+}
+
+/** The person is listed in the notebook's members (owner included). */
+export function isNotebookMember(
+    notebook: Pick<Notebook, 'sharing'> | null | undefined,
+    userId: string,
+): boolean {
+    return !!notebook?.sharing?.sharedWith?.some((entry) => entry.userId === userId);
+}
+
+/** A calendar's or chat's id as the device uploaded it (absent on older items). */
+export function deviceItemChoiceId(item: MacDataItem): string | undefined {
+    const key =
+        item.source === 'calendar' ? 'calendarId' : item.source === 'imessage' ? 'chatId' : '';
+    const value = key ? item.extra?.[key] : undefined;
+    return typeof value === 'string' && value ? value : undefined;
+}
 
 /** A named place to leave out of a Places page: matched by id, name or distance. */
 export interface FilterPlace {
@@ -28,11 +57,11 @@ export function deviceItemMatchesFilter(
     const all = filter.includeAll === true;
     switch (item.source) {
         case 'calendar':
-            return all || inList(filter.calendars, item.calendar);
+            return all || inChoices(filter.calendars, item, item.calendar);
         case 'mail':
             return all || inList(filter.mailboxes, item.mailbox);
         case 'imessage':
-            return all || inList(filter.chats, item.thread);
+            return all || inChoices(filter.chats, item, item.thread);
         case 'location':
             return (
                 all &&
@@ -70,13 +99,13 @@ export function describeDeviceFilter(
         case 'calendar':
             return filter.includeAll
                 ? 'All calendars'
-                : `Only the ${list(filter.calendars!, 'calendar', 'calendars')}`;
+                : `Only the ${list(choiceNames(filter.calendars!), 'calendar', 'calendars')}`;
         case 'mail':
             return filter.includeAll ? 'All mail' : `Only mail in ${joinNames(filter.mailboxes!)}`;
         case 'imessage':
             return filter.includeAll
                 ? 'All chats'
-                : `Only the ${list(filter.chats!, 'chat', 'chats')}`;
+                : `Only the ${list(choiceNames(filter.chats!), 'chat', 'chats')}`;
         case 'location': {
             const parts: string[] = [];
             const windows = filter.timeWindows ?? [];
@@ -100,6 +129,25 @@ function joinNames(names: string[]): string {
     return names.length <= 1
         ? (names[0] ?? '')
         : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
+
+function choiceNames(choices: DeviceDataChoice[]): string[] {
+    return [...new Set(choices.map((choice) => choice.name))];
+}
+
+/**
+ * By id when both the choice and the item have one; otherwise by name (items uploaded
+ * before devices sent ids, or a choice saved without one).
+ */
+function inChoices(
+    choices: DeviceDataChoice[] | undefined,
+    item: MacDataItem,
+    name: string | undefined,
+): boolean {
+    const id = deviceItemChoiceId(item);
+    return !!choices?.some((choice) =>
+        choice.id && id ? choice.id === id : !!name && choice.name === name,
+    );
 }
 
 function inList(list: string[] | undefined, value: string | undefined): boolean {

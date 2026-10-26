@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import {
   describeDeviceFilter,
+  type DeviceDataChoice,
   type DeviceDataFilter,
   type DeviceDataFilterOptions,
   type DeviceDataTimeWindow,
@@ -24,6 +25,18 @@ const PICK_COPY = {
 } as const;
 
 type PickSource = keyof typeof PICK_COPY;
+
+/** One thing to pick: calendars and chats carry a stable id, mailboxes only a name. */
+interface Pick {
+  key: string;
+  choice: DeviceDataChoice;
+}
+
+const pickKey = (choice: DeviceDataChoice) => choice.id ?? `name:${choice.name}`;
+const toPick = (value: DeviceDataChoice | string): Pick => {
+  const choice = typeof value === 'string' ? { name: value } : value;
+  return { key: pickKey(choice), choice };
+};
 
 /**
  * The creator's settings for a data page: its name, what it's for, and what it shares
@@ -44,7 +57,7 @@ export class DeviceDataSettingsComponent implements OnInit {
   readonly name = signal('');
   readonly description = signal('');
   readonly includeAll = signal(false);
-  readonly picked = signal<string[]>([]);
+  readonly picked = signal<Pick[]>([]);
   readonly windows = signal<DeviceDataTimeWindow[]>([]);
   readonly excludedPlaces = signal<string[]>([]);
   readonly options = signal<DeviceDataFilterOptions | null>(null);
@@ -57,20 +70,29 @@ export class DeviceDataSettingsComponent implements OnInit {
   readonly isPlaces = computed(() => this.source() === 'location');
   readonly shared = computed(() => this.list().access()?.shared ?? false);
 
-  /** Names to choose from: what the data has, plus anything already picked. */
+  /** What to choose from: what the data has, plus anything already picked. */
   readonly choices = computed(() => {
     const pick = this.pick();
     const options = this.options();
     if (!pick || !options) return [];
-    const names = [...new Set([...this.picked(), ...options[pick.key]])];
+    const all = new Map<string, Pick>();
+    const offered = (options[pick.key] as (DeviceDataChoice | string)[]).map(toPick);
+    for (const item of [...this.picked(), ...offered]) {
+      if (!all.has(item.key)) all.set(item.key, item);
+    }
     const query = this.pickQuery().trim().toLowerCase();
-    return query ? names.filter((name) => name.toLowerCase().includes(query)) : names;
+    const list = [...all.values()];
+    return query ? list.filter((p) => p.choice.name.toLowerCase().includes(query)) : list;
   });
 
   readonly filter = computed<DeviceDataFilter>(() => {
     const filter: DeviceDataFilter = { includeAll: this.includeAll() };
     const pick = this.pick();
-    if (pick && !this.includeAll()) filter[pick.key] = this.picked();
+    if (pick && !this.includeAll()) {
+      const picked = this.picked().map((p) => p.choice);
+      if (pick.key === 'mailboxes') filter.mailboxes = picked.map((c) => c.name);
+      else filter[pick.key] = picked;
+    }
     if (this.isPlaces()) {
       filter.timeWindows = this.windows();
       filter.excludePlaceIds = this.excludedPlaces();
@@ -86,6 +108,9 @@ export class DeviceDataSettingsComponent implements OnInit {
     return describeDeviceFilter(this.source(), this.filter(), names);
   });
 
+  /** The filter as the settings opened, to tell whether sharing changed. */
+  private initialFilter = '';
+
   readonly windowsValid = computed(() => this.windows().every((w) => w.start !== w.end));
 
   ngOnInit(): void {
@@ -93,12 +118,15 @@ export class DeviceDataSettingsComponent implements OnInit {
     const filter = page?.deviceFilter;
     this.name.set(page?.title ?? '');
     this.description.set(page?.description ?? '');
-    // An older page without a filter shows everything: start from that.
-    this.includeAll.set(filter ? filter.includeAll === true : true);
+    // A page without a filter shares nothing yet: start from nothing picked, and
+    // save sharing only when the creator changes it.
+    this.includeAll.set(filter?.includeAll === true);
     const pick = this.pick();
-    this.picked.set(pick ? [...(filter?.[pick.key] ?? [])] : []);
+    const saved = (pick ? (filter?.[pick.key] ?? []) : []) as (DeviceDataChoice | string)[];
+    this.picked.set(saved.map(toPick));
     this.windows.set((filter?.timeWindows ?? []).map((w) => ({ ...w })));
     this.excludedPlaces.set([...(filter?.excludePlaceIds ?? [])]);
+    this.initialFilter = JSON.stringify(this.filter());
     if (page) {
       this.deviceData.filterOptions(page.id).then(
         (options) => this.options.set(options),
@@ -107,14 +135,15 @@ export class DeviceDataSettingsComponent implements OnInit {
     }
   }
 
-  isPicked(name: string): boolean {
-    return this.picked().includes(name);
+  isPicked(item: Pick): boolean {
+    return this.picked().some((p) => p.key === item.key);
   }
 
-  togglePicked(name: string, on: boolean): void {
-    this.picked.update((names) =>
-      on ? [...new Set([...names, name])] : names.filter((n) => n !== name),
-    );
+  togglePicked(item: Pick, on: boolean): void {
+    this.picked.update((picked) => {
+      const rest = picked.filter((p) => p.key !== item.key);
+      return on ? [...rest, item] : rest;
+    });
   }
 
   isExcluded(id: string): boolean {
@@ -149,7 +178,9 @@ export class DeviceDataSettingsComponent implements OnInit {
       await this.list().saveSettings({
         ...(this.name().trim() ? { title: this.name().trim() } : {}),
         description: this.description().trim(),
-        deviceFilter: this.filter(),
+        ...(JSON.stringify(this.filter()) !== this.initialFilter
+          ? { deviceFilter: this.filter() }
+          : {}),
       });
     } finally {
       this.saving.set(false);

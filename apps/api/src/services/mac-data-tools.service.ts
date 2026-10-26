@@ -2,7 +2,7 @@ import type { MacDataSource, ProfileFactSource } from '@maple/shared';
 import { aboutMeSummary, recallAboutMe, rememberAboutMe, updateAboutMe } from './about-me.service';
 import { collectorTimeZone } from '../repositories/collector.repo';
 import { findDeviceItem } from '../repositories/device-item.repo';
-import { dataPageSlicesFor, type DataPageSlice } from './device-data-access.service';
+import { dataPageSlicesFor, isMemberOf, type DataPageSlice } from './device-data-access.service';
 import { findNotebookByIdWithAccess } from '../repositories/notebook.repo';
 import { macDataRelay } from './mac-data-relay.service';
 import { searchDeviceData } from './device-search.service';
@@ -68,6 +68,9 @@ export async function getMacDataToolContext(
     // Only the user's own bots read their data: a bot someone else shared into the
     // notebook could send it to a server they control.
     if (bot.ownerId !== userId) return null;
+    // Someone who left the notebook (or was removed) gets nothing there: not their pages'
+    // data, not their profile. Covers chats, proactive passes, briefs and reminders.
+    if (!(await isMemberOf(notebookId, userId).catch(() => false))) return null;
     // Every data page in the notebook, the user's and other members', through its filter.
     const pages = await dataPageSlicesFor(userId, notebookId).catch(() => []);
     const sources = [...new Set(pages.map((page) => page.source))];

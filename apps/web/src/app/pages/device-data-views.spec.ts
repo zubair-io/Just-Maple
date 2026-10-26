@@ -41,7 +41,10 @@ describe('device data views', () => {
     filterOptions: vi.fn(async () => ({
       calendars: [],
       mailboxes: [],
-      chats: ['Group chat', 'Book club'],
+      chats: [
+        { id: 'chat-1', name: 'Group chat' },
+        { id: 'chat-2', name: 'Book club' },
+      ],
       places: [],
     })),
     updateDataPage: vi.fn(async () => page),
@@ -223,7 +226,37 @@ describe('device data views', () => {
       expect(deviceData.updateDataPage).toHaveBeenCalledWith('p1', {
         title: 'Family texts',
         description: '',
-        deviceFilter: { includeAll: false, chats: ['Book club'] },
+        deviceFilter: { includeAll: false, chats: [{ id: 'chat-2', name: 'Book club' }] },
+      });
+    });
+
+    it('keeps an older unfiltered page unshared when the creator only renames it', async () => {
+      pageService.pages.set([page]);
+      deviceData.updateDataPage.mockClear();
+      listItems.mockResolvedValue({
+        items: [],
+        total: 0,
+        collector: null,
+        access: { canManage: true, ownerName: 'Alex', shared: true },
+      });
+      const { fixture, root } = await render(IMessageViewComponent);
+      (root.querySelector('button[aria-label="Page settings"]') as HTMLButtonElement).click();
+      await wait();
+      fixture.detectChanges();
+      // Nothing starts out shared.
+      const all = root.querySelector('form input[name="includeAll"]') as HTMLInputElement;
+      expect(all.checked).toBe(false);
+      expect(root.querySelector('[data-testid="share-preview"]')?.textContent).toContain(
+        'Nothing yet',
+      );
+      const name = root.querySelector('form input[name="name"]') as HTMLInputElement;
+      name.value = 'Group texts';
+      name.dispatchEvent(new Event('input'));
+      (root.querySelector('form button[type="submit"]') as HTMLButtonElement).click();
+      await wait();
+      expect(deviceData.updateDataPage).toHaveBeenCalledWith('p1', {
+        title: 'Group texts',
+        description: '',
       });
     });
   });

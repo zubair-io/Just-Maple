@@ -23,7 +23,7 @@ describe('device data page filters', () => {
         expect(deviceItemMatchesFilter(event, undefined, utc)).toBe(true);
         expect(deviceItemMatchesFilter(event, {}, utc)).toBe(false);
         expect(deviceFilterIsEmpty('calendar', {})).toBe(true);
-        expect(deviceFilterIsEmpty('calendar', { calendars: ['Family'] })).toBe(false);
+        expect(deviceFilterIsEmpty('calendar', { calendars: [{ name: 'Family' }] })).toBe(false);
         expect(deviceFilterIsEmpty('health', { includeAll: true })).toBe(false);
     });
 
@@ -53,10 +53,10 @@ describe('device data page filters', () => {
     });
 
     it('describes what a page shares', () => {
-        expect(describeDeviceFilter('calendar', { calendars: ['Family'] })).toBe(
+        expect(describeDeviceFilter('calendar', { calendars: [{ name: 'Family' }] })).toBe(
             'Only the Family calendar',
         );
-        expect(describeDeviceFilter('imessage', { chats: ['A', 'B'] })).toBe(
+        expect(describeDeviceFilter('imessage', { chats: [{ name: 'A' }, { name: 'B' }] })).toBe(
             'Only the A and B chats',
         );
         expect(describeDeviceFilter('mail', { mailboxes: ['Kids'] })).toBe('Only mail in Kids');

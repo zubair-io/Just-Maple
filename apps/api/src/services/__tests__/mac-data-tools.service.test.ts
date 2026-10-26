@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../mac-data-relay.service', () => ({
     macDataRelay: { isOnline: vi.fn().mockResolvedValue(false), request: vi.fn() },
 }));
-vi.mock('../device-data-access.service', () => ({ dataPageSlicesFor: vi.fn() }));
+vi.mock('../device-data-access.service', () => ({
+    dataPageSlicesFor: vi.fn(),
+    isMemberOf: vi.fn().mockResolvedValue(true),
+}));
 vi.mock('../../repositories/collector.repo', () => ({
     collectorTimeZone: vi.fn().mockResolvedValue(undefined),
 }));

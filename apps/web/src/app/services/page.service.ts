@@ -149,6 +149,11 @@ export class PageService {
             ...page,
             title: event.title ?? page.title,
             updatedAt: event.updatedAt,
+            // Data pages: the creator changed what the page shares or describes.
+            ...(event.deviceFilter !== undefined
+              ? { deviceFilter: event.deviceFilter ?? undefined }
+              : {}),
+            ...(event.description !== undefined ? { description: event.description } : {}),
           })),
         );
       });

@@ -27,10 +27,11 @@ import {
     findDeviceItem,
     findDeviceItems,
 } from '../repositories/device-item.repo';
-import { findPageById, updatePage } from '../repositories/page.repo';
+import { findDeviceDataPages, findPageById, updatePage } from '../repositories/page.repo';
 import {
-    dataPageView,
     describeAccess,
+    isMemberOf,
+    loadDataPageView,
     filterOptionsFor,
     itemMatcherFor,
     itemQueryFor,
@@ -231,7 +232,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
             let access: DeviceDataAccess | undefined;
             if (query.pageId) {
                 const page = await findPageById(query.pageId, auth.user._id);
-                const view = page ? dataPageView(page, auth.user._id) : null;
+                const view = page ? await loadDataPageView(page, auth.user._id) : null;
                 if (!view) {
                     set.status = 404;
                     return { error: 'Page not found' };
@@ -291,13 +292,27 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
         },
     )
 
+    // The user's data pages in notebooks they're no longer in: nobody sees them there, and
+    // only the user can delete them.
+    .get('/device-data/pages/left', async ({ auth, set }) => {
+        if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+        const pages = await findDeviceDataPages(auth.user._id);
+        const left = [];
+        for (const page of pages) {
+            if (page.notebookId && !(await isMemberOf(page.notebookId, auth.user._id))) {
+                left.push(page);
+            }
+        }
+        return { pages: left };
+    })
+
     // Choices for a data page's filter, from the creator's own data.
     .get(
         '/device-data/pages/:id/options',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
             const page = await findPageById(params.id, auth.user._id);
-            const view = page ? dataPageView(page, auth.user._id) : null;
+            const view = page ? await loadDataPageView(page, auth.user._id) : null;
             if (!view) {
                 set.status = 404;
                 return { error: 'Page not found' };
@@ -320,7 +335,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
         async ({ auth, params, body, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
             const existing = await findPageById(params.id, auth.user._id);
-            const view = existing ? dataPageView(existing, auth.user._id) : null;
+            const view = existing ? await loadDataPageView(existing, auth.user._id) : null;
             if (!view) {
                 set.status = 404;
                 return { error: 'Page not found' };
@@ -345,12 +360,15 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 return { error: 'Page not found' };
             }
             if (page.notebookId) {
+                // Other open clients update the page's filter and description without a reload.
                 realtimeWSService.sendToUsers(await getUsersWithNotebookAccess(page.notebookId), {
                     type: 'page.updated',
                     pageId: page.id,
                     title: page.title,
                     updatedAt: page.updatedAt,
                     notebookId: page.notebookId,
+                    deviceFilter: page.deviceFilter ?? null,
+                    description: page.description ?? '',
                 });
             }
             return { page };
@@ -365,7 +383,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
             // With a page: the creator's item, if the page's filter lets it through.
             if (query.pageId) {
                 const page = await findPageById(query.pageId, auth.user._id);
-                const view = page ? dataPageView(page, auth.user._id) : null;
+                const view = page ? await loadDataPageView(page, auth.user._id) : null;
                 const match = view ? await itemMatcherFor(view) : null;
                 const item = view && match ? await findDeviceItem(view.ownerId, params.id) : null;
                 if (!item || !match!(item)) {

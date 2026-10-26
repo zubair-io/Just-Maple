@@ -67,7 +67,7 @@
             />
           }
           <div class="flex max-h-56 flex-col gap-1 overflow-auto">
-            @for (choice of choices(); track choice) {
+            @for (choice of choices(); track choice.key) {
               <label class="flex items-center gap-2 text-sm text-[var(--color-text-main)]">
                 <input
                   type="checkbox"
@@ -75,7 +75,7 @@
                   (change)="togglePicked(choice, $any($event.target).checked)"
                   class="accent-[var(--color-primary)]"
                 />
-                <span class="truncate">{{ choice }}</span>
+                <span class="truncate">{{ choice.choice.name }}</span>
               </label>
             } @empty {
               <p class="m-0 text-xs text-[var(--color-text-muted)]">

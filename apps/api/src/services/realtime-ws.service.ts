@@ -1,4 +1,11 @@
-import type { Page, Notebook, Collectable, MemoSSEEvent, Recording } from '@maple/shared';
+import type {
+    Page,
+    Notebook,
+    Collectable,
+    DeviceDataFilter,
+    MemoSSEEvent,
+    Recording,
+} from '@maple/shared';
 import { redisPubSub } from './redis.service';
 
 /**
@@ -12,6 +19,9 @@ export type AppEvent =
           title?: string;
           updatedAt: string;
           notebookId?: string;
+          /** Data pages: what the page shares (null: no filter) and what it's for. */
+          deviceFilter?: DeviceDataFilter | null;
+          description?: string;
       }
     | {
           type: 'page.moved';

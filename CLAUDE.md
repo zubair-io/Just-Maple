@@ -672,8 +672,11 @@ Data pages (`devicedata`: iMessage, Mail, Calendar, Contacts, Places, Health) sh
 
 1. Everyone in the notebook can view a page; only its creator renames, moves, removes or changes it (enforced in `page.repo.ts` `updatePage`/`deletePage` and `routes/pages.ts`, 403 for others).
 2. `page.deviceFilter` says what the page shares (calendars, mailboxes, chats, Places time windows and excluded named places, or `includeAll`). It applies to the page view, its search, item lookups and bot tools. `page.description` tells bots what the page is for.
-3. No filter (older pages, new pages in private notebooks): the creator sees everything, nobody else sees anything. A new page in a shared notebook starts with `{}`: nothing shared until the creator picks.
-4. Bots: `getMacDataToolContext` gets one slice per visible page (`dataPageSlicesFor`); bots someone outside shared in still get nothing.
+3. No filter (older pages, new pages in private notebooks): the creator sees everything, nobody else sees anything. A new page in a shared notebook starts with `{}`, and moving a page into a shared notebook resets it to `{}`: nothing shared until the creator picks. Saving only a name or description never changes sharing.
+4. In a shared notebook the filter applies to **every** reader, the creator's own bots, proactive news (`notifyProactive`) and leave-now reminders included: an unfiltered page there gives bots nothing. Only the creator's own page view shows everything. Private notebooks are unchanged.
+5. Trashed or archived pages, and pages whose creator is no longer a member, share nothing (`dataPageView` in `device-data-access.service.ts`). A removed creator's pages are hidden, not deleted; they find them at `GET /api/device-data/pages/left` and can still trash or delete them. Every bot path checks the bot owner is still a member.
+6. Calendars and chats match by stable id (`extra.calendarId`, `extra.chatId` from the Mac collector) when both sides have one, else by name. Data pages are never published, and `emptyTrash` skips other people's data pages.
+7. Bots: `getMacDataToolContext` gets one slice per visible page (`dataPageSlicesFor`); bots someone outside shared in still get nothing.
 
 Key files: `packages/shared/src/schemas/device-data-filter.ts`, `packages/shared/src/utils/device-data-filter.ts` (matcher, summary), `apps/api/src/services/device-data-access.service.ts`, `routes/device-data.ts` (`PATCH /api/device-data/pages/:id`, `GET .../options`), web `device-data-settings.component.*`.
 

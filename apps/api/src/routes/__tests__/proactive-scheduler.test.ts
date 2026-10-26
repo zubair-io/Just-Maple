@@ -63,7 +63,7 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
             sources: ['location'],
             timeZone: 'America/New_York',
         });
-        const notebook = await createNotebookFixture({ userId });
+        const notebook = await createNotebookFixture({ createdBy: userId });
         notebookId = notebook._id.toString();
         const chat = await createPageFixture({ userId, notebookId, type: 'message' });
         chatPageId = chat.id;
@@ -140,7 +140,13 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
         expect(runDailyBrief).not.toHaveBeenCalled();
     });
 
-    async function addEvent(id: string, title: string, location: string, startsAt = '15:00') {
+    async function addEvent(
+        id: string,
+        title: string,
+        location: string,
+        startsAt = '15:00',
+        fields: Partial<MacDataItem> = {},
+    ) {
         const start = at(startsAt).getTime() / 1000;
         await call('/api/device-data/items', 'POST', {
             deviceId: 'mac-device-1',
@@ -155,6 +161,7 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
                     location,
                     participants: [],
                     body: '',
+                    ...fields,
                 } satisfies MacDataItem,
             ],
         });
@@ -193,13 +200,18 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
     });
 
     it("sends leave reminders to the user's private chat, not a shared one", async () => {
-        const shared = await createNotebookFixture({ userId });
-        await testDb!
-            .collection('notebooks')
-            .updateOne(
-                { _id: shared._id },
-                { $set: { 'sharing.sharedWith': [{ userId: 'someone-else', role: 'viewer' }] } },
-            );
+        const shared = await createNotebookFixture({ createdBy: userId });
+        await testDb!.collection('notebooks').updateOne(
+            { _id: shared._id },
+            {
+                $set: {
+                    'sharing.sharedWith': [
+                        { userId, accessLevel: 'owner' },
+                        { userId: 'someone-else', accessLevel: 'read' },
+                    ],
+                },
+            },
+        );
         const sharedChat = await createPageFixture({
             userId,
             notebookId: shared._id.toString(),
@@ -233,6 +245,56 @@ describe.runIf(mongoAvailable)('scheduled proactive messages and named places', 
         await tick(at('14:21'));
         expect(sendLeaveReminder).toHaveBeenCalledTimes(1);
         expect(vi.mocked(sendLeaveReminder).mock.calls[0]![0].id).toBe(chatPageId);
+    });
+
+    const setCalendarFilter = (deviceFilter: unknown) =>
+        testDb!
+            .collection('pages')
+            .updateOne(
+                { notebookId: new ObjectId(notebookId), type: 'devicedata' },
+                { $set: { deviceFilter } },
+            );
+    const shareNotebook = (members: Array<{ userId: string; accessLevel: string }>) =>
+        testDb!
+            .collection('notebooks')
+            .updateOne(
+                { _id: new ObjectId(notebookId) },
+                { $set: { 'sharing.sharedWith': members } },
+            );
+    const remindedTitles = () => vi.mocked(sendLeaveReminder).mock.calls.map((c) => c[2].title);
+
+    it("reminds only about events the notebook's calendar page shares", async () => {
+        await setCalendarFilter({ calendars: [{ name: 'Family' }] });
+        await addEvent('calendar:dentist', 'Dentist', '1 Main St', '15:00', { calendar: 'Work' });
+        await addEvent('calendar:practice', 'Practice', '2 Field Rd', '15:00', {
+            calendar: 'Family',
+        });
+        await tick(at('14:21'));
+        expect(remindedTitles()).toEqual(['Practice']);
+    });
+
+    it('in a shared notebook, reminds only from a filtered page, and only about what it shares', async () => {
+        await shareNotebook([
+            { userId, accessLevel: 'owner' },
+            { userId: new ObjectId().toString(), accessLevel: 'write' },
+        ]);
+        await addEvent('calendar:dentist', 'Dentist', '1 Main St', '15:00', { calendar: 'Work' });
+        await addEvent('calendar:practice', 'Practice', '2 Field Rd', '15:00', {
+            calendar: 'Family',
+        });
+        // No filter: the page shares nothing with bots in a shared notebook.
+        await tick(at('14:21'));
+        expect(sendLeaveReminder).not.toHaveBeenCalled();
+        await setCalendarFilter({ calendars: [{ name: 'Family' }] });
+        await tick(at('14:22'));
+        expect(remindedTitles()).toEqual(['Practice']);
+    });
+
+    it('sends no reminders into a notebook the user has left', async () => {
+        await shareNotebook([{ userId: new ObjectId().toString(), accessLevel: 'owner' }]);
+        await addEvent('calendar:dentist', 'Dentist', '1 Main St');
+        await tick(at('14:21'));
+        expect(sendLeaveReminder).not.toHaveBeenCalled();
     });
 
     it('ignores travel times with a bad or future time', async () => {
