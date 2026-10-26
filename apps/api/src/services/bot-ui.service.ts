@@ -97,7 +97,24 @@ export const botUIPrompt = library.prompt({
 });
 
 /** Parse on the server; only validated portable data is persisted and sent to clients. */
+/**
+ * Models sometimes reply with only the OpenUI statements, without the ```openui fence
+ * (bare, or in a plain ``` fence). Wrap such a reply so it renders instead of showing
+ * `root = Response(...)` as text.
+ */
+function fenceBareOpenUI(response: string): string {
+    if (response.includes('```openui')) return response;
+    const body = response
+        .trim()
+        .replace(/^```[a-z]*\s*\n([\s\S]*?)\n?```$/i, '$1')
+        .trim();
+    const isOpenUI =
+        /^[A-Za-z_]\w*\s*=\s*[A-Z]\w*\(/.test(body) && /^\s*root\s*=\s*Response\(/m.test(body);
+    return isOpenUI ? '```openui\n' + body + '\n```' : response;
+}
+
 export function parseBotResponse(response: string): { markdown: string; ui?: BotUIResponse } {
+    response = fenceBareOpenUI(response);
     const fences = [...response.matchAll(/```openui\s*\n([\s\S]*?)```/g)];
     if (fences.length !== 1 || response.length > 100000) return { markdown: response };
     const match = fences[0]!;
