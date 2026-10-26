@@ -29,75 +29,64 @@ function toUnreadTrackingResponse(doc: UnreadTrackingDocument): UnreadTracking {
 // Page-based functions (new)
 // ============================================
 
+/**
+ * Where page read markers live: one per (user, chat page).
+ *
+ * Not unread_tracking: on Cosmos DB that collection still enforces its old unique
+ * key on (userId, notebookId), which can't be dropped. Page markers have no
+ * notebookId, so every user could keep only one of them and every other chat
+ * failed to save as read. Markers written there before the move are still read.
+ */
+interface ReadMarkerDocument {
+    _id: ObjectId;
+    userId: ObjectId;
+    pageId: string;
+    lastReadAt: Date;
+}
+
+function getReadMarkerCollection(): Collection<ReadMarkerDocument> {
+    return getDb().collection<ReadMarkerDocument>('chat_read_markers');
+}
+
 export async function getLastReadAtByPageId(userId: string, pageId: string): Promise<Date | null> {
     try {
-        const doc = await getCollection().findOne({
-            userId: new ObjectId(userId),
-            pageId: pageId,
-        });
-        return doc?.lastReadAt || null;
+        const filter = { userId: new ObjectId(userId), pageId };
+        const marker = await getReadMarkerCollection().findOne(filter);
+        if (marker) return marker.lastReadAt;
+        const legacy = await getCollection().findOne(filter);
+        return legacy?.lastReadAt || null;
     } catch {
         return null;
     }
 }
 
+/**
+ * Record that the user has read a chat up to now. Throws when the marker can't be
+ * saved, so the caller never reports a read that didn't happen.
+ */
 export async function markAsReadByPageId(userId: string, pageId: string): Promise<UnreadTracking> {
     const now = new Date();
+    const filter = { userId: new ObjectId(userId), pageId };
+    const update = { $set: { lastReadAt: now } };
 
     try {
-        const result = await getCollection().findOneAndUpdate(
-            {
-                userId: new ObjectId(userId),
-                pageId: pageId,
-            },
-            {
-                $set: {
-                    lastReadAt: now,
-                },
-                $setOnInsert: {
-                    userId: new ObjectId(userId),
-                    pageId: pageId,
-                },
-            },
-            {
-                upsert: true,
-                returnDocument: 'after',
-            },
-        );
-
-        if (result) {
-            return toUnreadTrackingResponse(result);
-        }
-
-        // Cosmos DB may return null even with upsert + returnDocument: 'after'
-        const doc = await getCollection().findOne({
-            userId: new ObjectId(userId),
-            pageId: pageId,
-        });
-        if (doc) {
-            return toUnreadTrackingResponse(doc);
-        }
-
-        return { _id: '', userId, pageId, lastReadAt: now.toISOString() };
+        await getReadMarkerCollection().updateOne(filter, update, { upsert: true });
     } catch (e: any) {
-        // E11000 duplicate key error - race condition where concurrent requests
-        // both try to upsert. Retry as a simple update since the doc now exists.
-        if (e.code === 11000) {
-            const result = await getCollection().findOneAndUpdate(
-                {
-                    userId: new ObjectId(userId),
-                    pageId: pageId,
-                },
-                { $set: { lastReadAt: now } },
-                { returnDocument: 'after' },
-            );
-            if (result) {
-                return toUnreadTrackingResponse(result);
-            }
-            return { _id: '', userId, pageId, lastReadAt: now.toISOString() };
-        }
-        throw e;
+        // Two reads of the same chat at once can both try to insert; the loser updates.
+        if (e?.code !== 11000) throw e;
+        await getReadMarkerCollection().updateOne(filter, update);
     }
+
+    const marker = await getReadMarkerCollection().findOne(filter);
+    if (!marker) {
+        throw new Error(`Read marker for page ${pageId} was not saved`);
+    }
+    return {
+        _id: marker._id.toString(),
+        userId,
+        pageId,
+        lastReadAt: marker.lastReadAt.toISOString(),
+    };
 }
 
 export async function getUnreadCountForPage(userId: string, pageId: string): Promise<number> {

@@ -108,6 +108,49 @@ describe.runIf(mongoAvailable)('Notifications and unread counts', () => {
         });
     });
 
+    describe('read markers', () => {
+        it('saves a read for every chat even under the old unique (userId, notebookId) rule', async () => {
+            // Cosmos DB still enforces this on unread_tracking and can't drop it: every
+            // marker without a notebookId collided, so only one chat per user ever saved.
+            const legacy = getTestDb().collection('unread_tracking');
+            await legacy.createIndex({ userId: 1, notebookId: 1 }, { unique: true });
+            try {
+                const { userId, notebookId, pageId, token } = await setup();
+                await legacy.insertOne({
+                    userId: new ObjectId(userId),
+                    pageId: 'older-chat',
+                    lastReadAt: new Date(),
+                });
+                await createMessageFixture({ notebookId, pageId });
+                await new Promise((resolve) => setTimeout(resolve, 5));
+
+                const read = await request(token, `/api/pages/${pageId}/read`, 'POST');
+                const unread: any = await (
+                    await request(token, `/api/pages/${pageId}/unread`)
+                ).json();
+
+                expect(read.status).toBe(200);
+                expect(unread.count).toBe(0);
+            } finally {
+                // Other tests insert several notebook-less markers per user.
+                await legacy.dropIndex('userId_1_notebookId_1');
+            }
+        });
+
+        it('still honours a read marker saved in the old collection', async () => {
+            const { userId, notebookId, pageId, token } = await setup();
+            await createMessageFixture({ notebookId, pageId });
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            await getTestDb()
+                .collection('unread_tracking')
+                .insertOne({ userId: new ObjectId(userId), pageId, lastReadAt: new Date() });
+
+            const unread: any = await (await request(token, `/api/pages/${pageId}/unread`)).json();
+
+            expect(unread.count).toBe(0);
+        });
+    });
+
     describe('unread message counts', () => {
         it('leaves out your own messages but counts bot posts', async () => {
             const { userId, notebookId, pageId, token } = await setup();

@@ -1,5 +1,5 @@
 import { HttpInterceptorFn, HttpRequest, HttpHandlerFn } from '@angular/common/http';
-import { inject } from '@angular/core';
+import { inject, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../../environments/environment';
@@ -44,7 +44,8 @@ export const authInterceptor: HttpInterceptorFn = (
   // If the user never logs in, API requests silently don't fire.
   return authService.initReady$.pipe(
     switchMap(() => {
-      const token = authService.accessToken();
+      // Untracked: an effect that sends a request must not start watching the token.
+      const token = untracked(() => authService.accessToken());
 
       if (token) {
         const authReq = req.clone({
