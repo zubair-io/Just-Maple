@@ -9,22 +9,17 @@ import { NotebookService } from '../../services/notebook.service';
 import { PageService } from '../../services/page.service';
 
 describe('MessageViewComponent', () => {
-  it('loads and marks a chat read once when it opens, not again on every update', () => {
-    // Like the real service: both calls read message state, and their replies update it.
+  function setup() {
+    // Like the real service: marking read reads message state, and its reply updates it.
     const unreadCounts = signal([{ pageId: 'chat', notebookId: 'n1', count: 3 }]);
-    const currentPage = signal<{ id: string } | null>(null);
     const messageService = {
       clearMessages: vi.fn(),
-      loadMessagesByPageId: vi.fn(() => {
-        currentPage();
-        return of([]).pipe(tap(() => currentPage.set({ id: 'chat' })));
-      }),
       markAsReadByPageId: vi.fn(() => {
         unreadCounts();
         return of(undefined).pipe(tap(() => unreadCounts.set([])));
       }),
     };
-    const params = new BehaviorSubject(convertToParamMap({ tagId: 'n1', id: 'chat' }));
+    const params = new BehaviorSubject(convertToParamMap({ notebookId: 'n1', id: 'chat' }));
     TestBed.configureTestingModule({
       imports: [MessageViewComponent],
       providers: [
@@ -39,7 +34,7 @@ describe('MessageViewComponent', () => {
           provide: ActivatedRoute,
           useValue: {
             paramMap: params,
-            params: of({ tagId: 'n1', id: 'chat' }),
+            params: of({ notebookId: 'n1', id: 'chat' }),
             snapshot: { paramMap: params.value },
           },
         },
@@ -47,14 +42,36 @@ describe('MessageViewComponent', () => {
     });
     TestBed.overrideComponent(MessageViewComponent, { set: { template: '', imports: [] } });
     const fixture = TestBed.createComponent(MessageViewComponent);
+    const settle = () => {
+      for (let i = 0; i < 5; i++) {
+        fixture.detectChanges();
+        TestBed.tick();
+      }
+    };
+    return { fixture, messageService, settle };
+  }
+
+  it('marks a chat read once when it opens, not again on every update', () => {
+    const { fixture, messageService, settle } = setup();
     fixture.componentInstance.selectedNotebookId.set('n1');
     fixture.componentInstance.selectedPageId.set('chat');
-    for (let i = 0; i < 5; i++) {
-      fixture.detectChanges();
-      TestBed.tick();
-    }
-    expect(messageService.loadMessagesByPageId).toHaveBeenCalledTimes(1);
+    settle();
     expect(messageService.markAsReadByPageId).toHaveBeenCalledTimes(1);
+    expect(messageService.markAsReadByPageId).toHaveBeenCalledWith('chat', 'n1');
+    fixture.destroy();
+  });
+
+  it('marks the next chat read when switching chats', () => {
+    const { fixture, messageService, settle } = setup();
+    fixture.componentInstance.selectedNotebookId.set('n1');
+    fixture.componentInstance.selectedPageId.set('chat');
+    settle();
+    fixture.componentInstance.selectedPageId.set('chat2');
+    settle();
+    expect(messageService.markAsReadByPageId.mock.calls.map((c) => c[0])).toEqual([
+      'chat',
+      'chat2',
+    ]);
     fixture.destroy();
   });
 });

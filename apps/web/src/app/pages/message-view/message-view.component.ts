@@ -66,14 +66,13 @@ export class MessageViewComponent implements OnInit, OnDestroy {
     effect(() => {
       const notebookId = this.selectedNotebookId();
       const pageId = this.selectedPageId();
-      // Runs only when the open chat changes. The calls below read and update message
+      // Runs only when the open chat changes. The call below reads and updates message
       // state; tracking those reads re-ran this effect on every reply, an endless loop
-      // of loading and marking read.
+      // of marking read. The chat component loads the messages.
       untracked(() => {
         this.notificationService.setActiveNotebook(notebookId);
         if (pageId) {
-          this.messageService.loadMessagesByPageId(pageId).subscribe();
-          this.messageService.markAsReadByPageId(pageId).subscribe();
+          this.messageService.markAsReadByPageId(pageId, notebookId ?? undefined).subscribe();
         }
       });
     });

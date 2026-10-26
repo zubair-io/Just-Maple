@@ -43,11 +43,26 @@ export class OfflineQueueService {
 
   private setupAutoProcess(): void {
     // Auto-process queue when connectivity is restored
+    // Only when an item is due: a failed item waits for its backoff timer instead of
+    // being retried the moment processing ends.
     effect(() => {
-      if (this.connectivity.canSync() && this._queue().length > 0 && !this._isProcessing()) {
+      const now = Date.now();
+      if (
+        this.connectivity.canSync() &&
+        this._queue().some((item) => this.isDue(item, now)) &&
+        !this._isProcessing()
+      ) {
         this.processQueue();
       }
     });
+  }
+
+  /** Ready to try: not out of retries, and its backoff since the last failure has passed. */
+  private isDue(item: OfflineQueueItem, now = Date.now()): boolean {
+    if (item.retryCount >= item.maxRetries) return false;
+    if (!item.lastAttemptAt || item.retryCount === 0) return true;
+    const wait = this.BASE_RETRY_DELAY * Math.pow(2, item.retryCount - 1);
+    return now >= new Date(item.lastAttemptAt).getTime() + wait;
   }
 
   /**
@@ -123,7 +138,8 @@ export class OfflineQueueService {
     let success = 0;
     let failed = 0;
 
-    const queue = [...this._queue()];
+    const now = Date.now();
+    const queue = this._queue().filter((item) => this.isDue(item, now));
     console.log(`[OfflineQueue] Processing ${queue.length} items`);
 
     for (const item of queue) {
@@ -151,12 +167,6 @@ export class OfflineQueueService {
    * Process a single queue item
    */
   private async processItem(item: OfflineQueueItem): Promise<boolean> {
-    // Check if max retries exceeded
-    if (item.retryCount >= item.maxRetries) {
-      console.warn(`[OfflineQueue] Max retries exceeded for ${item.id}, removing`);
-      return true; // Remove from queue
-    }
-
     try {
       switch (item.action) {
         case 'create-note':
@@ -198,6 +208,13 @@ export class OfflineQueueService {
       await this.indexedDB.put(updatedItem, DB_STORES.OFFLINE_QUEUE);
       this._queue.update((q) => q.map((i) => (i.id === item.id ? updatedItem : i)));
 
+      if (updatedItem.retryCount >= updatedItem.maxRetries) {
+        // Keep the change (it may be the only copy) and say so; don't throw it away.
+        this._lastError.set(
+          `Couldn't sync a change after ${updatedItem.maxRetries} tries: ${updatedItem.lastError}`,
+        );
+        return false;
+      }
       // Schedule retry with exponential backoff
       const delay = this.BASE_RETRY_DELAY * Math.pow(2, item.retryCount);
       setTimeout(() => {

@@ -1,7 +1,11 @@
 @if (selectedNotebook(); as notebook) {
   <div class="message-view">
     <div class="chat-container">
-      <app-chat [notebookId]="selectedNotebookId()!" (openThread)="openThread($event)" />
+      <app-chat
+        [notebookId]="selectedNotebookId()!"
+        [pageId]="selectedPageId()"
+        (openThread)="openThread($event)"
+      />
 
       @if (activeThreadMessage()) {
         <app-thread-panel
