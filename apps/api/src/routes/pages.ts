@@ -560,6 +560,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
                 userBotId: t.String(),
                 instructions: t.String({ maxLength: 8000 }),
                 enabled: t.Boolean(),
+                // Daily brief at this local time ("07:30"); null turns it off
+                briefTime: t.Optional(
+                    t.Union([t.String({ pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }), t.Null()]),
+                ),
             }),
         },
     )
