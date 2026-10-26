@@ -55,7 +55,14 @@ export class ProactiveBotPanelComponent {
   readonly briefOn = signal(false);
   readonly briefTime = signal('07:30');
   /** Other people can see this notebook, so they'll see what the bot posts. */
-  readonly sharedWithOthers = signal(false);
+  readonly sharedWithOthers = computed(() => {
+    const notebookId = this.page().notebookId;
+    const sharing = this.notebookService.notebooks().find((n) => n._id === notebookId)?.sharing;
+    // The owner is listed in sharedWith too.
+    return (
+      !!sharing?.isPublic || !!sharing?.sharedWith?.some((entry) => entry.accessLevel !== 'owner')
+    );
+  });
 
   /** This bot is already the chat's proactive bot (editing rather than turning on). */
   readonly isOn = computed(() => {
@@ -82,13 +89,12 @@ export class ProactiveBotPanelComponent {
     effect(() => {
       const notebookId = this.page().notebookId;
       if (!notebookId) return;
-      untracked(() => {
-        const notebook = this.notebookService.notebooks().find((n) => n._id === notebookId);
-        this.sharedWithOthers.set((notebook?.sharing?.sharedWith?.length ?? 0) > 0);
-      });
-      this.proactiveService.status(notebookId).then(
-        (status) => this.status.set(status),
-        () => this.status.set(null),
+      // Only the notebook id is tracked; nothing read while loading re-runs this.
+      untracked(() =>
+        this.proactiveService.status(notebookId).then(
+          (status) => this.status.set(status),
+          () => this.status.set(null),
+        ),
       );
     });
   }

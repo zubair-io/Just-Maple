@@ -196,6 +196,10 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 set.status = 404;
                 return { error: 'Register this device first' };
             }
+            if (body.estimates.some((e) => !Number.isFinite(Date.parse(e.computedAt)))) {
+                set.status = 400;
+                return { error: 'Invalid estimate', message: 'computedAt must be an ISO date' };
+            }
             return {
                 saved: await saveTravelEstimates(auth.user._id, body.deviceId, body.estimates),
             };

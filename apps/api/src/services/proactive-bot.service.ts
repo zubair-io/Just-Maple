@@ -133,7 +133,7 @@ async function runProactivePass(
 // MARK: - Scheduled: daily briefs and leave-now reminders
 
 /** The page's daily brief: today at a glance, from the user's data. */
-export function runDailyBrief(page: Page, userId: string): Promise<void> {
+export function runDailyBrief(page: Page, userId: string): Promise<boolean> {
     return enqueue(page.id, () => runPass(page, userId, briefPrompt));
 }
 
@@ -142,7 +142,7 @@ export function sendLeaveReminder(
     page: Page,
     userId: string,
     event: { title?: string; when: string; location: string; leaveBy: string; note: string },
-): Promise<void> {
+): Promise<boolean> {
     return enqueue(page.id, () => runPass(page, userId, (now) => leavePrompt(now, event)));
 }
 
@@ -166,11 +166,16 @@ export function leavePrompt(
     ].join('\n');
 }
 
-async function runPass(page: Page, userId: string, prompt: (now: string) => string): Promise<void> {
+/** Runs one pass of the page's proactive bot. False when the bot couldn't run at all. */
+async function runPass(
+    page: Page,
+    userId: string,
+    prompt: (now: string) => string,
+): Promise<boolean> {
     const proactive = page.proactive;
-    if (!proactive?.enabled || !page.notebookId) return;
+    if (!proactive?.enabled || !page.notebookId) return false;
     const userBot = await findUserBotByIdInternal(proactive.userBotId);
-    if (!userBot?.templateId || userBot.isEnabled === false) return;
+    if (!userBot?.templateId || userBot.isEnabled === false) return false;
     const template = await findBotTemplateById(userBot.templateId);
     const macData = await getMacDataToolContext(
         userId,
@@ -182,7 +187,7 @@ async function runPass(page: Page, userId: string, prompt: (now: string) => stri
         },
         { proactive: true },
     );
-    if (!template || !macData) return;
+    if (!template || !macData) return false;
 
     await botExecutor.runProactive({
         page,
@@ -201,6 +206,7 @@ async function runPass(page: Page, userId: string, prompt: (now: string) => stri
             (message) => message.userBotId === userBot._id,
         ),
     });
+    return true;
 }
 
 export function proactiveSystemPrompt(botName: string, page: Page, instructions: string): string {

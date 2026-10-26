@@ -3,7 +3,13 @@ import { findAllProactivePages, findDeviceDataPages } from '../repositories/page
 import { collectorTimeZone } from '../repositories/collector.repo';
 import { findDeviceItems } from '../repositories/device-item.repo';
 import { findTravelEstimates } from '../repositories/travel-estimate.repo';
-import { claimScheduledSend } from '../repositories/scheduled-send.repo';
+import {
+    claimScheduledSend,
+    failScheduledSend,
+    purgeOldScheduledSends,
+} from '../repositories/scheduled-send.repo';
+import { purgeOldTravelEstimates } from '../repositories/travel-estimate.repo';
+import { findNotebookByIdUnsafe } from '../repositories/notebook.repo';
 import { listFacts, findMe } from '../repositories/profile.repo';
 import { runDailyBrief, sendLeaveReminder } from './proactive-bot.service';
 import { formatInZone } from '../utils/time-zone';
@@ -20,6 +26,7 @@ import { isLive } from './about-me.service';
  *    buffer before the start), the owner's proactive bot says so, once per event.
  *
  * Each send is claimed in the database first, so several API instances never send it twice.
+ * A send that fails (the bot couldn't run, or the model errored) is retried a few times.
  */
 
 const TICK_MS = 60_000;
@@ -30,11 +37,39 @@ const LEAVE_HEADS_UP_SECONDS = 5 * 60;
 /** Estimates older than this (the phone hasn't updated) aren't trusted. */
 const ESTIMATE_MAX_AGE_MS = 3 * 60 * 60 * 1000;
 const LOOKAHEAD_SECONDS = 4 * 60 * 60;
+/** A phone clock this far ahead of the server makes an estimate untrustworthy. */
+const ESTIMATE_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const CLEANUP_MS = 60 * 60 * 1000;
 
 export function startProactiveScheduler(intervalMs = TICK_MS): () => void {
     const timer = setInterval(() => void tick(), intervalMs);
+    const cleanup = setInterval(() => void purgeOldRecords(), CLEANUP_MS);
     timer.unref?.();
-    return () => clearInterval(timer);
+    cleanup.unref?.();
+    return () => {
+        clearInterval(timer);
+        clearInterval(cleanup);
+    };
+}
+
+async function purgeOldRecords(): Promise<void> {
+    try {
+        await purgeOldScheduledSends();
+        await purgeOldTravelEstimates();
+    } catch (error) {
+        console.error('[Scheduler] Cleanup failed:', error);
+    }
+}
+
+/** Sends in the background; if it doesn't go out, the claim is released for a retry. */
+function deliver(key: string, now: Date, send: () => Promise<boolean>, what: string): void {
+    void send()
+        .catch((error) => {
+            console.error(`[Scheduler] ${what} failed:`, error);
+            return false;
+        })
+        .then((sent) => (sent ? undefined : failScheduledSend(key, now)))
+        .catch((error) => console.error(`[Scheduler] Couldn't record failed ${what}:`, error));
 }
 
 export async function tick(now = new Date()): Promise<void> {
@@ -55,13 +90,18 @@ export async function sendDueBriefs(pages: Page[], now: Date): Promise<number> {
         const owner = page.proactive?.ownerUserId;
         const briefTime = page.proactive?.briefTime;
         if (!owner || !briefTime) continue;
-        const local = formatInZone(now, (await collectorTimeZone(owner)) ?? 'UTC');
-        const minutesLate = minutesOf(local.slice(11, 16)) - minutesOf(briefTime);
-        if (minutesLate < 0 || minutesLate > BRIEF_WINDOW_MINUTES) continue;
-        if (!(await claimScheduledSend(`brief:${page.id}:${local.slice(0, 10)}`))) continue;
-        void runDailyBrief(page, owner).catch((error) =>
-            console.error(`[Scheduler] Brief failed for page ${page.id}:`, error),
-        );
+        // Without a device's time zone there's no telling when 07:30 is for this user.
+        const timeZone = await collectorTimeZone(owner);
+        if (!timeZone) continue;
+        const local = formatInZone(now, timeZone);
+        // Minutes since today's brief time, counting across midnight (a 23:30 brief caught
+        // up at 00:15 is 45 minutes late, and belongs to the day before).
+        const minutesLate = (minutesOf(local.slice(11, 16)) - minutesOf(briefTime) + 1440) % 1440;
+        if (minutesLate > BRIEF_WINDOW_MINUTES) continue;
+        const briefDay = formatInZone(new Date(now.getTime() - minutesLate * 60_000), timeZone);
+        const key = `brief:${page.id}:${briefDay.slice(0, 10)}`;
+        if (!(await claimScheduledSend(key, now))) continue;
+        deliver(key, now, () => runDailyBrief(page, owner), `brief for page ${page.id}`);
         sent++;
     }
     return sent;
@@ -80,7 +120,7 @@ export async function sendLeaveReminders(pages: Page[], now: Date): Promise<numb
     }
     let sent = 0;
     for (const [owner, ownerPages] of owners) {
-        const page = await firstPageWithCalendar(owner, ownerPages);
+        const page = await reminderPageFor(owner, ownerPages);
         if (!page) continue;
         const { items } = await findDeviceItems(owner, {
             sources: ['calendar'],
@@ -99,24 +139,27 @@ export async function sendLeaveReminders(pages: Page[], now: Date): Promise<numb
         const timeZone = (await collectorTimeZone(owner)) ?? 'UTC';
         for (const event of events) {
             const estimate = estimates.get(event.id);
-            if (!estimate || now.getTime() - Date.parse(estimate.computedAt) > ESTIMATE_MAX_AGE_MS)
-                continue;
+            if (!estimate || !isFresh(estimate.computedAt, now)) continue;
             // Already there, or close enough that there's nothing to plan.
             if (estimate.minutes < 3) continue;
-            if (currentPlace && sameSpot(currentPlace, event.location!, event.title)) continue;
+            if (currentPlace && sameSpot(currentPlace, event.location!)) continue;
             const leaveBy = event.occurredAt - estimate.minutes * 60 - LEAVE_BUFFER_SECONDS;
             if (nowSeconds < leaveBy - LEAVE_HEADS_UP_SECONDS || nowSeconds >= event.occurredAt)
                 continue;
-            if (!(await claimScheduledSend(`leave:${owner}:${event.id}:${event.occurredAt}`)))
-                continue;
-            void sendLeaveReminder(page, owner, {
+            const key = `leave:${owner}:${event.id}:${event.occurredAt}`;
+            if (!(await claimScheduledSend(key, now))) continue;
+            const details = {
                 ...(event.title ? { title: event.title } : {}),
                 when: formatInZone(new Date(event.occurredAt * 1000), timeZone),
                 location: event.location!,
                 leaveBy: formatInZone(new Date(leaveBy * 1000), timeZone),
                 note: `about ${Math.round(estimate.minutes)} min drive${estimate.origin ? ` from ${estimate.origin}` : ''}`,
-            }).catch((error) =>
-                console.error(`[Scheduler] Leave reminder failed for ${event.id}:`, error),
+            };
+            deliver(
+                key,
+                now,
+                () => sendLeaveReminder(page, owner, details),
+                `leave reminder for ${event.id}`,
             );
             sent++;
         }
@@ -124,13 +167,37 @@ export async function sendLeaveReminders(pages: Page[], now: Date): Promise<numb
     return sent;
 }
 
-async function firstPageWithCalendar(owner: string, pages: Page[]): Promise<Page | null> {
-    for (const page of pages) {
+/**
+ * The chat that gets the owner's leave reminders: one whose notebook has a calendar page,
+ * preferring a notebook nobody else can see (a reminder says where the user is going and
+ * from where). Ties go to the oldest chat, so the choice doesn't change from day to day.
+ */
+async function reminderPageFor(owner: string, pages: Page[]): Promise<Page | null> {
+    let shared: Page | null = null;
+    const ordered = [...pages].sort(
+        (a, b) => +new Date(a.createdAt) - +new Date(b.createdAt) || a.id.localeCompare(b.id),
+    );
+    for (const page of ordered) {
         if (!page.notebookId) continue;
         const devicePages = await findDeviceDataPages(owner, page.notebookId);
-        if (devicePages.some((p) => p.deviceSource === 'calendar')) return page;
+        if (!devicePages.some((p) => p.deviceSource === 'calendar')) continue;
+        const notebook = await findNotebookByIdUnsafe(page.notebookId);
+        // The owner is listed in sharedWith too; anyone else means others can read it.
+        const isShared =
+            !!notebook?.sharing?.isPublic ||
+            !!notebook?.sharing?.sharedWith?.some(
+                (entry) => entry.userId !== owner && entry.accessLevel !== 'owner',
+            );
+        if (!isShared) return page;
+        shared ??= page;
     }
-    return null;
+    return shared;
+}
+
+/** The phone's estimate is recent, and not from a clock running ahead. */
+function isFresh(computedAt: string, now: Date): boolean {
+    const age = now.getTime() - Date.parse(computedAt);
+    return Number.isFinite(age) && age <= ESTIMATE_MAX_AGE_MS && age >= -ESTIMATE_CLOCK_SKEW_MS;
 }
 
 /** Where About me says the user is right now (from iPhone visits), if anywhere. */
@@ -143,11 +210,18 @@ async function currentPlaceOf(owner: string, now: Date): Promise<string | null> 
     return fact?.value ?? null;
 }
 
-function sameSpot(place: string, location: string, title?: string): boolean {
+/**
+ * Whether the user's current place is the event's location ("Home" for an event at
+ * "Home", or the same address). Only locations are compared: an event titled
+ * "Homecoming game" is not at Home.
+ */
+function sameSpot(place: string, location: string): boolean {
     const a = place.toLowerCase().trim();
-    const loc = location.toLowerCase();
+    const loc = location.toLowerCase().trim();
     return (
-        a.length > 2 && (loc.includes(a) || a.includes(loc) || !!title?.toLowerCase().includes(a))
+        a.length > 2 &&
+        loc.length > 2 &&
+        (loc === a || loc.startsWith(`${a},`) || a.startsWith(`${loc},`))
     );
 }
 

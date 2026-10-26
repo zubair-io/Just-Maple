@@ -181,6 +181,17 @@ struct NamedPlaceTests {
         #expect(LocationMapping.item(for: records[0], calendar: calendar).body == "Left Home (12 Main St, Springfield, IL) on Sat Oct 24 at 8:00 am")
     }
 
+    @Test func leavingAfterMoreThanADayClosesTheSameStay() {
+        // Home all weekend: Friday 6 pm to Monday 6 am.
+        let arrived = PlaceStays.enter(home, at: date(2026, 10, 23, 18, 0), into: [])
+        let left = PlaceStays.exit(home, at: date(2026, 10, 26, 6, 0), into: arrived)
+        #expect(left.count == 1)
+        #expect(left[0].id == arrived[0].id)
+        #expect(left[0].arrival == date(2026, 10, 23, 18, 0))
+        #expect(left[0].departure == date(2026, 10, 26, 6, 0))
+        #expect(!left.contains { $0.arrival == nil })
+    }
+
     // MARK: - Merging a region stay with a visit
 
     @Test func visitDuringARegionStayUpdatesItInsteadOfAddingOne() {

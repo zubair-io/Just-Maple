@@ -33,9 +33,13 @@ describe('ProactiveBotPanelComponent', () => {
   }
 
   it('warns when other people can see the notebook', () => {
-    expect(setup([{ userId: 'u2' }]).root.textContent).toContain('Others can see this notebook');
+    const owner = { userId: 'u1', accessLevel: 'owner' };
+    expect(setup([owner, { userId: 'u2', accessLevel: 'read' }]).root.textContent).toContain(
+      'Others can see this notebook',
+    );
     TestBed.resetTestingModule();
-    expect(setup([]).root.textContent).not.toContain('Others can see this notebook');
+    // Only the owner: private.
+    expect(setup([owner]).root.textContent).not.toContain('Others can see this notebook');
   });
 
   it('saves a daily brief time, and turns it off', async () => {
