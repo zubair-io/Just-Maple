@@ -9,6 +9,13 @@
 //    POST /api/collectors            { deviceId, platform, name, sources, timeZone }
 //    POST /api/device-data/items     { deviceId, upserts, removals, vectors?, cursor? }
 //
+//  The iPhone also reads the user's named places and upcoming events, and uploads
+//  driving times to those events:
+//
+//    GET  /api/about-me/places              → { places: [{ id, name, place: { lat, lon, radius, address? } }] }
+//    GET  /api/device-data/upcoming?hours=6 → { events: [{ id, title?, location, start, end? }] }
+//    POST /api/device-data/travel           { deviceId, estimates: [{ eventId, minutes, origin?, computedAt }] }
+//
 //  Each source has one active collector per user; uploads for other sources are
 //  skipped by the server, so a device only needs to send what it read.
 //
@@ -221,17 +228,43 @@ actor DeviceDataClient {
         return total
     }
 
+    /// The user's named places (Home, Work…), named on the web in About me.
+    func places() async throws -> [NamedPlace] {
+        let reply: NamedPlacesReply = try await send("GET", "/api/about-me/places", Empty?.none)
+        return reply.namedPlaces
+    }
+
+    /// Calendar events with a location in the next `hours` (from the Mac's calendar).
+    func upcomingEvents(hours: Int) async throws -> [UpcomingEvent] {
+        struct Reply: Decodable { var events: [UpcomingEvent] }
+        let reply: Reply = try await send(
+            "GET", "/api/device-data/upcoming?hours=\(hours)", Empty?.none)
+        return reply.events
+    }
+
+    /// Driving times to upcoming events. At most 50 per call (`TravelPlanner.uploads`).
+    @discardableResult
+    func uploadTravel(_ upload: TravelUpload) async throws -> Int {
+        struct Reply: Decodable { var saved: Int }
+        let reply: Reply = try await send("POST", "/api/device-data/travel", upload)
+        return reply.saved
+    }
+
+    private struct Empty: Encodable {}
+
     private func send<Body: Encodable, Reply: Decodable>(
-        _ method: String, _ path: String, _ body: Body
+        _ method: String, _ path: String, _ body: Body?
     ) async throws -> Reply {
         guard let token = token() else { throw DeviceDataError.notSignedIn }
         let base = baseURL().trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: base + path) else { throw DeviceDataError.server(0, "Bad server URL") }
         var request = URLRequest(url: url, timeoutInterval: 60)
         request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONEncoder().encode(body)
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(body)
+        }
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {

@@ -13,14 +13,18 @@
 //    disable { source }→ stops collecting, returns status
 //    syncNow           → collects and uploads now, returns status
 //
-//  SourceStatus is { available, authorized, enabled, lastUploadAt, pending }, plus
-//  `permission` for location ("always", "whenInUse", "denied", …).
+//  SourceStatus is { available, authorized, enabled, lastUploadAt, pending }, plus for
+//  location `permission` ("always", "whenInUse", "denied", …), `places` (the named
+//  places' names) and `lastTravelUpdate` (the last travel-time pass, or null).
 //
 //  Enabled flags live in UserDefaults; enabled collectors resume at every launch,
-//  including background launches for a visit or new Health data.
+//  including background launches for a visit or new Health data. While Places is on,
+//  travel times to upcoming events are refreshed on foreground, after visits, and from
+//  a background app refresh task.
 //
 
 #if os(iOS)
+import BackgroundTasks
 import Foundation
 import UIKit
 import WebKit
@@ -32,10 +36,15 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
     static let sources: [DeviceSource] = [.location, .health]
     /// Re-register at least this often so the server's "last seen" and time zone stay fresh.
     static let registrationInterval: TimeInterval = 6 * 60 * 60
+    /// Background refresh for travel times; also listed in Info.plist's
+    /// `BGTaskSchedulerPermittedIdentifiers`.
+    static let refreshTaskId = "com.just.maple.JapaneseMaple.travel-refresh"
+    static let refreshInterval: TimeInterval = 15 * 60
 
     private let client = DeviceDataClient.shared
     private(set) lazy var location = LocationCollector(client: client)
     private(set) lazy var health = HealthCollector(client: client)
+    private(set) lazy var travel = TravelCollector(client: client)
     private var resumed = false
     private var registered: (sources: [DeviceSource], active: Set<DeviceSource>, at: Date)?
     private var observers: [NSObjectProtocol] = []
@@ -63,8 +72,25 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
 
         location.beforeUpload = { [weak self] in try await self?.ensureRegistered(.location) ?? false }
         health.beforeUpload = { [weak self] in try await self?.ensureRegistered(.health) ?? false }
+        travel.beforeUpload = { [weak self] in try await self?.ensureRegistered(.location) ?? false }
+        travel.places = { [weak self] in self?.location.places ?? [] }
+        location.onMoved = { [weak self] in self?.updateTravelSoon() }
 
-        if isEnabled(.location) { location.start() }
+        // Must be registered before launch finishes, even while Places is off.
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.refreshTaskId, using: .main) {
+            task in
+            MainActor.assumeIsolated { CollectorsHost.shared.runBackgroundRefresh(task) }
+        }
+
+        if isEnabled(.location) {
+            location.start()
+            let inForeground = UIApplication.shared.applicationState != .background
+            Task {
+                await location.refreshPlaces(force: true)
+                if inForeground { await travelUpdate() }
+            }
+            scheduleBackgroundRefresh()
+        }
         if isEnabled(.health), HealthCollector.isAvailable { health.start() }
 
         observers.append(
@@ -72,6 +98,12 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
                 forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
             ) { [weak self] _ in
                 Task { @MainActor in await self?.refreshOnForeground() }
+            })
+        observers.append(
+            NotificationCenter.default.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+            ) { _ in
+                Task { @MainActor in CollectorsHost.shared.scheduleBackgroundRefresh() }
             })
     }
 
@@ -82,8 +114,58 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
     }
 
     private func refreshOnForeground() async {
-        if isEnabled(.location) { await location.flush() }
+        if isEnabled(.location) {
+            await location.refreshPlaces(force: true)
+            await location.flush()
+            await travelUpdate()
+        }
         if isEnabled(.health) { await health.sync() }
+    }
+
+    // MARK: - Travel times
+
+    private var travelEnabled: Bool { isEnabled(.location) && location.canCollect }
+
+    private func travelUpdate() async {
+        guard travelEnabled else { return }
+        await travel.update()
+    }
+
+    /// After a visit or a named-place crossing.
+    private func updateTravelSoon() {
+        guard travelEnabled else { return }
+        Task { await travel.update() }
+    }
+
+    /// Asks iOS to wake the app in about 15 minutes. iOS decides when, or whether, it runs.
+    private func scheduleBackgroundRefresh() {
+        guard isEnabled(.location) else {
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.refreshTaskId)
+            return
+        }
+        let request = BGAppRefreshTaskRequest(identifier: Self.refreshTaskId)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: Self.refreshInterval)
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            // Simulator, or Background App Refresh is off for this app.
+            print("[Collectors] Background refresh not scheduled: \(error.localizedDescription)")
+        }
+    }
+
+    private func runBackgroundRefresh(_ task: BGTask) {
+        scheduleBackgroundRefresh()
+        let work = Task { @MainActor in
+            guard self.travelEnabled else { return }
+            await self.location.refreshPlaces()
+            await self.travel.update()
+            await self.location.flush()
+        }
+        task.expirationHandler = { work.cancel() }
+        Task { @MainActor in
+            await work.value
+            task.setTaskCompleted(success: !work.isCancelled)
+        }
     }
 
     // MARK: - Registration
@@ -120,6 +202,10 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
             if source == .health { health.uploadsMovedAway() }
         }
         registered = (sources, active, Date())
+        if active.contains(.location) {
+            // Not awaited: registering can happen in the middle of an upload.
+            Task { await self.location.refreshPlaces(force: true) }
+        }
         let inactive = sources.filter { !active.contains($0) }
         if !inactive.isEmpty {
             // Another device collects these; uploads wait until this phone collects them.
@@ -184,7 +270,11 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
             return await status()
         case "syncNow":
             await registerNow()
-            if isEnabled(.location) { await location.flush() }
+            if isEnabled(.location) {
+                await location.refreshPlaces(force: true)
+                await location.flush()
+                await travelUpdate()
+            }
             if isEnabled(.health) { await health.sync(force: true) }
             return await status()
         default:
@@ -210,6 +300,10 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
             }
             setEnabled(.location, true)
             location.start()
+            scheduleBackgroundRefresh()
+            await registerNow()
+            await location.refreshPlaces(force: true)
+            updateTravelSoon()
         case .health:
             guard HealthCollector.isAvailable else { throw HostError.unavailable(.health) }
             try await health.requestPermission()
@@ -217,17 +311,17 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
             health.start()
             await registerNow()
             await health.sync(force: true)
-            return
         default:
             throw HostError.badSource
         }
-        await registerNow()
     }
 
     func disable(_ source: DeviceSource) {
         setEnabled(source, false)
         switch source {
-        case .location: location.stop()
+        case .location:
+            location.stop()
+            scheduleBackgroundRefresh()
         case .health: health.stop()
         default: break
         }
@@ -245,6 +339,8 @@ final class CollectorsHost: NSObject, WKScriptMessageHandlerWithReply {
                 "enabled": isEnabled(.location),
                 "lastUploadAt": Self.iso(location.state.lastUploadAt),
                 "pending": location.pendingCount,
+                "places": location.places.map(\.name),
+                "lastTravelUpdate": Self.iso(travel.lastUpdate),
             ],
             "health": [
                 "available": HealthCollector.isAvailable,
