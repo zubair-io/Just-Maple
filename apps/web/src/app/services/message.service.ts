@@ -6,6 +6,7 @@ import {
   computed,
   DestroyRef,
   effect,
+  untracked,
 } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
@@ -801,10 +802,14 @@ export class MessageService {
    */
   markAsReadByPageId(pageId: string, knownNotebookId?: string): Observable<void> {
     // The notebook matches older notifications that were saved without a pageId
-    const notebookId =
-      knownNotebookId ??
-      this._unreadCounts().find((c) => c.pageId === pageId)?.notebookId ??
-      (this._currentPage()?.id === pageId ? this._currentPage()?.notebookId : undefined);
+    // Read without tracking: callers may run inside an effect, and this request updates
+    // these same signals.
+    const notebookId = untracked(
+      () =>
+        knownNotebookId ??
+        this._unreadCounts().find((c) => c.pageId === pageId)?.notebookId ??
+        (this._currentPage()?.id === pageId ? this._currentPage()?.notebookId : undefined),
+    );
 
     return this.http
       .post<{
