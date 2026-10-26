@@ -2,6 +2,7 @@ import type { Collection } from 'mongodb';
 import { getDb } from '../db/client';
 import {
     DEVICE_DATA_RETENTION_DAYS,
+    type DeviceDataChoice,
     type DeviceItemVectors,
     type MacDataItem,
     type MacDataSource,
@@ -38,6 +39,10 @@ export interface DeviceItemQuery {
     limit?: number;
     offset?: number;
     order?: 'asc' | 'desc';
+    /** Extra database conditions, e.g. a page's calendars (see device-data-access.service). */
+    conditions?: Record<string, unknown>;
+    /** Checked in code after the database query, for filters it can't express. */
+    match?: (item: MacDataItem) => boolean;
 }
 
 const MAX_BODY_CHARS = 20_000;
@@ -156,7 +161,7 @@ export async function findDeviceItems(
     userId: string,
     query: DeviceItemQuery,
 ): Promise<{ items: MacDataItem[]; total: number }> {
-    const filter: Record<string, unknown> = { userId };
+    const filter: Record<string, unknown> = { ...query.conditions, userId };
     if (query.sources?.length) filter.source = { $in: query.sources };
     if (query.from !== undefined || query.to !== undefined) {
         filter.occurredAt = {
@@ -168,6 +173,24 @@ export async function findDeviceItems(
     const offset = Math.max(0, query.offset ?? 0);
     const limit = Math.min(Math.max(1, query.limit ?? 100), 500);
     const words = (query.search ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+
+    // Filters checked in code (calendars and chats by id or name, Places windows and
+    // places): match on items without their bodies, then load just this page in full.
+    if (query.match) {
+        const rows = await getCollection()
+            .find(filter, { projection: { _id: 1, item: 1, searchText: 1 } })
+            .toArray();
+        const matching = rows
+            .filter((row) => words.every((word) => row.searchText.includes(word)))
+            .filter((row) => query.match!({ ...row.item, body: '' }))
+            .sort((a, b) => (a.item.occurredAt - b.item.occurredAt) * direction);
+        const pageIds = matching.slice(offset, offset + limit).map((row) => row._id);
+        const byId = new Map(rows.map((row) => [row._id, row.item]));
+        return {
+            items: pageIds.map((id) => byId.get(id)).filter((item): item is MacDataItem => !!item),
+            total: matching.length,
+        };
+    }
 
     if (words.length === 0) {
         const [docs, total] = await Promise.all([
@@ -198,6 +221,71 @@ export async function findDeviceItems(
     return {
         items: pageIds.map((id) => byId.get(id)).filter((item): item is MacDataItem => !!item),
         total: matching.length,
+    };
+}
+
+/**
+ * The calendars, mailboxes and chats in a user's data, most recently used first, for
+ * choosing what a page shares. Calendars and chats carry the device's id when it sent one.
+ */
+export async function findDeviceItemFacets(
+    userId: string,
+): Promise<{ calendars: DeviceDataChoice[]; mailboxes: string[]; chats: DeviceDataChoice[] }> {
+    const rows = await getCollection()
+        .find(
+            { userId, source: { $in: ['calendar', 'mail', 'imessage'] } },
+            {
+                projection: {
+                    source: 1,
+                    occurredAt: 1,
+                    'item.calendar': 1,
+                    'item.mailbox': 1,
+                    'item.thread': 1,
+                    'item.extra.calendarId': 1,
+                    'item.extra.chatId': 1,
+                },
+            },
+        )
+        .toArray();
+    type Seen = { choice: DeviceDataChoice; at: number };
+    const latest: Record<'calendar' | 'mail' | 'imessage', Map<string, Seen>> = {
+        calendar: new Map(),
+        mail: new Map(),
+        imessage: new Map(),
+    };
+    for (const row of rows) {
+        const seen = latest[row.source as keyof typeof latest];
+        const item = row.item as Partial<MacDataItem> | undefined;
+        const name =
+            row.source === 'calendar'
+                ? item?.calendar
+                : row.source === 'mail'
+                  ? item?.mailbox
+                  : item?.thread;
+        if (!name || !seen) continue;
+        const rawId = row.source === 'calendar' ? item?.extra?.calendarId : item?.extra?.chatId;
+        const id = typeof rawId === 'string' && rawId ? rawId : undefined;
+        const key = id ? `id:${id}` : `name:${name}`;
+        const previous = seen.get(key);
+        // Keep the name from the most recent item (a chat that was renamed).
+        if (!previous || row.occurredAt >= previous.at) {
+            seen.set(key, { choice: id ? { id, name } : { name }, at: row.occurredAt });
+        }
+    }
+    const ordered = (map: Map<string, Seen>, max: number) => {
+        const values = [...map.values()];
+        // An older item without an id is the same calendar or chat as one with it.
+        const namesWithId = new Set(values.filter((v) => v.choice.id).map((v) => v.choice.name));
+        return values
+            .filter((v) => v.choice.id || !namesWithId.has(v.choice.name))
+            .sort((a, b) => b.at - a.at)
+            .slice(0, max)
+            .map((v) => v.choice);
+    };
+    return {
+        calendars: ordered(latest.calendar, 100),
+        mailboxes: ordered(latest.mail, 100).map((choice) => choice.name),
+        chats: ordered(latest.imessage, 200),
     };
 }
 

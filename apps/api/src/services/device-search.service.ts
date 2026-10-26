@@ -20,6 +20,8 @@ export interface DeviceSearchRequest {
     from?: number;
     to?: number;
     limit?: number;
+    /** A data page's filter: only items it lets through. */
+    match?: (item: MacDataItem) => boolean;
 }
 
 interface IndexedItem {
@@ -106,7 +108,8 @@ export async function searchDeviceData(
         ({ item }) =>
             request.sources.includes(item.source) &&
             (request.from === undefined || item.occurredAt >= request.from) &&
-            (request.to === undefined || item.occurredAt <= request.to),
+            (request.to === undefined || item.occurredAt <= request.to) &&
+            (!request.match || request.match(item)),
     );
 
     // No query: list what falls in the date range, soonest first.

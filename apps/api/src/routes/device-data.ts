@@ -6,6 +6,8 @@ import {
     UploadDeviceItemsSchema,
     UploadTravelEstimatesSchema,
     MacDataSourceSchema,
+    UpdateDeviceDataPageSchema,
+    type DeviceDataAccess,
     type JWTPayload,
     type MacDataSource,
 } from '@maple/shared';
@@ -25,7 +27,17 @@ import {
     findDeviceItem,
     findDeviceItems,
 } from '../repositories/device-item.repo';
-import { findPageById } from '../repositories/page.repo';
+import { findDeviceDataPages, findPageById, updatePage } from '../repositories/page.repo';
+import {
+    describeAccess,
+    isMemberOf,
+    loadDataPageView,
+    filterOptionsFor,
+    itemMatcherFor,
+    itemQueryFor,
+} from '../services/device-data-access.service';
+import { getUsersWithNotebookAccess } from '../repositories/notebook.repo';
+import { realtimeWSService } from '../services/realtime-ws.service';
 import { applyDeviceUpload, DeviceUploadError } from '../services/device-data.service';
 import { bumpDeviceDataVersion } from '../services/device-search.service';
 
@@ -34,7 +46,8 @@ import { bumpDeviceDataVersion } from '../services/device-search.service';
  *
  * - `POST /api/collectors` registers a device and what it can collect.
  * - `POST /api/device-data/items` uploads a batch of items, removals and vectors.
- * - `GET /api/device-data/items` lists items for a device data page, owner only.
+ * - `GET /api/device-data/items` lists items for a device data page, through its filter.
+ * - `PATCH /api/device-data/pages/:id` changes a page's name, description and filter (creator only).
  * - `DELETE /api/device-data` removes everything uploaded.
  */
 
@@ -207,28 +220,43 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
         { body: UploadTravelEstimatesSchema },
     )
 
-    // Items for a device data page. Only the page's owner sees them, even in a shared notebook.
+    // Items: the user's own for a source, or a data page's, through the page's filter.
+    // Everyone in the notebook can read a page that has a filter; the creator manages it.
     .get(
         '/device-data/items',
         async ({ auth, query, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
             let sources: MacDataSource[] = [query.source];
+            let ownerId = auth.user._id;
+            let pageQuery: Awaited<ReturnType<typeof itemQueryFor>> | undefined;
+            let access: DeviceDataAccess | undefined;
             if (query.pageId) {
                 const page = await findPageById(query.pageId, auth.user._id);
-                if (!page || page.type !== 'devicedata' || !page.deviceSource) {
+                const view = page ? await loadDataPageView(page, auth.user._id) : null;
+                if (!view) {
                     set.status = 404;
                     return { error: 'Page not found' };
                 }
-                if (page.userId !== auth.user._id) {
+                access = await describeAccess(view);
+                if (!view.visible) {
                     set.status = 403;
-                    return { error: 'Only the owner can see this data', ownerOnly: true };
+                    return { error: 'Only the owner can see this data', ownerOnly: true, access };
                 }
-                sources = [page.deviceSource];
+                sources = [view.source];
+                ownerId = view.ownerId;
+                pageQuery = await itemQueryFor(view);
+                if (!pageQuery) {
+                    return { items: [], total: 0, collector: null, access };
+                }
             }
-            const collector = (await listCollectors(auth.user._id)).find((c) =>
-                c.activeSources.includes(sources[0]!),
-            );
-            const result = await findDeviceItems(auth.user._id, {
+            // Which device collects it: shown to the person whose data it is.
+            const collector =
+                ownerId === auth.user._id
+                    ? (await listCollectors(ownerId)).find((c) =>
+                          c.activeSources.includes(sources[0]!),
+                      )
+                    : undefined;
+            const result = await findDeviceItems(ownerId, {
                 sources,
                 search: query.search,
                 from: query.from,
@@ -236,6 +264,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                 limit: query.limit,
                 offset: query.offset,
                 order: query.order,
+                ...pageQuery,
             });
             return {
                 ...result,
@@ -246,6 +275,7 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
                           lastUploadAt: collector.lastUploadAt,
                       }
                     : null,
+                ...(access ? { access } : {}),
             };
         },
         {
@@ -262,10 +292,106 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
         },
     )
 
+    // The user's data pages in notebooks they're no longer in: nobody sees them there, and
+    // only the user can delete them.
+    .get('/device-data/pages/left', async ({ auth, set }) => {
+        if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+        const pages = await findDeviceDataPages(auth.user._id);
+        const left = [];
+        for (const page of pages) {
+            if (page.notebookId && !(await isMemberOf(page.notebookId, auth.user._id))) {
+                left.push(page);
+            }
+        }
+        return { pages: left };
+    })
+
+    // Choices for a data page's filter, from the creator's own data.
     .get(
-        '/device-data/items/:id',
+        '/device-data/pages/:id/options',
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+            const page = await findPageById(params.id, auth.user._id);
+            const view = page ? await loadDataPageView(page, auth.user._id) : null;
+            if (!view) {
+                set.status = 404;
+                return { error: 'Page not found' };
+            }
+            if (!view.canManage) {
+                set.status = 403;
+                return {
+                    error: 'Forbidden',
+                    message: 'Only the person who added this page can change it',
+                };
+            }
+            return { options: await filterOptionsFor(view.ownerId) };
+        },
+        { params: t.Object({ id: t.String() }) },
+    )
+
+    // Name, description and filter of a data page. Only its creator.
+    .patch(
+        '/device-data/pages/:id',
+        async ({ auth, params, body, set }) => {
+            if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+            const existing = await findPageById(params.id, auth.user._id);
+            const view = existing ? await loadDataPageView(existing, auth.user._id) : null;
+            if (!view) {
+                set.status = 404;
+                return { error: 'Page not found' };
+            }
+            if (!view.canManage) {
+                set.status = 403;
+                return {
+                    error: 'Forbidden',
+                    message: 'Only the person who added this page can change it',
+                };
+            }
+            const title = body.title?.replace(/[\r\n]/g, ' ').trim();
+            const page = await updatePage(params.id, auth.user._id, {
+                ...(title ? { title } : {}),
+                ...(body.description !== undefined
+                    ? { description: body.description.replace(/\s+/g, ' ').trim() }
+                    : {}),
+                ...(body.deviceFilter ? { deviceFilter: body.deviceFilter } : {}),
+            });
+            if (!page) {
+                set.status = 404;
+                return { error: 'Page not found' };
+            }
+            if (page.notebookId) {
+                // Other open clients update the page's filter and description without a reload.
+                realtimeWSService.sendToUsers(await getUsersWithNotebookAccess(page.notebookId), {
+                    type: 'page.updated',
+                    pageId: page.id,
+                    title: page.title,
+                    updatedAt: page.updatedAt,
+                    notebookId: page.notebookId,
+                    deviceFilter: page.deviceFilter ?? null,
+                    description: page.description ?? '',
+                });
+            }
+            return { page };
+        },
+        { params: t.Object({ id: t.String() }), body: UpdateDeviceDataPageSchema },
+    )
+
+    .get(
+        '/device-data/items/:id',
+        async ({ auth, params, query, set }) => {
+            if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
+            // With a page: the creator's item, if the page's filter lets it through.
+            if (query.pageId) {
+                const page = await findPageById(query.pageId, auth.user._id);
+                const view = page ? await loadDataPageView(page, auth.user._id) : null;
+                const match = view ? await itemMatcherFor(view) : null;
+                const item = view && match ? await findDeviceItem(view.ownerId, params.id) : null;
+                if (!item || !match!(item)) {
+                    set.status = 404;
+                    return { error: 'Item not found' };
+                }
+                return { item };
+            }
             const item = await findDeviceItem(auth.user._id, params.id);
             if (!item) {
                 set.status = 404;
@@ -273,7 +399,10 @@ export const deviceDataRoutes = new Elysia({ prefix: '/api' })
             }
             return { item };
         },
-        { params: t.Object({ id: t.String() }) },
+        {
+            params: t.Object({ id: t.String() }),
+            query: t.Object({ pageId: t.Optional(t.String()) }),
+        },
     )
 
     // Remove everything the user's devices uploaded. Devices stop uploading until

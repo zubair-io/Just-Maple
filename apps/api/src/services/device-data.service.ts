@@ -18,7 +18,8 @@ import {
     setDeviceItemVectors,
     upsertDeviceItems,
 } from '../repositories/device-item.repo';
-import { findDeviceDataPages, findProactivePages } from '../repositories/page.repo';
+import { findProactivePages } from '../repositories/page.repo';
+import { dataPageSlicesFor } from './device-data-access.service';
 import { bumpDeviceDataVersion, hit } from './device-search.service';
 import { handleDeviceDataChanges } from './proactive-bot.service';
 
@@ -163,11 +164,12 @@ async function notifyProactive(userId: string, news: NewsEntry[]): Promise<void>
     const timeZone = (await collectorTimeZone(userId)) ?? 'UTC';
     const batches: MacDataChangeBatch[] = [];
     for (const notebookId of notebookIds as string[]) {
-        const sources = new Set(
-            (await findDeviceDataPages(userId, notebookId)).map((page) => page.deviceSource),
+        // The owner's own pages there, each through its filter.
+        const pages = (await dataPageSlicesFor(userId, notebookId)).filter(
+            (page) => page.ownerId === userId,
         );
         const entries = news
-            .filter(({ item }) => sources.has(item.source))
+            .filter(({ item }) => pages.some((page) => page.match(item)))
             .slice(0, MAX_PROACTIVE_ENTRIES)
             .map(({ kind, item }) => ({ kind, item: hit(item, 0, [], timeZone) }));
         if (entries.length) batches.push({ notebookId, entries });

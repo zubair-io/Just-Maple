@@ -5,7 +5,14 @@ import { filter } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { VisibilityService } from './visibility.service';
 import { environment } from '../../environments/environment';
-import type { Page, Notebook, Collectable, MemoSSEEvent, Recording } from '@maple/shared';
+import type {
+  Page,
+  Notebook,
+  Collectable,
+  MemoSSEEvent,
+  Recording,
+  DeviceDataFilter,
+} from '@maple/shared';
 
 /**
  * App Events - CRUD operations on pages, notebooks, collectables
@@ -13,7 +20,15 @@ import type { Page, Notebook, Collectable, MemoSSEEvent, Recording } from '@mapl
 export type AppEvent =
   | { type: 'connected'; userId: string; subscribedNotebooks: string[] }
   | { type: 'page.created'; page: Page; notebookId?: string }
-  | { type: 'page.updated'; pageId: string; title?: string; updatedAt: string; notebookId?: string }
+  | {
+      type: 'page.updated';
+      pageId: string;
+      title?: string;
+      updatedAt: string;
+      notebookId?: string;
+      deviceFilter?: DeviceDataFilter | null;
+      description?: string;
+    }
   | {
       type: 'page.moved';
       pageId: string;

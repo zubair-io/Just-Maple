@@ -84,11 +84,13 @@ nonisolated struct CalendarReader {
         }
         let modified = event.lastModifiedDate?.timeIntervalSince1970 ?? 0
         let end = event.endDate.timeIntervalSince1970
+        // The calendar's own id, so a page can share one calendar even when two share a name.
+        let calendarId = event.calendar?.calendarIdentifier
         return MacDataItem(
             id: "calendar:\(identifier)@\(Int(start))",
             source: .calendar,
             revision: macDataStableHash(
-                "\(modified)|\(event.title ?? "")|\(start)|\(end)|\(event.location ?? "")|\(event.status.rawValue)"),
+                "\(modified)|\(event.title ?? "")|\(start)|\(end)|\(event.location ?? "")|\(event.status.rawValue)|\(calendarId ?? "")"),
             occurredAt: start,
             endAt: end,
             title: event.title,
@@ -101,7 +103,8 @@ nonisolated struct CalendarReader {
             calendar: event.calendar?.title,
             allDay: event.isAllDay,
             mailbox: event.status == .canceled ? "Canceled" : nil,
-            isRead: nil)
+            isRead: nil,
+            extra: calendarId.map { ["calendarId": .string($0)] })
     }
 }
 #endif

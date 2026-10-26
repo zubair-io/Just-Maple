@@ -4,8 +4,11 @@ vi.mock('../mac-data-relay.service', () => ({
     macDataRelay: { isOnline: vi.fn().mockResolvedValue(false), request: vi.fn() },
 }));
 vi.mock('../../repositories/page.repo', () => ({
-    findDeviceDataPages: vi.fn(),
     findAboutMePage: vi.fn().mockResolvedValue({ id: 'about-page', type: 'aboutme' }),
+}));
+vi.mock('../device-data-access.service', () => ({
+    dataPageSlicesFor: vi.fn(),
+    isMemberOf: vi.fn().mockResolvedValue(true),
 }));
 vi.mock('../../repositories/collector.repo', () => ({
     collectorTimeZone: vi.fn().mockResolvedValue(undefined),
@@ -31,7 +34,8 @@ import {
     type MacDataToolContext,
 } from '../mac-data-tools.service';
 import { macDataRelay } from '../mac-data-relay.service';
-import { findAboutMePage, findDeviceDataPages } from '../../repositories/page.repo';
+import { findAboutMePage } from '../../repositories/page.repo';
+import { dataPageSlicesFor } from '../device-data-access.service';
 import { collectorTimeZone } from '../../repositories/collector.repo';
 import { findDeviceItem } from '../../repositories/device-item.repo';
 import { searchDeviceData } from '../device-search.service';
@@ -64,16 +68,16 @@ describe('getMacDataToolContext', () => {
     });
 
     it("is null when the notebook has none of the user's device data pages", async () => {
-        vi.mocked(findDeviceDataPages).mockResolvedValue([]);
+        vi.mocked(dataPageSlicesFor).mockResolvedValue([]);
         vi.mocked(findAboutMePage).mockResolvedValueOnce(null); // and no About me page
         expect(await getMacDataToolContext('u1', 'n1', ownBot)).toBeNull();
     });
 
     it("uses the sources of the user's pages and their devices' time zone", async () => {
-        vi.mocked(findDeviceDataPages).mockResolvedValue([
-            { deviceSource: 'imessage' },
-            { deviceSource: 'imessage' },
-            { deviceSource: 'location' },
+        vi.mocked(dataPageSlicesFor).mockResolvedValue([
+            { source: 'imessage' },
+            { source: 'imessage' },
+            { source: 'location' },
         ] as never);
         vi.mocked(collectorTimeZone).mockResolvedValue('America/New_York');
         const context = await getMacDataToolContext('u1', 'n1', ownBot);
@@ -82,7 +86,7 @@ describe('getMacDataToolContext', () => {
             timeZone: 'America/New_York',
         });
         expect(context?.now).toMatch(/-0[45]:00$/);
-        expect(findDeviceDataPages).toHaveBeenCalledWith('u1', 'n1');
+        expect(dataPageSlicesFor).toHaveBeenCalledWith('u1', 'n1');
         expect(macDataSystemPrompt(context!)).toContain('places visited');
     });
 });
@@ -94,7 +98,7 @@ describe('About me in bot context', () => {
     });
 
     it("gives About me only to the user's own bots, in notebooks with an About me page", async () => {
-        vi.mocked(findDeviceDataPages).mockResolvedValue([]);
+        vi.mocked(dataPageSlicesFor).mockResolvedValue([]);
         const own = await getMacDataToolContext('u1', 'n1', ownBot);
         expect(own?.sources).toEqual([]);
         expect(macDataToolDefinitions(own!).map((t) => t.name)).toEqual([
@@ -111,14 +115,14 @@ describe('About me in bot context', () => {
         ).toEqual(['Julia']);
         // A bot someone else shared into the notebook: no data, no profile, no tools,
         // even when the user has device data pages there.
-        vi.mocked(findDeviceDataPages).mockResolvedValue([{ deviceSource: 'imessage' }] as never);
+        vi.mocked(dataPageSlicesFor).mockResolvedValue([{ source: 'imessage' }] as never);
         expect(
             await getMacDataToolContext('u1', 'n1', { id: 'b2', name: 'Theirs', ownerId: 'u2' }),
         ).toBeNull();
     });
 
     it('keeps About me out of notebooks without an About me page', async () => {
-        vi.mocked(findDeviceDataPages).mockResolvedValue([{ deviceSource: 'imessage' }] as never);
+        vi.mocked(dataPageSlicesFor).mockResolvedValue([{ source: 'imessage' }] as never);
         vi.mocked(findAboutMePage).mockResolvedValueOnce(null);
         const context = await getMacDataToolContext('u1', 'n1', ownBot);
         expect(context?.sources).toEqual(['imessage']);
@@ -126,7 +130,7 @@ describe('About me in bot context', () => {
     });
 
     it('leaves where the user is out of shared notebooks', async () => {
-        vi.mocked(findDeviceDataPages).mockResolvedValue([]);
+        vi.mocked(dataPageSlicesFor).mockResolvedValue([]);
         vi.mocked(loadNotebookAboutMe).mockResolvedValueOnce(notebook(true));
         const shared = await getMacDataToolContext('u1', 'n1', ownBot);
         expect(shared?.aboutMe?.notebook.shared).toBe(true);

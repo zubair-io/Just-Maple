@@ -1,9 +1,6 @@
-import type { Page } from '@maple/shared';
-import {
-    findAboutMePage,
-    findAllProactivePages,
-    findDeviceDataPages,
-} from '../repositories/page.repo';
+import { isNotebookShared, type MacDataItem, type Page } from '@maple/shared';
+import { findAboutMePage, findAllProactivePages } from '../repositories/page.repo';
+import { dataPageSlicesFor } from './device-data-access.service';
 import { collectorTimeZone } from '../repositories/collector.repo';
 import { findDeviceItems } from '../repositories/device-item.repo';
 import { findTravelEstimates } from '../repositories/travel-estimate.repo';
@@ -16,7 +13,6 @@ import { purgeOldTravelEstimates } from '../repositories/travel-estimate.repo';
 import { findNotebookByIdUnsafe } from '../repositories/notebook.repo';
 import { askAboutMeQuestion, runDailyBrief, sendLeaveReminder } from './proactive-bot.service';
 import { formatInZone } from '../utils/time-zone';
-import { isNotebookShared } from '../utils/notebook-sharing';
 import { currentPlace } from './about-me.service';
 
 /**
@@ -27,7 +23,8 @@ import { currentPlace } from './about-me.service';
  *    down at the moment.
  * 2. **Leave-now reminders.** For an upcoming event with a location, the owner's iPhone
  *    estimates driving time. When it's time to leave (driving time plus a 10-minute
- *    buffer before the start), the owner's proactive bot says so, once per event.
+ *    buffer before the start), the owner's proactive bot says so, once per event, in a
+ *    chat whose notebook's calendar page shares that event (see `reminderChatsFor`).
  * 3. **About me questions.** Once a day at most, in the early evening, the owner's
  *    proactive bot may ask one question to fill a gap in their About me, in a notebook
  *    with an About me page that nobody else can see. The bot skips it (NO_UPDATE) when
@@ -130,8 +127,8 @@ function dayOfSlot(now: Date, timeZone: string, slot: string): string | null {
 
 export async function sendLeaveReminders(pages: Page[], now: Date): Promise<number> {
     const nowSeconds = Math.floor(now.getTime() / 1000);
-    // One reminder per owner and event, posted in their first proactive chat that can
-    // see their calendar.
+    // One reminder per owner and event, posted in their first proactive chat whose
+    // notebook's calendar page shares the event.
     const owners = new Map<string, Page[]>();
     for (const page of pages) {
         const owner = page.proactive?.ownerUserId;
@@ -139,8 +136,8 @@ export async function sendLeaveReminders(pages: Page[], now: Date): Promise<numb
     }
     let sent = 0;
     for (const [owner, ownerPages] of owners) {
-        const page = await reminderPageFor(owner, ownerPages);
-        if (!page) continue;
+        const chats = await reminderChatsFor(owner, ownerPages);
+        if (chats.length === 0) continue;
         const { items } = await findDeviceItems(owner, {
             sources: ['calendar'],
             from: nowSeconds,
@@ -157,6 +154,8 @@ export async function sendLeaveReminders(pages: Page[], now: Date): Promise<numb
         const here = await currentPlace(owner, now.getTime());
         const timeZone = (await collectorTimeZone(owner)) ?? 'UTC';
         for (const event of events) {
+            const page = chats.find((chat) => chat.shares(event))?.page;
+            if (!page) continue;
             const estimate = estimates.get(event.id);
             if (!estimate || !isFresh(estimate.computedAt, now)) continue;
             // Already there, or close enough that there's nothing to plan.
@@ -186,25 +185,39 @@ export async function sendLeaveReminders(pages: Page[], now: Date): Promise<numb
     return sent;
 }
 
+interface ReminderChat {
+    page: Page;
+    shares: (event: MacDataItem) => boolean;
+}
+
 /**
- * The chat that gets the owner's leave reminders: one whose notebook has a calendar page,
- * preferring a notebook nobody else can see (a reminder says where the user is going and
- * from where). Ties go to the oldest chat, so the choice doesn't change from day to day.
+ * The chats that can get the owner's leave reminders, best first: ones whose notebook has
+ * the owner's calendar page, each with what that page shares. A notebook nobody else can
+ * see comes first (a reminder says where the user is going and from where); in a shared
+ * notebook only events the page's filter shares count, and a page without a filter
+ * shares none (see device-data-access.service). Ties go to the oldest chat, so the
+ * choice doesn't change from day to day.
  */
-async function reminderPageFor(owner: string, pages: Page[]): Promise<Page | null> {
-    let shared: Page | null = null;
+async function reminderChatsFor(owner: string, pages: Page[]): Promise<ReminderChat[]> {
     const ordered = [...pages].sort(
         (a, b) => +new Date(a.createdAt) - +new Date(b.createdAt) || a.id.localeCompare(b.id),
     );
+    const privateChats: ReminderChat[] = [];
+    const sharedChats: ReminderChat[] = [];
     for (const page of ordered) {
         if (!page.notebookId) continue;
-        const devicePages = await findDeviceDataPages(owner, page.notebookId);
-        if (!devicePages.some((p) => p.deviceSource === 'calendar')) continue;
+        const calendars = (await dataPageSlicesFor(owner, page.notebookId)).filter(
+            (slice) => slice.ownerId === owner && slice.source === 'calendar',
+        );
+        if (calendars.length === 0) continue;
+        const chat = {
+            page,
+            shares: (event: MacDataItem) => calendars.some((slice) => slice.match(event)),
+        };
         const notebook = await findNotebookByIdUnsafe(page.notebookId);
-        if (notebook && !isNotebookShared(notebook)) return page;
-        shared ??= page;
+        (isNotebookShared(notebook) ? sharedChats : privateChats).push(chat);
     }
-    return shared;
+    return [...privateChats, ...sharedChats];
 }
 
 // MARK: - About me questions
