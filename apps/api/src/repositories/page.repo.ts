@@ -1214,6 +1214,15 @@ export async function setPageProactive(
     return result ? toPageResponse(result) : null;
 }
 
+/** Every enabled proactive page (for the scheduler: daily briefs and leave-now reminders). */
+export async function findAllProactivePages(): Promise<Page[]> {
+    const docs = await getCollection()
+        .find({ type: 'message', 'proactive.enabled': true, isTrashed: { $ne: true } })
+        .limit(2000)
+        .toArray();
+    return docs.map(toPageResponse);
+}
+
 /**
  * Messages pages with an enabled proactive bot whose Mac data belongs to `ownerUserId`.
  * Optionally limited to one notebook.

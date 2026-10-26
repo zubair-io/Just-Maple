@@ -11,6 +11,7 @@ import {
     endCurrentFacts,
     findFact,
     findMe,
+    listPlaces,
     listEntities,
     listFacts,
     listRelations,
@@ -466,7 +467,9 @@ export async function noteLocationVisits(
     if (!recent) return;
     const me = await findMe(userId);
     if (!me) return; // No profile yet: it starts with the first proactive bot.
-    const place = recent.title || recent.location;
+    // Inside a named place ("Home"), use its name; otherwise the visit's own name.
+    const named = await namedPlaceAt(userId, recent);
+    const place = named ?? (recent.title || recent.location);
     if (!place) return;
     const current = (await listFacts(userId)).find(
         (fact) => fact.about === me.id && fact.key === 'location' && isLive(fact, now),
@@ -485,6 +488,31 @@ export async function noteLocationVisits(
         validUntil: new Date(now + CURRENT_PLACE_HOURS * 3600 * 1000).toISOString(),
         source: { type: 'location', ref: recent.id },
     });
+}
+
+/** The user's named place a visit falls inside, if any. */
+export async function namedPlaceAt(userId: string, visit: MacDataItem): Promise<string | null> {
+    const lat = Number(visit.extra?.lat);
+    const lon = Number(visit.extra?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    let best: { name: string; distance: number } | null = null;
+    for (const entity of await listPlaces(userId)) {
+        const distance = metersBetween(lat, lon, entity.place!.lat, entity.place!.lon);
+        if (distance <= entity.place!.radius && (!best || distance < best.distance))
+            best = { name: entity.name, distance };
+    }
+    return best?.name ?? null;
+}
+
+/** Great-circle distance in meters. */
+export function metersBetween(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * 6_371_000 * Math.asin(Math.sqrt(a));
 }
 
 function newestFirst(a: ProfileFact, b: ProfileFact): number {

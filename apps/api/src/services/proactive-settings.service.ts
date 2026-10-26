@@ -51,6 +51,7 @@ export async function saveProactiveSettings(
         instructions: input.instructions.slice(0, MAX_PROACTIVE_INSTRUCTIONS),
         enabled: input.enabled,
         ownerUserId: userId,
+        ...(input.briefTime ? { briefTime: input.briefTime } : {}),
         updatedAt: new Date().toISOString(),
     };
     const updated = await setPageProactive(page.id, settings);

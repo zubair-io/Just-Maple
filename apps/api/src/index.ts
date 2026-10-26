@@ -14,6 +14,7 @@ import { macDataRoutes } from './routes/mac-data';
 import { deviceDataRoutes } from './routes/device-data';
 import { aboutMeRoutes } from './routes/about-me';
 import { startDeviceDataRetention } from './services/device-data.service';
+import { startProactiveScheduler } from './services/proactive-scheduler.service';
 import { legoRoutes } from './routes/lego';
 import { collabRoutes } from './routes/collab';
 import { memoRoutes } from './routes/memo';
@@ -69,6 +70,8 @@ async function main() {
     await connectToDatabase();
     // Hourly: drop device data older than the retention window
     startDeviceDataRetention();
+    // Every minute: daily briefs and leave-now reminders
+    startProactiveScheduler();
 
     // Connect to Redis for cross-replica pub/sub
     try {
