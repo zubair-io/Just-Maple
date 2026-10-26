@@ -35,6 +35,17 @@ import {
 import { updateLinksForPage, handlePageRename, handlePageDeletion } from '../services/link.service';
 import { indexPage, removeFromIndex } from '../repositories/search.repo';
 import type { Page } from '@maple/shared';
+import { defaultDeviceFilter } from '../services/device-data-access.service';
+
+const DATA_PAGE_CREATOR_ONLY = {
+    error: 'Forbidden',
+    message: 'Only the person who added this data page can change it',
+};
+
+/** A data page someone else created: everyone can view it, only its creator changes it. */
+function isOthersDataPage(page: Page | null, userId: string): boolean {
+    return page?.type === 'devicedata' && page.userId !== userId;
+}
 
 /**
  * Broadcast page.moved event to users in both old and new notebooks
@@ -158,6 +169,9 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             const sanitizedBody = {
                 ...body,
                 title: body.title ? sanitizeName(body.title) : undefined,
+                ...(body.type === 'devicedata'
+                    ? { deviceFilter: await defaultDeviceFilter(body.notebookId) }
+                    : {}),
             };
             const page = await createPage(auth.user._id, sanitizedBody);
 
@@ -225,6 +239,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
 
             // Get the page before update to detect notebook changes
             const previousPage = await findPageById(params.id, auth.user._id);
+            if (isOthersDataPage(previousPage, auth.user._id)) {
+                set.status = 403;
+                return DATA_PAGE_CREATOR_ONLY;
+            }
 
             const sanitizedBody = {
                 ...body,
@@ -295,6 +313,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
 
             // Get the page before update to detect notebook changes
             const previousPage = await findPageById(params.id, auth.user._id);
+            if (isOthersDataPage(previousPage, auth.user._id)) {
+                set.status = 403;
+                return DATA_PAGE_CREATOR_ONLY;
+            }
 
             const sanitizedBody = {
                 ...body,
@@ -362,6 +384,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
             }
+            if (isOthersDataPage(await findPageById(params.id, auth.user._id), auth.user._id)) {
+                set.status = 403;
+                return DATA_PAGE_CREATOR_ONLY;
+            }
             const page = await movePageToTrash(params.id, auth.user._id);
 
             if (!page) {
@@ -399,6 +425,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
         async ({ auth, params, set }) => {
             if (!checkAuth(auth, set)) {
                 return { error: 'Unauthorized', message: 'Valid authentication required' };
+            }
+            if (isOthersDataPage(await findPageById(params.id, auth.user._id), auth.user._id)) {
+                set.status = 403;
+                return DATA_PAGE_CREATOR_ONLY;
             }
             const page = await restorePageFromTrash(params.id, auth.user._id);
 
@@ -444,6 +474,10 @@ export const pageRoutes = new Elysia({ prefix: '/api/pages' })
             if (!page) {
                 set.status = 404;
                 return { error: 'Page not found' };
+            }
+            if (isOthersDataPage(page, auth.user._id)) {
+                set.status = 403;
+                return DATA_PAGE_CREATOR_ONLY;
             }
 
             // Clean up link references before deletion

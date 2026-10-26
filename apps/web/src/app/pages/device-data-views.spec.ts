@@ -38,9 +38,19 @@ describe('device data views', () => {
     listItems,
     getItem: vi.fn(async () => null),
     enableOnThisMac: vi.fn(async () => undefined),
+    filterOptions: vi.fn(async () => ({
+      calendars: [],
+      mailboxes: [],
+      chats: ['Group chat', 'Book club'],
+      places: [],
+    })),
+    updateDataPage: vi.fn(async () => page),
   };
   const page = { id: 'p1', notebookId: 'n1', title: 'Family texts' } as Page;
-  const pageService = { pages: signal([page]), moveToTrash: vi.fn(() => of(undefined)) };
+  const pageService = {
+    pages: signal<Page[]>([page]),
+    moveToTrash: vi.fn(() => of(undefined)),
+  };
   const macData = {
     isAvailable: signal(false),
     statusBySource: signal({}),
@@ -50,6 +60,7 @@ describe('device data views', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    pageService.pages.set([page]);
     const params = convertToParamMap({ id: 'p1' });
     const query = convertToParamMap({});
     TestBed.configureTestingModule({
@@ -142,6 +153,78 @@ describe('device data views', () => {
       expect(root.querySelector('table')).toBeNull();
       expect(root.querySelector('input[type="search"]')).toBeNull();
       expect(deviceData.enableOnThisMac).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Shared data pages', () => {
+    const buttons = (root: HTMLElement) =>
+      [...root.querySelectorAll('button')].map(
+        (b) => b.getAttribute('aria-label') ?? b.textContent?.trim(),
+      );
+
+    it("tells other members whose data it is and that it's filtered, with no way to change it", async () => {
+      listItems.mockResolvedValue({
+        items: [item({ thread: 'Group chat', body: 'See you there' })],
+        total: 1,
+        collector: null,
+        access: {
+          canManage: false,
+          ownerName: 'Alex',
+          shared: true,
+          description: 'Plans for the weekend',
+          filterSummary: 'Only the Group chat chat',
+        },
+      });
+      const { root } = await render(IMessageViewComponent);
+      expect(root.querySelector('[data-testid="collector"]')?.textContent).toContain(
+        "Alex's data, filtered: Only the Group chat chat",
+      );
+      expect(root.textContent).toContain('Plans for the weekend');
+      expect(buttons(root)).not.toContain('Page settings');
+      expect(buttons(root)).not.toContain('Remove page');
+      expect(deviceData.enableOnThisMac).not.toHaveBeenCalled();
+    });
+
+    it('prompts the creator to choose what a new shared page shows, and saves the choice', async () => {
+      pageService.pages.set([{ ...page, deviceFilter: {} } as Page]);
+      listItems.mockResolvedValue({
+        items: [],
+        total: 0,
+        collector: null,
+        access: { canManage: true, ownerName: 'Alex', shared: true, filterSummary: 'Nothing yet' },
+      });
+      const { fixture, root } = await render(IMessageViewComponent);
+      expect(root.querySelector('[data-testid="empty"]')?.textContent).toContain(
+        'Nothing is shared yet',
+      );
+      expect(root.querySelector('[data-testid="sharing"]')?.textContent).toContain(
+        'Shared with this notebook: Nothing yet',
+      );
+      const choose = [...root.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === 'Choose what to share',
+      )!;
+      choose.click();
+      await wait();
+      fixture.detectChanges();
+      expect(deviceData.filterOptions).toHaveBeenCalledWith('p1');
+
+      const chat = [...root.querySelectorAll('form label')].find((l) =>
+        l.textContent?.includes('Book club'),
+      )!;
+      const box = chat.querySelector('input') as HTMLInputElement;
+      box.checked = true;
+      box.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+      expect(root.querySelector('[data-testid="share-preview"]')?.textContent).toContain(
+        'Everyone in this notebook sees: Only the Book club chat',
+      );
+      (root.querySelector('form button[type="submit"]') as HTMLButtonElement).click();
+      await wait();
+      expect(deviceData.updateDataPage).toHaveBeenCalledWith('p1', {
+        title: 'Family texts',
+        description: '',
+        deviceFilter: { includeAll: false, chats: ['Book club'] },
+      });
     });
   });
 

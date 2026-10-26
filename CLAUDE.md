@@ -666,6 +666,19 @@ await this.indexedDB.putMany(notifications, STORE_NAME);
 
 ---
 
+## Data Page Sharing ("single-player lite")
+
+Data pages (`devicedata`: iMessage, Mail, Calendar, Contacts, Places, Health) show their **creator's** device data.
+
+1. Everyone in the notebook can view a page; only its creator renames, moves, removes or changes it (enforced in `page.repo.ts` `updatePage`/`deletePage` and `routes/pages.ts`, 403 for others).
+2. `page.deviceFilter` says what the page shares (calendars, mailboxes, chats, Places time windows and excluded named places, or `includeAll`). It applies to the page view, its search, item lookups and bot tools. `page.description` tells bots what the page is for.
+3. No filter (older pages, new pages in private notebooks): the creator sees everything, nobody else sees anything. A new page in a shared notebook starts with `{}`: nothing shared until the creator picks.
+4. Bots: `getMacDataToolContext` gets one slice per visible page (`dataPageSlicesFor`); bots someone outside shared in still get nothing.
+
+Key files: `packages/shared/src/schemas/device-data-filter.ts`, `packages/shared/src/utils/device-data-filter.ts` (matcher, summary), `apps/api/src/services/device-data-access.service.ts`, `routes/device-data.ts` (`PATCH /api/device-data/pages/:id`, `GET .../options`), web `device-data-settings.component.*`.
+
+---
+
 ## Quick Reference
 
 | Do                             | Don't                               |

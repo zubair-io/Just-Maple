@@ -2,7 +2,7 @@ import { ObjectId, Collection } from 'mongodb';
 import { randomUUID } from 'crypto';
 import { customAlphabet } from 'nanoid';
 import { getDb } from '../db/client';
-import type { MacDataSource, ProactiveBotSettings } from '@maple/shared';
+import type { DeviceDataFilter, MacDataSource, ProactiveBotSettings } from '@maple/shared';
 import type {
     Page,
     PageContent,
@@ -49,6 +49,8 @@ interface PageDocument {
     proactive?: Omit<ProactiveBotSettings, 'updatedAt'> & { updatedAt: Date };
     // Device data pages only: which of the owner's sources the page shows
     deviceSource?: MacDataSource;
+    deviceFilter?: DeviceDataFilter;
+    description?: string;
     // Public publishing fields
     isPublished?: boolean;
     publishedSlug?: string;
@@ -80,6 +82,8 @@ function toPageResponse(doc: PageDocument): Page {
         todoMeta: doc.todoMeta, // Todo metadata
         tags: doc.tags, // Tags extracted from content
         ...(doc.deviceSource ? { deviceSource: doc.deviceSource } : {}),
+        ...(doc.deviceFilter ? { deviceFilter: doc.deviceFilter } : {}),
+        ...(doc.description ? { description: doc.description } : {}),
         proactive: doc.proactive
             ? { ...doc.proactive, updatedAt: doc.proactive.updatedAt.toISOString() }
             : undefined,
@@ -247,6 +251,9 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
         ...(pageType === 'devicedata' && data.deviceSource
             ? { deviceSource: data.deviceSource }
             : {}),
+        ...(pageType === 'devicedata' && data.deviceFilter
+            ? { deviceFilter: data.deviceFilter }
+            : {}),
         isFavorite: false,
         isArchived: false,
         isTrashed: false,
@@ -265,6 +272,7 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
         content: doc.content,
         notebookId: data.notebookId,
         ...(doc.deviceSource ? { deviceSource: doc.deviceSource } : {}),
+        ...(doc.deviceFilter ? { deviceFilter: doc.deviceFilter } : {}),
         isFavorite: doc.isFavorite,
         isArchived: doc.isArchived,
         isTrashed: doc.isTrashed,
@@ -296,6 +304,8 @@ export async function updatePage(
             // Page has no notebook - only owner can update
             if (doc.userId.toString() !== userId) return null;
         }
+        // A data page shows its creator's data: only they can change it.
+        if (doc.type === 'devicedata' && doc.userId.toString() !== userId) return null;
 
         // If moving to a new notebook, verify write access to the new notebook
         if (
@@ -340,6 +350,10 @@ export async function updatePage(
         if (data.tags !== undefined) {
             updateData.tags = data.tags;
         }
+        if (doc.type === 'devicedata') {
+            if (data.description !== undefined) updateData.description = data.description;
+            if (data.deviceFilter !== undefined) updateData.deviceFilter = data.deviceFilter;
+        }
 
         const result = await getCollection().findOneAndUpdate(
             { _id: new ObjectId(doc._id) },
@@ -373,6 +387,7 @@ export async function deletePage(id: string, userId: string): Promise<boolean> {
             // Page has no notebook - only owner can delete
             if (doc.userId.toString() !== userId) return false;
         }
+        if (doc.type === 'devicedata' && doc.userId.toString() !== userId) return false;
 
         // Cascade delete: Remove associated data based on page type
         if (doc.type === 'memo') {
@@ -1264,5 +1279,19 @@ export async function findDeviceDataPages(
         filter.notebookId = new ObjectId(notebookId);
     }
     const docs = await getCollection().find(filter).limit(500).toArray();
+    return docs.map(toPageResponse);
+}
+
+/** Every device data page in a notebook, whoever created it. */
+export async function findDeviceDataPagesInNotebook(notebookId: string): Promise<Page[]> {
+    if (!ObjectId.isValid(notebookId)) return [];
+    const docs = await getCollection()
+        .find({
+            type: 'devicedata',
+            notebookId: new ObjectId(notebookId),
+            isTrashed: { $ne: true },
+        })
+        .limit(500)
+        .toArray();
     return docs.map(toPageResponse);
 }

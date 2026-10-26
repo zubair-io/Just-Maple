@@ -9,11 +9,29 @@
       <h1 class="m-0 truncate font-sans text-base! font-bold text-[var(--color-text-main)]">
         {{ title() }}
       </h1>
+      @if (list().access()?.description; as description) {
+        <p class="m-0 truncate font-sans text-xs text-[var(--color-text-main)]">
+          {{ description }}
+        </p>
+      }
       @if (!list().ownerOnly()) {
         <p class="m-0 font-sans text-xs text-[var(--color-text-muted)]" data-testid="collector">
           {{ list().total() }} {{ list().total() === 1 ? 'item' : 'items' }} ·
-          {{ collectorLine() ?? notCollectedLine() }}
+          @if (list().access() && !list().canManage()) {
+            {{ sharingLine() }}
+          } @else {
+            {{ collectorLine() ?? notCollectedLine() }}
+          }
         </p>
+        @if (list().canManage() && sharingLine(); as line) {
+          <p
+            class="m-0 flex items-center gap-1 font-sans text-xs text-[var(--color-text-muted)]"
+            data-testid="sharing"
+          >
+            <span class="material-symbols-rounded text-sm" aria-hidden="true">group</span>
+            {{ line }}
+          </p>
+        }
       }
     </div>
     @if (searchable() && !list().ownerOnly()) {
@@ -33,16 +51,32 @@
         />
       </label>
     }
-    <button
-      type="button"
-      (click)="list().remove()"
-      title="Remove page"
-      aria-label="Remove page"
-      class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border-none bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)]"
-    >
-      <span class="material-symbols-rounded text-xl" aria-hidden="true">delete</span>
-    </button>
+    @if (list().canManage()) {
+      <button
+        type="button"
+        (click)="list().settingsOpen.set(!list().settingsOpen())"
+        [attr.aria-expanded]="list().settingsOpen()"
+        title="Page settings"
+        aria-label="Page settings"
+        class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border-none bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)]"
+      >
+        <span class="material-symbols-rounded text-xl" aria-hidden="true">tune</span>
+      </button>
+      <button
+        type="button"
+        (click)="list().remove()"
+        title="Remove page"
+        aria-label="Remove page"
+        class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border-none bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-main)]"
+      >
+        <span class="material-symbols-rounded text-xl" aria-hidden="true">delete</span>
+      </button>
+    }
   </header>
+
+  @if (list().canManage() && list().settingsOpen()) {
+    <app-device-data-settings [list]="list()" />
+  }
 
   @if (list().ownerOnly()) {
     <div class="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-12 text-center">
@@ -52,7 +86,11 @@
         >lock</span
       >
       <p class="m-0 font-sans text-sm font-bold text-[var(--color-text-main)]" role="status">
-        Only the owner of {{ title() }} can see this
+        @if (list().access()?.ownerName; as owner) {
+          Only {{ owner }} can see {{ title() }} for now
+        } @else {
+          Only the owner of {{ title() }} can see this
+        }
       </p>
       <p class="m-0 max-w-sm font-sans text-xs leading-relaxed text-[var(--color-text-muted)]">
         This page shows data from its owner's devices. Other members of the notebook can see that
@@ -137,6 +175,27 @@
         >
           @if (list().search()) {
             <p class="m-0">Nothing matches “{{ list().search() }}”.</p>
+          } @else if (list().nothingShared() && list().canManage()) {
+            <p class="m-0 font-bold text-[var(--color-text-main)]">Nothing is shared yet</p>
+            <p class="m-0 mt-1 text-xs">
+              Everyone in this notebook can open this page. Choose what it shows; the rest of your
+              data stays private.
+            </p>
+            @if (!list().settingsOpen()) {
+              <button
+                type="button"
+                (click)="list().settingsOpen.set(true)"
+                class="mt-3 h-8 cursor-pointer rounded-lg border-none bg-[var(--color-primary)] px-3 font-sans text-xs font-semibold text-white hover:bg-[var(--color-primary-hover)]"
+              >
+                Choose what to share
+              </button>
+            }
+          } @else if (list().nothingShared()) {
+            <p class="m-0">
+              {{ list().access()?.ownerName ?? 'Its creator' }} hasn't shared anything here yet.
+            </p>
+          } @else if (!list().canManage() && list().access()) {
+            <p class="m-0">Nothing here right now.</p>
           } @else {
             <p class="m-0">Nothing here yet.</p>
             <p class="m-0 mt-1 text-xs">{{ collectorLine() ?? notCollectedLine() }}</p>

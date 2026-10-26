@@ -38,6 +38,10 @@ export interface DeviceItemQuery {
     limit?: number;
     offset?: number;
     order?: 'asc' | 'desc';
+    /** Extra database conditions, e.g. a page's calendars (see device-data-access.service). */
+    conditions?: Record<string, unknown>;
+    /** Checked in code after the database query, for filters it can't express. */
+    match?: (item: MacDataItem) => boolean;
 }
 
 const MAX_BODY_CHARS = 20_000;
@@ -156,7 +160,7 @@ export async function findDeviceItems(
     userId: string,
     query: DeviceItemQuery,
 ): Promise<{ items: MacDataItem[]; total: number }> {
-    const filter: Record<string, unknown> = { userId };
+    const filter: Record<string, unknown> = { ...query.conditions, userId };
     if (query.sources?.length) filter.source = { $in: query.sources };
     if (query.from !== undefined || query.to !== undefined) {
         filter.occurredAt = {
@@ -168,6 +172,20 @@ export async function findDeviceItems(
     const offset = Math.max(0, query.offset ?? 0);
     const limit = Math.min(Math.max(1, query.limit ?? 100), 500);
     const words = (query.search ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+
+    // Filters checked in code (Places time windows and excluded places): only small
+    // sources use them, so load the items and page here.
+    if (query.match) {
+        const docs = await getCollection()
+            .find(filter, { projection: { item: 1, searchText: 1 } })
+            .toArray();
+        const matching = docs
+            .filter((doc) => words.every((word) => doc.searchText.includes(word)))
+            .map((doc) => doc.item)
+            .filter(query.match)
+            .sort((a, b) => (a.occurredAt - b.occurredAt) * direction);
+        return { items: matching.slice(offset, offset + limit), total: matching.length };
+    }
 
     if (words.length === 0) {
         const [docs, total] = await Promise.all([
@@ -198,6 +216,51 @@ export async function findDeviceItems(
     return {
         items: pageIds.map((id) => byId.get(id)).filter((item): item is MacDataItem => !!item),
         total: matching.length,
+    };
+}
+
+/**
+ * The calendars, mailboxes and chats in a user's data, most recently used first, for
+ * choosing what a page shares.
+ */
+export async function findDeviceItemFacets(
+    userId: string,
+): Promise<{ calendars: string[]; mailboxes: string[]; chats: string[] }> {
+    const rows = await getCollection()
+        .find(
+            { userId, source: { $in: ['calendar', 'mail', 'imessage'] } },
+            {
+                projection: {
+                    source: 1,
+                    occurredAt: 1,
+                    'item.calendar': 1,
+                    'item.mailbox': 1,
+                    'item.thread': 1,
+                },
+            },
+        )
+        .toArray();
+    const latest = { calendar: new Map<string, number>(), mail: new Map(), imessage: new Map() };
+    for (const row of rows) {
+        const name =
+            row.source === 'calendar'
+                ? row.item?.calendar
+                : row.source === 'mail'
+                  ? row.item?.mailbox
+                  : row.item?.thread;
+        const seen = latest[row.source as keyof typeof latest];
+        if (!name || !seen) continue;
+        seen.set(name, Math.max(seen.get(name) ?? 0, row.occurredAt));
+    }
+    const ordered = (map: Map<string, number>, max: number) =>
+        [...map.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, max)
+            .map(([name]) => name);
+    return {
+        calendars: ordered(latest.calendar, 100),
+        mailboxes: ordered(latest.mail, 100),
+        chats: ordered(latest.imessage, 200),
     };
 }
 
