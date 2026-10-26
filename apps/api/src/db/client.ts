@@ -125,6 +125,13 @@ async function createIndexes(database: Db): Promise<void> {
             sparse: true,
         },
     );
+    // Chat read markers (see unread.repo.ts for why they left unread_tracking)
+    await createUniqueIndex(
+        database,
+        'chat_read_markers',
+        { userId: 1, pageId: 1 },
+        'userId+pageId',
+    );
 
     // Bot templates collection
     await createUniqueIndex(database, 'bot_templates', { handle: 1 }, 'handle');
