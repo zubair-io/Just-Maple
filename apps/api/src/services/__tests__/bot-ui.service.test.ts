@@ -45,4 +45,19 @@ describe('OpenUI response boundary', () => {
             'respond as text',
         );
     });
+
+    it('renders OpenUI the model sent without the openui fence', () => {
+        const statements =
+            'root = Response([note, src])\nnote = Text("The Android build failed.")\nsrc = Source("Android CI failure", "mail:737240")';
+        for (const reply of [statements, '```\n' + statements + '\n```']) {
+            const parsed = parseBotResponse(reply);
+            expect(parsed.markdown).toBe('');
+            expect(parsed.ui?.blocks).toEqual([
+                { type: 'text', content: 'The Android build failed.' },
+                { type: 'source', label: 'Android CI failure', itemId: 'mail:737240' },
+            ]);
+        }
+        // Ordinary text that merely mentions an assignment stays text.
+        expect(parseBotResponse('Set x = Foo(1) in the config.').ui).toBeUndefined();
+    });
 });
