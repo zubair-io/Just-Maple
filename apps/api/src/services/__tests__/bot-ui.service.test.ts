@@ -60,4 +60,15 @@ describe('OpenUI response boundary', () => {
         // Ordinary text that merely mentions an assignment stays text.
         expect(parseBotResponse('Set x = Foo(1) in the config.').ui).toBeUndefined();
     });
+
+    it('reads statements the model ran together on one line', () => {
+        const reply =
+            'root = Response([note, src])note = Text("Build failed (see logs) at 11:49 PM.")src = Source("CI run failed", "mail:737267")';
+        for (const text of [reply, '```openui\n' + reply + '\n```']) {
+            expect(parseBotResponse(text).ui?.blocks).toEqual([
+                { type: 'text', content: 'Build failed (see logs) at 11:49 PM.' },
+                { type: 'source', label: 'CI run failed', itemId: 'mail:737267' },
+            ]);
+        }
+    });
 });
