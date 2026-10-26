@@ -103,6 +103,7 @@ async function createIndexes(database: Db): Promise<void> {
     await database.collection('profile_entities').createIndex({ userId: 1 });
     await database.collection('profile_relations').createIndex({ userId: 1 });
     await database.collection('profile_facts').createIndex({ userId: 1 });
+    await database.collection('travel_estimates').createIndex({ userId: 1 });
 
     // Messages collection
     await database.collection('messages').createIndex({ notebookId: 1, _id: -1 }); // For paginated queries
