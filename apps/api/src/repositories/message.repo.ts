@@ -12,6 +12,7 @@ import type {
 } from '@maple/shared';
 import { findUsersByIds } from './user.repo';
 import { findPageById } from './page.repo';
+import { repairRawBotUI } from '../services/bot-ui.service';
 
 /**
  * Generate a UUID v4 for message routing
@@ -46,6 +47,15 @@ function getCollection(): Collection<MessageDocument> {
     return getDb().collection<MessageDocument>('messages');
 }
 
+/** A bot's message content and card, with old raw card text read as a card. */
+function readBotContent(doc: MessageDocument): Pick<Message, 'content' | 'botUI'> {
+    if (doc.senderType === 'bot' && !doc.botUI) {
+        const repaired = repairRawBotUI(doc.content);
+        if (repaired) return { content: repaired.content, botUI: repaired.ui };
+    }
+    return { content: doc.content, botUI: doc.botUI };
+}
+
 function toMessageResponse(
     doc: MessageDocument,
     senderEmail?: string,
@@ -65,8 +75,7 @@ function toMessageResponse(
         // Prefer user lookup data (for users), fall back to document fields (for bots)
         senderDisplayName: senderDisplayName || doc.senderDisplayName,
         senderProfilePictureUrl: senderProfilePictureUrl || doc.senderProfilePictureUrl,
-        content: doc.content,
-        botUI: doc.botUI,
+        ...readBotContent(doc),
         botModel: doc.botModel,
         mentions: doc.mentions,
         hasThread: doc.hasThread,
