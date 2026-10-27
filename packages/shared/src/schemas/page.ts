@@ -4,6 +4,7 @@ import { PageTodoMetaSchema } from './todo';
 import { PageLinksMetaSchema } from './link';
 import { GmailConfigSchema } from './gmail';
 import { MacDataSourceSchema } from './mac-data';
+import { DeviceDataFilterSchema } from './device-data-filter';
 
 export const PageContentSchema = Type.Object({
     type: Type.String(),
@@ -65,6 +66,9 @@ export const PageSchema = Type.Object({
     proactive: Type.Optional(ProactiveBotSettingsSchema),
     // Device data pages only: which of the owner's sources the page shows
     deviceSource: Type.Optional(MacDataSourceSchema),
+    // Device data pages only: what the page shares and what it's for (bots read both)
+    deviceFilter: Type.Optional(DeviceDataFilterSchema),
+    description: Type.Optional(Type.String()),
     // Public publishing fields
     isPublished: Type.Optional(Type.Boolean()),
     publishedSlug: Type.Optional(Type.String()),
@@ -85,6 +89,7 @@ export const CreatePageSchema = Type.Object({
     notebookId: Type.Optional(Type.String()),
     id: Type.Optional(Type.String()), // UUID v4 for routing (was documentId)
     deviceSource: Type.Optional(MacDataSourceSchema), // Required for type 'devicedata'
+    deviceFilter: Type.Optional(DeviceDataFilterSchema), // Set by the server in shared notebooks
 });
 
 export type CreatePageInput = Static<typeof CreatePageSchema>;
@@ -101,6 +106,8 @@ export const UpdatePageSchema = Type.Object({
     linksMeta: Type.Optional(PageLinksMetaSchema), // Link metadata for bi-directional linking
     tags: Type.Optional(Type.Array(Type.String())), // Tags extracted from content
     gmailConfig: Type.Optional(GmailConfigSchema), // Gmail page configuration
+    description: Type.Optional(Type.String({ maxLength: 300 })), // Device data pages only
+    deviceFilter: Type.Optional(DeviceDataFilterSchema), // Device data pages only
 });
 
 export type UpdatePageInput = Static<typeof UpdatePageSchema>;

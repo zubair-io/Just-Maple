@@ -46,7 +46,7 @@ private func attributedBody(_ text: String) -> Data {
         let db = try MacDataSQLite(path: url.path, readOnly: false)
         try db.execute("CREATE TABLE handle(ROWID INTEGER PRIMARY KEY, id TEXT)")
         try db.execute(
-            "CREATE TABLE chat(ROWID INTEGER PRIMARY KEY, chat_identifier TEXT, display_name TEXT)")
+            "CREATE TABLE chat(ROWID INTEGER PRIMARY KEY, guid TEXT, chat_identifier TEXT, display_name TEXT)")
         try db.execute("CREATE TABLE chat_message_join(chat_id INTEGER, message_id INTEGER)")
         try db.execute("CREATE TABLE chat_handle_join(chat_id INTEGER, handle_id INTEGER)")
         try db.execute(
@@ -57,7 +57,7 @@ private func attributedBody(_ text: String) -> Data {
                 associated_message_type INTEGER DEFAULT 0)
             """)
         try db.execute("INSERT INTO handle VALUES (1, '+15185550100'), (2, 'coach@example.com')")
-        try db.execute("INSERT INTO chat VALUES (1, 'chat1', 'Soccer parents')")
+        try db.execute("INSERT INTO chat VALUES (1, 'iMessage;+;chat1', 'chat1', 'Soccer parents')")
         try db.execute("INSERT INTO chat_handle_join VALUES (1, 1), (1, 2)")
         return (url, db)
     }
@@ -85,6 +85,7 @@ private func attributedBody(_ text: String) -> Data {
         let first = try #require(result.items.first)
         #expect(first.id == "imessage:guid-2")
         #expect(first.thread == "Soccer parents")
+        #expect(first.extra?["chatId"] == .string("iMessage;+;chat1"))
         #expect(first.sender == "coach@example.com")
         #expect(first.participants == ["+15185550100", "coach@example.com"])
         #expect(result.items.last?.sender == "Me")

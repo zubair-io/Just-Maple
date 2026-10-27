@@ -1,0 +1,192 @@
+<form
+  class="mx-6 mt-4 flex flex-col gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 font-sans max-md:mx-4"
+  aria-label="Page settings"
+  (submit)="$event.preventDefault(); save()"
+>
+  <div class="grid gap-3 md:grid-cols-2">
+    <label class="flex flex-col gap-1">
+      <span class="text-xs font-semibold text-[var(--color-text-main)]">Name</span>
+      <input
+        type="text"
+        name="name"
+        maxlength="255"
+        [value]="name()"
+        (input)="name.set($any($event.target).value)"
+        class="h-9 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm text-[var(--color-text-main)] outline-none focus:border-[var(--color-primary)]"
+      />
+    </label>
+    <label class="flex flex-col gap-1">
+      <span class="text-xs font-semibold text-[var(--color-text-main)]">Description</span>
+      <input
+        type="text"
+        name="description"
+        maxlength="300"
+        [value]="description()"
+        (input)="description.set($any($event.target).value)"
+        placeholder="What this page is for"
+        class="h-9 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-sm text-[var(--color-text-main)] outline-none focus:border-[var(--color-primary)]"
+      />
+    </label>
+  </div>
+  <p class="m-0 -mt-2 text-xs text-[var(--color-text-muted)]">
+    Bots in this notebook read the name and description to know what the page is for.
+  </p>
+
+  <fieldset class="m-0 flex flex-col gap-2 border-none p-0">
+    <legend class="mb-2 p-0 text-xs font-semibold text-[var(--color-text-main)]">
+      What this page shows
+    </legend>
+    <label class="flex items-center gap-2 text-sm text-[var(--color-text-main)]">
+      <input
+        type="checkbox"
+        name="includeAll"
+        [checked]="includeAll()"
+        (change)="includeAll.set($any($event.target).checked)"
+        class="accent-[var(--color-primary)]"
+      />
+      @if (pick(); as copy) {
+        {{ copy.all }}
+      } @else if (isPlaces()) {
+        Share visits
+      } @else {
+        Share everything
+      }
+    </label>
+
+    @if (pick(); as copy) {
+      @if (!includeAll()) {
+        <div class="flex flex-col gap-2 pl-6" role="group" [attr.aria-label]="copy.label">
+          @if ((options()?.[copy.key]?.length ?? 0) > 12) {
+            <input
+              type="search"
+              name="pickQuery"
+              [value]="pickQuery()"
+              (input)="pickQuery.set($any($event.target).value)"
+              [placeholder]="'Find ' + copy.label.toLowerCase()"
+              class="h-8 w-64 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-xs text-[var(--color-text-main)] outline-none focus:border-[var(--color-primary)] max-md:w-full"
+            />
+          }
+          <div class="flex max-h-56 flex-col gap-1 overflow-auto">
+            @for (choice of choices(); track choice.key) {
+              <label class="flex items-center gap-2 text-sm text-[var(--color-text-main)]">
+                <input
+                  type="checkbox"
+                  [checked]="isPicked(choice)"
+                  (change)="togglePicked(choice, $any($event.target).checked)"
+                  class="accent-[var(--color-primary)]"
+                />
+                <span class="truncate">{{ choice.choice.name }}</span>
+              </label>
+            } @empty {
+              <p class="m-0 text-xs text-[var(--color-text-muted)]">
+                @if (options()) {
+                  Nothing to choose from yet: your devices haven't uploaded any.
+                } @else {
+                  {{ optionsError() ?? 'Loading…' }}
+                }
+              </p>
+            }
+          </div>
+        </div>
+      }
+    }
+
+    @if (isPlaces() && includeAll()) {
+      <div class="flex flex-col gap-2 pl-6">
+        <p class="m-0 text-xs font-semibold text-[var(--color-text-main)]">Times of day</p>
+        <p class="m-0 text-xs text-[var(--color-text-muted)]">
+          Only visits that start in these hours. None: any time.
+        </p>
+        @for (window of windows(); track $index) {
+          <div class="flex items-center gap-2 text-sm text-[var(--color-text-main)]">
+            <input
+              type="time"
+              [value]="window.start"
+              (change)="setWindow($index, 'start', $any($event.target).value)"
+              aria-label="From"
+              class="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-xs text-[var(--color-text-main)]"
+            />
+            <span aria-hidden="true">–</span>
+            <input
+              type="time"
+              [value]="window.end"
+              (change)="setWindow($index, 'end', $any($event.target).value)"
+              aria-label="To"
+              class="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-xs text-[var(--color-text-main)]"
+            />
+            <button
+              type="button"
+              (click)="removeWindow($index)"
+              aria-label="Remove time window"
+              class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border-none bg-transparent text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+            >
+              <span class="material-symbols-rounded text-lg" aria-hidden="true">close</span>
+            </button>
+          </div>
+        }
+        @if (windows().length < 6) {
+          <button
+            type="button"
+            (click)="addWindow()"
+            class="h-8 w-fit cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-3 text-xs font-semibold text-[var(--color-text-main)] hover:border-[var(--color-text-muted)]"
+          >
+            Add time window
+          </button>
+        }
+        @if (!windowsValid()) {
+          <p class="m-0 text-xs text-[var(--color-primary)]" role="alert">
+            A window needs different start and end times.
+          </p>
+        }
+
+        <p class="m-0 mt-2 text-xs font-semibold text-[var(--color-text-main)]">
+          Leave out visits at
+        </p>
+        @for (place of options()?.places ?? []; track place.id) {
+          <label class="flex items-center gap-2 text-sm text-[var(--color-text-main)]">
+            <input
+              type="checkbox"
+              [checked]="isExcluded(place.id)"
+              (change)="toggleExcluded(place.id, $any($event.target).checked)"
+              class="accent-[var(--color-primary)]"
+            />
+            {{ place.name }}
+          </label>
+        } @empty {
+          <p class="m-0 text-xs text-[var(--color-text-muted)]">
+            Name places in About me (or from a visit below) to leave them out.
+          </p>
+        }
+      </div>
+    }
+  </fieldset>
+
+  <div
+    class="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border)] pt-3"
+  >
+    <p class="m-0 text-xs text-[var(--color-text-muted)]" data-testid="share-preview">
+      @if (shared()) {
+        Everyone in this notebook sees: <strong>{{ preview() }}</strong>
+      } @else {
+        This page will show: <strong>{{ preview() }}</strong
+        >. Nobody else can see this notebook.
+      }
+    </p>
+    <div class="flex gap-2">
+      <button
+        type="button"
+        (click)="cancel()"
+        class="h-8 cursor-pointer rounded-lg border border-[var(--color-border)] bg-transparent px-3 text-xs font-semibold text-[var(--color-text-main)] hover:border-[var(--color-text-muted)]"
+      >
+        Cancel
+      </button>
+      <button
+        type="submit"
+        [disabled]="saving() || !windowsValid()"
+        class="h-8 cursor-pointer rounded-lg border-none bg-[var(--color-primary)] px-3 text-xs font-semibold text-white hover:bg-[var(--color-primary-hover)] disabled:cursor-wait disabled:opacity-60"
+      >
+        Save
+      </button>
+    </div>
+  </div>
+</form>

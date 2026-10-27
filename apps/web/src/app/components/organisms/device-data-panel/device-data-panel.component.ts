@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { DatePipe } from '@angular/common';
 import type { MacDataSource } from '@maple/shared';
 import type { DeviceDataList } from './device-data-list';
+import { DeviceDataSettingsComponent } from './device-data-settings.component';
 import { deviceSourceInfo, platformLabel, timeAgo } from '../../../utils/device-sources';
 
 /** How to get each Mac source's access prompt past macOS privacy settings. */
@@ -14,13 +15,13 @@ const MAC_ACCESS_COPY: Partial<Record<MacDataSource, { app: string; button: stri
 
 /**
  * Frame shared by every device data page: title, search, which device collects the
- * source, the owner-only notice, access prompts (in the Mac app) and paging. The table
- * itself is projected.
+ * source, whose data it is and what it shares, the creator's settings, the owner-only
+ * notice, access prompts (in the Mac app) and paging. The table itself is projected.
  */
 @Component({
   selector: 'app-device-data-panel',
   standalone: true,
-  imports: [DatePipe],
+  imports: [DatePipe, DeviceDataSettingsComponent],
   templateUrl: './device-data-panel.component.html',
   styleUrl: './device-data-panel.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -44,6 +45,24 @@ export class DeviceDataPanelComponent {
     if (!collector) return null;
     const ago = timeAgo(collector.lastUploadAt);
     return `Collected by ${collector.name}${ago ? ` — last upload ${ago}` : ' — nothing uploaded yet'}`;
+  });
+
+  /**
+   * Whose data and what it shares, when that matters: "Alex's data, filtered: Only the
+   * Family calendar" for other members; "Shared with this notebook: …" for the creator.
+   */
+  readonly sharingLine = computed(() => {
+    const access = this.list().access();
+    if (!access) return null;
+    if (!access.canManage) {
+      return access.filterSummary
+        ? `${access.ownerName}'s data, filtered: ${access.filterSummary}`
+        : `${access.ownerName}'s data`;
+    }
+    if (!access.shared) return null;
+    return access.filterSummary
+      ? `Shared with this notebook: ${access.filterSummary}`
+      : 'Only you can see this data. Use settings to share some of it.';
   });
 
   /** "Not collected yet: open Maple on your Mac and turn on Messages". */

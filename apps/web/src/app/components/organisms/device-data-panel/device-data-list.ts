@@ -2,7 +2,13 @@ import { DestroyRef, computed, effect, inject, signal, untracked } from '@angula
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { debounceTime, firstValueFrom, map } from 'rxjs';
-import type { MacDataItem, MacDataSource } from '@maple/shared';
+import {
+  deviceFilterIsEmpty,
+  type DeviceDataAccess,
+  type MacDataItem,
+  type MacDataSource,
+  type UpdateDeviceDataPageInput,
+} from '@maple/shared';
 import {
   DeviceDataService,
   OwnerOnlyError,
@@ -21,8 +27,8 @@ export interface DeviceDataListOptions {
 }
 
 /**
- * State for a device data page: the page record, search, paging, the owner-only check
- * and which device collects the source. Data comes from the API, so it works on every
+ * State for a device data page: the page record, search, paging, who manages the page and
+ * what it shares, and which device collects the source. Data comes from the API, so it works on every
  * device. Must be called in an injection context (a component field initializer).
  */
 export function injectDeviceDataList(source: MacDataSource, options: DeviceDataListOptions = {}) {
@@ -39,6 +45,8 @@ export function injectDeviceDataList(source: MacDataSource, options: DeviceDataL
     initialValue: route.snapshot.paramMap.get('id'),
   });
   const page = computed(() => pageService.pages().find((p) => p.id === pageId()) ?? null);
+  /** Changes when the page is saved, here or by its creator elsewhere. */
+  const pageVersion = computed(() => page()?.updatedAt);
 
   // ?item=<id>: an item a bot cited, shown in full above the table.
   const focusedId = toSignal(route.queryParamMap.pipe(map((params) => params.get('item'))), {
@@ -49,7 +57,7 @@ export function injectDeviceDataList(source: MacDataSource, options: DeviceDataL
     const id = focusedId();
     focused.set(null);
     if (id) {
-      deviceData.getItem(id).then(
+      deviceData.getItem(id, untracked(pageId) ?? undefined).then(
         (item) => focusedId() === id && focused.set(item),
         () => undefined,
       );
@@ -71,6 +79,16 @@ export function injectDeviceDataList(source: MacDataSource, options: DeviceDataL
   const total = signal(0);
   const collector = signal<DeviceDataCollector | null>(null);
   const ownerOnly = signal(false);
+  const access = signal<DeviceDataAccess | null>(null);
+  /** The creator's settings panel is open. */
+  const settingsOpen = signal(false);
+  /** The signed-in user created the page: rename, filter, move and remove are theirs. */
+  const canManage = computed(() => access()?.canManage ?? false);
+  /** The page has a filter that lets nothing through yet. */
+  const nothingShared = computed(() => {
+    const filter = page()?.deviceFilter;
+    return !!filter && deviceFilterIsEmpty(source, filter);
+  });
   const loading = signal(false);
   const loaded = signal(false);
   const error = signal<string | null>(null);
@@ -99,10 +117,11 @@ export function injectDeviceDataList(source: MacDataSource, options: DeviceDataL
       items.set(offset === 0 ? result.items : [...items(), ...result.items]);
       total.set(result.total);
       collector.set(result.collector);
+      access.set(result.access ?? null);
       ownerOnly.set(false);
       error.set(null);
       // Opening your own page in the Mac app makes sure this Mac collects its source.
-      if (!enabledOnMac) {
+      if (!enabledOnMac && (result.access?.canManage ?? true)) {
         enabledOnMac = true;
         void deviceData.enableOnThisMac(source);
       }
@@ -110,6 +129,7 @@ export function injectDeviceDataList(source: MacDataSource, options: DeviceDataL
       if (destroyed || request !== latestRequest) return;
       if (err instanceof OwnerOnlyError) {
         ownerOnly.set(true);
+        access.set(err.access ?? null);
         items.set([]);
         total.set(0);
       } else {
@@ -123,9 +143,11 @@ export function injectDeviceDataList(source: MacDataSource, options: DeviceDataL
     }
   }
 
-  // Reload when the page, the search, the query options, or this Mac's uploads change.
+  // Reload when the page (or its filter), the search, the query options, or this Mac's
+  // uploads change.
   effect(() => {
     pageId();
+    pageVersion();
     debouncedSearch();
     macData.versions()[source];
     options.order?.();
@@ -143,6 +165,10 @@ export function injectDeviceDataList(source: MacDataSource, options: DeviceDataL
     total: total.asReadonly(),
     collector: collector.asReadonly(),
     ownerOnly: ownerOnly.asReadonly(),
+    access: access.asReadonly(),
+    canManage,
+    nothingShared,
+    settingsOpen,
     loading: loading.asReadonly(),
     loaded: loaded.asReadonly(),
     error: error.asReadonly(),
@@ -165,9 +191,23 @@ export function injectDeviceDataList(source: MacDataSource, options: DeviceDataL
       }
     },
 
+    /** Saves the creator's name, description and filter, then shows the page through it. */
+    async saveSettings(input: UpdateDeviceDataPageInput): Promise<boolean> {
+      const current = page();
+      if (!current) return false;
+      try {
+        await deviceData.updateDataPage(current.id, input);
+        settingsOpen.set(false);
+        return true;
+      } catch (err) {
+        error.set(err instanceof Error ? err.message : 'Could not save this page.');
+        return false;
+      }
+    },
+
     async remove(): Promise<void> {
       const current = page();
-      if (!current) return;
+      if (!current || !canManage()) return;
       const confirmed = await dialog.confirm({
         title: `Remove ${current.title}?`,
         message:

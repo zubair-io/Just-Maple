@@ -154,7 +154,7 @@ describe.runIf(mongoAvailable)('device data routes', () => {
 
     it('sends fresh news to proactive notebooks that have pages for it', async () => {
         await register('mac-device-1', ['imessage', 'mail', 'contacts']);
-        const notebook = await createNotebookFixture({ userId });
+        const notebook = await createNotebookFixture({ createdBy: userId });
         const notebookId = notebook._id.toString();
         const chat = await createPageFixture({ userId, notebookId, type: 'message' });
         await testDb!.collection('pages').updateOne(
@@ -336,7 +336,7 @@ describe.runIf(mongoAvailable)('device data routes', () => {
     });
 
     it("tells the proactive panel what a notebook's bot can watch", async () => {
-        const notebook = await createNotebookFixture({ userId });
+        const notebook = await createNotebookFixture({ createdBy: userId });
         const notebookId = notebook._id.toString();
         const status = () =>
             request(null, `/api/mac-data/status?notebookId=${notebookId}`, 'GET').then((r) =>

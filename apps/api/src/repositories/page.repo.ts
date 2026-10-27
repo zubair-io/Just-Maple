@@ -2,7 +2,14 @@ import { ObjectId, Collection } from 'mongodb';
 import { randomUUID } from 'crypto';
 import { customAlphabet } from 'nanoid';
 import { getDb } from '../db/client';
-import type { MacDataSource, ProactiveBotSettings } from '@maple/shared';
+import {
+    isNotebookMember,
+    isNotebookShared,
+    type DeviceDataFilter,
+    type MacDataSource,
+    type Notebook,
+    type ProactiveBotSettings,
+} from '@maple/shared';
 import type {
     Page,
     PageContent,
@@ -49,6 +56,8 @@ interface PageDocument {
     proactive?: Omit<ProactiveBotSettings, 'updatedAt'> & { updatedAt: Date };
     // Device data pages only: which of the owner's sources the page shows
     deviceSource?: MacDataSource;
+    deviceFilter?: DeviceDataFilter;
+    description?: string;
     // Public publishing fields
     isPublished?: boolean;
     publishedSlug?: string;
@@ -80,6 +89,8 @@ function toPageResponse(doc: PageDocument): Page {
         todoMeta: doc.todoMeta, // Todo metadata
         tags: doc.tags, // Tags extracted from content
         ...(doc.deviceSource ? { deviceSource: doc.deviceSource } : {}),
+        ...(doc.deviceFilter ? { deviceFilter: doc.deviceFilter } : {}),
+        ...(doc.description ? { description: doc.description } : {}),
         proactive: doc.proactive
             ? { ...doc.proactive, updatedAt: doc.proactive.updatedAt.toISOString() }
             : undefined,
@@ -131,7 +142,7 @@ export async function findPagesByUserId(
         }
 
         const docs = await getCollection().find(query).sort({ updatedAt: -1 }).toArray();
-        return docs.map(toPageResponse);
+        return docs.filter((doc) => !isHiddenDataPage(doc, notebook, userId)).map(toPageResponse);
     }
 
     // No specific notebook - get all pages user has access to
@@ -164,7 +175,12 @@ export async function findPagesByUserId(
         query.isArchived = options.isArchived;
     }
 
-    const docs = await getCollection().find(query).sort({ updatedAt: -1 }).toArray();
+    const notebooksById = new Map(accessibleNotebooks.map((n) => [n._id, n]));
+    const docs = (await getCollection().find(query).sort({ updatedAt: -1 }).toArray()).filter(
+        (doc) =>
+            !doc.notebookId ||
+            !isHiddenDataPage(doc, notebooksById.get(doc.notebookId.toString()) ?? null, userId),
+    );
     console.log(`[findPagesByUserId] Found ${docs.length} pages`);
     if (docs.length > 0) {
         console.log(`[findPagesByUserId] First page has id:`, docs[0].id, 'type:', docs[0].type);
@@ -220,6 +236,7 @@ export async function findPageById(id: string, userId: string): Promise<Page | n
                 'read',
             );
             if (!notebook) return null; // No access to the notebook
+            if (isHiddenDataPage(doc, notebook, userId)) return null;
         } else {
             // Page has no notebook - only owner can access
             if (doc.userId.toString() !== userId) return null;
@@ -229,6 +246,30 @@ export async function findPageById(id: string, userId: string): Promise<Page | n
     } catch {
         return null;
     }
+}
+
+/**
+ * Someone else's data page whose creator left the notebook: it stays (only they can
+ * delete it), but nobody else sees it.
+ */
+function isHiddenDataPage(
+    doc: Pick<PageDocument, 'type' | 'userId'>,
+    notebook: Pick<Notebook, 'sharing'> | null,
+    userId: string,
+): boolean {
+    const creator = doc.userId.toString();
+    return doc.type === 'devicedata' && creator !== userId && !isNotebookMember(notebook, creator);
+}
+
+/** The user's own data page, wherever it is: they can always trash or delete it. */
+export async function findOwnDataPage(id: string, userId: string): Promise<Page | null> {
+    if (!ObjectId.isValid(userId)) return null;
+    const doc = await getCollection().findOne({
+        id,
+        type: 'devicedata',
+        userId: new ObjectId(userId),
+    });
+    return doc ? toPageResponse(doc) : null;
 }
 
 export async function createPage(userId: string, data: CreatePageInput): Promise<Page> {
@@ -246,6 +287,9 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
         notebookId: data.notebookId ? new ObjectId(data.notebookId) : undefined,
         ...(pageType === 'devicedata' && data.deviceSource
             ? { deviceSource: data.deviceSource }
+            : {}),
+        ...(pageType === 'devicedata' && data.deviceFilter
+            ? { deviceFilter: data.deviceFilter }
             : {}),
         isFavorite: false,
         isArchived: false,
@@ -265,6 +309,7 @@ export async function createPage(userId: string, data: CreatePageInput): Promise
         content: doc.content,
         notebookId: data.notebookId,
         ...(doc.deviceSource ? { deviceSource: doc.deviceSource } : {}),
+        ...(doc.deviceFilter ? { deviceFilter: doc.deviceFilter } : {}),
         isFavorite: doc.isFavorite,
         isArchived: doc.isArchived,
         isTrashed: doc.isTrashed,
@@ -283,8 +328,13 @@ export async function updatePage(
         const doc = await getCollection().findOne({ id });
         if (!doc) return null;
 
+        // A data page shows its creator's data: only they change it, even after leaving
+        // its notebook (so they can still trash it).
+        const isDataPage = doc.type === 'devicedata';
+        if (isDataPage && doc.userId.toString() !== userId) return null;
+
         // Check write access based on notebook or ownership
-        if (doc.notebookId) {
+        if (doc.notebookId && !isDataPage) {
             // Page has a notebook - check notebook write access
             const notebook = await findNotebookByIdWithAccess(
                 doc.notebookId.toString(),
@@ -292,10 +342,14 @@ export async function updatePage(
                 'write',
             );
             if (!notebook) return null; // No write access to the notebook
-        } else {
+        } else if (!doc.notebookId) {
             // Page has no notebook - only owner can update
             if (doc.userId.toString() !== userId) return null;
         }
+
+        const updateData: Partial<PageDocument> = {
+            updatedAt: new Date(),
+        };
 
         // If moving to a new notebook, verify write access to the new notebook
         if (
@@ -305,11 +359,9 @@ export async function updatePage(
         ) {
             const newNotebook = await findNotebookByIdWithAccess(data.notebookId, userId, 'write');
             if (!newNotebook) return null; // No write access to the new notebook
+            // A data page moved into a shared notebook shares nothing until its creator picks.
+            if (isDataPage && isNotebookShared(newNotebook)) updateData.deviceFilter = {};
         }
-
-        const updateData: Partial<PageDocument> = {
-            updatedAt: new Date(),
-        };
 
         if (data.title !== undefined) {
             updateData.title = data.title;
@@ -340,6 +392,12 @@ export async function updatePage(
         if (data.tags !== undefined) {
             updateData.tags = data.tags;
         }
+        if (isDataPage) {
+            if (data.description !== undefined) updateData.description = data.description;
+            if (data.deviceFilter !== undefined && updateData.deviceFilter === undefined) {
+                updateData.deviceFilter = data.deviceFilter;
+            }
+        }
 
         const result = await getCollection().findOneAndUpdate(
             { _id: new ObjectId(doc._id) },
@@ -360,8 +418,12 @@ export async function deletePage(id: string, userId: string): Promise<boolean> {
         const doc = await getCollection().findOne({ id });
         if (!doc) return false;
 
+        // Data pages: only their creator, even after leaving the notebook.
+        const isDataPage = doc.type === 'devicedata';
+        if (isDataPage && doc.userId.toString() !== userId) return false;
+
         // Check write access based on notebook or ownership
-        if (doc.notebookId) {
+        if (doc.notebookId && !isDataPage) {
             // Page has a notebook - check notebook write access
             const notebook = await findNotebookByIdWithAccess(
                 doc.notebookId.toString(),
@@ -369,7 +431,7 @@ export async function deletePage(id: string, userId: string): Promise<boolean> {
                 'write',
             );
             if (!notebook) return false; // No write access to the notebook
-        } else {
+        } else if (!doc.notebookId) {
             // Page has no notebook - only owner can delete
             if (doc.userId.toString() !== userId) return false;
         }
@@ -418,12 +480,20 @@ export async function emptyTrash(userId: string): Promise<number> {
         // Delete trashed pages that:
         // 1. Are in notebooks user has write access to, OR
         // 2. Have no notebook and user is the owner
+        // Data pages only ever go with their creator's own trash.
+        const me = new ObjectId(userId);
         const result = await getCollection().deleteMany({
             isTrashed: true,
-            $or: [
-                { notebookId: { $in: notebookIds } },
-                { notebookId: { $exists: false }, userId: new ObjectId(userId) },
-                { notebookId: null as any, userId: new ObjectId(userId) },
+            $and: [
+                {
+                    $or: [
+                        { notebookId: { $in: notebookIds } },
+                        { notebookId: { $exists: false }, userId: me },
+                        { notebookId: null as any, userId: me },
+                        { type: 'devicedata', userId: me },
+                    ],
+                },
+                { $or: [{ type: { $ne: 'devicedata' } }, { userId: me }] },
             ],
         });
         return result.deletedCount;
@@ -1026,8 +1096,8 @@ export async function publishPage(
         const doc = await getCollection().findOne({ id: pageId });
         if (!doc) return null;
 
-        // Message pages cannot be published
-        if (doc.type === 'message') return null;
+        // Message pages cannot be published, nor data pages (someone's device data).
+        if (doc.type === 'message' || doc.type === 'devicedata') return null;
 
         // Check write access
         if (doc.notebookId) {
@@ -1143,7 +1213,7 @@ export async function bulkPublishPagesForNotebook(notebookId: string): Promise<n
             .find({
                 $or: [{ notebookId: oid }, { notebookId: notebookId }],
                 isTrashed: { $ne: true },
-                type: { $ne: 'message' },
+                type: { $nin: ['message', 'devicedata'] },
                 isPublished: { $ne: true },
             })
             .toArray();
@@ -1264,5 +1334,19 @@ export async function findDeviceDataPages(
         filter.notebookId = new ObjectId(notebookId);
     }
     const docs = await getCollection().find(filter).limit(500).toArray();
+    return docs.map(toPageResponse);
+}
+
+/** Every device data page in a notebook, whoever created it. */
+export async function findDeviceDataPagesInNotebook(notebookId: string): Promise<Page[]> {
+    if (!ObjectId.isValid(notebookId)) return [];
+    const docs = await getCollection()
+        .find({
+            type: 'devicedata',
+            notebookId: new ObjectId(notebookId),
+            isTrashed: { $ne: true },
+        })
+        .limit(500)
+        .toArray();
     return docs.map(toPageResponse);
 }

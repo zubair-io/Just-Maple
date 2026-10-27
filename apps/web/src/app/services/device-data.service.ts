@@ -2,7 +2,16 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { firstValueFrom, lastValueFrom } from 'rxjs';
-import type { Collector, CollectorPlatform, MacDataItem, MacDataSource, Page } from '@maple/shared';
+import type {
+  Collector,
+  CollectorPlatform,
+  DeviceDataAccess,
+  DeviceDataFilterOptions,
+  MacDataItem,
+  MacDataSource,
+  Page,
+  UpdateDeviceDataPageInput,
+} from '@maple/shared';
 import { PageService } from './page.service';
 import { MacDataService } from './mac-data.service';
 import { deviceSourceInfo, isMacSource } from '../utils/device-sources';
@@ -16,7 +25,7 @@ export interface DeviceDataCollector {
 
 export interface DeviceItemsQuery {
   source: MacDataSource;
-  /** The page being shown; the server checks that the signed-in user owns it. */
+  /** The page being shown: its creator's data, through the page's filter. */
   pageId?: string;
   search?: string;
   /** Seconds since 1970. */
@@ -31,11 +40,13 @@ export interface DeviceItemsResult {
   items: MacDataItem[];
   total: number;
   collector: DeviceDataCollector | null;
+  /** With a page: whose data it is, whether the user manages it, and what it shares. */
+  access?: DeviceDataAccess;
 }
 
-/** The page belongs to someone else: only its owner can read the data. */
+/** Someone else's page that shares nothing yet (an older page without a filter). */
 export class OwnerOnlyError extends Error {
-  constructor() {
+  constructor(readonly access?: DeviceDataAccess) {
     super('Only the owner of this page can see its data.');
     this.name = 'OwnerOnlyError';
   }
@@ -66,16 +77,25 @@ export class DeviceDataService {
       const result = await firstValueFrom(
         this.http.get<DeviceItemsResult>('/api/device-data/items', { params }),
       );
-      return { items: result.items ?? [], total: result.total ?? 0, collector: result.collector };
+      return {
+        items: result.items ?? [],
+        total: result.total ?? 0,
+        collector: result.collector,
+        ...(result.access ? { access: result.access } : {}),
+      };
     } catch (error) {
       throw this.mapError(error);
     }
   }
 
-  async getItem(id: string): Promise<MacDataItem | null> {
+  /** One item; with a page, the page's creator's, if the page's filter lets it through. */
+  async getItem(id: string, pageId?: string): Promise<MacDataItem | null> {
     try {
+      const params = pageId ? new HttpParams().set('pageId', pageId) : undefined;
       const result = await firstValueFrom(
-        this.http.get<{ item: MacDataItem }>(`/api/device-data/items/${encodeURIComponent(id)}`),
+        this.http.get<{ item: MacDataItem }>(`/api/device-data/items/${encodeURIComponent(id)}`, {
+          params,
+        }),
       );
       return result.item ?? null;
     } catch (error) {
@@ -103,6 +123,32 @@ export class DeviceDataService {
     );
     await this.enableOnThisMac(source);
     return page;
+  }
+
+  /** Choices for a page's filter, from the creator's own data. Creator only. */
+  async filterOptions(pageId: string): Promise<DeviceDataFilterOptions> {
+    const result = await firstValueFrom(
+      this.http.get<{ options: DeviceDataFilterOptions }>(
+        `/api/device-data/pages/${encodeURIComponent(pageId)}/options`,
+      ),
+    );
+    return result.options;
+  }
+
+  /** Saves a page's name, description and filter. Creator only. */
+  async updateDataPage(pageId: string, input: UpdateDeviceDataPageInput): Promise<Page> {
+    try {
+      const result = await firstValueFrom(
+        this.http.patch<{ page: Page }>(
+          `/api/device-data/pages/${encodeURIComponent(pageId)}`,
+          input,
+        ),
+      );
+      this.pageService.addLocalPage(result.page);
+      return result.page;
+    } catch (error) {
+      throw this.mapError(error);
+    }
   }
 
   /** Inside the Mac app, makes sure this Mac collects a Mac source. Never throws. */
@@ -166,7 +212,9 @@ export class DeviceDataService {
 
   private mapError(error: unknown): Error {
     if (error instanceof HttpErrorResponse) {
-      if (error.status === 403 && error.error?.ownerOnly) return new OwnerOnlyError();
+      if (error.status === 403 && error.error?.ownerOnly) {
+        return new OwnerOnlyError(error.error?.access);
+      }
       const message = error.error?.message || error.error?.error;
       return new Error(typeof message === 'string' ? message : 'Could not load this data.');
     }

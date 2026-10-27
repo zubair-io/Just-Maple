@@ -50,6 +50,8 @@ nonisolated struct IMessageReader {
         where columns.contains(column) {
             optional.append("m.\(column)")
         }
+        // The chat's own id, so a page can share one chat even if it's renamed.
+        if try db.columns("chat").contains("guid") { optional.append("c.guid AS chat_guid") }
         let editColumns = ["date_edited", "date_retracted"].filter(columns.contains)
         optional += editColumns.map { "m.\($0)" }
         // Tapbacks and other reactions are stored as messages; they add noise, not content.
@@ -168,7 +170,8 @@ nonisolated struct IMessageReader {
             calendar: nil,
             allDay: nil,
             mailbox: row["service"]?.string,
-            isRead: nil)
+            isRead: nil,
+            extra: row["chat_guid"]?.string.map { ["chatId": .string($0)] })
     }
 
     // MARK: - Dates
