@@ -3,6 +3,8 @@ import {
     describeDeviceFilter,
     deviceFilterIsEmpty,
     deviceItemMatchesFilter,
+    deviceItemThreadKey,
+    imessageHandleKey,
     imessageThreadKey,
     type MacDataItem,
 } from '@maple/shared';
@@ -66,9 +68,10 @@ describe('device data page filters', () => {
     });
 
     it('treats one person over iMessage, SMS and RCS as one chat, but keeps groups apart', () => {
-        expect(imessageThreadKey('iMessage;-;+15185550142')).toBe('dm:5185550142');
-        expect(imessageThreadKey('SMS;-;(518) 555-0142')).toBe('dm:5185550142');
-        expect(imessageThreadKey('RCS;-;+1 518-555-0142')).toBe('dm:5185550142');
+        expect(imessageThreadKey('iMessage;-;+15185550142')).toBe('dm:+15185550142');
+        expect(imessageThreadKey('SMS;-;(518) 555-0142')).toBe('dm:+15185550142');
+        expect(imessageThreadKey('RCS;-;+1 518-555-0142')).toBe('dm:+15185550142');
+        expect(imessageThreadKey('SMS;-;1-518-555-0142')).toBe('dm:+15185550142');
         expect(imessageThreadKey('iMessage;-;Coach@Example.com')).toBe('dm:coach@example.com');
         expect(imessageThreadKey('iMessage;+;chat123')).toBe('group:chat123');
         expect(imessageThreadKey('SMS;+;chat456')).not.toBe(
@@ -88,5 +91,54 @@ describe('device data page filters', () => {
         expect(
             deviceItemMatchesFilter(message('iMessage;+;chat1', '+15185550142'), filter, utc),
         ).toBe(false);
+    });
+
+    it('never merges different people whose numbers end the same way', () => {
+        const key = (handle: string) => imessageHandleKey(handle);
+        // Same last 10 digits, different countries.
+        expect(key('+33 6 12 34 56 78')).not.toBe(key('+1 361-234-5678'));
+        expect(key('+44 7911 123456')).not.toBe(key('+91 79111 23456'));
+        // Without a country code, only a North American-shaped number is taken as +1.
+        expect(key('3612345678')).toBe(key('+1 361-234-5678'));
+        expect(key('0612345678')).toBe('raw:0612345678');
+        expect(key('0612345678')).not.toBe(key('+33 6 12 34 56 78'));
+        expect(key('07911 123456')).not.toBe(key('+44 7911 123456'));
+        // A 10-digit number whose exchange starts with 0 or 1 isn't North American.
+        expect(key('5181550142')).toBe('raw:5181550142');
+        // Short codes match only themselves.
+        expect(key('12345')).toBe('raw:12345');
+        expect(key('12345')).not.toBe(key('+12345'));
+        expect(key('262966')).not.toBe(key('62966'));
+
+        const message = (chatId: string): MacDataItem => ({
+            ...visit('2026-10-20T10:00:00Z'),
+            source: 'imessage',
+            extra: { chatId },
+        });
+        const french = { chats: [{ id: 'iMessage;-;+33612345678', name: 'Camille' }] };
+        expect(deviceItemMatchesFilter(message('SMS;-;+13612345678'), french, utc)).toBe(false);
+        expect(deviceItemMatchesFilter(message('SMS;-;+33 6 12 34 56 78'), french, utc)).toBe(true);
+    });
+
+    it('still matches chats saved by name after the number is written another way', () => {
+        const message = (thread: string): MacDataItem => ({
+            ...visit('2026-10-20T10:00:00Z'),
+            source: 'imessage',
+            thread,
+        });
+        const filter = { chats: [{ name: '(518) 555-0142' }, { name: 'Soccer parents' }] };
+        expect(deviceItemMatchesFilter(message('+15185550142'), filter, utc)).toBe(true);
+        expect(deviceItemMatchesFilter(message('Soccer parents'), filter, utc)).toBe(true);
+        expect(deviceItemMatchesFilter(message('+15185550100'), filter, utc)).toBe(false);
+        expect(deviceItemMatchesFilter(message('+33612345678'), filter, utc)).toBe(false);
+    });
+
+    it('gives only messages a thread key', () => {
+        const base = { ...visit('2026-10-20T10:00:00Z'), thread: 'Family', extra: {} };
+        expect(deviceItemThreadKey({ ...base, source: 'imessage' })).toBe('name:Family');
+        expect(deviceItemThreadKey({ ...base, source: 'mail' })).toBeUndefined();
+        expect(
+            deviceItemThreadKey({ ...base, source: 'calendar', extra: { chatId: 'x;-;y' } }),
+        ).toBeUndefined();
     });
 });

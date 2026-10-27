@@ -9,10 +9,12 @@ import {
 } from '@angular/core';
 import {
   describeDeviceFilter,
+  deviceChoiceKey,
   type DeviceDataChoice,
   type DeviceDataFilter,
   type DeviceDataFilterOptions,
   type DeviceDataTimeWindow,
+  type MacDataSource,
 } from '@maple/shared';
 import type { DeviceDataList } from './device-data-list';
 import { DeviceDataService } from '../../../services/device-data.service';
@@ -32,10 +34,10 @@ interface Pick {
   choice: DeviceDataChoice;
 }
 
-const pickKey = (choice: DeviceDataChoice) => choice.id ?? `name:${choice.name}`;
-const toPick = (value: DeviceDataChoice | string): Pick => {
+/** A person's iMessage and SMS chats are one row (see `deviceChoiceKey`). */
+export const toPick = (source: MacDataSource, value: DeviceDataChoice | string): Pick => {
   const choice = typeof value === 'string' ? { name: value } : value;
-  return { key: pickKey(choice), choice };
+  return { key: deviceChoiceKey(source, choice), choice };
 };
 
 /**
@@ -76,7 +78,9 @@ export class DeviceDataSettingsComponent implements OnInit {
     const options = this.options();
     if (!pick || !options) return [];
     const all = new Map<string, Pick>();
-    const offered = (options[pick.key] as (DeviceDataChoice | string)[]).map(toPick);
+    const offered = (options[pick.key] as (DeviceDataChoice | string)[]).map((value) =>
+      toPick(this.source(), value),
+    );
     for (const item of [...this.picked(), ...offered]) {
       if (!all.has(item.key)) all.set(item.key, item);
     }
@@ -123,7 +127,7 @@ export class DeviceDataSettingsComponent implements OnInit {
     this.includeAll.set(filter?.includeAll === true);
     const pick = this.pick();
     const saved = (pick ? (filter?.[pick.key] ?? []) : []) as (DeviceDataChoice | string)[];
-    this.picked.set(saved.map(toPick));
+    this.picked.set(saved.map((value) => toPick(this.source(), value)));
     this.windows.set((filter?.timeWindows ?? []).map((w) => ({ ...w })));
     this.excludedPlaces.set([...(filter?.excludePlaceIds ?? [])]);
     this.initialFilter = JSON.stringify(this.filter());

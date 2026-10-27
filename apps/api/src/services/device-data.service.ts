@@ -16,7 +16,7 @@ import {
     deleteDeviceItems,
     findDeviceItemRevisions,
     findDeviceItemsByIds,
-    findRecentMessageHeads,
+    findThreadMessageHeads,
     purgeExpiredDeviceItems,
     removeDeviceItems,
     setDeviceItemVectors,
@@ -167,7 +167,11 @@ async function notifyProactive(userId: string, news: NewsEntry[]): Promise<void>
     const notebookIds = [...new Set(proactivePages.map((page) => page.notebookId).filter(Boolean))];
     if (notebookIds.length === 0) return;
     const timeZone = (await collectorTimeZone(userId)) ?? 'UTC';
-    const batches: MacDataChangeBatch[] = [];
+    const notebooks: {
+        notebookId: string;
+        match: (item: MacDataItem) => boolean;
+        fresh: NewsEntry[];
+    }[] = [];
     for (const notebookId of notebookIds as string[]) {
         // The owner's own pages there, each through its filter.
         const pages = (await dataPageSlicesFor(userId, notebookId)).filter(
@@ -175,22 +179,26 @@ async function notifyProactive(userId: string, news: NewsEntry[]): Promise<void>
         );
         const match = (item: MacDataItem) => pages.some((page) => page.match(item));
         const fresh = news.filter(({ item }) => match(item)).slice(0, MAX_PROACTIVE_ENTRIES);
-        const conversations = await conversationsFor(
-            userId,
-            fresh.map(({ item }) => item),
-            match,
-            timeZone,
-        );
-        const entries = fresh.map(({ kind, item }) => {
-            const conversation = conversations.get(deviceItemThreadKey(item) ?? '');
+        if (fresh.length) notebooks.push({ notebookId, match, fresh });
+    }
+    // One read of the threads for every notebook; each counts only what its pages share.
+    const conversations = await conversationsFor(
+        userId,
+        notebooks.flatMap(({ fresh }) => fresh.map(({ item }) => item)),
+        notebooks.map(({ match }) => match),
+        timeZone,
+    );
+    const batches: MacDataChangeBatch[] = notebooks.map(({ notebookId, fresh }, index) => ({
+        notebookId,
+        entries: fresh.map(({ kind, item }) => {
+            const conversation = conversations[index]!.get(deviceItemThreadKey(item) ?? '');
             return {
                 kind,
                 item: hit(item, 0, [], timeZone),
                 ...(conversation ? { conversation } : {}),
             };
-        });
-        if (entries.length) batches.push({ notebookId, entries });
-    }
+        }),
+    }));
     if (batches.length) await handleDeviceDataChanges(userId, batches);
 }
 
@@ -204,57 +212,65 @@ const CONVERSATION_MESSAGES = 6;
  * For each message's thread: when the user and the others last wrote, and the last few
  * messages from both sides. The user's own messages are never news, so without this a
  * bot sees only the other side and thinks they're still waiting on a reply. Threads are
- * keyed so a person's iMessage, SMS and RCS chats are one; only messages `match` lets
- * through (the pages' filters) are counted.
+ * keyed so a person's iMessage, SMS and RCS chats are one. One summary map per matcher
+ * (a notebook's pages), counting only the messages it lets through; the threads are
+ * read once for all of them.
  */
 export async function conversationsFor(
     userId: string,
     items: MacDataItem[],
-    match: (item: MacDataItem) => boolean,
+    matchers: ((item: MacDataItem) => boolean)[],
     timeZone: string,
     now = Date.now(),
-): Promise<Map<string, MacDataConversation>> {
-    const wanted = new Set(
-        items
-            .filter((item) => item.source === 'imessage')
-            .map(deviceItemThreadKey)
-            .filter((key): key is string => !!key),
-    );
-    const result = new Map<string, MacDataConversation>();
-    if (wanted.size === 0) return result;
+): Promise<Map<string, MacDataConversation>[]> {
+    const wanted = [
+        ...new Set(items.map(deviceItemThreadKey).filter((key): key is string => !!key)),
+    ];
+    if (wanted.length === 0) return matchers.map(() => new Map());
 
-    const threads = new Map<string, MacDataItem[]>();
-    for (const head of await findRecentMessageHeads(userId, now / 1000 - CONVERSATION_SECONDS)) {
-        const key = deviceItemThreadKey(head);
-        if (!key || !wanted.has(key) || !match(head)) continue;
-        threads.set(key, [...(threads.get(key) ?? []), head]);
-    }
-    const recentIds = [...threads.values()].flatMap((heads) =>
-        heads.slice(0, CONVERSATION_MESSAGES).map((head) => head.id),
+    const heads = await findThreadMessageHeads(userId, wanted, now / 1000 - CONVERSATION_SECONDS);
+    // Newest first, per matcher and thread.
+    const threadsPerMatcher = matchers.map((match) => {
+        const threads = new Map<string, MacDataItem[]>();
+        for (const head of heads) {
+            const key = deviceItemThreadKey(head);
+            if (!key || !wanted.includes(key) || !match(head)) continue;
+            threads.set(key, [...(threads.get(key) ?? []), head]);
+        }
+        return threads;
+    });
+    const recentIds = new Set(
+        threadsPerMatcher.flatMap((threads) =>
+            [...threads.values()].flatMap((list) =>
+                list.slice(0, CONVERSATION_MESSAGES).map((head) => head.id),
+            ),
+        ),
     );
     const bodies = new Map(
-        (await findDeviceItemsByIds(userId, recentIds)).map((item) => [item.id, item.body]),
+        (await findDeviceItemsByIds(userId, [...recentIds])).map((item) => [item.id, item.body]),
     );
     const when = (item: MacDataItem | undefined) =>
         item ? formatInZone(new Date(item.occurredAt * 1000), timeZone) : undefined;
-    for (const [key, heads] of threads) {
-        // Newest first.
-        const lastFromMe = when(heads.find((head) => head.isFromMe));
-        const lastFromThem = when(heads.find((head) => !head.isFromMe));
-        result.set(key, {
-            ...(lastFromMe ? { lastFromMe } : {}),
-            ...(lastFromThem ? { lastFromThem } : {}),
-            recent: heads
-                .slice(0, CONVERSATION_MESSAGES)
-                .reverse()
-                .map((head) => ({
-                    from: head.isFromMe ? ('me' as const) : ('them' as const),
-                    when: when(head)!,
-                    text: snippet(bodies.get(head.id) ?? '', []).slice(0, 200),
-                })),
-        });
-    }
-    return result;
+    return threadsPerMatcher.map((threads) => {
+        const result = new Map<string, MacDataConversation>();
+        for (const [key, list] of threads) {
+            const lastFromMe = when(list.find((head) => head.isFromMe));
+            const lastFromThem = when(list.find((head) => !head.isFromMe));
+            result.set(key, {
+                ...(lastFromMe ? { lastFromMe } : {}),
+                ...(lastFromThem ? { lastFromThem } : {}),
+                recent: list
+                    .slice(0, CONVERSATION_MESSAGES)
+                    .reverse()
+                    .map((head) => ({
+                        from: head.isFromMe ? ('me' as const) : ('them' as const),
+                        when: when(head)!,
+                        text: snippet(bodies.get(head.id) ?? '', []).slice(0, 200),
+                    })),
+            });
+        }
+        return result;
+    });
 }
 
 /** Removes items past the retention window every hour; devices apply the same rule locally. */

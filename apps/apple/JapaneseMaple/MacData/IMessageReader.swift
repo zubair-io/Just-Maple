@@ -22,9 +22,15 @@ nonisolated struct IMessageReader {
     }
 
     let databaseURL: URL
+    /// The Mac's region, for writing numbers without a country code (see `displayHandle`).
+    let region: String?
 
-    init(databaseURL: URL = MacDataPaths.messagesDatabase) {
+    init(
+        databaseURL: URL = MacDataPaths.messagesDatabase,
+        region: String? = Locale.current.region?.identifier
+    ) {
         self.databaseURL = databaseURL
+        self.region = region
     }
 
     /// `names` turns phone numbers and emails into contact names for senders and thread titles.
@@ -145,7 +151,7 @@ nonisolated struct IMessageReader {
         let isFromMe = (row["is_from_me"]?.int ?? 0) != 0
         let handle = row["handle"]?.string
         let displayName = row["display_name"]?.string?.trimmingCharacters(in: .whitespaces)
-        let named = { (handle: String) in names.name(for: handle) ?? Self.displayHandle(handle) }
+        let named = { (handle: String) in names.name(for: handle) ?? Self.displayHandle(handle, region: region) }
         let thread =
             (displayName?.isEmpty == false ? displayName : nil)
             ?? (participants.isEmpty
@@ -176,18 +182,31 @@ nonisolated struct IMessageReader {
 
     // MARK: - Handles
 
+    /// Regions that dial with North American numbers (+1).
+    static let northAmericanRegions: Set<String> = [
+        "US", "CA", "PR", "VI", "GU", "AS", "MP", "AG", "AI", "BB", "BM", "BS", "DM", "DO", "GD",
+        "JM", "KN", "KY", "LC", "MS", "SX", "TC", "TT", "VC", "VG",
+    ]
+
     /// One form for a handle with no contact card, so the same person's SMS, RCS and
-    /// iMessage chats get one thread name: "+15185550100" for "(518) 555-0100",
-    /// "5185550100" and "+1 518-555-0100", and emails lowercased. Short codes stay as they are.
-    static func displayHandle(_ handle: String) -> String {
+    /// iMessage chats get one thread name. A number with a country code becomes "+" and its
+    /// digits; one without gets "+1" only on a Mac set to a North American region, and only
+    /// if it looks like a North American number. Anything else stays as Messages has it.
+    static func displayHandle(
+        _ handle: String, region: String? = Locale.current.region?.identifier
+    ) -> String {
         let value = handle.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.contains("@") { return value.lowercased() }
         let digits = value.unicodeScalars.filter { ("0"..."9").contains($0) }.map(String.init).joined()
         guard digits.count >= 7 else { return value }
         if value.hasPrefix("+") { return "+" + digits }
-        if digits.count == 10 { return "+1" + digits }
-        if digits.count == 11, digits.hasPrefix("1") { return "+" + digits }
-        return value
+        guard let region, northAmericanRegions.contains(region) else { return value }
+        let national = digits.count == 11 && digits.hasPrefix("1") ? String(digits.dropFirst()) : digits
+        guard national.count == 10,
+            let area = national.first, ("2"..."9").contains(area),
+            let exchange = national.dropFirst(3).first, ("2"..."9").contains(exchange)
+        else { return value }
+        return "+1" + national
     }
 
     // MARK: - Dates

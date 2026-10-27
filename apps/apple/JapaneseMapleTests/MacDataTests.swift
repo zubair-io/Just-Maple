@@ -139,7 +139,7 @@ private func attributedBody(_ text: String) -> Data {
                  chat == 2 ? "iMessage" : "SMS"])
             try db.execute("INSERT INTO chat_message_join VALUES (?, ?)", [chat, rowid])
         }
-        let items = try IMessageReader(databaseURL: url).read(checkpoint: nil, now: now.addingTimeInterval(10)).items
+        let items = try IMessageReader(databaseURL: url, region: "US").read(checkpoint: nil, now: now.addingTimeInterval(10)).items
         #expect(items.map(\.thread) == ["+15185550142", "+15185550142"])
         #expect(items.map(\.sender) == ["+15185550142", "Me"])
         #expect(items.map(\.mailbox) == ["iMessage", "SMS"])
@@ -148,12 +148,18 @@ private func attributedBody(_ text: String) -> Data {
     }
 
     @Test func showsHandlesWithoutACardInOneForm() {
-        #expect(IMessageReader.displayHandle("+15185550142") == "+15185550142")
-        #expect(IMessageReader.displayHandle("(518) 555-0142") == "+15185550142")
-        #expect(IMessageReader.displayHandle("1-518-555-0142") == "+15185550142")
-        #expect(IMessageReader.displayHandle("+44 20 7946 0958") == "+442079460958")
-        #expect(IMessageReader.displayHandle("Coach@Example.com") == "coach@example.com")
-        #expect(IMessageReader.displayHandle("12345") == "12345")
+        #expect(IMessageReader.displayHandle("+15185550142", region: "US") == "+15185550142")
+        #expect(IMessageReader.displayHandle("(518) 555-0142", region: "US") == "+15185550142")
+        #expect(IMessageReader.displayHandle("1-518-555-0142", region: "CA") == "+15185550142")
+        #expect(IMessageReader.displayHandle("+44 20 7946 0958", region: "US") == "+442079460958")
+        #expect(IMessageReader.displayHandle("Coach@Example.com", region: "US") == "coach@example.com")
+        #expect(IMessageReader.displayHandle("12345", region: "US") == "12345")
+        // Without a country code, only a North American Mac assumes +1.
+        #expect(IMessageReader.displayHandle("(518) 555-0142", region: "GB") == "(518) 555-0142")
+        #expect(IMessageReader.displayHandle("06 12 34 56 78", region: "FR") == "06 12 34 56 78")
+        #expect(IMessageReader.displayHandle("(518) 555-0142", region: nil) == "(518) 555-0142")
+        // Not shaped like a North American number: left alone.
+        #expect(IMessageReader.displayHandle("0612345678", region: "US") == "0612345678")
     }
 
     @Test func decodesLongAttributedBodies() {
