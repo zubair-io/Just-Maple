@@ -26,7 +26,9 @@ import {
  * A messages page can name one proactive bot (see proactive-settings.service). It:
  * 1. answers every message in that page without an @mention, in the conversation itself;
  * 2. gets batches of new items its owner's devices uploaded (messages, mail, calendar,
- *    places, health) and posts only when something is worth telling them.
+ *    places, health) and posts only when something is worth telling them;
+ * 3. in a notebook nobody else can see that has an About me page, now and then asks the
+ *    owner one question to fill a gap in their About me (the scheduler decides when).
  */
 
 const HISTORY_LIMIT = 20;
@@ -183,6 +185,26 @@ export function sendLeaveReminder(
     return enqueue(page.id, () => runPass(page, userId, (now) => leavePrompt(now, event)));
 }
 
+/**
+ * Asks the owner one question to fill in their About me. Only in notebooks with an About
+ * me page that nobody else can see; anywhere else it does nothing (and isn't retried).
+ */
+export function askAboutMeQuestion(page: Page, userId: string): Promise<boolean> {
+    return enqueue(page.id, () =>
+        runPass(page, userId, aboutMeQuestionPrompt, { privateAboutMe: true }),
+    );
+}
+
+export function aboutMeQuestionPrompt(now: string): string {
+    return [
+        `It is now ${now}. A chance to fill in the user's About me, if something useful is missing.`,
+        "Look at what About me already says (above, and recall_about_me) and at the user's recent data (search_local_data) for one gap that would help you help them: who the people in their life are, who usually handles a recurring pickup or event, schools, teams, routines.",
+        "Ask the user one short, friendly question about it, in a sentence or two. When they answer, you'll save it with remember_about_me.",
+        'Never ask about health, money, legal matters or relationships, and never ask what About me or their data already answers.',
+        'Reply NO_UPDATE if you asked an About me question in the last few days, if your last one is still unanswered, or if nothing is worth asking.',
+    ].join('\n');
+}
+
 export function briefPrompt(now: string, overlaps: OverlapNote[] = []): string {
     return [
         `It is now ${now}. Time for the user's daily brief.`,
@@ -214,6 +236,7 @@ async function runPass(
     page: Page,
     userId: string,
     prompt: (now: string) => string,
+    options: { privateAboutMe?: boolean } = {},
 ): Promise<boolean> {
     const proactive = page.proactive;
     if (!proactive?.enabled || !page.notebookId) return false;
@@ -231,6 +254,9 @@ async function runPass(
         { proactive: true },
     );
     if (!template || !macData) return false;
+    // About me questions: only where there's an About me and nobody else reads the chat.
+    if (options.privateAboutMe && (!macData.aboutMe || macData.aboutMe.notebook.shared))
+        return true;
 
     await botExecutor.runProactive({
         page,

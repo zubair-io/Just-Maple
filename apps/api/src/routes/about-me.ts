@@ -2,32 +2,50 @@ import { Elysia, t } from 'elysia';
 import { jwtPlugin, checkAuth, type AuthContext } from '../middleware/auth';
 import { findUserById } from '../repositories/user.repo';
 import {
-    SaveProfileEntitySchema,
-    SaveProfileFactSchema,
     SaveProfilePlaceSchema,
     UpdateProfileFactSchema,
+    UpdateProfileRelationSchema,
     type JWTPayload,
 } from '@maple/shared';
 import {
-    addRelation,
-    createEntity,
-    deleteEntity,
-    deleteProfile,
     deleteRelation,
-    findMe,
-    listEntities,
+    findFact,
     listPlaces,
-    saveFact,
     savePlace,
-    updateEntity,
     updateFact,
+    updateRelation,
+    type ProfileScope,
 } from '../repositories/profile.repo';
-import { ensureProfile, getAboutMe } from '../services/about-me.service';
+import { findNotebookByIdWithAccess } from '../repositories/notebook.repo';
+import { findAboutMePage } from '../repositories/page.repo';
+import { getAboutMe } from '../services/about-me.service';
+import { isNotebookShared } from '../utils/notebook-sharing';
 
 /**
- * The user's About me profile: read it, edit people and facts, approve or undo what
- * bots learned. Only the signed-in user's own profile is ever reachable.
+ * About me, on a notebook's About me page: read yours, edit facts, approve or undo what
+ * bots learned. Each member only ever reaches their own About me, in a notebook they're a
+ * member of with write access (public read access isn't enough). While the notebook is
+ * shared, sensitive facts are hidden and can't be approved or restored. Named places
+ * (`/places`) belong to the account; the iPhone reads them.
  */
+
+const NotebookQuery = t.Object({ notebookId: t.String() });
+
+/** The signed-in user's About me in the notebook, when it has an About me page. */
+async function scopeFor(
+    auth: AuthContext,
+    notebookId: string,
+): Promise<{ scope: ProfileScope; shared: boolean } | null> {
+    const notebook = await findNotebookByIdWithAccess(notebookId, auth.user._id, 'write').catch(
+        () => null,
+    );
+    if (!notebook || !(await findAboutMePage(notebookId))) return null;
+    return {
+        scope: { userId: auth.user._id, notebookId },
+        shared: isNotebookShared(notebook),
+    };
+}
+
 export const aboutMeRoutes = new Elysia({ prefix: '/api/about-me' })
     .use(jwtPlugin)
     .derive(async ({ jwt, request }) => {
@@ -44,106 +62,95 @@ export const aboutMeRoutes = new Elysia({ prefix: '/api/about-me' })
         }
     })
 
-    .get('/', async ({ auth, set }) => {
-        if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-        return { aboutMe: await getAboutMe(auth.user._id) };
-    })
-
-    // Start the profile now instead of waiting for the first proactive bot.
-    .post('/', async ({ auth, set }) => {
-        if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-        await ensureProfile(auth.user._id);
-        return { aboutMe: await getAboutMe(auth.user._id) };
-    })
-
-    .delete('/', async ({ auth, set }) => {
-        if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-        await deleteProfile(auth.user._id);
-        return { ok: true };
-    })
-
-    // MARK: - People and things
-
-    .post(
-        '/entities',
-        async ({ auth, body, set }) => {
+    .get(
+        '/',
+        async ({ auth, query, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-            const me = await ensureProfile(auth.user._id);
-            const entity = await createEntity(auth.user._id, body);
-            if (body.relationToMe)
-                await addRelation(auth.user._id, me.id, entity.id, body.relationToMe);
-            return { entity };
+            const found = await scopeFor(auth, query.notebookId);
+            if (!found) {
+                set.status = 404;
+                return {
+                    error: 'Not found',
+                    message:
+                        'About me is only for members who can edit this notebook, once it has an About me page.',
+                };
+            }
+            return {
+                aboutMe: await getAboutMe(found.scope, Date.now(), { shared: found.shared }),
+                shared: found.shared,
+            };
         },
-        { body: SaveProfileEntitySchema },
+        { query: NotebookQuery },
     )
 
+    // Edit, approve (status active) or undo (status removed) a fact.
     .patch(
-        '/entities/:id',
-        async ({ auth, params, body, set }) => {
+        '/facts/:id',
+        async ({ auth, params, query, body, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-            const entity = await updateEntity(auth.user._id, params.id, body);
-            if (!entity) {
+            const found = await scopeFor(auth, query.notebookId);
+            const current = found ? await findFact(found.scope, params.id) : null;
+            if (current?.sensitive && found?.shared) {
+                set.status = 403;
+                return {
+                    error: 'Not allowed',
+                    message:
+                        'This notebook is shared, so sensitive things can’t be kept in its About me.',
+                };
+            }
+            const fact =
+                found && current
+                    ? await updateFact(found.scope, params.id, body, { shared: found.shared })
+                    : null;
+            if (!fact) {
                 set.status = 404;
                 return { error: 'Not found' };
             }
-            return { entity };
+            return { fact };
         },
         {
             params: t.Object({ id: t.String() }),
-            body: t.Object({
-                name: t.Optional(t.String({ minLength: 1, maxLength: 120 })),
-                aliases: t.Optional(t.Array(t.String({ maxLength: 120 }), { maxItems: 10 })),
-            }),
+            query: NotebookQuery,
+            body: UpdateProfileFactSchema,
         },
     )
 
-    .delete(
-        '/entities/:id',
-        async ({ auth, params, set }) => {
+    // MARK: - Relations ("Emma: daughter")
+
+    .patch(
+        '/relations/:id',
+        async ({ auth, params, query, body, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-            if (!(await deleteEntity(auth.user._id, params.id))) {
+            const found = await scopeFor(auth, query.notebookId);
+            const relation = found ? await updateRelation(found.scope, params.id, body.type) : null;
+            if (!relation) {
                 set.status = 404;
                 return { error: 'Not found' };
             }
-            return { ok: true };
-        },
-        { params: t.Object({ id: t.String() }) },
-    )
-
-    .post(
-        '/relations',
-        async ({ auth, body, set }) => {
-            if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-            const ids = new Set((await listEntities(auth.user._id)).map((entity) => entity.id));
-            if (!ids.has(body.from) || !ids.has(body.to)) {
-                set.status = 400;
-                return { error: 'Unknown person' };
-            }
-            return { relation: await addRelation(auth.user._id, body.from, body.to, body.type) };
+            return { relation };
         },
         {
-            body: t.Object({
-                from: t.String(),
-                to: t.String(),
-                type: t.String({ minLength: 1, maxLength: 40 }),
-            }),
+            params: t.Object({ id: t.String() }),
+            query: NotebookQuery,
+            body: UpdateProfileRelationSchema,
         },
     )
 
     .delete(
         '/relations/:id',
-        async ({ auth, params, set }) => {
+        async ({ auth, params, query, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-            if (!(await deleteRelation(auth.user._id, params.id))) {
+            const found = await scopeFor(auth, query.notebookId);
+            if (!found || !(await deleteRelation(found.scope, params.id))) {
                 set.status = 404;
                 return { error: 'Not found' };
             }
             return { ok: true };
         },
-        { params: t.Object({ id: t.String() }) },
+        { params: t.Object({ id: t.String() }), query: NotebookQuery },
     )
 
-    // MARK: - Named places
+    // MARK: - Named places (the account's, not a notebook's)
 
     .get('/places', async ({ auth, set }) => {
         if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
@@ -155,7 +162,6 @@ export const aboutMeRoutes = new Elysia({ prefix: '/api/about-me' })
         '/places',
         async ({ auth, body, set }) => {
             if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-            await ensureProfile(auth.user._id);
             const place = await savePlace(auth.user._id, body.name, {
                 lat: body.lat,
                 lon: body.lon,
@@ -165,43 +171,4 @@ export const aboutMeRoutes = new Elysia({ prefix: '/api/about-me' })
             return { place };
         },
         { body: SaveProfilePlaceSchema },
-    )
-
-    // MARK: - Facts
-
-    .post(
-        '/facts',
-        async ({ auth, body, set }) => {
-            if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-            await ensureProfile(auth.user._id);
-            const ids = new Set((await listEntities(auth.user._id)).map((entity) => entity.id));
-            if (!ids.has(body.about)) {
-                set.status = 400;
-                return { error: 'Unknown person' };
-            }
-            return {
-                fact: await saveFact(auth.user._id, { ...body, source: { type: 'you' } }),
-            };
-        },
-        { body: SaveProfileFactSchema },
-    )
-
-    // Edit, approve (status active) or undo (status removed) a fact.
-    .patch(
-        '/facts/:id',
-        async ({ auth, params, body, set }) => {
-            if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-            const fact = await updateFact(auth.user._id, params.id, body);
-            if (!fact) {
-                set.status = 404;
-                return { error: 'Not found' };
-            }
-            return { fact };
-        },
-        { params: t.Object({ id: t.String() }), body: UpdateProfileFactSchema },
-    )
-
-    .get('/me', async ({ auth, set }) => {
-        if (!checkAuth(auth, set)) return { error: 'Unauthorized' };
-        return { me: await findMe(auth.user._id) };
-    });
+    );

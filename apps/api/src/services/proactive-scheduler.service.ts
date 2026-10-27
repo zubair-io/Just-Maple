@@ -1,5 +1,5 @@
 import { isNotebookShared, type MacDataItem, type Page } from '@maple/shared';
-import { findAllProactivePages } from '../repositories/page.repo';
+import { findAboutMePage, findAllProactivePages } from '../repositories/page.repo';
 import { dataPageSlicesFor } from './device-data-access.service';
 import { collectorTimeZone } from '../repositories/collector.repo';
 import { findDeviceItems } from '../repositories/device-item.repo';
@@ -12,10 +12,9 @@ import {
 import { purgeOldTravelEstimates } from '../repositories/travel-estimate.repo';
 import { purgeOldOverlapFlags } from '../repositories/calendar-overlap.repo';
 import { findNotebookByIdUnsafe } from '../repositories/notebook.repo';
-import { listFacts, findMe } from '../repositories/profile.repo';
-import { runDailyBrief, sendLeaveReminder } from './proactive-bot.service';
+import { askAboutMeQuestion, runDailyBrief, sendLeaveReminder } from './proactive-bot.service';
 import { formatInZone } from '../utils/time-zone';
-import { isLive } from './about-me.service';
+import { currentPlace } from './about-me.service';
 
 /**
  * Time-based proactive messages, checked every minute:
@@ -27,6 +26,10 @@ import { isLive } from './about-me.service';
  *    estimates driving time. When it's time to leave (driving time plus a 10-minute
  *    buffer before the start), the owner's proactive bot says so, once per event, in a
  *    chat whose notebook's calendar page shares that event (see `reminderChatsFor`).
+ * 3. **About me questions.** Once a day at most, in the early evening, the owner's
+ *    proactive bot may ask one question to fill a gap in their About me, in a notebook
+ *    with an About me page that nobody else can see. The bot skips it (NO_UPDATE) when
+ *    it asked recently or has nothing worth asking.
  *
  * Each send is claimed in the database first, so several API instances never send it twice.
  * A send that fails (the bot couldn't run, or the model errored) is retried a few times.
@@ -43,6 +46,8 @@ const LOOKAHEAD_SECONDS = 4 * 60 * 60;
 /** A phone clock this far ahead of the server makes an estimate untrustworthy. */
 const ESTIMATE_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const CLEANUP_MS = 60 * 60 * 1000;
+/** When About me questions may be asked, owner's local time (within the brief window). */
+const QUESTION_TIME = '17:30';
 
 export function startProactiveScheduler(intervalMs = TICK_MS): () => void {
     const timer = setInterval(() => void tick(), intervalMs);
@@ -81,6 +86,7 @@ export async function tick(now = new Date()): Promise<void> {
         const pages = await findAllProactivePages();
         await sendDueBriefs(pages, now);
         await sendLeaveReminders(pages, now);
+        await sendAboutMeQuestions(pages, now);
     } catch (error) {
         console.error('[Scheduler] Tick failed:', error);
     }
@@ -97,18 +103,26 @@ export async function sendDueBriefs(pages: Page[], now: Date): Promise<number> {
         // Without a device's time zone there's no telling when 07:30 is for this user.
         const timeZone = await collectorTimeZone(owner);
         if (!timeZone) continue;
-        const local = formatInZone(now, timeZone);
-        // Minutes since today's brief time, counting across midnight (a 23:30 brief caught
-        // up at 00:15 is 45 minutes late, and belongs to the day before).
-        const minutesLate = (minutesOf(local.slice(11, 16)) - minutesOf(briefTime) + 1440) % 1440;
-        if (minutesLate > BRIEF_WINDOW_MINUTES) continue;
-        const briefDay = formatInZone(new Date(now.getTime() - minutesLate * 60_000), timeZone);
-        const key = `brief:${page.id}:${briefDay.slice(0, 10)}`;
+        const briefDay = dayOfSlot(now, timeZone, briefTime);
+        if (!briefDay) continue;
+        const key = `brief:${page.id}:${briefDay}`;
         if (!(await claimScheduledSend(key, now))) continue;
         deliver(key, now, () => runDailyBrief(page, owner), `brief for page ${page.id}`);
         sent++;
     }
     return sent;
+}
+
+/**
+ * The local day a time slot ("07:30") belongs to, if now is within the window after it.
+ * Counts across midnight: a 23:30 slot caught up at 00:15 is 45 minutes late, and
+ * belongs to the day before.
+ */
+function dayOfSlot(now: Date, timeZone: string, slot: string): string | null {
+    const local = formatInZone(now, timeZone);
+    const minutesLate = (minutesOf(local.slice(11, 16)) - minutesOf(slot) + 1440) % 1440;
+    if (minutesLate > BRIEF_WINDOW_MINUTES) return null;
+    return formatInZone(new Date(now.getTime() - minutesLate * 60_000), timeZone).slice(0, 10);
 }
 
 // MARK: - Leave-now reminders
@@ -139,7 +153,7 @@ export async function sendLeaveReminders(pages: Page[], now: Date): Promise<numb
             owner,
             events.map((event) => event.id),
         );
-        const currentPlace = await currentPlaceOf(owner, now);
+        const here = await currentPlace(owner, now.getTime());
         const timeZone = (await collectorTimeZone(owner)) ?? 'UTC';
         for (const event of events) {
             const page = chats.find((chat) => chat.shares(event))?.page;
@@ -148,7 +162,7 @@ export async function sendLeaveReminders(pages: Page[], now: Date): Promise<numb
             if (!estimate || !isFresh(estimate.computedAt, now)) continue;
             // Already there, or close enough that there's nothing to plan.
             if (estimate.minutes < 3) continue;
-            if (currentPlace && sameSpot(currentPlace, event.location!)) continue;
+            if (here && sameSpot(here, event.location!)) continue;
             const leaveBy = event.occurredAt - estimate.minutes * 60 - LEAVE_BUFFER_SECONDS;
             if (nowSeconds < leaveBy - LEAVE_HEADS_UP_SECONDS || nowSeconds >= event.occurredAt)
                 continue;
@@ -208,20 +222,50 @@ async function reminderChatsFor(owner: string, pages: Page[]): Promise<ReminderC
     return [...privateChats, ...sharedChats];
 }
 
+// MARK: - About me questions
+
+/**
+ * At most one About me question per owner per day, in their first chat (oldest) whose
+ * notebook has an About me page and nobody else can see it.
+ */
+export async function sendAboutMeQuestions(pages: Page[], now: Date): Promise<number> {
+    const owners = new Map<string, Page[]>();
+    for (const page of pages) {
+        const owner = page.proactive?.ownerUserId;
+        if (owner && page.notebookId) owners.set(owner, [...(owners.get(owner) ?? []), page]);
+    }
+    let sent = 0;
+    for (const [owner, ownerPages] of owners) {
+        const timeZone = await collectorTimeZone(owner);
+        if (!timeZone) continue;
+        const day = dayOfSlot(now, timeZone, QUESTION_TIME);
+        if (!day) continue;
+        const page = await questionPageFor(ownerPages);
+        if (!page) continue;
+        const key = `aboutme-question:${owner}:${day}`;
+        if (!(await claimScheduledSend(key, now))) continue;
+        deliver(key, now, () => askAboutMeQuestion(page, owner), `About me question for ${owner}`);
+        sent++;
+    }
+    return sent;
+}
+
+async function questionPageFor(pages: Page[]): Promise<Page | null> {
+    const ordered = [...pages].sort(
+        (a, b) => +new Date(a.createdAt) - +new Date(b.createdAt) || a.id.localeCompare(b.id),
+    );
+    for (const page of ordered) {
+        if (!(await findAboutMePage(page.notebookId!))) continue;
+        const notebook = await findNotebookByIdUnsafe(page.notebookId!);
+        if (notebook && !isNotebookShared(notebook)) return page;
+    }
+    return null;
+}
+
 /** The phone's estimate is recent, and not from a clock running ahead. */
 function isFresh(computedAt: string, now: Date): boolean {
     const age = now.getTime() - Date.parse(computedAt);
     return Number.isFinite(age) && age <= ESTIMATE_MAX_AGE_MS && age >= -ESTIMATE_CLOCK_SKEW_MS;
-}
-
-/** Where About me says the user is right now (from iPhone visits), if anywhere. */
-async function currentPlaceOf(owner: string, now: Date): Promise<string | null> {
-    const me = await findMe(owner);
-    if (!me) return null;
-    const fact = (await listFacts(owner)).find(
-        (f) => f.about === me.id && f.key === 'location' && isLive(f, now.getTime()),
-    );
-    return fact?.value ?? null;
 }
 
 /**

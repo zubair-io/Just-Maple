@@ -1,11 +1,12 @@
 import { Type } from '@sinclair/typebox';
 import type { Static } from '@sinclair/typebox';
 
-// "About me": what bots know about the user and their people, kept up to date as new
-// information arrives. Three layers:
+// "About me": what bots know about a person and their people, kept up to date as new
+// information arrives. Each member of a notebook has their own, on the notebook's About me
+// page. Three layers:
 // - entities (you, your family, pets, places, teams) and the relations between them;
 // - lasting facts (your address, that you work out in the afternoon);
-// - current facts that expire on their own (traveling until Friday, at home right now).
+// - current facts that expire on their own (traveling until Friday).
 // Facts are never deleted silently: a newer one replaces the old, which is kept.
 
 export const ProfileEntityKindSchema = Type.Union([
@@ -41,16 +42,6 @@ export const ProfileEntitySchema = Type.Object({
 });
 export type ProfileEntity = Static<typeof ProfileEntitySchema>;
 
-// "Emma is my daughter": { from: me, to: Emma, type: 'child' }
-export const ProfileRelationSchema = Type.Object({
-    id: Type.String(),
-    from: Type.String(),
-    to: Type.String(),
-    type: Type.String(), // spouse, child, parent, sibling, pet, friend, coach, plays_on, works_at…
-    createdAt: Type.String(),
-});
-export type ProfileRelation = Static<typeof ProfileRelationSchema>;
-
 export const ProfileFactSourceSchema = Type.Object({
     type: Type.Union([
         Type.Literal('contacts'),
@@ -67,10 +58,21 @@ export const ProfileFactSourceSchema = Type.Object({
 });
 export type ProfileFactSource = Static<typeof ProfileFactSourceSchema>;
 
+// "Emma is my daughter": { from: me, to: Emma, type: 'child' }
+export const ProfileRelationSchema = Type.Object({
+    id: Type.String(),
+    from: Type.String(),
+    to: Type.String(),
+    type: Type.String(), // spouse, child, parent, sibling, pet, friend, coach, plays_on, works_at…
+    source: Type.Optional(ProfileFactSourceSchema), // missing on older relations
+    createdAt: Type.String(),
+});
+export type ProfileRelation = Static<typeof ProfileRelationSchema>;
+
 export const ProfileFactSchema = Type.Object({
     id: Type.String(),
     about: Type.String(), // entity id
-    key: Type.String(), // e.g. home_address, workout_time, location, travel
+    key: Type.String(), // e.g. home_address, workout_time, travel
     value: Type.String(),
     kind: Type.Union([Type.Literal('lasting'), Type.Literal('current')]),
     validFrom: Type.Optional(Type.String()),
@@ -121,6 +123,11 @@ export const UpdateProfileFactSchema = Type.Object({
 });
 export type UpdateProfileFactInput = Static<typeof UpdateProfileFactSchema>;
 
+export const UpdateProfileRelationSchema = Type.Object({
+    type: Type.String({ minLength: 1, maxLength: 40 }),
+});
+export type UpdateProfileRelationInput = Static<typeof UpdateProfileRelationSchema>;
+
 export const SaveProfileEntitySchema = Type.Object({
     kind: ProfileEntityKindSchema,
     name: Type.String({ minLength: 1, maxLength: 120 }),
@@ -139,3 +146,8 @@ export const SaveProfilePlaceSchema = Type.Object({
     address: Type.Optional(Type.String({ maxLength: 300 })),
 });
 export type SaveProfilePlaceInput = Static<typeof SaveProfilePlaceSchema>;
+
+/** A notebook's About me page has a fixed id, so a notebook can only ever have one. */
+export function aboutMePageId(notebookId: string): string {
+    return `aboutme-${notebookId}`;
+}
