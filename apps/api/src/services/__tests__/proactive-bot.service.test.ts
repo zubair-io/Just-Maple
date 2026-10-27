@@ -29,7 +29,7 @@ vi.mock('../../repositories/collector.repo', () => ({
 }));
 vi.mock('../calendar-overlap.service', () => ({
     overlapNewsFor: vi.fn(),
-    briefOverlapsFor: vi.fn().mockResolvedValue([]),
+    briefOverlapsFor: vi.fn().mockResolvedValue({ notes: [], release: vi.fn() }),
 }));
 
 import { maybeAutoReply, handleDeviceDataChanges, runDailyBrief } from '../proactive-bot.service';
@@ -222,9 +222,12 @@ describe('calendar overlaps in proactive passes', () => {
 
     it('adds the overlaps calendar changes create or clear to the batch', async () => {
         const release = vi.fn();
+        const commit = vi.fn();
+        vi.mocked(botExecutor.runProactive).mockResolvedValueOnce({ id: 'posted' } as any);
         vi.mocked(overlapNewsFor).mockResolvedValue({
             flagged: [note as any],
             cleared: [{ ...note, summary: 'Gym and Lunch no longer overlap' } as any],
+            commit,
             release,
         });
         await handleDeviceDataChanges('u1', [
@@ -242,7 +245,26 @@ describe('calendar overlaps in proactive passes', () => {
         expect(prompt).toContain('now overlaps');
         expect(prompt).toContain(note.summary);
         expect(prompt).toContain('Gym and Lunch no longer overlap');
+        // Posted: the cleared flags are forgotten and the new ones kept.
+        await vi.waitFor(() => expect(commit).toHaveBeenCalledTimes(1));
         expect(release).not.toHaveBeenCalled();
+    });
+
+    it('releases the flags when the bot replied NO_UPDATE', async () => {
+        const release = vi.fn();
+        const commit = vi.fn();
+        vi.mocked(botExecutor.runProactive).mockResolvedValueOnce(null);
+        vi.mocked(overlapNewsFor).mockResolvedValue({
+            flagged: [note as any],
+            cleared: [],
+            commit,
+            release,
+        });
+        await handleDeviceDataChanges('u1', [
+            { notebookId: 'n1', entries: [calendarEntry] },
+        ] as never);
+        await vi.waitFor(() => expect(release).toHaveBeenCalledTimes(1));
+        expect(commit).not.toHaveBeenCalled();
     });
 
     it('releases the flags when the bot could not run, and skips the check without calendar items', async () => {
@@ -250,6 +272,7 @@ describe('calendar overlaps in proactive passes', () => {
         vi.mocked(overlapNewsFor).mockResolvedValue({
             flagged: [note as any],
             cleared: [],
+            commit: vi.fn(),
             release,
         });
         vi.mocked(findBotTemplateById).mockResolvedValueOnce(null);
@@ -272,13 +295,24 @@ describe('calendar overlaps in proactive passes', () => {
     });
 
     it("lists today's and tomorrow's overlaps in the daily brief", async () => {
-        vi.mocked(briefOverlapsFor).mockResolvedValueOnce([note as any]);
+        const release = vi.fn();
+        vi.mocked(briefOverlapsFor).mockResolvedValueOnce({ notes: [note as any], release });
+        vi.mocked(botExecutor.runProactive).mockResolvedValueOnce({ id: 'brief' } as any);
         expect(await runDailyBrief(page, 'u1')).toBe(true);
+        expect(release).not.toHaveBeenCalled();
         expect(briefOverlapsFor).toHaveBeenCalledWith('page', 'u1', 'n1', 'America/New_York');
         const prompt = vi.mocked(botExecutor.runProactive).mock.calls[0]![0].prompt;
         expect(prompt).toContain('daily brief');
         expect(prompt).toContain(note.summary);
         expect(prompt).toContain('List each one in the brief');
+    });
+
+    it("releases the brief's flags when it replied NO_UPDATE, and still counts it as sent", async () => {
+        const release = vi.fn();
+        vi.mocked(briefOverlapsFor).mockResolvedValueOnce({ notes: [note as any], release });
+        vi.mocked(botExecutor.runProactive).mockResolvedValueOnce(null);
+        expect(await runDailyBrief(page, 'u1')).toBe(true);
+        expect(release).toHaveBeenCalledTimes(1);
     });
 });
 

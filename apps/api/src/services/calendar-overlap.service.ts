@@ -1,5 +1,5 @@
 import type { MacDataItem, TravelEstimate } from '@maple/shared';
-import { findDeviceItem, findDeviceItems } from '../repositories/device-item.repo';
+import { findDeviceItems, findDeviceItemsByIds } from '../repositories/device-item.repo';
 import { findTravelEstimates } from '../repositories/travel-estimate.repo';
 import {
     claimOverlapFlag,
@@ -14,18 +14,31 @@ import { formatInZone, toEpochSeconds } from '../utils/time-zone';
  *
  * 1. Two timed events (not all-day) of the same person overlap when one starts before the
  *    other ends. Back-to-back events at different places are a "tight" (soft) conflict
- *    when the gap is shorter than the drive: the iPhone's estimate for the later event
- *    when there is one, otherwise 15 minutes.
+ *    when the gap after the previous event with a place is shorter than the drive: the
+ *    iPhone's estimate for the later event when there is one (capped: it's measured from
+ *    wherever the phone is now), otherwise 15 minutes. Only the reader's own estimates
+ *    are used; they hint at where the phone is.
  * 2. Only events a notebook's calendar pages share count (see device-data-access.service).
  * 3. A chat's proactive bot hears about an overlap when calendar changes create it or
  *    clear it, and its daily brief lists today's and tomorrow's. Each pair is flagged once
- *    per chat until one of its events moves (calendar-overlap.repo).
+ *    per chat until one of its events moves (calendar-overlap.repo). Claims are kept only
+ *    when the bot actually posts, and "cleared" is said only when both events were looked
+ *    at again and still shared.
  * 4. Bots can ask with the find_overlaps tool.
  */
 
 const DEFAULT_TRAVEL_MINUTES = 15;
 const DAY_SECONDS = 24 * 60 * 60;
 const MAX_EVENTS = 500;
+/** Estimates longer than this are from far away (the phone travels), not the trip between events. */
+const MAX_TRAVEL_MINUTES = 120;
+/** Around each changed event, the span checked for clashes. */
+const WINDOW_PADDING_SECONDS = 2 * DAY_SECONDS;
+/** Changes are checked from yesterday through the coming four weeks. */
+const LOOKBACK_SECONDS = DAY_SECONDS;
+const LOOKAHEAD_SECONDS = 28 * DAY_SECONDS;
+/** Timed events longer than this (a month-long "trip" block) aren't looked for. */
+const LONGEST_EVENT_SECONDS = 31 * DAY_SECONDS;
 
 export interface CalendarOverlap {
     /** "overlap": the events share time. "tight": not enough time to get between them. */
@@ -71,29 +84,51 @@ export function findCalendarOverlaps(
         const first = timed[i]!;
         for (let j = i + 1; j < timed.length; j++) {
             const second = timed[j]!;
+            // Sorted by start: nothing later can overlap `first` either.
+            if (second.occurredAt >= endOf(first)) break;
             // The same meeting on two calendars (an invite copied to a shared one).
             if (sameEvent(first, second)) continue;
-            const start = second.occurredAt;
-            if (start < endOf(first) && first.occurredAt < endOf(second)) {
-                const shared = Math.min(endOf(first), endOf(second)) - start;
-                overlaps.push({ kind: 'overlap', first, second, overlapMinutes: shared / 60 });
-                continue;
-            }
-            if (!needsTravel(first, second)) continue;
-            const gap = (start - endOf(first)) / 60;
-            if (gap < 0) continue;
-            const travel = estimates.get(second.id)?.minutes ?? DEFAULT_TRAVEL_MINUTES;
+            const shared = Math.min(endOf(first), endOf(second)) - second.occurredAt;
+            overlaps.push({ kind: 'overlap', first, second, overlapMinutes: shared / 60 });
+        }
+    }
+    // Travel: each event at a place against the one the user comes from, the latest-ending
+    // earlier event with a place (events without one, and video calls, are skipped).
+    let previous: MacDataItem | null = null;
+    for (const event of timed) {
+        if (!placeOf(event)) continue;
+        if (
+            previous &&
+            endOf(previous) <= event.occurredAt &&
+            needsTravel(previous, event) &&
+            !sameEvent(previous, event)
+        ) {
+            const gap = (event.occurredAt - endOf(previous)) / 60;
+            const travel = travelMinutes(estimates.get(event.id));
             if (gap < travel)
                 overlaps.push({
                     kind: 'tight',
-                    first,
-                    second,
+                    first: previous,
+                    second: event,
                     gapMinutes: gap,
                     travelMinutes: travel,
                 });
         }
+        if (!previous || endOf(event) >= endOf(previous)) previous = event;
     }
-    return overlaps;
+    return overlaps.sort(
+        (a, b) =>
+            a.first.occurredAt - b.first.occurredAt || a.second.occurredAt - b.second.occurredAt,
+    );
+}
+
+function travelMinutes(estimate: TravelEstimate | undefined): number {
+    return Math.min(estimate?.minutes ?? DEFAULT_TRAVEL_MINUTES, MAX_TRAVEL_MINUTES);
+}
+
+/** Time between two events, negative when they overlap. */
+function gapBetween(a: MacDataItem, b: MacDataItem): number {
+    return Math.max(a.occurredAt, b.occurredAt) - Math.min(endOf(a), endOf(b));
 }
 
 function sameEvent(a: MacDataItem, b: MacDataItem): boolean {
@@ -187,58 +222,119 @@ export function describeOverlap(
 }
 
 /**
+ * One person's timed events that the slices share and that touch [from, to). Filtered
+ * before the cap; `complete` is false when the cap cut some off.
+ */
+async function sharedEventsIn(
+    ownerId: string,
+    slices: DataPageSlice[],
+    from: number,
+    to: number,
+): Promise<{ events: MacDataItem[]; complete: boolean }> {
+    const { items, total } = await findDeviceItems(ownerId, {
+        sources: ['calendar'],
+        // Started before the window but still going (bounded, so the query stays small).
+        from: from - LONGEST_EVENT_SECONDS,
+        to: to - 1,
+        // Checked in code with `match`, so the database never sorts this `$or` (Cosmos).
+        conditions: { $or: [{ endAt: { $gt: from } }, { occurredAt: { $gte: from } }] },
+        order: 'asc',
+        limit: MAX_EVENTS,
+        match: (item) => !item.allDay && slices.some((slice) => slice.match(item)),
+    });
+    return { events: items, complete: items.length >= total };
+}
+
+/**
  * Overlaps among each person's shared events that touch [from, to): one list per
- * calendar owner, since one person's events never clash with another's.
+ * calendar owner, since one person's events never clash with another's. Travel estimates
+ * only for `readerId`'s own events.
  */
 export async function overlapsInSlices(
     slices: DataPageSlice[],
     from: number,
     to: number,
-): Promise<{ ownerId: string; ownerName: string; overlaps: CalendarOverlap[] }[]> {
+    readerId: string,
+): Promise<
+    {
+        ownerId: string;
+        ownerName: string;
+        overlaps: CalendarOverlap[];
+        events: MacDataItem[];
+        complete: boolean;
+    }[]
+> {
     const calendars = slices.filter((slice) => slice.source === 'calendar');
     const owners = [...new Set(calendars.map((slice) => slice.ownerId))];
     const result = [];
     for (const ownerId of owners) {
         const mine = calendars.filter((slice) => slice.ownerId === ownerId);
-        const { items } = await findDeviceItems(ownerId, {
-            sources: ['calendar'],
-            // A long event that started the day before still counts.
-            from: from - DAY_SECONDS,
-            to,
-            order: 'asc',
-            limit: MAX_EVENTS,
-            match: (item) => mine.some((slice) => slice.match(item)),
-        });
-        const events = items.filter((e) => endOf(e) > from || e.occurredAt >= from);
-        const estimates = await findTravelEstimates(
-            ownerId,
-            events.filter((e) => !!e.location).map((e) => e.id),
-        );
+        const { events, complete } = await sharedEventsIn(ownerId, mine, from, to);
+        const estimates =
+            ownerId === readerId
+                ? await findTravelEstimates(
+                      ownerId,
+                      events.filter((e) => !!e.location).map((e) => e.id),
+                  )
+                : new Map<string, TravelEstimate>();
         const overlaps = findCalendarOverlaps(events, estimates).filter(
             // At least one side falls in the window.
             (o) => Math.max(endOf(o.first), endOf(o.second)) > from && o.first.occurredAt < to,
         );
-        result.push({ ownerId, ownerName: mine[0]!.ownerName, overlaps });
+        result.push({ ownerId, ownerName: mine[0]!.ownerName, overlaps, events, complete });
     }
     return result;
 }
 
+async function ownCalendarSlices(ownerId: string, notebookId: string): Promise<DataPageSlice[]> {
+    return (await dataPageSlicesFor(ownerId, notebookId)).filter(
+        (slice) => slice.source === 'calendar' && slice.ownerId === ownerId,
+    );
+}
+
+/** Claims each overlap for `scope`; returns the ones newly claimed. */
+async function claimAll(
+    scope: string,
+    overlaps: CalendarOverlap[],
+    now: Date,
+): Promise<{ overlap: CalendarOverlap; pairKey: string; signature: string }[]> {
+    const claimed = [];
+    for (const overlap of overlaps) {
+        const pairKey = overlapPairKey(overlap);
+        const signature = overlapSignature(overlap);
+        const ids = [overlap.first.id, overlap.second.id].sort() as [string, string];
+        if (await claimOverlapFlag(scope, pairKey, ids, signature, now))
+            claimed.push({ overlap, pairKey, signature });
+    }
+    return claimed;
+}
+
+async function releaseAll(
+    scope: string,
+    claims: { pairKey: string; signature: string }[],
+): Promise<void> {
+    for (const claim of claims)
+        await releaseOverlapFlag(scope, claim.pairKey, claim.signature).catch(() => {});
+}
+
 // MARK: - Proactive chats
 
-/** What a proactive pass should say about overlaps, and how to undo the claims if it can't. */
+/** What a proactive pass should say about overlaps, and what to do once it ran. */
 export interface OverlapNews {
     /** New overlaps (or ones whose times changed), not flagged in this chat before. */
     flagged: OverlapNote[];
     /** Overlaps flagged before that these changes cleared. */
     cleared: OverlapNote[];
-    /** The message didn't go out: let the next pass flag them again. */
+    /** The message went out: forget the cleared flags. */
+    commit: () => Promise<void>;
+    /** Nothing was posted: let the next pass flag (and clear) them again. */
     release: () => Promise<void>;
 }
 
 /**
  * Overlaps that changes to `changedIds` (the owner's calendar events) create or clear,
  * claimed for the chat `scope` so each is flagged once. Only events the notebook's
- * calendar pages of the owner share count.
+ * calendar pages of the owner share count, from yesterday through the coming weeks.
  */
 export async function overlapNewsFor(
     scope: string,
@@ -248,70 +344,89 @@ export async function overlapNewsFor(
     timeZone: string,
     now = new Date(),
 ): Promise<OverlapNews> {
-    const none: OverlapNews = { flagged: [], cleared: [], release: async () => {} };
+    const noop = async () => {};
+    const none: OverlapNews = { flagged: [], cleared: [], commit: noop, release: noop };
     if (changedIds.length === 0) return none;
-    const slices = (await dataPageSlicesFor(ownerId, notebookId)).filter(
-        (slice) => slice.source === 'calendar' && slice.ownerId === ownerId,
+    const slices = await ownCalendarSlices(ownerId, notebookId);
+    if (slices.length === 0) return none;
+    const flags = await findOverlapFlags(scope, changedIds);
+    // The changed events and the other side of every earlier flag, in one query.
+    const items = new Map(
+        (
+            await findDeviceItemsByIds(ownerId, [
+                ...changedIds,
+                ...flags.flatMap((flag) => flag.eventIds),
+            ])
+        ).map((item) => [item.id, item]),
     );
-    const shares = (item: MacDataItem | null | undefined): item is MacDataItem =>
-        !!item && slices.some((slice) => slice.match(item));
-    const changed = (await Promise.all(changedIds.map((id) => findDeviceItem(ownerId, id)))).filter(
-        shares,
-    );
+    // Still a timed event the page shares: a move to an unshared calendar isn't news.
+    const shared = (id: string): MacDataItem | null => {
+        const item = items.get(id);
+        return item && !item.allDay && slices.some((slice) => slice.match(item)) ? item : null;
+    };
+
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const lo = nowSeconds - LOOKBACK_SECONDS;
+    const hi = nowSeconds + LOOKAHEAD_SECONDS;
+    const windows = changedIds
+        .map(shared)
+        .filter((e): e is MacDataItem => !!e)
+        .map((e) => [
+            Math.max(lo, e.occurredAt - WINDOW_PADDING_SECONDS),
+            Math.min(hi, endOf(e) + WINDOW_PADDING_SECONDS),
+        ])
+        .filter(([from, to]) => from! < to!) as [number, number][];
+
     const changedSet = new Set(changedIds);
     const current = new Map<string, CalendarOverlap>();
-    if (changed.length && slices.length) {
-        const from = Math.min(...changed.map((e) => e.occurredAt)) - DAY_SECONDS;
-        const to = Math.max(...changed.map(endOf)) + DAY_SECONDS;
-        const [mine] = await overlapsInSlices(slices, from, to);
+    // Events the window check looked at, all of them (none when the cap cut some off).
+    const evaluated = new Set<string>();
+    if (windows.length) {
+        const from = Math.min(...windows.map((w) => w[0]));
+        const to = Math.max(...windows.map((w) => w[1]));
+        const [mine] = await overlapsInSlices(slices, from, to, ownerId);
         for (const overlap of mine?.overlaps ?? []) {
             if (changedSet.has(overlap.first.id) || changedSet.has(overlap.second.id))
                 current.set(overlapPairKey(overlap), overlap);
         }
+        if (mine?.complete) for (const event of mine.events) evaluated.add(event.id);
     }
 
-    const flagged: OverlapNote[] = [];
-    const claims: { pairKey: string; signature: string }[] = [];
-    for (const [pairKey, overlap] of current) {
-        const signature = overlapSignature(overlap);
-        const ids = [overlap.first.id, overlap.second.id].sort() as [string, string];
-        if (!(await claimOverlapFlag(scope, pairKey, ids, signature, now))) continue;
-        claims.push({ pairKey, signature });
-        flagged.push(describeOverlap(overlap, timeZone));
-    }
+    const claims = await claimAll(scope, [...current.values()], now);
+    const flagged = claims.map((claim) => describeOverlap(claim.overlap, timeZone));
 
+    const clearedFlags: { pairKey: string; signature: string }[] = [];
     const cleared: OverlapNote[] = [];
-    for (const flag of await findOverlapFlags(scope, changedIds)) {
+    for (const flag of flags) {
         if (current.has(flag.pairKey)) continue;
-        if (!(await releaseOverlapFlag(scope, flag.pairKey, flag.signature))) continue;
-        const [a, b] = await Promise.all(flag.eventIds.map((id) => findDeviceItem(ownerId, id)));
-        const events = [a, b].filter(shares).sort((x, y) => x.occurredAt - y.occurredAt);
-        if (events.length === 0) continue;
+        const [a, b] = flag.eventIds.map(shared);
+        if (!a || !b) continue;
+        // Cleared only when both were checked again, or they're now too far apart to clash.
+        const checked = evaluated.has(a.id) && evaluated.has(b.id);
+        if (!checked && gapBetween(a, b) < MAX_TRAVEL_MINUTES * 60) continue;
+        const [first, second] = [a, b].sort((x, y) => x.occurredAt - y.occurredAt) as [
+            MacDataItem,
+            MacDataItem,
+        ];
+        clearedFlags.push(flag);
         cleared.push({
-            ...describeOverlap(
-                { kind: 'overlap', first: events[0]!, second: events[1] ?? events[0]! },
-                timeZone,
-            ),
-            summary:
-                events.length === 2
-                    ? `${events.map((e) => e.title?.trim() || 'Untitled event').join(' and ')} no longer overlap`
-                    : `${events[0]!.title?.trim() || 'An event'} no longer overlaps another event`,
+            ...describeOverlap({ kind: 'overlap', first, second }, timeZone),
+            summary: `${[first, second].map((e) => e.title?.trim() || 'Untitled event').join(' and ')} no longer overlap`,
         });
     }
 
     return {
         flagged,
         cleared,
-        release: async () => {
-            for (const claim of claims)
-                await releaseOverlapFlag(scope, claim.pairKey, claim.signature).catch(() => {});
-        },
+        commit: () => releaseAll(scope, clearedFlags),
+        release: () => releaseAll(scope, claims),
     };
 }
 
 /**
  * Today's and tomorrow's overlaps in the owner's time zone, for the chat's daily brief.
- * Listed whether or not they were flagged before; listing one counts as flagging it.
+ * Listed whether or not they were flagged before; listing one counts as flagging it, once
+ * the brief went out (`release` otherwise).
  */
 export async function briefOverlapsFor(
     scope: string,
@@ -319,29 +434,21 @@ export async function briefOverlapsFor(
     notebookId: string,
     timeZone: string,
     now = new Date(),
-): Promise<OverlapNote[]> {
-    const slices = (await dataPageSlicesFor(ownerId, notebookId)).filter(
-        (slice) => slice.source === 'calendar' && slice.ownerId === ownerId,
-    );
-    if (slices.length === 0) return [];
+): Promise<{ notes: OverlapNote[]; release: () => Promise<void> }> {
+    const slices = await ownCalendarSlices(ownerId, notebookId);
+    if (slices.length === 0) return { notes: [], release: async () => {} };
     const today = formatInZone(now, timeZone).slice(0, 10);
     const [y, m, d] = today.split('-').map(Number) as [number, number, number];
     const tomorrow = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
     const from = toEpochSeconds(today, timeZone, 'start')!;
     const to = toEpochSeconds(tomorrow, timeZone, 'end')! + 1;
-    const [mine] = await overlapsInSlices(slices, from, to);
+    const [mine] = await overlapsInSlices(slices, from, to, ownerId);
     const overlaps = mine?.overlaps ?? [];
-    for (const overlap of overlaps) {
-        const ids = [overlap.first.id, overlap.second.id].sort() as [string, string];
-        await claimOverlapFlag(
-            scope,
-            overlapPairKey(overlap),
-            ids,
-            overlapSignature(overlap),
-            now,
-        ).catch(() => false);
-    }
-    return overlaps.map((overlap) => describeOverlap(overlap, timeZone));
+    const claims = await claimAll(scope, overlaps, now).catch(() => []);
+    return {
+        notes: overlaps.map((overlap) => describeOverlap(overlap, timeZone)),
+        release: () => releaseAll(scope, claims),
+    };
 }
 
 // MARK: - Bot tool
@@ -367,7 +474,8 @@ export async function findOverlapsForBot(
         },
     ];
     const notes: OverlapNote[] = [];
-    for (const owner of await overlapsInSlices(slices, from, Math.min(to, from + 31 * DAY_SECONDS)))
+    const end = Math.min(to + 1, from + 31 * DAY_SECONDS);
+    for (const owner of await overlapsInSlices(slices, from, end, ctx.userId))
         for (const overlap of owner.overlaps)
             notes.push(
                 describeOverlap(

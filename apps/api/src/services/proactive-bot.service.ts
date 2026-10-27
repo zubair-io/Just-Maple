@@ -150,13 +150,15 @@ async function runProactivePass(
               return undefined;
           })
         : undefined;
-    const ran = await runPass(page, userId, (now) =>
+    const result = await runPass(page, userId, (now) =>
         proactiveUserPrompt(now, entries, overlaps),
     ).catch((error) => {
         void overlaps?.release();
         throw error;
     });
-    if (!ran) await overlaps?.release();
+    // Flagged (and cleared) only once the user was actually told.
+    if (result === 'posted') await overlaps?.commit();
+    else await overlaps?.release();
 }
 
 // MARK: - Scheduled: daily briefs and leave-now reminders
@@ -170,9 +172,16 @@ export function runDailyBrief(page: Page, userId: string): Promise<boolean> {
                   userId,
                   page.notebookId,
                   (await collectorTimeZone(userId)) ?? 'UTC',
-              ).catch(() => [])
-            : [];
-        return runPass(page, userId, (now) => briefPrompt(now, overlaps));
+              ).catch(() => undefined)
+            : undefined;
+        const result = await runPass(page, userId, (now) =>
+            briefPrompt(now, overlaps?.notes),
+        ).catch((error) => {
+            void overlaps?.release();
+            throw error;
+        });
+        if (result !== 'posted') await overlaps?.release();
+        return result !== 'skipped';
     });
 }
 
@@ -182,7 +191,9 @@ export function sendLeaveReminder(
     userId: string,
     event: { title?: string; when: string; location: string; leaveBy: string; note: string },
 ): Promise<boolean> {
-    return enqueue(page.id, () => runPass(page, userId, (now) => leavePrompt(now, event)));
+    return enqueue(page.id, () => runPass(page, userId, (now) => leavePrompt(now, event))).then(
+        ran,
+    );
 }
 
 /**
@@ -192,7 +203,7 @@ export function sendLeaveReminder(
 export function askAboutMeQuestion(page: Page, userId: string): Promise<boolean> {
     return enqueue(page.id, () =>
         runPass(page, userId, aboutMeQuestionPrompt, { privateAboutMe: true }),
-    );
+    ).then(ran);
 }
 
 export function aboutMeQuestionPrompt(now: string): string {
@@ -231,17 +242,25 @@ export function leavePrompt(
     ].join('\n');
 }
 
-/** Runs one pass of the page's proactive bot. False when the bot couldn't run at all. */
+/**
+ * How a pass went: "skipped" when the bot couldn't run at all, "silent" when it ran but
+ * posted nothing (NO_UPDATE), "posted" when a message went out.
+ */
+type PassResult = 'skipped' | 'silent' | 'posted';
+
+const ran = (result: PassResult) => result !== 'skipped';
+
+/** Runs one pass of the page's proactive bot. */
 async function runPass(
     page: Page,
     userId: string,
     prompt: (now: string) => string,
     options: { privateAboutMe?: boolean } = {},
-): Promise<boolean> {
+): Promise<PassResult> {
     const proactive = page.proactive;
-    if (!proactive?.enabled || !page.notebookId) return false;
+    if (!proactive?.enabled || !page.notebookId) return 'skipped';
     const userBot = await findUserBotByIdInternal(proactive.userBotId);
-    if (!userBot?.templateId || userBot.isEnabled === false) return false;
+    if (!userBot?.templateId || userBot.isEnabled === false) return 'skipped';
     const template = await findBotTemplateById(userBot.templateId);
     const macData = await getMacDataToolContext(
         userId,
@@ -253,12 +272,12 @@ async function runPass(
         },
         { proactive: true },
     );
-    if (!template || !macData) return false;
+    if (!template || !macData) return 'skipped';
     // About me questions: only where there's an About me and nobody else reads the chat.
     if (options.privateAboutMe && (!macData.aboutMe || macData.aboutMe.notebook.shared))
-        return true;
+        return 'silent';
 
-    await botExecutor.runProactive({
+    const posted = await botExecutor.runProactive({
         page,
         userBot,
         template,
@@ -275,7 +294,7 @@ async function runPass(
             (message) => message.userBotId === userBot._id,
         ),
     });
-    return true;
+    return posted ? 'posted' : 'silent';
 }
 
 export function proactiveSystemPrompt(botName: string, page: Page, instructions: string): string {
