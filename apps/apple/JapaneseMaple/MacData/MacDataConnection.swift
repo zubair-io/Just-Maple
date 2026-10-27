@@ -28,6 +28,8 @@ final class MacDataConnection {
         didSet { onStateChange?(state) }
     }
     var onStateChange: ((String) -> Void)?
+    /// The server queued an "Add to calendar" action for this Mac (`runActions`).
+    var onActionsRequested: (() -> Void)?
 
     private func note(_ message: String, state newState: String? = nil) {
         Self.log.info("\(message, privacy: .public)")
@@ -145,6 +147,11 @@ final class MacDataConnection {
             let op = event["op"] as? String
         else { return }
         let params = event["params"] as? [String: Any] ?? [:]
+        if op == "runActions" {
+            onActionsRequested?()
+            await send(["action": "result", "requestId": requestId, "result": true])
+            return
+        }
         do {
             let result = try await Self.answer(op, params)
             await send(["action": "result", "requestId": requestId, "result": result])

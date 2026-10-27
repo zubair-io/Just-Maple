@@ -9,6 +9,11 @@
 //    POST /api/collectors            { deviceId, platform, name, sources, timeZone }
 //    POST /api/device-data/items     { deviceId, upserts, removals, vectors?, cursor? }
 //
+//  The Mac collecting the calendar also takes "Add to calendar" actions (CalendarActions):
+//
+//    GET  /api/collectors/:deviceId/actions             → { actions: [DeviceAction] }
+//    POST /api/collectors/:deviceId/actions/:id/result  { ok, eventIdentifier?, itemId?, error? }
+//
 //  The iPhone also reads the user's named places and upcoming events, and uploads
 //  driving times to those events:
 //
@@ -251,6 +256,14 @@ actor DeviceDataClient {
     }
 
     private struct Empty: Encodable {}
+
+    func get<Reply: Decodable>(_ path: String) async throws -> Reply {
+        try await send("GET", path, Empty?.none)
+    }
+
+    func post<Body: Encodable, Reply: Decodable>(_ path: String, _ body: Body) async throws -> Reply {
+        try await send("POST", path, body)
+    }
 
     private func send<Body: Encodable, Reply: Decodable>(
         _ method: String, _ path: String, _ body: Body?

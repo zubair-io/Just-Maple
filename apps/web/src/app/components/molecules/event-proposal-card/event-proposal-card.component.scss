@@ -1,0 +1,122 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+.event-card {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 12px;
+  background: var(--color-bg);
+  color: var(--color-text-main);
+}
+.event-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .material-symbols-rounded {
+    color: var(--color-primary);
+    font-size: 1.25rem;
+  }
+}
+h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.event-when {
+  font-weight: 500;
+}
+.event-detail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-muted);
+
+  .material-symbols-rounded {
+    font-size: 1rem;
+  }
+}
+.event-notes {
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+}
+.event-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 6px;
+  font-size: 0.875rem;
+}
+.event-add {
+  padding: 8px 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: white;
+  cursor: pointer;
+  font: inherit;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+.event-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+.event-add:focus-visible,
+.event-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+.event-muted,
+.event-progress {
+  color: var(--color-text-muted);
+}
+.event-progress,
+.event-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.event-done .material-symbols-rounded {
+  color: var(--color-success);
+  font-size: 1.125rem;
+}
+.event-error {
+  color: var(--color-error);
+}
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

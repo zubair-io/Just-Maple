@@ -18,7 +18,7 @@ actor MacDataEngine {
     private let mail = MailReader()
     private let calendar = CalendarReader()
     private let contacts = ContactsReader()
-    private let eventStore = EKEventStore()
+    let eventStore = EKEventStore()
     private let contactStore = CNContactStore()
     /// Phone/email → name from the stored contacts; nil until first needed or after contacts change.
     private var contactNames: MacDataContactNames?
@@ -41,6 +41,9 @@ actor MacDataEngine {
     var uploadError: String?
     var retryDelay: TimeInterval = MacDataEngine.firstRetryDelay
     var retryTask: Task<Void, Never>?
+    // Calendar actions, used by CalendarActions.
+    var isRunningActions = false
+    var runActionsAgain = false
 
     init(
         storePath: String = MacDataPaths.store.path,

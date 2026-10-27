@@ -33,3 +33,4 @@ export * from './mac-data';
 export * from './device-data-filter';
 export * from './about-me';
 export * from './proactive';
+export * from './calendar-proposal';

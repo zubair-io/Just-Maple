@@ -10,8 +10,12 @@
 //  - tells the page what changed with a `maple:mac-data` window event.
 //
 //  Actions: status, relayStatus, requestAccess {source}, syncNow {source?},
-//  enableSource {source}, disableSource {source}, and listPages / deletePage for
-//  moving the old local-only pages to the cloud.
+//  enableSource {source}, disableSource {source}, actionCalendars /
+//  setActionCalendar {calendarId?} for where "Add to calendar" puts events, and
+//  listPages / deletePage for moving the old local-only pages to the cloud.
+//
+//  It also adds the events the user confirmed in chats (CalendarActions) after each
+//  upload, on every poll, when the relay connects, and when the server asks.
 //
 
 #if os(macOS)
@@ -97,9 +101,14 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
         syncAll()
         // Registers this Mac and resumes an upload a previous launch didn't finish.
         upload()
-        connection.onStateChange = { [weak self] _ in
-            Task { @MainActor in await self?.emitStatus() }
+        connection.onStateChange = { [weak self] state in
+            Task { @MainActor in
+                await self?.emitStatus()
+                // Back online: add anything confirmed while this Mac was away.
+                if state == "Connected" { self?.runActions() }
+            }
         }
+        connection.onActionsRequested = { [weak self] in self?.runActions() }
         connection.start()
     }
 
@@ -108,6 +117,15 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
             for source in (try? await engine.enabledSources()) ?? [] {
                 sync(source)
             }
+        }
+        runActions()
+    }
+
+    /// Adds events the user confirmed in Just Maple; registers first if needed.
+    private func runActions() {
+        Task {
+            if await engine.registration == nil { await engine.uploadPending() }
+            await engine.runActions()
         }
     }
 
@@ -132,6 +150,7 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
         Task {
             await engine.uploadPending()
             await self.emitStatus()
+            await engine.runActions()
         }
     }
 
@@ -205,6 +224,19 @@ final class MacDataHost: NSObject, WKScriptMessageHandlerWithReply {
         // The old local-only pages, read once by the web app to move them to the cloud.
         case "listPages":
             return try Self.json(await engine.pages(notebookId: body["notebookId"] as? String))
+
+        // Where "Add to calendar" puts events: one of these, or the default calendar.
+        case "actionCalendars":
+            let (calendars, selected, defaultId) = try await engine.actionCalendars()
+            return [
+                "calendars": try Self.json(calendars),
+                "selected": selected ?? NSNull(),
+                "defaultId": defaultId ?? NSNull(),
+            ]
+
+        case "setActionCalendar":
+            try await engine.setActionCalendar(body["calendarId"] as? String)
+            return true
 
         case "deletePage":
             try await engine.deletePage(id: try Self.string(body, "id"))

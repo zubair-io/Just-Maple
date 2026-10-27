@@ -1,4 +1,5 @@
 import { Type, Static } from '@sinclair/typebox';
+import { CalendarEventDraftSchema } from './calendar-proposal';
 
 const Text = Type.String({ maxLength: 10000 });
 export const MAC_DATA_ITEM_ID_PATTERN = '^(imessage|mail|calendar):[^\\s]{1,390}$';
@@ -32,6 +33,13 @@ export const BotUIBlockSchema = Type.Union([
         type: Type.Literal('source'),
         label: Type.String({ maxLength: 200 }),
         itemId: Type.String({ pattern: MAC_DATA_ITEM_ID_PATTERN, maxLength: 400 }),
+    }),
+    // An "Add to calendar" card. Only the server adds it, from a proposal the bot made
+    // with the propose_calendar_event tool; the card reads live state by `proposalId`.
+    Type.Object({
+        type: Type.Literal('event_proposal'),
+        proposalId: Type.String({ pattern: '^[0-9a-f-]{36}$' }),
+        event: CalendarEventDraftSchema,
     }),
 ]);
 export const BotUIResponseSchema = Type.Object({

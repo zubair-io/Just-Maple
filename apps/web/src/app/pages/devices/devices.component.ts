@@ -12,7 +12,11 @@ import type { Collector, MacDataSource } from '@maple/shared';
 import { SettingsHeaderComponent } from '../../components/molecules/settings-header/settings-header.component';
 import { DialogService } from '../../components/molecules/dialog/dialog.service';
 import { DeviceDataService } from '../../services/device-data.service';
-import { MacDataService, type MacSourceStatus } from '../../services/mac-data.service';
+import {
+  MacDataService,
+  type MacActionCalendars,
+  type MacSourceStatus,
+} from '../../services/mac-data.service';
 import { IPhoneCollectorService } from '../../services/iphone-collector.service';
 import {
   IPHONE_SOURCES,
@@ -68,6 +72,13 @@ export class DevicesComponent implements OnInit {
     return map;
   });
 
+  /** Calendars "Add to calendar" can use on this Mac (Mac app only). */
+  readonly actionCalendars = signal<MacActionCalendars | null>(null);
+  readonly defaultCalendarTitle = computed(() => {
+    const info = this.actionCalendars();
+    return info?.calendars.find((c) => c.id === info.defaultId)?.title ?? null;
+  });
+
   readonly hasData = computed(() =>
     this.collectors().some((c) => Object.values(c.itemCounts ?? {}).some((n) => n > 0)),
   );
@@ -75,6 +86,7 @@ export class DevicesComponent implements OnInit {
   ngOnInit(): void {
     void this.load();
     void this.macData.refreshStatus().catch(() => undefined);
+    void this.loadActionCalendars();
     void this.iphone.refreshStatus().catch(() => undefined);
   }
 
@@ -180,6 +192,21 @@ export class DevicesComponent implements OnInit {
 
   async macTurnOff(source: MacDataSource): Promise<void> {
     await this.run(`mac:${source}`, () => this.macData.disableSource(source), false);
+  }
+
+  private async loadActionCalendars(): Promise<void> {
+    this.actionCalendars.set(await this.macData.actionCalendars().catch(() => null));
+  }
+
+  async setActionCalendar(calendarId: string): Promise<void> {
+    await this.run(
+      'mac:action-calendar',
+      async () => {
+        await this.macData.setActionCalendar(calendarId || null);
+        await this.loadActionCalendars();
+      },
+      false,
+    );
   }
 
   async macRequestAccess(source: MacDataSource): Promise<void> {

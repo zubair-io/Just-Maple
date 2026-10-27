@@ -682,6 +682,20 @@ Key files: `packages/shared/src/schemas/device-data-filter.ts`, `packages/shared
 
 ---
 
+## Add to calendar (bot proposals)
+
+The one thing that flows from the cloud back to a device.
+
+1. A bot that reads the user's own calendar gets `propose_calendar_event`. It saves a proposal (`calendar_proposals`) and the server attaches an `event_proposal` card to the reply. Bots can only propose; the card is built from the saved proposal, never from model output.
+2. The calendar's owner taps **Add to calendar** (`POST /api/calendar-proposals/:id/confirm`). Only they can; other members see the card with the button inactive. A second tap does nothing.
+3. That queues a `create_event` action for the Mac collecting `calendar`, and nudges it over the relay (`runActions`). The Mac also checks after each upload, on every poll and when it connects: `GET /api/collectors/:deviceId/actions`, then `POST .../actions/:id/result`.
+4. The Mac adds the event with EventKit (default calendar, or the one picked in Settings → Devices) and reports the event identifier and its `calendar:<id>@<start>` item id. It saves each result before reporting and marks the event with `justmaple://calendar-action/<id>`, so retries never add it twice; the server ignores repeated reports.
+5. Every change is broadcast as `calendar_proposal_updated`; the card shows proposed → adding (or "will be added when your Mac is next on" after 10 minutes without it) → added (opens the calendar item) / failed (reason, Try again) / expired (7 days).
+
+Key files: `calendar-proposal.service.ts` / `.repo.ts` / `routes/calendar-proposals.ts` (API), `event-proposal-card` (web), `MacData/CalendarActions.swift` (Mac).
+
+---
+
 ## Quick Reference
 
 | Do                             | Don't                               |

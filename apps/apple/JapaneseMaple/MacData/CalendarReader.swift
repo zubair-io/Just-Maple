@@ -79,7 +79,8 @@ nonisolated struct CalendarReader {
                 of: "mailto:", with: "")
         }
         var body = event.notes ?? ""
-        if let url = event.url {
+        // Events added from Just Maple carry a justmaple:// marker; it's not content.
+        if let url = event.url, url.scheme != "justmaple" {
             body += (body.isEmpty ? "" : "\n") + url.absoluteString
         }
         let modified = event.lastModifiedDate?.timeIntervalSince1970 ?? 0
